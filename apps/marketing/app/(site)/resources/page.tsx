@@ -9,6 +9,7 @@ import {
   PageHero,
   CTASection,
 } from "@/components/ui";
+import { Reveal } from "@/components/motion";
 import {
   Calendar,
   ArrowUpRight,
@@ -18,46 +19,83 @@ import {
   FileText,
   ArrowRight,
   Shield,
+  Check,
 } from "@/components/icons";
 
 export const metadata: Metadata = {
   title: "Resources",
   description:
-    "Guides, filing calendars and a quick-reference table of key GST, TDS and income-tax due dates for Indian CA firms — from the PracticeSync team.",
+    "Quick-reference guides, filing calendars and key GST, TDS and income-tax due dates for Indian CA firms — from the PracticeSync team.",
 };
 
-// Guides are previews only — the site has no article pages yet, so every card is
-// informational (non-clickable) and carries a "Coming soon" pill. No dead links.
-const GUIDES = [
+// Each guide card is a self-contained quick reference: the key facts live on the
+// card itself, so nothing links out and nothing is pending. Statutory dates are
+// legally significant — reproduced exactly, never altered.
+const GUIDES: {
+  icon: ReactNode;
+  title: string;
+  desc: string;
+  points: string[];
+}[] = [
   {
     icon: <Calendar size={20} />,
-    title: "GST filing calendar FY 2026-27",
-    desc: "Month-by-month GSTR-1 and GSTR-3B due dates for the financial year, mapped to every client.",
+    title: "The GST filing rhythm",
+    desc: "The monthly cadence every GST-registered client runs on, all financial year long.",
+    points: [
+      "GSTR-1 — 11th of the following month",
+      "GSTR-3B — 20th of the following month",
+      "GSTR-9 annual return — 31 December",
+    ],
   },
   {
     icon: <ArrowUpRight size={20} />,
-    title: "Moving from Tally to PracticeSync",
-    desc: "Export ledgers and masters from Tally and bring your books across without losing history.",
+    title: "Moving from Tally",
+    desc: "Bring a client's books across without losing history — in three passes.",
+    points: [
+      "Export ledgers, masters and the trial balance",
+      "Import masters, then map account groups",
+      "Load opening balances and reconcile the TB",
+    ],
   },
   {
     icon: <Receipt size={20} />,
-    title: "TDS returns 24Q & 26Q explained",
-    desc: "When each quarterly statement is due, what goes in it, and how to reconcile against Form 26AS.",
+    title: "TDS returns 24Q & 26Q",
+    desc: "The two quarterly statements most practices file, and how they differ.",
+    points: [
+      "24Q — TDS on salaries · 26Q — non-salary payments",
+      "Due the 31st of the month after each quarter ends",
+      "Reconcile deductee entries against Form 26AS",
+    ],
   },
   {
     icon: <TrendingUp size={20} />,
-    title: "Advance-tax planning for clients",
-    desc: "Estimate liability and schedule the 15 Jun / 15 Sep / 15 Dec / 15 Mar instalments with room to spare.",
+    title: "Advance-tax instalments",
+    desc: "The cumulative schedule to plan client cash flows around.",
+    points: [
+      "15 June — 15% · 15 September — 45%",
+      "15 December — 75% · 15 March — 100%",
+      "Estimate early; interest under 234B/234C hurts",
+    ],
   },
   {
     icon: <Calculator size={20} />,
-    title: "Schedule III financial statements",
-    desc: "Map your trial balance to Schedule III and generate compliant balance sheets and P&L.",
+    title: "Schedule III statements",
+    desc: "From trial balance to Companies Act-compliant financials.",
+    points: [
+      "Map every TB head to a Schedule III line item",
+      "Generate the balance sheet and P&L from the mapping",
+      "Keep notes and disclosures tied to the same source",
+    ],
   },
   {
     icon: <FileText size={20} />,
-    title: "Year-end close checklist",
-    desc: "A step-by-step close for 31 March — reconciliations, provisions and statutory dues, nothing missed.",
+    title: "Year-end close, in order",
+    desc: "The 31 March sequence that keeps audits calm.",
+    points: [
+      "Reconcile banks, GST ledgers and Form 26AS",
+      "Book provisions, depreciation and statutory dues",
+      "Lock the year before the first audit query lands",
+    ],
   },
 ];
 
@@ -127,95 +165,112 @@ export default function ResourcesPage() {
       <PageHero
         eyebrow="Resources"
         title="Guides & tools for Indian CA practices"
-        subtitle="Practical references for running a CA firm — filing calendars, migration guides and compliance checklists, plus a quick-reference due-date table you can keep close at hand."
+        subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
       />
 
-      {/* ── Guides ───────────────────────────────────────────────────────── */}
+      {/* ── Quick-reference guides ───────────────────────────────────────── */}
       <Section className="bg-ps-bg">
-        <SectionHeading
-          eyebrow="Guides"
-          title="Guides for running an Indian CA firm"
-          subtitle="Deep-dives on the filings, migrations and close processes practices deal with every year. We're writing these now — here's what's on the way."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="Quick references"
+            title="The essentials, on one card each"
+            subtitle="The filings, migrations and close processes practices deal with every year — condensed to the facts you actually reach for."
+          />
+        </Reveal>
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {GUIDES.map((g) => (
-            <Card key={g.title}>
-              <div className="flex items-start justify-between gap-3">
-                <IconBadge>{g.icon}</IconBadge>
-                <span className="inline-flex items-center rounded-full bg-ps-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-ps-border">
-                  Coming soon
+          {GUIDES.map((g, i) => (
+            <Reveal key={g.title} delay={(i % 3) * 110 + Math.floor(i / 3) * 60}>
+              <Card className="h-full">
+                <span className="icon-pop inline-flex">
+                  <IconBadge>{g.icon}</IconBadge>
                 </span>
-              </div>
-              <h3 className="mt-5 text-[17px] font-bold text-brand-dark">{g.title}</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{g.desc}</p>
-            </Card>
+                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">{g.title}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{g.desc}</p>
+                <ul className="mt-4 space-y-2 border-t border-ps-border pt-4">
+                  {g.points.map((p) => (
+                    <li key={p} className="flex items-start gap-2 text-[13px] leading-relaxed text-slate-600">
+                      <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </Reveal>
           ))}
         </div>
-        <div className="mt-10 flex flex-col items-center gap-4 text-center">
-          <p className="text-[14px] text-slate-500">
-            Guides are on the way. In the meantime, see how PracticeSync handles all of
-            this for you.
-          </p>
-          <Button href="/products" variant="secondary">
-            Explore the platform
-            <ArrowRight size={16} />
-          </Button>
-        </div>
+        <Reveal delay={150}>
+          <div className="mt-12 flex flex-col items-center gap-4 text-center">
+            <p className="text-[14px] text-slate-500">
+              PracticeSync tracks all of this automatically — per client, per deadline,
+              all financial year long.
+            </p>
+            <Button href="/products" variant="secondary">
+              Explore the platform
+              <ArrowRight size={16} />
+            </Button>
+          </div>
+        </Reveal>
       </Section>
 
       {/* ── Compliance calendar ──────────────────────────────────────────── */}
       <Section id="calendar" className="scroll-mt-24 bg-white">
-        <SectionHeading
-          eyebrow="Compliance calendar"
-          title="Key statutory due dates at a glance"
-          subtitle="The deadlines every Indian practice tracks, in one place. PracticeSync watches these for each client so nothing slips through."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="Compliance calendar"
+            title="Key statutory due dates at a glance"
+            subtitle="The deadlines every Indian practice tracks, in one place. PracticeSync watches these for each client so nothing slips through."
+          />
+        </Reveal>
 
-        <div className="mt-12 overflow-x-auto rounded-2xl border border-ps-border bg-white shadow-card">
-          <table className="w-full min-w-[720px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-ps-border bg-ps-bg">
-                <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Return / obligation
-                </th>
-                <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Frequency
-                </th>
-                <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Statutory due date
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ps-border">
-              {CALENDAR.map((row) => (
-                <tr key={row.name}>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-3 text-[14px] font-bold text-brand-dark">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/[0.06] text-brand ring-1 ring-brand/10">
-                        {row.icon}
-                      </span>
-                      {row.name}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex whitespace-nowrap rounded-full bg-brand/[0.06] px-2.5 py-1 text-[12px] font-semibold text-brand">
-                      {row.freq}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-[14px] leading-relaxed text-slate-700">
-                    {row.due}
-                  </td>
+        <Reveal variant="scale" delay={120}>
+          <div className="mt-12 overflow-x-auto rounded-2xl border border-ps-border bg-white shadow-card">
+            <table className="w-full min-w-[720px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-ps-border bg-ps-bg">
+                  <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Return / obligation
+                  </th>
+                  <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Frequency
+                  </th>
+                  <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Statutory due date
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-ps-border">
+                {CALENDAR.map((row) => (
+                  <tr key={row.name} className="transition-colors duration-300 hover:bg-ps-bg/60">
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-3 text-[14px] font-bold text-brand-dark">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/[0.06] text-brand ring-1 ring-brand/10">
+                          {row.icon}
+                        </span>
+                        {row.name}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex whitespace-nowrap rounded-full bg-brand/[0.06] px-2.5 py-1 text-[12px] font-semibold text-brand">
+                        {row.freq}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-[14px] leading-relaxed text-slate-700">
+                      {row.due}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Reveal>
 
-        <p className="mx-auto mt-5 flex max-w-2xl items-start justify-center gap-2 text-center text-[13px] leading-relaxed text-slate-500">
-          <Shield size={15} className="mt-0.5 shrink-0 text-gold" />
-          Indicative statutory due dates — always confirm the latest CBIC/CBDT
-          notifications.
-        </p>
+        <Reveal delay={200}>
+          <p className="mx-auto mt-5 flex max-w-2xl items-start justify-center gap-2 text-center text-[13px] leading-relaxed text-slate-500">
+            <Shield size={15} className="mt-0.5 shrink-0 text-gold" />
+            Indicative statutory due dates — always confirm the latest CBIC/CBDT
+            notifications.
+          </p>
+        </Reveal>
       </Section>
 
       {/* ── Closing CTA ──────────────────────────────────────────────────── */}

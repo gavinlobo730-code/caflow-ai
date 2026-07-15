@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { WordReveal } from "@/components/motion";
 import { Building, Users, ArrowRight, ArrowLeft, Check, Lock } from "@/components/icons";
 import { appLinks } from "@/lib/site";
 
@@ -55,19 +56,20 @@ export default function AccessPage() {
         <div className="flex flex-1 flex-col justify-center py-10">
           <div className="mx-auto max-w-lg text-center">
             <h1 className="text-[28px] font-bold tracking-tight text-brand-dark md:text-[32px]">
-              Sign in to PracticeSync
+              <WordReveal text="Sign in to PracticeSync" startDelay={100} stagger={70} />
             </h1>
-            <p className="mt-3 text-[15px] text-slate-500">
+            <p className="fade-up mt-3 text-[15px] text-slate-500" style={{ animationDelay: "450ms" }}>
               Choose how you&apos;d like to continue.
             </p>
           </div>
 
           <div className="mt-10 grid gap-5 sm:grid-cols-2">
-            {OPTIONS.map((opt) => (
+            {OPTIONS.map((opt, i) => (
               <a
                 key={opt.key}
                 href={opt.href}
-                className="group flex flex-col rounded-2xl border border-ps-border bg-white p-6 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-brand-light hover:shadow-card-hover"
+                className="card-lift fade-up group flex flex-col rounded-2xl border border-ps-border bg-white p-6 shadow-card"
+                style={{ animationDelay: `${550 + i * 140}ms` }}
               >
                 <span
                   className={`grid h-14 w-14 place-items-center rounded-2xl ${
@@ -109,7 +111,7 @@ export default function AccessPage() {
           </div>
 
           {/* Signup + trust */}
-          <div className="mx-auto mt-10 max-w-lg text-center">
+          <div className="fade-up mx-auto mt-10 max-w-lg text-center" style={{ animationDelay: "900ms" }}>
             <p className="text-[14px] text-slate-500">
               New firm?{" "}
               <a

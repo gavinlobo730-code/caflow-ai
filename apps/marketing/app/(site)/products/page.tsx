@@ -20,6 +20,7 @@ import {
   Lock,
   Shield,
 } from "@/components/icons";
+import { Reveal } from "@/components/motion";
 import { appLinks } from "@/lib/site";
 
 export const metadata = {
@@ -146,20 +147,24 @@ export default function ProductsPage() {
 
       {/* ── Intro + early CTA ────────────────────────────────────────────── */}
       <Section className="bg-white">
-        <SectionHeading
-          eyebrow="Six modules, one workspace"
-          title="Everything your practice runs on, connected"
-          subtitle="Compliance, accounting, payroll, clients, documents and analytics share one source of truth — so a client's returns, books and paperwork never live in separate tools again."
-        />
-        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button href={appLinks.signup} external className="px-6 py-3.5">
-            Start free trial
-            <ArrowRight size={16} />
-          </Button>
-          <Button href="/pricing" variant="secondary" className="px-6 py-3.5">
-            See plans &amp; pricing
-          </Button>
-        </div>
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="Six modules, one workspace"
+            title="Everything your practice runs on, connected"
+            subtitle="Compliance, accounting, payroll, clients, documents and analytics share one source of truth — so a client's returns, books and paperwork never live in separate tools again."
+          />
+        </Reveal>
+        <Reveal delay={150}>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Button href={appLinks.signup} external className="px-6 py-3.5">
+              Start free trial
+              <ArrowRight size={16} />
+            </Button>
+            <Button href="/pricing" variant="secondary" className="px-6 py-3.5">
+              See plans &amp; pricing
+            </Button>
+          </div>
+        </Reveal>
       </Section>
 
       {/* ── Modules ──────────────────────────────────────────────────────── */}
@@ -172,34 +177,42 @@ export default function ProductsPage() {
           >
             <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
               <div className={flip ? "lg:order-2" : ""}>
-                <IconBadge>{m.icon}</IconBadge>
-                <div className="mt-6">
-                  <SectionHeading
-                    align="left"
-                    eyebrow={m.eyebrow}
-                    title={m.title}
-                    subtitle={m.desc}
-                  />
-                </div>
+                <Reveal variant={flip ? "right" : "left"}>
+                  <IconBadge>{m.icon}</IconBadge>
+                  <div className="mt-6">
+                    <SectionHeading
+                      align="left"
+                      eyebrow={m.eyebrow}
+                      title={m.title}
+                      subtitle={m.desc}
+                    />
+                  </div>
+                </Reveal>
               </div>
-              <Card className={`lg:p-8 ${flip ? "lg:order-1" : ""}`}>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  What&apos;s included
-                </p>
-                <ul className="mt-5 space-y-3.5">
-                  {m.points.map((point) => (
-                    <li
-                      key={point}
-                      className="flex items-start gap-3 text-[15px] leading-relaxed text-slate-700"
-                    >
-                      <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand/[0.06] text-brand ring-1 ring-brand/10">
-                        <Check size={13} />
-                      </span>
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+              <Reveal
+                variant={flip ? "left" : "right"}
+                delay={150}
+                className={flip ? "lg:order-1" : ""}
+              >
+                <Card className="lg:p-8">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    What&apos;s included
+                  </p>
+                  <ul className="mt-5 space-y-3.5">
+                    {m.points.map((point) => (
+                      <li
+                        key={point}
+                        className="flex items-start gap-3 text-[15px] leading-relaxed text-slate-700"
+                      >
+                        <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand/[0.06] text-brand ring-1 ring-brand/10">
+                          <Check size={13} />
+                        </span>
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </Reveal>
             </div>
           </Section>
         );
@@ -207,44 +220,47 @@ export default function ProductsPage() {
 
       {/* ── Security & trust ─────────────────────────────────────────────── */}
       <Section id="security" className="bg-brand-dark">
-        <SectionHeading
-          tone="dark"
-          eyebrow="Security & trust"
-          title="Your clients' data — and your sign-off — protected"
-          subtitle="PracticeSync is built around how Indian CA firms actually work: sensitive data stays in the country, access is controlled, everything is logged, and no filing ever leaves your hands without your confirmation."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            tone="dark"
+            eyebrow="Security & trust"
+            title="Your clients' data — and your sign-off — protected"
+            subtitle="PracticeSync is built around how Indian CA firms actually work: sensitive data stays in the country, access is controlled, everything is logged, and no filing ever leaves your hands without your confirmation."
+          />
+        </Reveal>
 
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {SECURITY.map((s) => (
-            <div
-              key={s.title}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-6"
-            >
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
-                {s.icon}
-              </span>
-              <h3 className="mt-5 text-[16px] font-bold text-white">{s.title}</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-                {s.desc}
-              </p>
-            </div>
+          {SECURITY.map((s, i) => (
+            <Reveal key={s.title} delay={i * 100} className="h-full">
+              <div className="h-full rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
+                  {s.icon}
+                </span>
+                <h3 className="mt-5 text-[16px] font-bold text-white">{s.title}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
+                  {s.desc}
+                </p>
+              </div>
+            </Reveal>
           ))}
         </div>
 
         {/* Never auto-submit — the principle at the heart of the platform. */}
-        <div className="mt-6 flex flex-col items-start gap-5 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:flex-row sm:items-center md:p-8">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold ring-1 ring-gold/25">
-            <Shield size={22} />
-          </span>
-          <p className="text-[15px] leading-relaxed text-slate-200 md:text-[16px]">
-            <span className="font-semibold text-white">
-              Nothing is auto-submitted.
-            </span>{" "}
-            Every GST return, income-tax filing, TDS statement and MCA form waits
-            for an explicit confirmation click from a Chartered Accountant before
-            it is sent to any government portal.
-          </p>
-        </div>
+        <Reveal delay={150}>
+          <div className="mt-6 flex flex-col items-start gap-5 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:flex-row sm:items-center md:p-8">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold ring-1 ring-gold/25">
+              <Shield size={22} />
+            </span>
+            <p className="text-[15px] leading-relaxed text-slate-200 md:text-[16px]">
+              <span className="font-semibold text-white">
+                Nothing is auto-submitted.
+              </span>{" "}
+              Every GST return, income-tax filing, TDS statement and MCA form waits
+              for an explicit confirmation click from a Chartered Accountant before
+              it is sent to any government portal.
+            </p>
+          </div>
+        </Reveal>
       </Section>
 
       {/* ── Closing CTA ──────────────────────────────────────────────────── */}
