@@ -88,6 +88,12 @@ interface JournalEntry {
   narration: string;
   entry_type: string;
   is_posted: boolean;
+  // "manual" = a CA typed this in via New Journal Entry; anything else (or
+  // null, for entries posted before this column was consistently set) is a
+  // system-generated posting (invoice/bill GL entries, inventory COGS/
+  // capitalisation, opening balances, corrections, etc.) — see the "Show
+  // system entries" toggle below.
+  source_type: string | null;
   lines: { account_id: string; debit_paise: number; credit_paise: number; narration: string | null }[];
 }
 
@@ -574,6 +580,17 @@ function JournalEntryForm({
   // silently truncated at PostgREST's row cap (mirrors the other accounting tabs).
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
+  // Mirrors how QuickBooks/Xero/Zoho/Tally all scope their "Journal" screen to
+  // manually-created entries by default, keeping every auto-posted GL entry
+  // (invoices, bills, inventory COGS/capitalisation, opening balances, ...)
+  // out of the CA's view of their own adjusting entries. The full picture is
+  // still one click away via this toggle, or always visible per-account in
+  // the Trial Balance / Ledger drill-down.
+  const [showSystemEntries, setShowSystemEntries] = useState(false);
+  const visibleEntries = useMemo(
+    () => (showSystemEntries ? entries : entries.filter((e) => e.source_type === "manual")),
+    [entries, showSystemEntries]
+  );
 
   const totalDebit = lines.reduce((s, l) => s + l.debit_paise, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit_paise, 0);
@@ -587,7 +604,7 @@ function JournalEntryForm({
       .from("journal_entries")
       // Alias the embed to `lines` so it matches the JournalEntry type (and the
       // amount column, which sums debit_paise across the entry's lines).
-      .select("id, entry_date, reference_no, narration, entry_type, is_posted, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
+      .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
       .eq("client_id", clientId)
       .is("deleted_at", null)
       .order("entry_date", { ascending: false })
@@ -761,9 +778,23 @@ function JournalEntryForm({
           pagination, export). Replaces the old "recent 5" preview and is the
           destination the Dashboard "View all" navigates to. */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
+          <label className="flex items-center gap-1.5 text-xs text-[#64748B] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showSystemEntries}
+              onChange={(e) => setShowSystemEntries(e.target.checked)}
+              className="rounded border-[#CBD5E1]"
+            />
+            Show system-generated entries
+            <span className="text-[#94A3B8]">
+              ({entries.length - entries.filter((e) => e.source_type === "manual").length} auto-posted)
+            </span>
+          </label>
+        </div>
         <DataTable
-          data={entries}
+          data={visibleEntries}
           columns={journalColumns}
           filters={journalFilters}
           getRowId={(e) => e.id}
@@ -773,8 +804,12 @@ function JournalEntryForm({
           initialSort={{ key: "entry_date", dir: "desc" }}
           exportFilename="journal"
           persistKey="accounting.journal"
-          emptyTitle="No journal entries"
-          emptyDescription="Post an entry above to see it listed here."
+          emptyTitle={!showSystemEntries && entries.length > 0 ? "No manual journal entries" : "No journal entries"}
+          emptyDescription={
+            !showSystemEntries && entries.length > 0
+              ? "This client has system-generated entries only — tick “Show system-generated entries” above to see them."
+              : "Post an entry above to see it listed here."
+          }
         />
       </div>
     </div>
