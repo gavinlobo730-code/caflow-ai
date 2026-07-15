@@ -1,7 +1,10 @@
 # Cloudflare Pages project for the PracticeSync marketing site.
-# This is a SEPARATE project from apps/web (practicesync-ai). Today both run on
-# *.pages.dev; once a custom domain is attached, point the apex (yourdomain) at
-# this project and app.yourdomain at the apps/web project.
+# This is a SEPARATE project from apps/web (dashboard-labeled "practicesync-ai",
+# but its *.pages.dev subdomain is caflow-ai.pages.dev — locked to the name the
+# project was originally created under; renaming in the dashboard doesn't move
+# the subdomain). Today both run on *.pages.dev; once a custom domain is
+# attached, point the apex (yourdomain) at this project and app.yourdomain at
+# the apps/web project.
 name = "practicesync"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "out"
@@ -9,4 +12,4 @@ pages_build_output_dir = "out"
 [vars]
 # Origin of the actual application (apps/web). Currently its Cloudflare Pages URL;
 # change to https://app.<yourdomain> once a custom domain is attached.
-NEXT_PUBLIC_APP_URL = "https://practicesync-ai.pages.dev"
+NEXT_PUBLIC_APP_URL = "https://caflow-ai.pages.dev"
