@@ -32,27 +32,45 @@ def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
             return "Share Capital"
         return "Reserves & Surplus"
     if typ == "liability":
-        if "long term" in sub or "term loan" in sub or "debenture" in sub:
-            return "Long Term Borrowings"
         if "deferred tax" in sub:
             return "Deferred Tax Liability"
+        # Bare "payable" included: the seeded vocabulary (coa_seed_service /
+        # migration 197) tags Trade Payables with subtype "Payable" — without
+        # it, Trade Payables showed ₹0 on the backend Schedule III while the
+        # frontend statement (looser keywords) showed it correctly. Statutory-
+        # dues subtypes ("GST Payable", "TDS Payable", …) are excluded so they
+        # keep falling through to Other Current Liabilities; the seeded ones
+        # carry "Current Liability" and never matched anyway.
         if "trade payable" in sub or "creditor" in sub:
             return "Trade Payables"
+        if "payable" in sub and not any(
+            k in sub for k in ("gst", "tds", "tax", "duty", "pf", "esi", "salary", "wage", "statutory")
+        ):
+            return "Trade Payables"
+        # Short-term FIRST: the seeded subtype "Short Term Loan" contains
+        # "term loan", so testing the long-term branch first presented every
+        # working-capital loan as a non-current borrowing.
         if "short term" in sub or "overdraft" in sub or "cc limit" in sub:
             return "Short Term Borrowings"
+        if "long term" in sub or "term loan" in sub or "debenture" in sub:
+            return "Long Term Borrowings"
         return "Other Current Liabilities"
     if typ == "asset":
+        # Intangibles FIRST — their subtype ("Intangible Asset") also
+        # contains "asset"-family keywords the tangible test matches.
+        if "intangible" in sub or "goodwill" in sub or "software" in sub:
+            return "Intangible Fixed Assets"
         if any(k in sub for k in (
             "fixed asset", "tangible", "plant", "machinery", "furniture", "building", "vehicle",
         )):
             return "Tangible Fixed Assets"
-        if "intangible" in sub or "goodwill" in sub or "software" in sub:
-            return "Intangible Fixed Assets"
         if "long term investment" in sub or "investment" in sub:
             return "Long Term Investments"
         if "inventor" in sub or "stock" in sub:
             return "Inventories"
-        if "trade receivable" in sub or "debtor" in sub:
+        # Bare "receivable": the seeded subtype is "Receivable" (TDS
+        # Receivable / Advance Tax carry "Tax", so they don't over-match).
+        if "trade receivable" in sub or "debtor" in sub or "receivable" in sub:
             return "Trade Receivables"
         if "cash" in sub or "bank" in sub:
             return "Cash & Cash Equivalents"

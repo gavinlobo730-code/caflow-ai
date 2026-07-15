@@ -34,14 +34,18 @@ Rules you MUST follow:
 4. This is advisory context for the CA's own review, not a final determination — phrase computed ratios as observations, not conclusions.
 5. Do not mention GST, TDS, or any tax filing — this analysis is about the financial statements only."""
 
-# Balance sheet subtypes this app buckets as current (see BS_ASSET_ORDER /
-# BS_LIAB_ORDER in the accounting page) — used for the current ratio.
-_CURRENT_ASSET_SUBTYPES = {
-    "Trade Receivables", "Cash & Cash Equivalents", "Short-term Loans & Advances",
+# Schedule III captions (domain/reporting/schedule_iii.bs_bucket output) this
+# app treats as CURRENT — used for the current ratio. Lines are routed through
+# bs_bucket() below, NOT matched on raw account_subtype: the raw subtypes are
+# seed-vocabulary words ("Receivable", "Cash", "Inventory", …) that never
+# equal these caption labels, so the old exact-match sets summed 0 on every
+# balance sheet and the current ratio was permanently None.
+_CURRENT_ASSET_BUCKETS = {
+    "Trade Receivables", "Cash & Cash Equivalents", "Short Term Loans & Advances",
     "Other Current Assets", "Inventories",
 }
-_CURRENT_LIAB_SUBTYPES = {
-    "Short-term Borrowings", "Trade Payables", "Tax Liabilities", "Other Current Liabilities",
+_CURRENT_LIAB_BUCKETS = {
+    "Short Term Borrowings", "Trade Payables", "Other Current Liabilities",
 }
 
 
@@ -55,10 +59,15 @@ def _rupees(paise: int) -> str:
     return f"Rs {paise / 100:,.2f}"
 
 
-def _sum_by_subtype(bs: dict, section_key: str, subtypes: set) -> int:
-    sections = bs.get(section_key) or [{}]
-    lines = sections[0].get("lines", []) if sections else []
-    return sum(line.get("balance_paise", 0) for line in lines if line.get("account_subtype") in subtypes)
+def _sum_by_bucket(bs: dict, section_key: str, buckets: set) -> int:
+    from domain.reporting.schedule_iii import bs_bucket
+    total = 0
+    for section in (bs.get(section_key) or []):
+        for line in section.get("lines", []):
+            cap = bs_bucket(line.get("account_type", ""), line.get("account_subtype"))
+            if cap in buckets:
+                total += line.get("balance_paise", 0)
+    return total
 
 
 def compute_ratios(pl: dict, bs: dict) -> dict:
@@ -71,8 +80,8 @@ def compute_ratios(pl: dict, bs: dict) -> dict:
     net_margin_pct = round(net_profit / revenue * 100, 1) if revenue else None
     expense_ratio_pct = round(expenses / revenue * 100, 1) if revenue else None
 
-    current_assets = _sum_by_subtype(bs, "assets", _CURRENT_ASSET_SUBTYPES)
-    current_liabilities = _sum_by_subtype(bs, "liabilities", _CURRENT_LIAB_SUBTYPES)
+    current_assets = _sum_by_bucket(bs, "assets", _CURRENT_ASSET_BUCKETS)
+    current_liabilities = _sum_by_bucket(bs, "liabilities", _CURRENT_LIAB_BUCKETS)
     current_ratio = round(current_assets / current_liabilities, 2) if current_liabilities else None
 
     return {

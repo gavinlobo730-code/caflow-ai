@@ -14,6 +14,7 @@ from domain.inventory_service import (
     _compute_stock_out,
     record_stock_in,
     record_stock_out,
+    record_stock_out_at_value,
     seed_opening_balance,
     seed_opening_balances_batch,
     get_stock_ledger,
@@ -663,6 +664,14 @@ def test_apply_credit_note_to_inventory_backfills_journal_entry_id_onto_every_li
     db = _FakeDB()
     _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
     _seed_catalogue_item(db, item_id="good-2", kind="good", name="Gadget")
+    # Establish a real cost basis — returns are valued at COST (current
+    # average here, since this CN has no sales_invoice_id link), never at the
+    # CN's taxable/selling value; with no cost basis at all the value is 0
+    # and no journal posts.
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="purchase")
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-2",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=2_500_00, movement_type="purchase")
     db.store["credit_note_lines"] = [
         {"id": "cnl-1", "credit_note_id": "cn-1", "description": "Widget returned", "quantity": "2",
          "taxable_amount_paise": 2_000_00, "service_catalogue_id": "good-1"},
@@ -677,6 +686,93 @@ def test_apply_credit_note_to_inventory_backfills_journal_entry_id_onto_every_li
     return_rows = [r for r in db.store["inventory_stock_ledger"] if r["movement_type"] == "sale_return"]
     assert len(return_rows) == 2
     assert all(r["journal_entry_id"] == "journal-invret-1" for r in return_rows)
+    # Valued at cost (avg ₹1000 and ₹250/unit), not the CN's selling prices.
+    assert return_rows[0]["value_delta_paise"] == 2_000_00  # 2 × ₹1000 cost
+    assert return_rows[1]["value_delta_paise"] == 250_00    # 1 × ₹250 cost
+
+
+# ── Backdated movements / insertion-order chaining ──────────────────────────
+
+def test_backdated_purchase_stays_in_the_running_chain():
+    """A bill DATED before already-recorded movements must still enter the
+    running-total chain (chain is insertion-ordered, not date-ordered) — the
+    old movement_date-ordered chain silently dropped a backdated purchase
+    from every future running total."""
+    db = _FakeDB()
+    _seed_catalogue_item(db)
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                    movement_date="2026-07-01", quantity=Decimal("10"), total_cost_paise=1_000_00, movement_type="opening")
+    record_stock_out(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                     movement_date="2026-07-10", quantity=Decimal("4"), movement_type="sale")
+    # Backdated bill: dated Jul-1 but recorded now (after the Jul-10 sale).
+    row = record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                          movement_date="2026-07-01", quantity=Decimal("10"), total_cost_paise=1_200_00, movement_type="purchase")
+    assert row["running_qty_units"] == "16"          # 10 - 4 + 10
+    assert row["running_value_paise"] == 1_800_00    # 600 + 1200
+    # The NEXT movement must chain from the backdated purchase's totals,
+    # not from the (later-dated) sale row.
+    nxt = record_stock_out(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                           movement_date="2026-07-16", quantity=Decimal("1"), movement_type="sale")
+    assert nxt["running_qty_units"] == "15"
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "item-1")
+    assert goods_row["stock_qty_units"] == "15"
+
+
+def test_force_close_value_delta_equals_actual_book_relief():
+    """Oversell: value_delta must be what the books actually held (so COGS
+    journals post the real inventory relief), not qty × avg."""
+    calc = _compute_stock_out(Decimal("2"), 2_000_00, 1_000_00, Decimal("5"))
+    assert calc["value_delta_paise"] == -2_000_00   # NOT -5,000_00
+    assert calc["running_qty_units"] == Decimal("-3")
+    assert calc["running_value_paise"] == 0
+
+
+def test_reverse_purchase_stock_removes_original_value_not_current_average():
+    """Cancel after the average moved: the ledger must remove the ORIGINAL
+    received value (matching the journal reversal), not qty × current avg."""
+    db = _FakeDB()
+    _seed_catalogue_item(db)
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=1_000_00, movement_type="opening")
+    # Bill B1: 10 units @ ₹200 → avg becomes ₹150.
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                    movement_date="2026-04-05", quantity=Decimal("10"), total_cost_paise=2_000_00, movement_type="purchase",
+                    source_type="purchase_bill", source_id="bill-1", reference_no="B1")
+
+    reverse_purchase_stock(db, firm_id="firm-1", client_id="client-1", bill_id="bill-1", bill_reference="B1")
+
+    rev = next(r for r in db.store["inventory_stock_ledger"] if r["movement_type"] == "purchase_reversal")
+    assert rev["value_delta_paise"] == -2_000_00     # original ₹2000, not 10 × ₹150 = ₹1500
+    assert rev["running_qty_units"] == "10"
+    assert rev["running_value_paise"] == 1_000_00    # back to the opening position
+
+
+def test_record_stock_out_at_value_clamps_to_book_value():
+    db = _FakeDB()
+    _seed_catalogue_item(db)
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=500_00, movement_type="opening")
+    # Ask to remove ₹800 when the books hold only ₹500 with qty remaining.
+    row = record_stock_out_at_value(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                                    movement_date="2026-04-10", quantity=Decimal("4"), value_paise=800_00,
+                                    movement_type="purchase_reversal")
+    assert row["value_delta_paise"] == -500_00
+    assert row["running_value_paise"] == 0 or int(row["running_value_paise"]) >= 0
+
+
+def test_seed_opening_balance_chains_from_existing_movements():
+    """Opening stock added AFTER the item already moved (e.g. oversold before
+    setup) must chain from the live running totals, not restart at zero."""
+    db = _FakeDB()
+    _seed_catalogue_item(db)
+    record_stock_out(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                     movement_date="2026-06-01", quantity=Decimal("3"), movement_type="sale")  # oversold to -3
+    row = seed_opening_balance(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+                               movement_date="2026-04-01", opening_qty=10, opening_cost_paise=1_000_00)
+    assert row is not None
+    assert row["running_qty_units"] == "7"           # -3 + 10, not 10
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "item-1")
+    assert goods_row["stock_qty_units"] == "7"
 
 
 # ── Manual stock adjustment ──────────────────────────────────────────────────

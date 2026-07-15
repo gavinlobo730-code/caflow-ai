@@ -77,9 +77,16 @@ def _compute_line_gst(
     if is_interstate:
         igst = (taxable_paise * gst_rate_bps) // 10000
         return 0, 0, igst
-    half_rate = gst_rate_bps // 2
-    cgst = (taxable_paise * half_rate) // 10000
-    sgst = (taxable_paise * half_rate) // 10000
+    # Compute the FULL tax first, then split into CGST + SGST so their sum
+    # equals what the same supply would attract as IGST — identical to the
+    # sales-side fix in routers/sales_invoices.py. Splitting the rate first
+    # and flooring each half independently lost up to 1 paise per line for
+    # odd tax amounts, and was badly wrong for odd-bps rates (0.25% → 25 bps,
+    # half=12 bps → ₹24 instead of ₹25 per ₹10,000), systematically
+    # understating ITC on purchases. SGST carries any odd paise.
+    full_gst = (taxable_paise * gst_rate_bps) // 10000
+    cgst = full_gst // 2
+    sgst = full_gst - cgst
     return cgst, sgst, 0
 
 
@@ -166,6 +173,7 @@ def _compute_bill_lines_and_totals(
     dc,
     db=None,
     exclude_bill_id: Optional[str] = None,
+    is_reverse_charge: bool = False,
 ) -> dict:
     """Compute GST-split lines + vendor TDS for a purchase bill, in integer
     paise. Shared by create (_create_purchase_bill_core) and update
@@ -178,6 +186,15 @@ def _compute_bill_lines_and_totals(
     taxable_amount_paise, which would otherwise double-count against itself
     when checking the §194C-style aggregate threshold. Always None on create,
     since the bill doesn't exist yet.
+
+    `is_reverse_charge` — CGST Act §9(3)/(4): on an RCM inward supply the
+    VENDOR invoices without tax; the recipient self-assesses the GST (paid in
+    cash via GSTR-3B Table 3.1(d), ITC claimable per §16). The GST components
+    are therefore still computed and stored (they drive 3B, ITC, and the RCM
+    liability journal lines), but the amount OWED TO THE VENDOR — total_paise
+    / line_total_paise / net_payable — is the taxable value only. Previously
+    RCM bills were computed identically to normal bills, overstating Trade
+    Payables by the GST the vendor never charged.
     """
     computed_lines: list[dict] = []
     total_taxable = 0
@@ -211,7 +228,9 @@ def _compute_bill_lines_and_totals(
             "cgst_paise":           cgst,
             "sgst_paise":           sgst,
             "igst_paise":           igst,
-            "line_total_paise":     taxable + cgst + sgst + igst,
+            # RCM: the vendor's line total excludes the self-assessed GST
+            # (CGST Act §9(3)/(4) — see the docstring above).
+            "line_total_paise":     taxable if is_reverse_charge else taxable + cgst + sgst + igst,
             "service_catalogue_id": ln.get("service_catalogue_id"),
         })
 
@@ -221,12 +240,16 @@ def _compute_bill_lines_and_totals(
     # INR-equivalent taxable.
     txn_taxable   = total_taxable
     txn_total_gst = total_cgst + total_sgst + total_igst
-    txn_total     = txn_taxable + txn_total_gst
+    # RCM: the vendor never charged the GST, so the bill total (what the
+    # vendor is owed) is the taxable value alone — the self-assessed GST
+    # lives in the cgst/sgst/igst columns for 3B/ITC/journal, not in the AP.
+    txn_total     = txn_taxable if is_reverse_charge else txn_taxable + txn_total_gst
     total_taxable = dc.to_base(total_taxable)
     total_cgst    = dc.to_base(total_cgst)
     total_sgst    = dc.to_base(total_sgst)
     total_igst    = dc.to_base(total_igst)
-    total_paise   = total_taxable + total_cgst + total_sgst + total_igst
+    total_gst_sum = total_cgst + total_sgst + total_igst
+    total_paise   = total_taxable if is_reverse_charge else total_taxable + total_gst_sum
 
     # ── TDS — routed through the central engine (domain/tds/tds_computer).
     # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
@@ -247,10 +270,17 @@ def _compute_bill_lines_and_totals(
         fy_prior = 0
         if not _USE_MOCK and db is not None:
             fy_start, fy_end = _fy_bounds(bill_date)
+            # deleted_at IS NULL — soft-deleted bills keep status "draft", so the
+            # .neq("status","cancelled") filter alone still counted them toward
+            # the §194C FY-aggregate threshold, wrongly triggering TDS deduction
+            # on later bills. Drafts themselves stay counted deliberately: the
+            # threshold is "credited or paid or LIKELY to be credited" (IT Act
+            # §194C(5)) and a live draft is expected to be received.
             prior = (db.table("purchase_bills")
                      .select("id, taxable_amount_paise")
                      .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
                      .eq("tds_section", tds_section).neq("status", "cancelled")
+                     .is_("deleted_at", "null")
                      .gte("bill_date", fy_start).lte("bill_date", fy_end)
                      .execute().data) or []
             fy_prior = sum(
@@ -398,6 +428,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     computed = _compute_bill_lines_and_totals(
         lines_data, is_interstate, vendor, data["bill_date"], firm_id or "", dc,
         db=(db if not _USE_MOCK else None),
+        is_reverse_charge=is_reverse_charge,
     )
     computed_lines    = computed["computed_lines"]
     total_taxable     = computed["taxable_amount_paise"]
@@ -877,6 +908,7 @@ def update_purchase_bill(
                         computed = _compute_bill_lines_and_totals(
                             lines_data, is_interstate, vendor, bill_date_for_calc,
                             current_user.get("firm_id") or "", dc, db=None, exclude_bill_id=bill_id,
+                            is_reverse_charge=bool(b.get("is_reverse_charge")),
                         )
                         MOCK_PURCHASE_BILL_LINES[:] = [ln for ln in MOCK_PURCHASE_BILL_LINES if ln.get("bill_id") != bill_id]
                         for ln in computed["computed_lines"]:
@@ -961,6 +993,7 @@ def update_purchase_bill(
             computed = _compute_bill_lines_and_totals(
                 lines_data, is_interstate, vendor, data.get("bill_date") or existing_date,
                 firm_id, dc, db=db, exclude_bill_id=bill_id,
+                is_reverse_charge=bool(bill_row.get("is_reverse_charge")),
             )
             db.table("purchase_bill_lines").delete().eq("bill_id", bill_id).execute()
             line_payloads = [
@@ -1143,7 +1176,7 @@ def cancel_purchase_bill(
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
 
         from core.supabase_client import get_supabase
-        from services.phase2_journal_service import phase2_journal_service
+        from services.phase2_journal_service import phase2_journal_service, purchase_bill_journal_ref
         db = get_supabase()
         firm_id = current_user.get("firm_id")
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
@@ -1176,11 +1209,20 @@ def cancel_purchase_bill(
         # (append-only; original untouched). Idempotent on retry.
         jrnl_id = bill.get("journal_entry_id")
         if not jrnl_id:
-            jr = (db.table("journal_entries").select("id")
-                  .eq("firm_id", firm_id).eq("client_id", bill.get("client_id"))
-                  .eq("reference_no", bill.get("bill_no")).eq("entry_type", "Purchase").eq("is_posted", True)
-                  .limit(1).execute().data)
-            jrnl_id = jr[0]["id"] if jr else None
+            # New bills post under the system-unique PB-{id} reference
+            # (phase2_journal_service.purchase_bill_journal_ref); bills
+            # received before that fix posted under the vendor's bill_no —
+            # try both so legacy bills stay cancellable.
+            for ref in (purchase_bill_journal_ref(bill_id), bill.get("bill_no")):
+                if not ref:
+                    continue
+                jr = (db.table("journal_entries").select("id")
+                      .eq("firm_id", firm_id).eq("client_id", bill.get("client_id"))
+                      .eq("reference_no", ref).eq("entry_type", "Purchase").eq("is_posted", True)
+                      .limit(1).execute().data)
+                if jr:
+                    jrnl_id = jr[0]["id"]
+                    break
         if not jrnl_id:
             raise HTTPException(status_code=422, detail="No posted journal found for this bill to reverse.")
         already = (db.table("journal_entries").select("id")
