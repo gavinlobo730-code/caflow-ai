@@ -1,8 +1,11 @@
 "use client";
 
 /**
- * Edit Draft Invoice — client view (Batch 3). Only drafts are editable —
- * anything else redirects to the Sales list.
+ * Edit Invoice — client view. Drafts get the full editor; issued/partially-
+ * paid/paid invoices get the same editor in its locked mode (soft fields only
+ * — reference, notes, payment terms, due date, line units; see InvoiceEditor's
+ * isLocked). Only cancelled invoices redirect away (the backend rejects every
+ * PATCH on them). Mirrors purchases/bills/[billId]/edit/_page.tsx.
  *
  * Ids come from window.location.pathname, NOT useParams(): under `output:
  * export` + Cloudflare's rewrite-to-_placeholder hosting, the App Router's
@@ -56,7 +59,10 @@ export default function EditInvoicePageClient() {
       .then(([c, inv]) => {
         if (cancelled) return;
         if (!inv) { setError("Invoice not found."); return; }
-        if (inv.status !== "draft") { router.replace(salesListHref(clientId)); return; }
+        // Cancelled invoices are immutable end-to-end (backend rejects every
+        // PATCH) — everything else opens: drafts fully editable, issued/
+        // partially-paid/paid in the editor's locked soft-fields-only mode.
+        if (inv.status === "cancelled") { router.replace(salesListFlashHref(clientId, "Cancelled invoices cannot be edited.")); return; }
         setCtx(c); setInvoice(inv);
       })
       .catch(() => { if (!cancelled) setError("Failed to load the invoice."); });
@@ -82,8 +88,8 @@ export default function EditInvoicePageClient() {
   return (
     <InvoiceWorkspaceLayout
       breadcrumbs={invoiceBreadcrumbs(clientId, ctx?.clientName, invoice ? `Edit ${invoice.invoice_no}` : "Edit Invoice")}
-      title={invoice ? `Edit ${invoice.invoice_no}` : "Edit Draft Invoice"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+      title={invoice ? `Edit ${invoice.invoice_no}` : "Edit Invoice"}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">{invoice ? invoice.status.replace("_", " ") : "…"}</span>}
       toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
       summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >

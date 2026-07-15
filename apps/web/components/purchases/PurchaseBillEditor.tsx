@@ -126,6 +126,10 @@ export interface PurchaseBillDetail {
   tds_section?: string | null;
   net_payable_paise?: number;
   paid_paise?: number;
+  // Sum of issued debit notes against this bill (routers/debit_notes.py) —
+  // reduces the payable alongside paid_paise, so outstanding is
+  // net_payable − paid − debited (mirrors purchase_payments._claim_bill_outstanding).
+  debited_paise?: number;
   journal_entry_id?: string | null;
   received_at?: string | null;
   created_at?: string | null;
