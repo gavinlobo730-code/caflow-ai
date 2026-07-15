@@ -8,6 +8,7 @@ import {
   Button,
   CTASection,
 } from "@/components/ui";
+import { Reveal } from "@/components/motion";
 import {
   BookOpen,
   Mail,
@@ -115,155 +116,171 @@ export default function SupportPage() {
 
       {/* ── Support channels ─────────────────────────────────────────────── */}
       <Section className="bg-ps-bg">
-        <SectionHeading
-          eyebrow="How we help"
-          title="Help, whichever way suits you"
-          subtitle="Self-serve when you're in a hurry, hands-on when you're switching over. Every PracticeSync plan includes real support from people who understand CA workflows."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="How we help"
+            title="Help, whichever way suits you"
+            subtitle="Self-serve when you're in a hurry, hands-on when you're switching over. Every PracticeSync plan includes real support from people who understand CA workflows."
+          />
+        </Reveal>
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {CHANNELS.map((c) => (
-            <Card key={c.title}>
-              <div className="flex h-full flex-col">
-                <IconBadge>{c.icon}</IconBadge>
-                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
-                  {c.title}
-                </h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                  {c.desc}
-                </p>
-                <span className={metaCls}>
-                  <Clock size={13} /> {c.meta}
-                </span>
-                {c.anchor ? (
-                  <a href={c.href} className={footerLinkCls}>
-                    {c.label} <ArrowRight size={15} />
-                  </a>
-                ) : (
-                  <Link href={c.href} className={footerLinkCls}>
-                    {c.label} <ArrowRight size={15} />
-                  </Link>
-                )}
-              </div>
-            </Card>
+          {CHANNELS.map((c, i) => (
+            <Reveal key={c.title} delay={i * 100}>
+              <Card className="h-full">
+                <div className="flex h-full flex-col">
+                  <IconBadge>{c.icon}</IconBadge>
+                  <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
+                    {c.title}
+                  </h3>
+                  <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                    {c.desc}
+                  </p>
+                  <span className={metaCls}>
+                    <Clock size={13} /> {c.meta}
+                  </span>
+                  {c.anchor ? (
+                    <a href={c.href} className={footerLinkCls}>
+                      {c.label} <ArrowRight size={15} />
+                    </a>
+                  ) : (
+                    <Link href={c.href} className={footerLinkCls}>
+                      {c.label} <ArrowRight size={15} />
+                    </Link>
+                  )}
+                </div>
+              </Card>
+            </Reveal>
           ))}
         </div>
       </Section>
 
       {/* ── Get in touch ─────────────────────────────────────────────────── */}
       <Section id="get-in-touch" className="bg-white">
-        <SectionHeading
-          eyebrow="Get in touch"
-          title="Talk to a real person"
-          subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="Get in touch"
+            title="Talk to a real person"
+            subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
+          />
+        </Reveal>
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {/* Email us */}
-          <Card>
-            <div className="flex h-full flex-col">
-              <IconBadge>
-                <Mail size={20} />
-              </IconBadge>
-              <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
-                Email us
-              </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                The fastest way to reach us for anything — product, billing or
-                your account.
-              </p>
-              <a
-                href={emailHref}
-                className="mt-4 self-start break-words text-[18px] font-bold text-brand transition-colors hover:text-brand-hover"
-              >
-                {CONTACT.email}
-              </a>
-              <Button
-                href={emailHref}
-                external
-                variant="primary"
-                className="mt-auto w-full"
-              >
-                Send an email
-                <ArrowRight size={16} />
-              </Button>
-            </div>
-          </Card>
+          <Reveal>
+            <Card className="h-full">
+              <div className="flex h-full flex-col">
+                <IconBadge>
+                  <Mail size={20} />
+                </IconBadge>
+                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
+                  Email us
+                </h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                  The fastest way to reach us for anything — product, billing or
+                  your account.
+                </p>
+                <a
+                  href={emailHref}
+                  className="mt-4 self-start break-words text-[18px] font-bold text-brand transition-colors hover:text-brand-hover"
+                >
+                  {CONTACT.email}
+                </a>
+                <Button
+                  href={emailHref}
+                  external
+                  variant="primary"
+                  className="mt-auto w-full"
+                >
+                  Send an email
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            </Card>
+          </Reveal>
 
           {/* Call us */}
-          <Card>
-            <div className="flex h-full flex-col">
-              <IconBadge>
-                <Phone size={20} />
-              </IconBadge>
-              <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
-                Call us
-              </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                Speak to our support team during working hours, Monday to
-                Saturday, 9am–7pm IST.
-              </p>
-              <a
-                href={telHref}
-                className="mt-4 self-start break-words text-[18px] font-bold text-brand transition-colors hover:text-brand-hover"
-              >
-                {CONTACT.phone}
-              </a>
-              <Button
-                href={telHref}
-                external
-                variant="secondary"
-                className="mt-auto w-full"
-              >
-                Call now
-                <ArrowRight size={16} />
-              </Button>
-            </div>
-          </Card>
+          <Reveal delay={100}>
+            <Card className="h-full">
+              <div className="flex h-full flex-col">
+                <IconBadge>
+                  <Phone size={20} />
+                </IconBadge>
+                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
+                  Call us
+                </h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                  Speak to our support team during working hours, Monday to
+                  Saturday, 9am–7pm IST.
+                </p>
+                <a
+                  href={telHref}
+                  className="mt-4 self-start break-words text-[18px] font-bold text-brand transition-colors hover:text-brand-hover"
+                >
+                  {CONTACT.phone}
+                </a>
+                <Button
+                  href={telHref}
+                  external
+                  variant="secondary"
+                  className="mt-auto w-full"
+                >
+                  Call now
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            </Card>
+          </Reveal>
 
           {/* Book a demo */}
-          <Card>
-            <div className="flex h-full flex-col">
-              <IconBadge>
-                <Calendar size={20} />
-              </IconBadge>
-              <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
-                Book a demo
-              </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                See PracticeSync mapped to your firm&apos;s workflow in a
-                short, no-pressure walkthrough tailored to how you work.
-              </p>
-              <p className="mt-4 self-start text-[13px] font-medium text-slate-500">
-                Typically around 30 minutes.
-              </p>
-              <Button
-                href={demoHref}
-                external
-                variant="primary"
-                className="mt-auto w-full"
-              >
-                Request a demo
-                <ArrowRight size={16} />
-              </Button>
-            </div>
-          </Card>
+          <Reveal delay={200}>
+            <Card className="h-full">
+              <div className="flex h-full flex-col">
+                <IconBadge>
+                  <Calendar size={20} />
+                </IconBadge>
+                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">
+                  Book a demo
+                </h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                  See PracticeSync mapped to your firm&apos;s workflow in a
+                  short, no-pressure walkthrough tailored to how you work.
+                </p>
+                <p className="mt-4 self-start text-[13px] font-medium text-slate-500">
+                  Typically around 30 minutes.
+                </p>
+                <Button
+                  href={demoHref}
+                  external
+                  variant="primary"
+                  className="mt-auto w-full"
+                >
+                  Request a demo
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            </Card>
+          </Reveal>
         </div>
       </Section>
 
       {/* ── Common questions ─────────────────────────────────────────────── */}
       <Section className="bg-ps-bg">
-        <SectionHeading
-          eyebrow="Common questions"
-          title="Answers before you switch"
-          subtitle="A few things CA firms ask us most often."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="Common questions"
+            title="Answers before you switch"
+            subtitle="A few things CA firms ask us most often."
+          />
+        </Reveal>
         <div className="mx-auto mt-12 grid max-w-3xl gap-4">
-          {FAQ.map((f) => (
-            <Card key={f.q}>
-              <h3 className="text-[16px] font-bold text-brand-dark">{f.q}</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                {f.a}
-              </p>
-            </Card>
+          {FAQ.map((f, i) => (
+            <Reveal key={f.q} delay={i * 100}>
+              <Card>
+                <h3 className="text-[16px] font-bold text-brand-dark">{f.q}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                  {f.a}
+                </p>
+              </Card>
+            </Reveal>
           ))}
         </div>
       </Section>
