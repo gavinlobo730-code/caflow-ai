@@ -176,9 +176,17 @@ export function PurchaseBillEditor({
   );
   const [billNo, setBillNo] = useState(existing?.bill_no ?? "");
   const [ourReference, setOurReference] = useState(existing?.our_reference ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
   const [billDate, setBillDate] = useState(existing?.bill_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
   const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? false);
+  // Once a bill is received/partially-paid/paid, the backend only accepts
+  // our_reference/notes/due_date/document_url on PATCH (routers/purchase_bills.py
+  // _SOFT_BILL_UPDATE_FIELDS) — bill_no/bill_date/lines are frozen; a correction
+  // to those needs a Debit Note instead (CGST Act §34). Locking them here too
+  // (not just server-side) means the CA never fills in a full edit only to have
+  // it rejected on save.
+  const isLocked = isEdit && existing?.status !== "draft";
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const keyRef = useRef(initialLines.length);
   const nextKey = () => keyRef.current++;
@@ -239,12 +247,13 @@ export function PurchaseBillEditor({
     vendorId: existing?.vendor_id ?? "",
     billNo: existing?.bill_no ?? "",
     ourReference: existing?.our_reference ?? "",
+    notes: existing?.notes ?? "",
     billDate: existing?.bill_date ?? today,
     dueDate: existing?.due_date ?? "",
     isReverseCharge: existing?.is_reverse_charge ?? false,
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { vendorId, billNo, ourReference, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate };
+  const currentSnapshot = { vendorId, billNo, ourReference, notes, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
 
@@ -412,14 +421,29 @@ export function PurchaseBillEditor({
       }));
 
       if (isEdit && existing) {
-        const upd = await apiCall(`/api/purchase-bills/${existing.id}`, "PATCH", {
-          bill_date: billDate,
-          due_date: dueDate || undefined,
-          bill_no: billNo.trim() || undefined,
-          our_reference: ourReference.trim() || undefined,
-          document_url: documentUrl || undefined,
-          lines: linePayload,
-        }, token);
+        // Once received, the backend only accepts our_reference/notes/due_date/
+        // document_url (routers/purchase_bills.py's _SOFT_BILL_UPDATE_FIELDS) —
+        // sending bill_date/bill_no/lines at all (even unchanged) gets the whole
+        // PATCH rejected with 422, since the check is "was the key present",
+        // not "did the value change". isLocked mirrors that exactly so a
+        // received-bill edit never fails on fields the CA never touched.
+        const patchPayload = isLocked
+          ? {
+              due_date: dueDate || undefined,
+              our_reference: ourReference.trim() || undefined,
+              notes: notes.trim() || undefined,
+              document_url: documentUrl || undefined,
+            }
+          : {
+              bill_date: billDate,
+              due_date: dueDate || undefined,
+              bill_no: billNo.trim() || undefined,
+              our_reference: ourReference.trim() || undefined,
+              notes: notes.trim() || undefined,
+              document_url: documentUrl || undefined,
+              lines: linePayload,
+            };
+        const upd = await apiCall(`/api/purchase-bills/${existing.id}`, "PATCH", patchPayload, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update bill");
       } else {
         const result = await apiCall(
@@ -432,6 +456,7 @@ export function PurchaseBillEditor({
             due_date: dueDate || undefined,
             bill_no: billNo.trim() || undefined,
             our_reference: ourReference.trim() || undefined,
+            notes: notes.trim() || undefined,
             is_reverse_charge: isReverseCharge,
             document_url: documentUrl || undefined,
             lines: linePayload,
@@ -565,8 +590,9 @@ export function PurchaseBillEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Vendor Invoice No.</label>
-              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001"
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" disabled={isLocked}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once received.</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Our Reference</label>
@@ -575,9 +601,10 @@ export function PurchaseBillEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
-              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} disabled={isLocked}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
               {fieldErr(validation.errors.billDate)}
+              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
@@ -592,6 +619,11 @@ export function PurchaseBillEditor({
               <p className="mt-1 text-[10px] text-[#94A3B8]">
                 {isEdit ? "Locked once a bill exists." : "CGST Act §9(3)/(4) — GTA, import of services, notified supplies, or purchases from an unregistered person in a specified category."}
               </p>
+            </div>
+            <div className="col-span-2 lg:col-span-4">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
@@ -636,6 +668,16 @@ export function PurchaseBillEditor({
         {/* Line items */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
+          {isLocked && (
+            <p className="mb-2 text-[10px] text-[#94A3B8]">
+              Frozen once received — issue a Debit Note to correct a quantity, rate, or item (CGST Act §34).
+            </p>
+          )}
+          {/* fieldset disables every input/select/button in the table below in
+              one shot, no need to thread `disabled` through each custom lookup
+              component individually — native form-control disable propagates
+              through any wrapper markup. */}
+          <fieldset disabled={isLocked} className="border-0 p-0 m-0 min-w-0">
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[860px]">
               <thead>
@@ -727,9 +769,10 @@ export function PurchaseBillEditor({
               </tbody>
             </table>
           </div>
-          <button type="button" onClick={addLine} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700">
+          <button type="button" onClick={addLine} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
             <Plus size={13} /> Add line
           </button>
+          </fieldset>
           {fieldErr(validation.errors.lines)}
         </section>
 
