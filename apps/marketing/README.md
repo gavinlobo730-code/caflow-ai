@@ -8,7 +8,7 @@ app for login, the client portal and signup.
 ```
 Today (no custom domain — both on *.pages.dev):
   apps/web        →  practicesync-ai.pages.dev          the application (dashboard, login, portal)
-  apps/marketing  →  practicesync-marketing.pages.dev   this site (marketing + login gateway)
+  apps/marketing  →  practicesync.pages.dev             this site (marketing + login gateway)
 
 Later (once a custom domain is attached):
   apps/web        →  app.<yourdomain>
@@ -74,7 +74,7 @@ A **second Cloudflare Pages project**, parallel to `apps/web` (`practicesync-ai`
    - Production branch: `main`
    - Build env var (optional — `next.config.mjs` already falls back to it):
      `NEXT_PUBLIC_APP_URL = https://practicesync-ai.pages.dev`
-2. **Deploy.** The site goes live at `https://practicesync-marketing.pages.dev`,
+2. **Deploy.** The site goes live at `https://practicesync.pages.dev`,
    and its login gateway links across to `https://practicesync-ai.pages.dev`.
 
 No DNS work is needed at this stage — Cloudflare gives each project a
