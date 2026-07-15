@@ -334,9 +334,13 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     try {
       const token = await getAuthToken();
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-      await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to receive purchase bill");
+      setMsg({ type: "ok", text: "Purchase bill received" });
       load();
-    } catch { /* skip */ }
+    } catch (err) {
+      setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to receive purchase bill" });
+    }
   }
 
   // View drawer + row overflow menu (View details / Edit / Delete) — mirrors
