@@ -297,11 +297,11 @@ export function validateInvoiceNo(invoiceNo: string): string | undefined {
   return undefined;
 }
 
-/** A line is "valid" (postable) when it has a description, positive qty & rate,
- * and a linked Product/Service (mandatory on every line — migration 206). */
+/** A line is "valid" (postable) when it has positive qty & rate and a linked
+ * Product/Service (mandatory on every line — migration 206). Description is
+ * deliberately NOT required here — it's an optional field on the line. */
 export function isValidLine(l: InvoiceLine): boolean {
   return (
-    l.description.trim().length > 0 &&
     (parseFloat(l.qty) || 0) > 0 &&
     (parseFloat(l.rate) || 0) > 0 &&
     !!l.serviceCatalogueId
@@ -317,7 +317,7 @@ export function validateInvoiceEditor(input: EditorValidationInput): EditorValid
 
   const validLineCount = input.lines.filter(isValidLine).length;
   if (validLineCount === 0) {
-    errors.lines = "Add at least one line with a description, quantity, rate and Product/Service.";
+    errors.lines = "Add at least one line with a Product/Service, quantity and rate.";
   }
 
   if (input.isForeign && (!input.exchangeRate.trim() || !(parseFloat(input.exchangeRate) > 0))) {

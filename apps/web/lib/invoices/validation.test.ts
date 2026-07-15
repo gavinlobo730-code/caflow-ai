@@ -35,9 +35,10 @@ test("validateInvoiceNo enforces CGST Rule 46(b) shape", () => {
   assert.ok(validateInvoiceNo("INV 0001")); // spaces not allowed
 });
 
-test("a line needs description + positive qty + positive rate + a Product/Service", () => {
+test("a line needs positive qty + positive rate + a Product/Service — description is optional", () => {
   assert.equal(isValidLine(line()), true);
-  assert.equal(isValidLine(line({ description: "  " })), false);
+  assert.equal(isValidLine(line({ description: "" })), true);
+  assert.equal(isValidLine(line({ description: "  " })), true);
   assert.equal(isValidLine(line({ qty: "0" })), false);
   assert.equal(isValidLine(line({ rate: "0" })), false);
   assert.equal(isValidLine(line({ rate: "" })), false);
