@@ -6,15 +6,16 @@
  * state), then renders PurchaseBillEditor, which owns the workspace layout,
  * toolbar, summary and dirty guard.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
-import { PurchaseBillEditor } from "@/components/purchases/PurchaseBillEditor";
+import { PurchaseBillEditor, type PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import {
   InvoiceEditorSkeleton, SummaryPanelSkeleton, InvoiceToolbarSkeleton,
 } from "@/components/invoices/InvoiceEditorSkeleton";
 import { loadPurchaseBillEditorContext, type PurchaseBillEditorContext } from "@/lib/purchases/editorContext";
+import { readAndClearPurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 export default function NewPurchaseBillPage() {
@@ -26,6 +27,11 @@ export default function NewPurchaseBillPage() {
   const [ctx, setCtx] = useState<PurchaseBillEditorContext | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // "Duplicate bill" seed — read-and-clear exactly once via a guarded ref,
+  // same Strict-Mode-safe pattern as sales/invoices/new/page.tsx.
+  const seedRef = useRef<PurchaseBillDetail | null | undefined>(undefined);
+  if (seedRef.current === undefined) seedRef.current = readAndClearPurchaseBillDuplicateSeed();
+  const duplicateSeed = seedRef.current;
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
@@ -45,6 +51,7 @@ export default function NewPurchaseBillPage() {
         clientStateCode={ctx.clientStateCode}
         vendors={ctx.vendors}
         accounts={ctx.accounts}
+        duplicateSeed={duplicateSeed}
         onDone={(msg) => router.push(`/clients/${clientId}/purchases?flash=${encodeURIComponent(msg)}`)}
         onCancel={() => router.push(`/clients/${clientId}/purchases`)}
       />
