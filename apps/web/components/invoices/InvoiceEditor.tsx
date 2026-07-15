@@ -617,7 +617,7 @@ export function InvoiceEditor({
             <table className="w-full text-xs min-w-[820px]">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="pb-2 text-left font-semibold w-40">Product/Service</th>
+                  <th className="pb-2 text-left font-semibold w-40">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-28">HSN/SAC</th>
                   <th className="pb-2 text-right font-semibold w-20">Qty</th>

@@ -640,8 +640,8 @@ export function PurchaseBillEditor({
             <table className="w-full text-xs min-w-[860px]">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
-                  <th className="pb-2 text-left font-semibold">Description *</th>
+                  <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
+                  <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
                   <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
                   <th className="pb-2 text-right font-semibold w-20">Qty</th>

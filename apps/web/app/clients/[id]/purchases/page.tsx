@@ -1673,8 +1673,8 @@ function DebitNoteForm({
 
   async function handleSave() {
     if (!vendorId) { setError("Select a vendor"); return; }
-    const validLines = lines.filter((l) => l.description.trim() && l.rate > 0);
-    if (validLines.length === 0) { setError("Add at least one line with description and rate"); return; }
+    const validLines = lines.filter((l) => l.rate > 0);
+    if (validLines.length === 0) { setError("Add at least one line with a rate"); return; }
     if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
 
     setSaving(true); setError(null);
@@ -1782,7 +1782,7 @@ function DebitNoteForm({
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-              <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
+              <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
               <th className="pb-2 text-left font-semibold">Description</th>
               <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
               <th className="pb-2 text-right font-semibold w-16">Qty</th>

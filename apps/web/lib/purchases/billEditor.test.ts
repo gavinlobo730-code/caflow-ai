@@ -15,9 +15,9 @@ function line(over: Partial<PurchaseBillLine> = {}): PurchaseBillLine {
   };
 }
 
-test("isValidBillLine requires description, positive qty, positive rate and a Product/Service", () => {
+test("isValidBillLine requires positive qty, positive rate and a Product/Service — description is optional", () => {
   assert.equal(isValidBillLine(line()), true);
-  assert.equal(isValidBillLine(line({ description: "" })), false);
+  assert.equal(isValidBillLine(line({ description: "" })), true);
   assert.equal(isValidBillLine(line({ qty: "0" })), false);
   assert.equal(isValidBillLine(line({ rate: "" })), false);
   assert.equal(isValidBillLine(line({ service_catalogue_id: "" })), false);
@@ -34,13 +34,13 @@ test("previewBillTotals: inter-state applies the full rate as IGST", () => {
 });
 
 test("previewBillTotals sums multiple valid lines and skips invalid ones", () => {
-  const t = previewBillTotals([line({ qty: "1", rate: "1000", gst_rate: 18 }), line({ description: "" }), line({ qty: "1", rate: "500", gst_rate: 0 })], false);
+  const t = previewBillTotals([line({ qty: "1", rate: "1000", gst_rate: 18 }), line({ service_catalogue_id: "" }), line({ qty: "1", rate: "500", gst_rate: 0 })], false);
   assert.equal(t.taxable_paise, 150000);
   assert.equal(t.gst_paise, 18000); // 18% on 100000 only, 0% line contributes nothing
 });
 
 test("validateBillEditor: requires vendor, bill date, and at least one valid line", () => {
-  const v = validateBillEditor({ vendorId: "", billDate: "", lines: [line({ description: "" })], isForeign: false, exchangeRate: "" });
+  const v = validateBillEditor({ vendorId: "", billDate: "", lines: [line({ service_catalogue_id: "" })], isForeign: false, exchangeRate: "" });
   assert.equal(v.ok, false);
   assert.match(v.errors.vendor ?? "", /vendor/i);
   assert.match(v.errors.billDate ?? "", /bill date/i);
