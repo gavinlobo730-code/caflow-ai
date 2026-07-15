@@ -24,12 +24,14 @@ export interface PurchaseBillLine {
   service_catalogue_id: string;
 }
 
-/** A line is "valid" (postable) when it has a description and positive qty & rate. */
+/** A line is "valid" (postable) when it has a description, positive qty & rate,
+ * and a linked Product/Service (mandatory on every line — migration 206). */
 export function isValidBillLine(l: PurchaseBillLine): boolean {
   return (
     l.description.trim().length > 0 &&
     (parseFloat(l.qty) || 0) > 0 &&
-    (parseFloat(l.rate) || 0) > 0
+    (parseFloat(l.rate) || 0) > 0 &&
+    !!l.service_catalogue_id
   );
 }
 
@@ -82,7 +84,7 @@ export function validateBillEditor(input: BillEditorValidationInput): BillEditor
   if (!input.vendorId) errors.vendor = "Select a vendor.";
   if (!input.billDate) errors.billDate = "Bill date is required.";
   if (input.lines.filter(isValidBillLine).length === 0) {
-    errors.lines = "Add at least one line with a description, quantity and rate.";
+    errors.lines = "Add at least one line with a description, quantity, rate and Product/Service.";
   }
   if (input.isForeign && (!input.exchangeRate.trim() || !(parseFloat(input.exchangeRate) > 0))) {
     errors.exchangeRate = "Enter a valid exchange rate.";

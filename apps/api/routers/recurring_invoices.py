@@ -21,12 +21,20 @@ _FREQUENCIES = ("weekly", "monthly", "quarterly", "half_yearly", "yearly")
 
 
 class RecurringLineIn(BaseModel):
+    service_catalogue_id: str           # -> service_catalogue; mandatory (migration 206)
     description: str
     hsn_sac: Optional[str] = None
     quantity: float = 1.0
     rate_paise: int
     gst_rate_percent: float = 18.0
     is_service: bool = False
+
+    @field_validator("service_catalogue_id")
+    @classmethod
+    def _service(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Product/Service is required on every line item.")
+        return v
 
     @field_validator("rate_paise")
     @classmethod

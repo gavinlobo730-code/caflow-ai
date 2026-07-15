@@ -164,6 +164,7 @@ class TestCreateInvoice:
             invoice_no="TEST-0001",
             invoice_date="2026-06-19",
             lines=[InvoiceLineIn(
+                service_catalogue_id="SVC-1",
                 description="Consulting services",
                 hsn_sac="998311",
                 rate_paise=5100,
@@ -268,6 +269,7 @@ class TestCreateInvoice:
             client_id="C1", customer_id="CUST1", invoice_no="TEST-0002",
             invoice_date="2026-06-19",
             lines=[InvoiceLineIn(
+                service_catalogue_id="SVC-1",
                 description="Gold sale", hsn_sac="7108", rate_paise=100000,
                 quantity=2, unit="GMS", gst_rate_percent=3.0,
             )],
@@ -291,7 +293,7 @@ class TestCreateInvoice:
             client_id="C1", customer_id="CUST1", invoice_no="TEST-0003",
             invoice_date="2026-06-19",
             reference_no="PO-8891",
-            lines=[InvoiceLineIn(description="Consulting", hsn_sac="998311", rate_paise=5100, quantity=1, gst_rate_percent=18.0)],
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Consulting", hsn_sac="998311", rate_paise=5100, quantity=1, gst_rate_percent=18.0)],
         )
         resp = sales_invoices.create_invoice(payload, _USER)
 
@@ -349,7 +351,7 @@ class TestUpdateInvoice:
 
         holder["controller"] = _controller
         upd = SalesInvoiceUpdateIn(lines=[InvoiceLineIn(
-            description="Revised line", rate_paise=10000, quantity=1, gst_rate_percent=18.0)])
+            service_catalogue_id="SVC-1", description="Revised line", rate_paise=10000, quantity=1, gst_rate_percent=18.0)])
         resp = sales_invoices.update_invoice("INV-1", upd, _USER)
 
         assert resp["success"] is True
@@ -382,8 +384,8 @@ class TestUpdateInvoice:
 
         holder["controller"] = _controller
         upd = SalesInvoiceUpdateIn(lines=[
-            InvoiceLineIn(description="No unit given", rate_paise=10000, quantity=1, gst_rate_percent=18.0),
-            InvoiceLineIn(description="Explicit unit", rate_paise=10000, quantity=1, gst_rate_percent=18.0, unit="HRS"),
+            InvoiceLineIn(service_catalogue_id="SVC-1", description="No unit given", rate_paise=10000, quantity=1, gst_rate_percent=18.0),
+            InvoiceLineIn(service_catalogue_id="SVC-1", description="Explicit unit", rate_paise=10000, quantity=1, gst_rate_percent=18.0, unit="HRS"),
         ])
         resp = sales_invoices.update_invoice("INV-1", upd, _USER)
 
@@ -416,7 +418,7 @@ class TestUpdateInvoice:
         holder["controller"] = _controller
         upd = SalesInvoiceUpdateIn(
             is_inter_state=False,
-            lines=[InvoiceLineIn(description="Consulting", rate_paise=10000,
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Consulting", rate_paise=10000,
                                  quantity=1, gst_rate_percent=18.0)],
         )
         resp = sales_invoices.update_invoice("INV-1", upd, _USER)

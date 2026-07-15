@@ -33,6 +33,8 @@ def _setup(monkeypatch):
     db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "Supplier",
                         "state_code": "27", "gstin": "27CCCCC2222C1Z5", "tds_applicable": False})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Materials", "kind": "good"})
     return db
 
 
@@ -52,7 +54,7 @@ def _receive_bill(db, no, rate, date="2025-06-12", rcm=False):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date=date, bill_no=no,
         is_reverse_charge=rcm,
-        lines=[PurchaseBillLineIn(description="mat", rate_paise=rate, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="mat", rate_paise=rate, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert res["success"] is True
     assert pb.receive_purchase_bill(res["data"]["id"], CALLER)["success"] is True

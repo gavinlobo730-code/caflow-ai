@@ -37,7 +37,7 @@ def _template(db):
     return ris.create_template(FIRM, {
         "client_id": "CLI", "customer_id": "CUST", "title": "Monthly retainer",
         "frequency": "monthly", "start_date": "2026-04-01",
-        "lines": [{"description": "Retainer", "hsn_sac": "9982",
+        "lines": [{"service_catalogue_id": "SVC-1", "description": "Retainer", "hsn_sac": "9982",
                    "rate_paise": 1_000_000, "gst_rate_percent": 18.0}],
     }, "u1", db=db)
 

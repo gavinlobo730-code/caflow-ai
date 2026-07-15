@@ -20,6 +20,8 @@ def _setup(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Services", "kind": "service"})
     return db
 
 
@@ -34,7 +36,7 @@ def _vendor(db, section, pan="ABCCD1234E", applicable=True):
 def _bill(db, vendor_id, rate, no):
     return pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id=vendor_id, bill_date="2025-06-10", bill_no=no,
-        lines=[PurchaseBillLineIn(description="svc", rate_paise=rate, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=rate, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)["data"]
 
 

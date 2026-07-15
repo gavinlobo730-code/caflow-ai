@@ -25,12 +25,14 @@ def _setup(monkeypatch, credit_days=15):
                           "name": "Acme", "state_code": "27", "gstin": "27XYZAB5678C1Z2",
                           "credit_days": credit_days, "is_active": True})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Consulting", "kind": "service"})
     return db
 
 
 def _inv(**over):
     kw = dict(client_id="CLI", customer_id="CUST", invoice_date="2026-04-10", invoice_no="CD-001",
-              lines=[InvoiceLineIn(description="X", hsn_sac="9982", quantity=1,
+              lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="X", hsn_sac="9982", quantity=1,
                                    rate_paise=1_000_000, gst_rate_percent=18.0)])
     kw.update(over)
     return SalesInvoiceIn(**kw)

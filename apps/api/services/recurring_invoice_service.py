@@ -165,6 +165,7 @@ def _line_rows(lines: list[dict]) -> list[dict]:
     rows = []
     for i, ln in enumerate(lines):
         rows.append({
+            "service_catalogue_id": ln["service_catalogue_id"],
             "description": ln.get("description", ""),
             "hsn_sac": ln.get("hsn_sac"),
             "quantity": float(ln.get("quantity", 1) or 1),
@@ -426,6 +427,7 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
     customer = _customer(db or (None if _USE_MOCK else _db()), firm_id, template.get("customer_id"))
     lines = [
         InvoiceLineIn(
+            service_catalogue_id=ln["service_catalogue_id"],
             description=ln.get("description", ""),
             hsn_sac=ln.get("hsn_sac"),
             quantity=float(ln.get("quantity", 1) or 1),

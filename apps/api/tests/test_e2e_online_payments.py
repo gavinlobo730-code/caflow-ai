@@ -37,13 +37,15 @@ def _setup(monkeypatch):
                           "name": "Acme Buyer", "email": "buyer@acme.test", "state_code": "27",
                           "is_active": True})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Consulting", "kind": "service"})
     return si, db
 
 
 def _issued_invoice(si):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id="CUST", invoice_date="2026-04-10", invoice_no="PAY-001",
-        lines=[InvoiceLineIn(description="Svc", hsn_sac="9982", quantity=1,
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Svc", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)],
     ), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)

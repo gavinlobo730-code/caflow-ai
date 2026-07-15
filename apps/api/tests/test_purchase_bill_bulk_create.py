@@ -24,6 +24,8 @@ def _setup(monkeypatch, tds_applicable=True):
                         "pan": "PQRST9012K", "is_active": True, "tds_applicable": tds_applicable,
                         "tds_section": "194J", "tds_rate_bps": 1000})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Audit Services", "kind": "service"})
     return pb, db
 
 
@@ -31,7 +33,8 @@ def _bill_dict(bill_no, rate_paise=10_000_000, gst=18.0):
     return PurchaseBillIn(
         client_id="CLI", vendor_id="VEND", bill_date="2026-04-05", bill_no=bill_no,
         lines=[PurchaseBillLineIn(description="Audit services", hsn_sac="9982",
-                                  quantity=1, rate_paise=rate_paise, gst_rate_percent=gst)],
+                                  quantity=1, rate_paise=rate_paise, gst_rate_percent=gst,
+                                  service_catalogue_id="SVC-1")],
     ).model_dump()
 
 

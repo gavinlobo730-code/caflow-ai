@@ -40,6 +40,8 @@ def _setup(monkeypatch):
                           "name": "Acme Buyer", "state_code": "27",
                           "gstin": "27XYZAB5678C1Z2", "is_active": True})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Consulting", "kind": "service"})
     return si, rc, rs, db
 
 
@@ -47,7 +49,7 @@ def _invoice_in(qty=1, rate_paise=1_000_000, gst=18.0, invoice_no="SC-001"):
     return SalesInvoiceIn(
         client_id="CLI", customer_id="CUST", invoice_date="2026-04-10",
         due_date="2026-05-10", invoice_no=invoice_no,
-        lines=[InvoiceLineIn(description="Consulting", hsn_sac="9982",
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Consulting", hsn_sac="9982",
                              quantity=qty, rate_paise=rate_paise, gst_rate_percent=gst)],
     )
 

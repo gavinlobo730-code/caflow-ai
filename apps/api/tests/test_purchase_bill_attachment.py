@@ -157,13 +157,16 @@ def _setup(monkeypatch):
                         "pan": "PQRST9012K", "is_active": True, "tds_applicable": False,
                         "credit_days": 30})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Consulting", "kind": "service"})
     return db
 
 
 def _bill(**over):
     kw = dict(client_id="CLI", vendor_id="VEND", bill_date="2026-04-10", bill_no="AT-001",
               lines=[PurchaseBillLineIn(description="X", hsn_sac="9982", quantity=1,
-                                        rate_paise=1_000_000, gst_rate_percent=18.0)])
+                                        rate_paise=1_000_000, gst_rate_percent=18.0,
+                                        service_catalogue_id="SVC-1")])
     kw.update(over)
     return PurchaseBillIn(**kw)
 

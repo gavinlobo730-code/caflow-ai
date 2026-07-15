@@ -1675,6 +1675,7 @@ function DebitNoteForm({
     if (!vendorId) { setError("Select a vendor"); return; }
     const validLines = lines.filter((l) => l.description.trim() && l.rate > 0);
     if (validLines.length === 0) { setError("Add at least one line with description and rate"); return; }
+    if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
 
     setSaving(true); setError(null);
     try {

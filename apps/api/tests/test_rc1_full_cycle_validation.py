@@ -58,6 +58,8 @@ def _setup(monkeypatch):
                         "gstin": "27CCCCC2222C1Z5", "state_code": "27", "tds_applicable": False,
                         "opening_balance_paise": 0})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Materials", "kind": "good"})
     return db
 
 
@@ -129,7 +131,7 @@ def test_rc1_full_business_cycle_reconciles(monkeypatch):
     # 4) Purchase bill ₹40,000 + 18% = ₹47,200 (no TDS)
     bres = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-06", bill_no="BILL-1",
-        lines=[PurchaseBillLineIn(description="mat", rate_paise=4_00000, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="mat", rate_paise=4_00000, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     bill_id = bres["data"]["id"]
     assert pb.receive_purchase_bill(bill_id, CALLER)["success"] is True
@@ -145,7 +147,7 @@ def test_rc1_full_business_cycle_reconciles(monkeypatch):
     # 6) Debit note ₹10,000 + 18% = ₹11,800 against the bill (purchase return)
     dres = dn.create_debit_note(dn.DebitNoteIn(
         client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-13", purchase_bill_id=bill_id,
-        lines=[InvoiceLineIn(description="ret", quantity=1, rate_paise=1_00000, gst_rate_percent=18.0)],
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="ret", quantity=1, rate_paise=1_00000, gst_rate_percent=18.0)],
     ), CALLER)
     assert dn.issue_debit_note(dres["data"]["id"], CALLER)["success"] is True
     _assert_tb_balanced(db); _assert_bs_identity(db)

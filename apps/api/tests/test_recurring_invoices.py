@@ -35,7 +35,7 @@ def _make(firm="F1", client="CL-1", customer="CUST-1", freq="monthly",
     return rec.create_template(firm, {
         "client_id": client, "customer_id": customer, "title": title,
         "frequency": freq, "start_date": start, "end_date": end,
-        "lines": [{"description": "Bookkeeping fee", "hsn_sac": "998222",
+        "lines": [{"service_catalogue_id": "SVC-1", "description": "Bookkeeping fee", "hsn_sac": "998222",
                    "rate_paise": rate, "gst_rate_percent": gst, "is_service": True}],
     }, created_by="u1")
 
@@ -228,7 +228,7 @@ def test_update_rebases_next_run_on_schedule_change():
 def test_update_replaces_lines():
     t = _make(rate=100000)
     rec.update_template("F1", t["id"], {"lines": [
-        {"description": "GST filing", "rate_paise": 500000, "gst_rate_percent": 18.0, "is_service": True}]})
+        {"service_catalogue_id": "SVC-1", "description": "GST filing", "rate_paise": 500000, "gst_rate_percent": 18.0, "is_service": True}]})
     rec.generate_due_recurring_invoices("F1", as_of=date(2026, 6, 1), actor=ACTOR)
     assert MOCK_SALES_INVOICES[0]["taxable_amount_paise"] == 500000
 

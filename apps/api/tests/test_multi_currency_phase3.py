@@ -41,6 +41,8 @@ def _setup(monkeypatch, *, entitled=True, client_enabled=True, platform=True):
     db.seed("currencies", {"code": "USD", "symbol": "$", "display_name": "US Dollar", "minor_unit": 2, "is_active": True})
     db.seed("currencies", {"code": "INR", "symbol": "₹", "display_name": "Indian Rupee", "minor_unit": 2, "is_active": True})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Services", "kind": "service"})
     return cu, si, rc, pb, pp, ve, db
 
 
@@ -53,7 +55,7 @@ def test_foreign_sales_cycle_gl_balances_in_base(monkeypatch):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_no="MC3-001", invoice_date="2025-06-01",
         currency="USD", exchange_rate="83.5",
-        lines=[InvoiceLineIn(description="Export consulting", hsn_sac="9982",
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Export consulting", hsn_sac="9982",
                              quantity=1, rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
 
     # Foreign + base both stored; base is authoritative.
@@ -96,7 +98,7 @@ def test_foreign_purchase_cycle_gl_balances_in_base(monkeypatch):
     bill = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="USB-1",
         currency="USD", exchange_rate="83.5",
-        lines=[PurchaseBillLineIn(description="Imported service", rate_paise=100000,
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="Imported service", rate_paise=100000,
                                   quantity=1, gst_rate_percent=18.0)]), CALLER)["data"]
     assert bill["txn_currency"] == "USD" and bill["txn_total"] == 118000
     assert bill["net_payable_paise"] == 9_853_000             # no TDS → base total
@@ -123,7 +125,7 @@ def test_foreign_invoice_rejected_when_policy_off(monkeypatch):
         si.create_invoice(SalesInvoiceIn(
             client_id="CLI", customer_id=cust["id"], invoice_no="MC3-002", invoice_date="2025-06-01",
             currency="USD", exchange_rate="83.5",
-            lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
     assert ex.value.status_code == 422 and "multi-currency" in ex.value.detail.lower()
 
 
@@ -134,7 +136,7 @@ def test_unsupported_currency_rejected(monkeypatch):
         si.create_invoice(SalesInvoiceIn(
             client_id="CLI", customer_id=cust["id"], invoice_no="MC3-003", invoice_date="2025-06-01",
             currency="ZZZ", exchange_rate="1.0",
-            lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
     assert ex.value.status_code == 422 and "unsupported currency" in ex.value.detail.lower()
 
 
@@ -145,7 +147,7 @@ def test_zero_rate_rejected(monkeypatch):
         si.create_invoice(SalesInvoiceIn(
             client_id="CLI", customer_id=cust["id"], invoice_no="MC3-004", invoice_date="2025-06-01",
             currency="USD", exchange_rate="0",
-            lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
     assert ex.value.status_code == 422
 
 
@@ -155,7 +157,7 @@ def test_receipt_currency_mismatch_rejected(monkeypatch):
     # An INR invoice cannot be settled by a USD receipt.
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_no="MC3-005", invoice_date="2025-06-01",
-        lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)["data"]
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     with pytest.raises(HTTPException) as ex:
         rc.create_receipt(ReceiptIn(

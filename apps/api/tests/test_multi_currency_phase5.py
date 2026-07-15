@@ -496,6 +496,8 @@ def _e2e(monkeypatch, firm, *, mc=True):
     for code, sym, name in (("INR", "₹", "Indian Rupee"), ("USD", "$", "US Dollar"), ("EUR", "€", "Euro")):
         db.seed("currencies", {"code": code, "symbol": sym, "display_name": name, "minor_unit": 2, "is_active": True})
     seed_standard_coa(db, firm, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": firm, "client_id": "CLI",
+                                  "name": "Services", "kind": "service"})
     return cu, si, rc, db
 
 
@@ -510,7 +512,7 @@ def _invoice(si, caller, cust_id, *, date="2025-06-01", currency=None, rate=None
         kw = {"currency": currency, "exchange_rate": str(rate)}
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust_id, invoice_date=date, invoice_no=invoice_no,
-        lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1, rate_paise=cents, gst_rate_percent=0.0)],
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", hsn_sac="9982", quantity=1, rate_paise=cents, gst_rate_percent=0.0)],
         **kw), caller)["data"]
     si.issue_invoice(inv["id"], caller)
     return inv

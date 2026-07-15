@@ -29,6 +29,8 @@ def _setup(monkeypatch):
                         "state_code": "27", "gstin": "27CCCCC2222C1Z5", "tds_applicable": False,
                         "opening_balance_paise": 0})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Materials", "kind": "good"})
     return db
 
 
@@ -39,7 +41,8 @@ def _bill(db, bid):
 def _received_bill(db, no="B1", rate=1_00000):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no=no,
-        lines=[PurchaseBillLineIn(description="m", rate_paise=rate, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(description="m", rate_paise=rate, quantity=1, gst_rate_percent=18.0,
+                                  service_catalogue_id="SVC-1")],
     ), CALLER)
     bid = res["data"]["id"]
     assert pb.receive_purchase_bill(bid, CALLER)["success"] is True
@@ -99,11 +102,15 @@ def test_per_line_expense_accounts(monkeypatch):
                                       "account_name": "Rent", "account_type": "Expense", "is_active": True})["id"]
     b = db.seed("chart_of_accounts", {"firm_id": FIRM, "client_id": "CLI", "system_account_key": None,
                                       "account_name": "Consumables", "account_type": "Expense", "is_active": True})["id"]
+    svc_rent = db.seed("service_catalogue", {"firm_id": FIRM, "client_id": "CLI",
+                                             "name": "Rent", "kind": "service"})["id"]
+    svc_cons = db.seed("service_catalogue", {"firm_id": FIRM, "client_id": "CLI",
+                                             "name": "Consumables", "kind": "good"})["id"]
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-2LINE",
         lines=[
-            PurchaseBillLineIn(description="rent", rate_paise=60000, quantity=1, gst_rate_percent=18.0, expense_account_id=a),
-            PurchaseBillLineIn(description="cons", rate_paise=40000, quantity=1, gst_rate_percent=18.0, expense_account_id=b),
+            PurchaseBillLineIn(description="rent", rate_paise=60000, quantity=1, gst_rate_percent=18.0, expense_account_id=a, service_catalogue_id=svc_rent),
+            PurchaseBillLineIn(description="cons", rate_paise=40000, quantity=1, gst_rate_percent=18.0, expense_account_id=b, service_catalogue_id=svc_cons),
         ],
     ), CALLER)
     assert pb.receive_purchase_bill(res["data"]["id"], CALLER)["success"] is True
