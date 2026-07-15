@@ -1,10 +1,12 @@
 // Central config for the marketing site: where the actual app lives, and the
 // cross-app links the marketing pages point at. The app is a separate origin
-// (apps/web on app.practicesync.com), so every "log in / sign up" action is a
-// plain link to that origin — the marketing site holds no auth logic itself.
+// (apps/web — dashboard-labeled "practicesync-ai", but its *.pages.dev
+// subdomain is caflow-ai.pages.dev, fixed at project creation), so every
+// "log in / sign up" action is a plain link to that origin — the marketing
+// site holds no auth logic itself.
 
 export const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL || "https://practicesync-ai.pages.dev";
+  process.env.NEXT_PUBLIC_APP_URL || "https://caflow-ai.pages.dev";
 
 /** Cross-app destinations (routes that live in apps/web). */
 export const appLinks = {

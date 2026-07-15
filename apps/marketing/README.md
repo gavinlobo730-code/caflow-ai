@@ -7,13 +7,19 @@ app for login, the client portal and signup.
 
 ```
 Today (no custom domain — both on *.pages.dev):
-  apps/web        →  practicesync-ai.pages.dev          the application (dashboard, login, portal)
-  apps/marketing  →  practicesync.pages.dev             this site (marketing + login gateway)
+  apps/web        →  caflow-ai.pages.dev       the application (dashboard, login, portal)
+  apps/marketing  →  practicesync.pages.dev    this site (marketing + login gateway)
 
 Later (once a custom domain is attached):
   apps/web        →  app.<yourdomain>
   apps/marketing  →  <yourdomain>
 ```
+
+> The `apps/web` Cloudflare project is labeled **`practicesync-ai`** in the
+> dashboard, but its `*.pages.dev` subdomain is `caflow-ai.pages.dev` — that
+> subdomain is fixed at project creation and doesn't change on a dashboard
+> rename. Always use the actual subdomain (`caflow-ai.pages.dev`) in config;
+> the dashboard label is cosmetic.
 
 ## Pages
 
@@ -46,7 +52,7 @@ One environment variable controls where "log in / sign up" send visitors:
 
 | Variable              | Dev default             | Production (now)                   |
 | --------------------- | ----------------------- | ---------------------------------- |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://practicesync-ai.pages.dev`|
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://caflow-ai.pages.dev`|
 
 It is inlined at build time (static export). `next.config.mjs` already falls back
 to the values above, so no dashboard config is strictly required. Once a custom
@@ -73,9 +79,9 @@ A **second Cloudflare Pages project**, parallel to `apps/web` (`practicesync-ai`
    - Build output directory: `out`
    - Production branch: `main`
    - Build env var (optional — `next.config.mjs` already falls back to it):
-     `NEXT_PUBLIC_APP_URL = https://practicesync-ai.pages.dev`
+     `NEXT_PUBLIC_APP_URL = https://caflow-ai.pages.dev`
 2. **Deploy.** The site goes live at `https://practicesync.pages.dev`,
-   and its login gateway links across to `https://practicesync-ai.pages.dev`.
+   and its login gateway links across to `https://caflow-ai.pages.dev`.
 
 No DNS work is needed at this stage — Cloudflare gives each project a
 `*.pages.dev` URL with SSL automatically.
