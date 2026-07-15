@@ -6,8 +6,13 @@ login gateway. It is a **separate app** from the product (`apps/web`) and holds
 app for login, the client portal and signup.
 
 ```
-apps/web        →  app.practicesync.com    the application (dashboard, login, portal)
-apps/marketing  →  practicesync.com         this site (marketing + login gateway)
+Today (no custom domain — both on *.pages.dev):
+  apps/web        →  practicesync-ai.pages.dev          the application (dashboard, login, portal)
+  apps/marketing  →  practicesync-marketing.pages.dev   this site (marketing + login gateway)
+
+Later (once a custom domain is attached):
+  apps/web        →  app.<yourdomain>
+  apps/marketing  →  <yourdomain>
 ```
 
 ## Pages
@@ -39,13 +44,14 @@ resolve during development (that's the default `NEXT_PUBLIC_APP_URL` in dev).
 
 One environment variable controls where "log in / sign up" send visitors:
 
-| Variable              | Dev default             | Production                    |
-| --------------------- | ----------------------- | ----------------------------- |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://app.practicesync.com`|
+| Variable              | Dev default             | Production (now)                   |
+| --------------------- | ----------------------- | ---------------------------------- |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://practicesync-ai.pages.dev`|
 
-It is inlined at build time (static export), so set it in the Cloudflare Pages
-build environment for production. Update `wrangler.toml` and `next.config.mjs` if
-your app subdomain differs.
+It is inlined at build time (static export). `next.config.mjs` already falls back
+to the values above, so no dashboard config is strictly required. Once a custom
+domain is attached, change it to `https://app.<yourdomain>` (in the Cloudflare
+build environment, or in `next.config.mjs`/`wrangler.toml`) and redeploy.
 
 ## Build
 
@@ -57,19 +63,29 @@ Same toolchain as `apps/web`: `output: "export"`, `trailingSlash: true`.
 
 ## Deploy (Cloudflare Pages)
 
-This site is a **second Cloudflare Pages project**, parallel to `apps/web`
-(`practicesync-ai`). That is the whole "subdomain" setup — two projects, two DNS
-records:
+A **second Cloudflare Pages project**, parallel to `apps/web` (`practicesync-ai`).
 
-1. **Create a Pages project** pointing at this folder:
+### Now — no custom domain (both sites on `*.pages.dev`)
+
+1. **Create a Pages project** connected to this repo:
+   - Root directory: `apps/marketing`
    - Build command: `pnpm build`
    - Build output directory: `out`
-   - Root directory: `apps/marketing`
-   - Environment variable: `NEXT_PUBLIC_APP_URL = https://app.practicesync.com`
-2. **DNS (in Cloudflare):**
-   - `practicesync.com` (apex) → this marketing Pages project
-   - `app.practicesync.com` → the existing `apps/web` Pages project
-     _(this is the "add `app` + your URL" subdomain record)_
+   - Production branch: `main`
+   - Build env var (optional — `next.config.mjs` already falls back to it):
+     `NEXT_PUBLIC_APP_URL = https://practicesync-ai.pages.dev`
+2. **Deploy.** The site goes live at `https://practicesync-marketing.pages.dev`,
+   and its login gateway links across to `https://practicesync-ai.pages.dev`.
 
-Cloudflare provides SSL and CDN for both automatically once the custom domains
-are attached to their projects.
+No DNS work is needed at this stage — Cloudflare gives each project a
+`*.pages.dev` URL with SSL automatically.
+
+### Later — attaching a custom domain
+
+1. Add your domain to Cloudflare (point nameservers to Cloudflare, or use
+   Cloudflare Registrar) and wait until the zone is **Active**.
+2. **Custom domains:** on the marketing project add the apex (`<yourdomain>`);
+   on the `practicesync-ai` project add `app.<yourdomain>`. Cloudflare creates
+   the DNS records for you — that is the whole "add `app` + your URL" step.
+3. Set `NEXT_PUBLIC_APP_URL = https://app.<yourdomain>` (dashboard build var or
+   `next.config.mjs`) and redeploy so the gateway targets the app subdomain.
