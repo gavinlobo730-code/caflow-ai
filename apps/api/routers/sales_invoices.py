@@ -60,18 +60,29 @@ def _assert_invoice_no_available(
     rather than the graceful-retry-with-a-different-number pattern
     services/numbering.py uses for auto-generated document numbers.
     CGST Rule 46(b) requires uniqueness only within a financial year; Caflow
-    enforces the stricter "unique for this client, full stop" (migration 151's
-    UNIQUE(firm_id, client_id, invoice_no), unaffected by this change).
+    enforces the stricter "unique for this client, full stop" — a partial
+    unique index on (firm_id, client_id, invoice_no) WHERE deleted_at IS NULL
+    (migration 151 added the constraint; migration 209 made it partial once
+    soft-delete existed, so a deleted invoice's number is free to reuse).
     """
+    # deleted_at IS NULL — a soft-deleted invoice (e.g. an abandoned draft the
+    # CA deleted) is invisible everywhere in the UI, but without this filter
+    # its invoice_no stayed permanently blocked: the CA deletes draft "00002",
+    # tries to reuse "00002" for a real invoice later, and gets a 409 for a
+    # number the app shows nowhere as taken. The DB-level UNIQUE constraint is
+    # a partial index with the same WHERE clause (migration 209) so this stays
+    # true even on a concurrent-race fallback.
     if _USE_MOCK:
         for inv in MOCK_SALES_INVOICES:
             if (inv.get("firm_id") == firm_id and inv.get("client_id") == client_id
-                    and inv.get("invoice_no") == invoice_no and inv.get("id") != exclude_id):
+                    and inv.get("invoice_no") == invoice_no and inv.get("id") != exclude_id
+                    and not inv.get("deleted_at")):
                 raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
         return
     q = (
         db.table("client_sales_invoices").select("id")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("invoice_no", invoice_no)
+        .is_("deleted_at", "null")
     )
     if exclude_id:
         q = q.neq("id", exclude_id)
@@ -903,14 +914,16 @@ def bulk_create_invoices(
             for r in (resp.data or []):
                 clients_by_id[r["id"]] = r
         for cid in client_ids:
+            # deleted_at filter — same reasoning as _assert_invoice_no_available:
+            # a deleted invoice's number is free to reuse, including via import.
             resp = (db.table("client_sales_invoices").select("invoice_no")
-                    .eq("firm_id", firm_id).eq("client_id", cid).execute())
+                    .eq("firm_id", firm_id).eq("client_id", cid).is_("deleted_at", "null").execute())
             existing_invoice_nos_by_client[cid] = {r["invoice_no"] for r in (resp.data or [])}
     elif parsed and _USE_MOCK:
         for cid in {p[2].client_id for p in parsed}:
             existing_invoice_nos_by_client[cid] = {
                 inv.get("invoice_no") for inv in MOCK_SALES_INVOICES
-                if inv.get("firm_id") == firm_id and inv.get("client_id") == cid
+                if inv.get("firm_id") == firm_id and inv.get("client_id") == cid and not inv.get("deleted_at")
             }
 
     # Locked-FY status is firm-wide and cannot change mid-request — shared and
