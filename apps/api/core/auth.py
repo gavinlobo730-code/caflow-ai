@@ -3,11 +3,14 @@ FastAPI JWT authentication dependency.
 Validates Supabase-issued JWTs via JWKS (supports ES256 / RS256 / HS256).
 Extracts user identity and resolves firm_id from the users table.
 """
+import logging
 import os
 import time
 from typing import Optional
 from fastapi import Header, HTTPException, status, Depends
 import jwt
+
+_logger = logging.getLogger("caflow.auth")
 from jwt import PyJWKClient
 from core.supabase_client import get_service_supabase
 
@@ -32,15 +35,25 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
         return cached[1], cached[2]
 
     try:
+        # maybe_single() — NOT single(): single() raises for both zero-row AND
+        # multi-row results, so a bare except around it can't tell "genuinely no
+        # such user" apart from "the query itself failed" (network blip, rate
+        # limit, transient PostgREST error) — both looked identical and both
+        # produced the same misleading 403 "User not found in firm", even when
+        # the row was actually there. maybe_single() returns data=None for the
+        # zero-row case without raising, so an exception here now means the
+        # query itself broke — worth logging, not silently treating as a
+        # missing account.
         result = (
             supabase.table("users")
             .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
             .eq("auth_user_id", auth_user_id)
-            .single()
+            .maybe_single()
             .execute()
         )
         user_data = result.data
     except Exception:
+        _logger.exception("user lookup failed for auth_user_id=%s", auth_user_id)
         user_data = None
 
     if not user_data:
@@ -54,10 +67,11 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
                 supabase.table("firms")
                 .select("is_active, deleted_at")
                 .eq("id", firm_id_for_status)
-                .single()
+                .maybe_single()
                 .execute()
             ).data
         except Exception:
+            _logger.exception("firm lookup failed for firm_id=%s", firm_id_for_status)
             firm_row = None
 
     _user_lookup_cache[auth_user_id] = (time.monotonic(), user_data, firm_row)
