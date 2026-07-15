@@ -62,7 +62,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("1503", "Computers & Software",         "Asset", "Fixed Asset"),   # %Computers & Software%
     ("1504", "Vehicles",                     "Asset", "Fixed Asset"),   # %Vehicles%
     ("1505", "Land & Building",              "Asset", "Fixed Asset"),   # %Land & Building%
-    ("1506", "Intangible Assets",            "Asset", "Fixed Asset"),   # %Intangible Assets%
+    ("1506", "Intangible Assets",            "Asset", "Intangible Asset"),  # %Intangible Assets% — subtype drives Schedule III "Fixed Assets — Intangible" (migration 208)
     ("1590", "Accumulated Depreciation",     "Asset", "Fixed Asset"),   # %Accumulated Depreciation%
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%

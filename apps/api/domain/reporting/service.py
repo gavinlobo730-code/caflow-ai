@@ -52,7 +52,7 @@ class ReportingService:
 
     def trial_balance(self, firm_id: str, client_id: Optional[str],
                       as_of_date: Optional[str], basis: str = "accrual") -> dict:
-        as_of = as_of_date or date.today().isoformat()
+        as_of = as_of_date or ist_today().isoformat()
         snap = self.source.snapshot(firm_id, client_id, None, as_of)
         return builders.trial_balance(self._lines(snap, basis), snap.accounts, as_of, basis)
 
@@ -62,7 +62,7 @@ class ReportingService:
         and scoped source as every other report. Opening balance carries forward
         from before `start`; the snapshot's full posted history supplies it."""
         start = start_date or _fy_start()
-        end = end_date or date.today().isoformat()
+        end = end_date or ist_today().isoformat()
         snap = self.source.snapshot(firm_id, client_id, start, end)
         return builders.ledger(snap.entries_by_id, snap.accounts, account_id, start, end)
 
@@ -70,13 +70,13 @@ class ReportingService:
                     start_date: Optional[str], end_date: Optional[str],
                     basis: str = "accrual") -> dict:
         start = start_date or _fy_start()
-        end = end_date or date.today().isoformat()
+        end = end_date or ist_today().isoformat()
         snap = self.source.snapshot(firm_id, client_id, start, end)
         return builders.profit_loss(self._lines(snap, basis), snap.accounts, start, end, basis)
 
     def balance_sheet(self, firm_id: str, client_id: Optional[str],
                       as_of_date: Optional[str], basis: str = "accrual") -> dict:
-        as_of = as_of_date or date.today().isoformat()
+        as_of = as_of_date or ist_today().isoformat()
         snap = self.source.snapshot(firm_id, client_id, None, as_of)
         return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
 
@@ -89,7 +89,7 @@ class ReportingService:
         BS amounts come from the same reporting engine as every other report;
         schedule_iii only groups them into the statutory captions."""
         start = fy_start or _fy_start()
-        end = fy_end or date.today().isoformat()
+        end = fy_end or ist_today().isoformat()
         pl = self.profit_loss(firm_id, client_id, start, end, basis="accrual")
         bs = self.balance_sheet(firm_id, client_id, end, basis="accrual")
         return schedule_iii_builder.build_schedule_iii(pl, bs, start, end)
@@ -113,7 +113,7 @@ class ReportingService:
         reconciliation is a real check, not a tautology.
         """
         start = start_date or _fy_start()
-        end = end_date or date.today().isoformat()
+        end = end_date or ist_today().isoformat()
         period_snap = self.source.snapshot(firm_id, client_id, start, end)
         bank_ids = AccountResolver(period_snap.accounts).bank_ids
         entries = period_snap.entries_in_range

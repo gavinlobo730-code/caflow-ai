@@ -1397,9 +1397,15 @@ def cancel_invoice(
         # attempt already posted the reversal, skip straight to the status flip.
         jrnl_id = inv.get("journal_entry_id")
         if not jrnl_id:
+            # entry_type filter matters: without it, ANY posted journal whose
+            # reference matched the invoice number could be picked — e.g. a
+            # purchase journal from a vendor bill numbered the same — and this
+            # cancellation would reverse the WRONG document's journal. The
+            # purchase-bill cancel path already filtered entry_type; this was
+            # the one asymmetric lookup.
             jr = (db.table("journal_entries").select("id")
                   .eq("firm_id", firm_id).eq("client_id", inv.get("client_id"))
-                  .eq("reference_no", inv.get("invoice_no")).eq("is_posted", True)
+                  .eq("reference_no", inv.get("invoice_no")).eq("entry_type", "Sales").eq("is_posted", True)
                   .limit(1).execute().data)
             jrnl_id = jr[0]["id"] if jr else None
         if not jrnl_id:

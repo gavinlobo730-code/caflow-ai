@@ -205,11 +205,14 @@ function bsBucket(type: string, subtype: string | null): string {
     return "Other Current Assets";
   }
   if (type === "Liability") {
-    if (s.includes("long term") || s.includes("term loan") || s.includes("debenture") || s.includes("mortgage"))
-      return "Long-term Borrowings";
     if (s.includes("payable") || s.includes("creditor")) return "Trade Payables";
+    // Short-term FIRST: the seeded subtype "Short Term Loan" contains "term
+    // loan", so testing long-term first presented every working-capital loan
+    // as a non-current borrowing (same fix as domain/reporting/schedule_iii.py).
     if (s.includes("short term") || s.includes("overdraft") || s.includes("cc limit") || s.includes("cash credit"))
       return "Short-term Borrowings";
+    if (s.includes("long term") || s.includes("term loan") || s.includes("debenture") || s.includes("mortgage"))
+      return "Long-term Borrowings";
     if (s.includes("tax") || s.includes("gst") || s.includes("tds") || s.includes("duty"))
       return "Tax Liabilities";
     return "Other Current Liabilities";

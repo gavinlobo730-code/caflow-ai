@@ -67,8 +67,12 @@ def _current_fy_long() -> str:
 def _compute_line_gst(taxable: int, gst_rate_bps: int, is_interstate: bool) -> tuple[int, int, int]:
     if is_interstate:
         return 0, 0, (taxable * gst_rate_bps) // 10000
-    half = gst_rate_bps // 2
-    return (taxable * half) // 10000, (taxable * half) // 10000, 0
+    # Full tax first, then split (SGST carries any odd paise) — matches the
+    # sales-side fix in routers/sales_invoices.py; the old floor-each-half
+    # split lost up to 1 paise per line and mis-computed odd-bps rates.
+    full_gst = (taxable * gst_rate_bps) // 10000
+    cgst = full_gst // 2
+    return cgst, full_gst - cgst, 0
 
 
 def _next_dn_seq(db, firm_id: str, client_id: str, fy: str) -> int:

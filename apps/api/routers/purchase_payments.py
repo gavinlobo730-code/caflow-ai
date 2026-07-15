@@ -131,7 +131,7 @@ def _claim_bill_outstanding(
     """
     for _ in range(max_retries):
         cur_paid = (
-            db.table("purchase_bills").select("paid_paise")
+            db.table("purchase_bills").select("paid_paise, debited_paise")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data
         ) or []
@@ -139,14 +139,20 @@ def _claim_bill_outstanding(
             raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
         raw_paid = cur_paid[0].get("paid_paise")  # CAS guard must match this exact stored value
         paid_paise = int(raw_paid or 0)
-        outstanding = net_payable_paise - paid_paise
+        # Debit notes reduce the payable (purchase_bills.debited_paise, set by
+        # routers/debit_notes.py) — outstanding that ignored them let a
+        # debit-noted bill be paid in full, overpaying the vendor by the
+        # debit-note amount; and a bill fully settled by cash + debit note
+        # never reached "paid" status.
+        debited_paise = int(cur_paid[0].get("debited_paise") or 0)
+        outstanding = net_payable_paise - paid_paise - debited_paise
         if amount_paise > outstanding:
             raise HTTPException(
                 status_code=422,
                 detail=f"Payment (₹{amount_paise/100:,.2f}) exceeds the bill's outstanding "
                        f"(₹{outstanding/100:,.2f}).")
         new_paid = paid_paise + amount_paise
-        new_status = "paid" if new_paid >= net_payable_paise else "partially_paid"
+        new_status = "paid" if new_paid + debited_paise >= net_payable_paise else "partially_paid"
         result = (
             db.table("purchase_bills").update({"paid_paise": new_paid, "status": new_status})
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
@@ -170,7 +176,7 @@ def _rollback_bill_claim(
     snapshot, since another payment may have claimed on top of ours since."""
     for _ in range(max_retries):
         cur = (
-            db.table("purchase_bills").select("paid_paise")
+            db.table("purchase_bills").select("paid_paise, debited_paise")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data
         ) or []
@@ -178,9 +184,11 @@ def _rollback_bill_claim(
             return
         raw_paid = cur[0].get("paid_paise")
         paid_paise = int(raw_paid or 0)
+        debited_paise = int(cur[0].get("debited_paise") or 0)
         reverted = paid_paise - amount_paise
         reverted_status = (
-            "paid" if reverted >= net_payable_paise else "partially_paid" if reverted > 0 else "received"
+            "paid" if reverted + debited_paise >= net_payable_paise
+            else "partially_paid" if reverted > 0 else "received"
         )
         result = (
             db.table("purchase_bills").update({"paid_paise": reverted, "status": reverted_status})
@@ -606,7 +614,7 @@ def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, 
     try:
         rows = (
             db.table("purchase_bills")
-            .select("net_payable_paise, status")
+            .select("net_payable_paise, status, debited_paise")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1)
             .execute()
@@ -623,7 +631,11 @@ def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, 
         )
         total_paid = sum(int(p["amount_paise"]) for p in (payments_resp.data or []))
         net_payable = int(bill["net_payable_paise"])
-        new_status = ("paid" if total_paid >= net_payable
+        # Debit notes settle part of the payable — a bill fully covered by
+        # cash + debit note must reach "paid", and the threshold must not
+        # demand cash for the debit-noted portion.
+        debited = int(bill.get("debited_paise") or 0)
+        new_status = ("paid" if total_paid + debited >= net_payable
                       else "partially_paid" if total_paid > 0
                       else bill.get("status"))
 
