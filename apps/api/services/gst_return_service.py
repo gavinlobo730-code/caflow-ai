@@ -166,7 +166,14 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
-    books_output = result.outward_taxable_cgst + result.outward_taxable_sgst + result.outward_taxable_igst
+    # Output side = Table 3.1(a) outward + Table 3.1(d) reverse-charge inward:
+    # journal_for_purchase_bill posts the RCM self-assessed tax as a credit to
+    # the GST output accounts (CGST Act §9(3)/(4)), so the ledger's output
+    # movement legitimately carries BOTH heads — the books-side comparator
+    # must too, or every RCM bill flags a false mismatch.
+    books_rcm = result.rcm_cgst + result.rcm_sgst + result.rcm_igst
+    books_output = (result.outward_taxable_cgst + result.outward_taxable_sgst
+                    + result.outward_taxable_igst + books_rcm)
     books_itc = result.itc_book_cgst + result.itc_book_sgst + result.itc_book_igst
     output_matched = books_output == gl["output_paise"]
     itc_matched = books_itc == gl["itc_paise"]

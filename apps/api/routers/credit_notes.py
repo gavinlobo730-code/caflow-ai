@@ -95,9 +95,14 @@ def _compute_line_gst(
     if is_interstate:
         igst = (taxable_paise * gst_rate_bps) // 10000
         return 0, 0, igst
-    half_rate = gst_rate_bps // 2
-    cgst = (taxable_paise * half_rate) // 10000
-    sgst = (taxable_paise * half_rate) // 10000
+    # Full tax first, then split (SGST carries any odd paise) — matches the
+    # sales-side fix in routers/sales_invoices.py. A credit note computed with
+    # the old floor-each-half split could differ from its invoice's GST by
+    # 1 paise per line, leaving a full-value credit note unable to fully
+    # reverse its invoice (residue stuck in AR / GST output overstated).
+    full_gst = (taxable_paise * gst_rate_bps) // 10000
+    cgst = full_gst // 2
+    sgst = full_gst - cgst
     return cgst, sgst, 0
 
 

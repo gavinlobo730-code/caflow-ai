@@ -48,16 +48,22 @@ def test_compute_ratios_zero_revenue_returns_none_not_a_crash():
 
 
 def test_compute_ratios_current_ratio_only_sums_current_subtypes():
+    # REAL production line shapes: account_type + the seeded subtype
+    # vocabulary (coa_seed_service.STANDARD_COA: "Receivable", "Fixed
+    # Asset", "Payable", "Long Term Loan"). The old fixtures used Schedule
+    # III bucket LABELS as subtypes — values the builders never produce —
+    # which is exactly how the current ratio shipped permanently broken:
+    # the test passed against inputs production could never send.
     asset_lines = [
-        {"account_id": "ar", "account_name": "Trade Receivables", "account_subtype": "Trade Receivables", "balance_paise": 300_00},
-        {"account_id": "fa", "account_name": "Office Equipment", "account_subtype": "Tangible Assets", "balance_paise": 1_000_00},
+        {"account_id": "ar", "account_name": "Trade Receivables", "account_type": "Asset", "account_subtype": "Receivable", "balance_paise": 300_00},
+        {"account_id": "fa", "account_name": "Office Equipment", "account_type": "Asset", "account_subtype": "Fixed Asset", "balance_paise": 1_000_00},
     ]
     liability_lines = [
-        {"account_id": "ap", "account_name": "Trade Payables", "account_subtype": "Trade Payables", "balance_paise": 200_00},
-        {"account_id": "ltb", "account_name": "Term Loan", "account_subtype": "Long-term Borrowings", "balance_paise": 5_000_00},
+        {"account_id": "ap", "account_name": "Trade Payables", "account_type": "Liability", "account_subtype": "Payable", "balance_paise": 200_00},
+        {"account_id": "ltb", "account_name": "Term Loan", "account_type": "Liability", "account_subtype": "Long Term Loan", "balance_paise": 5_000_00},
     ]
     ratios = compute_ratios(_pl(0, 0, 0), _bs(asset_lines, liability_lines))
-    # Only the current-subtype lines (300 receivable / 200 payable) count —
+    # Only the current lines (300 receivable / 200 payable) count —
     # the fixed asset and long-term borrowing are excluded from both sides.
     assert ratios["current_assets_paise"] == 300_00
     assert ratios["current_liabilities_paise"] == 200_00
@@ -65,7 +71,7 @@ def test_compute_ratios_current_ratio_only_sums_current_subtypes():
 
 
 def test_compute_ratios_zero_current_liabilities_returns_none_not_a_divide_by_zero():
-    asset_lines = [{"account_id": "ar", "account_name": "AR", "account_subtype": "Trade Receivables", "balance_paise": 100_00}]
+    asset_lines = [{"account_id": "ar", "account_name": "AR", "account_type": "Asset", "account_subtype": "Receivable", "balance_paise": 100_00}]
     ratios = compute_ratios(_pl(0, 0, 0), _bs(asset_lines, []))
     assert ratios["current_ratio"] is None
 
@@ -97,8 +103,8 @@ def test_generate_statement_analysis_falls_back_when_groq_unavailable(monkeypatc
     monkeypatch.setattr("domain.financial_analysis_service._GROQ_API_KEY", "")
     pl = _pl(revenue_paise=1_000_00, expenses_paise=600_00, net_profit_paise=400_00)
     bs = _bs(
-        [{"account_id": "ar", "account_name": "AR", "account_subtype": "Trade Receivables", "balance_paise": 300_00}],
-        [{"account_id": "ap", "account_name": "AP", "account_subtype": "Trade Payables", "balance_paise": 150_00}],
+        [{"account_id": "ar", "account_name": "AR", "account_type": "Asset", "account_subtype": "Receivable", "balance_paise": 300_00}],
+        [{"account_id": "ap", "account_name": "AP", "account_type": "Liability", "account_subtype": "Payable", "balance_paise": 150_00}],
     )
     result = asyncio.run(generate_statement_analysis(pl, bs, None, "2026-27", "2025-26"))
     assert result["ai_generated"] is False

@@ -11,7 +11,7 @@
  * not a byte-for-byte port of the sales hub.
  */
 import { useState, useEffect, useCallback } from "react";
-import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
@@ -62,6 +62,8 @@ export function PurchaseBillViewDrawer({
   onEdit,
   onReceive,
   onDelete,
+  onDuplicate,
+  onCancelBill,
   onToast,
 }: {
   billId: string;
@@ -73,6 +75,13 @@ export function PurchaseBillViewDrawer({
   onEdit: (billId: string) => void;
   onReceive: (billId: string) => void;
   onDelete: (bill: PurchaseBillDetail) => void;
+  /** "Duplicate" — hands the full loaded bill to the caller, which stashes it
+   * via lib/purchases/duplicateSeed and opens the New Bill route. */
+  onDuplicate: (bill: PurchaseBillDetail) => void;
+  /** "Cancel Bill" — received bills only (drafts are deleted instead). The
+   * caller confirms and POSTs /purchase-bills/{id}/cancel, which reverses the
+   * posted journal and the inventory stock-in. */
+  onCancelBill: (bill: PurchaseBillDetail) => void;
   onToast: (msg: string, type: "success" | "error") => void;
 }) {
   const [bill, setBill] = useState<PurchaseBillDetail | null>(null);
@@ -226,7 +235,13 @@ export function PurchaseBillViewDrawer({
                   PurchaseBillEditor's isLocked handling. */}
               <Action onClick={() => onEdit(bill.id)} icon={<Pencil size={12} />}>Edit</Action>
               {isDraft && <Action primary onClick={() => onReceive(bill.id)} icon={<CheckCircle size={12} />}>Receive</Action>}
+              <Action onClick={() => onDuplicate(bill)} icon={<Copy size={12} />}>Duplicate</Action>
               {isDraft && <Action danger onClick={() => onDelete(bill)} icon={<Trash2 size={12} />}>Delete</Action>}
+              {/* Received + unpaid only: the backend deletes drafts instead, and
+                  refuses to cancel a bill with payments (reverse those first). */}
+              {bill.status === "received" && (bill.paid_paise ?? 0) === 0 && (
+                <Action danger onClick={() => onCancelBill(bill)} icon={<Ban size={12} />}>Cancel Bill</Action>
+              )}
               {bill.document_url && (
                 <Action onClick={handleViewAttachment} icon={attachmentLoading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}>
                   View Attachment

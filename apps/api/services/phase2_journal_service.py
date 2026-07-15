@@ -31,6 +31,23 @@ def _is_unique_violation(err: Exception) -> bool:
     return "23505" in s or "duplicate key" in s or "already exists" in s
 
 
+def purchase_bill_journal_ref(bill_id: str) -> str:
+    """System-unique journal reference for a purchase bill's postings.
+
+    _create_journal's idempotency key is (firm, client, reference_no,
+    entry_date) — and purchase-bill journals used the VENDOR-assigned
+    bill_no as reference_no, which has no uniqueness constraint anywhere:
+    two different vendors can both send "INV-101" dated the same day for the
+    same client, and the second bill's journal silently deduped onto the
+    first bill's (its expense/ITC/AP never posted, and cancelling the second
+    bill reversed the FIRST bill's journal). A blank bill_no ("") collided
+    the same way, and a bill_no matching one of the client's own sales
+    invoice numbers deduped cross-document. The bill's own id IS unique, so
+    the journal reference derives from it; the vendor's bill number stays in
+    the narration for the human reading the journal."""
+    return f"PB-{str(bill_id)[:8].upper()}"
+
+
 class Phase2JournalService:
     """Auto-journal service for Phase 2 transaction types."""
 
@@ -511,9 +528,34 @@ class Phase2JournalService:
                     "narration": f"TDS payable — IT Act §{section}",
                 })
 
+            # Reverse charge (CGST Act §9(3)/(4)): the vendor invoiced WITHOUT
+            # tax, so the recipient self-accounts the output liability — one
+            # Cr per GST head, mirroring journal_for_sales_invoice's per-head
+            # output posting. The Dr GST Input lines above stay (ITC claimable
+            # per §16 once the liability is discharged via GSTR-3B 3.1(d));
+            # net_payable/total already exclude GST for RCM bills
+            # (_compute_bill_lines_and_totals), so the entry balances:
+            # Dr expense(taxable) + Dr input(gst) =
+            # Cr AP(taxable−tds) + Cr TDS(tds) + Cr output(gst).
+            if bill.get("is_reverse_charge"):
+                for amt, head, key in (
+                    (bill.get("cgst_paise", 0), "CGST", "gst_cgst"),
+                    (bill.get("sgst_paise", 0), "SGST", "gst_sgst"),
+                    (bill.get("igst_paise", 0), "IGST", "gst_igst"),
+                ):
+                    if amt > 0:
+                        out_id = self._find_account(db, firm_id, client_id, "%GST Output%", system_key=key)
+                        lines.append({
+                            "account_id": out_id,
+                            "debit_paise": 0,
+                            "credit_paise": amt,
+                            "narration": f"{head} payable under reverse charge — CGST Act §9(3)/(4)",
+                        })
+
             section_note = bill.get("tds_section", "194C") if tds_paise > 0 else "NA"
+            rcm_note = " (reverse charge, CGST Act §9)" if bill.get("is_reverse_charge") else ""
             narration = (
-                f"Purchase bill {bill.get('bill_no', 'N/A')} from vendor — "
+                f"Purchase bill {bill.get('bill_no', 'N/A')} from vendor{rcm_note} — "
                 f"IT Act §{section_note}"
             )
 
@@ -523,7 +565,9 @@ class Phase2JournalService:
                 firm_id=firm_id,
                 client_id=client_id,
                 entry_date=bill.get("bill_date", str(datetime.now(timezone.utc).date())),
-                reference_no=bill.get("bill_no", ""),
+                # System-unique — NOT the vendor's bill_no (see
+                # purchase_bill_journal_ref's docstring for the collision bug).
+                reference_no=purchase_bill_journal_ref(bill.get("id", "")) if bill.get("id") else bill.get("bill_no", ""),
                 narration=narration,
                 entry_type="Purchase",
                 lines=lines,
@@ -1282,7 +1326,15 @@ class Phase2JournalService:
             "credit_paise": int(l.get("debit_paise") or 0),
             "narration":    narration,
         } for l in lines]
-        ref = f"REV-{orig.get('reference_no') or entry_id[:8]}"
+        # Keyed on the ORIGINAL ENTRY's id, not its reference_no: the entry id
+        # is globally unique, while references can repeat across documents
+        # (e.g. a vendor bill_no equal to a sales invoice_no) — REV-{ref} let
+        # a second same-day cancellation dedup onto the FIRST document's
+        # reversal via _create_journal's (firm, client, reference_no,
+        # entry_date) idempotency key, leaving the second document flipped to
+        # cancelled with its journal still live on the books. Retrying the
+        # SAME entry's reversal stays idempotent (same id → same reference).
+        ref = f"REV-{str(entry_id)[:8].upper()}"
         return self._create_journal(
             db=db, firm_id=firm_id, client_id=orig["client_id"], entry_date=reversal_date,
             reference_no=ref, narration=narration, entry_type=orig.get("entry_type") or "Journal",
