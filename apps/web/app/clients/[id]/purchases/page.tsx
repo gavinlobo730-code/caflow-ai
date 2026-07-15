@@ -473,6 +473,55 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     return true;
   }, [load]);
 
+  // Bulk-delete over the DataTable's selected rows. DELETE /api/purchase-bills/{id}
+  // is draft-only on the backend (received/partially-paid/paid/cancelled bills
+  // are permanent records — soft-deleting one would strip its posted journal
+  // from the books), so non-draft rows are skipped client-side (mirrors the
+  // single-row "Delete draft" menu gate) rather than sent to 409. Loop per row
+  // via Promise.all; keep the selection (return false) if anything was skipped
+  // or failed so the user can see what's left. Parity with the Sales tab's
+  // bulk Delete/Void.
+  const handleBulkDelete = useCallback(async (rows: PurchaseBillRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const draftRows = rows.filter((b) => b.status === "draft");
+    const skipped = rows.length - draftRows.length;
+
+    type DeleteResult = { ok: true } | { ok: false; reason: string };
+    const results: DeleteResult[] = await Promise.all(
+      draftRows.map(async (b): Promise<DeleteResult> => {
+        try {
+          const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token);
+          if (result.success) return { ok: true };
+          return { ok: false, reason: result.error ?? "Failed to delete bill" };
+        } catch (e) {
+          return { ok: false, reason: e instanceof Error ? e.message : "Failed to delete bill" };
+        }
+      })
+    );
+
+    const deleted = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (deleted > 0) load();
+
+    const parts: string[] = [];
+    if (deleted > 0) parts.push(`${deleted} deleted`);
+    if (skipped > 0) parts.push(`${skipped} skipped (only drafts can be deleted)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft bills selected.";
+
+    if (skipped > 0 || failed > 0) {
+      setMsg({ type: "err", text });
+      return false;
+    }
+    setMsg({ type: "ok", text });
+    return true;
+  }, [load]);
+
   /**
    * Bulk-import handler. Maps flat rows → grouped bills via buildPurchaseBills, then
    * creates them all in ONE request via /api/purchase-bills/bulk (same
@@ -575,8 +624,16 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       confirm: "Receive the selected draft purchase bills? This posts a journal entry for each and cannot be undone.",
       run: handleBulkReceive,
     },
+    {
+      id: "delete",
+      label: "Delete draft(s)",
+      icon: <Trash2 size={12} />,
+      variant: "danger",
+      confirm: "Delete the selected draft purchase bills? Only drafts are removed — received and later bills are protected.",
+      run: handleBulkDelete,
+    },
     exportSelectedAction("purchase-bills-selected.csv", billColumns),
-  ], [handleBulkReceive, billColumns]);
+  ], [handleBulkReceive, handleBulkDelete, billColumns]);
 
   // "Resolve missing references" step for the product_service import column —
   // mirrors the Sales Invoices tab's own importResolvers exactly. Reads
@@ -763,6 +820,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           onDelete={(bill) => { setDetailId(null); setDeleteTarget(bill); }}
           onDuplicate={duplicateBill}
           onCancelBill={cancelBill}
+          onChanged={load}
           onToast={(text, type) => setMsg({ type: type === "success" ? "ok" : "err", text })}
         />
       )}

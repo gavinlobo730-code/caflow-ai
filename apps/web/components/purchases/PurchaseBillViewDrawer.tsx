@@ -11,13 +11,19 @@
  * not a byte-for-byte port of the sales hub.
  */
 import { useState, useEffect, useCallback } from "react";
-import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban } from "lucide-react";
+import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban, CreditCard, FilePlus2 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
-import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
+import { Modal as ModalShell } from "@/components/ui/modal";
+import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import { termLabelForDays } from "@/lib/sales/paymentTerms";
 import { diffDaysISO } from "@/lib/sales/dateMath";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
+
+// Vendor-payment modes — must match the purchase_payments.payment_mode CHECK
+// constraint (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/
+// online). Identical to the sales-side receipt modes.
+const PAYMENT_MODE_OPTIONS = ["bank", "cash", "cheque", "upi", "neft", "rtgs", "online"] as const;
 
 const PB_STATUS_BADGE: Record<string, string> = {
   draft: "bg-[#F1F5F9] text-[#64748B]",
@@ -64,6 +70,7 @@ export function PurchaseBillViewDrawer({
   onDelete,
   onDuplicate,
   onCancelBill,
+  onChanged,
   onToast,
 }: {
   billId: string;
@@ -82,6 +89,9 @@ export function PurchaseBillViewDrawer({
    * caller confirms and POSTs /purchase-bills/{id}/cancel, which reverses the
    * posted journal and the inventory stock-in. */
   onCancelBill: (bill: PurchaseBillDetail) => void;
+  /** Called after a vendor payment or debit note is recorded so the caller
+   * reloads its list (the bill's paid_paise / status may have changed). */
+  onChanged: () => void;
   onToast: (msg: string, type: "success" | "error") => void;
 }) {
   const [bill, setBill] = useState<PurchaseBillDetail | null>(null);
@@ -93,6 +103,8 @@ export function PurchaseBillViewDrawer({
   const [journal, setJournal] = useState<JournalEntry | null>(null);
   const [journalLoading, setJournalLoading] = useState(false);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [dnOpen, setDnOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,7 +173,11 @@ export function PurchaseBillViewDrawer({
   const isDraft = bill?.status === "draft";
   const isCancelled = bill?.status === "cancelled";
   const posted = !!bill?.journal_entry_id;
-  const outstanding = bill ? (bill.net_payable_paise ?? bill.total_paise ?? 0) - (bill.paid_paise ?? 0) : 0;
+  // net_payable − paid − debited: issued debit notes reduce the payable too
+  // (matches purchase_payments._claim_bill_outstanding), so a debit-noted bill
+  // shows the correct balance and Record Payment doesn't pre-fill an
+  // over-the-outstanding amount the backend would reject.
+  const outstanding = bill ? (bill.net_payable_paise ?? bill.total_paise ?? 0) - (bill.paid_paise ?? 0) - (bill.debited_paise ?? 0) : 0;
   const isInterstate = !!bill?.is_interstate;
 
   return (
@@ -235,6 +251,18 @@ export function PurchaseBillViewDrawer({
                   PurchaseBillEditor's isLocked handling. */}
               <Action onClick={() => onEdit(bill.id)} icon={<Pencil size={12} />}>Edit</Action>
               {isDraft && <Action primary onClick={() => onReceive(bill.id)} icon={<CheckCircle size={12} />}>Receive</Action>}
+              {/* Record Payment — parity with the Sales drawer: a vendor
+                  payment is recorded straight from the bill rather than only
+                  on the Payments tab. Received/partially-paid bills with an
+                  outstanding balance only (a draft isn't posted; a paid bill
+                  has nothing left to settle). */}
+              {(bill.status === "received" || bill.status === "partially_paid") && outstanding > 0 && (
+                <Action primary onClick={() => setPayOpen(true)} icon={<CreditCard size={12} />}>Record Payment</Action>
+              )}
+              {/* Debit Note — the AP mirror of the Sales drawer's Credit Note:
+                  correct a received bill's amount/quantity/item by issuing a
+                  Debit Note (CGST Act §34) instead of editing the frozen bill. */}
+              {!isDraft && <Action onClick={() => setDnOpen(true)} icon={<FilePlus2 size={12} />}>Debit Note</Action>}
               <Action onClick={() => onDuplicate(bill)} icon={<Copy size={12} />}>Duplicate</Action>
               {isDraft && <Action danger onClick={() => onDelete(bill)} icon={<Trash2 size={12} />}>Delete</Action>}
               {/* Received + unpaid only: the backend deletes drafts instead, and
@@ -363,6 +391,154 @@ export function PurchaseBillViewDrawer({
           </section>
         </div>
       )}
+
+      {payOpen && bill && (
+        <RecordVendorPaymentModal
+          bill={bill}
+          clientId={clientId}
+          outstanding={outstanding}
+          onClose={() => setPayOpen(false)}
+          onDone={() => { setPayOpen(false); onToast(`Payment recorded for ${bill.bill_no || "bill"}`, "success"); onChanged(); load(); }}
+          onError={(m) => onToast(m, "error")}
+        />
+      )}
+      {dnOpen && bill && (
+        <CreateDebitNoteModal
+          bill={bill}
+          clientId={clientId}
+          onClose={() => setDnOpen(false)}
+          onDone={(dnNo) => { setDnOpen(false); onToast(`Debit note ${dnNo} created (draft)`, "success"); onChanged(); }}
+          onError={(m) => onToast(m, "error")}
+        />
+      )}
     </Drawer>
+  );
+}
+
+// ── Record Vendor Payment (reuses POST /api/purchase-payments) ──────────────
+// Parity with the Sales drawer's RecordPaymentModal. The TDS was already
+// deducted at the bill stage (IT Act §194) — this settles the NET payable, so
+// the outstanding shown here is net_payable_paise − paid_paise.
+function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone, onError }: {
+  bill: PurchaseBillDetail; clientId: string; outstanding: number;
+  onClose: () => void; onDone: () => void; onError: (m: string) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [amount, setAmount] = useState(String(outstanding / 100));
+  const [date, setDate] = useState(today);
+  const [mode, setMode] = useState("bank");
+  const [reference, setReference] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    const amountPaise = Math.round((parseFloat(amount) || 0) * 100);
+    if (amountPaise <= 0) { onError("Enter a valid amount."); return; }
+    if (amountPaise > outstanding) { onError("Amount exceeds the outstanding balance."); return; }
+    setSaving(true);
+    try {
+      const token = await getAuthToken();
+      // Reuses the single vendor-payment engine; the link settles THIS bill.
+      const r = await apiCall("/api/purchase-payments", "POST", {
+        client_id: clientId,
+        vendor_id: bill.vendor_id,
+        payment_date: date,
+        amount_paise: amountPaise,
+        payment_mode: mode,
+        reference_no: reference.trim() || undefined,
+        purchase_bill_id: bill.id,
+      }, token);
+      if (!r.success) throw new Error(r.error ?? "Failed to record payment");
+      onDone();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Failed to record payment");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Record Payment — ${bill.bill_no || "Purchase Bill"}`} onClose={onClose}>
+      <Field label="Amount (₹)"><input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} /></Field>
+      <p className="text-[10px] text-[#94A3B8] -mt-2">Outstanding {fmt(outstanding)}</p>
+      <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Mode">
+        <select value={mode} onChange={(e) => setMode(e.target.value)} className={inputCls}>
+          {PAYMENT_MODE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </Field>
+      <Field label="Reference (optional)"><input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="UTR / cheque no." className={inputCls} /></Field>
+      <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Record Payment" />
+    </ModalShell>
+  );
+}
+
+// ── Create Debit Note (reuses POST /api/debit-notes) ────────────────────────
+// AP mirror of the Sales drawer's CreateCreditNoteModal. A full-value DRAFT
+// debit note copying the bill's lines, linked via purchase_bill_id; the CA
+// adjusts or issues it from the Debit Notes tab (CGST Act §34).
+function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
+  bill: PurchaseBillDetail; clientId: string;
+  onClose: () => void; onDone: (dnNo: string) => void; onError: (m: string) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const token = await getAuthToken();
+      const lines = bill.lines.map((l) => ({
+        description: l.description,
+        hsn_sac: l.hsn_sac ?? "",
+        quantity: l.quantity,
+        rate_paise: l.rate_paise,
+        gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
+        service_catalogue_id: l.service_catalogue_id ?? undefined,
+      }));
+      const r = await apiCall("/api/debit-notes/", "POST", {
+        client_id: clientId,
+        vendor_id: bill.vendor_id,
+        debit_note_date: date,
+        lines,
+        purchase_bill_id: bill.id,
+        is_interstate: !!bill.is_interstate,
+        is_reverse_charge: !!bill.is_reverse_charge,
+        reason: reason.trim() || undefined,
+      }, token);
+      if (!r.success) throw new Error(r.error ?? "Failed to create debit note");
+      const data = r.data as { debit_note_no?: string; dn_no?: string } | null;
+      onDone(data?.debit_note_no ?? data?.dn_no ?? "");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Failed to create debit note");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Debit Note — ${bill.bill_no || "Purchase Bill"}`} onClose={onClose}>
+      <p className="text-[11px] text-[#64748B]">Creates a full-value <strong>draft</strong> debit note copying this bill&apos;s lines. Adjust or issue it from the Debit Notes tab (CGST Act §34).</p>
+      <Field label="Debit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note (return, rate correction…)" className={inputCls} /></Field>
+      <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />
+    </ModalShell>
+  );
+}
+
+// ── Modal primitives (local, compact — mirror InvoiceViewDrawer's) ──────────
+const inputCls = "w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block space-y-1"><span className="block text-xs font-medium text-[#475569]">{label}</span>{children}</label>;
+}
+function ModalActions({ onClose, onSubmit, saving, label }: { onClose: () => void; onSubmit: () => void; saving: boolean; label: string }) {
+  return (
+    <div className="flex justify-end gap-2 pt-1">
+      <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+      <button onClick={onSubmit} disabled={saving} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+        {saving && <Loader2 size={12} className="animate-spin" />} {label}
+      </button>
+    </div>
   );
 }
