@@ -25,7 +25,6 @@ import { resolvePeriodRange, type PeriodMode } from "@/lib/dates/periods";
 import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
 import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
-import { api, type ApiResp } from "@/lib/api";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { useRouter } from "next/navigation";
@@ -1139,7 +1138,7 @@ function SalesInvoices({
     setLoading(true);
     const supabase = getSupabaseClient();
 
-    const [{ data: invData }, { data: custData }, servicesRes] = await Promise.all([
+    const [{ data: invData }, { data: custData }, { data: servicesData }] = await Promise.all([
       selectAll(() => supabase
         .from("client_sales_invoices")
         .select(
@@ -1158,13 +1157,20 @@ function SalesInvoices({
         .eq("is_active", true)
         .order("name")
         .order("id")),
-      // 500 = the endpoint's own max (models/service_catalogue... Query(..., le=500))
-      // — this list drives the CSV import's product_service resolver, which
-      // must be able to match against the WHOLE catalogue, not a search-typeahead
-      // subset (unlike ServiceCataloguePicker's own small limit).
-      api.serviceCatalogue.list(clientId, { limit: 500 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
+      // Direct Supabase, not api.serviceCatalogue.list() — that endpoint's
+      // relevance/recency ranking only matters for ServiceCataloguePicker's
+      // typeahead; this list drives the CSV import's product_service
+      // resolver, which just needs the WHOLE active catalogue (matches
+      // purchases/page.tsx's identical direct fetch for the same purpose).
+      selectAll(() => supabase
+        .from("service_catalogue")
+        .select("id, name, description, hsn_sac, gst_rate_bps, default_rate_paise, unit, kind, is_active")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("name")
+        .order("id")),
     ]);
-    setServices(servicesRes.data ?? []);
+    setServices((servicesData as ServiceCatalogueItem[]) ?? []);
 
     const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
       { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
