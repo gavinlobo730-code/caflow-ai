@@ -8,22 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-async function apiFetch(path: string) {
-  const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-  });
-  return res.json();
-}
-
 type Grade = "A" | "B" | "C" | "D" | "F";
 
 interface ClientScore {
   id: string; client_id: string; client_name?: string;
-  overall_score: number; health_grade: Grade; is_critical: boolean; calculated_at?: string;
+  overall_score: number; health_grade: Grade; is_critical: boolean; last_calculated_at?: string;
 }
 
 function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
@@ -41,9 +30,20 @@ export default function CriticalClientsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const json = await apiFetch("/api/health/scores?is_critical=true");
-        if (!json.success) throw new Error(json.error ?? "Failed");
-        setClients(json.data ?? []);
+        // Direct Supabase, not /api/health/scores?is_critical=true — a plain
+        // firm-scoped filtered select (routers/health.py:list_scores does
+        // nothing beyond .eq("is_critical", True).order("overall_score")).
+        // RLS (health_scores_assignment_scope, migration 084) enforces the
+        // same can_access_client() assignment scoping list_scores applies
+        // in Python via filter_by_client() — verified against the live DB.
+        const supabase = getSupabaseClient();
+        const { data, error: sbError } = await supabase
+          .from("health_scores")
+          .select("id, client_id, client_name, overall_score, health_grade, is_critical, last_calculated_at")
+          .eq("is_critical", true)
+          .order("overall_score");
+        if (sbError) throw sbError;
+        setClients((data as ClientScore[]) ?? []);
       } catch (e) { setError(e instanceof Error ? e.message : "Failed to load"); }
       finally { setLoading(false); }
     })();
@@ -80,7 +80,7 @@ export default function CriticalClientsPage() {
                     <td className="px-5 py-3 text-gray-800 text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>
                     <td className="px-3 py-3"><span className={`font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-gray-400">/100</span></td>
                     <td className="px-3 py-3"><Badge className={`text-[10px] ${gradeBadge(c.health_grade)}`}>{c.health_grade}</Badge></td>
-                    <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.calculated_at)}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.last_calculated_at)}</td>
                     <td className="px-3 py-3"><Link href={`/health/${c.client_id}`} className="text-xs text-[#182350] hover:text-[#182350]/70 hover:underline">View →</Link></td>
                   </tr>
                 ))}

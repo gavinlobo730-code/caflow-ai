@@ -15,16 +15,21 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`${API}${path}`, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(opts?.headers ?? {}) } });
   return res.json();
 }
+// apiFetch stays — the resolve action below is a real write (audit,
+// resolved_by) and remains backend-routed.
 
+// Matches the health_alerts.severity CHECK constraint (migration 059) — not
+// the low/medium/high/critical vocabulary this used to declare, which never
+// existed in the DB and left "info"/"warning" alerts always falling back to
+// the default gray badge.
 interface HealthAlert {
-  id: string; alert_type: string; severity: "low" | "medium" | "high" | "critical";
+  id: string; alert_type: string; severity: "info" | "warning" | "critical";
   message: string; client_id: string; is_resolved: boolean; created_at: string;
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  low: "bg-blue-100 text-blue-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  high: "bg-orange-100 text-orange-700",
+  info: "bg-blue-100 text-blue-700",
+  warning: "bg-yellow-100 text-yellow-700",
   critical: "bg-red-100 text-red-700",
 };
 function formatDate(d: string) { try { return formatDateShared(d); } catch { return d; } }
@@ -38,9 +43,20 @@ export default function HealthAlertsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const json = await apiFetch("/api/health/alerts");
-        if (!json.success) throw new Error(json.error ?? "Failed");
-        setAlerts(json.data ?? []);
+        // Direct Supabase, not /api/health/alerts — plain firm-scoped
+        // filtered select (routers/health.py:list_alerts, no client_id/
+        // severity params here). RLS (health_alerts_assignment_scope,
+        // migration 084) enforces the same can_access_client() assignment
+        // scoping list_alerts applies in Python via filter_by_client() —
+        // verified against the live DB.
+        const supabase = getSupabaseClient();
+        const { data, error: sbError } = await supabase
+          .from("health_alerts")
+          .select("*")
+          .eq("is_resolved", false)
+          .order("created_at", { ascending: false });
+        if (sbError) throw sbError;
+        setAlerts((data as HealthAlert[]) ?? []);
       } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
       finally { setLoading(false); }
     })();

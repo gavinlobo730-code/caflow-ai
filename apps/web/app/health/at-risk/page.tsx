@@ -8,19 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-async function apiFetch(path: string) {
-  const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-  });
-  return res.json();
-}
-
 type Grade = "A" | "B" | "C" | "D" | "F";
-interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: Grade; is_at_risk: boolean; calculated_at?: string; }
+interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: Grade; is_at_risk: boolean; last_calculated_at?: string; }
 
 function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
 function gradeBadge(g: Grade) { const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-red-100 text-red-700" }; return m[g] ?? "bg-gray-100 text-gray-600"; }
@@ -34,10 +23,24 @@ export default function AtRiskClientsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const json = await apiFetch("/api/health/scores?is_at_risk=true");
-        if (!json.success) throw new Error(json.error ?? "Failed");
-        // Filter out critical (score < 40) — show 40–59 only
-        setClients((json.data ?? []).filter((c: ClientScore) => c.overall_score >= 40));
+        // Direct Supabase, not /api/health/scores?is_at_risk=true — plain
+        // firm-scoped filtered select (routers/health.py:list_scores).
+        // RLS (health_scores_assignment_scope, migration 084) enforces the
+        // same can_access_client() assignment scoping list_scores applies
+        // in Python via filter_by_client() — verified against the live DB.
+        const supabase = getSupabaseClient();
+        const { data, error: sbError } = await supabase
+          .from("health_scores")
+          .select("id, client_id, client_name, overall_score, health_grade, is_at_risk, last_calculated_at")
+          .eq("is_at_risk", true)
+          .order("overall_score");
+        if (sbError) throw sbError;
+        // Filter out critical (score < 40) — show 40–59 only. Kept exactly as
+        // it was: is_at_risk's own band is 35-49 (routers/health.py:_grade),
+        // narrower than this page's stated "40-59" — a pre-existing
+        // score-band mismatch, not something this conversion should silently
+        // resolve either way.
+        setClients(((data as ClientScore[]) ?? []).filter((c) => c.overall_score >= 40));
       } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
       finally { setLoading(false); }
     })();
@@ -74,7 +77,7 @@ export default function AtRiskClientsPage() {
                     <td className="px-5 py-3 text-gray-800 text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>
                     <td className="px-3 py-3"><span className={`font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-gray-400">/100</span></td>
                     <td className="px-3 py-3"><Badge className={`text-[10px] ${gradeBadge(c.health_grade)}`}>{c.health_grade}</Badge></td>
-                    <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.calculated_at)}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.last_calculated_at)}</td>
                     <td className="px-3 py-3"><Link href={`/health/${c.client_id}`} className="text-xs text-[#182350] hover:text-[#182350]/70 hover:underline">View →</Link></td>
                   </tr>
                 ))}
