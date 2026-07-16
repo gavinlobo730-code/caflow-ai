@@ -1307,6 +1307,7 @@ class Phase2JournalService:
             return (db.table("journal_entries").select("id")
                     .eq("firm_id", firm_id).eq("client_id", client_id)
                     .eq("reference_no", reference_no).eq("entry_date", entry_date)
+                    .eq("is_reversed", False)
                     .limit(1).execute())
         if not _USE_MOCK and reference_no:
             try:
@@ -1335,6 +1336,7 @@ class Phase2JournalService:
             "created_by":   created_by,
             "source_type":  source_type,
             "source_id":    source_id,
+            "is_reversed":  False,
         }
         # Additive, optional fields — only written when a caller supplies them, so
         # every existing posting path (invoices, receipts, opening balances, …) is
@@ -1489,11 +1491,19 @@ class Phase2JournalService:
         # cancelled with its journal still live on the books. Retrying the
         # SAME entry's reversal stays idempotent (same id → same reference).
         ref = f"REV-{str(entry_id)[:8].upper()}"
-        return self._create_journal(
+        reversal_id = self._create_journal(
             db=db, firm_id=firm_id, client_id=orig["client_id"], entry_date=reversal_date,
             reference_no=ref, narration=narration, entry_type=orig.get("entry_type") or "Journal",
             lines=rev_lines, is_posted=True, created_by=created_by, reversal_of=entry_id,
         )
+        # Stamp the ORIGINAL as reversed so _create_journal's idempotency
+        # fast-path (firm+client+reference_no+entry_date) stops matching it —
+        # a reversed entry is dead and must not block a legitimate re-post of
+        # the same document. Append-only: the immutability triggers permit
+        # only this narrow is_reversed FALSE→TRUE flip on a posted row
+        # (migration 213).
+        db.table("journal_entries").update({"is_reversed": True}).eq("id", entry_id).execute()
+        return reversal_id
 
 
 # Module-level singleton
