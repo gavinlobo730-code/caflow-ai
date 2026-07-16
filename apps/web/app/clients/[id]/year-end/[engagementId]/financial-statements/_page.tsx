@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { RefreshCw, Camera, ChevronDown, ChevronRight } from "lucide-react";
-import { yearEndApi, type FinancialStatementVersion } from "@/lib/api/yearEnd";
+import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData } from "@/lib/api/yearEnd";
 
 /** Format paise → ₹ Indian number format (Companies Act §128: accounts in INR) */
 function fmt(paise: number): string {
@@ -35,6 +35,95 @@ interface PLLine {
   is_subtotal?: boolean;
   is_total?: boolean;
   is_negative?: boolean;
+  is_header?: boolean;
+}
+
+// ── Schedule III line-code -> group/label mapping ──────────────────────────
+// generate_financial_statements() (services/year_end_financial_service.py)
+// returns flat {line_code: amount_paise} dicts in Companies Act 2013,
+// Schedule III order (BS_EQUITY_LIABILITY_LINES / BS_ASSET_LINES /
+// PL_INCOME_LINES / PL_EXPENSE_LINES) — grouped and labelled here into the
+// Schedule III, Part I headings for display.
+const EQUITY_LIABILITY_GROUPS: { label: string; lines: [string, string][] }[] = [
+  { label: "Shareholders' Funds", lines: [
+    ["share_capital", "Share Capital"],
+    ["reserves_and_surplus", "Reserves and Surplus"],
+  ] },
+  { label: "Non-Current Liabilities", lines: [
+    ["long_term_borrowings", "Long-Term Borrowings"],
+    ["deferred_tax_liabilities", "Deferred Tax Liabilities (Net)"],
+    ["other_long_term_liabilities", "Other Long-Term Liabilities"],
+    ["long_term_provisions", "Long-Term Provisions"],
+  ] },
+  { label: "Current Liabilities", lines: [
+    ["short_term_borrowings", "Short-Term Borrowings"],
+    ["trade_payables", "Trade Payables"],
+    ["other_current_liabilities", "Other Current Liabilities"],
+    ["short_term_provisions", "Short-Term Provisions"],
+  ] },
+];
+
+const ASSET_GROUPS: { label: string; lines: [string, string][] }[] = [
+  { label: "Non-Current Assets", lines: [
+    ["tangible_assets", "Tangible Assets"],
+    ["intangible_assets", "Intangible Assets"],
+    ["capital_wip", "Capital Work-in-Progress"],
+    ["long_term_investments", "Non-Current Investments"],
+    ["deferred_tax_assets", "Deferred Tax Assets (Net)"],
+    ["long_term_loans_and_advances", "Long-Term Loans and Advances"],
+    ["other_non_current_assets", "Other Non-Current Assets"],
+  ] },
+  { label: "Current Assets", lines: [
+    ["current_investments", "Current Investments"],
+    ["inventories", "Inventories"],
+    ["trade_receivables", "Trade Receivables"],
+    ["cash_and_bank", "Cash and Bank Balances"],
+    ["short_term_loans_and_advances", "Short-Term Loans and Advances"],
+    ["other_current_assets", "Other Current Assets"],
+  ] },
+];
+
+const PL_INCOME_LABELS: [string, string][] = [
+  ["revenue_from_operations", "Revenue from Operations"],
+  ["other_income", "Other Income"],
+];
+
+const PL_EXPENSE_LABELS: [string, string][] = [
+  ["cost_of_materials_consumed", "Cost of Materials Consumed"],
+  ["purchases_of_stock_in_trade", "Purchases of Stock-in-Trade"],
+  ["changes_in_inventories", "Changes in Inventories of Finished Goods, WIP and Stock-in-Trade"],
+  ["employee_benefit_expense", "Employee Benefit Expense"],
+  ["finance_costs", "Finance Costs"],
+  ["depreciation_and_amortisation", "Depreciation and Amortisation Expense"],
+  ["other_expenses", "Other Expenses"],
+];
+
+function mapBSGroups(
+  groups: { label: string; lines: [string, string][] }[],
+  data: Record<string, number> | undefined,
+): BSGroup[] {
+  if (!data) return [];
+  return groups.map(({ label, lines }) => {
+    const items = lines.map(([code, name]) => ({ name, amount_paise: data[code] ?? 0 }));
+    return { label, items, total_paise: items.reduce((s, i) => s + i.amount_paise, 0) };
+  });
+}
+
+function mapProfitLossLines(pl: FinancialStatementSnapshotData["profit_loss"] | undefined): PLLine[] {
+  if (!pl) return [];
+  const totalIncome = pl.total_income_paise ?? Object.values(pl.income).reduce((s, v) => s + v, 0);
+  const totalExpense = pl.total_expense_paise ?? Object.values(pl.expenses).reduce((s, v) => s + v, 0);
+  return [
+    { label: "I. Income", amount_paise: 0, is_header: true },
+    ...PL_INCOME_LABELS.map(([code, name]) => ({ label: name, amount_paise: pl.income[code] ?? 0 })),
+    { label: "Total Income", amount_paise: totalIncome, is_subtotal: true },
+    { label: "II. Expenses", amount_paise: 0, is_header: true },
+    ...PL_EXPENSE_LABELS.map(([code, name]) => ({ label: name, amount_paise: pl.expenses[code] ?? 0 })),
+    { label: "Total Expenses", amount_paise: totalExpense, is_subtotal: true },
+    { label: "Profit Before Tax", amount_paise: pl.profit_before_tax_paise, is_subtotal: true },
+    { label: "Tax Expense", amount_paise: pl.tax_expense_paise },
+    { label: "Profit After Tax (for the period)", amount_paise: pl.profit_after_tax_paise, is_total: true },
+  ];
 }
 
 export default function FinancialStatementsPage() {
@@ -42,14 +131,16 @@ export default function FinancialStatementsPage() {
   const { engagementId } = params;
 
   const [tab, setTab] = useState<FinTab>("balance_sheet");
-  const [liveData, setLiveData] = useState<{
-    balance_sheet: Record<string, unknown>;
-    profit_loss: Record<string, unknown>;
-    is_balanced: boolean;
-  } | null>(null);
+  const [liveData, setLiveData] = useState<FinancialStatementSnapshotData | null>(null);
   const [versions, setVersions] = useState<FinancialStatementVersion[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string>("live");
+  // versions() intentionally omits statement_data — a selected historical
+  // version's Balance Sheet/P&L is fetched on demand and cached here,
+  // keyed by version id so switching back to an already-fetched version
+  // doesn't refetch.
+  const [versionData, setVersionData] = useState<Record<string, FinancialStatementSnapshotData>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingVersion, setLoadingVersion] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshotting, setSnapshotting] = useState(false);
   const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
@@ -74,15 +165,37 @@ export default function FinancialStatementsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Fetch the selected historical version's statement_data the first time
+  // it's picked (versions() never carries it — see the comment above).
+  useEffect(() => {
+    if (selectedVersionId === "live" || versionData[selectedVersionId]) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingVersion(true);
+      try {
+        const res = await yearEndApi.financialStatements.getVersion(engagementId, selectedVersionId);
+        if (!res.success) throw new Error(res.error ?? "Failed to load version");
+        if (!cancelled) setVersionData((prev) => ({ ...prev, [selectedVersionId]: res.data.statement_data }));
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load version");
+      } finally {
+        if (!cancelled) setLoadingVersion(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [engagementId, selectedVersionId, versionData]);
+
   async function handleSnapshot() {
     setSnapshotting(true);
     setSnapshotMsg(null);
     try {
       const res = await yearEndApi.financialStatements.createSnapshot(engagementId);
       if (!res.success) throw new Error(res.error ?? "Failed to create snapshot");
-      setVersions((prev) => [res.data, ...prev]);
-      setSelectedVersionId(res.data.id);
-      setSnapshotMsg(`Version ${res.data.version_number} snapshot created.`);
+      const { statement_data, ...versionRow } = res.data;
+      setVersions((prev) => [versionRow, ...prev]);
+      setVersionData((prev) => ({ ...prev, [versionRow.id]: statement_data }));
+      setSelectedVersionId(versionRow.id);
+      setSnapshotMsg(`Version ${versionRow.version_number} snapshot created.`);
     } catch (err) {
       setSnapshotMsg(err instanceof Error ? err.message : "Snapshot failed");
     } finally {
@@ -91,19 +204,16 @@ export default function FinancialStatementsPage() {
   }
 
   // Determine which data to display
-  const activeVersion = selectedVersionId === "live"
-    ? null
-    : versions.find((v) => v.id === selectedVersionId) ?? null;
+  const activeData = selectedVersionId === "live" ? liveData : versionData[selectedVersionId] ?? null;
 
-  const bs = activeVersion
-    ? activeVersion.balance_sheet
-    : liveData?.balance_sheet ?? {};
+  const bs = mapBSGroups(EQUITY_LIABILITY_GROUPS, activeData?.balance_sheet.equity_and_liabilities);
+  const assets = mapBSGroups(ASSET_GROUPS, activeData?.balance_sheet.assets);
+  const totalEL = activeData?.balance_sheet.total_equity_and_liabilities_paise ?? 0;
+  const totalAssets = activeData?.balance_sheet.total_assets_paise ?? 0;
 
-  const pl = activeVersion
-    ? activeVersion.profit_loss
-    : liveData?.profit_loss ?? {};
+  const pl = mapProfitLossLines(activeData?.profit_loss);
 
-  const isBalanced = activeVersion ? activeVersion.is_balanced : (liveData?.is_balanced ?? false);
+  const isBalanced = activeData?.balance_sheet.is_balanced ?? false;
 
   if (loading) {
     return (
@@ -155,7 +265,7 @@ export default function FinancialStatementsPage() {
             <option value="live">Live (Current)</option>
             {versions.map((v) => (
               <option key={v.id} value={v.id}>
-                Version {v.version_number} — {new Date(v.generated_at).toLocaleDateString("en-IN")}
+                Version {v.version_number} — {new Date(v.created_at).toLocaleDateString("en-IN")}
               </option>
             ))}
           </select>
@@ -165,6 +275,12 @@ export default function FinancialStatementsPage() {
         <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${isBalanced ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
           {isBalanced ? "✓ Balanced" : "✗ Not Balanced"}
         </span>
+
+        {loadingVersion && (
+          <span className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
+            <RefreshCw size={11} className="animate-spin" /> Loading version…
+          </span>
+        )}
       </div>
 
       {snapshotMsg && (
@@ -188,8 +304,10 @@ export default function FinancialStatementsPage() {
         ))}
       </div>
 
-      {tab === "balance_sheet" && <BalanceSheetView data={bs} />}
-      {tab === "profit_loss" && <ProfitLossView data={pl} />}
+      {tab === "balance_sheet" && (
+        <BalanceSheetView equityLiabilities={bs} assets={assets} totalEL={totalEL} totalAssets={totalAssets} />
+      )}
+      {tab === "profit_loss" && <ProfitLossView lines={pl} />}
 
       <p className="text-[10px] text-[#94A3B8]">
         All values derived from the General Ledger. Companies Act 2013, Schedule III.
@@ -200,14 +318,17 @@ export default function FinancialStatementsPage() {
 
 // ── Balance Sheet (Schedule III, Part I) ──────────────────────────────────
 
-function BalanceSheetView({ data }: { data: Record<string, unknown> }) {
-  // The backend sends structured groups; we render them generically
-  const equityLiabilities = (data.equity_liabilities as BSGroup[]) ?? [];
-  const assets = (data.assets as BSGroup[]) ?? [];
-
-  const totalEL = (data.total_equity_liabilities_paise as number) ?? 0;
-  const totalAssets = (data.total_assets_paise as number) ?? 0;
-
+function BalanceSheetView({
+  equityLiabilities,
+  assets,
+  totalEL,
+  totalAssets,
+}: {
+  equityLiabilities: BSGroup[];
+  assets: BSGroup[];
+  totalEL: number;
+  totalAssets: number;
+}) {
   if (!equityLiabilities.length && !assets.length) {
     return (
       <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
@@ -289,9 +410,7 @@ function GroupRows({ group }: { group: BSGroup }) {
 
 // ── Profit & Loss (Schedule III, Part II) ─────────────────────────────────
 
-function ProfitLossView({ data }: { data: Record<string, unknown> }) {
-  const lines = (data.lines as PLLine[]) ?? [];
-
+function ProfitLossView({ lines }: { lines: PLLine[] }) {
   if (!lines.length) {
     return (
       <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
@@ -334,7 +453,7 @@ function ProfitLossView({ data }: { data: Record<string, unknown> }) {
                 </tr>
               );
             }
-            if (!line.amount_paise && line.label.startsWith("I.")) {
+            if (line.is_header) {
               // Section header
               return (
                 <tr key={i} className="bg-[#F8FAFC]">
