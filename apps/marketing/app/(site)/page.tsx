@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
 import { Button, Section, SectionHeading, Card } from "@/components/ui";
 import { Reveal, CountUp, Tilt, Parallax, WordReveal, Marquee } from "@/components/motion";
 import { Magnetic, useCursorGlow } from "@/components/Cursor";
 import { ProblemSolutionStory, ChapterRail, useSectionActive } from "@/components/StoryStage";
 import { usePinnedStage, stageIn, riseIn, slideIn } from "@/components/ScrollStage";
+import { useFlowColor, type FlowStop } from "@/components/ColorFlow";
 import {
   ArrowRight,
   Check,
@@ -55,11 +56,12 @@ const SCATTER_TOOLS = [
 
 // Chapter 1 — the problem, stated plainly (deliberately no WordReveal here;
 // chapter 2's polished entrance is meant to feel like the "arrival").
-function ScatterChapter() {
+function ScatterChapter({ bg }: { bg?: string | null }) {
   const glow = useCursorGlow();
   return (
     <div
       className="relative flex h-full min-h-[94vh] flex-col justify-center overflow-hidden bg-brand-dark text-white"
+      style={bg ? { background: bg } : undefined}
       {...glow.handlers}
     >
       <div className="bg-grid absolute inset-0" />
@@ -105,11 +107,12 @@ function ScatterChapter() {
 
 // Chapter 2 — the settled hero. Unchanged from the previous build; it is now
 // simply the "arrival" state of the scroll-pinned convergence above it.
-function SettledHero() {
+function SettledHero({ bg }: { bg?: string | null }) {
   const glow = useCursorGlow();
   return (
     <section
       className="relative flex min-h-[94vh] flex-col overflow-hidden bg-brand-dark text-white"
+      style={bg ? { background: bg } : undefined}
       {...glow.handlers}
     >
       <div className="bg-grid absolute inset-0" />
@@ -287,8 +290,14 @@ function SettledHero() {
 // slides in as the user scrolls through — keeping the "advancing through a
 // deck" pacing going after the opening convergence, instead of dropping back
 // to a plain page the moment chapter 2 ends.
-function TrustedStage() {
-  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(190);
+function TrustedStage({
+  bg,
+  wrapRefOut,
+}: {
+  bg?: string | null;
+  wrapRefOut?: RefObject<HTMLDivElement>;
+}) {
+  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(190, wrapRefOut);
   const glow = useCursorGlow();
   // A one-shot glow ramp on the "Confirm & file" chip near the end of the
   // pin — the payoff beat, not a looping effect, so it settles at a fixed
@@ -298,7 +307,7 @@ function TrustedStage() {
   return (
     <div ref={wrapRef} className={pinnedActive ? "relative h-[190vh]" : "relative"}>
       <div className={pinnedActive ? "sticky top-0 flex h-screen items-center overflow-hidden" : ""}>
-        <Section id="security" className="w-full bg-brand-dark">
+        <Section id="security" className="w-full bg-brand-dark" style={bg ? { background: bg } : undefined}>
           <div
             className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
             {...glow.handlers}
@@ -404,12 +413,18 @@ const STATS = [
 // Chapter 4 — Visible. Pinned build-sequence: the four stats land one at a
 // time with their counters tied to scroll progress (not time), so the
 // numbers only move while the user is actively scrolling through them.
-function StatsStage() {
-  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(170);
+function StatsStage({
+  bg,
+  wrapRefOut,
+}: {
+  bg?: string | null;
+  wrapRefOut?: RefObject<HTMLDivElement>;
+}) {
+  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(170, wrapRefOut);
   return (
     <div ref={wrapRef} className={pinnedActive ? "relative h-[170vh]" : "relative"}>
       <div className={pinnedActive ? "sticky top-0 flex h-screen items-center overflow-hidden" : ""}>
-        <Section className="w-full bg-white">
+        <Section className="w-full bg-white" style={bg ? { background: bg } : undefined}>
           <div style={riseIn(stageIn(progress, 0, 0.18))}>
             <SectionHeading
               title="The whole practice, finally visible"
@@ -458,6 +473,15 @@ function StatsStage() {
   );
 }
 
+// Background stops for useFlowColor, in document order. Consecutive stops
+// with the same color hold flat (zero visible drift) across whatever
+// content sits between them, so this only needs one entry per section
+// boundary that's actually navy/white/etc — not one per section.
+const NAVY: [number, number, number] = [13, 22, 53]; // brand-dark
+const WHITE: [number, number, number] = [255, 255, 255];
+const PS_BG: [number, number, number] = [248, 250, 252];
+const BRAND: [number, number, number] = [24, 35, 80]; // brand (final CTA)
+
 export default function HomePage() {
   const [activeChapter, setActiveChapter] = useState(0);
   const trustedRef = useSectionActive<HTMLDivElement>(setActiveChapter, 2);
@@ -479,29 +503,59 @@ export default function HomePage() {
     return () => io.disconnect();
   }, []);
 
+  // Refs mark the boundary points useFlowColor interpolates between. Pinned
+  // stages (Trusted, Stats) are measured via their own outer wrapRef rather
+  // than anything inside their sticky inner content — a sticky element's own
+  // rect.top stays pinned mid-viewport for as long as it's active, which
+  // isn't a useful "how far down the real document is this" signal; the
+  // outer wrapper (h-[Nvh] while pinned, natural height while stacked)
+  // always reflects true document position in both modes.
+  const trustedWrapRef = useRef<HTMLDivElement>(null);
+  const statsWrapRef = useRef<HTMLDivElement>(null);
+  const testimonialRef = useRef<HTMLDivElement>(null);
+  const finalCtaRef = useRef<HTMLDivElement>(null);
+
+  // TrustedStage/StatsStage and Testimonial/FinalCTA sit back-to-back with
+  // zero gap between them, so a stop pair placed exactly at that shared
+  // boundary would interpolate over zero distance (an instant cut, not a
+  // blend). The +-120px offsets borrow a slice of each section's own
+  // padding as a real transition zone instead — see FlowStop's offsetPx.
+  const flowColor = useFlowColor([
+    { ref: storyRef, rgb: NAVY },
+    { ref: trustedWrapRef, rgb: NAVY, edge: "bottom", offsetPx: -120 },
+    { ref: statsWrapRef, rgb: WHITE, offsetPx: 120 },
+    { ref: testimonialRef, rgb: PS_BG, edge: "bottom", offsetPx: -120 },
+    { ref: finalCtaRef, rgb: BRAND, offsetPx: 120 },
+    { ref: finalCtaRef, rgb: NAVY, edge: "bottom" },
+  ]);
+
   return (
     <>
       <ChapterRail active={activeChapter} visible={storyVisible} />
 
       {/* ── Chapters 1–3: the story ─────────────────────────────────────── */}
       <div id="story" ref={storyRef}>
-        <ProblemSolutionStory scatter={<ScatterChapter />} onActiveChange={setActiveChapter}>
-          <SettledHero />
+        <ProblemSolutionStory scatter={<ScatterChapter bg={flowColor} />} onActiveChange={setActiveChapter}>
+          <SettledHero bg={flowColor} />
         </ProblemSolutionStory>
 
         {/* ── Chapter 3 — Trusted ──────────────────────────────────────── */}
         <div ref={trustedRef}>
-          <TrustedStage />
+          <TrustedStage bg={flowColor} wrapRefOut={trustedWrapRef} />
         </div>
       </div>
 
       {/* ── Chapter 4 — Visible. Deliberately shifts to a light ground: the
           story's build-up is over, the rail has already faded out, and this
           is the "arrived, everything is clear" payoff. ─────────────────── */}
-      <StatsStage />
+      <StatsStage bg={flowColor} wrapRefOut={statsWrapRef} />
 
       {/* ── Testimonial ──────────────────────────────────────────────────── */}
-      <Section className="bg-ps-bg">
+      <Section
+        ref={testimonialRef}
+        className="bg-ps-bg"
+        style={flowColor ? { background: flowColor } : undefined}
+      >
         <Reveal variant="scale">
           <Tilt max={3}>
             <Card className="mx-auto max-w-3xl text-center">
@@ -531,7 +585,9 @@ export default function HomePage() {
 
       {/* ── Final CTA ────────────────────────────────────────────────────── */}
       <section
+        ref={finalCtaRef}
         className="relative overflow-hidden bg-brand text-white"
+        style={flowColor ? { background: flowColor } : undefined}
         {...finalCtaGlow.handlers}
       >
         <div className="bg-grid absolute inset-0" />
