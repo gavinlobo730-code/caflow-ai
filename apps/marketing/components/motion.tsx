@@ -14,7 +14,7 @@ import {
 // components only decide WHEN to flip the switch, so the JS cost stays tiny
 // and the static export never blocks on hydration to show content.
 
-function usePrefersReducedMotion(): boolean {
+export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
