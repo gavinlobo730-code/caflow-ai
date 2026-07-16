@@ -6,6 +6,7 @@ import { Button, Section, SectionHeading, Card } from "@/components/ui";
 import { Reveal, CountUp, Tilt, Parallax, WordReveal, Marquee } from "@/components/motion";
 import { Magnetic, useCursorGlow } from "@/components/Cursor";
 import { ProblemSolutionStory, ChapterRail, useSectionActive } from "@/components/StoryStage";
+import { usePinnedStage, stageIn, riseIn, slideIn } from "@/components/ScrollStage";
 import {
   ArrowRight,
   Check,
@@ -281,82 +282,177 @@ function SettledHero() {
   );
 }
 
-// Chapter 3 — Trusted. Extracted so useCursorGlow (a hook) has a component
-// body of its own to live in, scoped to just this card rather than the
-// whole padded Section around it.
-function TrustedCard() {
+// Chapter 3 — Trusted. Pinned build-sequence: rather than one static block
+// that fades in on entry, the copy lands line by line and the mockup card
+// slides in as the user scrolls through — keeping the "advancing through a
+// deck" pacing going after the opening convergence, instead of dropping back
+// to a plain page the moment chapter 2 ends.
+function TrustedStage() {
+  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(190);
   const glow = useCursorGlow();
-  return (
-    <div
-      className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
-      {...glow.handlers}
-    >
-      <div className="bg-grid absolute inset-0 opacity-70" />
-      <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
-      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-      <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
-        <Reveal variant="left">
-          <div className="flex">
-            <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
-              <Lock size={15} /> Control &amp; trust
-            </span>
-          </div>
-          <h2 className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-white md:text-[38px]">
-            Nothing is filed without your click
-          </h2>
-          <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
-            AI prepares the working papers and flags what needs attention —
-            but the CA always makes the final call. No return, no challan and
-            no MCA form is ever submitted to a government portal
-            automatically.
-          </p>
-          <ul className="mt-6 space-y-3">
-            {[
-              "Explicit CA confirmation on every government submission",
-              "Full audit log of who reviewed and filed what",
-              "Role-based access, MFA and data hosted in India",
-            ].map((point) => (
-              <li key={point} className="flex items-start gap-3 text-[15px] text-slate-200">
-                <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" />
-                {point}
-              </li>
-            ))}
-          </ul>
-        </Reveal>
+  // A one-shot glow ramp on the "Confirm & file" chip near the end of the
+  // pin — the payoff beat, not a looping effect, so it settles at a fixed
+  // resting glow rather than pulsing forever once fully arrived.
+  const confirmGlow = stageIn(progress, 0.8, 1);
 
-        <Reveal variant="right" delay={150}>
-          <div className="rounded-2xl border border-white/10 bg-brand-dark/60 p-6 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                  <path className="draw-check" d="m9 12 2 2 4-4" />
-                </svg>
-              </span>
+  return (
+    <div ref={wrapRef} className={pinnedActive ? "relative h-[190vh]" : "relative"}>
+      <div className={pinnedActive ? "sticky top-0 flex h-screen items-center overflow-hidden" : ""}>
+        <Section id="security" className="w-full bg-brand-dark">
+          <div
+            className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
+            {...glow.handlers}
+          >
+            <div className="bg-grid absolute inset-0 opacity-70" />
+            <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
+            <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+            <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
               <div>
-                <p className="text-[14px] font-bold text-white">GSTR-3B ready to file</p>
-                <p className="text-[12px] text-slate-400">Reviewed by CA · awaiting confirmation</p>
+                <div className="flex" style={riseIn(stageIn(progress, 0, 0.15))}>
+                  <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
+                    <Lock size={15} /> Control &amp; trust
+                  </span>
+                </div>
+                <h2
+                  className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-white md:text-[38px]"
+                  style={riseIn(stageIn(progress, 0.06, 0.26))}
+                >
+                  Nothing is filed without your click
+                </h2>
+                <p
+                  className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300"
+                  style={riseIn(stageIn(progress, 0.16, 0.36))}
+                >
+                  AI prepares the working papers and flags what needs attention —
+                  but the CA always makes the final call. No return, no challan and
+                  no MCA form is ever submitted to a government portal
+                  automatically.
+                </p>
+                <ul className="mt-6 space-y-3">
+                  {[
+                    "Explicit CA confirmation on every government submission",
+                    "Full audit log of who reviewed and filed what",
+                    "Role-based access, MFA and data hosted in India",
+                  ].map((point, i) => (
+                    <li
+                      key={point}
+                      className="flex items-start gap-3 text-[15px] text-slate-200"
+                      style={riseIn(stageIn(progress, 0.32 + i * 0.09, 0.5 + i * 0.09))}
+                    >
+                      <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </div>
-            <div className="mt-5 rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
-              <p className="text-[12px] text-slate-400">Tax payable</p>
-              <p className="text-[24px] font-bold text-white">
-                ₹ <CountUp to={248600} duration={1800} />
-              </p>
-              <div className="mt-4 flex gap-2">
-                <span className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark">
-                  Confirm &amp; file
-                </span>
-                <span className="rounded-lg border border-white/15 px-3 py-2.5 text-center text-[13px] font-medium text-slate-300">
-                  Review
-                </span>
+
+              <div style={slideIn(stageIn(progress, 0.4, 0.62), 48)}>
+                <div className="rounded-2xl border border-white/10 bg-brand-dark/60 p-6 backdrop-blur-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                        <path d="m9 12 2 2 4-4" />
+                      </svg>
+                    </span>
+                    <div>
+                      <p className="text-[14px] font-bold text-white">GSTR-3B ready to file</p>
+                      <p className="text-[12px] text-slate-400">Reviewed by CA · awaiting confirmation</p>
+                    </div>
+                  </div>
+                  <div className="mt-5 rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
+                    <p className="text-[12px] text-slate-400">Tax payable</p>
+                    <p className="text-[24px] font-bold text-white">₹ 2,48,600</p>
+                    <div className="mt-4 flex gap-2">
+                      <span
+                        className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark"
+                        style={
+                          confirmGlow > 0
+                            ? {
+                                boxShadow: `0 0 ${(confirmGlow * 22).toFixed(0)}px ${(confirmGlow * 3).toFixed(0)}px rgba(175,210,250,${(confirmGlow * 0.55).toFixed(2)})`,
+                              }
+                            : undefined
+                        }
+                      >
+                        Confirm &amp; file
+                      </span>
+                      <span className="rounded-lg border border-white/15 px-3 py-2.5 text-center text-[13px] font-medium text-slate-300">
+                        Review
+                      </span>
+                    </div>
+                    <p className="mt-3 text-center text-[11px] text-slate-500">
+                      You click. We never auto-submit.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <p className="mt-3 text-center text-[11px] text-slate-500">
-                You click. We never auto-submit.
-              </p>
             </div>
           </div>
-        </Reveal>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+const STATS = [
+  { target: 6, suffix: "", label: "Modules, one connected workspace" },
+  { target: 5, suffix: "", label: "Separate tools replaced by one login" },
+  { target: 100, suffix: "%", label: "Filings reviewed by a CA before submit" },
+  { target: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
+];
+
+// Chapter 4 — Visible. Pinned build-sequence: the four stats land one at a
+// time with their counters tied to scroll progress (not time), so the
+// numbers only move while the user is actively scrolling through them.
+function StatsStage() {
+  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(170);
+  return (
+    <div ref={wrapRef} className={pinnedActive ? "relative h-[170vh]" : "relative"}>
+      <div className={pinnedActive ? "sticky top-0 flex h-screen items-center overflow-hidden" : ""}>
+        <Section className="w-full bg-white">
+          <div style={riseIn(stageIn(progress, 0, 0.18))}>
+            <SectionHeading
+              title="The whole practice, finally visible"
+              subtitle="Deadlines, revenue, clients and filings — one screen, not five tabs."
+            />
+          </div>
+          <div className="mt-14 grid gap-8 rounded-3xl border border-ps-border bg-ps-bg p-10 sm:grid-cols-2 lg:grid-cols-4">
+            {STATS.map((s, i) => {
+              const cardStart = 0.16 + i * 0.1;
+              const cardIn = stageIn(progress, cardStart, cardStart + 0.22);
+              const countIn = stageIn(progress, cardStart + 0.05, cardStart + 0.3);
+              const value = Math.round(s.target * countIn);
+              return (
+                <div
+                  key={s.label}
+                  className="text-center"
+                  style={
+                    cardIn >= 1
+                      ? undefined
+                      : {
+                          opacity: cardIn,
+                          transform: `translateY(${(16 * (1 - cardIn)).toFixed(1)}px) scale(${(0.92 + cardIn * 0.08).toFixed(3)})`,
+                        }
+                  }
+                >
+                  <p className="text-[40px] font-bold tracking-tight text-brand tabular-nums md:text-[46px]">
+                    {value.toLocaleString("en-IN")}
+                    {s.suffix}
+                  </p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{s.label}</p>
+                </div>
+              );
+            })}
+          </div>
+          <div style={riseIn(stageIn(progress, 0.74, 0.96))}>
+            <div className="mt-10 text-center">
+              <Button href="/products" variant="secondary" className="btn-shine">
+                See everything inside PracticeSync
+                <ArrowRight size={16} />
+              </Button>
+            </div>
+          </div>
+        </Section>
       </div>
     </div>
   );
@@ -395,71 +491,41 @@ export default function HomePage() {
 
         {/* ── Chapter 3 — Trusted ──────────────────────────────────────── */}
         <div ref={trustedRef}>
-          <Section id="security" className="bg-brand-dark">
-            <TrustedCard />
-          </Section>
+          <TrustedStage />
         </div>
       </div>
 
       {/* ── Chapter 4 — Visible. Deliberately shifts to a light ground: the
           story's build-up is over, the rail has already faded out, and this
           is the "arrived, everything is clear" payoff. ─────────────────── */}
-      <Section className="bg-white">
-        <Reveal variant="blur">
-          <SectionHeading
-            title="The whole practice, finally visible"
-            subtitle="Deadlines, revenue, clients and filings — one screen, not five tabs."
-          />
-        </Reveal>
-        <div className="mt-14 grid gap-8 rounded-3xl border border-ps-border bg-ps-bg p-10 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { value: <CountUp to={6} duration={1200} />, label: "Modules, one connected workspace" },
-            { value: <CountUp to={5} duration={1200} />, label: "Separate tools replaced by one login" },
-            { value: <><CountUp to={100} duration={1600} />%</>, label: "Filings reviewed by a CA before submit" },
-            { value: <CountUp to={4} duration={1200} />, label: "Compliance domains — GST, ITR, TDS, MCA" },
-          ].map((s, i) => (
-            <Reveal key={s.label} variant="scale" delay={i * 100}>
-              <div className="text-center">
-                <p className="text-[40px] font-bold tracking-tight text-brand md:text-[46px]">{s.value}</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{s.label}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-        <Reveal delay={250}>
-          <div className="mt-10 text-center">
-            <Button href="/products" variant="secondary" className="btn-shine">
-              See everything inside PracticeSync
-              <ArrowRight size={16} />
-            </Button>
-          </div>
-        </Reveal>
-      </Section>
+      <StatsStage />
 
       {/* ── Testimonial ──────────────────────────────────────────────────── */}
       <Section className="bg-ps-bg">
-        <Reveal variant="blur">
-          <Card className="mx-auto max-w-3xl text-center">
-            <div className="flex justify-center gap-1 text-gold">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} size={18} />
-              ))}
-            </div>
-            <blockquote className="mt-5 text-[20px] font-medium leading-relaxed text-brand-dark md:text-[24px]">
-              “We shut down four subscriptions and a dozen spreadsheets. My team
-              finally sees every client&apos;s deadlines, books and documents in
-              one screen — and the AI catches mismatches before we file.”
-            </blockquote>
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-brand text-[14px] font-bold text-white">
-                RA
-              </span>
-              <div className="text-left">
-                <p className="text-[14px] font-bold text-brand-dark">CA Rohan Agarwal</p>
-                <p className="text-[13px] text-slate-500">Partner · Agarwal &amp; Co., Bengaluru</p>
+        <Reveal variant="scale">
+          <Tilt max={3}>
+            <Card className="mx-auto max-w-3xl text-center">
+              <div className="flex justify-center gap-1 text-gold">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star key={i} size={18} />
+                ))}
               </div>
-            </div>
-          </Card>
+              <blockquote className="mt-5 text-[20px] font-medium leading-relaxed text-brand-dark md:text-[24px]">
+                “We shut down four subscriptions and a dozen spreadsheets. My team
+                finally sees every client&apos;s deadlines, books and documents in
+                one screen — and the AI catches mismatches before we file.”
+              </blockquote>
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-brand text-[14px] font-bold text-white">
+                  RA
+                </span>
+                <div className="text-left">
+                  <p className="text-[14px] font-bold text-brand-dark">CA Rohan Agarwal</p>
+                  <p className="text-[13px] text-slate-500">Partner · Agarwal &amp; Co., Bengaluru</p>
+                </div>
+              </div>
+            </Card>
+          </Tilt>
         </Reveal>
       </Section>
 
@@ -469,11 +535,15 @@ export default function HomePage() {
         {...finalCtaGlow.handlers}
       >
         <div className="bg-grid absolute inset-0" />
-        <div className="aurora aurora-1 -left-32 -top-32 h-[420px] w-[420px] opacity-70" />
-        <div className="aurora aurora-3 -bottom-40 -right-32 h-[460px] w-[460px] opacity-70" />
+        <Parallax speed={0.08} className="pointer-events-none absolute inset-0">
+          <div className="aurora aurora-1 -left-32 -top-32 h-[420px] w-[420px] opacity-70" />
+        </Parallax>
+        <Parallax speed={-0.05} className="pointer-events-none absolute inset-0">
+          <div className="aurora aurora-3 -bottom-40 -right-32 h-[460px] w-[460px] opacity-70" />
+        </Parallax>
         <div ref={finalCtaGlow.ref} className="cursor-glow" aria-hidden="true" />
         <div className="container-ps relative py-24 text-center md:py-28">
-          <Reveal variant="blur">
+          <Reveal variant="scale">
             <h2 className="mx-auto max-w-2xl text-[30px] font-bold leading-tight tracking-tight md:text-[44px]">
               Bring your whole practice into one place
             </h2>
