@@ -1,26 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { Button, Section, SectionHeading, Card } from "@/components/ui";
-import { Reveal, CountUp, Tilt, Parallax, WordReveal, Marquee } from "@/components/motion";
+import { Button, Card, IconBadge, SectionHeading } from "@/components/ui";
+import { CountUp, Tilt, WordReveal } from "@/components/motion";
 import { Magnetic, useCursorGlow } from "@/components/Cursor";
-import { ProblemSolutionStory, ChapterRail, useSectionActive } from "@/components/StoryStage";
-import { usePinnedStage, stageIn, riseIn, slideIn } from "@/components/ScrollStage";
-import { useFlowColor, type FlowStop } from "@/components/ColorFlow";
+import { ScrollJack } from "@/components/ScrollJack";
+import { IntroLoader } from "@/components/IntroLoader";
+import { ThreeScene } from "@/components/ThreeScene";
+import { DiagonalSection } from "@/components/DiagonalSection";
+import { KineticLine, FocusReveal, ParallaxLabel, SectionReveal, ReactiveMarquee, RotatingWord } from "@/components/Kinetic";
+import { SiteFooter } from "@/components/SiteFooter";
+import { instrumentSerif, manrope } from "@/lib/fonts";
 import {
   ArrowRight,
   Check,
   Shield,
-  Sparkles,
   Lock,
-  Calendar,
   Star,
   Calculator,
   FileText,
   Receipt,
+  Building,
+  Bot,
   MessageCircle,
-  BookOpen,
 } from "@/components/icons";
 import { appLinks } from "@/lib/site";
 
@@ -39,80 +41,36 @@ const TICKER = [
   "Practice analytics",
 ];
 
-const DEADLINES = [
-  { t: "GSTR-3B — July", d: "20 Aug", c: "bg-amber-100 text-amber-700" },
-  { t: "GSTR-1 — July", d: "11 Aug", c: "bg-rose-100 text-rose-700" },
-  { t: "TDS 26Q — Q1", d: "31 Jul", c: "bg-emerald-100 text-emerald-700" },
-  { t: "Advance tax — Q2", d: "15 Sep", c: "bg-slate-100 text-slate-600" },
+const PAIN_POINTS = [
+  { name: "Tally", pain: "Ledgers, kept offline in a desktop app nobody else can reach.", icon: <Calculator size={20} /> },
+  { name: "ClearTax", pain: "GST filed on its own, in its own login, on its own timeline.", icon: <FileText size={20} /> },
+  { name: "Winman", pain: "ITR season means a third tool with a third password.", icon: <Receipt size={20} /> },
+  { name: "WhatsApp", pain: "Clients chasing deadlines on chat threads nobody can audit.", icon: <MessageCircle size={20} /> },
+  { name: "Excel", pain: "Everything that doesn't fit anywhere else, scattered across sheets.", icon: <Building size={20} /> },
 ];
 
-const SCATTER_TOOLS = [
-  { name: "Tally", pain: "Ledgers, kept offline", icon: <Calculator size={18} />, pos: "top-[12%] left-[9%] -rotate-6" },
-  { name: "ClearTax", pain: "GST filed on its own", icon: <FileText size={18} />, pos: "top-[15%] right-[11%] rotate-3" },
-  { name: "Winman", pain: "ITR, another login", icon: <Receipt size={18} />, pos: "bottom-[26%] left-[7%] rotate-[8deg]" },
-  { name: "WhatsApp", pain: "Clients chasing on chat", icon: <MessageCircle size={18} />, pos: "bottom-[15%] right-[9%] -rotate-[7deg]" },
-  { name: "Excel", pain: "Everything else, scattered", icon: <BookOpen size={18} />, pos: "bottom-[9%] left-[40%] rotate-2" },
+const MODULES = [
+  { icon: <FileText size={20} />, title: "GST & compliance", desc: "GSTR-1, GSTR-3B and GSTR-9 prepared and tracked against every due date, automatically." },
+  { icon: <Calculator size={20} />, title: "Accounting & books", desc: "Real ledgers and reconciliation in one workspace — no more offline Tally file." },
+  { icon: <Receipt size={20} />, title: "TDS & payroll", desc: "24Q/26Q returns, PF/ESI and payroll runs handled without a separate tool." },
+  { icon: <Building size={20} />, title: "ITR & MCA filings", desc: "Individual and corporate returns, ROC forms — one calendar, one workspace." },
+  { icon: <Bot size={20} />, title: "AI document intelligence", desc: "Invoices and statements extracted automatically, mismatches flagged before you file." },
+  { icon: <MessageCircle size={20} />, title: "Client portal", desc: "Secure client chat and document requests — replaces the WhatsApp thread entirely." },
 ];
 
-// Chapter 1 — the problem, stated plainly (deliberately no WordReveal here;
-// chapter 2's polished entrance is meant to feel like the "arrival").
-function ScatterChapter({ bg }: { bg?: string | null }) {
-  const glow = useCursorGlow();
-  return (
-    <div
-      className="relative flex h-full min-h-[94vh] flex-col justify-center overflow-hidden bg-brand-dark text-white"
-      style={bg ? { background: bg } : undefined}
-      {...glow.handlers}
-    >
-      <div className="bg-grid absolute inset-0" />
-      <div className="aurora aurora-1 -left-40 -top-48 h-[560px] w-[560px] opacity-70" />
-      <div className="aurora aurora-3 bottom-[-200px] left-1/3 h-[520px] w-[520px] opacity-60" />
-      <div className="bg-noise absolute inset-0" />
-      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+const STATS = [
+  { target: 6, suffix: "", label: "Modules, one connected workspace" },
+  { target: 5, suffix: "", label: "Separate tools replaced by one login" },
+  { target: 100, suffix: "%", label: "Filings reviewed by a CA before submit" },
+  { target: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
+];
 
-      {/* Decorative — the same "five scattered tools" point is already made
-          accessibly by the real heading/paragraph below, so screen readers
-          shouldn't have these read out as if they were separate content. */}
-      <div aria-hidden="true">
-        {SCATTER_TOOLS.map((tool) => (
-          <div
-            key={tool.name}
-            className={`absolute hidden w-[168px] rounded-2xl border border-white/12 bg-white/[0.05] p-3.5 shadow-modal backdrop-blur-md lg:block ${tool.pos}`}
-          >
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.07] text-rose-300/80">
-              {tool.icon}
-            </span>
-            <p className="mt-2.5 text-[13px] font-bold text-white">{tool.name}</p>
-            <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{tool.pain}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="container-ps relative py-20 text-center">
-        <span className="inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-[12.5px] font-medium text-rose-200/90 backdrop-blur-sm">
-          <span className="h-2 w-2 rounded-full bg-rose-400/80" />
-          Every CA firm runs like this
-        </span>
-        <h2 className="mx-auto mt-7 max-w-2xl text-[32px] font-bold leading-[1.15] tracking-tight md:text-[46px]">
-          Five tools. Five logins. One deadline falling through the cracks.
-        </h2>
-        <p className="mx-auto mt-5 max-w-md text-[15px] leading-relaxed text-slate-400 md:text-[16px]">
-          Compliance in one app, client chats in another, ledgers in a third —
-          and nothing talks to anything else.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// Chapter 2 — the settled hero. Unchanged from the previous build; it is now
-// simply the "arrival" state of the scroll-pinned convergence above it.
-function SettledHero({ bg }: { bg?: string | null }) {
+function Hero() {
   const glow = useCursorGlow();
   return (
     <section
-      className="relative flex min-h-[94vh] flex-col overflow-hidden bg-brand-dark text-white"
-      style={bg ? { background: bg } : undefined}
+      id="hero"
+      className="relative flex min-h-screen flex-col overflow-hidden bg-brand-dark text-white"
       {...glow.handlers}
     >
       <div className="bg-grid absolute inset-0" />
@@ -123,37 +81,42 @@ function SettledHero({ bg }: { bg?: string | null }) {
       <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-brand-dark to-transparent" />
 
-      <div className="container-ps relative grid flex-1 items-center gap-16 py-20 md:py-24 lg:grid-cols-[1.05fr_1fr]">
+      <div className="container-ps relative grid flex-1 items-center gap-16 py-28 md:py-32 lg:grid-cols-[1.05fr_1fr]">
         <div>
           <span
             className="fade-up inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-[12.5px] font-medium text-brand-light backdrop-blur-sm"
-            style={{ animationDelay: "80ms" }}
+            style={{ animationDelay: "1600ms" }}
           >
             <span className="pulse-dot h-2 w-2 rounded-full bg-emerald-400" />
             The AI-first platform for Indian CA firms
           </span>
 
-          <h1 className="mt-7 text-[42px] font-bold leading-[1.04] tracking-tight md:text-[64px]">
-            <WordReveal text="Run your entire practice" startDelay={200} stagger={80} />
+          <h1 className="mt-7 font-display text-[44px] font-normal leading-[1.05] tracking-tight md:text-[68px]">
+            <WordReveal text="Run your entire practice" startDelay={1750} stagger={60} />
             <br />
             <WordReveal
               text="on one intelligent platform"
-              startDelay={620}
-              stagger={80}
+              startDelay={2050}
+              stagger={60}
               accent={["one", "intelligent", "platform"]}
+              className="italic"
             />
           </h1>
 
           <p
             className="fade-up mt-6 max-w-xl text-[17px] leading-relaxed text-slate-300 md:text-[18px]"
-            style={{ animationDelay: "1050ms" }}
+            style={{ animationDelay: "2350ms" }}
           >
-            PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a
-            single AI-first workspace — compliance, accounting, payroll,
-            clients and documents, working as one.
+            PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single
+            AI-first workspace for{" "}
+            <RotatingWord
+              words={["GST filings", "TDS returns", "client books", "payroll runs", "MCA filings"]}
+              className="font-semibold text-white"
+            />
+            .
           </p>
 
-          <div className="fade-up mt-9 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "1200ms" }}>
+          <div className="fade-up mt-9 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "2500ms" }}>
             <Magnetic>
               <a
                 href={appLinks.signup}
@@ -173,7 +136,7 @@ function SettledHero({ bg }: { bg?: string | null }) {
 
           <div
             className="fade-up mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-slate-400"
-            style={{ animationDelay: "1350ms" }}
+            style={{ animationDelay: "2620ms" }}
           >
             <span className="inline-flex items-center gap-1.5">
               <Check size={15} className="text-emerald-400" /> No credit card needed
@@ -187,59 +150,14 @@ function SettledHero({ bg }: { bg?: string | null }) {
           </div>
         </div>
 
-        <Parallax speed={0.05} className="relative hidden lg:block">
+        <div className="relative hidden h-[520px] lg:block">
           <div className="pointer-events-none absolute left-1/2 top-1/2 h-[130%] w-[130%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(175,210,250,0.14)_0%,rgba(175,210,250,0.05)_45%,transparent_70%)]" />
 
-          <Tilt max={6}>
-            <div className="fade-up relative rounded-3xl border border-white/12 bg-white/[0.05] p-3 shadow-modal backdrop-blur-md" style={{ animationDelay: "500ms" }}>
-              <div className="rounded-2xl bg-white p-6 text-brand-dark">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      Live · Compliance calendar
-                    </p>
-                    <p className="mt-0.5 text-[16px] font-bold">Upcoming deadlines</p>
-                  </div>
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand/[0.06] text-brand">
-                    <Calendar size={18} />
-                  </span>
-                </div>
-
-                <div className="mt-5 space-y-2.5">
-                  {DEADLINES.map((row, i) => (
-                    <div
-                      key={row.t}
-                      className="fade-up flex items-center justify-between rounded-xl border border-ps-border bg-ps-bg px-3.5 py-3"
-                      style={{ animationDelay: `${800 + i * 130}ms` }}
-                    >
-                      <span className="text-[13px] font-medium">{row.t}</span>
-                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${row.c}`}>
-                        {row.d}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  className="fade-up mt-5 flex items-center gap-3 rounded-xl bg-gold-surface px-3.5 py-3 ring-1 ring-gold/25"
-                  style={{ animationDelay: "1400ms" }}
-                >
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gold/15 text-gold">
-                    <Sparkles size={16} />
-                  </span>
-                  <p className="text-[12.5px] leading-snug text-brand-dark">
-                    <span className="font-semibold">AI insight:</span> 3 clients have
-                    GSTR-1 vs 3B mismatches to review before filing.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Tilt>
+          <ThreeScene className="absolute inset-0 h-full w-full" />
 
           <div
-            className="fade-up floaty absolute -right-8 -top-9 rounded-2xl border border-white/12 bg-brand-dark/85 px-4 py-3 shadow-modal backdrop-blur-md"
-            style={{ animationDelay: "1550ms" }}
+            className="fade-up floaty absolute -right-4 top-6 rounded-2xl border border-white/12 bg-brand-dark/85 px-4 py-3 shadow-modal backdrop-blur-md"
+            style={{ animationDelay: "2700ms" }}
           >
             <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               <Shield size={13} className="text-emerald-400" />
@@ -251,8 +169,8 @@ function SettledHero({ bg }: { bg?: string | null }) {
           </div>
 
           <div
-            className="fade-up floaty-2 absolute -bottom-9 -left-10 flex items-center gap-3 rounded-2xl border border-white/12 bg-brand-dark/85 px-4 py-3.5 shadow-modal backdrop-blur-md"
-            style={{ animationDelay: "1700ms" }}
+            className="fade-up floaty-2 absolute -bottom-2 -left-6 flex items-center gap-3 rounded-2xl border border-white/12 bg-brand-dark/85 px-4 py-3.5 shadow-modal backdrop-blur-md"
+            style={{ animationDelay: "2850ms" }}
           >
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
               <Check size={17} />
@@ -262,18 +180,18 @@ function SettledHero({ bg }: { bg?: string | null }) {
               <p className="text-[11.5px] text-slate-400">Confirmed by CA · 2 min ago</p>
             </div>
           </div>
-        </Parallax>
+        </div>
       </div>
 
       <div className="relative border-t border-white/[0.08] py-5">
-        <Marquee duration={38}>
+        <ReactiveMarquee>
           {TICKER.map((item) => (
             <span key={item} className="mx-5 flex items-center gap-5 whitespace-nowrap text-[13px] font-medium text-slate-500">
               {item}
               <span className="h-1 w-1 rounded-full bg-slate-600" />
             </span>
           ))}
-        </Marquee>
+        </ReactiveMarquee>
       </div>
 
       <div className="scroll-cue pointer-events-none absolute bottom-24 left-1/2 hidden -translate-x-1/2 lg:block">
@@ -285,84 +203,122 @@ function SettledHero({ bg }: { bg?: string | null }) {
   );
 }
 
-// Chapter 3 — Trusted. Pinned build-sequence: rather than one static block
-// that fades in on entry, the copy lands line by line and the mockup card
-// slides in as the user scrolls through — keeping the "advancing through a
-// deck" pacing going after the opening convergence, instead of dropping back
-// to a plain page the moment chapter 2 ends.
-function TrustedStage({
-  bg,
-  wrapRefOut,
-}: {
-  bg?: string | null;
-  wrapRefOut?: RefObject<HTMLDivElement>;
-}) {
-  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(190, wrapRefOut);
-  const glow = useCursorGlow();
-  // A one-shot glow ramp on the "Confirm & file" chip near the end of the
-  // pin — the payoff beat, not a looping effect, so it settles at a fixed
-  // resting glow rather than pulsing forever once fully arrived.
-  const confirmGlow = stageIn(progress, 0.8, 1);
-
+function Problem() {
   return (
-    <div ref={wrapRef} className={pinnedActive ? "relative h-[190vh]" : "relative"}>
-      <div className={pinnedActive ? "sticky top-0 flex h-screen items-center overflow-hidden" : ""}>
-        <Section id="security" className="w-full bg-brand-dark" style={bg ? { background: bg } : undefined}>
-          <div
-            className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
-            {...glow.handlers}
-          >
-            <div className="bg-grid absolute inset-0 opacity-70" />
-            <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
-            <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-            <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
-              <div>
-                <div className="flex" style={riseIn(stageIn(progress, 0, 0.15))}>
-                  <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
-                    <Lock size={15} /> Control &amp; trust
-                  </span>
-                </div>
-                <h2
-                  className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-white md:text-[38px]"
-                  style={riseIn(stageIn(progress, 0.06, 0.26))}
-                >
-                  Nothing is filed without your click
-                </h2>
-                <p
-                  className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300"
-                  style={riseIn(stageIn(progress, 0.16, 0.36))}
-                >
+    <DiagonalSection id="story" numeral="02" seam="rising-right" className="bg-ps-bg">
+      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
+        <div className="flex justify-center">
+          <span className="inline-flex items-center gap-2.5 rounded-full border border-rose-200 bg-rose-50 px-4 py-1.5 text-[12.5px] font-medium text-rose-600">
+            <span className="h-2 w-2 rounded-full bg-rose-400" />
+            Every CA firm runs like this
+          </span>
+        </div>
+        <h2 className="mx-auto mt-6 max-w-2xl text-center font-display text-[32px] font-normal leading-[1.15] tracking-tight text-brand-dark md:text-[48px]">
+          <KineticLine text="Five tools. Five logins." className="text-center" />
+          <KineticLine text="One deadline falling through the cracks." italic className="mt-1 text-center text-brand" />
+        </h2>
+        <FocusReveal className="mx-auto mt-5 max-w-md text-center text-[15px] leading-relaxed text-slate-500 md:text-[16px]">
+          <p>
+            Compliance in one app, client chats in another, ledgers in a third —
+            and nothing talks to anything else.
+          </p>
+        </FocusReveal>
+
+        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+          {PAIN_POINTS.map((tool, i) => (
+            <ParallaxLabel key={tool.name} factor={i % 2 === 0 ? 0.03 : -0.03}>
+              <Card className="h-full">
+                <span className="grid h-10 w-10 place-items-center rounded-lg bg-rose-50 text-rose-500">
+                  {tool.icon}
+                </span>
+                <p className="mt-4 text-[15px] font-bold text-brand-dark">{tool.name}</p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">{tool.pain}</p>
+              </Card>
+            </ParallaxLabel>
+          ))}
+        </div>
+      </div>
+    </DiagonalSection>
+  );
+}
+
+function Platform() {
+  return (
+    <DiagonalSection numeral="03" seam="rising-left" className="bg-white">
+      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
+        <SectionHeading
+          eyebrow="One platform"
+          title="Every module your practice needs, already connected"
+          subtitle="No exports, no re-keying, no second login — GST, books, payroll and clients share one source of truth."
+        />
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {MODULES.map((m) => (
+            <FocusReveal key={m.title}>
+              <Card className="h-full">
+                <span className="icon-pop inline-flex">
+                  <IconBadge>{m.icon}</IconBadge>
+                </span>
+                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">{m.title}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{m.desc}</p>
+              </Card>
+            </FocusReveal>
+          ))}
+        </div>
+      </div>
+    </DiagonalSection>
+  );
+}
+
+function Trust() {
+  const glow = useCursorGlow();
+  return (
+    <DiagonalSection id="security" numeral="04" seam="rising-right" className="bg-brand-dark text-white">
+      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
+        <div
+          className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
+          {...glow.handlers}
+        >
+          <div className="bg-grid absolute inset-0 opacity-70" />
+          <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
+          <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+          <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
+            <div>
+              <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
+                <Lock size={15} /> Control &amp; trust
+              </span>
+              <h2 className="mt-4 font-display text-[30px] font-normal leading-tight tracking-tight md:text-[42px]">
+                <KineticLine text="Nothing is filed without your click" />
+              </h2>
+              <FocusReveal className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
+                <p>
                   AI prepares the working papers and flags what needs attention —
                   but the CA always makes the final call. No return, no challan and
                   no MCA form is ever submitted to a government portal
                   automatically.
                 </p>
-                <ul className="mt-6 space-y-3">
-                  {[
-                    "Explicit CA confirmation on every government submission",
-                    "Full audit log of who reviewed and filed what",
-                    "Role-based access, MFA and data hosted in India",
-                  ].map((point, i) => (
-                    <li
-                      key={point}
-                      className="flex items-start gap-3 text-[15px] text-slate-200"
-                      style={riseIn(stageIn(progress, 0.32 + i * 0.09, 0.5 + i * 0.09))}
-                    >
+              </FocusReveal>
+              <ul className="mt-6 space-y-3">
+                {[
+                  "Explicit CA confirmation on every government submission",
+                  "Full audit log of who reviewed and filed what",
+                  "Role-based access, MFA and data hosted in India",
+                ].map((point) => (
+                  <FocusReveal key={point}>
+                    <li className="flex items-start gap-3 text-[15px] text-slate-200">
                       <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" />
                       {point}
                     </li>
-                  ))}
-                </ul>
-              </div>
+                  </FocusReveal>
+                ))}
+              </ul>
+            </div>
 
-              <div style={slideIn(stageIn(progress, 0.4, 0.62), 48)}>
+            <FocusReveal>
+              <Tilt max={6}>
                 <div className="rounded-2xl border border-white/10 bg-brand-dark/60 p-6 backdrop-blur-sm">
                   <div className="flex items-center gap-3">
                     <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                        <path d="m9 12 2 2 4-4" />
-                      </svg>
+                      <Shield size={20} />
                     </span>
                     <div>
                       <p className="text-[14px] font-bold text-white">GSTR-3B ready to file</p>
@@ -373,16 +329,7 @@ function TrustedStage({
                     <p className="text-[12px] text-slate-400">Tax payable</p>
                     <p className="text-[24px] font-bold text-white">₹ 2,48,600</p>
                     <div className="mt-4 flex gap-2">
-                      <span
-                        className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark"
-                        style={
-                          confirmGlow > 0
-                            ? {
-                                boxShadow: `0 0 ${(confirmGlow * 22).toFixed(0)}px ${(confirmGlow * 3).toFixed(0)}px rgba(175,210,250,${(confirmGlow * 0.55).toFixed(2)})`,
-                              }
-                            : undefined
-                        }
-                      >
+                      <span className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark">
                         Confirm &amp; file
                       </span>
                       <span className="rounded-lg border border-white/15 px-3 py-2.5 text-center text-[13px] font-medium text-slate-300">
@@ -394,169 +341,49 @@ function TrustedStage({
                     </p>
                   </div>
                 </div>
-              </div>
-            </div>
+              </Tilt>
+            </FocusReveal>
           </div>
-        </Section>
-      </div>
-    </div>
-  );
-}
-
-const STATS = [
-  { target: 6, suffix: "", label: "Modules, one connected workspace" },
-  { target: 5, suffix: "", label: "Separate tools replaced by one login" },
-  { target: 100, suffix: "%", label: "Filings reviewed by a CA before submit" },
-  { target: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
-];
-
-// Chapter 4 — Visible. Pinned build-sequence: the four stats land one at a
-// time with their counters tied to scroll progress (not time), so the
-// numbers only move while the user is actively scrolling through them.
-function StatsStage({
-  bg,
-  wrapRefOut,
-}: {
-  bg?: string | null;
-  wrapRefOut?: RefObject<HTMLDivElement>;
-}) {
-  const { wrapRef, pinnedActive, progress } = usePinnedStage<HTMLDivElement>(170, wrapRefOut);
-  return (
-    <div ref={wrapRef} className={pinnedActive ? "relative h-[170vh]" : "relative"}>
-      <div className={pinnedActive ? "sticky top-0 flex h-screen items-center overflow-hidden" : ""}>
-        <Section className="w-full bg-white" style={bg ? { background: bg } : undefined}>
-          <div style={riseIn(stageIn(progress, 0, 0.18))}>
-            <SectionHeading
-              title="The whole practice, finally visible"
-              subtitle="Deadlines, revenue, clients and filings — one screen, not five tabs."
-            />
-          </div>
-          <div className="mt-14 grid gap-8 rounded-3xl border border-ps-border bg-ps-bg p-10 sm:grid-cols-2 lg:grid-cols-4">
-            {STATS.map((s, i) => {
-              const cardStart = 0.16 + i * 0.1;
-              const cardIn = stageIn(progress, cardStart, cardStart + 0.22);
-              const countIn = stageIn(progress, cardStart + 0.05, cardStart + 0.3);
-              const value = Math.round(s.target * countIn);
-              return (
-                <div
-                  key={s.label}
-                  className="text-center"
-                  style={
-                    cardIn >= 1
-                      ? undefined
-                      : {
-                          opacity: cardIn,
-                          transform: `translateY(${(16 * (1 - cardIn)).toFixed(1)}px) scale(${(0.92 + cardIn * 0.08).toFixed(3)})`,
-                        }
-                  }
-                >
-                  <p className="text-[40px] font-bold tracking-tight text-brand tabular-nums md:text-[46px]">
-                    {value.toLocaleString("en-IN")}
-                    {s.suffix}
-                  </p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{s.label}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div style={riseIn(stageIn(progress, 0.74, 0.96))}>
-            <div className="mt-10 text-center">
-              <Button href="/products" variant="secondary" className="btn-shine">
-                See everything inside PracticeSync
-                <ArrowRight size={16} />
-              </Button>
-            </div>
-          </div>
-        </Section>
-      </div>
-    </div>
-  );
-}
-
-// Background stops for useFlowColor, in document order. Consecutive stops
-// with the same color hold flat (zero visible drift) across whatever
-// content sits between them, so this only needs one entry per section
-// boundary that's actually navy/white/etc — not one per section.
-const NAVY: [number, number, number] = [13, 22, 53]; // brand-dark
-const WHITE: [number, number, number] = [255, 255, 255];
-const PS_BG: [number, number, number] = [248, 250, 252];
-const BRAND: [number, number, number] = [24, 35, 80]; // brand (final CTA)
-
-export default function HomePage() {
-  const [activeChapter, setActiveChapter] = useState(0);
-  const trustedRef = useSectionActive<HTMLDivElement>(setActiveChapter, 2);
-  const finalCtaGlow = useCursorGlow();
-
-  // The rail's job ends when the story does — visible exactly while any part
-  // of the chapters 1–3 wrapper is on screen, not derived from activeChapter
-  // (which has no event that ever marks "chapter 4 reached" to turn it off).
-  const storyRef = useRef<HTMLDivElement>(null);
-  const [storyVisible, setStoryVisible] = useState(false);
-  useEffect(() => {
-    const el = storyRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(
-      (entries) => setStoryVisible(entries.some((e) => e.isIntersecting)),
-      { threshold: 0 }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  // Refs mark the boundary points useFlowColor interpolates between. Pinned
-  // stages (Trusted, Stats) are measured via their own outer wrapRef rather
-  // than anything inside their sticky inner content — a sticky element's own
-  // rect.top stays pinned mid-viewport for as long as it's active, which
-  // isn't a useful "how far down the real document is this" signal; the
-  // outer wrapper (h-[Nvh] while pinned, natural height while stacked)
-  // always reflects true document position in both modes.
-  const trustedWrapRef = useRef<HTMLDivElement>(null);
-  const statsWrapRef = useRef<HTMLDivElement>(null);
-  const testimonialRef = useRef<HTMLDivElement>(null);
-  const finalCtaRef = useRef<HTMLDivElement>(null);
-
-  // TrustedStage/StatsStage and Testimonial/FinalCTA sit back-to-back with
-  // zero gap between them, so a stop pair placed exactly at that shared
-  // boundary would interpolate over zero distance (an instant cut, not a
-  // blend). The +-120px offsets borrow a slice of each section's own
-  // padding as a real transition zone instead — see FlowStop's offsetPx.
-  const flowColor = useFlowColor([
-    { ref: storyRef, rgb: NAVY },
-    { ref: trustedWrapRef, rgb: NAVY, edge: "bottom", offsetPx: -120 },
-    { ref: statsWrapRef, rgb: WHITE, offsetPx: 120 },
-    { ref: testimonialRef, rgb: PS_BG, edge: "bottom", offsetPx: -120 },
-    { ref: finalCtaRef, rgb: BRAND, offsetPx: 120 },
-    { ref: finalCtaRef, rgb: NAVY, edge: "bottom" },
-  ]);
-
-  return (
-    <>
-      <ChapterRail active={activeChapter} visible={storyVisible} />
-
-      {/* ── Chapters 1–3: the story ─────────────────────────────────────── */}
-      <div id="story" ref={storyRef}>
-        <ProblemSolutionStory scatter={<ScatterChapter bg={flowColor} />} onActiveChange={setActiveChapter}>
-          <SettledHero bg={flowColor} />
-        </ProblemSolutionStory>
-
-        {/* ── Chapter 3 — Trusted ──────────────────────────────────────── */}
-        <div ref={trustedRef}>
-          <TrustedStage bg={flowColor} wrapRefOut={trustedWrapRef} />
         </div>
       </div>
+    </DiagonalSection>
+  );
+}
 
-      {/* ── Chapter 4 — Visible. Deliberately shifts to a light ground: the
-          story's build-up is over, the rail has already faded out, and this
-          is the "arrived, everything is clear" payoff. ─────────────────── */}
-      <StatsStage bg={flowColor} wrapRefOut={statsWrapRef} />
+function Stats() {
+  return (
+    <DiagonalSection numeral="05" seam="rising-left" className="bg-white">
+      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
+        <SectionHeading
+          title="The whole practice, finally visible"
+          subtitle="Deadlines, revenue, clients and filings — one screen, not five tabs."
+        />
+        <SectionReveal className="mt-14 grid gap-8 rounded-3xl border border-ps-border bg-ps-bg p-10 sm:grid-cols-2 lg:grid-cols-4">
+          {STATS.map((s) => (
+            <div key={s.label} className="text-center">
+              <p className="text-[40px] font-bold tracking-tight text-brand md:text-[46px]">
+                <CountUp to={s.target} suffix={s.suffix} duration={1400} />
+              </p>
+              <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{s.label}</p>
+            </div>
+          ))}
+        </SectionReveal>
+        <div className="mt-10 text-center">
+          <Button href="/products" variant="secondary" className="btn-shine">
+            See everything inside PracticeSync
+            <ArrowRight size={16} />
+          </Button>
+        </div>
+      </div>
+    </DiagonalSection>
+  );
+}
 
-      {/* ── Testimonial ──────────────────────────────────────────────────── */}
-      <Section
-        ref={testimonialRef}
-        className="bg-ps-bg"
-        style={flowColor ? { background: flowColor } : undefined}
-      >
-        <Reveal variant="scale">
+function Testimonial() {
+  return (
+    <DiagonalSection numeral="06" seam="rising-right" className="bg-ps-bg">
+      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
+        <FocusReveal>
           <Tilt max={3}>
             <Card className="mx-auto max-w-3xl text-center">
               <div className="flex justify-center gap-1 text-gold">
@@ -580,35 +407,36 @@ export default function HomePage() {
               </div>
             </Card>
           </Tilt>
-        </Reveal>
-      </Section>
+        </FocusReveal>
+      </div>
+    </DiagonalSection>
+  );
+}
 
-      {/* ── Final CTA ────────────────────────────────────────────────────── */}
-      <section
-        ref={finalCtaRef}
-        className="relative overflow-hidden bg-brand text-white"
-        style={flowColor ? { background: flowColor } : undefined}
-        {...finalCtaGlow.handlers}
-      >
+function FinalCTA() {
+  const glow = useCursorGlow();
+  return (
+    <DiagonalSection numeral="07" seam="rising-left" className="bg-brand text-white">
+      <div className="relative" {...glow.handlers}>
         <div className="bg-grid absolute inset-0" />
-        <Parallax speed={0.08} className="pointer-events-none absolute inset-0">
+        <ParallaxLabel factor={0.04} className="pointer-events-none absolute inset-0">
           <div className="aurora aurora-1 -left-32 -top-32 h-[420px] w-[420px] opacity-70" />
-        </Parallax>
-        <Parallax speed={-0.05} className="pointer-events-none absolute inset-0">
+        </ParallaxLabel>
+        <ParallaxLabel factor={-0.03} className="pointer-events-none absolute inset-0">
           <div className="aurora aurora-3 -bottom-40 -right-32 h-[460px] w-[460px] opacity-70" />
-        </Parallax>
-        <div ref={finalCtaGlow.ref} className="cursor-glow" aria-hidden="true" />
-        <div className="container-ps relative py-24 text-center md:py-28">
-          <Reveal variant="scale">
-            <h2 className="mx-auto max-w-2xl text-[30px] font-bold leading-tight tracking-tight md:text-[44px]">
+        </ParallaxLabel>
+        <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+        <div className="container-ps relative pt-32 pb-24 text-center md:pt-40 md:pb-28">
+          <FocusReveal>
+            <h2 className="mx-auto max-w-2xl font-display text-[30px] font-normal leading-tight tracking-tight md:text-[46px]">
               Bring your whole practice into one place
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
               Start a free trial today, or talk to us about moving your firm across
               from Tally, ClearTax or Winman.
             </p>
-          </Reveal>
-          <Reveal delay={150}>
+          </FocusReveal>
+          <FocusReveal>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Magnetic>
                 <a
@@ -632,9 +460,27 @@ export default function HomePage() {
                 Log in here
               </Link>
             </p>
-          </Reveal>
+          </FocusReveal>
         </div>
-      </section>
-    </>
+      </div>
+    </DiagonalSection>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
+      <IntroLoader onExit={() => {}} />
+      <ScrollJack>
+        <Hero />
+        <Problem />
+        <Platform />
+        <Trust />
+        <Stats />
+        <Testimonial />
+        <FinalCTA />
+        <SiteFooter />
+      </ScrollJack>
+    </div>
   );
 }

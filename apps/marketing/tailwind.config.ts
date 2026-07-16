@@ -34,6 +34,14 @@ const config: Config = {
         "card-hover": "0 10px 40px rgba(24,35,80,0.12)",
         modal: "0 20px 60px rgba(24,35,80,0.20)",
       },
+      // Home-page-only typefaces (cinematic rebuild). The CSS vars only get
+      // a real value where app/(site)/page.tsx's next/font/google loaders
+      // are actually mounted — everywhere else these fall back to the
+      // generic keyword, matching the site-wide Inter body font untouched.
+      fontFamily: {
+        display: ["var(--font-instrument-serif)", "serif"],
+        manrope: ["var(--font-manrope)", "sans-serif"],
+      },
       maxWidth: {
         content: "1200px",
       },

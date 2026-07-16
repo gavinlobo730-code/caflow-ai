@@ -7,7 +7,7 @@ import { usePrefersReducedMotion } from "./motion";
  * Cursor-driven polish for the marketing site: a custom trailing cursor, a
  * magnetic-pull wrapper for primary buttons, and a soft glow that follows the
  * pointer across dark sections. Everything here is gated on `(pointer: fine)`
- * — checked once via matchMedia, same idiom StoryStage.tsx uses for its own
+ * — checked once via matchMedia, same idiom ScrollJack.tsx uses for its own
  * lg-breakpoint gate — so touch devices never attach a single listener or pay
  * for any of this; the desktop-only "delight" layer costs nothing on mobile,
  * which is most of this site's real traffic. Everything also no-ops under
