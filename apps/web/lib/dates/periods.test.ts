@@ -57,10 +57,15 @@ test("custom: open-ended from/to fall back to a wide bound", () => {
   assert.deepEqual(resolvePeriodRange("custom", FY, { from: "", to: "2026-06-30" }, TODAY), { start: "1900-01-01", end: "2026-06-30" });
 });
 
+test("all_time resolves to the same wide bound custom falls back to", () => {
+  assert.deepEqual(resolvePeriodRange("all_time", FY, { from: "", to: "" }, TODAY), { start: "1900-01-01", end: "2999-12-31" });
+});
+
 test("periodOptionLabel resolves FY-dependent labels", () => {
   assert.equal(periodOptionLabel("this_fy", FY), "This Financial Year (FY 2026-27)");
   assert.equal(periodOptionLabel("last_fy", FY), "Last Financial Year (FY 2025-26)");
   assert.equal(periodOptionLabel("today", FY), "Today");
+  assert.equal(periodOptionLabel("all_time", FY), "All Time");
 });
 
 // ── formatRangeLabel ─────────────────────────────────────────────────────
@@ -116,4 +121,17 @@ test("yearly split of a 2-year custom range yields 2 FY columns, each clipped", 
 test("a custom range's 'total' label shows the actual dates, not a preset name", () => {
   const cols = splitPeriodColumns("custom", FY, { from: "2026-06-01", to: "2026-06-30" }, "total", TODAY);
   assert.equal(cols[0].label, "1 Jun 2026 – 30 Jun 2026");
+});
+
+test("all_time collapses to a single 'All Time' column even when Monthly/Quarterly is requested — a 1900-2999 span split by month would be 13,000+ columns", () => {
+  for (const granularity of ["month", "quarter", "year"] as const) {
+    const cols = splitPeriodColumns("all_time", FY, { from: "", to: "" }, granularity, TODAY);
+    assert.equal(cols.length, 1);
+    assert.equal(cols[0].label, "All Time");
+  }
+});
+
+test("an accidentally wide custom range (not just all_time) also collapses rather than generating a huge column count", () => {
+  const cols = splitPeriodColumns("custom", FY, { from: "1950-01-01", to: "2026-01-01" }, "month", TODAY);
+  assert.equal(cols.length, 1);
 });
