@@ -19,7 +19,10 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toCsv } from "@/lib/table/process";
 import type { BulkAction, Column, FilterDef, SortState } from "@/lib/table/types";
 
-const PAGE_SIZES = [25, 50, 100, 250];
+// 1000 matches lib/supabase/selectAll's own page size — the largest page a
+// caller can pick still corresponds to exactly one fetched page of data, so
+// picking it never requires more data than what's already loaded client-side.
+const PAGE_SIZES = [25, 50, 100, 250, 1000];
 
 export interface DataTableProps<T> {
   data: T[];
