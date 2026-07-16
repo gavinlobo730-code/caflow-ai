@@ -11,10 +11,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.invoices import PurchasePaymentIn
+from models.accounting import JournalReversalIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from services import reversal_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -409,7 +411,12 @@ def create_purchase_payment(
         try:
             # Auto-journal
             from services.phase2_journal_service import phase2_journal_service
+            # task #102: pre-generated (matching create_receipt_core's convention)
+            # so the journal can carry source_type/source_id back to this payment,
+            # for reverse_payment / any future source_id-keyed lookup.
+            payment_id = str(uuid.uuid4())
             payment_dict = {
+                "id": payment_id,
                 "payment_no": payment_no,
                 "payment_date": payment_date,
                 "amount_paise": amount_paise,
@@ -419,6 +426,7 @@ def create_purchase_payment(
             )
 
             payload = {
+                "id": payment_id,
                 "firm_id": firm_id,
                 "client_id": client_id,
                 "vendor_id": vendor_id,
@@ -568,16 +576,21 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     fy = _current_fy()
     seq = _next_payment_seq(db, firm_id, fy)
     payment_no = f"VPMT-{fy}-{seq:04d}"
+    # task #102: pre-generated so the journal can carry source_type/source_id
+    # back to this payment, for reverse_payment / any future source_id lookup.
+    payment_id = str(uuid.uuid4())
     entry_id = K._create_journal(
         db=db, firm_id=firm_id, client_id=client_id, entry_date=payment_date,
         reference_no=payment_no, narration=f"Vendor payment {payment_no} (foreign)",
         entry_type="Payment", lines=lines, created_by=(actor or {}).get("id"),
+        source_type="purchase_payment", source_id=payment_id,
         txn_currency=ccy, exchange_rate=R1, rate_source=r1_source, rate_type="booking",
         rate_date=str(payment_date)[:10], rate_selected_by=(actor or {}).get("id"),
         rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
     )
 
     payload = {
+        "id": payment_id,
         "firm_id": firm_id, "client_id": client_id, "vendor_id": vendor_id,
         "purchase_bill_id": bill_id, "payment_no": payment_no, "payment_date": payment_date,
         "amount_paise": cash_base, "payment_mode": data.get("payment_mode", "bank"),
@@ -591,11 +604,39 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
         db, firm_id, payload, entry_id, (actor or {}).get("id"),
     )
 
-    new_paid = int(bill.get("paid_paise") or 0) + ap_relieved
-    new_paid_txn = int(bill.get("paid_txn") or 0) + f
-    status = "paid" if new_paid_txn >= int(bill.get("txn_net_payable") or 0) else "partially_paid"
-    (db.table("purchase_bills").update({"paid_paise": new_paid, "paid_txn": new_paid_txn, "status": status})
-     .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
+    # task #102: this used to blindly overwrite paid_paise/paid_txn/status from
+    # the bill read taken at the TOP of this function (before validation, the
+    # rate lookup and journal posting all ran) — no CAS guard, no re-read. Two
+    # concurrent foreign payments on the same bill both pass the earlier
+    # `f > foreign_out` check against the same stale snapshot, both post their
+    # journals, and whichever writes here LAST wins outright — the other
+    # payment's paid_paise/paid_txn contribution is silently clobbered, not
+    # merely overpaid. Mirrors create_foreign_receipt's already-reviewed CAS
+    # retry (re-validate against FRESH state on every attempt; a genuine
+    # concurrent race surfaces as 422/409, never a silent overwrite).
+    for _attempt in range(6):
+        cur = (db.table("purchase_bills").select("paid_paise, paid_txn, txn_net_payable")
+               .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+               .limit(1).execute().data or [None])[0]
+        if not cur:
+            break
+        raw_paid = cur.get("paid_paise")  # CAS guard must match this exact stored value (possibly NULL)
+        old_paid = int(raw_paid or 0)
+        old_paid_txn = int(cur.get("paid_txn") or 0)
+        fresh_new_paid_txn = old_paid_txn + f
+        txn_net_payable = int(cur.get("txn_net_payable") or 0)
+        if fresh_new_paid_txn > txn_net_payable:
+            raise HTTPException(status_code=422, detail=f"Bill {bill_id}: payment would exceed the bill's outstanding")
+        fresh_new_paid = old_paid + ap_relieved
+        fresh_status = "paid" if fresh_new_paid_txn >= txn_net_payable else "partially_paid"
+        upd = (db.table("purchase_bills")
+               .update({"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status})
+               .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+               .eq("paid_paise", raw_paid).execute())
+        if upd.data:
+            break
+    else:
+        raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
 
     if fx_diff != 0:
         db.table("fx_adjustments").insert({
@@ -611,43 +652,108 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     return {**payment, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
 
 
-def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, paid_paise: int = 0) -> None:
+def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, paid_paise: int = 0,
+                                max_retries: int = 5) -> None:
     """Recompute a purchase bill's paid_paise + status from ALL recorded payments so
     the AP sub-ledger reconciles to the GL (H11). The current payment row is already
     inserted, so we sum from the DB (never add it again — the old code double-counted).
-    Firm+client scoped so a vendor payment can never read/mutate another tenant's bill."""
+    Firm+client scoped so a vendor payment can never read/mutate another tenant's bill.
+
+    task #102: this used to write the recomputed sum UNCONDITIONALLY, racing with a
+    CONCURRENT payment's _claim_bill_outstanding CAS bump on this exact same bill.
+    Sequence: P1 claims (bill.paid_paise = X+amt1) -> P2 claims, reading P1's fresh
+    total (bill.paid_paise = X+amt1+amt2) -> P1 inserts its payment row -> P1 reaches
+    HERE and sums purchase_payments (P2's row isn't inserted yet) = X+amt1, then
+    blindly overwrites bill.paid_paise = X+amt1 — silently erasing P2's amt2 that was
+    already correctly CAS-claimed. A plain "guard on the column we're about to
+    overwrite" CAS doesn't fix this: the new value comes from a DIFFERENT source
+    (summing purchase_payments) than the guarded column (purchase_bills.paid_paise),
+    so a same-value CAS match doesn't imply the recomputed sum is current. Since
+    paid_paise only legitimately increases today (no reversal path decrements it —
+    task #151), never write a sum LOWER than what's already there; retry so a
+    concurrent claim visible in the guard read but not yet reflected in the payments
+    sum converges once that row lands.
+    """
     try:
-        rows = (
-            db.table("purchase_bills")
-            .select("net_payable_paise, status, debited_paise, credit_note_paise")
-            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-            .limit(1)
-            .execute()
-        ).data or []
-        bill = rows[0] if rows else None
-        if not bill:
-            return
+        for _attempt in range(max_retries):
+            rows = (
+                db.table("purchase_bills")
+                .select("paid_paise, net_payable_paise, status, debited_paise, credit_note_paise")
+                .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .limit(1)
+                .execute()
+            ).data or []
+            bill = rows[0] if rows else None
+            if not bill:
+                return
+            raw_paid = bill.get("paid_paise")  # CAS guard must match this exact stored value
 
-        payments_resp = (
-            db.table("purchase_payments")
-            .select("amount_paise")
-            .eq("purchase_bill_id", bill_id).eq("firm_id", firm_id)
-            .execute()
+            payments_resp = (
+                db.table("purchase_payments")
+                .select("amount_paise")
+                .eq("purchase_bill_id", bill_id).eq("firm_id", firm_id)
+                .execute()
+            )
+            summed_paid = sum(int(p["amount_paise"]) for p in (payments_resp.data or []))
+            # Never regress a concurrently-claimed higher value (see docstring).
+            total_paid = max(summed_paid, int(raw_paid or 0))
+            # Purchase credit notes (§34(3)) raise what's payable before debit
+            # notes/cash settle it.
+            net_payable = int(bill["net_payable_paise"]) + int(bill.get("credit_note_paise") or 0)
+            # Debit notes settle part of the payable — a bill fully covered by
+            # cash + debit note must reach "paid", and the threshold must not
+            # demand cash for the debit-noted portion.
+            debited = int(bill.get("debited_paise") or 0)
+            new_status = ("paid" if total_paid + debited >= net_payable
+                          else "partially_paid" if total_paid > 0
+                          else bill.get("status"))
+
+            if total_paid == int(raw_paid or 0):
+                return   # already reconciled — nothing to write
+            result = (
+                db.table("purchase_bills").update(
+                    {"paid_paise": total_paid, "status": new_status, "updated_at": _now_iso()}
+                ).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("paid_paise", raw_paid).execute()
+            )
+            if result.data:
+                return
+            # Lost the race — another write touched paid_paise between our read
+            # and write; retry against the now-current state.
+        _logger.warning(
+            "_update_bill_payment_status: CAS retries exhausted for bill=%s (firm=%s) — "
+            "leaving paid_paise as last written by a concurrent claim.", bill_id, firm_id,
         )
-        total_paid = sum(int(p["amount_paise"]) for p in (payments_resp.data or []))
-        # Purchase credit notes (§34(3)) raise what's payable before debit
-        # notes/cash settle it.
-        net_payable = int(bill["net_payable_paise"]) + int(bill.get("credit_note_paise") or 0)
-        # Debit notes settle part of the payable — a bill fully covered by
-        # cash + debit note must reach "paid", and the threshold must not
-        # demand cash for the debit-noted portion.
-        debited = int(bill.get("debited_paise") or 0)
-        new_status = ("paid" if total_paid + debited >= net_payable
-                      else "partially_paid" if total_paid > 0
-                      else bill.get("status"))
-
-        db.table("purchase_bills").update(
-            {"paid_paise": total_paid, "status": new_status, "updated_at": _now_iso()}
-        ).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
     except Exception as e:
         _logger.warning("_update_bill_payment_status error: %s", e)
+
+
+@router.post("/{payment_id}/reverse")
+def reverse_purchase_payment(
+    payment_id: str,
+    data: JournalReversalIn,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Reverse a vendor payment — Partner only (task #102). Decrements the
+    linked bill's paid_paise back down, reverses the posted GL journal
+    (append-only), and marks the payment reversed. This is the missing step
+    cancel_purchase_bill's "payments applied" guard has always pointed
+    callers to."""
+    if _USE_MOCK:
+        return api_response(True, {"id": payment_id, "reversed": True, "mock": True})
+    try:
+        db = _get_db()
+        result = reversal_service.reverse_payment(
+            db, current_user["firm_id"], payment_id, data.reversal_date, created_by=current_user.get("id"),
+        )
+        log_event(
+            current_user.get("firm_id", ""), "purchase_payment", payment_id,
+            "reverse", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"), new_data=result,
+        )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("reverse_purchase_payment: %s", e)
+        return api_response(False, None, "Unable to reverse payment. Please try again.")

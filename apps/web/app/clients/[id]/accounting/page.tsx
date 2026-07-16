@@ -2467,6 +2467,7 @@ interface PreviewLine { account_id: string; account_name: string; debit_paise: n
 interface SettlementPreview {
   entity: string; label: string | null; allocate_paise: number;
   new_paid_paise: number; total_paise: number;
+  credited_to_party_paise?: number;
 }
 interface PostingPreview {
   transaction_id: string; category: string | null; entry_type: string; narration: string;
@@ -2814,6 +2815,14 @@ function PostingReviewDrawer({
                 allocate <span className="font-mono">{fmt(preview.settlement.allocate_paise)}</span>
                 {" "}(<span className="font-mono">{fmt(preview.settlement.new_paid_paise)}</span> of <span className="font-mono">{fmt(preview.settlement.total_paise)}</span> paid)
               </p>
+              {!!preview.settlement.credited_to_party_paise && (
+                <p className="mt-1 pt-1 border-t border-amber-200">
+                  This payment exceeds what&apos;s outstanding — the extra{" "}
+                  <span className="font-mono">{fmt(preview.settlement.credited_to_party_paise)}</span>{" "}
+                  will be credited to the {preview.settlement.entity === "purchase_bill" ? "vendor's" : "customer's"}{" "}
+                  account, applyable to a future {preview.settlement.entity === "purchase_bill" ? "bill" : "invoice"}.
+                </p>
+              )}
             </div>
           )}
 

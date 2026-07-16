@@ -1167,6 +1167,7 @@ interface PaymentRow {
   amount_paise: number;
   payment_mode: string;
   reference_no: string | null;
+  is_reversed?: boolean;
 }
 
 function Payments({ clientId, financialYear }: { clientId: string; financialYear: string }) {
@@ -1318,6 +1319,31 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
 
   const totalPaid = payments.reduce((s, p) => s + p.amount_paise, 0);
 
+  /** Reverse a payment (task #102): rolls back its bill's outstanding and
+   * reverses its posted journal server-side. Partner-only on the backend
+   * (accounting.approve) — mirrors cancelBill's confirm/apiCall pattern. */
+  async function reversePayment(p: PaymentRow) {
+    const ok = await confirmDialog({
+      title: `Reverse ${p.payment_no}?`,
+      message:
+        "This reverses the payment's posted journal entry and rolls back the linked bill's outstanding — " +
+        "the bill becomes payable again. The payment stays on record as reversed. This cannot be undone.",
+      confirmLabel: "Reverse Payment",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/purchase-payments/${p.id}/reverse`, "POST",
+        { reversal_date: toDate() }, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to reverse payment");
+      setMsg({ type: "ok", text: `${p.payment_no} reversed — journal and bill outstanding rolled back` });
+      load();
+    } catch (err) {
+      setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to reverse payment" });
+    }
+  }
+
   // ── DataTable columns (amount returns integer paise, right-aligned) ──────────
   const paymentColumns: Column<PaymentRow>[] = useMemo(() => [
     { key: "payment_no", header: "Payment No", accessor: (p) => p.payment_no, searchable: true, sticky: true, hideable: false,
@@ -1332,6 +1358,10 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
       render: (p) => <span className="text-[#64748B] capitalize">{p.payment_mode}</span> },
     { key: "reference_no", header: "Reference", accessor: (p) => p.reference_no ?? "", searchable: true,
       render: (p) => <span className="text-[10px] text-[#94A3B8]">{p.reference_no ?? "—"}</span> },
+    { key: "is_reversed", header: "Status", accessor: (p) => (p.is_reversed ? "Reversed" : "Active"),
+      render: (p) => p.is_reversed ? (
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Reversed</span>
+      ) : null },
   ], []);
 
   const paymentFilters: FilterDef<PaymentRow>[] = useMemo(() => [
@@ -1476,6 +1506,12 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
         toolbarExtra={
           <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
         }
+        rowActions={(p) => !p.is_reversed && (
+          <button onClick={() => reversePayment(p)}
+            className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
+            Reverse
+          </button>
+        )}
       />
     </div>
   );

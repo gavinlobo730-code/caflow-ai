@@ -65,8 +65,12 @@ def test_original_entry_is_not_modified(monkeypatch):
     e = _seed_posted(db, ref="JV-IMMUT")
     acct.reverse_journal_entry(e["id"], JournalReversalIn(reversal_date="2025-06-15"), CALLER)
     orig = next(x for x in db.rows("journal_entries") if x["id"] == e["id"])
-    assert orig.get("reversal_of") in (None,)         # original never marked
+    assert orig.get("reversal_of") in (None,)         # original never marked as a reversal
     assert orig["is_posted"] is True                  # untouched
+    # The sole permitted mutation on a posted entry: the append-only
+    # is_reversed flag, so idempotency dedup (firm+client+ref+date) stops
+    # matching a dead original and a legitimate re-post isn't blocked.
+    assert orig["is_reversed"] is True
 
 
 def test_cannot_reverse_unposted(monkeypatch):

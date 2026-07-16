@@ -275,6 +275,68 @@ def test_invoice_never_over_allocates():
     assert out["settlement"]["allocated_paise"] == 10000
 
 
+def test_invoice_settlement_accounts_for_credit_and_debit_notes():
+    # task #102: settlement used to allocate against (total_paise − paid_paise)
+    # only, ignoring credit/debit notes — the SAME formula ar_aging already
+    # uses (CGST Act §34). total 118000 + debit note 5000 − credited 20000
+    # − paid 0 = outstanding 103000, not the old (118000 − 0) = 118000.
+    db = _db_with_accounts()
+    db.store.setdefault("client_sales_invoices", []).append(
+        {"id": "inv-1", "firm_id": FIRM, "client_id": CLIENT, "invoice_no": "INV-1",
+         "total_paise": 118000, "paid_paise": 0, "status": "issued",
+         "debit_note_paise": 5000, "credited_paise": 20000})
+    _seed_txn(db, credit=200000, category="Customer Payment",
+              matched_type="sales_invoice", matched_id="inv-1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    out = _approve(db, res["draft_journal_id"])
+    inv = db.store["client_sales_invoices"][0]
+    assert inv["paid_paise"] == 103000 and inv["status"] == "paid"
+    assert out["settlement"]["allocated_paise"] == 103000   # NOT 118000 (old bug)
+
+
+def test_bill_settlement_uses_tds_net_payable_not_gross_total():
+    # task #102: for bills, the old formula used the GROSS total_paise instead
+    # of the TDS-net net_payable_paise (IT Act §194C/194J — TDS withheld at
+    # bill stage, so cash payable is net). Gross 100000, TDS-net payable
+    # 90000, credit note 10000 → outstanding = 90000 + 10000 − 0 − 0 = 100000...
+    # use a debited (debit note) too to prove the debited_paise term as well.
+    db = _db_with_accounts()
+    db.store.setdefault("purchase_bills", []).append(
+        {"id": "bill-1", "firm_id": FIRM, "client_id": CLIENT, "bill_no": "BILL-1",
+         "total_paise": 100000, "net_payable_paise": 90000, "paid_paise": 0,
+         "status": "received", "credit_note_paise": 0, "debited_paise": 15000})
+    # true outstanding = net_payable(90000) + credit_note(0) − paid(0) − debited(15000) = 75000
+    _seed_txn(db, debit=200000, category="Vendor Payment",
+              matched_type="purchase_bill", matched_id="bill-1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    out = _approve(db, res["draft_journal_id"])
+    bill = db.store["purchase_bills"][0]
+    assert bill["paid_paise"] == 75000 and bill["status"] == "paid"
+    assert out["settlement"]["allocated_paise"] == 75000   # NOT 100000 (old bug: gross total)
+
+
+def test_settlement_excess_becomes_party_credit_not_lost():
+    # task #102: a bank transaction matched for MORE than the invoice's true
+    # outstanding used to just clamp the allocation and silently drop the
+    # excess from tracking (the GL was already correct — the full amount was
+    # posted to Trade Receivables — only the sub-ledger "whose money is this"
+    # tracking was missing). The excess must now show up as a party credit.
+    from services.party_credit_service import party_credit_service as PCS
+    db = _db_with_accounts()
+    db.store.setdefault("client_sales_invoices", []).append(
+        {"id": "inv-1", "firm_id": FIRM, "client_id": CLIENT, "customer_id": "cust-1",
+         "invoice_no": "INV-1", "total_paise": 100000, "paid_paise": 0, "status": "issued"})
+    _seed_txn(db, credit=150000, category="Customer Payment",
+              matched_type="sales_invoice", matched_id="inv-1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    out = _approve(db, res["draft_journal_id"])
+    inv = db.store["client_sales_invoices"][0]
+    assert inv["paid_paise"] == 100000 and inv["status"] == "paid"
+    assert out["settlement"]["allocated_paise"] == 100000
+    assert out["settlement"]["credited_to_party_paise"] == 50000
+    assert PCS.get_balance(db, FIRM, CLIENT, "customer", "cust-1") == 50000
+
+
 def test_full_bill_settlement():
     db = _db_with_accounts(); _seed_bill(db, 59000)
     _seed_txn(db, debit=59000, category="Vendor Payment",

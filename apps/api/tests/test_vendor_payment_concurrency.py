@@ -261,6 +261,49 @@ def test_concurrent_payments_race_the_same_bill_only_one_wins(monkeypatch):
     assert bill["paid_paise"] == 70_000_00  # exactly one payment's worth claimed
 
 
+def test_update_bill_payment_status_never_regresses_a_concurrent_claim(monkeypatch):
+    """task #102: _update_bill_payment_status used to blindly overwrite
+    paid_paise with sum(purchase_payments.amount_paise) — a DIFFERENT source
+    than the column it was overwriting. If a concurrent payment's
+    _claim_bill_outstanding CAS already bumped bill.paid_paise but that
+    payment's OWN purchase_payments row hasn't been inserted yet, the recompute
+    sees an incomplete sum and used to clobber the correct, already-claimed
+    total down to a stale, lower one — silently erasing the concurrent
+    payment's claim. It must never write a value lower than what's already
+    stored."""
+    db = FakeDB()
+    _seed_bill(db, paid_paise=100_000_00, net_payable_paise=200_000_00, status="partially_paid")
+    # Only ONE payment row is visible — simulating a second, concurrent
+    # payment whose CAS claim already landed on the bill but whose OWN
+    # purchase_payments row insert hasn't committed yet.
+    db.store.setdefault("purchase_payments", []).append(
+        {"id": "pp-1", "firm_id": FIRM, "purchase_bill_id": "bill-1", "amount_paise": 70_000_00})
+
+    pp_router._update_bill_payment_status(db, FIRM, CLIENT, "bill-1")
+
+    bill = db.store["purchase_bills"][0]
+    assert bill["paid_paise"] == 100_000_00     # untouched — never regressed
+    assert bill["status"] == "partially_paid"
+
+
+def test_update_bill_payment_status_reconciles_upward_when_stale(monkeypatch):
+    """The self-healing direction must still work: when the payments ledger
+    legitimately sums higher than the bill's stored paid_paise (drift), the
+    bill is brought up to match."""
+    db = FakeDB()
+    _seed_bill(db, paid_paise=30_000_00, net_payable_paise=200_000_00, status="partially_paid")
+    db.store.setdefault("purchase_payments", []).append(
+        {"id": "pp-1", "firm_id": FIRM, "purchase_bill_id": "bill-1", "amount_paise": 30_000_00})
+    db.store["purchase_payments"].append(
+        {"id": "pp-2", "firm_id": FIRM, "purchase_bill_id": "bill-1", "amount_paise": 70_000_00})
+
+    pp_router._update_bill_payment_status(db, FIRM, CLIENT, "bill-1")
+
+    bill = db.store["purchase_bills"][0]
+    assert bill["paid_paise"] == 100_000_00
+    assert bill["status"] == "partially_paid"
+
+
 def test_claim_rollback_on_downstream_failure_restores_outstanding(monkeypatch):
     """If the journal/payment insert fails AFTER the bill claim succeeded, the
     claim must be rolled back so the bill's outstanding is not wrongly reduced."""

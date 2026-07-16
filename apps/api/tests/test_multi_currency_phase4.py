@@ -119,6 +119,99 @@ def test_partial_then_final_settlement_no_drift(monkeypatch):
     assert tb["total_debit_paise"] == tb["total_credit_paise"]
 
 
+# ── task #102: FX statement rate bug — statements must use the BOOKED-rate AR/AP
+#    relief, not the receipt/payment's cash-rate amount_paise ─────────────────
+def test_customer_statement_uses_booked_rate_not_cash_rate(monkeypatch):
+    from services.customer_statement_service import customer_statement_service as CS
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="US", state_code="27"), CALLER)["data"]
+    inv = _usd_invoice(si, cust["id"], 80.0)                       # AR booked at ₹80,000
+    rc.create_receipt(ReceiptIn(
+        client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
+        amount_paise=100000, currency="USD", exchange_rate="83.0",   # cash at ₹83,000 (gain)
+        allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100000)]), CALLER)
+
+    stmt = CS.generate(db, FIRM, "CLI", cust["id"], "2025-04-01", "2026-03-31")
+    receipt_txn = next(t for t in stmt["transactions"] if t["type"] == "receipt")
+    # The invoice was settled EXACTLY at its booked rate (₹80,000) — the extra
+    # ₹3,000 cash is a realized FX GAIN, not a reduction of what the customer
+    # owed. Before the fix this read 8_300_000 (cash rate), leaving a bogus
+    # -300,000 closing balance even though the invoice is fully settled.
+    assert receipt_txn["credit_paise"] == 8_000_000
+    assert stmt["closing_balance_paise"] == 0
+
+
+def test_vendor_statement_uses_booked_rate_not_cash_rate(monkeypatch):
+    from services.vendor_statement_service import vendor_statement_service as VS
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    vend = ve.create_vendor(VendorIn(client_id="CLI", name="US V", state_code="27"), CALLER)["data"]
+    bill = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="UB1",
+        currency="USD", exchange_rate="80.0",
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
+    pb.receive_purchase_bill(bill["id"], CALLER)
+    pp.create_purchase_payment(PurchasePaymentIn(
+        client_id="CLI", vendor_id=vend["id"], payment_date="2025-07-01",
+        amount_paise=100000, currency="USD", exchange_rate="83.0", purchase_bill_id=bill["id"]), CALLER)   # cash ₹83,000 (loss)
+
+    stmt = VS.generate(db, FIRM, "CLI", vend["id"], "2025-04-01", "2026-03-31")
+    payment_txn = next(t for t in stmt["transactions"] if t["type"] == "payment")
+    # The bill was settled EXACTLY at its booked rate (₹80,000) — the extra
+    # ₹3,000 cash paid is a realized FX LOSS, not extra payable relief. Before
+    # the fix this read 8_300_000 (cash rate), leaving a bogus -300,000
+    # closing (payable) balance even though the bill is fully settled.
+    assert payment_txn["debit_paise"] == 8_000_000
+    assert stmt["closing_balance_paise"] == 0
+
+
+# ── task #102: foreign vendor payment CAS retry (H4's foreign-currency gap) ───
+def test_foreign_payment_cas_retries_instead_of_clobbering_concurrent_write(monkeypatch):
+    """_create_foreign_payment used to blindly overwrite paid_paise/paid_txn from
+    the bill snapshot read at the TOP of the function (before the journal even
+    posted) — no CAS guard. Simulates a concurrent payment landing on the SAME
+    bill between this payment's read and its bill-update: the update's CAS
+    guard must legitimately miss (not clobber), forcing a retry that picks up
+    the concurrent write and accumulates on top of it."""
+    from tests.e2e_harness import _Query
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    vend = ve.create_vendor(VendorIn(client_id="CLI", name="US V2", state_code="27"), CALLER)["data"]
+    bill = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="UB-CAS",
+        currency="USD", exchange_rate="80.0",
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
+    pb.receive_purchase_bill(bill["id"], CALLER)
+
+    real_execute = _Query.execute
+    injected = {"done": False}
+
+    def racy_execute(self):
+        if self.table == "purchase_bills" and self._op == "update" and not injected["done"]:
+            injected["done"] = True
+            # A concurrent $500 @ 80 payment "commits" right here, between this
+            # attempt's read and its write — mutate the row directly so the
+            # pending update's .eq("paid_paise", <stale>) guard legitimately
+            # matches zero rows, exactly as a real UPDATE ... WHERE would.
+            for row in self.db._tables.get("purchase_bills", []):
+                if row.get("id") == bill["id"]:
+                    row["paid_paise"] = int(row.get("paid_paise") or 0) + 4_000_000
+                    row["paid_txn"] = int(row.get("paid_txn") or 0) + 50000
+        return real_execute(self)
+
+    monkeypatch.setattr(_Query, "execute", racy_execute)
+
+    pp.create_purchase_payment(PurchasePaymentIn(
+        client_id="CLI", vendor_id=vend["id"], payment_date="2025-07-01",
+        amount_paise=30000, currency="USD", exchange_rate="80.0", purchase_bill_id=bill["id"]), CALLER)
+
+    row = db.table("purchase_bills").select("*").eq("id", bill["id"]).execute().data[0]
+    # Concurrent write's 4,000,000/50000 PLUS this payment's own 2,400,000 (30000
+    # @ 80) / 30000 — accumulated, not clobbered down to just this payment's own.
+    assert row["paid_paise"] == 4_000_000 + 2_400_000
+    assert row["paid_txn"] == 50000 + 30000
+    assert row["status"] == "partially_paid"
+    assert injected["done"] is True   # sanity: the race was actually exercised
+
+
 # ── Realized FX on vendor payment ─────────────────────────────────────────────
 def test_realized_fx_on_vendor_payment(monkeypatch):
     cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)

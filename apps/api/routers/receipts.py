@@ -11,9 +11,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.invoices import ReceiptIn, ReceiptAllocationsUpdateIn
+from models.accounting import JournalReversalIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services import receipt_service
+from services import reversal_service
 # Re-exported for backward compat — collections_service and tests import these here.
 from services.receipt_service import MOCK_RECEIPTS, MOCK_RECEIPT_ALLOCATIONS
 
@@ -23,32 +25,47 @@ _logger = logging.getLogger("caflow.receipts")
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
 
-def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_paise: int) -> None:
+def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_paise: int,
+                         max_retries: int = 5) -> None:
     """Apply a signed delta to an invoice's paid_paise and recompute status.
     Integer paise; paid clamped at >= 0. Used to REVERSE then RE-APPLY a receipt's
     allocations on re-allocation so paid_paise is recomputed from scratch and never
-    inflated (H3). F1: the lookup AND update are scoped to (firm_id, client_id) so a
-    receipt can never read or mutate another firm's/client's invoice."""
+    inflated (H3), and by reversal_service.reverse_receipt to undo a receipt's
+    allocations entirely. F1: the lookup AND update are scoped to (firm_id,
+    client_id) so a receipt can never read or mutate another firm's/client's invoice.
+
+    task #102: CAS-guarded (mirrors purchase_payments._rollback_bill_claim) — a
+    plain read-then-write here raced with any CONCURRENT write to the same
+    invoice's paid_paise (a payment/receipt CAS claim, or a second re-allocation
+    request), silently losing whichever wrote second.
+    """
     if not inv_id or delta_paise == 0:
         return
-    inv_resp = (db.table("client_sales_invoices")
-                .select("total_paise,paid_paise,credited_paise,debit_note_paise")
-                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
-    if not inv_resp.data:
-        return
-    inv = inv_resp.data[0]
-    # Debit notes (CGST Act §34(3)) raise the ceiling; credit notes settle part
-    # of it. The settlement threshold is paid + credited >= (total + debit
-    # notes), matching create_receipt_core and the settle_receipt_atomic RPC.
-    total = int(inv.get("total_paise", 0) or 0) + int(inv.get("debit_note_paise", 0) or 0)
-    credited = int(inv.get("credited_paise", 0) or 0)
-    new_paid = int(inv.get("paid_paise", 0) or 0) + delta_paise
-    if new_paid < 0:
-        new_paid = 0
-    status = ("paid" if (total > 0 and new_paid + credited >= total)
-              else ("partially_paid" if new_paid > 0 else "issued"))
-    db.table("client_sales_invoices").update({"paid_paise": new_paid, "status": status}) \
-        .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+    for _attempt in range(max_retries):
+        inv_resp = (db.table("client_sales_invoices")
+                    .select("total_paise,paid_paise,credited_paise,debit_note_paise")
+                    .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+        if not inv_resp.data:
+            return
+        inv = inv_resp.data[0]
+        raw_paid = inv.get("paid_paise")  # CAS guard must match this exact stored value
+        # Debit notes (CGST Act §34(3)) raise the ceiling; credit notes settle part
+        # of it. The settlement threshold is paid + credited >= (total + debit
+        # notes), matching create_receipt_core and the settle_receipt_atomic RPC.
+        total = int(inv.get("total_paise", 0) or 0) + int(inv.get("debit_note_paise", 0) or 0)
+        credited = int(inv.get("credited_paise", 0) or 0)
+        new_paid = int(raw_paid or 0) + delta_paise
+        if new_paid < 0:
+            new_paid = 0
+        status = ("paid" if (total > 0 and new_paid + credited >= total)
+                  else ("partially_paid" if new_paid > 0 else "issued"))
+        result = (db.table("client_sales_invoices").update({"paid_paise": new_paid, "status": status})
+                  .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("paid_paise", raw_paid).execute())
+        if result.data:
+            return
+        # Lost the race — retry against the now-current paid_paise.
+    raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +307,34 @@ def update_allocations(
     except Exception as e:
         _logger.error("update_allocations: %s", e)
         return api_response(False, None, "Unable to complete receipt operation. Please try again.")
+
+
+@router.post("/{receipt_id}/reverse")
+def reverse_receipt(
+    receipt_id: str,
+    data: JournalReversalIn,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Reverse a customer receipt — Partner only (task #102). Decrements every
+    allocated invoice's paid_paise back down, reverses the posted GL journal
+    (append-only), and marks the receipt reversed. This is the missing step
+    cancel_invoice's "receipts applied" guard has always pointed callers to."""
+    if _USE_MOCK:
+        return api_response(True, {"id": receipt_id, "reversed": True, "mock": True})
+    try:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        result = reversal_service.reverse_receipt(
+            db, current_user["firm_id"], receipt_id, data.reversal_date, created_by=current_user.get("id"),
+        )
+        log_event(
+            current_user.get("firm_id", ""), "receipt", receipt_id,
+            "reverse", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"), new_data=result,
+        )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("reverse_receipt: %s", e)
+        return api_response(False, None, "Unable to reverse receipt. Please try again.")

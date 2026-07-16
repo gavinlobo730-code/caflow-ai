@@ -66,6 +66,7 @@ from routers import firm_hsn_rate_history  # Per-firm rate history, mechanism on
 from routers import recurring_invoices
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
+from routers import party_credits
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
 from routers import timeline
@@ -255,6 +256,7 @@ app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)
+app.include_router(party_credits.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence_v1.router, dependencies=_CLIENT_GUARD)
 app.include_router(gst_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(tds_workspace.router, dependencies=_CLIENT_GUARD)

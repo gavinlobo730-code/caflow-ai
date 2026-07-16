@@ -49,6 +49,26 @@ def test_duplicate_journal_reference_is_idempotent(monkeypatch):
     assert len(dups) == 1                                           # only one posted
 
 
+def test_reversed_entry_does_not_block_repost(monkeypatch):
+    """A reversed original is dead — re-posting the same document (same firm+
+    client+reference_no+entry_date) must create a fresh entry, not dedupe onto
+    the reversed one (task #102 finding)."""
+    db = _setup(monkeypatch)
+    k = pjs.phase2_journal_service
+    a = k._create_journal(db, firm_id=FIRM, client_id="CLI", entry_date="2025-06-01",
+                          reference_no="REPOST-1", narration="x", entry_type="Journal",
+                          lines=_balanced_lines(db))
+    k.reverse_entry(db, firm_id=FIRM, entry_id=a, reversal_date="2025-06-02", created_by="u")
+    b = k._create_journal(db, firm_id=FIRM, client_id="CLI", entry_date="2025-06-01",
+                          reference_no="REPOST-1", narration="x", entry_type="Journal",
+                          lines=_balanced_lines(db))
+    assert a != b
+    live = [e for e in db.rows("journal_entries")
+            if e.get("reference_no") == "REPOST-1" and not e.get("is_reversed")]
+    assert len(live) == 1
+    assert live[0]["id"] == b
+
+
 def test_same_ref_different_date_is_distinct(monkeypatch):
     db = _setup(monkeypatch)
     k = pjs.phase2_journal_service

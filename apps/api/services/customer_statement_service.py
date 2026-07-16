@@ -92,11 +92,21 @@ def build_statement(customer: dict, start: str, end: str,
                        "debit_paise": 0, "credit_paise": int(cn.get("total_paise") or 0),
                        **_ccy_view(cn, int(cn.get("total_paise") or 0), cn.get("total_paise"))})
     for r in receipts:
-        # A receipt relieves AR by its full SETTLEMENT (cash + TDS deducted at source),
-        # exactly as journal_for_receipt credits Trade Receivables. Counting only the cash
-        # would overstate the closing balance by the TDS and break reconciliation with the
-        # AR sub-ledger / GL control (audit H9).
-        settlement = int(r.get("amount_paise") or 0) + int(r.get("tds_paise") or 0)
+        # A receipt relieves AR by its full SETTLEMENT — for INR receipts that's
+        # cash + TDS deducted at source (journal_for_receipt's Trade Receivables
+        # credit). For a FOREIGN receipt, amount_paise is the CASH-rate total,
+        # but the journal (create_foreign_receipt) credits AR at each invoice's
+        # frozen BOOKED rate, routing the cash/booked-rate delta to Realized FX
+        # Gain/Loss — so amount_paise alone understates/overstates the true AR
+        # relief by exactly that delta (task #102 finding). ar_relief_paise, when
+        # the caller supplies it (customer_statement_service.generate(), summed
+        # from receipt_allocations.allocated_paise + receipts.unallocated_paise —
+        # which for INR receipts is algebraically identical to amount_paise +
+        # tds_paise, so this is a byte-for-byte no-op there), is the authoritative
+        # figure; the old formula remains the fallback for pure-builder callers
+        # that don't have allocation data on hand.
+        settlement = (int(r["ar_relief_paise"]) if r.get("ar_relief_paise") is not None
+                      else int(r.get("amount_paise") or 0) + int(r.get("tds_paise") or 0))
         events.append({"date": _d(r.get("receipt_date")), "rank": 3, "type": "receipt",
                        "reference": r.get("receipt_no"),
                        "particulars": f"Receipt {r.get('receipt_no', '')}".strip(),
@@ -179,10 +189,33 @@ class CustomerStatementService:
                .is_("deleted_at", "null").execute().data or [])
         invoices = [i for i in inv if (i.get("status") or "") not in _DEAD_INVOICE]
 
-        receipts = (db.table("receipts")
-                    .select("receipt_no, receipt_date, amount_paise, tds_paise, txn_currency, exchange_rate, txn_amount")
-                    .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-                    .execute().data or [])
+        _rcpt = (db.table("receipts")
+                 .select("id, receipt_no, receipt_date, amount_paise, tds_paise, unallocated_paise, "
+                         "is_reversed, txn_currency, exchange_rate, txn_amount")
+                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
+                 .execute().data or [])
+        # A reversed receipt no longer represents real money movement (task
+        # #102) — its journal was reversed and its allocations voided, so it
+        # must not appear as a statement transaction. Filtered in Python (not
+        # .eq("is_reversed", False)) so a row lacking the key — impossible on a
+        # real NOT NULL DEFAULT false column, but common in older test doubles
+        # — is correctly treated as not reversed rather than excluded.
+        receipts = [r for r in _rcpt if not r.get("is_reversed")]
+        # ar_relief_paise = true AR credit per receipt (task #102 FX statement fix,
+        # see build_statement's receipt loop for why amount_paise alone is wrong
+        # for a foreign receipt). Sourced from receipt_allocations (each row is the
+        # invoice's booked-rate relief) + unallocated_paise (excess also credited
+        # to AR) — both already correct for INR receipts too, so this is additive.
+        receipt_ids = [r["id"] for r in receipts if r.get("id")]
+        alloc_sum: dict[str, int] = {}
+        if receipt_ids:
+            allocs = (db.table("receipt_allocations").select("receipt_id, allocated_paise")
+                      .in_("receipt_id", receipt_ids).execute().data or [])
+            for a in allocs:
+                rid = a.get("receipt_id")
+                alloc_sum[rid] = alloc_sum.get(rid, 0) + int(a.get("allocated_paise") or 0)
+        for r in receipts:
+            r["ar_relief_paise"] = alloc_sum.get(r.get("id"), 0) + int(r.get("unallocated_paise") or 0)
 
         cns = (db.table("credit_notes")
                .select("credit_note_no, credit_note_date, total_paise, status")

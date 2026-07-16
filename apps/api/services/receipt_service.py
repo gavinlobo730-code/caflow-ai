@@ -192,16 +192,20 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     fy = _current_fy()
     seq = _next_receipt_seq(db, firm_id, client_id, fy)
     receipt_no = f"RCPT-{fy}-{seq:04d}"
+    # task #102: pre-generated (matching create_receipt_core's atomic-path
+    # convention) so the journal can carry source_type/source_id back to this
+    # receipt, for reverse_receipt / any future source_id-keyed lookup.
+    receipt_id = str(uuid.uuid4())
     entry_id = K._create_journal(
         db=db, firm_id=firm_id, client_id=client_id, entry_date=data["receipt_date"],
         reference_no=receipt_no, narration=f"Receipt {receipt_no} (foreign) from customer",
         entry_type="Receipt", lines=lines, created_by=(actor or {}).get("id"),
+        source_type="receipt", source_id=receipt_id,
         txn_currency=ccy, exchange_rate=R1, rate_source=r1_source, rate_type="booking",
         rate_date=str(data["receipt_date"])[:10], rate_selected_by=(actor or {}).get("id"),
         rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
     )
 
-    receipt_id = str(uuid.uuid4())
     receipt_payload = {
         "id": receipt_id,
         "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
@@ -392,6 +396,9 @@ def _settle_receipt_via_atomic_rpc(
         "narration": f"Receipt {receipt_payload['receipt_no']} from customer",
         "entry_type": "Receipt", "is_posted": True, "status": "posted",
         "posted_at": now_iso, "posted_by": actor_id, "created_by": actor_id,
+        # task #102: lets reverse_receipt (services/reversal_service) — and any
+        # future source_id-keyed lookup — trace this journal back to its receipt.
+        "source_type": "receipt", "source_id": receipt_payload["id"],
     }
     line_payloads = [
         {
