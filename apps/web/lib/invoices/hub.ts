@@ -20,6 +20,7 @@ export interface HubActions {
   send: boolean;
   duplicate: boolean;
   creditNote: boolean;
+  debitNote: boolean;
   viewJournal: boolean;
   pdf: boolean;
 }
@@ -44,6 +45,7 @@ export function availableActions(status: InvoiceStatus): HubActions {
     send: posted,                 // (re)send an issued document; a draft isn't a document yet
     duplicate: !isDraft,          // clone any real invoice; a draft is edited in place instead
     creditNote: posted,           // only a posted supply can be credited
+    debitNote: posted,            // only a posted supply can be debited (§34(3) undercharge correction)
     viewJournal: posted,          // a journal exists only after posting
     pdf: !isDraft,                // the tax invoice PDF is meaningful once issued
   };

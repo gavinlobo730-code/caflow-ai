@@ -130,6 +130,10 @@ export interface PurchaseBillDetail {
   // reduces the payable alongside paid_paise, so outstanding is
   // net_payable − paid − debited (mirrors purchase_payments._claim_bill_outstanding).
   debited_paise?: number;
+  // Sum of issued purchase credit notes against this bill (routers/
+  // purchase_credit_notes.py, CGST Act §34(3) — a vendor undercharge) —
+  // INCREASES the payable: outstanding = (net_payable + credit_note_paise) − paid − debited.
+  credit_note_paise?: number;
   journal_entry_id?: string | null;
   received_at?: string | null;
   created_at?: string | null;

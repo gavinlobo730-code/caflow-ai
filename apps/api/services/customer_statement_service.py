@@ -5,10 +5,12 @@ receipts / credit notes, a running balance, and the closing outstanding.
 
 Reuses existing accounting data only. It does NOT touch the journal engine,
 banking, GST or any financial statement — it reads client_sales_invoices,
-receipts and credit_notes and reconstructs the customer's receivable balance.
+receipts, credit_notes and sales_debit_notes and reconstructs the customer's
+receivable balance.
 
 Sign convention (receivable / debit-positive):
   • Invoice    → DEBIT  (increases what the customer owes)
+  • Debit note → DEBIT  (§34(3) undercharge correction — increases the balance)
   • Receipt    → CREDIT (payment received — reduces the balance)
   • Credit note→ CREDIT (reduces the balance)
 Opening balance carries forward the customer's seed balance plus all prior-period
@@ -26,9 +28,10 @@ from services.statement_currency import attach_currency_outstanding, summarize_b
 
 _logger = logging.getLogger("caflow.customer_statement")
 
-# Invoices/credit notes in these states are not real receivable movements.
+# Invoices/credit notes/debit notes in these states are not real receivable movements.
 _DEAD_INVOICE = {"draft", "cancelled"}
 _DEAD_CREDIT_NOTE = {"draft", "cancelled"}
+_DEAD_DEBIT_NOTE = {"draft", "cancelled"}
 
 
 def _d(v) -> str:
@@ -64,7 +67,7 @@ def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
 
 def build_statement(customer: dict, start: str, end: str,
                     invoices: list[dict], receipts: list[dict],
-                    credit_notes: list[dict]) -> dict:
+                    credit_notes: list[dict], debit_notes: list[dict] | None = None) -> dict:
     """Pure builder — no DB. Computes opening, ordered transactions with running
     balance, and closing outstanding from the supplied documents."""
     start, end = _d(start), _d(end)
@@ -76,8 +79,14 @@ def build_statement(customer: dict, start: str, end: str,
                        "particulars": f"Invoice {inv.get('invoice_no', '')}".strip(),
                        "debit_paise": int(inv.get("total_paise") or 0), "credit_paise": 0,
                        **_ccy_view(inv, int(inv.get("total_paise") or 0), inv.get("txn_total"))})
+    for dn in (debit_notes or []):
+        events.append({"date": _d(dn.get("debit_note_date")), "rank": 1, "type": "debit_note",
+                       "reference": dn.get("debit_note_no"),
+                       "particulars": f"Debit Note {dn.get('debit_note_no', '')}".strip(),
+                       "debit_paise": int(dn.get("total_paise") or 0), "credit_paise": 0,
+                       **_ccy_view(dn, int(dn.get("total_paise") or 0), dn.get("total_paise"))})
     for cn in credit_notes:
-        events.append({"date": _d(cn.get("credit_note_date")), "rank": 1, "type": "credit_note",
+        events.append({"date": _d(cn.get("credit_note_date")), "rank": 2, "type": "credit_note",
                        "reference": cn.get("credit_note_no"),
                        "particulars": f"Credit Note {cn.get('credit_note_no', '')}".strip(),
                        "debit_paise": 0, "credit_paise": int(cn.get("total_paise") or 0),
@@ -88,7 +97,7 @@ def build_statement(customer: dict, start: str, end: str,
         # would overstate the closing balance by the TDS and break reconciliation with the
         # AR sub-ledger / GL control (audit H9).
         settlement = int(r.get("amount_paise") or 0) + int(r.get("tds_paise") or 0)
-        events.append({"date": _d(r.get("receipt_date")), "rank": 2, "type": "receipt",
+        events.append({"date": _d(r.get("receipt_date")), "rank": 3, "type": "receipt",
                        "reference": r.get("receipt_no"),
                        "particulars": f"Receipt {r.get('receipt_no', '')}".strip(),
                        "debit_paise": 0, "credit_paise": settlement,
@@ -104,7 +113,7 @@ def build_statement(customer: dict, start: str, end: str,
 
     running = opening
     transactions: list[dict] = []
-    invoiced = received = credited = 0
+    invoiced = received = credited = debited = 0
     for e in events:
         if e["date"] < start or e["date"] > end:
             continue
@@ -112,6 +121,7 @@ def build_statement(customer: dict, start: str, end: str,
         invoiced += e["debit_paise"] if e["type"] == "invoice" else 0
         received += e["credit_paise"] if e["type"] == "receipt" else 0
         credited += e["credit_paise"] if e["type"] == "credit_note" else 0
+        debited += e["debit_paise"] if e["type"] == "debit_note" else 0
         transactions.append({
             "date": e["date"], "type": e["type"], "reference": e["reference"],
             "particulars": e["particulars"], "debit_paise": e["debit_paise"],
@@ -135,7 +145,8 @@ def build_statement(customer: dict, start: str, end: str,
         "closing_balance_paise": running,
         "totals": {
             "invoiced_paise": invoiced, "received_paise": received,
-            "credited_paise": credited, "transaction_count": len(transactions),
+            "credited_paise": credited, "debited_paise": debited,
+            "transaction_count": len(transactions),
         },
     }
     # Multi-Currency Phase 5 — closing outstanding split by transaction currency
@@ -179,7 +190,13 @@ class CustomerStatementService:
                .execute().data or [])
         credit_notes = [c for c in cns if (c.get("status") or "") not in _DEAD_CREDIT_NOTE]
 
-        return build_statement(customer, start_date, end_date, invoices, receipts, credit_notes)
+        dns = (db.table("sales_debit_notes")
+               .select("debit_note_no, debit_note_date, total_paise, status")
+               .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
+               .is_("deleted_at", "null").execute().data or [])
+        debit_notes = [d for d in dns if (d.get("status") or "") not in _DEAD_DEBIT_NOTE]
+
+        return build_statement(customer, start_date, end_date, invoices, receipts, credit_notes, debit_notes)
 
     def ar_aging(self, db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
         """Client-scoped accounts-receivable aging (the AR mirror of ap_aging): per
@@ -190,7 +207,7 @@ class CustomerStatementService:
         today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
         invs = (db.table("client_sales_invoices")
                 .select("id, customer_id, invoice_no, invoice_date, due_date, total_paise, paid_paise, "
-                        "credited_paise, status, txn_currency, exchange_rate, txn_total, paid_txn")
+                        "credited_paise, debit_note_paise, status, txn_currency, exchange_rate, txn_total, paid_txn")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null").execute().data or [])
         cnames = {c["id"]: c.get("name") for c in (db.table("customers").select("id, name")
@@ -202,7 +219,8 @@ class CustomerStatementService:
         for inv in invs:
             if (inv.get("status") or "") in _DEAD_INVOICE:
                 continue
-            outstanding = (int(inv.get("total_paise") or 0)
+            # (total + debit notes) − paid − credited (CGST Act §34).
+            outstanding = (int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
                            - int(inv.get("paid_paise") or 0) - int(inv.get("credited_paise") or 0))
             if outstanding <= 0:
                 continue

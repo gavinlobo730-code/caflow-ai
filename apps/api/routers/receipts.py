@@ -32,15 +32,15 @@ def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_pa
     if not inv_id or delta_paise == 0:
         return
     inv_resp = (db.table("client_sales_invoices")
-                .select("total_paise,paid_paise,credited_paise")
+                .select("total_paise,paid_paise,credited_paise,debit_note_paise")
                 .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
     if not inv_resp.data:
         return
     inv = inv_resp.data[0]
-    total = int(inv.get("total_paise", 0) or 0)
-    # Credit notes settle part of the invoice — the settlement threshold is
-    # paid + credited >= total, matching create_receipt_core and the
-    # settle_receipt_atomic RPC (this was the one path that ignored it).
+    # Debit notes (CGST Act §34(3)) raise the ceiling; credit notes settle part
+    # of it. The settlement threshold is paid + credited >= (total + debit
+    # notes), matching create_receipt_core and the settle_receipt_atomic RPC.
+    total = int(inv.get("total_paise", 0) or 0) + int(inv.get("debit_note_paise", 0) or 0)
     credited = int(inv.get("credited_paise", 0) or 0)
     new_paid = int(inv.get("paid_paise", 0) or 0) + delta_paise
     if new_paid < 0:
@@ -233,13 +233,14 @@ def update_allocations(
         # invoice total.
         for inv_id, req_amt in requested_by_invoice.items():
             chk = (db.table("client_sales_invoices")
-                   .select("id, total_paise, paid_paise, credited_paise")
+                   .select("id, total_paise, paid_paise, credited_paise, debit_note_paise")
                    .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", receipt_client_id)
                    .limit(1).execute())
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
             inv = chk.data[0]
-            outstanding = (int(inv.get("total_paise") or 0)
+            # (total + debit notes) is the true ceiling (CGST Act §34(3)).
+            outstanding = (int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
                            - int(inv.get("paid_paise") or 0)
                            - int(inv.get("credited_paise") or 0)
                            + prior_by_invoice.get(inv_id, 0))

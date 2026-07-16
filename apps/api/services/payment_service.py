@@ -41,14 +41,19 @@ def _now() -> str:
 
 def _get_invoice(db, firm_id: str, invoice_id: str) -> Optional[dict]:
     rows = (db.table("client_sales_invoices")
-            .select("id,firm_id,client_id,customer_id,invoice_no,total_paise,paid_paise,status")
+            .select("id,firm_id,client_id,customer_id,invoice_no,total_paise,paid_paise,"
+                    "credited_paise,debit_note_paise,status")
             .eq("id", invoice_id).eq("firm_id", firm_id).is_("deleted_at", "null")
             .limit(1).execute().data or [])
     return rows[0] if rows else None
 
 
 def _outstanding(inv: dict) -> int:
-    return int(inv.get("total_paise", 0) or 0) - int(inv.get("paid_paise", 0) or 0)
+    # (total + debit notes) − paid − credited (CGST Act §34) — a customer
+    # sent a payment link for an invoice that's since been debit-noted must be
+    # asked for the true amount owed, not the original, now-stale total.
+    return (int(inv.get("total_paise", 0) or 0) + int(inv.get("debit_note_paise", 0) or 0)
+            - int(inv.get("paid_paise", 0) or 0) - int(inv.get("credited_paise", 0) or 0))
 
 
 def _customer(db, firm_id: str, customer_id: str) -> dict:

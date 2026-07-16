@@ -53,7 +53,7 @@ def test_mixed_invoices_receipts_credits():
     # 0 + 118000 - 100000 + 59000 - 9000 = 68000
     assert s["closing_balance_paise"] == 68000
     assert s["totals"] == {"invoiced_paise": 177000, "received_paise": 100000,
-                           "credited_paise": 9000, "transaction_count": 4}
+                           "credited_paise": 9000, "debited_paise": 0, "transaction_count": 4}
     # ordering: same-day invoices before credit notes before receipts; across days by date
     assert [t["reference"] for t in s["transactions"]] == ["I1", "R1", "I2", "C1"]
 
