@@ -1214,9 +1214,16 @@ function SalesInvoices({
   }
 
   function openEdit(inv: SalesInvoice) {
-    // Navigate to the dedicated Edit route (Batch 2). The edit page loads the
-    // invoice detail itself and enforces draft-only editing.
-    setDetailId(null);
+    // Navigate to the dedicated Edit route. Deliberately does NOT call
+    // setDetailId(null) first: that state change re-runs the ?invoice=
+    // URL-sync effect below (window.history.replaceState), which was racing
+    // this router.push() and interrupting Next's in-flight background fetch
+    // for the edit route's data — the fetch would reject, and with no
+    // .catch() on the service worker's fallback path (see public/sw.js) that
+    // became an uncaught error that silently aborted the navigation,
+    // stranding the user back on the list. Leaving the drawer's own state
+    // alone is harmless: navigating away unmounts this page (and the
+    // drawer with it) regardless of whether detailId was ever cleared.
     router.push(editInvoiceHref(clientId, inv.id));
   }
 
@@ -1607,6 +1614,15 @@ function SalesInvoices({
               )}
               {inv.status !== "draft" && inv.status !== "cancelled" && (
                 <>
+                  {/* Row-menu parity with Purchases' own "Edit" entry (shown for
+                      every non-cancelled status there) — this was missing here,
+                      leaving no way to reach the locked editor's soft-field edits
+                      (reference, notes, terms, due date, line units) except via
+                      the drawer's own "Edit Details" button. */}
+                  <button onClick={() => { setMenu(null); openEdit(inv); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    <Pencil size={13} /> Edit Details
+                  </button>
                   <button onClick={() => { setMenu(null); openSend(inv); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
                     <Send size={13} /> Send
