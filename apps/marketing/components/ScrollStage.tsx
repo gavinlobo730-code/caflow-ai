@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 
 /**
  * General-purpose scroll-pin primitive, factored out of the lessons learned
@@ -39,8 +39,9 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 // while actively scrolling through it — acceptable for one modest section at
 // a time (the single in-flight rAF already caps this at the repaint rate),
 // but a reason NOT to reach for this hook for anything with heavy content.
-export function usePinnedStage<T extends HTMLElement>(vh: number = 200) {
-  const wrapRef = useRef<T | null>(null);
+export function usePinnedStage<T extends HTMLElement>(vh: number = 200, externalRef?: RefObject<T>) {
+  const internalRef = useRef<T | null>(null);
+  const wrapRef = externalRef ?? internalRef;
   const [pinnedActive, setPinnedActive] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -84,7 +85,7 @@ export function usePinnedStage<T extends HTMLElement>(vh: number = 200) {
       window.removeEventListener("resize", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [pinnedActive]);
+  }, [pinnedActive, wrapRef]);
 
   return { wrapRef, pinnedActive, progress, vh };
 }

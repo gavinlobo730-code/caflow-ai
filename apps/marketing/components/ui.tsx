@@ -7,7 +7,8 @@
 // component as a child with no changes on its end; only a component that
 // calls a hook in its own body needs the boundary.
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { forwardRef } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { ArrowRight } from "./icons";
 import { Reveal, WordReveal } from "./motion";
 import { Magnetic, useCursorGlow } from "./Cursor";
@@ -17,21 +18,20 @@ import { appLinks } from "@/lib/site";
 // place is what makes Home / Products / Pricing / Support / Resources read as a
 // single design system.
 
-export function Section({
-  id,
-  className = "",
-  children,
-}: {
-  id?: string;
-  className?: string;
-  children: ReactNode;
-}) {
+// forwardRef so callers (currently just the home page's flowing background)
+// can measure this section's own box — a plain function component can't
+// accept a ref at all, and the vast majority of Section's callers don't need
+// one, so this is additive rather than a behavior change for them.
+export const Section = forwardRef<
+  HTMLElement,
+  { id?: string; className?: string; style?: CSSProperties; children: ReactNode }
+>(function Section({ id, className = "", style, children }, ref) {
   return (
-    <section id={id} className={`py-20 md:py-28 ${className}`}>
+    <section ref={ref} id={id} className={`py-20 md:py-28 ${className}`} style={style}>
       <div className="container-ps">{children}</div>
     </section>
   );
-}
+});
 
 export function Eyebrow({
   children,
