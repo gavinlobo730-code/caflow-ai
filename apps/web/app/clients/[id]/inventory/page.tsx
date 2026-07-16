@@ -17,6 +17,8 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2, TrendingDown } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column } from "@/lib/table/types";
 import { formatServicePrice } from "@/lib/catalogue/service";
@@ -104,8 +106,26 @@ export default function InventoryPage() {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     try {
-      const res = (await api.inventory.items({ client_id: clientId })) as { success: boolean; data: StockItem[] | null };
-      setItems(res.success && res.data ? res.data : []);
+      // Direct Supabase, not api.inventory.items() — that endpoint is a plain
+      // service_catalogue select (kind='good') plus one derived field
+      // (stock_value_paise = qty * avg_cost, never persisted — see
+      // routers/inventory.py:list_stock_items); stock_qty_units/avg_cost_paise
+      // themselves are already cached, server-computed columns written by
+      // domain/inventory_service.py at posting time, not read time. No
+      // business logic here worth an extra backend hop for.
+      const supabase = getSupabaseClient();
+      const { data } = await selectAll(() => supabase
+        .from("service_catalogue")
+        .select("id, name, description, hsn_sac, unit, kind, is_active, stock_qty_units, avg_cost_paise")
+        .eq("client_id", clientId)
+        .eq("kind", "good")
+        .order("name")
+        .order("id"));
+      const rows = ((data as Omit<StockItem, "stock_value_paise">[]) ?? []).map((r) => ({
+        ...r,
+        stock_value_paise: Math.round((r.stock_qty_units ?? 0) * (r.avg_cost_paise ?? 0)),
+      }));
+      setItems(rows);
     } catch {
       setItems([]);
     } finally {
