@@ -119,6 +119,51 @@ def test_partial_then_final_settlement_no_drift(monkeypatch):
     assert tb["total_debit_paise"] == tb["total_credit_paise"]
 
 
+# ── task #102: FX statement rate bug — statements must use the BOOKED-rate AR/AP
+#    relief, not the receipt/payment's cash-rate amount_paise ─────────────────
+def test_customer_statement_uses_booked_rate_not_cash_rate(monkeypatch):
+    from services.customer_statement_service import customer_statement_service as CS
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="US", state_code="27"), CALLER)["data"]
+    inv = _usd_invoice(si, cust["id"], 80.0)                       # AR booked at ₹80,000
+    rc.create_receipt(ReceiptIn(
+        client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
+        amount_paise=100000, currency="USD", exchange_rate="83.0",   # cash at ₹83,000 (gain)
+        allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100000)]), CALLER)
+
+    stmt = CS.generate(db, FIRM, "CLI", cust["id"], "2025-04-01", "2026-03-31")
+    receipt_txn = next(t for t in stmt["transactions"] if t["type"] == "receipt")
+    # The invoice was settled EXACTLY at its booked rate (₹80,000) — the extra
+    # ₹3,000 cash is a realized FX GAIN, not a reduction of what the customer
+    # owed. Before the fix this read 8_300_000 (cash rate), leaving a bogus
+    # -300,000 closing balance even though the invoice is fully settled.
+    assert receipt_txn["credit_paise"] == 8_000_000
+    assert stmt["closing_balance_paise"] == 0
+
+
+def test_vendor_statement_uses_booked_rate_not_cash_rate(monkeypatch):
+    from services.vendor_statement_service import vendor_statement_service as VS
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    vend = ve.create_vendor(VendorIn(client_id="CLI", name="US V", state_code="27"), CALLER)["data"]
+    bill = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="UB1",
+        currency="USD", exchange_rate="80.0",
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
+    pb.receive_purchase_bill(bill["id"], CALLER)
+    pp.create_purchase_payment(PurchasePaymentIn(
+        client_id="CLI", vendor_id=vend["id"], payment_date="2025-07-01",
+        amount_paise=100000, currency="USD", exchange_rate="83.0", purchase_bill_id=bill["id"]), CALLER)   # cash ₹83,000 (loss)
+
+    stmt = VS.generate(db, FIRM, "CLI", vend["id"], "2025-04-01", "2026-03-31")
+    payment_txn = next(t for t in stmt["transactions"] if t["type"] == "payment")
+    # The bill was settled EXACTLY at its booked rate (₹80,000) — the extra
+    # ₹3,000 cash paid is a realized FX LOSS, not extra payable relief. Before
+    # the fix this read 8_300_000 (cash rate), leaving a bogus -300,000
+    # closing (payable) balance even though the bill is fully settled.
+    assert payment_txn["debit_paise"] == 8_000_000
+    assert stmt["closing_balance_paise"] == 0
+
+
 # ── Realized FX on vendor payment ─────────────────────────────────────────────
 def test_realized_fx_on_vendor_payment(monkeypatch):
     cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)

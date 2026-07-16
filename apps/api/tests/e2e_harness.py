@@ -261,8 +261,9 @@ class _Rpc:
                         and r.get("client_id") == entry.get("client_id")
                         and r.get("reference_no") == ref
                         and r.get("entry_date") == entry.get("entry_date")
-                        and not r.get("deleted_at")):
-                    return r["id"]  # dedup: return the existing winner
+                        and not r.get("deleted_at")
+                        and not r.get("is_reversed")):
+                    return r["id"]  # dedup: return the existing (live, unreversed) winner
         entry.setdefault("id", str(uuid.uuid4()))
         entries.append(entry)
         line_store = self.db._tables.setdefault("journal_lines", [])

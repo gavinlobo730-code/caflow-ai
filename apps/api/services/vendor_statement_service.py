@@ -73,7 +73,20 @@ def build_statement(vendor: dict, start: str, end: str,
                        "credit_paise": 0, "debit_paise": _dt,
                        **_ccy_view(dn, _dt, dn.get("total_paise"))})
     for p in payments:
-        _amt = int(p.get("amount_paise") or 0)
+        # A payment relieves AP by its true settlement. For INR payments,
+        # amount_paise IS that (journal_for_purchase_payment debits Trade
+        # Payables for amount_paise directly). For a FOREIGN payment,
+        # amount_paise is the CASH-rate total, but the journal
+        # (_create_foreign_payment) debits AP at the bill's frozen BOOKED
+        # rate, routing the cash/booked-rate delta to Realized FX Gain/Loss —
+        # so amount_paise alone is off by exactly that delta (task #102
+        # finding). ap_relief_paise, when the caller supplies it
+        # (vendor_statement_service.generate(), derived from amount_paise +
+        # fx_adjustments.base_delta_paise — 0 for INR payments, a no-op
+        # there), is the authoritative figure; amount_paise remains the
+        # fallback for pure-builder callers without fx_adjustments on hand.
+        _amt = (int(p["ap_relief_paise"]) if p.get("ap_relief_paise") is not None
+                else int(p.get("amount_paise") or 0))
         events.append({"date": _d(p.get("payment_date")), "rank": 3, "type": "payment",
                        "reference": p.get("payment_no"),
                        "particulars": f"Payment {p.get('payment_no', '')}".strip(),
@@ -161,9 +174,24 @@ class VendorStatementService:
         bills = [x for x in b if (x.get("status") or "") not in _DEAD_BILL]
 
         payments = (db.table("purchase_payments")
-                    .select("payment_no, payment_date, amount_paise, txn_currency, exchange_rate, txn_amount")
+                    .select("id, payment_no, payment_date, amount_paise, txn_currency, exchange_rate, txn_amount")
                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
                     .execute().data or [])
+        # ap_relief_paise = true AP debit per payment (task #102 FX statement
+        # fix, see build_statement's payment loop). fx_adjustments carries the
+        # cash/booked-rate delta per document; absent for INR payments (delta
+        # always 0 there), so this is additive.
+        payment_ids = [p["id"] for p in payments if p.get("id")]
+        fx_delta: dict[str, int] = {}
+        if payment_ids:
+            adjs = (db.table("fx_adjustments").select("document_id, base_delta_paise")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .eq("document_type", "purchase_payment").in_("document_id", payment_ids)
+                    .execute().data or [])
+            for a in adjs:
+                fx_delta[a.get("document_id")] = fx_delta.get(a.get("document_id"), 0) + int(a.get("base_delta_paise") or 0)
+        for p in payments:
+            p["ap_relief_paise"] = int(p.get("amount_paise") or 0) + fx_delta.get(p.get("id"), 0)
 
         dn = (db.table("debit_notes")
               .select("debit_note_no, debit_note_date, total_paise, status")

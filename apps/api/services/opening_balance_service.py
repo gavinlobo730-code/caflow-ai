@@ -67,13 +67,22 @@ def _sum_opening(rows: list[dict]) -> int:
 
 
 def _fetch_masters(db, client_id: str):
+    """Deliberately NOT filtered by is_active: deactivating a customer/vendor/
+    bank account only flips is_active — opening_balance_paise is untouched and
+    deactivation docstrings promise history stays intact (customers.py /
+    vendors.py delete_*, test_customer_lifecycle.py). _current_opening_net()
+    below reads the posted GL without an is_active filter either, so this
+    target computation must match it column-for-column — filtering here would
+    make an unrelated party's opening-balance edit (which triggers a delta
+    sync) silently reverse a deactivated party's opening balance out of Trade
+    Receivables/Payables."""
     customers = (db.table("customers").select("opening_balance_paise, opening_balance_date")
-                 .eq("client_id", client_id).eq("is_active", True).execute().data or [])
+                 .eq("client_id", client_id).execute().data or [])
     vendors = (db.table("vendors").select("opening_balance_paise, opening_balance_date")
-               .eq("client_id", client_id).eq("is_active", True).execute().data or [])
+               .eq("client_id", client_id).execute().data or [])
     banks = (db.table("bank_accounts")
              .select("opening_balance_paise, opening_balance_date, coa_account_id")
-             .eq("client_id", client_id).eq("is_active", True).execute().data or [])
+             .eq("client_id", client_id).execute().data or [])
     return customers, vendors, banks
 
 

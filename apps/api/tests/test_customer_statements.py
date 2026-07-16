@@ -101,6 +101,7 @@ class _Q:
     def select(self, *a, **k): self.op = "select"; return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def is_(self, k, _v): self.f.append((k, ("__null__",))); return self
+    def in_(self, k, vals): self.f.append((k, ("__in__", list(vals)))); return self
     def limit(self, _n): return self
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
 
@@ -111,6 +112,8 @@ class _Q:
             for k, v in self.f:
                 if isinstance(v, tuple) and v and v[0] == "__null__":
                     if r.get(k) is not None: ok = False; break
+                elif isinstance(v, tuple) and v and v[0] == "__in__":
+                    if r.get(k) not in v[1]: ok = False; break
                 elif r.get(k) != v: ok = False; break
             if ok: out.append(r)
         return out
@@ -150,8 +153,9 @@ def _seed_db():
         {"firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST, "invoice_no": "CANC",
          "invoice_date": "2025-04-13", "total_paise": 88888, "status": "cancelled", "deleted_at": None},
     ]
-    d.store["receipts"] = [{"firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
-                            "receipt_no": "R1", "receipt_date": "2025-04-20", "amount_paise": 20000}]
+    d.store["receipts"] = [{"id": "rcpt-1", "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+                            "receipt_no": "R1", "receipt_date": "2025-04-20", "amount_paise": 20000,
+                            "unallocated_paise": 20000}]
     d.store["credit_notes"] = []
     d.store["customer_statement_deliveries"] = []
     return d

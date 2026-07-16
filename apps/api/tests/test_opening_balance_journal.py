@@ -204,6 +204,39 @@ def test_status_clears_after_posting(monkeypatch):
     assert st["has_opening_journal"] is True
 
 
+def test_deactivating_customer_does_not_erase_opening_balance(monkeypatch):
+    # task #102: _fetch_masters used to filter is_active=True, so deactivating
+    # a customer dropped their opening balance from the TARGET while the
+    # posted GL (unfiltered) still carried it — the next sync (triggered by
+    # ANY unrelated master change) posted a real delta erasing it from Trade
+    # Receivables, contradicting "deactivation keeps history intact."
+    db = _setup(monkeypatch)
+    db.seed("customers", {"id": "C1", "firm_id": FIRM, "client_id": "CLI",
+                          "is_active": True, "opening_balance_paise": 500_000})
+    db.seed("customers", {"id": "C2", "firm_id": FIRM, "client_id": "CLI",
+                          "is_active": True, "opening_balance_paise": 100_000})
+    obs.post_opening_balances(FIRM, "CLI")
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 600_000
+
+    # C1 is deactivated (opening_balance_paise is untouched by deactivation).
+    for c in db.rows("customers"):
+        if c["id"] == "C1":
+            c["is_active"] = False
+
+    # An unrelated change to C2 triggers the next sync.
+    for c in db.rows("customers"):
+        if c["id"] == "C2":
+            c["opening_balance_paise"] = 150_000
+    obs.post_opening_balances(FIRM, "CLI")
+
+    # C1's opening balance must still be in Trade Receivables — deactivation
+    # alone must never move money out of the GL.
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 650_000
+    assert obs.opening_balance_status(FIRM, "CLI")["needs_posting"] is False
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
+
+
 def test_status_flags_changed_openings_after_posting(monkeypatch):
     db = _setup(monkeypatch)
     db.seed("customers", {"id": "C1", "firm_id": FIRM, "client_id": "CLI",
