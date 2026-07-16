@@ -18,6 +18,7 @@ import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePic
 import type { ComboboxHandle } from "@/components/ui/combobox";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
@@ -188,6 +189,49 @@ export function InvoiceEditor({
     })();
     return () => { cancelled = true; };
   }, [clientId, isEdit]);
+
+  // Rehydrate each existing line's Product/Service picker. detailLinesToEditorLines
+  // deliberately keeps only serviceCatalogueId from the server (not the full
+  // catalogue object — see its own comment), so on load every line's picker
+  // shows blank ("+ Add Product/Service") even though a product IS linked,
+  // right up until the CA re-picks something. One batched by-id lookup fixes
+  // that without ever making `product` reach the API (toInvoiceLinePayload
+  // still only reads serviceCatalogueId). Not filtered to is_active — an
+  // invoice can reference a since-archived preset, and its name should still
+  // show, especially since the picker itself is disabled in locked mode.
+  useEffect(() => {
+    if (!isEdit || !existing?.id) return;
+    const ids = Array.from(new Set(
+      initialLines.map((l) => l.serviceCatalogueId).filter((id): id is string => !!id),
+    ));
+    if (!ids.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const { data } = await supabase
+          .from("service_catalogue")
+          .select("*")
+          .eq("client_id", clientId)
+          .in("id", ids);
+        if (cancelled || !data?.length) return;
+        const byId = new Map((data as ServiceCatalogueItem[]).map((s) => [s.id, s]));
+        const withProducts = (prev: EditorLine[]): EditorLine[] =>
+          prev.map((l) => (l.serviceCatalogueId && byId.has(l.serviceCatalogueId) && !l.product
+            ? { ...l, product: byId.get(l.serviceCatalogueId) }
+            : l));
+        setLines(withProducts);
+        // Keep the dirty-check snapshot in lockstep — otherwise this
+        // rehydration itself would flip the editor to "Unsaved changes".
+        initialSnapshot.current = { ...initialSnapshot.current, lines: withProducts(initialSnapshot.current.lines) };
+      } catch {
+        // Best-effort: a failed lookup just leaves those lines' pickers blank,
+        // same as before this fix — never blocks editing.
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once per loaded invoice; initialLines is derived from `existing` and stable for its lifetime
+  }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
   const rateNum = parseFloat(exchangeRate);
