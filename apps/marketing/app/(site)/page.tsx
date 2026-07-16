@@ -67,18 +67,23 @@ function ScatterChapter() {
       <div className="bg-noise absolute inset-0" />
       <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
 
-      {SCATTER_TOOLS.map((tool) => (
-        <div
-          key={tool.name}
-          className={`absolute hidden w-[168px] rounded-2xl border border-white/12 bg-white/[0.05] p-3.5 shadow-modal backdrop-blur-md lg:block ${tool.pos}`}
-        >
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.07] text-rose-300/80">
-            {tool.icon}
-          </span>
-          <p className="mt-2.5 text-[13px] font-bold text-white">{tool.name}</p>
-          <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{tool.pain}</p>
-        </div>
-      ))}
+      {/* Decorative — the same "five scattered tools" point is already made
+          accessibly by the real heading/paragraph below, so screen readers
+          shouldn't have these read out as if they were separate content. */}
+      <div aria-hidden="true">
+        {SCATTER_TOOLS.map((tool) => (
+          <div
+            key={tool.name}
+            className={`absolute hidden w-[168px] rounded-2xl border border-white/12 bg-white/[0.05] p-3.5 shadow-modal backdrop-blur-md lg:block ${tool.pos}`}
+          >
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.07] text-rose-300/80">
+              {tool.icon}
+            </span>
+            <p className="mt-2.5 text-[13px] font-bold text-white">{tool.name}</p>
+            <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{tool.pain}</p>
+          </div>
+        ))}
+      </div>
 
       <div className="container-ps relative py-20 text-center">
         <span className="inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-[12.5px] font-medium text-rose-200/90 backdrop-blur-sm">
