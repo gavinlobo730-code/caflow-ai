@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Loader2, AlertTriangle, CheckCircle, XCircle, Code } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
@@ -57,8 +58,18 @@ export default function XBRLPage() {
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    const res = await apiFetch(`/api/xbrl/packages?client_id=${clientId}`);
-    setPackages(res.data ?? []);
+    // Plain filtered select (xbrl_packages, RLS-scoped to the firm) — no
+    // server-side computation, so read directly instead of round-tripping
+    // through the FastAPI backend. Mirrors
+    // domain/income_tax/xbrl_service.py::list_xbrl_packages (same table,
+    // client_id filter, created_at-desc ordering).
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from("xbrl_packages")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+    setPackages((data as XBRLPackage[]) ?? []);
     setLoading(false);
   }, [clientId]);
 

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -81,8 +82,18 @@ export default function ITRFilingPage() {
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    const res = await apiFetch(`/api/itr/filings?client_id=${clientId}`);
-    setFilings(res.data ?? []);
+    // Plain read — routed directly to Supabase (RLS: firm_isolation) instead
+    // of through the FastAPI backend, which cold-starts. Mirrors the exact
+    // table/columns/filter/ordering of list_itr_filings in
+    // apps/api/domain/income_tax/itr_workflow.py. Create/transition/acknowledge
+    // remain backend-routed (workflow state-machine logic).
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from("itr_filings")
+      .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+    setFilings((data as Filing[]) ?? []);
     setLoading(false);
   }, [clientId]);
 
