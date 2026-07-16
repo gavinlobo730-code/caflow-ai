@@ -177,6 +177,61 @@ export function Tilt({
   );
 }
 
+/**
+ * Card that keeps a fixed base transform (e.g. `rotate(-6deg)` or a centering
+ * `translate(-50%,-50%) rotate(-2deg)`) and layers a cursor-driven 3D tilt
+ * (±14° rotateX/rotateY from the pointer's position within the card) on top,
+ * snapping back to the base on mouse-leave — the hero mockup-card effect from
+ * the design reference's `attachCard`. Distinct from `Tilt`, which has no base
+ * transform and applies its own perspective/scale. The parent must set
+ * `perspective` for the 3D rotation to read. Inert (base transform only, no
+ * listeners' effect) under reduced motion.
+ */
+export function TiltCard({
+  base,
+  className = "",
+  style,
+  children,
+}: {
+  base: string;
+  className?: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduced = usePrefersReducedMotion();
+
+  function onMove(e: React.MouseEvent) {
+    if (reduced) return;
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transition = "transform 0.05s linear";
+    el.style.transform = `${base} rotateX(${(-py * 14).toFixed(2)}deg) rotateY(${(px * 14).toFixed(2)}deg)`;
+  }
+
+  function onLeave() {
+    const el = ref.current;
+    if (!el) return;
+    el.style.transition = "transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)";
+    el.style.transform = base;
+  }
+
+  return (
+    <div
+      ref={ref}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      className={className}
+      style={{ transform: base, willChange: "transform", ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** Gentle scroll parallax — shifts the element against scroll direction. */
 export function Parallax({
   children,

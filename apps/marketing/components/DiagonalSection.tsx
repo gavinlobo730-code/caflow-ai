@@ -13,14 +13,18 @@ export function DiagonalSection({
   id,
   numeral,
   numeralCorner = "top-right",
+  numeralItalic = false,
   seam,
   className = "",
   style,
   children,
 }: {
   id?: string;
-  numeral: string;
-  numeralCorner?: "top-right" | "bottom-left";
+  /** Decorative page-number/quote watermark. Omit for sections the reference
+   * leaves un-numbered (stats, final CTA). */
+  numeral?: string;
+  numeralCorner?: "top-right" | "bottom-left" | "top-left";
+  numeralItalic?: boolean;
   /** Which way the section's top edge rises. */
   seam: "rising-left" | "rising-right";
   className?: string;
@@ -33,17 +37,23 @@ export function DiagonalSection({
       : "polygon(0 0, 100% 64px, 100% 100%, 0 100%)";
 
   const numeralStyle: CSSProperties =
-    numeralCorner === "top-right" ? { top: "-60px", right: "-20px" } : { bottom: "-40px", left: "-30px" };
+    numeralCorner === "top-right"
+      ? { top: "-60px", right: "-20px" }
+      : numeralCorner === "top-left"
+        ? { top: "-60px", left: "0px" }
+        : { bottom: "-40px", left: "-30px" };
 
   return (
     <section id={id} className={`relative -mt-16 overflow-hidden ${className}`} style={{ clipPath, ...style }}>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute z-0 select-none font-display text-[clamp(200px,28vw,400px)] leading-none opacity-[0.05]"
-        style={numeralStyle}
-      >
-        {numeral}
-      </div>
+      {numeral ? (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute z-0 select-none font-display text-[clamp(200px,28vw,400px)] leading-none opacity-[0.05] ${numeralItalic ? "italic" : ""}`}
+          style={numeralStyle}
+        >
+          {numeral}
+        </div>
+      ) : null}
       <div className="relative z-10">{children}</div>
     </section>
   );

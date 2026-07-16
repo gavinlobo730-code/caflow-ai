@@ -249,10 +249,17 @@ export function RotatingWord({
   words,
   className = "",
   interval = 2200,
+  decorative = false,
 }: {
   words: string[];
   className?: string;
   interval?: number;
+  /** When true the whole element is aria-hidden with no sr-only fallback —
+   * for the giant hero flourish, where the real heading text lives in a
+   * sibling <h1> and reading the cycling word list too would be redundant
+   * and confusing. Default false keeps the sr-only word list for inline
+   * uses where the rotating word carries the meaning. */
+  decorative?: boolean;
 }) {
   const [i, setI] = useState(0);
   const reduced = usePrefersReducedMotion();
@@ -264,8 +271,11 @@ export function RotatingWord({
   }, [reduced, words.length, interval]);
 
   return (
-    <span className={`relative inline-grid align-bottom ${className}`}>
-      <span className="sr-only">{words.join(" / ")}</span>
+    <span
+      className={`relative inline-grid align-bottom ${className}`}
+      aria-hidden={decorative ? "true" : undefined}
+    >
+      {!decorative && <span className="sr-only">{words.join(" / ")}</span>}
       {words.map((w, idx) => (
         <span
           key={w}
