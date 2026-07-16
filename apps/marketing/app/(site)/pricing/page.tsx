@@ -8,6 +8,7 @@ import {
   CTASection,
 } from "@/components/ui";
 import { Check, Star, ArrowRight, Globe, Lock, Shield, Zap } from "@/components/icons";
+import { Reveal } from "@/components/motion";
 import { appLinks } from "@/lib/site";
 
 export const metadata = {
@@ -147,61 +148,62 @@ export default function PricingPage() {
       {/* ── Pricing tiers ────────────────────────────────────────────────── */}
       <Section className="bg-ps-bg">
         <div className="grid gap-6 md:grid-cols-3">
-          {TIERS.map((tier) => (
-            <Card
-              key={tier.name}
-              className={`relative flex flex-col ${
-                tier.highlighted ? "ring-2 ring-brand" : ""
-              }`}
-            >
-              {tier.badge ? (
-                <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm">
-                  <Star size={12} /> {tier.badge}
-                </span>
-              ) : null}
-
-              <h3 className="text-[18px] font-bold text-brand-dark">{tier.name}</h3>
-              <p className="mt-1 text-[14px] text-slate-600">{tier.description}</p>
-
-              <div className="mt-5 flex items-baseline gap-1">
-                <span className="text-[34px] font-bold tracking-tight text-brand-dark">
-                  {tier.price}
-                </span>
-                {tier.cadence ? (
-                  <span className="text-[15px] font-medium text-slate-500">
-                    {tier.cadence}
+          {TIERS.map((tier, i) => (
+            <Reveal key={tier.name} variant="up" delay={i * 130} className="h-full">
+              <Card
+                className={`relative flex h-full flex-col ${
+                  tier.highlighted ? "ring-2 ring-brand" : ""
+                }`}
+              >
+                {tier.badge ? (
+                  <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm">
+                    <Star size={12} /> {tier.badge}
                   </span>
                 ) : null}
-              </div>
-              <p className="mt-1.5 text-[12px] text-slate-500">{tier.priceNote}</p>
 
-              <p className="mt-6 text-[13px] font-semibold text-brand-dark">
-                {tier.featuresLead}
-              </p>
-              <ul className="mt-3 space-y-2.5">
-                {tier.features.map((f) => (
-                  <li
-                    key={f}
-                    className="flex items-start gap-2.5 text-[14px] leading-relaxed text-slate-600"
+                <h3 className="text-[18px] font-bold text-brand-dark">{tier.name}</h3>
+                <p className="mt-1 text-[14px] text-slate-600">{tier.description}</p>
+
+                <div className="mt-5 flex items-baseline gap-1">
+                  <span className="text-[34px] font-bold tracking-tight text-brand-dark">
+                    {tier.price}
+                  </span>
+                  {tier.cadence ? (
+                    <span className="text-[15px] font-medium text-slate-500">
+                      {tier.cadence}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1.5 text-[12px] text-slate-500">{tier.priceNote}</p>
+
+                <p className="mt-6 text-[13px] font-semibold text-brand-dark">
+                  {tier.featuresLead}
+                </p>
+                <ul className="mt-3 space-y-2.5">
+                  {tier.features.map((f) => (
+                    <li
+                      key={f}
+                      className="flex items-start gap-2.5 text-[14px] leading-relaxed text-slate-600"
+                    >
+                      <Check size={17} className="mt-0.5 shrink-0 text-emerald-500" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-auto pt-8">
+                  <Button
+                    href={tier.cta.href}
+                    external={tier.cta.external}
+                    variant={tier.highlighted ? "primary" : "secondary"}
+                    className="w-full"
                   >
-                    <Check size={17} className="mt-0.5 shrink-0 text-emerald-500" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="mt-auto pt-8">
-                <Button
-                  href={tier.cta.href}
-                  external={tier.cta.external}
-                  variant={tier.highlighted ? "primary" : "secondary"}
-                  className="w-full"
-                >
-                  {tier.cta.label}
-                  <ArrowRight size={16} />
-                </Button>
-              </div>
-            </Card>
+                    {tier.cta.label}
+                    <ArrowRight size={16} />
+                  </Button>
+                </div>
+              </Card>
+            </Reveal>
           ))}
         </div>
 
@@ -214,36 +216,39 @@ export default function PricingPage() {
 
       {/* ── Included in every plan ───────────────────────────────────────── */}
       <Section className="bg-white">
-        <SectionHeading
-          eyebrow="Every plan"
-          title="Included with every plan"
-          subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="Every plan"
+            title="Included with every plan"
+            subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
+          />
+        </Reveal>
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {INCLUDED.map((item) => (
-            <FeatureCard
-              key={item.title}
-              icon={item.icon}
-              title={item.title}
-              desc={item.desc}
-            />
+          {INCLUDED.map((item, i) => (
+            <Reveal key={item.title} delay={i * 90} className="h-full">
+              <FeatureCard icon={item.icon} title={item.title} desc={item.desc} />
+            </Reveal>
           ))}
         </div>
       </Section>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
       <Section className="bg-ps-bg">
-        <SectionHeading
-          eyebrow="FAQ"
-          title="Questions, answered"
-          subtitle="A few things CAs ask us before getting started."
-        />
+        <Reveal variant="blur">
+          <SectionHeading
+            eyebrow="FAQ"
+            title="Questions, answered"
+            subtitle="A few things CAs ask us before getting started."
+          />
+        </Reveal>
         <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
-          {FAQS.map((item) => (
-            <Card key={item.q}>
-              <h3 className="text-[16px] font-bold text-brand-dark">{item.q}</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{item.a}</p>
-            </Card>
+          {FAQS.map((item, i) => (
+            <Reveal key={item.q} delay={i * 90} className="h-full">
+              <Card className="h-full">
+                <h3 className="text-[16px] font-bold text-brand-dark">{item.q}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{item.a}</p>
+              </Card>
+            </Reveal>
           ))}
         </div>
       </Section>

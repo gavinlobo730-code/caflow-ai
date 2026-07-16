@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowRight } from "./icons";
+import { Reveal, WordReveal } from "./motion";
 import { appLinks } from "@/lib/site";
 
 // Shared presentational primitives for the marketing pages. Keeping these in one
@@ -96,12 +97,12 @@ export function Button({
   children,
 }: ButtonProps) {
   const styles: Record<NonNullable<ButtonProps["variant"]>, string> = {
-    primary: "bg-brand text-white hover:bg-brand-hover shadow-sm",
+    primary: "btn-shine bg-brand text-white hover:bg-brand-hover shadow-sm hover:shadow-[0_8px_24px_rgba(24,35,80,0.25)]",
     secondary: "bg-white text-brand border border-ps-border hover:bg-ps-muted",
-    light: "bg-white text-brand hover:bg-ps-muted shadow-sm",
+    light: "btn-shine bg-white text-brand hover:bg-ps-muted shadow-sm",
     "ghost-light": "text-white border border-white/25 hover:bg-white/10",
   };
-  const cls = `inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-[14px] font-semibold transition-colors ${styles[variant]} ${className}`;
+  const cls = `inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-[14px] font-semibold transition-all duration-300 ${styles[variant]} ${className}`;
   if (external) {
     return (
       <a href={href} className={cls}>
@@ -125,7 +126,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-ps-border bg-white p-6 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-light/60 hover:shadow-card-hover ${className}`}
+      className={`card-lift rounded-2xl border border-ps-border bg-white p-6 shadow-card ${className}`}
     >
       {children}
     </div>
@@ -150,8 +151,10 @@ export function FeatureCard({
   desc: string;
 }) {
   return (
-    <Card>
-      <IconBadge>{icon}</IconBadge>
+    <Card className="h-full">
+      <span className="icon-pop inline-flex">
+        <IconBadge>{icon}</IconBadge>
+      </span>
       <h3 className="mt-5 text-[17px] font-bold text-brand-dark">{title}</h3>
       <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{desc}</p>
     </Card>
@@ -159,6 +162,8 @@ export function FeatureCard({
 }
 
 // Consistent dark page header used at the top of the inner marketing pages.
+// String titles materialise word by word; the background carries the same
+// living aurora as the home hero so every page opens with motion.
 export function PageHero({
   eyebrow,
   title,
@@ -171,18 +176,27 @@ export function PageHero({
   return (
     <section className="relative overflow-hidden bg-brand-dark text-white">
       <div className="bg-grid absolute inset-0" />
-      <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-light/15 blur-[110px]" />
+      <div className="aurora aurora-1 -left-40 -top-40 h-[420px] w-[420px]" />
+      <div className="aurora aurora-2 -right-32 -bottom-48 h-[460px] w-[460px]" />
+      <div className="bg-noise absolute inset-0" />
       <div className="container-ps relative py-16 text-center md:py-24">
         {eyebrow ? (
-          <div className="flex justify-center">
+          <div className="fade-up flex justify-center" style={{ animationDelay: "60ms" }}>
             <Eyebrow tone="light">{eyebrow}</Eyebrow>
           </div>
         ) : null}
         <h1 className="mx-auto mt-4 max-w-3xl text-[34px] font-bold leading-[1.12] tracking-tight md:text-[46px]">
-          {title}
+          {typeof title === "string" ? (
+            <WordReveal text={title} startDelay={150} stagger={60} />
+          ) : (
+            title
+          )}
         </h1>
         {subtitle ? (
-          <p className="mx-auto mt-4 max-w-2xl text-[16px] leading-relaxed text-slate-300 md:text-[17px]">
+          <p
+            className="fade-up mx-auto mt-4 max-w-2xl text-[16px] leading-relaxed text-slate-300 md:text-[17px]"
+            style={{ animationDelay: "650ms" }}
+          >
             {subtitle}
           </p>
         ) : null}
@@ -202,22 +216,28 @@ export function CTASection({
   return (
     <section className="relative overflow-hidden bg-brand text-white">
       <div className="bg-grid absolute inset-0" />
+      <div className="aurora aurora-1 -left-32 -top-32 h-[380px] w-[380px] opacity-70" />
+      <div className="aurora aurora-3 -bottom-40 -right-28 h-[420px] w-[420px] opacity-70" />
       <div className="container-ps relative py-20 text-center md:py-24">
-        <h2 className="mx-auto max-w-2xl text-[28px] font-bold leading-tight tracking-tight md:text-[40px]">
-          {title}
-        </h2>
-        <p className="mx-auto mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
-          {subtitle}
-        </p>
-        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button href={appLinks.signup} external variant="light" className="px-6 py-3.5">
-            Start free trial
-            <ArrowRight size={16} />
-          </Button>
-          <Button href="/support" variant="ghost-light" className="px-6 py-3.5">
-            Talk to us
-          </Button>
-        </div>
+        <Reveal variant="blur">
+          <h2 className="mx-auto max-w-2xl text-[28px] font-bold leading-tight tracking-tight md:text-[40px]">
+            {title}
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
+            {subtitle}
+          </p>
+        </Reveal>
+        <Reveal delay={150}>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Button href={appLinks.signup} external variant="light" className="px-6 py-3.5">
+              Start free trial
+              <ArrowRight size={16} />
+            </Button>
+            <Button href="/support" variant="ghost-light" className="px-6 py-3.5">
+              Talk to us
+            </Button>
+          </div>
+        </Reveal>
       </div>
     </section>
   );

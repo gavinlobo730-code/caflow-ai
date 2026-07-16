@@ -6,11 +6,17 @@
    Palette (shared with apps/web):
      Deep Blue   #182350   Powder Blue #AFD2FA   Gold #B9915E
      Background  #F8FAFC    Heading navy #0D1635
+   Motion language:
+     - easing: cubic-bezier(0.16, 1, 0.3, 1)  ("expo-out" — fast in, soft land)
+     - entrances: blur-up / rise, scroll-triggered via components/motion.tsx
+     - ambience: slow aurora drift, floating cards, infinite ticker
+     - everything collapses to static under prefers-reduced-motion
    ──────────────────────────────────────────────────────────────────────────── */
 :root {
   --brand: #182350;
   --brand-light: #afd2fa;
   --gold: #b9915e;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 html {
@@ -24,6 +30,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "rlig" 1, "calt" 1;
+  overflow-x: hidden;
 }
 
 ::selection {
@@ -47,7 +54,62 @@ body {
   background-size: 28px 28px;
 }
 
-/* Gold "AI" gradient text accent. */
+/* Film-grain noise for dark panels — kills flat-gradient banding. */
+.bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* ─── Aurora — drifting gradient orbs behind the hero ─────────────────────
+   Deliberately NO filter: blur() here: giant blurred layers glitch on weak /
+   software GPUs (SwiftShader renders them as white blooms). A radial gradient
+   with a long transparent falloff is inherently soft and composites safely
+   everywhere, at a fraction of the paint cost. */
+.aurora {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform;
+}
+.aurora-1 {
+  background: radial-gradient(circle, rgba(175, 210, 250, 0.26) 0%, rgba(175, 210, 250, 0.10) 38%, transparent 68%);
+  animation: aurora-a 21s var(--ease-out-expo) infinite alternate;
+}
+.aurora-2 {
+  background: radial-gradient(circle, rgba(79, 107, 255, 0.22) 0%, rgba(79, 107, 255, 0.08) 38%, transparent 68%);
+  animation: aurora-b 27s ease-in-out infinite alternate;
+}
+.aurora-3 {
+  background: radial-gradient(circle, rgba(185, 145, 94, 0.16) 0%, rgba(185, 145, 94, 0.06) 38%, transparent 68%);
+  animation: aurora-c 24s ease-in-out infinite alternate;
+}
+@keyframes aurora-a {
+  from { transform: translate3d(-6%, -4%, 0) scale(1); }
+  to   { transform: translate3d(8%, 7%, 0) scale(1.18); }
+}
+@keyframes aurora-b {
+  from { transform: translate3d(5%, 8%, 0) scale(1.1); }
+  to   { transform: translate3d(-8%, -6%, 0) scale(0.94); }
+}
+@keyframes aurora-c {
+  from { transform: translate3d(0%, 6%, 0) scale(0.95); }
+  to   { transform: translate3d(-5%, -8%, 0) scale(1.15); }
+}
+
+/* ─── Gradient headline accent — slowly panning sheen ─────────────────────── */
+.text-aurora {
+  background: linear-gradient(100deg, #afd2fa 0%, #ffffff 38%, #afd2fa 62%, #e0c9a3 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: grad-pan 7s ease-in-out infinite alternate;
+}
+@keyframes grad-pan {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+
+/* Legacy gold gradient text (kept for inner pages). */
 .text-gold-gradient {
   background: linear-gradient(90deg, #b9915e 0%, #e0c9a3 100%);
   -webkit-background-clip: text;
@@ -55,16 +117,173 @@ body {
   color: transparent;
 }
 
-@keyframes ps-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ─── Word-by-word headline entrance (pure CSS, plays on load) ────────────── */
+.word-in {
+  opacity: 0;
+  transform: translateY(0.6em) rotate(2deg);
+  filter: blur(10px);
+  animation: word-in 0.9s var(--ease-out-expo) forwards;
+  will-change: transform, filter, opacity;
 }
-.fade-up {
-  animation: ps-fade-up 0.5s ease both;
+@keyframes word-in {
+  to { opacity: 1; transform: translateY(0) rotate(0); filter: blur(0); }
+}
+
+/* ─── Scroll reveals (driven by components/motion.tsx) ────────────────────── */
+.rv {
+  opacity: 0;
+  transition:
+    opacity 0.9s var(--ease-out-expo),
+    transform 0.9s var(--ease-out-expo),
+    filter 0.9s var(--ease-out-expo);
+  will-change: opacity, transform;
+}
+.rv-up    { transform: translateY(28px); }
+.rv-blur  { transform: translateY(18px); filter: blur(12px); }
+.rv-scale { transform: scale(0.94) translateY(12px); }
+.rv-left  { transform: translateX(-36px); }
+.rv-right { transform: translateX(36px); }
+.rv[data-in="true"] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* ─── Floating (hero satellite cards) ─────────────────────────────────────── */
+.floaty   { animation: floaty 6s ease-in-out infinite; }
+.floaty-2 { animation: floaty 7.5s ease-in-out 0.8s infinite; }
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+
+/* ─── Live pulse dot ──────────────────────────────────────────────────────── */
+.pulse-dot { position: relative; }
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: pulse-ring 2.2s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+@keyframes pulse-ring {
+  from { transform: scale(1); opacity: 0.7; }
+  to   { transform: scale(3); opacity: 0; }
+}
+
+/* ─── Button shine sweep ──────────────────────────────────────────────────── */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  left: -70%;
+  width: 45%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.7s var(--ease-out-expo);
+  pointer-events: none;
+}
+.btn-shine:hover::after { left: 135%; }
+
+/* ─── Card hover glow ─────────────────────────────────────────────────────── */
+.card-lift {
+  transition:
+    transform 0.5s var(--ease-out-expo),
+    box-shadow 0.5s var(--ease-out-expo),
+    border-color 0.5s var(--ease-out-expo);
+}
+.card-lift:hover {
+  transform: translateY(-6px);
+  border-color: rgba(175, 210, 250, 0.9);
+  box-shadow:
+    0 18px 44px rgba(24, 35, 80, 0.14),
+    0 0 0 1px rgba(175, 210, 250, 0.35),
+    0 0 48px rgba(175, 210, 250, 0.22);
+}
+
+/* Icon inside a hovered card gets a little life too. */
+.card-lift .icon-pop { transition: transform 0.5s var(--ease-out-expo); }
+.card-lift:hover .icon-pop { transform: scale(1.1) rotate(-4deg); }
+
+/* ─── Infinite marquee ticker ─────────────────────────────────────────────── */
+.marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 36s linear infinite;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+.marquee-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ─── SVG checkmark draw-on (plays when parent .rv enters view) ───────────── */
+.draw-check {
+  stroke-dasharray: 34;
+  stroke-dashoffset: 34;
+}
+.rv[data-in="true"] .draw-check {
+  animation: draw 0.7s var(--ease-out-expo) 0.45s forwards;
+}
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ─── Scroll cue (hero bottom) ────────────────────────────────────────────── */
+.scroll-cue { animation: cue 2.4s ease-in-out infinite; }
+@keyframes cue {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50%      { transform: translateY(8px); opacity: 1; }
+}
+
+/* ─── Ambient shimmer line under section eyebrows ─────────────────────────── */
+@keyframes fade-up-simple {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up-simple 0.5s ease both; }
+
+/* ─── Reduced motion: everything becomes calm, static, instant ────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rv, .rv-up, .rv-blur, .rv-scale, .rv-left, .rv-right {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    transition: none !important;
+  }
+  .word-in,
+  .fade-up {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+  }
+  .aurora-1, .aurora-2, .aurora-3,
+  .floaty, .floaty-2,
+  .marquee-track,
+  .scroll-cue,
+  .text-aurora,
+  .pulse-dot::after {
+    animation: none !important;
+  }
+  .btn-shine::after { display: none; }
+  .card-lift, .card-lift:hover { transform: none; }
 }
