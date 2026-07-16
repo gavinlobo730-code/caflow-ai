@@ -620,6 +620,43 @@ def bulk_create_purchase_bills(
         except PydanticValidationError as e:
             errors.append({"index": i, "bill_no": bill_no, "error": str(e.errors()[0].get("msg", "Invalid bill data")) if e.errors() else "Invalid bill data"})
 
+    # ── Duplicate guard (financial-record integrity) ────────────────────────
+    # A large CSV import can legitimately take long enough that the browser's
+    # own fetch times out or drops the connection while the backend is still
+    # (or has already finished) writing the batch — CsvImportModal.handleImport
+    # tells the user their rows "may have already been created" for exactly
+    # this reason. Without a check here, retrying/re-uploading the same file
+    # silently doubles (or triples) every bill: same vendor, same bill_no, same
+    # amounts, each with its own status and, once received, its own posted
+    # journal — double-counted purchases and input GST credit. Mirrors the
+    # existing GSTIN/PAN dedup guard on Customers bulk-create (routers/
+    # customers.py bulk_create_customers): one pre-fetch of existing
+    # (client_id, vendor_id, bill_no) keys, checked before insert, duplicates
+    # reported back as `skipped` instead of silently re-created.
+    existing_keys: set[tuple[str, str, str]] = set()
+    if parsed and not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        client_ids_for_dedup = list({p[2].client_id for p in parsed})
+        CHUNK = 200
+        for i in range(0, len(client_ids_for_dedup), CHUNK):
+            chunk = client_ids_for_dedup[i:i + CHUNK]
+            resp = (db.table("purchase_bills").select("client_id, vendor_id, bill_no")
+                    .eq("firm_id", firm_id).in_("client_id", chunk).is_("deleted_at", None).execute())
+            for r in (resp.data or []):
+                existing_keys.add((r.get("client_id"), r.get("vendor_id"), (r.get("bill_no") or "").strip().lower()))
+
+    skipped: list[dict] = []
+    deduped: list[tuple[int, str, PurchaseBillIn]] = []
+    for i, bill_no, data in parsed:
+        key = (data.client_id, data.vendor_id, (bill_no or "").strip().lower())
+        if bill_no and key in existing_keys:
+            skipped.append({"index": i, "bill_no": bill_no, "reason": "A bill with this vendor and bill number already exists"})
+            continue
+        existing_keys.add(key)  # also catches the same bill_no repeated within this same batch
+        deduped.append((i, bill_no, data))
+    parsed = deduped
+
     vendors_by_id: dict = {}
     client_gstin_by_id: dict = {}
     if parsed and not _USE_MOCK:
@@ -685,7 +722,7 @@ def bulk_create_purchase_bills(
                 entity_type="purchase_bill", amount_paise=total,
                 actor_id=current_user.get("auth_user_id"),
             )
-    return api_response(True, {"created": created, "errors": errors})
+    return api_response(True, {"created": created, "errors": errors, "skipped": skipped})
 
 
 @router.get("/{bill_id}")
