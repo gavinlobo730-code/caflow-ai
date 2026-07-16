@@ -95,7 +95,39 @@ def test_bulk_create_empty_batch(monkeypatch):
     pb, db = _setup(monkeypatch)
     resp = pb.bulk_create_purchase_bills(_BulkPayload([]), CALLER)
     assert resp["success"] is True
-    assert resp["data"] == {"created": [], "errors": []}
+    assert resp["data"] == {"created": [], "errors": [], "skipped": []}
+
+
+def test_bulk_create_skips_duplicate_vendor_bill_no_already_in_db(monkeypatch):
+    # Reproduces the real-world incident: a large CSV import's fetch times out
+    # client-side (or the user re-uploads the same file) after the backend
+    # already committed some/all of the batch. Without this guard, the retry
+    # silently doubles every bill -- same vendor, same bill_no, same amounts.
+    pb, db = _setup(monkeypatch)
+    first = pb.bulk_create_purchase_bills(_BulkPayload([_bill_dict("VINV-001"), _bill_dict("VINV-002")]), CALLER)
+    assert len(first["data"]["created"]) == 2
+
+    retry = pb.bulk_create_purchase_bills(
+        _BulkPayload([_bill_dict("VINV-001"), _bill_dict("VINV-002"), _bill_dict("VINV-003")]), CALLER
+    )
+
+    assert len(retry["data"]["created"]) == 1
+    assert retry["data"]["created"][0]["bill_no"] == "VINV-003"
+    assert {s["bill_no"] for s in retry["data"]["skipped"]} == {"VINV-001", "VINV-002"}
+    all_bills = [b for b in db.rows("purchase_bills") if b.get("firm_id") == FIRM]
+    assert len(all_bills) == 3  # not 5 -- the duplicates were never inserted
+
+
+def test_bulk_create_skips_duplicate_bill_no_within_same_batch(monkeypatch):
+    # Two rows in the SAME upload sharing a vendor+bill_no (e.g. a bad CSV, or
+    # the frontend accidentally sending a row twice) must not both land —
+    # mirrors bulk_create_customers' within-batch dedup.
+    pb, db = _setup(monkeypatch)
+    resp = pb.bulk_create_purchase_bills(
+        _BulkPayload([_bill_dict("VINV-DUP"), _bill_dict("VINV-DUP")]), CALLER
+    )
+    assert len(resp["data"]["created"]) == 1
+    assert len(resp["data"]["skipped"]) == 1
 
 
 def test_bulk_create_prefetches_vendor_and_client_once_not_per_bill(monkeypatch):
