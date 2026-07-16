@@ -11,10 +11,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.invoices import PurchasePaymentIn
+from models.accounting import JournalReversalIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from services import reversal_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -409,7 +411,12 @@ def create_purchase_payment(
         try:
             # Auto-journal
             from services.phase2_journal_service import phase2_journal_service
+            # task #102: pre-generated (matching create_receipt_core's convention)
+            # so the journal can carry source_type/source_id back to this payment,
+            # for reverse_payment / any future source_id-keyed lookup.
+            payment_id = str(uuid.uuid4())
             payment_dict = {
+                "id": payment_id,
                 "payment_no": payment_no,
                 "payment_date": payment_date,
                 "amount_paise": amount_paise,
@@ -419,6 +426,7 @@ def create_purchase_payment(
             )
 
             payload = {
+                "id": payment_id,
                 "firm_id": firm_id,
                 "client_id": client_id,
                 "vendor_id": vendor_id,
@@ -568,16 +576,21 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     fy = _current_fy()
     seq = _next_payment_seq(db, firm_id, fy)
     payment_no = f"VPMT-{fy}-{seq:04d}"
+    # task #102: pre-generated so the journal can carry source_type/source_id
+    # back to this payment, for reverse_payment / any future source_id lookup.
+    payment_id = str(uuid.uuid4())
     entry_id = K._create_journal(
         db=db, firm_id=firm_id, client_id=client_id, entry_date=payment_date,
         reference_no=payment_no, narration=f"Vendor payment {payment_no} (foreign)",
         entry_type="Payment", lines=lines, created_by=(actor or {}).get("id"),
+        source_type="purchase_payment", source_id=payment_id,
         txn_currency=ccy, exchange_rate=R1, rate_source=r1_source, rate_type="booking",
         rate_date=str(payment_date)[:10], rate_selected_by=(actor or {}).get("id"),
         rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
     )
 
     payload = {
+        "id": payment_id,
         "firm_id": firm_id, "client_id": client_id, "vendor_id": vendor_id,
         "purchase_bill_id": bill_id, "payment_no": payment_no, "payment_date": payment_date,
         "amount_paise": cash_base, "payment_mode": data.get("payment_mode", "bank"),
@@ -713,3 +726,34 @@ def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, 
         )
     except Exception as e:
         _logger.warning("_update_bill_payment_status error: %s", e)
+
+
+@router.post("/{payment_id}/reverse")
+def reverse_purchase_payment(
+    payment_id: str,
+    data: JournalReversalIn,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Reverse a vendor payment — Partner only (task #102). Decrements the
+    linked bill's paid_paise back down, reverses the posted GL journal
+    (append-only), and marks the payment reversed. This is the missing step
+    cancel_purchase_bill's "payments applied" guard has always pointed
+    callers to."""
+    if _USE_MOCK:
+        return api_response(True, {"id": payment_id, "reversed": True, "mock": True})
+    try:
+        db = _get_db()
+        result = reversal_service.reverse_payment(
+            db, current_user["firm_id"], payment_id, data.reversal_date, created_by=current_user.get("id"),
+        )
+        log_event(
+            current_user.get("firm_id", ""), "purchase_payment", payment_id,
+            "reverse", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"), new_data=result,
+        )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("reverse_purchase_payment: %s", e)
+        return api_response(False, None, "Unable to reverse payment. Please try again.")

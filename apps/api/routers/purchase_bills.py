@@ -1198,9 +1198,17 @@ def cancel_purchase_bill(
         if (int(bill.get("paid_paise") or 0) > 0 or int(bill.get("debited_paise") or 0) > 0
                 or int(bill.get("credit_note_paise") or 0) > 0):
             raise HTTPException(status_code=409, detail="This bill has payments, debit notes or credit notes applied and cannot be cancelled. Reverse those first.")
-        pay = (db.table("purchase_payments").select("id")
-               .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id).limit(1).execute().data)
-        if pay:
+        # task #102: this used to block on ANY purchase_payments row, live or
+        # reversed — reverse_purchase_payment (services/reversal_service)
+        # never deletes the row (audit trail), so a bill with only reversed
+        # payments could never be cancelled even after every payment on it
+        # was correctly undone. Filtered in Python (not .eq("is_reversed",
+        # False)) so a row lacking the key — impossible on the real NOT NULL
+        # DEFAULT false column, but common in older test doubles — is
+        # correctly treated as live, not excluded.
+        pay = (db.table("purchase_payments").select("id, is_reversed")
+               .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id).execute().data or [])
+        if any(not p.get("is_reversed") for p in pay):
             raise HTTPException(status_code=409, detail="This bill has payments allocated and cannot be cancelled. Reverse the payment(s) first.")
 
         # A cancellation reversal is a NEW posting dated today — open FY required.
