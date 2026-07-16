@@ -26,7 +26,7 @@ class CreditNoteIn(BaseModel):
     lines: list[InvoiceLineIn]
     sales_invoice_id: str | None = None
     reference_no: str | None = None
-    notes: str | None = None
+    reason: str | None = None
     is_interstate: bool = False
 
     @field_validator("lines")
@@ -396,7 +396,7 @@ def issue_credit_note(
         prior_inv = None
         if inv_id and cn_total > 0:
             inv_resp = (db.table("client_sales_invoices")
-                        .select("total_paise,paid_paise,credited_paise,status")
+                        .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
                         .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
             if not inv_resp.data:
                 raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
@@ -406,7 +406,11 @@ def issue_credit_note(
             total    = int(inv.get("total_paise") or 0)
             paid     = int(inv.get("paid_paise") or 0)
             credited = int(inv.get("credited_paise") or 0)
-            net_outstanding = total - paid - credited
+            # A sales debit note (CGST Act §34(3)) increases what's receivable
+            # before this credit note's own reduction is applied.
+            debit_noted = int(inv.get("debit_note_paise") or 0)
+            effective_total = total + debit_noted
+            net_outstanding = effective_total - paid - credited
             if cn_total > net_outstanding:
                 raise HTTPException(
                     status_code=422,
@@ -416,7 +420,7 @@ def issue_credit_note(
             prior_inv = {"credited_paise": credited, "status": inv.get("status")}
             new_credited = credited + cn_total
             settled = paid + new_credited
-            new_status = "paid" if settled >= total else ("partially_paid" if settled > 0 else inv.get("status"))
+            new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
             db.table("client_sales_invoices").update({
                 "credited_paise": new_credited, "status": new_status,
             }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()

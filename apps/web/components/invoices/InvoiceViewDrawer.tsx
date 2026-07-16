@@ -100,6 +100,7 @@ export function InvoiceViewDrawer({
   const [journalLoading, setJournalLoading] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [cnOpen, setCnOpen] = useState(false);
+  const [dnOpen, setDnOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,7 +173,11 @@ export function InvoiceViewDrawer({
   }
 
   const customerName = inv?.customers?.name ?? "—";
-  const outstanding = inv ? inv.total_paise - (inv.paid_paise ?? 0) : 0;
+  // (total + debit_note_paise) - paid - credited: issued credit/debit notes
+  // both move the receivable (CGST Act §34), so a corrected invoice shows the
+  // true balance and Record Payment doesn't pre-fill an amount the backend
+  // would reject as exceeding (or understating) what's actually outstanding.
+  const outstanding = inv ? (inv.total_paise + (inv.debit_note_paise ?? 0)) - (inv.paid_paise ?? 0) - (inv.credited_paise ?? 0) : 0;
   const posted = !!inv?.journal_entry_id;
   const del = deliverySummary(deliveries);
   const compliance = inv ? complianceSummary(inv.id, einvoiceRecords, ewayRecords) : { irn: null, ewayBill: null };
@@ -258,6 +263,9 @@ export function InvoiceViewDrawer({
               {actions.send && summary && <Action onClick={() => onSend(summary)} icon={<Send size={12} />}>{del.sent ? "Resend Email" : "Send Email"}</Action>}
               {actions.paymentLink && summary && <Action onClick={() => onPaymentLink(summary)} icon={<CreditCard size={12} />}>Payment Link</Action>}
               {actions.creditNote && <Action onClick={() => setCnOpen(true)} icon={<FilePlus2 size={12} />}>Credit Note</Action>}
+              {/* Debit Note — the increase-side mirror of Credit Note (CGST Act
+                  §34(3)): the customer was undercharged and now owes more. */}
+              {actions.debitNote && <Action onClick={() => setDnOpen(true)} icon={<FilePlus2 size={12} />}>Debit Note</Action>}
               {actions.duplicate && <Action onClick={() => onDuplicate(inv)} icon={<Copy size={12} />}>Duplicate</Action>}
               {actions.pdf && <Action onClick={handleViewPdf} icon={<Download size={12} />}>PDF</Action>}
             </div>
@@ -396,6 +404,15 @@ export function InvoiceViewDrawer({
           onError={(m) => onToast(m, "error")}
         />
       )}
+      {dnOpen && inv && (
+        <CreateSalesDebitNoteModal
+          invoice={inv}
+          clientId={clientId}
+          onClose={() => setDnOpen(false)}
+          onDone={(dnNo) => { setDnOpen(false); onToast(`Debit note ${dnNo} created (draft)`, "success"); onChanged(); }}
+          onError={(m) => onToast(m, "error")}
+        />
+      )}
     </Drawer>
   );
 }
@@ -482,7 +499,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
 }) {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
-  const [notes, setNotes] = useState("");
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
@@ -511,7 +528,10 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
         lines,
         sales_invoice_id: invoice.id,
         is_interstate: invoice.is_interstate,
-        notes: notes.trim() || undefined,
+        // CreditNoteIn's field is named `reason` (matches the credit_notes.reason
+        // DB column and every sibling note type) — a stray `notes` key here would
+        // be silently dropped by pydantic parsing and the reason would never save.
+        reason: reason.trim() || undefined,
       }, token);
       if (!r.success) throw new Error(r.error ?? "Failed to create credit note");
       const data = r.data as { credit_note_no?: string; cn_no?: string } | null;
@@ -527,8 +547,64 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
     <ModalShell title={`Credit Note — ${invoice.invoice_no}`} onClose={onClose}>
       <p className="text-[11px] text-[#64748B]">Creates a full-value <strong>draft</strong> credit note copying this invoice&apos;s lines. Adjust or issue it from the Credit Notes tab.</p>
       <Field label="Credit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
-      <Field label="Reason / notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
+      <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
+    </ModalShell>
+  );
+}
+
+// ── Create Sales Debit Note (reuses POST /api/sales-debit-notes) ────────────
+// The increase-side mirror of CreateCreditNoteModal (CGST Act §34(3)): the
+// customer was undercharged on this invoice and now owes more.
+function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError }: {
+  invoice: InvoiceDetail; clientId: string;
+  onClose: () => void; onDone: (dnNo: string) => void; onError: (m: string) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const token = await getAuthToken();
+      // Full-value debit note against the invoice (draft) — copies its lines and
+      // links via sales_invoice_id; reuses the sales-debit-note engine (§34(3)).
+      const lines = invoice.lines.map((l) => ({
+        description: l.description,
+        hsn_sac: l.hsn_sac ?? "",
+        quantity: l.quantity,
+        unit: l.unit ?? undefined,
+        rate_paise: l.rate_paise,
+        gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
+        service_catalogue_id: l.service_catalogue_id ?? undefined,
+      }));
+      const r = await apiCall("/api/sales-debit-notes/", "POST", {
+        client_id: clientId,
+        customer_id: invoice.customer_id,
+        debit_note_date: date,
+        lines,
+        sales_invoice_id: invoice.id,
+        is_interstate: invoice.is_interstate,
+        reason: reason.trim() || undefined,
+      }, token);
+      if (!r.success) throw new Error(r.error ?? "Failed to create debit note");
+      const data = r.data as { debit_note_no?: string } | null;
+      onDone(data?.debit_note_no ?? "");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Failed to create debit note");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Debit Note — ${invoice.invoice_no}`} onClose={onClose}>
+      <p className="text-[11px] text-[#64748B]">Creates a full-value <strong>draft</strong> debit note copying this invoice&apos;s lines — for when the customer was undercharged and owes more. Adjust or issue it from the Debit Notes tab (CGST Act §34(3)).</p>
+      <Field label="Debit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note" className={inputCls} /></Field>
+      <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />
     </ModalShell>
   );
 }

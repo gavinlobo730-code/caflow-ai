@@ -74,10 +74,12 @@ def assess_invoice(inv: dict, today: Optional[date] = None,
                    credit_days: int = DEFAULT_CREDIT_DAYS) -> dict:
     """Return collections metadata for one invoice (pure; no I/O)."""
     today = today or _today()
-    # Net outstanding = total − cash/TDS settled (paid_paise) − credit notes applied
-    # (credited_paise). TDS is correctly part of paid_paise (settlement incl. §194 TDS);
-    # credit notes must also relieve AR so aging ties to the invoice sub-ledger (M13).
+    # Net outstanding = (total + debit notes) − cash/TDS settled (paid_paise) −
+    # credit notes applied (credited_paise). TDS is correctly part of paid_paise
+    # (settlement incl. §194 TDS); credit/debit notes must also move AR so aging
+    # ties to the invoice sub-ledger (M13, CGST Act §34).
     outstanding = (int(inv.get("total_paise", 0))
+                   + int(inv.get("debit_note_paise", 0) or 0)
                    - int(inv.get("paid_paise", 0))
                    - int(inv.get("credited_paise", 0) or 0))
     ref = reference_due_date(inv, credit_days)
@@ -99,14 +101,19 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
                 if i.get("firm_id") == firm_id
                 and (internal_id is None or i.get("client_id") == internal_id)
                 and i.get("status") in _OPEN_STATUSES
-                and (int(i.get("total_paise", 0)) - int(i.get("paid_paise", 0))
-                     - int(i.get("credited_paise", 0) or 0)) > 0]
+                and (int(i.get("total_paise", 0)) + int(i.get("debit_note_paise", 0) or 0)
+                     - int(i.get("paid_paise", 0)) - int(i.get("credited_paise", 0) or 0)) > 0]
     q = (_db().table("client_sales_invoices").select("*")
          .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES)))
     if internal_id:
         q = q.eq("client_id", internal_id)
     rows = q.execute().data or []
-    return [r for r in rows if int(r.get("total_paise", 0)) - int(r.get("paid_paise", 0)) > 0]
+    # Same outstanding formula as assess_invoice — a "partially_paid" invoice
+    # whose debit note is the only thing still owed (paid_paise == total_paise)
+    # must not be silently dropped from the sweep/aging/reminder pipeline.
+    return [r for r in rows
+            if int(r.get("total_paise", 0)) + int(r.get("debit_note_paise", 0) or 0)
+               - int(r.get("paid_paise", 0)) - int(r.get("credited_paise", 0) or 0) > 0]
 
 
 def sweep_overdue(firm_id: str, today: Optional[date] = None) -> dict:

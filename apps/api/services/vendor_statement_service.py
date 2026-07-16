@@ -1,15 +1,17 @@
 """
 Vendor statement + AP aging (Phase 5) — the AP-side mirror of the customer
 statement / AR aging. READ-ONLY: reconstructs the vendor's PAYABLE from posted
-purchase bills, vendor payments and issued debit notes. No posting.
+purchase bills, vendor payments, issued debit notes and issued purchase
+credit notes. No posting.
 
 Sign convention (payable / credit-positive — what we owe the vendor):
   • Bill        → +net_payable  (increases the payable; net of TDS withheld)
+  • Credit note → +total        (§34(3) undercharge correction — increases the payable)
   • Payment     → −amount       (reduces the payable)
   • Debit note  → −total        (purchase return reduces the payable)
 
-Bill net outstanding = net_payable − paid − debited, matching the sub-ledger the
-GL AP control is built from. Integer paise throughout.
+Bill net outstanding = (net_payable + credit_note_paise) − paid − debited, matching
+the sub-ledger the GL AP control is built from. Integer paise throughout.
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ _logger = logging.getLogger("caflow.vendor_statement")
 
 _DEAD_BILL = {"draft", "cancelled"}
 _DEAD_DEBIT_NOTE = {"draft", "cancelled"}
+_DEAD_CREDIT_NOTE = {"draft", "cancelled"}
 
 
 def _d(v) -> str:
@@ -43,7 +46,8 @@ def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
 
 
 def build_statement(vendor: dict, start: str, end: str,
-                    bills: list[dict], payments: list[dict], debit_notes: list[dict]) -> dict:
+                    bills: list[dict], payments: list[dict], debit_notes: list[dict],
+                    credit_notes: list[dict] | None = None) -> dict:
     """Pure builder — opening, ordered transactions with running payable, closing."""
     start, end = _d(start), _d(end)
     events: list[dict] = []
@@ -54,16 +58,23 @@ def build_statement(vendor: dict, start: str, end: str,
                        "particulars": f"Bill {b.get('bill_no', '')}".strip(),
                        "credit_paise": _np, "debit_paise": 0,
                        **_ccy_view(b, _np, b.get("txn_net_payable"))})
+    for cn in (credit_notes or []):
+        _ct = int(cn.get("total_paise") or 0)
+        events.append({"date": _d(cn.get("credit_note_date")), "rank": 1, "type": "credit_note",
+                       "reference": cn.get("credit_note_no"),
+                       "particulars": f"Credit Note {cn.get('credit_note_no', '')}".strip(),
+                       "credit_paise": _ct, "debit_paise": 0,
+                       **_ccy_view(cn, _ct, cn.get("total_paise"))})
     for dn in debit_notes:
         _dt = int(dn.get("total_paise") or 0)
-        events.append({"date": _d(dn.get("debit_note_date")), "rank": 1, "type": "debit_note",
+        events.append({"date": _d(dn.get("debit_note_date")), "rank": 2, "type": "debit_note",
                        "reference": dn.get("debit_note_no"),
                        "particulars": f"Debit Note {dn.get('debit_note_no', '')}".strip(),
                        "credit_paise": 0, "debit_paise": _dt,
                        **_ccy_view(dn, _dt, dn.get("total_paise"))})
     for p in payments:
         _amt = int(p.get("amount_paise") or 0)
-        events.append({"date": _d(p.get("payment_date")), "rank": 2, "type": "payment",
+        events.append({"date": _d(p.get("payment_date")), "rank": 3, "type": "payment",
                        "reference": p.get("payment_no"),
                        "particulars": f"Payment {p.get('payment_no', '')}".strip(),
                        "credit_paise": 0, "debit_paise": _amt,
@@ -78,7 +89,7 @@ def build_statement(vendor: dict, start: str, end: str,
             opening += e["credit_paise"] - e["debit_paise"]
 
     running = opening
-    transactions, billed, paid, debited = [], 0, 0, 0
+    transactions, billed, paid, debited, credited = [], 0, 0, 0, 0
     for e in events:
         if e["date"] < start or e["date"] > end:
             continue
@@ -86,6 +97,7 @@ def build_statement(vendor: dict, start: str, end: str,
         billed += e["credit_paise"] if e["type"] == "bill" else 0
         paid += e["debit_paise"] if e["type"] == "payment" else 0
         debited += e["debit_paise"] if e["type"] == "debit_note" else 0
+        credited += e["credit_paise"] if e["type"] == "credit_note" else 0
         transactions.append({
             "date": e["date"], "type": e["type"], "reference": e["reference"],
             "particulars": e["particulars"], "debit_paise": e["debit_paise"],
@@ -104,7 +116,7 @@ def build_statement(vendor: dict, start: str, end: str,
         "transactions": transactions,
         "closing_balance_paise": running,
         "totals": {"billed_paise": billed, "paid_paise": paid, "debited_paise": debited,
-                   "transaction_count": len(transactions)},
+                   "credited_paise": credited, "transaction_count": len(transactions)},
     }
     # Multi-Currency Phase 5 — closing payable split by transaction currency (foreign
     # + base), reconciling to closing_balance_paise. Payable = credit-positive.
@@ -159,7 +171,13 @@ class VendorStatementService:
               .execute().data or [])
         debit_notes = [x for x in dn if (x.get("status") or "") not in _DEAD_DEBIT_NOTE]
 
-        return build_statement(vendor, start_date, end_date, bills, payments, debit_notes)
+        cn = (db.table("purchase_credit_notes")
+              .select("credit_note_no, credit_note_date, total_paise, status")
+              .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
+              .is_("deleted_at", "null").execute().data or [])
+        credit_notes = [x for x in cn if (x.get("status") or "") not in _DEAD_CREDIT_NOTE]
+
+        return build_statement(vendor, start_date, end_date, bills, payments, debit_notes, credit_notes)
 
     def ap_aging(self, db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
         """Accounts-payable aging: per non-cancelled bill, outstanding = net_payable −
@@ -167,7 +185,7 @@ class VendorStatementService:
         today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
         bills = (db.table("purchase_bills")
                  .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, "
-                         "debited_paise, status, txn_currency, exchange_rate, txn_net_payable, paid_txn")
+                         "debited_paise, credit_note_paise, status, txn_currency, exchange_rate, txn_net_payable, paid_txn")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .neq("status", "cancelled").execute().data or [])
         vnames = {v["id"]: v.get("name") for v in (db.table("vendors").select("id, name")
@@ -177,7 +195,8 @@ class VendorStatementService:
         rows, total = [], 0
         ccy_entries: list[tuple] = []   # (currency, base_paise, foreign_minor) for the breakdown
         for b in bills:
-            outstanding = (int(b.get("net_payable_paise") or 0)
+            # (net_payable + credit notes) − paid − debited (CGST Act §34).
+            outstanding = (int(b.get("net_payable_paise") or 0) + int(b.get("credit_note_paise") or 0)
                            - int(b.get("paid_paise") or 0) - int(b.get("debited_paise") or 0))
             if outstanding <= 0:
                 continue

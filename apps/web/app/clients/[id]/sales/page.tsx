@@ -41,13 +41,14 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SalesTab = "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "statements";
+type SalesTab = "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
 const TABS: { id: SalesTab; label: string }[] = [
   { id: "invoices", label: "Sales Invoices" },
   { id: "recurring", label: "Recurring" },
   { id: "customers", label: "Customers" },
   { id: "receipts", label: "Receipts" },
   { id: "credit-notes", label: "Credit Notes" },
+  { id: "debit-notes", label: "Debit Notes" },
   { id: "statements", label: "Statements" },
 ];
 
@@ -77,6 +78,23 @@ interface CreditNote {
   gst_paise: number;
   total_paise: number;
   status: "draft" | "issued" | "cancelled";
+}
+
+// The §34(3) increase-side mirror of CreditNote — a customer was undercharged
+// on the original invoice and now owes more.
+interface SalesDebitNote {
+  id: string;
+  dn_no: string;
+  dn_date: string;
+  customer_id: string;
+  customer_name?: string;
+  original_invoice_id: string | null;
+  original_invoice_no?: string | null;
+  reason: string;
+  taxable_paise: number;
+  gst_paise: number;
+  total_paise: number;
+  status: "draft" | "issued";
 }
 
 
@@ -221,6 +239,9 @@ export default function SalesPage() {
         )}
         {tab === "credit-notes" && (
           <CreditNotes clientId={clientId} financialYear={financialYear} />
+        )}
+        {tab === "debit-notes" && (
+          <SalesDebitNotes clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "statements" && (
           <Statements clientId={clientId} financialYear={financialYear} />
@@ -3742,6 +3763,521 @@ function CreditNoteForm({
           className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save Credit Note"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Sales Debit Notes (CGST Act §34(3) — undercharge correction) ───────────
+// The increase-side mirror of CreditNotes/CreditNoteForm above: a customer
+// was undercharged on the original invoice and now owes more. Same shape,
+// same flow, just pointed at /api/sales-debit-notes and the opposite ledger
+// direction (a debit note DEBITS — increases — the customer's receivable).
+
+function SalesDebitNotes({
+  clientId,
+  financialYear,
+}: {
+  clientId: string;
+  financialYear: string;
+}) {
+  const [debitNotes, setDebitNotes] = useState<SalesDebitNote[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const supabase = getSupabaseClient();
+    const { start, end } = fyRange(financialYear);
+
+    const [{ data: dnData }, { data: custData }] = await Promise.all([
+      selectAll(() => supabase
+        .from("sales_debit_notes")
+        .select(
+          "id, debit_note_no, debit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
+        )
+        .eq("client_id", clientId)
+        .gte("debit_note_date", start)
+        .lte("debit_note_date", end)
+        .order("debit_note_date", { ascending: false })
+        .order("id")),
+      selectAll(() => supabase
+        .from("customers")
+        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("name")
+        .order("id")),
+    ]);
+
+    const mapped: SalesDebitNote[] = ((dnData ?? []) as unknown as Array<
+      { id: string; debit_note_no: string; debit_note_date: string; customer_id: string;
+        sales_invoice_id: string | null; reason: string; taxable_amount_paise: number;
+        cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
+        status: string; customers: { name: string } | null;
+        client_sales_invoices: { invoice_no: string } | null }
+    >).map((r) => ({
+      id: r.id,
+      dn_no: r.debit_note_no,
+      dn_date: r.debit_note_date,
+      customer_id: r.customer_id,
+      customer_name: r.customers?.name ?? "—",
+      original_invoice_id: r.sales_invoice_id ?? null,
+      original_invoice_no: r.client_sales_invoices?.invoice_no ?? null,
+      reason: r.reason,
+      taxable_paise: r.taxable_amount_paise,
+      gst_paise: r.cgst_paise + r.sgst_paise + r.igst_paise,
+      total_paise: r.total_paise,
+      status: r.status as "draft" | "issued",
+    }));
+
+    setDebitNotes(mapped);
+    setCustomers((custData as Customer[]) ?? []);
+    setLoading(false);
+  }, [clientId, financialYear]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function showToast(msg: string, type: "success" | "error") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  async function issueDebitNote(id: string) {
+    if (issuingId) return;
+    setIssuingId(id);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/sales-debit-notes/${id}/issue`, "POST", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
+      showToast("Debit note issued", "success");
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Error issuing debit note", "error");
+    } finally {
+      setIssuingId(null);
+    }
+  }
+
+  // Bulk delete — draft-only (backend rejects issued debit notes with a 422,
+  // CGST Act §34: once issued they've already increased the original
+  // invoice's payable and there is no cancel/void path for debit notes).
+  async function bulkDeleteDebitNotes(selected: SalesDebitNote[]): Promise<boolean> {
+    const token = await getAuthToken();
+    let deleted = 0;
+    const failures: string[] = [];
+    await Promise.all(selected.map(async (dn) => {
+      try {
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token);
+        if (!result.success) throw new Error(result.error ?? "failed");
+        deleted++;
+      } catch (e) {
+        failures.push(`${dn.dn_no}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const summary = failures.length
+      ? `${deleted} deleted, ${failures.length} skipped (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
+      : `${deleted} debit note${deleted !== 1 ? "s" : ""} deleted`;
+    showToast(summary, failures.length ? "error" : "success");
+    if (deleted) load();
+    return failures.length === 0;
+  }
+
+  // ── DataTable columns / filters ───────────────────────────────────────────
+  const columns: Column<SalesDebitNote>[] = useMemo(() => [
+    { key: "dn_no", header: "DN No", accessor: (dn) => dn.dn_no, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (dn) => <span className="font-mono font-medium text-[#1E293B]">{dn.dn_no}</span> },
+    { key: "dn_date", header: "Date", accessor: (dn) => dn.dn_date, sortable: true,
+      render: (dn) => <span className="text-[#64748B] whitespace-nowrap">{dn.dn_date}</span> },
+    { key: "customer_name", header: "Customer", accessor: (dn) => dn.customer_name ?? "", searchable: true,
+      render: (dn) => <span className="text-[#334155]">{dn.customer_name}</span> },
+    { key: "original_invoice_no", header: "Orig. Invoice", accessor: (dn) => dn.original_invoice_no ?? "",
+      render: (dn) => <span className="font-mono text-[#64748B]">{dn.original_invoice_no ?? "—"}</span> },
+    { key: "reason", header: "Reason", accessor: (dn) => dn.reason, searchable: true,
+      render: (dn) => <span className="block max-w-[120px] truncate text-[#475569]">{dn.reason}</span> },
+    { key: "total_paise", header: "Total", accessor: (dn) => dn.total_paise, sortable: true, align: "right", exportValue: (dn) => formatPaise(dn.total_paise),
+      render: (dn) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(dn.total_paise)}</span> },
+    { key: "status", header: "Status", accessor: (dn) => dn.status, sortable: true,
+      render: (dn) => (
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[dn.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+          {dn.status}
+        </span>
+      ) },
+  ], []);
+
+  const filters: FilterDef<SalesDebitNote>[] = useMemo(() => [
+    { key: "status", label: "Status", type: "select", accessor: (dn) => dn.status, options: [
+      { value: "draft", label: "Draft" },
+      { value: "issued", label: "Issued" },
+    ] },
+  ], []);
+
+  return (
+    <div className="space-y-4 max-w-screen-2xl">
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-[#334155]">
+          {debitNotes.length} debit note{debitNotes.length !== 1 ? "s" : ""} in FY {financialYear}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={12} /> Create Debit Note
+          </button>
+        </div>
+      </div>
+
+      {showForm && (
+        <SalesDebitNoteForm
+          clientId={clientId}
+          customers={customers}
+          onSaved={() => { setShowForm(false); load(); showToast("Debit note created", "success"); }}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
+
+      {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={debitNotes}
+        columns={columns}
+        filters={filters}
+        getRowId={(dn) => dn.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search DN no., customer, or reason…"
+        initialSort={{ key: "dn_date", dir: "desc" }}
+        exportFilename="sales-debit-notes"
+        persistKey="sales.debit-notes"
+        emptyTitle={`No debit notes in FY ${financialYear}`}
+        bulkActions={[
+          {
+            id: "delete",
+            label: "Delete draft(s)",
+            icon: <Trash2 size={13} />,
+            variant: "danger",
+            confirm: "Delete the selected draft debit notes? Issued debit notes will be skipped. This cannot be undone.",
+            run: bulkDeleteDebitNotes,
+          },
+          exportSelectedAction("sales-debit-notes-selected.csv", columns),
+        ]}
+        rowActions={(dn) =>
+          dn.status === "draft" ? (
+            <button
+              onClick={() => issueDebitNote(dn.id)}
+              disabled={issuingId === dn.id}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+            >
+              {issuingId === dn.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+            </button>
+          ) : null
+        }
+      />
+    </div>
+  );
+}
+
+// ── Sales Debit Note Form ────────────────────────────────────────────────────
+
+interface SalesDebitNoteLine extends InvoiceLine {
+  service_catalogue_id?: string;
+  product?: ServiceCatalogueItem | null;
+}
+
+function SalesDebitNoteForm({
+  clientId,
+  customers,
+  onSaved,
+  onCancel,
+}: {
+  clientId: string;
+  customers: Customer[];
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [customerId, setCustomerId] = useState("");
+  const [dnDate, setDnDate] = useState(today);
+  const [reason, setReason] = useState("");
+  const [originalInvoiceId, setOriginalInvoiceId] = useState("");
+  const [isInterstate, setIsInterstate] = useState(false);
+  const [customerInvoices, setCustomerInvoices] = useState<SalesInvoice[]>([]);
+  const [lines, setLines] = useState<SalesDebitNoteLine[]>([
+    { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" },
+  ]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const gst = computeGst(lines, isInterstate);
+
+  // Load customer's invoices for selection
+  useEffect(() => {
+    if (!customerId) { setCustomerInvoices([]); return; }
+    async function loadInvoices() {
+      const supabase = getSupabaseClient();
+      const { data } = await selectAll(() => supabase
+        .from("client_sales_invoices")
+        .select("id, invoice_no, invoice_date, total_paise, status")
+        .eq("client_id", clientId)
+        .eq("customer_id", customerId)
+        .order("invoice_date", { ascending: false })
+        .order("id"));
+      setCustomerInvoices((data as SalesInvoice[]) ?? []);
+    }
+    loadInvoices();
+  }, [customerId, clientId]);
+
+  function setLine(idx: number, patch: Partial<SalesDebitNoteLine>) {
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+  function addLine() {
+    setLines((prev) => [...prev, { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" }]);
+  }
+  function removeLine(idx: number) {
+    if (lines.length <= 1) return;
+    setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
+  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
+    setLine(idx, { ...serviceToLine(item), service_catalogue_id: item.id, product: item });
+  }
+
+  async function handleSave() {
+    if (!customerId) { setError("Select a customer"); return; }
+    if (!reason.trim()) { setError("Reason is required"); return; }
+    const validLines = lines.filter((l) => parseFloat(l.rate) > 0);
+    if (validLines.length === 0) { setError("Add at least one line with a rate"); return; }
+    if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
+
+    setSaving(true); setError(null);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(
+        "/api/sales-debit-notes/",
+        "POST",
+        {
+          client_id: clientId,
+          customer_id: customerId,
+          debit_note_date: dnDate,
+          reason: reason.trim(),
+          sales_invoice_id: originalInvoiceId || undefined,
+          lines: validLines.map((l) => toInvoiceLinePayload({ ...l, serviceCatalogueId: l.service_catalogue_id })),
+        },
+        token
+      );
+      if (!result.success) throw new Error(result.error ?? "Failed to create debit note");
+
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save debit note");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#0F172A]">Create Debit Note</h3>
+        <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
+          <CustomerLookup
+            customers={customers}
+            value={customerId}
+            onChange={setCustomerId}
+            ariaLabel="Customer"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[#475569] mb-1">DN Date *</label>
+          <input
+            type="date"
+            value={dnDate}
+            onChange={(e) => setDnDate(e.target.value)}
+            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[#475569] mb-1">Original Invoice (optional)</label>
+          <select
+            value={originalInvoiceId}
+            onChange={(e) => setOriginalInvoiceId(e.target.value)}
+            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={!customerId}
+          >
+            <option value="">— None —</option>
+            {customerInvoices.map((inv) => (
+              <option key={inv.id} value={inv.id}>
+                {inv.invoice_no} — {fmt(inv.total_paise)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-[#475569] mb-1">Reason *</label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Undercharged / rate correction / additional charges"
+            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="flex items-end pb-1.5">
+          <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isInterstate}
+              onChange={(e) => setIsInterstate(e.target.checked)}
+              className="rounded"
+            />
+            Interstate (IGST)
+          </label>
+        </div>
+      </div>
+
+      {/* Lines */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
+              <th className="pb-2 text-left font-semibold">Description</th>
+              <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
+              <th className="pb-2 text-right font-semibold w-16">Qty</th>
+              <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
+              <th className="pb-2 text-right font-semibold w-20">GST %</th>
+              <th className="pb-2 text-right font-semibold w-24">Amount</th>
+              <th className="pb-2 w-6" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {lines.map((line, idx) => {
+              const lineTaxable = Math.round((parseFloat(line.qty) || 0) * (parseFloat(line.rate) || 0) * 100);
+              const lineTotal = lineTaxable + Math.round((lineTaxable * line.gst_rate) / 100);
+              return (
+                <tr key={idx}>
+                  <td className="py-1.5 pr-2">
+                    <ServiceCataloguePicker
+                      clientId={clientId}
+                      value={line.product}
+                      onPick={(item) => onPickProduct(idx, item)}
+                      size="sm"
+                      ariaLabel={`Line ${idx + 1} product or service`}
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <input
+                      value={line.description}
+                      onChange={(e) => setLine(idx, { description: e.target.value })}
+                      placeholder="Item description"
+                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <HsnLookup
+                      clientId={clientId}
+                      value={line.hsn_sac}
+                      onChange={(v) => setLine(idx, { hsn_sac: v })}
+                      onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
+                      description={line.description}
+                      size="sm"
+                      ariaLabel="HSN or SAC code"
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <input
+                      type="number" min="0" step="0.001" value={line.qty}
+                      onChange={(e) => setLine(idx, { qty: e.target.value })}
+                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <input
+                      type="number" min="0" step="0.01" value={line.rate}
+                      onChange={(e) => setLine(idx, { rate: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      value={line.gst_rate}
+                      onChange={(e) => setLine(idx, { gst_rate: parseInt(e.target.value) })}
+                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                    >
+                      {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                    </select>
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono text-[#334155]">
+                    {lineTotal > 0 ? fmt(lineTotal) : "—"}
+                  </td>
+                  <td className="py-1.5">
+                    {lines.length > 1 && (
+                      <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <button onClick={addLine} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+        <Plus size={12} /> Add line
+      </button>
+
+      {/* GST Preview */}
+      {gst.taxable_paise > 0 && (
+        <div className="bg-[#F8FAFC] rounded-lg p-3 text-xs space-y-1">
+          <p className="font-semibold text-[#334155] mb-2">GST Computation (Debit Note)</p>
+          <div className="flex justify-between text-[#475569]">
+            <span>Taxable Value</span>
+            <span className="font-mono">{fmt(gst.taxable_paise)}</span>
+          </div>
+          {isInterstate ? (
+            <div className="flex justify-between text-[#475569]">
+              <span>IGST</span>
+              <span className="font-mono">{fmt(gst.igst_paise)}</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between text-[#475569]">
+                <span>CGST</span>
+                <span className="font-mono">{fmt(gst.cgst_paise)}</span>
+              </div>
+              <div className="flex justify-between text-[#475569]">
+                <span>SGST</span>
+                <span className="font-mono">{fmt(gst.sgst_paise)}</span>
+              </div>
+            </>
+          )}
+          <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1 mt-1">
+            <span>Total Debit Note Amount</span>
+            <span className="font-mono">{fmt(gst.total_paise)}</span>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+      <div className="flex gap-3 justify-end">
+        <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save Debit Note"}
         </button>
       </div>
     </div>
