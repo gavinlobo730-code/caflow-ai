@@ -1099,15 +1099,30 @@ def receive_purchase_bill(
         }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated_bill = upd.data[0] if upd.data else {**bill, "status": "received"}
 
-        journal_id = phase2_journal_service.journal_for_purchase_bill(
-            bill=updated_bill,
-            firm_id=current_user.get("firm_id", ""),
-            client_id=updated_bill.get("client_id", ""),
-        )
+        # task #103: the bill above is already flipped to "received" — if the
+        # journal fails to post (journal_for_purchase_bill now re-raises
+        # unexpected errors instead of swallowing them; a falsy id is also
+        # treated as failure), roll the status back so the bill stays a
+        # re-tryable draft instead of getting stuck "received" with no GL
+        # entry behind it (mirrors credit_notes.py's issue_credit_note rollback).
+        try:
+            journal_id = phase2_journal_service.journal_for_purchase_bill(
+                bill=updated_bill,
+                firm_id=current_user.get("firm_id", ""),
+                client_id=updated_bill.get("client_id", ""),
+            )
+            if not journal_id:
+                raise RuntimeError("purchase-bill journal posting returned no id")
+        except Exception as jerr:
+            db.table("purchase_bills").update({
+                "status": "draft", "received_at": None,
+            }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+            _logger.error("receive_purchase_bill: journal posting failed; receipt rolled back: %s", jerr)
+            return api_response(False, None, "Unable to receive purchase bill. Please try again.")
+
         # Persist the journal link so cancellation can reverse it directly.
-        if journal_id:
-            db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
-                "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
+            "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,

@@ -8,9 +8,12 @@ crashing on every real invocation and leaving an orphaned journal; because
 
 The fix claims the disposal atomically (a conditional update guarded on
 `is_disposed = false`) BEFORE any journal is posted, and rolls the claim back
-if the journal fails to post (`journal_for_asset_disposal` returns None on
-failure — it never raises, by an existing, unrelated contract shared by every
-journal_for_* method in Phase2JournalService).
+if the journal fails to post. The router guards against BOTH a None
+journal_id and a raised exception (as of task #103, journal_for_asset_disposal
+re-raises unexpected posting failures instead of swallowing them into a None
+return — a real None is now only possible in _USE_MOCK mode). The tests below
+monkeypatch journal_for_asset_disposal directly to simulate each failure mode
+independently of which real code path produces it.
 """
 import sys
 import os
@@ -124,8 +127,9 @@ def test_successful_disposal_posts_journal_and_marks_disposed():
 
 
 def test_failed_disposal_rolls_back_and_never_orphans_a_journal():
-    """journal_for_asset_disposal returning None (its real failure contract)
-    must roll the claim back — the asset must NOT end up disposed."""
+    """A None journal_id (simulated here directly; in the real service this
+    now only occurs in _USE_MOCK mode — see module docstring) must roll the
+    claim back — the asset must NOT end up disposed."""
     db = FakeDB()
     _seed_asset(db)
     fa_router._db = lambda: db
