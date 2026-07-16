@@ -164,6 +164,54 @@ def test_vendor_statement_uses_booked_rate_not_cash_rate(monkeypatch):
     assert stmt["closing_balance_paise"] == 0
 
 
+# ── task #102: foreign vendor payment CAS retry (H4's foreign-currency gap) ───
+def test_foreign_payment_cas_retries_instead_of_clobbering_concurrent_write(monkeypatch):
+    """_create_foreign_payment used to blindly overwrite paid_paise/paid_txn from
+    the bill snapshot read at the TOP of the function (before the journal even
+    posted) — no CAS guard. Simulates a concurrent payment landing on the SAME
+    bill between this payment's read and its bill-update: the update's CAS
+    guard must legitimately miss (not clobber), forcing a retry that picks up
+    the concurrent write and accumulates on top of it."""
+    from tests.e2e_harness import _Query
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    vend = ve.create_vendor(VendorIn(client_id="CLI", name="US V2", state_code="27"), CALLER)["data"]
+    bill = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="UB-CAS",
+        currency="USD", exchange_rate="80.0",
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
+    pb.receive_purchase_bill(bill["id"], CALLER)
+
+    real_execute = _Query.execute
+    injected = {"done": False}
+
+    def racy_execute(self):
+        if self.table == "purchase_bills" and self._op == "update" and not injected["done"]:
+            injected["done"] = True
+            # A concurrent $500 @ 80 payment "commits" right here, between this
+            # attempt's read and its write — mutate the row directly so the
+            # pending update's .eq("paid_paise", <stale>) guard legitimately
+            # matches zero rows, exactly as a real UPDATE ... WHERE would.
+            for row in self.db._tables.get("purchase_bills", []):
+                if row.get("id") == bill["id"]:
+                    row["paid_paise"] = int(row.get("paid_paise") or 0) + 4_000_000
+                    row["paid_txn"] = int(row.get("paid_txn") or 0) + 50000
+        return real_execute(self)
+
+    monkeypatch.setattr(_Query, "execute", racy_execute)
+
+    pp.create_purchase_payment(PurchasePaymentIn(
+        client_id="CLI", vendor_id=vend["id"], payment_date="2025-07-01",
+        amount_paise=30000, currency="USD", exchange_rate="80.0", purchase_bill_id=bill["id"]), CALLER)
+
+    row = db.table("purchase_bills").select("*").eq("id", bill["id"]).execute().data[0]
+    # Concurrent write's 4,000,000/50000 PLUS this payment's own 2,400,000 (30000
+    # @ 80) / 30000 — accumulated, not clobbered down to just this payment's own.
+    assert row["paid_paise"] == 4_000_000 + 2_400_000
+    assert row["paid_txn"] == 50000 + 30000
+    assert row["status"] == "partially_paid"
+    assert injected["done"] is True   # sanity: the race was actually exercised
+
+
 # ── Realized FX on vendor payment ─────────────────────────────────────────────
 def test_realized_fx_on_vendor_payment(monkeypatch):
     cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
