@@ -1,7 +1,16 @@
+"use client";
+
+// PageHero and CTASection call useCursorGlow() directly, which requires this
+// module itself to be a Client Component (hooks can't run in Server
+// Components). The still-server pages (Products/Pricing/Support/Resources)
+// are unaffected — a server component can render an imported client
+// component as a child with no changes on its end; only a component that
+// calls a hook in its own body needs the boundary.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowRight } from "./icons";
 import { Reveal, WordReveal } from "./motion";
+import { Magnetic, useCursorGlow } from "./Cursor";
 import { appLinks } from "@/lib/site";
 
 // Shared presentational primitives for the marketing pages. Keeping these in one
@@ -103,18 +112,22 @@ export function Button({
     "ghost-light": "text-white border border-white/25 hover:bg-white/10",
   };
   const cls = `inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-[14px] font-semibold transition-all duration-300 ${styles[variant]} ${className}`;
-  if (external) {
-    return (
-      <a href={href} className={cls}>
-        {children}
-      </a>
-    );
-  }
-  return (
+  const inner = external ? (
+    <a href={href} className={cls}>
+      {children}
+    </a>
+  ) : (
     <Link href={href} className={cls}>
       {children}
     </Link>
   );
+  // Magnetic pull only on the two solid, high-emphasis variants — the actual
+  // primary CTAs. Applying it to every button/link everywhere would compete
+  // with itself; this keeps the effect meaning something.
+  if (variant === "primary" || variant === "light") {
+    return <Magnetic>{inner}</Magnetic>;
+  }
+  return inner;
 }
 
 export function Card({
@@ -173,12 +186,17 @@ export function PageHero({
   title: ReactNode;
   subtitle?: ReactNode;
 }) {
+  const glow = useCursorGlow();
   return (
-    <section className="relative overflow-hidden bg-brand-dark text-white">
+    <section
+      className="relative overflow-hidden bg-brand-dark text-white"
+      {...glow.handlers}
+    >
       <div className="bg-grid absolute inset-0" />
       <div className="aurora aurora-1 -left-40 -top-40 h-[420px] w-[420px]" />
       <div className="aurora aurora-2 -right-32 -bottom-48 h-[460px] w-[460px]" />
       <div className="bg-noise absolute inset-0" />
+      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
       <div className="container-ps relative py-16 text-center md:py-24">
         {eyebrow ? (
           <div className="fade-up flex justify-center" style={{ animationDelay: "60ms" }}>
@@ -213,11 +231,16 @@ export function CTASection({
   title?: string;
   subtitle?: string;
 }) {
+  const glow = useCursorGlow();
   return (
-    <section className="relative overflow-hidden bg-brand text-white">
+    <section
+      className="relative overflow-hidden bg-brand text-white"
+      {...glow.handlers}
+    >
       <div className="bg-grid absolute inset-0" />
       <div className="aurora aurora-1 -left-32 -top-32 h-[380px] w-[380px] opacity-70" />
       <div className="aurora aurora-3 -bottom-40 -right-28 h-[420px] w-[420px] opacity-70" />
+      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
       <div className="container-ps relative py-20 text-center md:py-24">
         <Reveal variant="blur">
           <h2 className="mx-auto max-w-2xl text-[28px] font-bold leading-tight tracking-tight md:text-[40px]">
