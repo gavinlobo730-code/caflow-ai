@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { usePrefersReducedMotion } from "./motion";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * Home-page story mechanism: a scroll-pinned "convergence" — the scattered,
@@ -12,11 +11,20 @@ import { usePrefersReducedMotion } from "./motion";
  * in as children/props, so this stays a mechanism, not a content template.
  *
  * Below the lg breakpoint, or under prefers-reduced-motion, the pin/morph
- * mechanism never activates — both chapters render as plain stacked sections
- * instead. `pinnedActive` starts false and is only flipped true inside a
- * client effect, so the server-rendered / no-JS view always gets the simple
- * stacked layout first — the richer pinned staging is a progressive upgrade,
- * never a requirement to see the content.
+ * mechanism never activates and the crossfade is inert — `scatter`/`children`
+ * always render inside the SAME wrapper element tree either way (only the
+ * wrapper's className/style differs), so toggling `pinnedActive` never
+ * unmounts and remounts the chapter content. That's what keeps a
+ * breakpoint-crossing resize or a mid-session reduced-motion toggle from
+ * restarting the settled hero's entrance animations, and it's also what
+ * happens on every completely normal desktop page load, since
+ * `pinnedActive` starts false (matching the server-rendered / no-JS HTML)
+ * and only flips true after mount. A separate mechanism (the
+ * `pendingProgress` ref below) handles the other half of a breakpoint/
+ * reduced-motion flip — the pinned and stacked trees have very different
+ * total heights, so it re-targets `window.scrollY` to the equivalent
+ * fraction of the new track instead of leaving the viewport pointed at
+ * whatever unrelated content ends up at the old numeric scroll offset.
  */
 
 const RAIL_LABELS = ["Scattered", "Synced", "Trusted"];
@@ -36,7 +44,11 @@ export function ChapterRail({
       }`}
     >
       {RAIL_LABELS.map((label, i) => (
-        <div key={label} className="flex items-center gap-3">
+        <div
+          key={label}
+          className="flex items-center gap-3"
+          aria-current={i === active ? "step" : undefined}
+        >
           <span
             className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors duration-500 ${
               i === active ? "bg-brand-light" : "bg-white/25"
@@ -80,6 +92,8 @@ export function useSectionActive<T extends HTMLElement>(
   return ref;
 }
 
+/** Chapter 1 ("Scattered") crossfades into chapter 2 ("Synced") as the user
+ * scrolls through a pinned stage on desktop with motion enabled. */
 export function ProblemSolutionStory({
   scatter,
   children,
@@ -91,23 +105,88 @@ export function ProblemSolutionStory({
   children: ReactNode;
   onActiveChange: (index: 0 | 1) => void;
 }) {
-  const reduced = usePrefersReducedMotion();
   const [pinnedActive, setPinnedActive] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const scatterRef = useRef<HTMLDivElement>(null);
-  const settledRef = useRef<HTMLDivElement>(null);
+  const scatterLayerRef = useRef<HTMLDivElement>(null);
+  const settledLayerRef = useRef<HTMLDivElement>(null);
   const lastIndex = useRef<0 | 1>(0);
+  const pendingProgress = useRef<number | null>(null);
 
+  // Self-contained: reads both media queries directly rather than depending
+  // on the separately-timed usePrefersReducedMotion hook. Two hooks each
+  // starting from a stale default and correcting via their own effect can
+  // race across the same passive-effect flush — an early version of this
+  // depended on that hook and briefly computed pinnedActive=true even for a
+  // reduced-motion visitor, on every desktop-width mount, before a follow-up
+  // render corrected it. Reading both matchMedia results in one place at one
+  // time removes that race entirely.
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const update = () => setPinnedActive(mq.matches && !reduced);
+    const widthMq = window.matchMedia("(min-width: 1024px)");
+    const motionMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let mounted = false;
+    const update = () => {
+      const next = widthMq.matches && !motionMq.matches;
+      // Crossing the lg breakpoint (e.g. a resize or a DevTools panel
+      // docking) or toggling OS-level reduced-motion *while already
+      // scrolled into the story* swaps the wrapper between a fixed
+      // h-[220vh] pinned track and its natural stacked-flow height — two
+      // very different totals. Left alone, window.scrollY stays numerically
+      // where it was and now points at unrelated content under the new
+      // layout. Skip this on the initial mount flip (false -> matches on
+      // first load), which isn't a scroll-preserving transition at all —
+      // only real, later toggles need compensating.
+      if (mounted && wrapRef.current) {
+        const rect = wrapRef.current.getBoundingClientRect();
+        const total = rect.height - window.innerHeight;
+        pendingProgress.current = total > 0 ? Math.min(1, Math.max(0, -rect.top / total)) : 0;
+      }
+      mounted = true;
+      setPinnedActive(next);
+    };
     update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, [reduced]);
+    widthMq.addEventListener("change", update);
+    motionMq.addEventListener("change", update);
+    return () => {
+      widthMq.removeEventListener("change", update);
+      motionMq.removeEventListener("change", update);
+    };
+  }, []);
 
+  // Runs synchronously after the layout above has already applied (before
+  // paint), so the compensating scroll lands in the same frame as the
+  // height swap — no visible flash at the old, now-mismatched position.
+  useLayoutEffect(() => {
+    const progress = pendingProgress.current;
+    pendingProgress.current = null;
+    if (progress === null) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const total = rect.height - window.innerHeight;
+    if (total <= 0) return;
+    const docTop = rect.top + window.scrollY;
+    window.scrollTo(0, docTop + progress * total);
+  }, [pinnedActive]);
+
+  // The crossfade itself. Deliberately does NOT touch `visibility`: an
+  // earlier version hid the settled layer (the page's real <h1> and primary
+  // CTAs) via visibility:hidden for the entire first ~40% of the pinned
+  // range, which removes it from the tab order and the accessibility tree —
+  // not just faded, actually unreachable — for any keyboard or
+  // screen-reader user who hasn't happened to mouse-wheel/touch-scroll
+  // first. `pointer-events` alone still prevents accidental clicks on a
+  // barely-visible layer without making its real content unreachable.
   useEffect(() => {
-    if (!pinnedActive) return;
+    if (!pinnedActive) {
+      // Clear any inline styles left over from a previous pinned session
+      // (e.g. a breakpoint-crossing resize mid-scroll) so the stacked
+      // fallback isn't stuck with a stale opacity/transform/pointer-events.
+      const s = scatterLayerRef.current;
+      const d = settledLayerRef.current;
+      if (s) { s.style.opacity = ""; s.style.transform = ""; s.style.pointerEvents = ""; }
+      if (d) { d.style.opacity = ""; d.style.transform = ""; d.style.pointerEvents = ""; }
+      return;
+    }
     const wrap = wrapRef.current;
     if (!wrap) return;
     let raf = 0;
@@ -123,17 +202,17 @@ export function ProblemSolutionStory({
       const settledOpacity = Math.min(1, Math.max(0, (progress - 0.4) / 0.45));
       const settledScale = 0.94 + settledOpacity * 0.06;
 
-      const s = scatterRef.current;
+      const s = scatterLayerRef.current;
       if (s) {
         s.style.opacity = String(scatterOpacity);
         s.style.transform = `scale(${scatterScale.toFixed(3)})`;
-        s.style.visibility = scatterOpacity > 0.02 ? "visible" : "hidden";
+        s.style.pointerEvents = scatterOpacity < 0.05 ? "none" : "auto";
       }
-      const d = settledRef.current;
+      const d = settledLayerRef.current;
       if (d) {
         d.style.opacity = String(settledOpacity);
         d.style.transform = `scale(${settledScale.toFixed(3)})`;
-        d.style.visibility = settledOpacity > 0.02 ? "visible" : "hidden";
+        d.style.pointerEvents = settledOpacity < 0.5 ? "none" : "auto";
       }
 
       const idx: 0 | 1 = progress < 0.5 ? 0 : 1;
@@ -154,26 +233,66 @@ export function ProblemSolutionStory({
       window.removeEventListener("resize", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinnedActive]);
+
+  // Rail tracking for the stacked fallback (narrow viewport or reduced
+  // motion): the pinned effect above drives chapters 0/1 from scroll
+  // *progress* through the crossfade, which only makes sense while both
+  // layers are stacked at the same on-screen position. In the stacked
+  // fallback they're in normal sequential flow instead, so plain scrollspy
+  // (which chapter is centered in the viewport) is the correct signal there
+  // — the same technique chapter 3 ("Trusted") already uses independently.
+  // Only one of the two mechanisms is ever live at a time, gated by the same
+  // pinnedActive flag, so they can't fight each other.
+  useEffect(() => {
+    if (pinnedActive) return;
+    const scatterEl = scatterLayerRef.current;
+    const settledEl = settledLayerRef.current;
+    if (!scatterEl || !settledEl || typeof IntersectionObserver === "undefined") return;
+    const make = (index: 0 | 1) =>
+      new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) onActiveChange(index);
+        },
+        { rootMargin: "-45% 0px -45% 0px", threshold: 0 }
+      );
+    const scatterIo = make(0);
+    const settledIo = make(1);
+    scatterIo.observe(scatterEl);
+    settledIo.observe(settledEl);
+    return () => {
+      scatterIo.disconnect();
+      settledIo.disconnect();
+    };
   }, [pinnedActive, onActiveChange]);
 
-  if (!pinnedActive) {
-    // Stacked fallback — mobile/tablet and prefers-reduced-motion. No pin, no
-    // scroll math: both chapters render as plain sequential sections.
-    return (
-      <>
-        <div className="relative overflow-hidden bg-brand-dark">{scatter}</div>
-        {children}
-      </>
-    );
-  }
-
+  // One stable tree in both modes — only the wrapper's className/style
+  // differs — so scatter/children (and everything mounted inside them, e.g.
+  // the settled hero's WordReveal/fade-up entrance) are never torn down and
+  // rebuilt when pinnedActive flips. A Fragment-vs-div swap here previously
+  // meant React fully unmounted and remounted this subtree on every flip —
+  // including the flip that happens on every normal desktop page load
+  // (pinnedActive starts false, then turns true right after mount) — which
+  // replayed the settled hero's entrance animations a second time in front
+  // of anyone who'd already seen them play once during that first commit.
   return (
-    <div ref={wrapRef} className="relative h-[220vh]">
-      <div className="sticky top-0 h-screen overflow-hidden">
-        <div ref={scatterRef} className="absolute inset-0">
+    <div
+      ref={wrapRef}
+      className={pinnedActive ? "relative h-[220vh]" : "relative"}
+    >
+      <div className={pinnedActive ? "sticky top-0 h-screen overflow-hidden" : ""}>
+        <div
+          ref={scatterLayerRef}
+          className={pinnedActive ? "absolute inset-0" : "relative"}
+        >
           {scatter}
         </div>
-        <div ref={settledRef} className="absolute inset-0" style={{ opacity: 0 }}>
+        <div
+          ref={settledLayerRef}
+          className={pinnedActive ? "absolute inset-0" : "relative"}
+          style={pinnedActive ? { opacity: 0 } : undefined}
+        >
           {children}
         </div>
       </div>

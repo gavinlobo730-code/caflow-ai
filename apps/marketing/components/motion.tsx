@@ -211,6 +211,16 @@ export function Parallax({
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       cancelAnimationFrame(raf);
+      // usePrefersReducedMotion starts at false and corrects itself one
+      // effect-flush later, so on a reduced-motion visitor's first mount this
+      // effect can still run once with a stale reduced=false before the
+      // follow-up render disables it — applying one real transform in the
+      // process. Resetting it here (rather than relying on the *next* run's
+      // `if (reduced) return;`, which never reaches this element at all)
+      // means that stray offset doesn't survive as a permanent, never-reset
+      // static offset on the wrapped element for reduced-motion desktop
+      // users, who should see this component be fully inert.
+      el.style.transform = "";
     };
   }, [speed, reduced]);
 
