@@ -38,16 +38,18 @@ const TYPE_BADGE: Record<AdjustmentType, string> = {
 
 const STATUS_BADGE: Record<AdjustmentStatus, string> = {
   draft: "bg-[#F1F5F9] text-[#64748B]",
-  submitted: "bg-amber-100 text-amber-700",
+  pending_review: "bg-amber-100 text-amber-700",
   approved: "bg-green-100 text-green-700",
   posted: "bg-blue-100 text-blue-700",
+  rejected: "bg-red-100 text-red-700",
 };
 
 const STATUS_LABEL: Record<AdjustmentStatus, string> = {
   draft: "Draft",
-  submitted: "Pending Review",
+  pending_review: "Pending Review",
   approved: "Approved",
   posted: "Posted",
+  rejected: "Rejected",
 };
 
 const ADJ_TYPES: AdjustmentType[] = [
@@ -192,8 +194,8 @@ export default function AdjustmentsPage() {
                 {adjustments.map((adj) => (
                   <tr key={adj.id} className="hover:bg-[#F8FAFC]">
                     <td className="px-4 py-2.5">
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[adj.type]}`}>
-                        {TYPE_LABELS[adj.type]}
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[adj.adjustment_type]}`}>
+                        {TYPE_LABELS[adj.adjustment_type]}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-[#334155] max-w-[180px] truncate">{adj.description}</td>
@@ -206,7 +208,7 @@ export default function AdjustmentsPage() {
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#0F172A]">
                       {fmt(adj.amount_paise)}
                     </td>
-                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{adj.adj_date}</td>
+                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{adj.adjustment_date}</td>
                     <td className="px-3 py-2.5">
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[adj.status]}`}>
                         {STATUS_LABEL[adj.status]}
@@ -239,7 +241,7 @@ export default function AdjustmentsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <RegisterTotal label="Total" value={fmt(totalPaise)} />
             <RegisterTotal label="Draft" value={fmt(adjustments.filter((a) => a.status === "draft").reduce((s, a) => s + a.amount_paise, 0))} />
-            <RegisterTotal label="Pending Review" value={fmt(adjustments.filter((a) => a.status === "submitted").reduce((s, a) => s + a.amount_paise, 0))} />
+            <RegisterTotal label="Pending Review" value={fmt(adjustments.filter((a) => a.status === "pending_review").reduce((s, a) => s + a.amount_paise, 0))} />
             <RegisterTotal label="Posted" value={fmt(adjustments.filter((a) => a.status === "posted").reduce((s, a) => s + a.amount_paise, 0))} />
           </div>
         </div>
@@ -271,7 +273,7 @@ function AdjActions({
       </button>
     );
   }
-  if (adj.status === "submitted") {
+  if (adj.status === "pending_review") {
     return (
       <button onClick={() => onAction("approve")} className="text-xs text-green-600 hover:underline">
         Approve
@@ -324,13 +326,12 @@ function AdjustmentForm({
     setError(null);
     try {
       const res = await yearEndApi.adjustments.create(engagementId, {
-        type,
+        adjustment_type: type,
         description: description.trim(),
         debit_account_id: debitAccount.trim(),
         credit_account_id: creditAccount.trim(),
         amount_paise,
-        adj_date: adjDate,
-        notes: notes.trim() || undefined,
+        adjustment_date: adjDate,
       });
       if (!res.success) throw new Error(res.error ?? "Failed to create adjustment");
       onSaved(res.data);
