@@ -30,9 +30,20 @@ interface Asset {
   wdv_rate_percent?: number;
   useful_life_years?: number;
   accumulated_depreciation_paise: number;
+  is_disposed: boolean;
   current_wdv_paise?: number;
   status: "active" | "disposed" | "fully_depreciated";
   notes?: string;
+}
+
+// fixed_assets has no status column (migration 025/054) — routers/
+// fixed_assets.py never computes one either, only current_wdv_paise. Derive
+// the display status the same way the backend's own "fully depreciated"
+// check does (_compute_annual_depreciation: wdv_now <= salvage).
+function computeAssetStatus(a: Pick<Asset, "is_disposed" | "purchase_cost_paise" | "accumulated_depreciation_paise" | "salvage_value_paise">): Asset["status"] {
+  if (a.is_disposed) return "disposed";
+  const wdv = a.purchase_cost_paise - a.accumulated_depreciation_paise;
+  return wdv <= a.salvage_value_paise ? "fully_depreciated" : "active";
 }
 
 const CATEGORIES = [
@@ -138,14 +149,15 @@ function RegisterTab({ clientId }: { clientId: string }) {
       const supabase = getSupabaseClient();
       const { data } = await selectAll(() => supabase
         .from("fixed_assets")
-        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, notes")
+        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes")
         .eq("client_id", clientId)
         .eq("is_disposed", false)
         .order("purchase_date", { ascending: false })
         .order("id"));
-      const rows = ((data as Omit<Asset, "current_wdv_paise">[]) ?? []).map((a) => ({
+      const rows = ((data as Omit<Asset, "current_wdv_paise" | "status">[]) ?? []).map((a) => ({
         ...a,
         current_wdv_paise: a.purchase_cost_paise - a.accumulated_depreciation_paise,
+        status: computeAssetStatus(a),
       }));
       setAssets(rows);
     } catch { setAssets([]); }
@@ -416,7 +428,10 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}&status=active`, { credentials: "include" });
+      // include_disposed defaults to false server-side — no "status" query
+      // param exists on this endpoint (it was silently ignored, not filtering
+      // anything); disposed assets are already excluded by the default.
+      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
       const j = await res.json();
       setAssets(j.data ?? []);
     } catch { setAssets([]); }
@@ -441,7 +456,10 @@ function DepreciationTab({ clientId }: { clientId: string }) {
   }
 
   async function postAllDepreciation() {
-    for (const a of assets.filter(a => a.status === "active")) {
+    // No "active" status field to filter on (see computeAssetStatus) — skip
+    // assets whose annual depreciation already rounds to zero, same
+    // condition the per-row Post button below uses.
+    for (const a of assets.filter(a => annualDepn(a) > 0)) {
       await postDepreciation(a.id);
     }
   }
@@ -575,7 +593,9 @@ function DisposalTab({ clientId }: { clientId: string }) {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}&status=active`, { credentials: "include" });
+      // include_disposed defaults to false server-side — already-disposed
+      // assets are excluded without needing a (nonexistent) status filter.
+      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
       const j = await res.json();
       setAssets(j.data ?? []);
     } catch { setAssets([]); }
@@ -707,9 +727,13 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
+      // include_disposed=true — this report needs the disposed/fully-
+      // depreciated breakdown too, unlike the other tabs which only work
+      // with currently-held assets.
+      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}&include_disposed=true`, { credentials: "include" });
       const j = await res.json();
-      setAssets(j.data ?? []);
+      const rows = ((j.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
+      setAssets(rows);
     } catch { setAssets([]); }
     setLoading(false);
   }, [clientId]);
