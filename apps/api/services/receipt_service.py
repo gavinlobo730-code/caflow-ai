@@ -573,12 +573,14 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         if _inv and _amt > 0:
             _alloc_by_invoice[_inv] = _alloc_by_invoice.get(_inv, 0) + _amt
     for _inv_id, _cum_amt in _alloc_by_invoice.items():
-        _row = (db.table("client_sales_invoices").select("total_paise,paid_paise,credited_paise")
+        _row = (db.table("client_sales_invoices").select("total_paise,paid_paise,credited_paise,debit_note_paise")
                 .eq("id", _inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .limit(1).execute().data)
         if not _row:
             continue  # already rejected by the ownership check above
-        _total = int(_row[0].get("total_paise", 0))
+        # (total + debit notes) is the true ceiling — a sales debit note
+        # (CGST Act §34(3)) increases what the invoice can still collect.
+        _total = int(_row[0].get("total_paise", 0)) + int(_row[0].get("debit_note_paise", 0) or 0)
         _credited = int(_row[0].get("credited_paise", 0) or 0)
         _paid = int(_row[0].get("paid_paise", 0) or 0)
         if _paid + _credited + _cum_amt > _total:
@@ -668,7 +670,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             for _attempt in range(6):
                 inv_resp = (
                     db.table("client_sales_invoices")
-                    .select("total_paise,paid_paise,credited_paise")
+                    .select("total_paise,paid_paise,credited_paise,debit_note_paise")
                     .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
                     .limit(1)
                     .execute()
@@ -676,7 +678,8 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
                 if not inv_resp.data:
                     break
                 inv = inv_resp.data[0]
-                total    = int(inv.get("total_paise", 0))
+                # (total + debit notes) is the true ceiling (CGST Act §34(3)).
+                total    = int(inv.get("total_paise", 0)) + int(inv.get("debit_note_paise", 0) or 0)
                 credited = int(inv.get("credited_paise", 0) or 0)   # credit notes already applied
                 old_paid = int(inv.get("paid_paise", 0) or 0)
                 new_paid = old_paid + alloc_amt

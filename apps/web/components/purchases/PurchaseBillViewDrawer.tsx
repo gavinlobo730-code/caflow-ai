@@ -105,6 +105,7 @@ export function PurchaseBillViewDrawer({
   const [attachmentLoading, setAttachmentLoading] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [dnOpen, setDnOpen] = useState(false);
+  const [cnOpen, setCnOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,11 +174,14 @@ export function PurchaseBillViewDrawer({
   const isDraft = bill?.status === "draft";
   const isCancelled = bill?.status === "cancelled";
   const posted = !!bill?.journal_entry_id;
-  // net_payable − paid − debited: issued debit notes reduce the payable too
-  // (matches purchase_payments._claim_bill_outstanding), so a debit-noted bill
-  // shows the correct balance and Record Payment doesn't pre-fill an
-  // over-the-outstanding amount the backend would reject.
-  const outstanding = bill ? (bill.net_payable_paise ?? bill.total_paise ?? 0) - (bill.paid_paise ?? 0) - (bill.debited_paise ?? 0) : 0;
+  // (net_payable + credit_note_paise) − paid − debited: issued debit notes
+  // reduce the payable and issued purchase credit notes increase it (CGST Act
+  // §34) — matches purchase_payments._claim_bill_outstanding plus the §34(3)
+  // term, so a corrected bill shows the true balance and Record Payment
+  // doesn't pre-fill an amount the backend would reject.
+  const outstanding = bill
+    ? (bill.net_payable_paise ?? bill.total_paise ?? 0) + (bill.credit_note_paise ?? 0) - (bill.paid_paise ?? 0) - (bill.debited_paise ?? 0)
+    : 0;
   const isInterstate = !!bill?.is_interstate;
 
   return (
@@ -263,6 +267,9 @@ export function PurchaseBillViewDrawer({
                   correct a received bill's amount/quantity/item by issuing a
                   Debit Note (CGST Act §34) instead of editing the frozen bill. */}
               {!isDraft && <Action onClick={() => setDnOpen(true)} icon={<FilePlus2 size={12} />}>Debit Note</Action>}
+              {/* Credit Note — the increase-side mirror of Debit Note (CGST Act
+                  §34(3)): the vendor undercharged us and we now owe more. */}
+              {!isDraft && <Action onClick={() => setCnOpen(true)} icon={<FilePlus2 size={12} />}>Credit Note</Action>}
               <Action onClick={() => onDuplicate(bill)} icon={<Copy size={12} />}>Duplicate</Action>
               {isDraft && <Action danger onClick={() => onDelete(bill)} icon={<Trash2 size={12} />}>Delete</Action>}
               {/* Received + unpaid only: the backend deletes drafts instead, and
@@ -411,6 +418,15 @@ export function PurchaseBillViewDrawer({
           onError={(m) => onToast(m, "error")}
         />
       )}
+      {cnOpen && bill && (
+        <CreatePurchaseCreditNoteModal
+          bill={bill}
+          clientId={clientId}
+          onClose={() => setCnOpen(false)}
+          onDone={(cnNo) => { setCnOpen(false); onToast(`Credit note ${cnNo} created (draft)`, "success"); onChanged(); }}
+          onError={(m) => onToast(m, "error")}
+        />
+      )}
     </Drawer>
   );
 }
@@ -523,6 +539,60 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
       <Field label="Debit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note (return, rate correction…)" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />
+    </ModalShell>
+  );
+}
+
+// ── Create Purchase Credit Note (reuses POST /api/purchase-credit-notes) ────
+// The increase-side mirror of CreateDebitNoteModal (CGST Act §34(3)): the
+// vendor undercharged us on this bill and we now owe more.
+function CreatePurchaseCreditNoteModal({ bill, clientId, onClose, onDone, onError }: {
+  bill: PurchaseBillDetail; clientId: string;
+  onClose: () => void; onDone: (cnNo: string) => void; onError: (m: string) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const token = await getAuthToken();
+      const lines = bill.lines.map((l) => ({
+        description: l.description,
+        hsn_sac: l.hsn_sac ?? "",
+        quantity: l.quantity,
+        rate_paise: l.rate_paise,
+        gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
+        service_catalogue_id: l.service_catalogue_id ?? undefined,
+      }));
+      const r = await apiCall("/api/purchase-credit-notes/", "POST", {
+        client_id: clientId,
+        vendor_id: bill.vendor_id,
+        credit_note_date: date,
+        lines,
+        purchase_bill_id: bill.id,
+        is_interstate: !!bill.is_interstate,
+        is_reverse_charge: !!bill.is_reverse_charge,
+        reason: reason.trim() || undefined,
+      }, token);
+      if (!r.success) throw new Error(r.error ?? "Failed to create credit note");
+      const data = r.data as { credit_note_no?: string } | null;
+      onDone(data?.credit_note_no ?? "");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Failed to create credit note");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Credit Note — ${bill.bill_no || "Purchase Bill"}`} onClose={onClose}>
+      <p className="text-[11px] text-[#64748B]">Creates a full-value <strong>draft</strong> credit note copying this bill&apos;s lines — for when the vendor undercharged us and we owe more. Adjust or issue it from the Credit Notes tab (CGST Act §34(3)).</p>
+      <Field label="Credit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
+      <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
     </ModalShell>
   );
 }

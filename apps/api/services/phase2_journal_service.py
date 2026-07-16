@@ -430,6 +430,160 @@ class Phase2JournalService:
             _logger.error("journal_for_debit_note error: %s", e)
             return None
 
+    def journal_for_sales_debit_note(
+        self, dn: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Sales-side value/tax INCREASE — the mirror image of journal_for_credit_note:
+        Dr Trade Receivables    = total_paise         (customer owes us MORE)
+        Cr Sales Revenue        = taxable_amount_paise (additional revenue)
+        Cr GST Output Tax Payable (CGST/SGST/IGST) — per-head accounts
+        CGST Act §34(3): debit notes for an increase in taxable value or tax charged.
+        CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_sales_debit_note: %s", dn.get("debit_note_no"))
+            return None
+
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            receivables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+            )
+            sales_id = self._find_account(
+                db, firm_id, client_id, "%Sales%", system_key="revenue"
+            )
+
+            lines = [{
+                "account_id": receivables_id,
+                "debit_paise": dn["total_paise"],
+                "credit_paise": 0,
+                "narration": "Trade receivable increased by debit note",
+            }, {
+                "account_id": sales_id,
+                "debit_paise": 0,
+                "credit_paise": dn["taxable_amount_paise"],
+                "narration": "Additional sales — debit note",
+            }]
+
+            if dn.get("cgst_paise", 0) > 0:
+                cgst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_cgst"
+                )
+                lines.append({
+                    "account_id": cgst_id,
+                    "debit_paise": 0,
+                    "credit_paise": dn["cgst_paise"],
+                    "narration": "CGST output tax — additional",
+                })
+            if dn.get("sgst_paise", 0) > 0:
+                sgst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_sgst"
+                )
+                lines.append({
+                    "account_id": sgst_id,
+                    "debit_paise": 0,
+                    "credit_paise": dn["sgst_paise"],
+                    "narration": "SGST output tax — additional",
+                })
+            if dn.get("igst_paise", 0) > 0:
+                igst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_igst"
+                )
+                lines.append({
+                    "account_id": igst_id,
+                    "debit_paise": 0,
+                    "credit_paise": dn["igst_paise"],
+                    "narration": "IGST output tax — additional",
+                })
+
+            return self._create_journal(
+                db=db,
+                firm_id=firm_id,
+                client_id=client_id,
+                entry_date=dn.get("debit_note_date", str(datetime.now(timezone.utc).date())),
+                reference_no=dn["debit_note_no"],
+                narration=f"Sales debit note {dn['debit_note_no']} — CGST Act §34(3)",
+                entry_type="Journal",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            _logger.error("journal_for_sales_debit_note error: %s", e)
+            return None
+
+    def journal_for_purchase_credit_note(
+        self, cn: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Purchase-side value/tax INCREASE — the mirror image of journal_for_debit_note
+        (a vendor undercharged us; we owe them more):
+        Dr Purchases/Expense   = taxable_amount_paise (additional expense)
+        Dr GST Input Tax Credit (CGST/SGST/IGST)      (additional ITC claimed)
+        Cr Trade Payables      = total_paise           (we owe the vendor more)
+        CGST Act §34(3): debit notes for an increase in value/tax — issued by the
+        vendor; this is our own AP-side record of it, mirroring how the existing
+        Purchase Debit Note already records the vendor's §34(1) reduction.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_purchase_credit_note: %s", cn.get("credit_note_no"))
+            return None
+
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            payables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Payable%", system_key="ap"
+            )
+            try:
+                purchases_id = self._find_account(db, firm_id, client_id, "%Purchase%")
+            except ValueError:
+                purchases_id = self._find_account(db, firm_id, client_id, "%Expense%")
+            gst_input_id = self._find_account(
+                db, firm_id, client_id, "%GST Input%", system_key="gst_input"
+            )
+
+            lines = [{
+                "account_id": purchases_id,
+                "debit_paise": cn["taxable_amount_paise"],
+                "credit_paise": 0,
+                "narration": "Additional purchases — credit note",
+            }]
+            gst_claimed = int(cn.get("cgst_paise", 0)) + int(cn.get("sgst_paise", 0)) + int(cn.get("igst_paise", 0))
+            if gst_claimed > 0:
+                lines.append({
+                    "account_id": gst_input_id,
+                    "debit_paise": gst_claimed,
+                    "credit_paise": 0,
+                    "narration": "GST input tax credit — additional",
+                })
+            lines.append({
+                "account_id": payables_id,
+                "debit_paise": 0,
+                "credit_paise": cn["total_paise"],
+                "narration": "Trade payable increased by credit note",
+            })
+
+            return self._create_journal(
+                db=db,
+                firm_id=firm_id,
+                client_id=client_id,
+                entry_date=cn.get("credit_note_date", str(datetime.now(timezone.utc).date())),
+                reference_no=cn["credit_note_no"],
+                narration=f"Purchase credit note {cn['credit_note_no']} — CGST Act §34(3)",
+                entry_type="Journal",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            _logger.error("journal_for_purchase_credit_note error: %s", e)
+            return None
+
     def journal_for_purchase_bill(
         self, bill: dict, firm_id: str, client_id: str
     ) -> Optional[str]:

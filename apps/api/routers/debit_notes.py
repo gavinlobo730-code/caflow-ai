@@ -221,7 +221,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         prior_bill = None
         if bill_id and dn_total > 0:
             b = (db.table("purchase_bills")
-                 .select("net_payable_paise,paid_paise,debited_paise,status")
+                 .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status")
                  .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
             if not b.data:
                 raise HTTPException(status_code=422, detail="Linked bill is not part of this client's books.")
@@ -231,7 +231,11 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             net_payable = int(bill.get("net_payable_paise") or 0)
             paid = int(bill.get("paid_paise") or 0)
             debited = int(bill.get("debited_paise") or 0)
-            outstanding = net_payable - paid - debited
+            # A purchase credit note (CGST Act §34(3)) increases what's payable
+            # before this debit note's own reduction is applied.
+            credit_noted = int(bill.get("credit_note_paise") or 0)
+            effective_payable = net_payable + credit_noted
+            outstanding = effective_payable - paid - debited
             if dn_total > outstanding:
                 raise HTTPException(
                     status_code=422,
@@ -239,7 +243,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                            f"(₹{outstanding/100:,.2f}).")
             prior_bill = {"debited_paise": debited, "status": bill.get("status")}
             new_debited = debited + dn_total
-            new_status = "paid" if (paid + new_debited) >= net_payable else bill.get("status")
+            new_status = "paid" if (paid + new_debited) >= effective_payable else bill.get("status")
             db.table("purchase_bills").update({"debited_paise": new_debited, "status": new_status}) \
                 .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
             try:

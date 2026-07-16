@@ -513,16 +513,17 @@ def get_vendor_outstanding(
         # subtracted). Payments now reconcile to the bill sub-ledger (H11).
         bills_resp = (
             db.table("purchase_bills")
-            .select("id,net_payable_paise,paid_paise,debited_paise,status")
+            .select("id,net_payable_paise,paid_paise,debited_paise,credit_note_paise,status")
             .eq("firm_id", firm_id)
             .eq("vendor_id", vendor_id)
             .neq("status", "cancelled")
             .execute()
         )
-        # Net payable per bill = net_payable − paid − debited (debit notes relieve it).
+        # Net payable per bill = (net_payable + credit notes) − paid − debited
+        # (CGST Act §34: debit notes relieve it, credit notes add to it).
         outstanding_paise = sum(
-            int(b.get("net_payable_paise", 0) or 0) - int(b.get("paid_paise", 0) or 0)
-            - int(b.get("debited_paise", 0) or 0)
+            int(b.get("net_payable_paise", 0) or 0) + int(b.get("credit_note_paise", 0) or 0)
+            - int(b.get("paid_paise", 0) or 0) - int(b.get("debited_paise", 0) or 0)
             for b in (bills_resp.data or [])
         )
 

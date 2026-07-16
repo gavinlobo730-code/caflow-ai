@@ -1182,7 +1182,7 @@ def cancel_purchase_bill(
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm bill id cannot be read or mutated under service-role.
         resp = (db.table("purchase_bills")
-                .select("status, journal_entry_id, bill_no, our_reference, client_id, paid_paise")
+                .select("status, journal_entry_id, bill_no, our_reference, client_id, paid_paise, debited_paise, credit_note_paise")
                 .eq("id", bill_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
@@ -1192,10 +1192,12 @@ def cancel_purchase_bill(
             raise HTTPException(status_code=422, detail="Bill already cancelled")
         if status == "draft":
             raise HTTPException(status_code=422, detail="Draft bills are deleted, not cancelled.")
-        # Accounting guard: never cancel a bill that has payments — the payment
-        # journal would be stranded. Reverse the payment(s) first.
-        if int(bill.get("paid_paise") or 0) > 0:
-            raise HTTPException(status_code=409, detail="This bill has payments recorded and cannot be cancelled. Reverse the payment(s) first.")
+        # Accounting guard: never cancel a bill that has payments or debit/credit
+        # notes applied — those journals (and, for a debit/credit note, its
+        # allocation) would be stranded. Reverse/withdraw those first.
+        if (int(bill.get("paid_paise") or 0) > 0 or int(bill.get("debited_paise") or 0) > 0
+                or int(bill.get("credit_note_paise") or 0) > 0):
+            raise HTTPException(status_code=409, detail="This bill has payments, debit notes or credit notes applied and cannot be cancelled. Reverse those first.")
         pay = (db.table("purchase_payments").select("id")
                .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id).limit(1).execute().data)
         if pay:

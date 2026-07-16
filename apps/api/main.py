@@ -57,6 +57,7 @@ from routers import assignments
 from routers import approvals
 from routers import identity
 from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements, debit_notes
+from routers import sales_debit_notes, purchase_credit_notes  # CGST §34(3) increase-side correction notes
 from routers import hsn  # HSN/SAC smart lookup (search firm_hsn_library merged with firm history)
 from routers import service_catalogue  # Product & Service master (Batch 6; goods+services)
 from routers import inventory  # Stock register + per-item ledger (migration 188)
@@ -247,6 +248,8 @@ app.include_router(firm_hsn_rate_history.router, dependencies=_CLIENT_GUARD)
 app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
 app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(debit_notes.router, dependencies=_CLIENT_GUARD)
+app.include_router(sales_debit_notes.router, dependencies=_CLIENT_GUARD)
+app.include_router(purchase_credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)

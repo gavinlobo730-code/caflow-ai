@@ -104,6 +104,11 @@ export interface InvoiceDetail {
   igst_paise: number;
   total_paise: number;
   paid_paise: number;
+  // Sub-ledger corrections applied against this invoice (CGST Act §34) — a
+  // credit note REDUCES the receivable, a (sales) debit note INCREASES it:
+  //   net outstanding = (total_paise + debit_note_paise) - paid_paise - credited_paise
+  credited_paise?: number;
+  debit_note_paise?: number;
   status: InvoiceStatus;
   journal_entry_id: string | null;
   issued_at: string | null;
