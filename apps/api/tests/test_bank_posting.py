@@ -315,6 +315,28 @@ def test_bill_settlement_uses_tds_net_payable_not_gross_total():
     assert out["settlement"]["allocated_paise"] == 75000   # NOT 100000 (old bug: gross total)
 
 
+def test_settlement_excess_becomes_party_credit_not_lost():
+    # task #102: a bank transaction matched for MORE than the invoice's true
+    # outstanding used to just clamp the allocation and silently drop the
+    # excess from tracking (the GL was already correct — the full amount was
+    # posted to Trade Receivables — only the sub-ledger "whose money is this"
+    # tracking was missing). The excess must now show up as a party credit.
+    from services.party_credit_service import party_credit_service as PCS
+    db = _db_with_accounts()
+    db.store.setdefault("client_sales_invoices", []).append(
+        {"id": "inv-1", "firm_id": FIRM, "client_id": CLIENT, "customer_id": "cust-1",
+         "invoice_no": "INV-1", "total_paise": 100000, "paid_paise": 0, "status": "issued"})
+    _seed_txn(db, credit=150000, category="Customer Payment",
+              matched_type="sales_invoice", matched_id="inv-1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    out = _approve(db, res["draft_journal_id"])
+    inv = db.store["client_sales_invoices"][0]
+    assert inv["paid_paise"] == 100000 and inv["status"] == "paid"
+    assert out["settlement"]["allocated_paise"] == 100000
+    assert out["settlement"]["credited_to_party_paise"] == 50000
+    assert PCS.get_balance(db, FIRM, CLIENT, "customer", "cust-1") == 50000
+
+
 def test_full_bill_settlement():
     db = _db_with_accounts(); _seed_bill(db, 59000)
     _seed_txn(db, debit=59000, category="Vendor Payment",
