@@ -434,23 +434,33 @@ def list_cross_client_matches(
     db = _db()
     firm_id = current_user["firm_id"]
 
+    # entity_id (Entity Detail's "Cross-Client Matches" tab) wants the full
+    # match history for one entity, confirmed/dismissed included — it renders
+    # a Status badge for all three states, not just pending ones — so it
+    # intentionally bypasses the reviewed filter rather than combining with
+    # it. Without entity_id (the firm-wide listing pages), reviewed defaults
+    # to unreviewed-only; `elif reviewed:` / `else:` (not `elif reviewed is
+    # None:` / `elif reviewed:`) is required so an EXPLICIT reviewed=false
+    # still lands on the unreviewed branch instead of falling through both
+    # elifs unfiltered — `False` is falsy, so a plain `elif reviewed:` never
+    # matches it and previously left the query with no reviewed filter at all.
     if not db:
         result = list(_MOCK_CROSS_MATCHES)
         if entity_id:
             result = [m for m in result if m.get("entity_id") == entity_id]
-        if reviewed is None:
-            result = [m for m in result if not m.get("reviewed")]
         elif reviewed:
             result = [m for m in result if m.get("reviewed")]
+        else:
+            result = [m for m in result if not m.get("reviewed")]
         return api_response(True, result)
 
     q = db.table("cross_client_matches").select("*").eq("firm_id", firm_id)
     if entity_id:
         q = q.eq("entity_id", entity_id)
-    elif reviewed is None:
-        q = q.eq("reviewed", False)
     elif reviewed:
         q = q.eq("reviewed", True)
+    else:
+        q = q.eq("reviewed", False)
     res = q.order("created_at", desc=True).execute()
     return api_response(True, res.data or [])
 
