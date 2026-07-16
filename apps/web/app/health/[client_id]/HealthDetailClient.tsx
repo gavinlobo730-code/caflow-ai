@@ -114,6 +114,19 @@ const DIMENSION_META: Record<DimensionKey, { label: string; weightLabel: string;
 
 const DIMENSION_KEYS = Object.keys(DIMENSION_META) as DimensionKey[];
 
+// Matches DIMENSION_WEIGHTS_BP in routers/health.py exactly (basis points,
+// sums to 10000 = 100%) — needed client-side only to reconstruct legacy rows
+// that predate the `dimensions` JSONB column (migration 169).
+const DIMENSION_WEIGHTS_BP: Record<DimensionKey, number> = {
+  compliance_health: 2500,
+  accounting_quality: 2000,
+  work_progress: 1500,
+  document_health: 1500,
+  ai_risk_signals: 1000,
+  open_notices: 1000,
+  client_responsiveness: 500,
+};
+
 // Legacy override form dimension keys mapped to new names
 const OVERRIDE_DIMENSION_OPTIONS = DIMENSION_KEYS;
 
@@ -300,22 +313,81 @@ export default function ClientHealthDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const [healthJson, historyJson, alertsJson, overridesJson]: [
-        ApiResponse<ClientHealthDetail>,
-        ApiResponse<HealthHistoryRecord[]>,
-        ApiResponse<HealthAlert[]>,
-        ApiResponse<HealthOverride[]>
-      ] = await Promise.all([
-        apiFetch(`/api/health/clients/${clientId}`),
-        apiFetch(`/api/health/scores/${clientId}/history`),
-        apiFetch(`/api/health/alerts?client_id=${clientId}`),
-        apiFetch(`/api/health/overrides?client_id=${clientId}`),
+      // Direct Supabase for all 4 reads below, not the /api/health/* backend
+      // routes — each is a plain firm-scoped filtered select (routers/
+      // health.py's list_alerts/list_overrides/get_score_history do nothing
+      // beyond that; get_client_health does one cheap, deterministic
+      // reshape — reconstructing the `dimensions` object from the legacy
+      // flat *_score columns when the JSONB column is empty — replicated
+      // below rather than staying backend-routed for it). RLS
+      // (health_scores/health_score_history/health_alerts/health_overrides
+      // _assignment_scope, migration 084) enforces the same
+      // can_access_client() assignment scoping the Python
+      // assert_client_access()/filter_by_client() calls apply — verified
+      // against the live DB. Dimension-detail (per-dimension dragging
+      // factors) is genuine cross-table business logic and stays
+      // backend-routed — see DimensionCard's handleExpand above.
+      const supabase = getSupabaseClient();
+      const [scoreRes, historyRes, alertsRes, overridesRes] = await Promise.all([
+        supabase.from("health_scores").select("*").eq("client_id", clientId).limit(1).maybeSingle(),
+        supabase
+          .from("health_score_history")
+          .select("id, overall_score, health_grade, recorded_at")
+          .eq("client_id", clientId)
+          .order("recorded_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("health_alerts")
+          .select("*")
+          .eq("client_id", clientId)
+          .eq("is_resolved", false)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("health_overrides")
+          .select("*")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false }),
       ]);
-      if (!healthJson.success) throw new Error(healthJson.error ?? "Failed to load health data");
-      setHealth(healthJson.data);
-      setHistory(historyJson.success ? historyJson.data : []);
-      setAlerts(alertsJson.success ? alertsJson.data.filter((a) => !a.resolved_at) : []);
-      setOverrides(overridesJson.success ? overridesJson.data : []);
+      if (scoreRes.error) throw scoreRes.error;
+      if (!scoreRes.data) throw new Error("Health score not found — run /calculate first");
+      const row = scoreRes.data as Record<string, unknown>;
+
+      let dimensions = row.dimensions as Record<DimensionKey, DimensionValue> | null | undefined;
+      if (!dimensions || Object.keys(dimensions).length === 0) {
+        dimensions = {} as Record<DimensionKey, DimensionValue>;
+        for (const k of DIMENSION_KEYS) {
+          const legacy = Number(row[`${k}_score`] ?? 100);
+          dimensions[k] = {
+            score: legacy,
+            weight: DIMENSION_WEIGHTS_BP[k],
+            weighted: Math.floor((legacy * DIMENSION_WEIGHTS_BP[k]) / 10000),
+          };
+        }
+      }
+
+      setHealth({
+        client_id: clientId,
+        client_name: String(row.client_name ?? "—"),
+        overall_score: Number(row.overall_score ?? 0),
+        grade: (row.grade ?? row.health_grade ?? "Critical") as Grade,
+        trend: String(row.trend ?? "+0"),
+        dimensions,
+        hard_override: (row.hard_override as string | null) ?? null,
+        hard_override_reason: (row.hard_override_reason as string | null) ?? null,
+        is_critical: Boolean(row.is_critical),
+        is_at_risk: Boolean(row.is_at_risk),
+        last_calculated_at: (row.last_calculated_at as string | null) ?? null,
+      });
+
+      if (historyRes.error) throw historyRes.error;
+      setHistory((historyRes.data as HealthHistoryRecord[]) ?? []);
+
+      if (alertsRes.error) throw alertsRes.error;
+      setAlerts((alertsRes.data as HealthAlert[]) ?? []);
+
+      if (overridesRes.error) throw overridesRes.error;
+      setOverrides((overridesRes.data as HealthOverride[]) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {

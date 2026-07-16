@@ -172,9 +172,21 @@ export default function HealthPage() {
     setLoading(true);
     setError(null);
     try {
-      const json: ApiResponse<Record<string, unknown>[]> = await apiFetch("/api/health/scores");
-      if (!json.success) throw new Error(json.error ?? "Failed to load health data");
-      setClients((json.data || []).map(normalizeScore));
+      // Direct Supabase, not /api/health/scores — a plain firm-scoped select
+      // (routers/health.py:list_scores with no is_critical/is_at_risk
+      // params). RLS (health_scores_assignment_scope, migration 084)
+      // enforces the same can_access_client() assignment scoping list_scores
+      // applies in Python via filter_by_client() — verified against the
+      // live DB. Every stat on this page (avg score, band counts, the
+      // distribution chart) is already computed client-side below from the
+      // raw rows, same as before.
+      const supabase = getSupabaseClient();
+      const { data, error: sbError } = await supabase
+        .from("health_scores")
+        .select("*")
+        .order("overall_score");
+      if (sbError) throw sbError;
+      setClients(((data as Record<string, unknown>[]) ?? []).map(normalizeScore));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
