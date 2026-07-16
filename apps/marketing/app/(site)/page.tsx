@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, Section, SectionHeading, Card } from "@/components/ui";
 import { Reveal, CountUp, Tilt, Parallax, WordReveal, Marquee } from "@/components/motion";
+import { Magnetic, useCursorGlow } from "@/components/Cursor";
 import { ProblemSolutionStory, ChapterRail, useSectionActive } from "@/components/StoryStage";
 import {
   ArrowRight,
@@ -54,12 +55,17 @@ const SCATTER_TOOLS = [
 // Chapter 1 — the problem, stated plainly (deliberately no WordReveal here;
 // chapter 2's polished entrance is meant to feel like the "arrival").
 function ScatterChapter() {
+  const glow = useCursorGlow();
   return (
-    <div className="relative flex h-full min-h-[94vh] flex-col justify-center overflow-hidden bg-brand-dark text-white">
+    <div
+      className="relative flex h-full min-h-[94vh] flex-col justify-center overflow-hidden bg-brand-dark text-white"
+      {...glow.handlers}
+    >
       <div className="bg-grid absolute inset-0" />
       <div className="aurora aurora-1 -left-40 -top-48 h-[560px] w-[560px] opacity-70" />
       <div className="aurora aurora-3 bottom-[-200px] left-1/3 h-[520px] w-[520px] opacity-60" />
       <div className="bg-noise absolute inset-0" />
+      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
 
       {SCATTER_TOOLS.map((tool) => (
         <div
@@ -94,13 +100,18 @@ function ScatterChapter() {
 // Chapter 2 — the settled hero. Unchanged from the previous build; it is now
 // simply the "arrival" state of the scroll-pinned convergence above it.
 function SettledHero() {
+  const glow = useCursorGlow();
   return (
-    <section className="relative flex min-h-[94vh] flex-col overflow-hidden bg-brand-dark text-white">
+    <section
+      className="relative flex min-h-[94vh] flex-col overflow-hidden bg-brand-dark text-white"
+      {...glow.handlers}
+    >
       <div className="bg-grid absolute inset-0" />
       <div className="aurora aurora-1 -left-40 -top-48 h-[560px] w-[560px]" />
       <div className="aurora aurora-2 -right-48 top-1/4 h-[620px] w-[620px]" />
       <div className="aurora aurora-3 bottom-[-200px] left-1/3 h-[520px] w-[520px]" />
       <div className="bg-noise absolute inset-0" />
+      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-brand-dark to-transparent" />
 
       <div className="container-ps relative grid flex-1 items-center gap-16 py-20 md:py-24 lg:grid-cols-[1.05fr_1fr]">
@@ -134,13 +145,15 @@ function SettledHero() {
           </p>
 
           <div className="fade-up mt-9 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "1200ms" }}>
-            <a
-              href={appLinks.signup}
-              className="btn-shine group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-[15px] font-semibold text-brand shadow-[0_8px_30px_rgba(175,210,250,0.25)] transition-transform duration-300 hover:scale-[1.03]"
-            >
-              Start free trial
-              <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
-            </a>
+            <Magnetic>
+              <a
+                href={appLinks.signup}
+                className="btn-shine group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-[15px] font-semibold text-brand shadow-[0_8px_30px_rgba(175,210,250,0.25)] transition-transform duration-300 hover:scale-[1.03]"
+              >
+                Start free trial
+                <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
+              </a>
+            </Magnetic>
             <Link
               href="/#security"
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-7 py-4 text-[15px] font-semibold text-white transition-colors duration-300 hover:bg-white/10"
@@ -263,9 +276,91 @@ function SettledHero() {
   );
 }
 
+// Chapter 3 — Trusted. Extracted so useCursorGlow (a hook) has a component
+// body of its own to live in, scoped to just this card rather than the
+// whole padded Section around it.
+function TrustedCard() {
+  const glow = useCursorGlow();
+  return (
+    <div
+      className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
+      {...glow.handlers}
+    >
+      <div className="bg-grid absolute inset-0 opacity-70" />
+      <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
+      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+      <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
+        <Reveal variant="left">
+          <div className="flex">
+            <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
+              <Lock size={15} /> Control &amp; trust
+            </span>
+          </div>
+          <h2 className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-white md:text-[38px]">
+            Nothing is filed without your click
+          </h2>
+          <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
+            AI prepares the working papers and flags what needs attention —
+            but the CA always makes the final call. No return, no challan and
+            no MCA form is ever submitted to a government portal
+            automatically.
+          </p>
+          <ul className="mt-6 space-y-3">
+            {[
+              "Explicit CA confirmation on every government submission",
+              "Full audit log of who reviewed and filed what",
+              "Role-based access, MFA and data hosted in India",
+            ].map((point) => (
+              <li key={point} className="flex items-start gap-3 text-[15px] text-slate-200">
+                <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                {point}
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+
+        <Reveal variant="right" delay={150}>
+          <div className="rounded-2xl border border-white/10 bg-brand-dark/60 p-6 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                  <path className="draw-check" d="m9 12 2 2 4-4" />
+                </svg>
+              </span>
+              <div>
+                <p className="text-[14px] font-bold text-white">GSTR-3B ready to file</p>
+                <p className="text-[12px] text-slate-400">Reviewed by CA · awaiting confirmation</p>
+              </div>
+            </div>
+            <div className="mt-5 rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
+              <p className="text-[12px] text-slate-400">Tax payable</p>
+              <p className="text-[24px] font-bold text-white">
+                ₹ <CountUp to={248600} duration={1800} />
+              </p>
+              <div className="mt-4 flex gap-2">
+                <span className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark">
+                  Confirm &amp; file
+                </span>
+                <span className="rounded-lg border border-white/15 px-3 py-2.5 text-center text-[13px] font-medium text-slate-300">
+                  Review
+                </span>
+              </div>
+              <p className="mt-3 text-center text-[11px] text-slate-500">
+                You click. We never auto-submit.
+              </p>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [activeChapter, setActiveChapter] = useState(0);
   const trustedRef = useSectionActive<HTMLDivElement>(setActiveChapter, 2);
+  const finalCtaGlow = useCursorGlow();
 
   // The rail's job ends when the story does — visible exactly while any part
   // of the chapters 1–3 wrapper is on screen, not derived from activeChapter
@@ -296,74 +391,7 @@ export default function HomePage() {
         {/* ── Chapter 3 — Trusted ──────────────────────────────────────── */}
         <div ref={trustedRef}>
           <Section id="security" className="bg-brand-dark">
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14">
-              <div className="bg-grid absolute inset-0 opacity-70" />
-              <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
-              <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
-                <Reveal variant="left">
-                  <div className="flex">
-                    <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
-                      <Lock size={15} /> Control &amp; trust
-                    </span>
-                  </div>
-                  <h2 className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-white md:text-[38px]">
-                    Nothing is filed without your click
-                  </h2>
-                  <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
-                    AI prepares the working papers and flags what needs attention —
-                    but the CA always makes the final call. No return, no challan and
-                    no MCA form is ever submitted to a government portal
-                    automatically.
-                  </p>
-                  <ul className="mt-6 space-y-3">
-                    {[
-                      "Explicit CA confirmation on every government submission",
-                      "Full audit log of who reviewed and filed what",
-                      "Role-based access, MFA and data hosted in India",
-                    ].map((point) => (
-                      <li key={point} className="flex items-start gap-3 text-[15px] text-slate-200">
-                        <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                </Reveal>
-
-                <Reveal variant="right" delay={150}>
-                  <div className="rounded-2xl border border-white/10 bg-brand-dark/60 p-6 backdrop-blur-sm">
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                          <path className="draw-check" d="m9 12 2 2 4-4" />
-                        </svg>
-                      </span>
-                      <div>
-                        <p className="text-[14px] font-bold text-white">GSTR-3B ready to file</p>
-                        <p className="text-[12px] text-slate-400">Reviewed by CA · awaiting confirmation</p>
-                      </div>
-                    </div>
-                    <div className="mt-5 rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
-                      <p className="text-[12px] text-slate-400">Tax payable</p>
-                      <p className="text-[24px] font-bold text-white">
-                        ₹ <CountUp to={248600} duration={1800} />
-                      </p>
-                      <div className="mt-4 flex gap-2">
-                        <span className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark">
-                          Confirm &amp; file
-                        </span>
-                        <span className="rounded-lg border border-white/15 px-3 py-2.5 text-center text-[13px] font-medium text-slate-300">
-                          Review
-                        </span>
-                      </div>
-                      <p className="mt-3 text-center text-[11px] text-slate-500">
-                        You click. We never auto-submit.
-                      </p>
-                    </div>
-                  </div>
-                </Reveal>
-              </div>
-            </div>
+            <TrustedCard />
           </Section>
         </div>
       </div>
@@ -431,10 +459,14 @@ export default function HomePage() {
       </Section>
 
       {/* ── Final CTA ────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-brand text-white">
+      <section
+        className="relative overflow-hidden bg-brand text-white"
+        {...finalCtaGlow.handlers}
+      >
         <div className="bg-grid absolute inset-0" />
         <div className="aurora aurora-1 -left-32 -top-32 h-[420px] w-[420px] opacity-70" />
         <div className="aurora aurora-3 -bottom-40 -right-32 h-[460px] w-[460px] opacity-70" />
+        <div ref={finalCtaGlow.ref} className="cursor-glow" aria-hidden="true" />
         <div className="container-ps relative py-24 text-center md:py-28">
           <Reveal variant="blur">
             <h2 className="mx-auto max-w-2xl text-[30px] font-bold leading-tight tracking-tight md:text-[44px]">
@@ -447,13 +479,15 @@ export default function HomePage() {
           </Reveal>
           <Reveal delay={150}>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <a
-                href={appLinks.signup}
-                className="btn-shine group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-[15px] font-semibold text-brand shadow-sm transition-transform duration-300 hover:scale-[1.03]"
-              >
-                Start free trial
-                <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
-              </a>
+              <Magnetic>
+                <a
+                  href={appLinks.signup}
+                  className="btn-shine group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-[15px] font-semibold text-brand shadow-sm transition-transform duration-300 hover:scale-[1.03]"
+                >
+                  Start free trial
+                  <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
+                </a>
+              </Magnetic>
               <Link
                 href="/support"
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 px-7 py-4 text-[15px] font-semibold text-white transition-colors duration-300 hover:bg-white/10"
