@@ -20,6 +20,7 @@ export type PeriodMode =
   | "last_3_months"
   | "this_fy"
   | "last_fy"
+  | "all_time"
   | "custom";
 
 export interface DateRange {
@@ -54,6 +55,7 @@ export const PERIOD_OPTIONS: { value: PeriodMode; label: string }[] = [
   { value: "last_3_months", label: "Last 3 Months" },
   { value: "this_fy", label: "This Financial Year" },
   { value: "last_fy", label: "Last Financial Year" },
+  { value: "all_time", label: "All Time" },
   { value: "custom", label: "Custom Range" },
 ];
 
@@ -96,6 +98,8 @@ export function resolvePeriodRange(
     }
     case "last_fy":
       return fyRangeFor(shiftFY(financialYear, -1));
+    case "all_time":
+      return { start: "1900-01-01", end: "2999-12-31" };
     case "custom":
       return { start: custom.from || "1900-01-01", end: custom.to || "2999-12-31" };
     case "this_fy":
@@ -151,6 +155,7 @@ export function formatRangeLabel(start: string, end: string): string {
 function totalColumnLabel(mode: PeriodMode, financialYear: string, start: string, end: string): string {
   if (mode === "this_fy") return `FY ${financialYear}`;
   if (mode === "last_fy") return `FY ${shiftFY(financialYear, -1)}`;
+  if (mode === "all_time") return "All Time";
   return formatRangeLabel(start, end);
 }
 
@@ -235,7 +240,16 @@ export function splitPeriodColumns(
   todayIso?: string,
 ): PeriodColumn[] {
   const { start, end } = resolvePeriodRange(mode, financialYear, custom, todayIso);
-  if (start > end) return [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
+  // "All Time" (or an accidentally wide custom range) resolves to the
+  // 1900–2999 placeholder bound, not the client's actual earliest
+  // transaction date — this function has no DB access to know that. Monthly/
+  // quarterly splitting over a millennium-plus span would generate tens of
+  // thousands of columns, so any range this wide always collapses to one
+  // Total column regardless of the requested granularity.
+  const spanDays = (new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86_400_000;
+  if (start > end || spanDays > 366 * 20) {
+    return [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
+  }
   switch (granularity) {
     case "month": return splitByMonth(start, end);
     case "quarter": return splitByQuarter(start, end);
