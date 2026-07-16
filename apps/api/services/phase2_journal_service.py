@@ -265,6 +265,7 @@ class Phase2JournalService:
                 narration=f"Receipt {receipt['receipt_no']} from customer",
                 entry_type="Receipt",
                 lines=lines,
+                source_type="receipt", source_id=receipt.get("id"),
                 **_ccy,
             )
         except ValueError:
@@ -780,6 +781,7 @@ class Phase2JournalService:
                 narration=f"Vendor payment {payment['payment_no']}",
                 entry_type="Payment",
                 lines=lines,
+                source_type="purchase_payment", source_id=payment.get("id"),
                 **_ccy,
             )
         except ValueError:
@@ -1495,6 +1497,14 @@ class Phase2JournalService:
             db=db, firm_id=firm_id, client_id=orig["client_id"], entry_date=reversal_date,
             reference_no=ref, narration=narration, entry_type=orig.get("entry_type") or "Journal",
             lines=rev_lines, is_posted=True, created_by=created_by, reversal_of=entry_id,
+            # task #102: propagate the ORIGINAL entry's source_type/source_id onto
+            # the reversal — a source_id lookup (idx_je_source) for the document
+            # that triggered the original posting should surface BOTH it and its
+            # reversal, not just the original. No-op for existing callers whose
+            # journals never populated these (e.g. receipts/payments before this
+            # task started stamping them — see journal_for_receipt/
+            # journal_for_purchase_payment).
+            source_type=orig.get("source_type"), source_id=orig.get("source_id"),
         )
         # Stamp the ORIGINAL as reversed so _create_journal's idempotency
         # fast-path (firm+client+reference_no+entry_date) stops matching it —

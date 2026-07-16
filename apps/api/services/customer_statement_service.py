@@ -189,11 +189,18 @@ class CustomerStatementService:
                .is_("deleted_at", "null").execute().data or [])
         invoices = [i for i in inv if (i.get("status") or "") not in _DEAD_INVOICE]
 
-        receipts = (db.table("receipts")
-                    .select("id, receipt_no, receipt_date, amount_paise, tds_paise, unallocated_paise, "
-                            "txn_currency, exchange_rate, txn_amount")
-                    .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-                    .execute().data or [])
+        _rcpt = (db.table("receipts")
+                 .select("id, receipt_no, receipt_date, amount_paise, tds_paise, unallocated_paise, "
+                         "is_reversed, txn_currency, exchange_rate, txn_amount")
+                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
+                 .execute().data or [])
+        # A reversed receipt no longer represents real money movement (task
+        # #102) — its journal was reversed and its allocations voided, so it
+        # must not appear as a statement transaction. Filtered in Python (not
+        # .eq("is_reversed", False)) so a row lacking the key — impossible on a
+        # real NOT NULL DEFAULT false column, but common in older test doubles
+        # — is correctly treated as not reversed rather than excluded.
+        receipts = [r for r in _rcpt if not r.get("is_reversed")]
         # ar_relief_paise = true AR credit per receipt (task #102 FX statement fix,
         # see build_statement's receipt loop for why amount_paise alone is wrong
         # for a foreign receipt). Sourced from receipt_allocations (each row is the

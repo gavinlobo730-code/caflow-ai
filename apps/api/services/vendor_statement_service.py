@@ -173,10 +173,16 @@ class VendorStatementService:
              .execute().data or [])
         bills = [x for x in b if (x.get("status") or "") not in _DEAD_BILL]
 
-        payments = (db.table("purchase_payments")
-                    .select("id, payment_no, payment_date, amount_paise, txn_currency, exchange_rate, txn_amount")
-                    .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
-                    .execute().data or [])
+        _pay = (db.table("purchase_payments")
+                .select("id, payment_no, payment_date, amount_paise, is_reversed, "
+                        "txn_currency, exchange_rate, txn_amount")
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
+                .execute().data or [])
+        # A reversed payment no longer represents real money movement (task
+        # #102) — filtered in Python, not .eq(), so a test double lacking the
+        # key (impossible on the real NOT NULL DEFAULT false column) isn't
+        # incorrectly excluded — see customer_statement_service's identical note.
+        payments = [p for p in _pay if not p.get("is_reversed")]
         # ap_relief_paise = true AP debit per payment (task #102 FX statement
         # fix, see build_statement's payment loop). fx_adjustments carries the
         # cash/booked-rate delta per document; absent for INR payments (delta

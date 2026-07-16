@@ -280,8 +280,22 @@ def reverse_journal_entry(
 
         # Original (firm-scoped) — only for the timeline reference; reverse_entry
         # re-validates existence/posted/not-already-reversed itself.
-        orig = (db.table("journal_entries").select("client_id, reference_no")
+        orig = (db.table("journal_entries").select("client_id, reference_no, entry_type")
                 .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+
+        # task #102: a Receipt/Payment journal must be reversed through its own
+        # cascade (POST /api/receipts/{id}/reverse or
+        # POST /api/purchase-payments/{id}/reverse) — reversing the JOURNAL
+        # alone here would leave the receipt/payment row un-flagged and its
+        # invoice/bill allocations un-rolled-back, exactly the gap those
+        # endpoints exist to close.
+        if orig and orig.get("entry_type") in ("Receipt", "Payment"):
+            kind = "receipt" if orig["entry_type"] == "Receipt" else "purchase payment"
+            endpoint = "/api/receipts/{id}/reverse" if orig["entry_type"] == "Receipt" else "/api/purchase-payments/{id}/reverse"
+            raise HTTPException(
+                status_code=422,
+                detail=f"This journal belongs to a {kind} — reverse the {kind} itself via {endpoint}, not the journal directly.",
+            )
 
         # Single reversal path through the kernel (append-only; original untouched).
         rev_id = phase2_journal_service.reverse_entry(
