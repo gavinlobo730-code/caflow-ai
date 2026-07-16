@@ -86,16 +86,54 @@ export interface Adjustment {
   created_at: string;
 }
 
+// Matches routers/year_end_statements.py:list_versions's actual SELECT — a
+// lightweight row that deliberately omits the (potentially large)
+// statement_data JSONB blob. Fetch a specific version's full data via
+// getVersion() below, not from this list.
 export interface FinancialStatementVersion {
   id: string;
   engagement_id: string;
   version_number: number;
-  generated_at: string;
-  generated_by: string | null;
-  balance_sheet: Record<string, unknown>;
-  profit_loss: Record<string, unknown>;
-  is_balanced: boolean;
+  version_label: string | null;
+  notes: string | null;
+  trial_balance_hash: string | null;
+  created_by: string | null;
+  created_at: string;
 }
+
+// The generate_financial_statements() return shape (services/
+// year_end_financial_service.py) — Schedule III line items come back as flat
+// {line_code: amount_paise} dicts (BS_EQUITY_LIABILITY_LINES/BS_ASSET_LINES/
+// PL_INCOME_LINES/PL_EXPENSE_LINES), not pre-grouped or labelled; the
+// frontend maps line codes to Schedule III groups/labels for display.
+export interface FinancialStatementSnapshotData {
+  balance_sheet: {
+    equity_and_liabilities: Record<string, number>;
+    assets: Record<string, number>;
+    total_equity_and_liabilities_paise: number;
+    total_assets_paise: number;
+    is_balanced: boolean;
+  };
+  profit_loss: {
+    income: Record<string, number>;
+    expenses: Record<string, number>;
+    total_income_paise?: number;
+    total_expense_paise?: number;
+    profit_before_tax_paise: number;
+    tax_expense_paise: number;
+    profit_after_tax_paise: number;
+  };
+  trial_balance_hash: string;
+  fy_start: string;
+  fy_end: string;
+}
+
+// GET .../versions/{id} and the snapshot-create response both return a full
+// financial_statement_versions row: the lightweight fields above plus
+// statement_data.
+export type FinancialStatementVersionDetail = FinancialStatementVersion & {
+  statement_data: FinancialStatementSnapshotData;
+};
 
 export interface NoteToAccount {
   id: string;
@@ -243,15 +281,23 @@ export const yearEndApi = {
     // services/year_end_financial_service.py) — it IS the live view; saved
     // snapshots are the separate /financial-statements/versions endpoint.
     getLive: (engagementId: string) =>
-      request<{ success: boolean; data: { balance_sheet: Record<string, unknown>; profit_loss: Record<string, unknown>; is_balanced: boolean }; error: string | null }>(
+      request<{ success: boolean; data: FinancialStatementSnapshotData; error: string | null }>(
         `/api/year-end/${engagementId}/financial-statements`
       ),
     versions: (engagementId: string) =>
       request<{ success: boolean; data: FinancialStatementVersion[]; error: string | null }>(
         `/api/year-end/${engagementId}/financial-statements/versions`
       ),
+    // versions() above deliberately omits statement_data (list_versions'
+    // own SELECT excludes it) — fetch a specific version's full Balance
+    // Sheet/P&L data on demand via this endpoint (get_version, which does
+    // select("*")) when the CA picks it from the version dropdown.
+    getVersion: (engagementId: string, versionId: string) =>
+      request<{ success: boolean; data: FinancialStatementVersionDetail; error: string | null }>(
+        `/api/year-end/${engagementId}/financial-statements/versions/${versionId}`
+      ),
     createSnapshot: (engagementId: string) =>
-      request<{ success: boolean; data: FinancialStatementVersion; error: string | null }>(
+      request<{ success: boolean; data: FinancialStatementVersionDetail; error: string | null }>(
         `/api/year-end/${engagementId}/financial-statements/snapshot`,
         { method: "POST" }
       ),
