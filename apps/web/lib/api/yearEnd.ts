@@ -42,18 +42,21 @@ export interface YearEndEngagement {
   updated_at: string;
 }
 
-export type ChecklistItemStatus = "not_started" | "in_progress" | "complete" | "na";
+// Matches the year_end_checklists_status_check CHECK constraint (migration
+// 155) — the router's _VALID_ITEM_STATUSES, not 067's original (unused)
+// 'not_started'/'na' vocabulary.
+export type ChecklistItemStatus = "pending" | "in_progress" | "complete" | "not_applicable";
 
 export interface ChecklistItem {
   id: string;
   engagement_id: string;
   category: string;
-  label: string;
+  item_label: string;
   status: ChecklistItemStatus;
   notes: string | null;
   completed_by: string | null;
   completed_at: string | null;
-  sort_order: number;
+  sequence_no: number;
 }
 
 export type AdjustmentType =
@@ -64,20 +67,21 @@ export type AdjustmentType =
   | "depreciation_adj"
   | "manual";
 
-export type AdjustmentStatus = "draft" | "submitted" | "approved" | "posted";
+// Matches the year_end_adjustments status CHECK constraint (migration 067).
+export type AdjustmentStatus = "draft" | "pending_review" | "approved" | "posted" | "rejected";
 
 export interface Adjustment {
   id: string;
   engagement_id: string;
-  type: AdjustmentType;
+  adjustment_type: AdjustmentType;
   description: string;
   debit_account_id: string;
   credit_account_id: string;
   debit_account_name?: string;
   credit_account_name?: string;
   amount_paise: number;
-  adj_date: string;
-  notes: string | null;
+  adjustment_date: string;
+  reference_no: string | null;
   status: AdjustmentStatus;
   created_at: string;
 }
@@ -178,12 +182,16 @@ export const yearEndApi = {
       ),
     updateItem: (engagementId: string, itemId: string, body: { status?: ChecklistItemStatus; notes?: string }) =>
       request<{ success: boolean; data: ChecklistItem; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/checklist/${itemId}`,
+        `/api/year-end/${engagementId}/checklist/${itemId}`,
         { method: "PATCH", body: JSON.stringify(body) }
       ),
+    // There is no checklist-specific submit endpoint on the backend — "Submit
+    // for Review" from the Checklist tab is the same draft -> in_review
+    // transition as the Review tab's Submit button (routers/
+    // year_end_reviews.py::submit_for_review), just triggered from here too.
     submitForReview: (engagementId: string) =>
       request<{ success: boolean; data: YearEndEngagement; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/checklist/submit`,
+        `/api/year-end/engagements/${engagementId}/reviews/submit-for-review`,
         { method: "POST" }
       ),
   },
@@ -191,37 +199,37 @@ export const yearEndApi = {
   adjustments: {
     list: (engagementId: string) =>
       request<{ success: boolean; data: Adjustment[]; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/adjustments`
+        `/api/year-end/${engagementId}/adjustments`
       ),
     create: (
       engagementId: string,
       body: {
-        type: AdjustmentType;
+        adjustment_type: AdjustmentType;
         description: string;
         debit_account_id: string;
         credit_account_id: string;
         amount_paise: number;
-        adj_date: string;
-        notes?: string;
+        adjustment_date: string;
+        reference_no?: string;
       }
     ) =>
       request<{ success: boolean; data: Adjustment; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/adjustments`,
+        `/api/year-end/${engagementId}/adjustments`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     submit: (engagementId: string, adjId: string) =>
       request<{ success: boolean; data: Adjustment; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/adjustments/${adjId}/submit`,
+        `/api/year-end/${engagementId}/adjustments/${adjId}/submit`,
         { method: "POST" }
       ),
     approve: (engagementId: string, adjId: string) =>
       request<{ success: boolean; data: Adjustment; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/adjustments/${adjId}/approve`,
+        `/api/year-end/${engagementId}/adjustments/${adjId}/approve`,
         { method: "POST" }
       ),
     post: (engagementId: string, adjId: string) =>
       request<{ success: boolean; data: Adjustment; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/adjustments/${adjId}/post`,
+        `/api/year-end/${engagementId}/adjustments/${adjId}/post`,
         { method: "POST" }
       ),
   },
@@ -252,21 +260,21 @@ export const yearEndApi = {
   notes: {
     list: (engagementId: string) =>
       request<{ success: boolean; data: NoteToAccount[]; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/notes`
+        `/api/year-end/${engagementId}/notes`
       ),
     generateAll: (engagementId: string) =>
       request<{ success: boolean; data: NoteToAccount[]; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/notes/generate`,
+        `/api/year-end/${engagementId}/notes/generate`,
         { method: "POST" }
       ),
     update: (engagementId: string, noteId: string, body: { content: string }) =>
       request<{ success: boolean; data: NoteToAccount; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/notes/${noteId}`,
+        `/api/year-end/${engagementId}/notes/${noteId}`,
         { method: "PATCH", body: JSON.stringify(body) }
       ),
     lock: (engagementId: string, noteId: string) =>
       request<{ success: boolean; data: NoteToAccount; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/notes/${noteId}/lock`,
+        `/api/year-end/${engagementId}/notes/${noteId}/lock`,
         { method: "POST" }
       ),
   },
@@ -301,12 +309,27 @@ export const yearEndApi = {
   exports: {
     list: (engagementId: string) =>
       request<{ success: boolean; data: ExportRecord[]; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/exports`
+        `/api/year-end/${engagementId}/exports`
       ),
-    generate: (engagementId: string, exportType: "financial_statements" | "notes" | "complete_pack") =>
-      request<{ success: boolean; data: ExportRecord; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/exports/generate`,
-        { method: "POST", body: JSON.stringify({ export_type: exportType }) }
+    // routers/year_end_exports.py has no generic "generate" endpoint — it's
+    // 3 separate handlers, one per export type, each building a different
+    // PDF (generate_financial_statements_pdf / generate_notes_pdf /
+    // generate_complete_pack_pdf). export_type in the body was never read.
+    generate: (engagementId: string, exportType: "financial_statements" | "notes" | "complete_pack") => {
+      const path = exportType === "financial_statements" ? "financial-statements"
+        : exportType === "notes" ? "notes"
+        : "complete-pack";
+      return request<{ success: boolean; data: ExportRecord; error: string | null }>(
+        `/api/year-end/${engagementId}/exports/${path}`,
+        { method: "POST" }
+      );
+    },
+    // Export records don't carry a download URL — generating one only
+    // records the storage path; a signed URL (1hr expiry) is minted on
+    // demand by this endpoint.
+    download: (engagementId: string, exportId: string) =>
+      request<{ success: boolean; data: { download_url: string; expires_in_seconds: number }; error: string | null }>(
+        `/api/year-end/${engagementId}/exports/${exportId}/download`
       ),
   },
 };

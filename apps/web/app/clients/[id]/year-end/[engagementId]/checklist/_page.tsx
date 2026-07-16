@@ -6,32 +6,32 @@ import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
-// ── Status cycle: not_started → in_progress → complete ────────────────────
+// ── Status cycle: pending → in_progress → complete ─────────────────────────
 const STATUS_CYCLE: Record<ChecklistItemStatus, ChecklistItemStatus> = {
-  not_started: "in_progress",
+  pending: "in_progress",
   in_progress: "complete",
-  complete: "not_started",
-  na: "not_started",
+  complete: "pending",
+  not_applicable: "pending",
 };
 
 const STATUS_LABEL: Record<ChecklistItemStatus, string> = {
-  not_started: "Not Started",
+  pending: "Not Started",
   in_progress: "In Progress",
   complete: "Complete",
-  na: "N/A",
+  not_applicable: "N/A",
 };
 
 const STATUS_BADGE: Record<ChecklistItemStatus, string> = {
-  not_started: "bg-[#F1F5F9] text-[#94A3B8]",
+  pending: "bg-[#F1F5F9] text-[#94A3B8]",
   in_progress: "bg-amber-100 text-amber-700",
   complete: "bg-green-100 text-green-700",
-  na: "bg-[#F1F5F9] text-[#64748B] line-through",
+  not_applicable: "bg-[#F1F5F9] text-[#64748B] line-through",
 };
 
 function StatusIcon({ status }: { status: ChecklistItemStatus }) {
   if (status === "complete") return <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />;
   if (status === "in_progress") return <Clock size={16} className="text-amber-500 flex-shrink-0" />;
-  if (status === "na") return <Ban size={16} className="text-[#94A3B8] flex-shrink-0" />;
+  if (status === "not_applicable") return <Ban size={16} className="text-[#94A3B8] flex-shrink-0" />;
   return <Circle size={16} className="text-[#CBD5E1] flex-shrink-0" />;
 }
 
@@ -103,7 +103,7 @@ export default function ChecklistPage() {
     if (updatingId) return;
     setUpdatingId(item.id);
     try {
-      const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { status: "na" });
+      const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { status: "not_applicable" });
       if (!res.success) throw new Error(res.error ?? "Failed to update");
       setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
     } catch {
@@ -149,7 +149,7 @@ export default function ChecklistPage() {
     grouped[item.category].push(item);
   }
 
-  const complete = items.filter((i) => i.status === "complete" || i.status === "na").length;
+  const complete = items.filter((i) => i.status === "complete" || i.status === "not_applicable").length;
   const total = items.length;
   const allDone = total > 0 && complete === total;
   const pct = total > 0 ? Math.round((complete / total) * 100) : 0;
@@ -223,8 +223,8 @@ export default function ChecklistPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className={`text-xs font-medium text-[#1E293B] ${item.status === "na" ? "opacity-50" : ""}`}>
-                          {item.label}
+                        <p className={`text-xs font-medium text-[#1E293B] ${item.status === "not_applicable" ? "opacity-50" : ""}`}>
+                          {item.item_label}
                         </p>
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[item.status]}`}>
                           {STATUS_LABEL[item.status]}
@@ -270,7 +270,7 @@ export default function ChecklistPage() {
                     </div>
 
                     {/* Mark N/A */}
-                    {item.status !== "na" && (
+                    {item.status !== "not_applicable" && (
                       <button
                         onClick={() => markNA(item)}
                         disabled={!!updatingId}

@@ -58,6 +58,7 @@ export default function ExportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingType, setGeneratingType] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [engagementStatus, setEngagementStatus] = useState<EngagementStatus | null>(null);
 
@@ -112,12 +113,20 @@ export default function ExportsPage() {
     }
   }
 
-  function handleDownload(record: ExportRecord) {
-    if (!record.download_url) {
-      showToast("Download URL not available. Please regenerate.", false);
-      return;
+  async function handleDownload(record: ExportRecord) {
+    setDownloadingId(record.id);
+    try {
+      // Export records don't carry a download URL themselves — only the
+      // storage path. A signed URL (1hr expiry) is minted fresh on every
+      // download instead of being cached from generate-time.
+      const res = await yearEndApi.exports.download(engagementId, record.id);
+      if (!res.success) throw new Error(res.error ?? "Failed to get download link");
+      window.open(res.data.download_url, "_blank");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Download failed", false);
+    } finally {
+      setDownloadingId(null);
     }
-    window.open(record.download_url, "_blank");
   }
 
   // Most recent export per type
@@ -213,13 +222,14 @@ export default function ExportsPage() {
                   {isGenerating ? <Loader2 size={11} className="animate-spin" /> : null}
                   {isGenerating ? "Generating…" : "Generate"}
                 </button>
-                {latest?.download_url && (
+                {latest && (
                   <button
                     onClick={() => handleDownload(latest)}
-                    className="flex items-center gap-1 text-xs px-2 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]"
+                    disabled={downloadingId === latest.id}
+                    className="flex items-center gap-1 text-xs px-2 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] disabled:opacity-50"
                     title="Download latest"
                   >
-                    <Download size={11} />
+                    {downloadingId === latest.id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
                   </button>
                 )}
               </div>
@@ -265,16 +275,13 @@ export default function ExportsPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      {exp.download_url ? (
-                        <button
-                          onClick={() => handleDownload(exp)}
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                        >
-                          <Download size={11} /> Download
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-[#CBD5E1]">Unavailable</span>
-                      )}
+                      <button
+                        onClick={() => handleDownload(exp)}
+                        disabled={downloadingId === exp.id}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {downloadingId === exp.id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />} Download
+                      </button>
                     </td>
                   </tr>
                 ))}
