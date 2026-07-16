@@ -16,7 +16,7 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Company",
     links: [
-      { label: "Why PracticeSync", href: "/#why" },
+      { label: "Our Story", href: "/#story" },
       { label: "Support", href: "/support" },
       { label: "Contact", href: `mailto:${CONTACT.email}`, external: true },
     ],
