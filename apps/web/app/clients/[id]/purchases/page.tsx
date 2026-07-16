@@ -25,6 +25,7 @@ import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
+import { mapWithConcurrency } from "@/lib/table/concurrency";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -426,31 +427,34 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
   // Bulk receive over the DataTable's selected rows. POST
   // /api/purchase-bills/{id}/receive is draft-only on the backend (each row's
-  // journal-posting/FY-lock validation runs server-side) — loop per row via
-  // Promise.all so a mid-batch failure on one bill (e.g. FY-lock 409) is safe
-  // and can't corrupt the rest. Non-draft rows are skipped client-side (mirrors
-  // the single-row "Receive" rowAction's status === "draft" gate) rather than
-  // sent to the backend to 422. Refresh only if at least one bill was received,
-  // and keep the selection (return false) if anything was skipped or failed so
-  // the user can see what's left.
+  // journal-posting/FY-lock validation runs server-side) — loop per row, at
+  // most 8 in flight at once (mapWithConcurrency) so a mid-batch failure on
+  // one bill (e.g. FY-lock 409) is safe and can't corrupt the rest. Firing
+  // ALL rows at once via Promise.all used to be the plumbing here — fine for
+  // a handful of rows, but a few hundred simultaneous POSTs (each doing a
+  // journal + inventory write server-side) reliably exhausts the browser's
+  // connection pool and a chunk of them come back "Failed to fetch" that
+  // never even reached the backend. Non-draft rows are skipped client-side
+  // (mirrors the single-row "Receive" rowAction's status === "draft" gate)
+  // rather than sent to the backend to 422. Refresh only if at least one bill
+  // was received, and keep the selection (return false) if anything was
+  // skipped or failed so the user can see what's left.
   const handleBulkReceive = useCallback(async (rows: PurchaseBillRow[]): Promise<boolean> => {
     const token = await getAuthToken();
     const draftRows = rows.filter((b) => b.status === "draft");
     const skipped = rows.length - draftRows.length;
 
     type ReceiveResult = { ok: true } | { ok: false; reason: string };
-    const results: ReceiveResult[] = await Promise.all(
-      draftRows.map(async (b): Promise<ReceiveResult> => {
-        try {
-          // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-          const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
-          if (result.success) return { ok: true };
-          return { ok: false, reason: result.error ?? "Failed to receive bill" };
-        } catch (e) {
-          return { ok: false, reason: e instanceof Error ? e.message : "Failed to receive bill" };
-        }
-      })
-    );
+    const results: ReceiveResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<ReceiveResult> => {
+      try {
+        // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+        const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to receive bill" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to receive bill" };
+      }
+    });
 
     const received = results.filter((r) => r.ok).length;
     const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
@@ -479,27 +483,26 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   // is draft-only on the backend (received/partially-paid/paid/cancelled bills
   // are permanent records — soft-deleting one would strip its posted journal
   // from the books), so non-draft rows are skipped client-side (mirrors the
-  // single-row "Delete draft" menu gate) rather than sent to 409. Loop per row
-  // via Promise.all; keep the selection (return false) if anything was skipped
-  // or failed so the user can see what's left. Parity with the Sales tab's
-  // bulk Delete/Void.
+  // single-row "Delete draft" menu gate) rather than sent to 409. Loop per row,
+  // at most 8 in flight at once (see handleBulkReceive above for why unbounded
+  // Promise.all breaks down at large selection sizes); keep the selection
+  // (return false) if anything was skipped or failed so the user can see
+  // what's left. Parity with the Sales tab's bulk Delete/Void.
   const handleBulkDelete = useCallback(async (rows: PurchaseBillRow[]): Promise<boolean> => {
     const token = await getAuthToken();
     const draftRows = rows.filter((b) => b.status === "draft");
     const skipped = rows.length - draftRows.length;
 
     type DeleteResult = { ok: true } | { ok: false; reason: string };
-    const results: DeleteResult[] = await Promise.all(
-      draftRows.map(async (b): Promise<DeleteResult> => {
-        try {
-          const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token);
-          if (result.success) return { ok: true };
-          return { ok: false, reason: result.error ?? "Failed to delete bill" };
-        } catch (e) {
-          return { ok: false, reason: e instanceof Error ? e.message : "Failed to delete bill" };
-        }
-      })
-    );
+    const results: DeleteResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<DeleteResult> => {
+      try {
+        const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to delete bill" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to delete bill" };
+      }
+    });
 
     const deleted = results.filter((r) => r.ok).length;
     const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
@@ -531,7 +534,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
    * no parallel logic, just no per-row network round-trip). Bills land as drafts.
    * Vendors must already exist (referenced by name).
    */
-  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[]; skipped?: number; skippedDetail?: string[] }> {
     const vendorRefs: NameRef[] = vendors.map((v) => ({ id: v.id, name: v.name }));
     const serviceRefs: PurchaseServiceRef[] = services.map((s) => ({
       id: s.id, name: s.name, description: s.description, hsn_sac: s.hsn_sac,
@@ -543,11 +546,13 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
     const payloads = built.map(({ ref, ...payload }) => { void ref; return payload; }); // drop the internal grouping key
     let imported = 0;
+    const skippedDetail: string[] = [];
     const result = await apiCall("/api/purchase-bills/bulk", "POST", { bills: payloads }, token);
     if (result.success) {
       const data = result.data as {
         created: { lines?: unknown[] }[];
         errors: { index: number; bill_no?: string; error: string }[];
+        skipped?: { index: number; bill_no?: string; reason: string }[];
       };
       for (const bill of data.created) {
         imported += Array.isArray(bill.lines) ? bill.lines.length : 0;
@@ -556,11 +561,18 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         const label = e.bill_no || built[e.index]?.ref || "?";
         errors.push(`Bill "${label}": ${e.error}`);
       }
+      // Bills already present (same vendor + bill number) — the backend's
+      // duplicate guard, not a failure: re-uploading the same file (or a
+      // retry after a dropped connection) must not double every bill.
+      for (const s of data.skipped ?? []) {
+        const label = s.bill_no || built[s.index]?.ref || "?";
+        skippedDetail.push(`Bill "${label}": ${s.reason}`);
+      }
     } else {
       errors.push(result.error ?? "Bulk import failed");
     }
     if (imported > 0) load();
-    return { imported, errors };
+    return { imported, errors, skipped: skippedDetail.length, skippedDetail };
   }
 
   const totalPayable = bills.filter((b) => !["paid", "cancelled"].includes(b.status))
