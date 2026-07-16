@@ -20,7 +20,7 @@ export const appLinks = {
 
 /** Primary navigation shown in the site header. */
 export const NAV = [
-  { label: "Why PracticeSync", href: "/#why" },
+  { label: "Our Story", href: "/#story" },
   { label: "Products", href: "/products" },
   { label: "Pricing", href: "/pricing" },
   { label: "Support", href: "/support" },
