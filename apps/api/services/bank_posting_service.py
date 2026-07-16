@@ -158,7 +158,7 @@ class BankPostingService:
             out = {"entity": "sales_invoice", "label": inv.get("invoice_no"),
                    "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
             if amount > alloc:
-                out["credit_to_party_paise"] = amount - alloc   # task #102: excess → party credit, not lost
+                out["credited_to_party_paise"] = amount - alloc   # task #102: excess → party credit, not lost
             return out
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
             bill = (db.table("purchase_bills")
@@ -171,7 +171,7 @@ class BankPostingService:
             out = {"entity": "purchase_bill", "label": bill.get("bill_no"),
                    "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
             if amount > alloc:
-                out["credit_to_party_paise"] = amount - alloc   # task #102: excess → party credit, not lost
+                out["credited_to_party_paise"] = amount - alloc   # task #102: excess → party credit, not lost
             return out
         return None
 

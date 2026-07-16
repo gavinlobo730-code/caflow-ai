@@ -36,6 +36,7 @@ import {
   type Customer, type SalesInvoice, type InvoiceLine,
   type CurrencyOption, type InvoiceStatus,
 } from "@/lib/invoices/shared";
+import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -873,6 +874,56 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
   const [emailing, setEmailing] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
 
+  // task #102 — party credit (e.g. from a bank overpayment) sitting against this customer.
+  const [credit, setCredit] = useState<PartyCreditDetail | null>(null);
+  const [applyModal, setApplyModal] = useState(false);
+  const [applyInvoices, setApplyInvoices] = useState<SalesInvoice[]>([]);
+  const [applyInvoiceId, setApplyInvoiceId] = useState("");
+  const [applyAmount, setApplyAmount] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  const loadCredit = useCallback(async (custId: string) => {
+    if (!custId) { setCredit(null); return; }
+    try {
+      const res = await partyCreditsApi.get("customer", custId, clientId);
+      setCredit(res.success ? res.data : null);
+    } catch { setCredit(null); }
+  }, [clientId]);
+
+  async function openApplyModal() {
+    if (!customerId) return;
+    setApplyError(null); setApplyInvoiceId(""); setApplyAmount("");
+    setApplyModal(true);
+    const token = await getAuthToken();
+    const res = await apiGet(`/api/sales-invoices/?client_id=${clientId}&customer_id=${customerId}`, token);
+    if (res.success) {
+      const open = ((res.data as SalesInvoice[]) ?? []).filter(
+        (i) => !["draft", "cancelled", "paid"].includes(i.status) && (i.total_paise - (i.paid_paise ?? 0)) > 0
+      );
+      setApplyInvoices(open);
+    }
+  }
+
+  async function applyCredit() {
+    if (!customerId || !applyInvoiceId) return;
+    const amountPaise = Math.round(parseFloat(applyAmount || "0") * 100);
+    if (!amountPaise || amountPaise <= 0) { setApplyError("Enter an amount to apply."); return; }
+    setApplying(true); setApplyError(null);
+    try {
+      const res = await partyCreditsApi.apply({
+        client_id: clientId, party_type: "customer", party_id: customerId,
+        amount_paise: amountPaise, applied_to_type: "sales_invoice", applied_to_id: applyInvoiceId,
+      });
+      if (res.success) {
+        setApplyModal(false);
+        await loadCredit(customerId);
+        if (stmt) await generate();
+      } else setApplyError(res.error ?? "Could not apply the credit.");
+    } catch (e) { setApplyError(e instanceof Error ? e.message : "Could not apply the credit."); }
+    finally { setApplying(false); }
+  }
+
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     if (p.get("cust")) setCustomerId(p.get("cust") as string);
@@ -900,7 +951,7 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
     try {
       const token = await getAuthToken();
       const res = await apiGet(`/api/customer-statements?client_id=${clientId}&customer_id=${customerId}&start_date=${start}&end_date=${end}`, token);
-      if (res.success) { setStmt(res.data as StmtData); syncUrl(customerId, start, end); }
+      if (res.success) { setStmt(res.data as StmtData); syncUrl(customerId, start, end); await loadCredit(customerId); }
       else setError(res.error ?? "Could not generate the statement.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not generate the statement."); }
     finally { setLoading(false); }
@@ -979,9 +1030,19 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
               <p className="text-sm font-semibold text-[#0F172A]">{stmt.customer.name}</p>
               <p className="text-[10px] text-[#94A3B8]">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] text-[#94A3B8]">Closing Outstanding</p>
-              <p className={`text-sm font-mono font-semibold ${stmt.closing_balance_paise >= 0 ? "text-blue-700" : "text-orange-700"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
+            <div className="text-right space-y-1">
+              <div>
+                <p className="text-[10px] text-[#94A3B8]">Closing Outstanding</p>
+                <p className={`text-sm font-mono font-semibold ${stmt.closing_balance_paise >= 0 ? "text-blue-700" : "text-orange-700"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
+              </div>
+              {!!credit && credit.balance_paise > 0 && (
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-mono">
+                    Credit: ₹{stmtRupees(credit.balance_paise)}
+                  </span>
+                  <button onClick={openApplyModal} className="text-[10px] text-blue-600 hover:text-blue-800 underline">Apply</button>
+                </div>
+              )}
             </div>
           </div>
           <table className="w-full text-xs">
@@ -1035,6 +1096,43 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
             <div className="flex justify-end gap-2">
               <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
               <button onClick={sendEmail} disabled={emailing || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {applyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setApplyModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-[#0F172A]">Apply credit to an invoice</h3>
+            <p className="text-xs text-[#64748B]">
+              Available credit: <span className="font-mono font-medium">₹{stmtRupees(credit?.balance_paise ?? 0)}</span>
+            </p>
+            <label className="block">
+              <span className="text-xs font-medium text-[#475569]">Invoice</span>
+              <select value={applyInvoiceId} onChange={(e) => setApplyInvoiceId(e.target.value)}
+                className="mt-1 w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select an outstanding invoice…</option>
+                {applyInvoices.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.invoice_no} — outstanding ₹{stmtRupees(i.total_paise - (i.paid_paise ?? 0))}
+                  </option>
+                ))}
+              </select>
+              {applyInvoices.length === 0 && <p className="mt-1 text-[10px] text-[#94A3B8]">No outstanding invoices for this customer.</p>}
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-[#475569]">Amount to apply (₹)</span>
+              <input type="number" min="0" step="0.01" value={applyAmount} onChange={(e) => setApplyAmount(e.target.value)}
+                className="mt-1 w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            {applyError && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{applyError}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
+              <button onClick={applyCredit} disabled={applying || !applyInvoiceId || !applyAmount}
+                className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                {applying ? "Applying…" : "Apply"}
+              </button>
             </div>
           </div>
         </div>
