@@ -4066,6 +4066,7 @@ function SalesDebitNoteForm({
           debit_note_date: dnDate,
           reason: reason.trim(),
           sales_invoice_id: originalInvoiceId || undefined,
+          is_interstate: isInterstate,
           lines: validLines.map((l) => toInvoiceLinePayload({ ...l, serviceCatalogueId: l.service_catalogue_id })),
         },
         token
