@@ -260,6 +260,71 @@ body {
 }
 .fade-up { animation: fade-up-simple 0.5s ease both; }
 
+/* ─── Custom cursor (components/Cursor.tsx) ────────────────────────────────
+   Desktop-only (pointer:fine, checked in JS before this class is ever
+   applied) and mix-blend-mode-based so one pair of elements reads correctly
+   on both the dark hero sections and the white content pages, instead of
+   tracking which background is underneath. */
+html.cursor-none,
+html.cursor-none * {
+  cursor: none !important;
+}
+.cursor-dot {
+  position: fixed;
+  top: -4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #fff;
+  mix-blend-mode: difference;
+  pointer-events: none;
+  z-index: 9999;
+  will-change: transform;
+}
+.cursor-ring {
+  position: fixed;
+  top: -18px;
+  left: -18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: 1.5px solid #fff;
+  mix-blend-mode: difference;
+  pointer-events: none;
+  z-index: 9998;
+  transition:
+    width 250ms var(--ease-out-expo),
+    height 250ms var(--ease-out-expo),
+    top 250ms var(--ease-out-expo),
+    left 250ms var(--ease-out-expo),
+    background-color 250ms var(--ease-out-expo);
+  will-change: transform;
+}
+.cursor-ring-hover {
+  width: 64px;
+  height: 64px;
+  top: -32px;
+  left: -32px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Cursor-following glow (components/Cursor.tsx useCursorGlow) ─────────── */
+.cursor-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 440px;
+  height: 440px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(175, 210, 250, 0.16) 0%, rgba(175, 210, 250, 0.05) 45%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease;
+  will-change: transform, opacity;
+  z-index: 0;
+}
+
 /* ─── Reduced motion: everything becomes calm, static, instant ────────────── */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -286,4 +351,5 @@ body {
   }
   .btn-shine::after { display: none; }
   .card-lift, .card-lift:hover { transform: none; }
+  .cursor-dot, .cursor-ring, .cursor-glow { display: none !important; }
 }

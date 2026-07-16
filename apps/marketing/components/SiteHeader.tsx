@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo } from "./Logo";
+import { Magnetic } from "./Cursor";
 import { Menu, X, ArrowRight } from "./icons";
 import { NAV, appLinks } from "@/lib/site";
 
@@ -55,13 +56,15 @@ export function SiteHeader() {
           >
             Login
           </Link>
-          <a
-            href={appLinks.signup}
-            className="btn-shine inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-all duration-300 hover:bg-brand-hover hover:shadow-[0_6px_20px_rgba(24,35,80,0.25)]"
-          >
-            Start free trial
-            <ArrowRight size={15} />
-          </a>
+          <Magnetic max={10}>
+            <a
+              href={appLinks.signup}
+              className="btn-shine inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-all duration-300 hover:bg-brand-hover hover:shadow-[0_6px_20px_rgba(24,35,80,0.25)]"
+            >
+              Start free trial
+              <ArrowRight size={15} />
+            </a>
+          </Magnetic>
         </div>
 
         {/* Mobile toggle */}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { WordReveal } from "@/components/motion";
+import { CustomCursor } from "@/components/Cursor";
 import { Building, Users, ArrowRight, ArrowLeft, Check, Lock } from "@/components/icons";
 import { appLinks } from "@/lib/site";
 
@@ -36,6 +37,7 @@ const OPTIONS = [
 export default function AccessPage() {
   return (
     <main className="relative min-h-screen bg-ps-bg">
+      <CustomCursor />
       {/* soft brand wash */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-brand/[0.05] to-transparent" />
 
