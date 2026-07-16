@@ -1013,30 +1013,32 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   useEffect(() => { load(); }, [load]);
 
   /** Bulk-import vendors through /api/vendors/bulk — one request for the whole
-   *  file instead of one POST per row. */
-  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+   *  file instead of one POST per row. Duplicates (GSTIN/PAN already on file
+   *  for this client) are the backend's own guard doing its job, not a
+   *  failure — reported as skipped, mirroring how the Customers importer
+   *  (sales/page.tsx) surfaces its identical duplicate shape. */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[]; skipped?: number; skippedDetail?: string[] }> {
     const { records, errors } = buildVendors(rows, clientId);
     if (records.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
 
     let imported = 0;
+    const skippedDetail: string[] = [];
     const result = await apiCall("/api/vendors/bulk", "POST", { vendors: records }, token);
     if (result.success) {
       const data = result.data as {
         created: unknown[];
-        duplicates: { name?: string; error: string }[];
+        duplicates: { name?: string; existing_id?: string }[];
         errors: { name?: string; error: string }[];
       };
       imported = data.created.length;
-      // Duplicates were reported as plain errors by the old single-row loop
-      // (this tab has no separate "skipped" count) — keep that shape.
-      for (const d of data.duplicates) errors.push(`Vendor "${d.name ?? "?"}": ${d.error}`);
+      for (const d of data.duplicates) skippedDetail.push(`"${d.name ?? "?"}" already exists — skipped`);
       for (const e of data.errors) errors.push(`Vendor "${e.name ?? "?"}": ${e.error}`);
     } else {
       errors.push(result.error ?? "Bulk import failed");
     }
     if (imported > 0) load();
-    return { imported, errors };
+    return { imported, errors, skipped: skippedDetail.length, skippedDetail };
   }
 
   async function handleSave() {
