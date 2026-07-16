@@ -7,6 +7,7 @@ import { Magnetic, useCursorGlow } from "@/components/Cursor";
 import { ScrollJack } from "@/components/ScrollJack";
 import { IntroLoader } from "@/components/IntroLoader";
 import { ThreeScene } from "@/components/ThreeScene";
+import { FilmGrain } from "@/components/FilmGrain";
 import { DiagonalSection } from "@/components/DiagonalSection";
 import {
   KineticLine,
@@ -24,6 +25,9 @@ import { appLinks } from "@/lib/site";
 // Rotating hero word — exact list/copy from the design reference. Instrument
 // Serif italic, cycling every 2.2s as the hero's visual centrepiece.
 const HERO_WORDS = ["Compliance.", "Clarity.", "Control.", "Automation.", "Trust."];
+
+// Cinematic corner-darkening on every dark section (design reference).
+const VIGNETTE: CSSProperties = { boxShadow: "inset 0 0 170px rgba(0,0,0,0.45)" };
 
 const TICKER = [
   "GSTR-1",
@@ -73,6 +77,7 @@ function Hero({ revealed }: { revealed: boolean }) {
     <section
       id="hero"
       className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-brand-dark text-white"
+      style={VIGNETTE}
       {...glow.handlers}
     >
       <div className="bg-grid absolute inset-0" />
@@ -82,10 +87,20 @@ function Hero({ revealed }: { revealed: boolean }) {
       <div className="bg-noise absolute inset-0" />
       <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
 
+      {/* 3D centrepiece — fills the right ~54% of the section, behind the
+          content, per the reference. Its own wrapper is what ThreeScene
+          measures (size + scroll-fade progress). */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute right-0 top-0 hidden h-full w-[min(54vw,700px)] lg:block"
+      >
+        <ThreeScene className="h-full w-full" />
+      </div>
+
       {/* Decorative page-number "01" bleeding off the top-right corner. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-16 right-2 select-none font-display text-[clamp(220px,32vw,460px)] leading-none text-white/[0.045]"
+        className="pointer-events-none absolute -top-16 right-2 z-[1] select-none font-display text-[clamp(220px,32vw,460px)] leading-none text-white/[0.045]"
       >
         01
       </div>
@@ -144,10 +159,8 @@ function Hero({ revealed }: { revealed: boolean }) {
           </div>
         </div>
 
-        {/* 3D scene with three overlapping mockup cards floating over it. */}
+        {/* Three overlapping mockup cards floating over the 3D scene. */}
         <div className="relative mx-auto hidden h-[420px] w-full max-w-[400px] lg:block" style={{ perspective: "900px" }}>
-          <ThreeScene className="absolute inset-0 h-full w-full" />
-
           <TiltCard
             base="rotate(-6deg)"
             className="absolute bottom-6 left-0 w-[210px] rounded-[10px] bg-white p-4 shadow-modal"
@@ -250,7 +263,7 @@ function Problem() {
 function Platform() {
   const glow = useCursorGlow();
   return (
-    <DiagonalSection numeral="03" numeralCorner="top-right" seam="rising-left" className="bg-brand-dark text-white">
+    <DiagonalSection numeral="03" numeralCorner="top-right" seam="rising-left" className="bg-brand-dark text-white" style={VIGNETTE}>
       <div className="relative" {...glow.handlers}>
         <div className="bg-grid absolute inset-0 opacity-70" />
         <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
@@ -317,7 +330,7 @@ function Trust() {
 // ── Stats ────────────────────────────────────────────────────────────────────
 function Stats() {
   return (
-    <DiagonalSection seam="rising-left" className="bg-brand-dark text-white">
+    <DiagonalSection seam="rising-left" className="bg-brand-dark text-white" style={VIGNETTE}>
       <StatsInner />
     </DiagonalSection>
   );
@@ -368,7 +381,7 @@ function Testimonial() {
 function FinalCTA() {
   const glow = useCursorGlow();
   return (
-    <DiagonalSection seam="rising-left" className="bg-brand-dark text-white">
+    <DiagonalSection seam="rising-left" className="bg-brand-dark text-white" style={VIGNETTE}>
       <SectionReveal>
         <div className="relative text-center" {...glow.handlers}>
           <div className="bg-grid absolute inset-0" />
@@ -414,6 +427,7 @@ export default function HomePage() {
 
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
+      <FilmGrain />
       <IntroLoader onExit={handleExit} />
       <ScrollJack>
         <Hero revealed={heroIn} />
