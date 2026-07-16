@@ -89,12 +89,17 @@ export function CountUp({
   prefix = "",
   suffix = "",
   className = "",
+  linear = false,
 }: {
   to: number;
   duration?: number;
   prefix?: string;
   suffix?: string;
   className?: string;
+  /** The design reference's stat counters interpolate linearly (no easing
+   * curve) — default false keeps the existing easeOutExpo feel for other
+   * callers. */
+  linear?: boolean;
 }) {
   const { ref, inView } = useInView<HTMLSpanElement>();
   const reduced = usePrefersReducedMotion();
@@ -111,13 +116,13 @@ export function CountUp({
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration);
       // easeOutExpo — fast start, long soft landing
-      const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      const eased = linear ? t : t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
       setValue(Math.round(to * eased));
       if (t < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [inView, to, duration, reduced]);
+  }, [inView, to, duration, reduced, linear]);
 
   return (
     <span ref={ref} className={`tabular-nums ${className}`}>

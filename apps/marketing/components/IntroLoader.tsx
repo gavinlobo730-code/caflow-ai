@@ -59,8 +59,11 @@ export function IntroLoader({ onExit }: { onExit: () => void }) {
   return (
     <div
       aria-hidden="true"
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-brand-dark transition duration-700 ease-out"
-      style={exiting ? { opacity: 0, transform: "translateY(-100%)" } : undefined}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-brand-dark"
+      style={{
+        transition: "opacity 0.7s ease, transform 0.8s cubic-bezier(0.6,0,0.3,1)",
+        ...(exiting ? { opacity: 0, transform: "translateY(-100%)" } : undefined),
+      }}
     >
       <div className="mb-[18px] font-display text-[15px] italic tracking-wide text-white/60">PracticeSync</div>
       <div className="font-display text-[clamp(56px,10vw,120px)] leading-none text-white">{pct}%</div>

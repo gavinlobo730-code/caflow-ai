@@ -246,11 +246,12 @@ body {
   to { stroke-dashoffset: 0; }
 }
 
-/* ─── Scroll cue (hero bottom) ────────────────────────────────────────────── */
-.scroll-cue { animation: cue 2.4s ease-in-out infinite; }
-@keyframes cue {
-  0%, 100% { transform: translateY(0); opacity: 0.55; }
-  50%      { transform: translateY(8px); opacity: 1; }
+/* ─── Scroll cue (hero bottom) — exact "bob" keyframe from the design
+   reference: translateY only, no opacity oscillation, 2s not 2.4s. ────────── */
+.scroll-cue { animation: bob 2s ease-in-out infinite; }
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(8px); }
 }
 
 /* ─── Ambient shimmer line under section eyebrows ─────────────────────────── */
