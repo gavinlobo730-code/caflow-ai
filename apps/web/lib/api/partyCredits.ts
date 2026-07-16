@@ -1,33 +1,11 @@
 /**
  * Party credit balances API client (task #102) — a customer/vendor's
  * non-GST cash credit (e.g. from a bank overpayment) and applying it to a
- * specific invoice/bill. Follows the lib/api/yearEnd.ts template.
+ * specific invoice/bill. Calls go through the shared request() helper in
+ * lib/api/index.ts (cold-start timeout + one automatic retry).
  */
 
-import { supabase } from "@/lib/supabase/client";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API error ${res.status}: ${err}`);
-  }
-  return res.json();
-}
+import { request } from "./index";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 

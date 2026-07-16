@@ -1,32 +1,9 @@
 /**
- * Year End API client
- * All calls go through the shared request helper in lib/api/index.ts pattern.
+ * Year End API client — all calls go through the shared request() helper in
+ * lib/api/index.ts (cold-start timeout + one automatic retry), not a local copy.
  */
 
-import { supabase } from "@/lib/supabase/client";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API error ${res.status}: ${err}`);
-  }
-  return res.json();
-}
+import { request } from "./index";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
