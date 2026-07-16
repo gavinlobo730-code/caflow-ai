@@ -37,6 +37,7 @@ import {
   type CurrencyOption, type InvoiceStatus,
 } from "@/lib/invoices/shared";
 import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ interface Receipt {
   payment_mode: string;
   reference_no: string | null;
   allocated_paise: number;
+  is_reversed?: boolean;
 }
 
 interface CreditNote {
@@ -2916,7 +2918,7 @@ function Receipts({
     const [{ data: recData }, { data: custData }] = await Promise.all([
       selectAll(() => supabase
         .from("receipts")
-        .select("id, receipt_no, receipt_date, customer_id, amount_paise, payment_mode, reference_no, allocated_paise, customers(name)")
+        .select("id, receipt_no, receipt_date, customer_id, amount_paise, payment_mode, reference_no, allocated_paise, is_reversed, customers(name)")
         .eq("client_id", clientId)
         .gte("receipt_date", start)
         .lte("receipt_date", end)
@@ -2948,6 +2950,32 @@ function Receipts({
   function showToast(msg: string, type: "success" | "error") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
+  }
+
+  /** Reverse a receipt (task #102): rolls back its invoice allocation(s) and
+   * reverses its posted journal server-side. Partner-only on the backend
+   * (accounting.approve) — the frontend just calls it and surfaces whatever
+   * error string comes back. */
+  async function reverseReceipt(r: Receipt) {
+    const ok = await confirmDialog({
+      title: `Reverse ${r.receipt_no}?`,
+      message:
+        "This reverses the receipt's posted journal entry and rolls back its invoice allocation(s) — " +
+        "the invoice(s) it settled become outstanding again. The receipt stays on record as reversed. This cannot be undone.",
+      confirmLabel: "Reverse Receipt",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/receipts/${r.id}/reverse`, "POST",
+        { reversal_date: new Date().toISOString().slice(0, 10) }, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to reverse receipt");
+      showToast(`${r.receipt_no} reversed — journal and allocations rolled back`, "success");
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to reverse receipt", "error");
+    }
   }
 
   /** Bulk-import unallocated receipts through the EXISTING /api/receipts/ endpoint. */
@@ -2985,6 +3013,10 @@ function Receipts({
     { key: "unallocated_paise", header: "Unallocated", accessor: (r) => r.amount_paise - (r.allocated_paise ?? 0), align: "right",
       exportValue: (r) => formatPaise(r.amount_paise - (r.allocated_paise ?? 0)),
       render: (r) => <span className="font-mono text-amber-700">{fmt(r.amount_paise - (r.allocated_paise ?? 0))}</span> },
+    { key: "is_reversed", header: "Status", accessor: (r) => (r.is_reversed ? "Reversed" : "Active"),
+      render: (r) => r.is_reversed ? (
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-600">Reversed</span>
+      ) : null },
   ], []);
 
   const filters: FilterDef<Receipt>[] = useMemo(() => [
@@ -3048,6 +3080,12 @@ function Receipts({
         exportFilename="receipts"
         persistKey="sales.receipts"
         emptyTitle={`No receipts in FY ${financialYear}`}
+        rowActions={(r) => !r.is_reversed && (
+          <button onClick={() => reverseReceipt(r)}
+            className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
+            Reverse
+          </button>
+        )}
       />
     </div>
   );
