@@ -228,6 +228,56 @@ class TestCrossClientDetection:
         assert rel._MOCK_CROSS_MATCHES[0]["client_id_a"] != rel._MOCK_CROSS_MATCHES[0]["client_id_b"]
 
 
+class TestCrossClientMatchesFilter:
+    """list_cross_client_matches's reviewed/entity_id query params: an explicit
+    reviewed=False used to fall through both `elif` branches unfiltered (False
+    is falsy, so `elif reviewed:` never matched it) — same bug in both the mock
+    and DB code paths. Calls the router function directly (bypassing HTTP/DI,
+    per this file's existing convention) since mock mode needs no real auth."""
+
+    def _seed(self):
+        import routers.relationships as rel  # type: ignore
+        entity_id = str(uuid.uuid4())
+        reviewed_match = {"id": str(uuid.uuid4()), "firm_id": FIRM_ID, "entity_id": entity_id,
+                           "client_id_a": CLIENT_A, "client_id_b": CLIENT_B, "match_type": "pan",
+                           "reviewed": True, "created_at": "2026-06-13T00:00:00+00:00"}
+        unreviewed_match = {"id": str(uuid.uuid4()), "firm_id": FIRM_ID, "entity_id": entity_id,
+                             "client_id_a": CLIENT_A, "client_id_b": CLIENT_B, "match_type": "pan",
+                             "reviewed": False, "created_at": "2026-06-13T00:00:00+00:00"}
+        rel._MOCK_CROSS_MATCHES.extend([reviewed_match, unreviewed_match])
+        return rel, entity_id, reviewed_match, unreviewed_match
+
+    def test_default_shows_unreviewed_only(self):
+        rel, _, _, unreviewed = self._seed()
+        result = rel.list_cross_client_matches(entity_id=None, reviewed=None,
+                                                current_user={"firm_id": FIRM_ID})
+        assert [m["id"] for m in result["data"]] == [unreviewed["id"]]
+
+    def test_explicit_reviewed_false_shows_unreviewed_only(self):
+        """The actual bug: reviewed=false must behave like the default, not
+        like "no filter"."""
+        rel, _, _, unreviewed = self._seed()
+        result = rel.list_cross_client_matches(entity_id=None, reviewed=False,
+                                                current_user={"firm_id": FIRM_ID})
+        assert [m["id"] for m in result["data"]] == [unreviewed["id"]]
+
+    def test_explicit_reviewed_true_shows_reviewed_only(self):
+        rel, _, reviewed, _ = self._seed()
+        result = rel.list_cross_client_matches(entity_id=None, reviewed=True,
+                                                current_user={"firm_id": FIRM_ID})
+        assert [m["id"] for m in result["data"]] == [reviewed["id"]]
+
+    def test_entity_id_bypasses_reviewed_filter(self):
+        """Entity Detail's Cross-Client Matches tab wants full history
+        (confirmed/dismissed included), so entity_id intentionally shows both
+        reviewed and unreviewed matches rather than combining with the
+        reviewed default."""
+        rel, entity_id, reviewed, unreviewed = self._seed()
+        result = rel.list_cross_client_matches(entity_id=entity_id, reviewed=None,
+                                                current_user={"firm_id": FIRM_ID})
+        assert {m["id"] for m in result["data"]} == {reviewed["id"], unreviewed["id"]}
+
+
 class TestSection185Loan:
     """Test 5: Loan to director auto-flags Section 185."""
 
