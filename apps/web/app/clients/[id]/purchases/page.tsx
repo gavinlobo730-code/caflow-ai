@@ -527,6 +527,55 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     return true;
   }, [load]);
 
+  // Bulk-cancel over the DataTable's selected rows. POST /api/purchase-bills/
+  // {id}/cancel is received-only on the backend (drafts are deleted, not
+  // cancelled; bills with payments/debit/credit notes refuse) and reverses
+  // the bill's posted journal + inventory stock-in — the only correct way to
+  // undo a received bill, so this deliberately calls the SAME real endpoint
+  // the single-row "Cancel" action uses rather than any local shortcut. Loop
+  // per row, at most 8 in flight at once (see handleBulkReceive above for
+  // why unbounded Promise.all breaks down at large selection sizes);
+  // non-received rows are skipped client-side rather than sent to 422; keep
+  // the selection (return false) if anything was skipped or failed.
+  const handleBulkCancel = useCallback(async (rows: PurchaseBillRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const receivedRows = rows.filter((b) => b.status === "received");
+    const skipped = rows.length - receivedRows.length;
+
+    type CancelResult = { ok: true } | { ok: false; reason: string };
+    const results: CancelResult[] = await mapWithConcurrency(receivedRows, 8, async (b): Promise<CancelResult> => {
+      try {
+        const result = await apiCall(`/api/purchase-bills/${b.id}/cancel`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to cancel bill" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to cancel bill" };
+      }
+    });
+
+    const cancelled = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (cancelled > 0) load();
+
+    const parts: string[] = [];
+    if (cancelled > 0) parts.push(`${cancelled} cancelled`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not received)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No received bills selected.";
+
+    if (skipped > 0 || failed > 0) {
+      setMsg({ type: "err", text });
+      return false;
+    }
+    setMsg({ type: "ok", text });
+    return true;
+  }, [load]);
+
   /**
    * Bulk-import handler. Maps flat rows → grouped bills via buildPurchaseBills, then
    * creates them all in ONE request via /api/purchase-bills/bulk (same
@@ -646,8 +695,16 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       confirm: "Delete the selected draft purchase bills? Only drafts are removed — received and later bills are protected.",
       run: handleBulkDelete,
     },
+    {
+      id: "cancel",
+      label: "Cancel received",
+      icon: <AlertTriangle size={12} />,
+      variant: "danger",
+      confirm: "Cancel the selected received purchase bills? This reverses each bill's posted journal entry and inventory stock-in. The bills stay on record as cancelled. This cannot be undone.",
+      run: handleBulkCancel,
+    },
     exportSelectedAction("purchase-bills-selected.csv", billColumns),
-  ], [handleBulkReceive, handleBulkDelete, billColumns]);
+  ], [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns]);
 
   // "Resolve missing references" step for the product_service import column —
   // mirrors the Sales Invoices tab's own importResolvers exactly. Reads
