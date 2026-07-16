@@ -155,8 +155,11 @@ class BankPostingService:
             paid = int(inv.get("paid_paise") or 0)
             outstanding = self._invoice_outstanding(inv)
             alloc = min(amount, outstanding)
-            return {"entity": "sales_invoice", "label": inv.get("invoice_no"),
-                    "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
+            out = {"entity": "sales_invoice", "label": inv.get("invoice_no"),
+                   "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
+            if amount > alloc:
+                out["credit_to_party_paise"] = amount - alloc   # task #102: excess → party credit, not lost
+            return out
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
             bill = (db.table("purchase_bills")
                     .select("bill_no, total_paise, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
@@ -165,8 +168,11 @@ class BankPostingService:
             paid = int(bill.get("paid_paise") or 0)
             outstanding = self._bill_outstanding(bill)
             alloc = min(amount, outstanding)
-            return {"entity": "purchase_bill", "label": bill.get("bill_no"),
-                    "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
+            out = {"entity": "purchase_bill", "label": bill.get("bill_no"),
+                   "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
+            if amount > alloc:
+                out["credit_to_party_paise"] = amount - alloc   # task #102: excess → party credit, not lost
+            return out
         return None
 
     # ── True outstanding (task #102: _settle_doc used total_paise − paid_paise,
@@ -253,7 +259,7 @@ class BankPostingService:
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
 
         amount, _ = _amount(txn)
-        settled = self._settle(db, firm_id, txn, amount)
+        settled = self._settle(db, firm_id, txn, amount, actor_id)
         try:
             timeline_service.log(txn["client_id"], "accounting", "Bank Transaction Posted",
                                  f"Posted to ledger ({txn.get('category') or 'mapped'})", "success",
@@ -264,19 +270,21 @@ class BankPostingService:
         return settled
 
     # ── B.3.4 settlement ──────────────────────────────────────────────────────
-    def _settle(self, db, firm_id, txn, amount) -> Optional[dict]:
+    def _settle(self, db, firm_id, txn, amount, actor_id=None) -> Optional[dict]:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
         client_id = txn.get("client_id")
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
             return self._settle_doc(db, firm_id, client_id, "client_sales_invoices", mid, amount, "invoice_no",
-                                    "total_paise, debit_note_paise, credited_paise", self._invoice_outstanding)
+                                    "total_paise, debit_note_paise, credited_paise, customer_id",
+                                    self._invoice_outstanding, "customer_id", "customer", txn, actor_id)
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
             return self._settle_doc(db, firm_id, client_id, "purchase_bills", mid, amount, "bill_no",
-                                    "total_paise, net_payable_paise, credit_note_paise, debited_paise", self._bill_outstanding)
+                                    "total_paise, net_payable_paise, credit_note_paise, debited_paise, vendor_id",
+                                    self._bill_outstanding, "vendor_id", "vendor", txn, actor_id)
         return None
 
     def _settle_doc(self, db, firm_id, client_id, table, doc_id, amount, label_col,
-                    extra_cols, outstanding_fn) -> Optional[dict]:
+                    extra_cols, outstanding_fn, party_col, party_type, txn, actor_id=None) -> Optional[dict]:
         # F3 fix: scope the settled doc to the txn's firm AND client so a
         # matched_entity_id belonging to another client (even within the firm)
         # cannot be settled / have its accounting state altered. Mirrors the
@@ -296,16 +304,35 @@ class BankPostingService:
         # actually outstanding. outstanding_fn matches ar_aging/ap_aging's
         # formula (CGST Act §34) so the sub-ledger reconciles with them.
         outstanding = outstanding_fn(doc)
-        alloc = min(int(amount), outstanding)   # never over-allocate
+        alloc = min(int(amount), outstanding)   # never over-allocate the DOCUMENT
+        excess = int(amount) - alloc            # the rest — a genuine overpayment
+        if excess > 0:
+            # task #102: the GL side is already correct (the transaction's FULL
+            # amount was posted to Trade Receivables/Payables by the draft
+            # journal) — only the sub-ledger tracking of "whose money is this"
+            # was missing. Grant it as a non-GST party credit rather than
+            # silently letting it vanish from tracking.
+            from services.party_credit_service import party_credit_service
+            party_id = doc.get(party_col)
+            if party_id:
+                party_credit_service.grant_credit(
+                    db, firm_id, client_id, party_type, party_id, excess,
+                    source_type="bank_overpayment", source_id=txn.get("id"), created_by=actor_id,
+                    notes=f"Overpayment on {table} {doc.get(label_col)} via bank transaction {txn.get('id')}",
+                )
         if alloc <= 0:
             return {"entity": table, "label": doc.get(label_col), "allocated_paise": 0,
-                    "status": doc.get("status"), "note": "already fully settled"}
+                    "status": doc.get("status"), "note": "already fully settled",
+                    **({"credited_to_party_paise": excess} if excess > 0 else {})}
         new_paid = paid + alloc
         status = "paid" if alloc >= outstanding else "partially_paid"
         db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
             .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
-        return {"entity": table, "label": doc.get(label_col), "allocated_paise": alloc,
-                "new_paid_paise": new_paid, "total_paise": total, "status": status}
+        result = {"entity": table, "label": doc.get(label_col), "allocated_paise": alloc,
+                  "new_paid_paise": new_paid, "total_paise": total, "status": status}
+        if excess > 0:
+            result["credited_to_party_paise"] = excess
+        return result
 
     # ── B.3.1 queues ──────────────────────────────────────────────────────────
     def ready_to_post(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
