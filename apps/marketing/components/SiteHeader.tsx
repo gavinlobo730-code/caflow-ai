@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo } from "./Logo";
 import { Menu, X, ArrowRight } from "./icons";
@@ -8,10 +8,29 @@ import { NAV, appLinks } from "@/lib/site";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  // Header condenses and gains depth once the page scrolls.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-ps-border/70 bg-white/85 backdrop-blur-md">
-      <div className="container-ps flex h-16 items-center justify-between gap-4">
+    <header
+      className={`sticky top-0 z-50 border-b transition-all duration-500 ${
+        scrolled
+          ? "border-ps-border/80 bg-white/90 shadow-[0_8px_30px_rgba(24,35,80,0.08)] backdrop-blur-xl"
+          : "border-transparent bg-white/70 backdrop-blur-md"
+      }`}
+    >
+      <div
+        className={`container-ps flex items-center justify-between gap-4 transition-all duration-500 ${
+          scrolled ? "h-14" : "h-[72px]"
+        }`}
+      >
         <Logo />
 
         {/* Desktop nav */}
@@ -20,9 +39,10 @@ export function SiteHeader() {
             <Link
               key={item.href}
               href={item.href}
-              className="text-[14px] font-medium text-slate-600 transition-colors hover:text-brand"
+              className="group relative text-[14px] font-medium text-slate-600 transition-colors hover:text-brand"
             >
               {item.label}
+              <span className="absolute -bottom-1 left-0 h-px w-0 bg-brand transition-all duration-300 group-hover:w-full" />
             </Link>
           ))}
         </nav>
@@ -37,7 +57,7 @@ export function SiteHeader() {
           </Link>
           <a
             href={appLinks.signup}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover"
+            className="btn-shine inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-all duration-300 hover:bg-brand-hover hover:shadow-[0_6px_20px_rgba(24,35,80,0.25)]"
           >
             Start free trial
             <ArrowRight size={15} />
@@ -59,12 +79,13 @@ export function SiteHeader() {
       {open && (
         <div className="border-t border-ps-border bg-white lg:hidden">
           <div className="container-ps flex flex-col gap-1 py-4">
-            {NAV.map((item) => (
+            {NAV.map((item, i) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="rounded-lg px-3 py-2.5 text-[15px] font-medium text-slate-700 hover:bg-ps-muted"
+                className="fade-up rounded-lg px-3 py-2.5 text-[15px] font-medium text-slate-700 hover:bg-ps-muted"
+                style={{ animationDelay: `${i * 50}ms` }}
               >
                 {item.label}
               </Link>
