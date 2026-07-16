@@ -148,20 +148,45 @@ class BankPostingService:
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
             # H4 fix: scope to the txn's firm + client so a foreign matched_entity_id
             # cannot disclose another firm/client's invoice details.
-            inv = (db.table("client_sales_invoices").select("invoice_no, total_paise, paid_paise")
+            inv = (db.table("client_sales_invoices")
+                   .select("invoice_no, total_paise, paid_paise, credited_paise, debit_note_paise")
                    .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).maybe_single().execute().data) or {}
-            total, paid = int(inv.get("total_paise") or 0), int(inv.get("paid_paise") or 0)
-            alloc = min(amount, max(total - paid, 0))
+            total = int(inv.get("total_paise") or 0)
+            paid = int(inv.get("paid_paise") or 0)
+            outstanding = self._invoice_outstanding(inv)
+            alloc = min(amount, outstanding)
             return {"entity": "sales_invoice", "label": inv.get("invoice_no"),
                     "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
-            bill = (db.table("purchase_bills").select("bill_no, total_paise, paid_paise")
+            bill = (db.table("purchase_bills")
+                    .select("bill_no, total_paise, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
                     .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).maybe_single().execute().data) or {}
-            total, paid = int(bill.get("total_paise") or 0), int(bill.get("paid_paise") or 0)
-            alloc = min(amount, max(total - paid, 0))
+            total = int(bill.get("total_paise") or 0)
+            paid = int(bill.get("paid_paise") or 0)
+            outstanding = self._bill_outstanding(bill)
+            alloc = min(amount, outstanding)
             return {"entity": "purchase_bill", "label": bill.get("bill_no"),
                     "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
         return None
+
+    # ── True outstanding (task #102: _settle_doc used total_paise − paid_paise,
+    # ignoring credit/debit notes and (for bills) the TDS-net net_payable_paise vs
+    # gross total_paise — the SAME formula ar_aging/ap_aging already use elsewhere
+    # (CGST Act §34), so the bank settlement sub-ledger reconciles with them. ──
+    @staticmethod
+    def _invoice_outstanding(inv: dict) -> int:
+        total = int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
+        paid = int(inv.get("paid_paise") or 0)
+        credited = int(inv.get("credited_paise") or 0)
+        return max(total - paid - credited, 0)
+
+    @staticmethod
+    def _bill_outstanding(bill: dict) -> int:
+        net_payable = int(bill.get("net_payable_paise") or bill.get("total_paise") or 0)
+        net_payable += int(bill.get("credit_note_paise") or 0)
+        paid = int(bill.get("paid_paise") or 0)
+        debited = int(bill.get("debited_paise") or 0)
+        return max(net_payable - paid - debited, 0)
 
     # ── B.3.2 post → Phase 3.5: create a DRAFT journal (no books impact yet) ───
     def post(self, db, firm_id, txn_id, bank_account_id=None, account_id=None,
@@ -243,29 +268,40 @@ class BankPostingService:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
         client_id = txn.get("client_id")
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
-            return self._settle_doc(db, firm_id, client_id, "client_sales_invoices", mid, amount, "invoice_no")
+            return self._settle_doc(db, firm_id, client_id, "client_sales_invoices", mid, amount, "invoice_no",
+                                    "total_paise, debit_note_paise, credited_paise", self._invoice_outstanding)
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
-            return self._settle_doc(db, firm_id, client_id, "purchase_bills", mid, amount, "bill_no")
+            return self._settle_doc(db, firm_id, client_id, "purchase_bills", mid, amount, "bill_no",
+                                    "total_paise, net_payable_paise, credit_note_paise, debited_paise", self._bill_outstanding)
         return None
 
-    def _settle_doc(self, db, firm_id, client_id, table, doc_id, amount, label_col) -> Optional[dict]:
+    def _settle_doc(self, db, firm_id, client_id, table, doc_id, amount, label_col,
+                    extra_cols, outstanding_fn) -> Optional[dict]:
         # F3 fix: scope the settled doc to the txn's firm AND client so a
         # matched_entity_id belonging to another client (even within the firm)
         # cannot be settled / have its accounting state altered. Mirrors the
         # preview-path scoping (H4). maybe_single ⇒ no row → no settlement.
-        _rows = (db.table(table).select(f"id, {label_col}, total_paise, paid_paise, status")
+        _rows = (db.table(table).select(f"id, {label_col}, paid_paise, status, {extra_cols}")
                  .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
         doc = _rows[0] if _rows else None
         if not doc:
             return None
         total = int(doc.get("total_paise") or 0)
         paid = int(doc.get("paid_paise") or 0)
-        alloc = min(int(amount), max(total - paid, 0))   # never over-allocate
+        # task #102: this used to allocate against (total_paise − paid_paise),
+        # ignoring credit/debit notes entirely and — for bills — using the
+        # GROSS total_paise instead of the TDS-net net_payable_paise, so a
+        # bill with TDS withheld (or either document with a credit/debit
+        # note applied) could be under- or over-allocated relative to what's
+        # actually outstanding. outstanding_fn matches ar_aging/ap_aging's
+        # formula (CGST Act §34) so the sub-ledger reconciles with them.
+        outstanding = outstanding_fn(doc)
+        alloc = min(int(amount), outstanding)   # never over-allocate
         if alloc <= 0:
             return {"entity": table, "label": doc.get(label_col), "allocated_paise": 0,
                     "status": doc.get("status"), "note": "already fully settled"}
         new_paid = paid + alloc
-        status = "paid" if new_paid >= total else "partially_paid"
+        status = "paid" if alloc >= outstanding else "partially_paid"
         db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
             .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         return {"entity": table, "label": doc.get(label_col), "allocated_paise": alloc,
