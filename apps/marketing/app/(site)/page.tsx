@@ -1,76 +1,78 @@
 "use client";
 
+import { useCallback, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { Button, Card, IconBadge, SectionHeading } from "@/components/ui";
-import { CountUp, Tilt, WordReveal } from "@/components/motion";
+import { CountUp, Tilt, TiltCard } from "@/components/motion";
 import { Magnetic, useCursorGlow } from "@/components/Cursor";
 import { ScrollJack } from "@/components/ScrollJack";
 import { IntroLoader } from "@/components/IntroLoader";
 import { ThreeScene } from "@/components/ThreeScene";
 import { DiagonalSection } from "@/components/DiagonalSection";
-import { KineticLine, FocusReveal, ParallaxLabel, SectionReveal, ReactiveMarquee, RotatingWord } from "@/components/Kinetic";
+import {
+  KineticLine,
+  FocusReveal,
+  ParallaxLabel,
+  SectionReveal,
+  ReactiveMarquee,
+  RotatingWord,
+} from "@/components/Kinetic";
 import { SiteFooter } from "@/components/SiteFooter";
 import { instrumentSerif, manrope } from "@/lib/fonts";
-import {
-  ArrowRight,
-  Check,
-  Shield,
-  Lock,
-  Star,
-  Calculator,
-  FileText,
-  Receipt,
-  Building,
-  Bot,
-  MessageCircle,
-} from "@/components/icons";
+import { ArrowRight } from "@/components/icons";
 import { appLinks } from "@/lib/site";
+
+// Rotating hero word — exact list/copy from the design reference. Instrument
+// Serif italic, cycling every 2.2s as the hero's visual centrepiece.
+const HERO_WORDS = ["Compliance.", "Clarity.", "Control.", "Automation.", "Trust."];
 
 const TICKER = [
   "GSTR-1",
   "GSTR-3B",
   "GSTR-9",
-  "ITR filing",
-  "TDS 24Q / 26Q",
-  "MCA filings",
-  "Advance tax",
-  "Payroll & PF/ESI",
-  "Schedule III",
-  "AI document extraction",
-  "Client portal",
-  "Practice analytics",
+  "ITR FILING",
+  "TDS 24Q",
+  "TDS 26Q",
+  "MCA FILINGS",
+  "ADVANCE TAX",
+  "PAYROLL & PF/ESI",
+  "SCHEDULE III",
+  "AI DOCUMENT EXTRACTION",
 ];
 
-const PAIN_POINTS = [
-  { name: "Tally", pain: "Ledgers, kept offline in a desktop app nobody else can reach.", icon: <Calculator size={20} /> },
-  { name: "ClearTax", pain: "GST filed on its own, in its own login, on its own timeline.", icon: <FileText size={20} /> },
-  { name: "Winman", pain: "ITR season means a third tool with a third password.", icon: <Receipt size={20} /> },
-  { name: "WhatsApp", pain: "Clients chasing deadlines on chat threads nobody can audit.", icon: <MessageCircle size={20} /> },
-  { name: "Excel", pain: "Everything that doesn't fit anywhere else, scattered across sheets.", icon: <Building size={20} /> },
+const TRUST_ROWS = [
+  "Explicit CA confirmation on every government submission",
+  "Full audit log of who reviewed and filed what",
+  "Role-based access, MFA and data hosted in India",
 ];
 
-const MODULES = [
-  { icon: <FileText size={20} />, title: "GST & compliance", desc: "GSTR-1, GSTR-3B and GSTR-9 prepared and tracked against every due date, automatically." },
-  { icon: <Calculator size={20} />, title: "Accounting & books", desc: "Real ledgers and reconciliation in one workspace — no more offline Tally file." },
-  { icon: <Receipt size={20} />, title: "TDS & payroll", desc: "24Q/26Q returns, PF/ESI and payroll runs handled without a separate tool." },
-  { icon: <Building size={20} />, title: "ITR & MCA filings", desc: "Individual and corporate returns, ROC forms — one calendar, one workspace." },
-  { icon: <Bot size={20} />, title: "AI document intelligence", desc: "Invoices and statements extracted automatically, mismatches flagged before you file." },
-  { icon: <MessageCircle size={20} />, title: "Client portal", desc: "Secure client chat and document requests — replaces the WhatsApp thread entirely." },
-];
-
+// Real PracticeSync figures (the reference's 11+/4/100%/4 are flagged as
+// placeholder in its own README — "swap for real data before shipping").
 const STATS = [
-  { target: 6, suffix: "", label: "Modules, one connected workspace" },
-  { target: 5, suffix: "", label: "Separate tools replaced by one login" },
-  { target: 100, suffix: "%", label: "Filings reviewed by a CA before submit" },
-  { target: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
+  { value: 6, suffix: "", label: "Modules, one connected workspace" },
+  { value: 5, suffix: "", label: "Separate tools replaced by one login" },
+  { value: 100, suffix: "%", label: "Filings reviewed by a CA before submit" },
+  { value: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
 ];
 
-function Hero() {
+// ── Hero ──────────────────────────────────────────────────────────────────
+function Hero({ revealed }: { revealed: boolean }) {
   const glow = useCursorGlow();
+
+  // Hero copy (subhead, paragraph, CTA row, trust row) staggers in when the
+  // intro loader exits — 90ms per element, fade + translateY(16px→0), exactly
+  // as the reference triggers from its loader's exit. Once `revealed` flips
+  // true these settle and stay.
+  const fade = (i: number): CSSProperties => ({
+    opacity: revealed ? 1 : 0,
+    transform: revealed ? "none" : "translateY(16px)",
+    transition: "opacity 0.8s ease, transform 0.8s ease",
+    transitionDelay: `${i * 90}ms`,
+  });
+
   return (
     <section
       id="hero"
-      className="relative flex min-h-screen flex-col overflow-hidden bg-brand-dark text-white"
+      className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-brand-dark text-white"
       {...glow.handlers}
     >
       <div className="bg-grid absolute inset-0" />
@@ -79,270 +81,232 @@ function Hero() {
       <div className="aurora aurora-3 bottom-[-200px] left-1/3 h-[520px] w-[520px]" />
       <div className="bg-noise absolute inset-0" />
       <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-brand-dark to-transparent" />
 
-      <div className="container-ps relative grid flex-1 items-center gap-16 py-28 md:py-32 lg:grid-cols-[1.05fr_1fr]">
+      {/* Decorative page-number "01" bleeding off the top-right corner. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-16 right-2 select-none font-display text-[clamp(220px,32vw,460px)] leading-none text-white/[0.045]"
+      >
+        01
+      </div>
+
+      <div className="container-ps relative z-[1] grid items-center gap-12 py-28 md:py-24 lg:grid-cols-[1.15fr_1fr]">
         <div>
-          <span
-            className="fade-up inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-[12.5px] font-medium text-brand-light backdrop-blur-sm"
-            style={{ animationDelay: "1600ms" }}
-          >
-            <span className="pulse-dot h-2 w-2 rounded-full bg-emerald-400" />
-            The AI-first platform for Indian CA firms
-          </span>
+          <ParallaxLabel factor={0.05}>
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">
+              The AI-first platform for Indian CA firms
+            </span>
+          </ParallaxLabel>
 
-          <h1 className="mt-7 font-display text-[44px] font-normal leading-[1.05] tracking-tight md:text-[68px]">
-            <WordReveal text="Run your entire practice" startDelay={1750} stagger={60} />
-            <br />
-            <WordReveal
-              text="on one intelligent platform"
-              startDelay={2050}
-              stagger={60}
-              accent={["one", "intelligent", "platform"]}
-              className="italic"
+          {/* Giant rotating italic serif word — the hero centrepiece. */}
+          <ParallaxLabel factor={0.11} className="mt-6">
+            <RotatingWord
+              words={HERO_WORDS}
+              decorative
+              className="font-display text-[clamp(60px,11vw,168px)] italic leading-[0.96] tracking-[-0.02em] text-white"
             />
+          </ParallaxLabel>
+
+          <h1
+            className="mt-2 max-w-[16ch] font-display text-[clamp(36px,5.6vw,76px)] font-normal leading-[1.05] tracking-[-0.015em] text-white"
+            style={fade(0)}
+          >
+            Run your entire practice on one intelligent platform
           </h1>
 
-          <p
-            className="fade-up mt-6 max-w-xl text-[17px] leading-relaxed text-slate-300 md:text-[18px]"
-            style={{ animationDelay: "2350ms" }}
-          >
+          <p className="mt-8 max-w-[46ch] text-[17px] leading-relaxed text-slate-300" style={fade(1)}>
             PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single
-            AI-first workspace for{" "}
-            <RotatingWord
-              words={["GST filings", "TDS returns", "client books", "payroll runs", "MCA filings"]}
-              className="font-semibold text-white"
-            />
-            .
+            workspace for compliance, accounting, payroll, clients and documents.
           </p>
 
-          <div className="fade-up mt-9 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "2500ms" }}>
+          <div className="mt-9 flex flex-wrap items-center gap-7" style={fade(2)}>
             <Magnetic>
               <a
                 href={appLinks.signup}
-                className="btn-shine group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-[15px] font-semibold text-brand shadow-[0_8px_30px_rgba(175,210,250,0.25)] transition-transform duration-300 hover:scale-[1.03]"
+                className="btn-shine inline-flex items-center justify-center gap-2 rounded-md bg-brand-light px-7 py-3.5 text-[14px] font-semibold text-brand-dark transition-transform duration-300 hover:scale-[1.03]"
               >
                 Start free trial
-                <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
               </a>
             </Magnetic>
             <Link
-              href="/#security"
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-7 py-4 text-[15px] font-semibold text-white transition-colors duration-300 hover:bg-white/10"
+              href="/#control"
+              className="inline-flex items-center gap-1.5 border-b border-white/70 pb-0.5 text-[14px] font-semibold text-white/85 transition-colors hover:text-white"
             >
               See how it works
+              <ArrowRight size={15} />
             </Link>
           </div>
 
-          <div
-            className="fade-up mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-slate-400"
-            style={{ animationDelay: "2620ms" }}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <Check size={15} className="text-emerald-400" /> No credit card needed
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Check size={15} className="text-emerald-400" /> Data hosted in India
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Check size={15} className="text-emerald-400" /> Set up in a day
-            </span>
+          <div className="mt-11 flex flex-wrap gap-7 text-[12.5px] font-medium text-white/50" style={fade(3)}>
+            <span>No credit card needed</span>
+            <span>Data hosted in India</span>
+            <span>Set up in a day</span>
           </div>
         </div>
 
-        <div className="relative hidden h-[520px] lg:block">
-          <div className="pointer-events-none absolute left-1/2 top-1/2 h-[130%] w-[130%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(175,210,250,0.14)_0%,rgba(175,210,250,0.05)_45%,transparent_70%)]" />
-
+        {/* 3D scene with three overlapping mockup cards floating over it. */}
+        <div className="relative mx-auto hidden h-[420px] w-full max-w-[400px] lg:block" style={{ perspective: "900px" }}>
           <ThreeScene className="absolute inset-0 h-full w-full" />
 
-          <div
-            className="fade-up floaty absolute -right-4 top-6 rounded-2xl border border-white/12 bg-brand-dark/85 px-4 py-3 shadow-modal backdrop-blur-md"
-            style={{ animationDelay: "2700ms" }}
+          <TiltCard
+            base="rotate(-6deg)"
+            className="absolute bottom-6 left-0 w-[210px] rounded-[10px] bg-white p-4 shadow-modal"
           >
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              <Shield size={13} className="text-emerald-400" />
-              Collected this month
-            </p>
-            <p className="mt-1 text-[22px] font-bold text-white">
-              ₹ <CountUp to={248600} duration={2200} />
-            </p>
-          </div>
-
-          <div
-            className="fade-up floaty-2 absolute -bottom-2 -left-6 flex items-center gap-3 rounded-2xl border border-white/12 bg-brand-dark/85 px-4 py-3.5 shadow-modal backdrop-blur-md"
-            style={{ animationDelay: "2850ms" }}
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
-              <Check size={17} />
-            </span>
-            <div>
-              <p className="text-[13px] font-bold text-white">GSTR-3B filed</p>
-              <p className="text-[11.5px] text-slate-400">Confirmed by CA · 2 min ago</p>
+            <div className="flex items-center gap-2.5">
+              <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-brand-light/40 text-[12px] font-semibold text-brand">
+                PS
+              </span>
+              <div>
+                <p className="text-[12.5px] font-semibold leading-tight text-brand-dark">Priya Sharma</p>
+                <p className="text-[11px] leading-tight text-slate-400">Documents received</p>
+              </div>
             </div>
-          </div>
+          </TiltCard>
+
+          <TiltCard
+            base="rotate(4deg)"
+            className="absolute right-0 top-2 max-w-[180px] rounded-[10px] bg-brand-light px-4 py-3 text-brand-dark shadow-modal"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] opacity-80">AI flagged</p>
+            <p className="mt-0.5 text-[12.5px] font-medium">2 mismatches before filing</p>
+          </TiltCard>
+
+          <TiltCard
+            base="translate(-50%,-50%) rotate(-2deg)"
+            className="absolute left-1/2 top-[52%] w-[250px] rounded-[14px] bg-white p-5 shadow-modal"
+          >
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Filing calendar
+            </p>
+            {[
+              ["GSTR-3B", "20 Aug"],
+              ["GSTR-1", "11 Aug"],
+              ["TDS 26Q", "31 Jul"],
+              ["Advance Tax", "15 Sep"],
+            ].map(([name, date], i, arr) => (
+              <div
+                key={name}
+                className={`flex justify-between py-2.5 text-[13px] font-medium text-brand-dark ${
+                  i < arr.length - 1 ? "border-b border-slate-900/10" : ""
+                }`}
+              >
+                <span>{name}</span>
+                <span className="text-slate-400">{date}</span>
+              </div>
+            ))}
+          </TiltCard>
         </div>
       </div>
 
-      <div className="relative border-t border-white/[0.08] py-5">
-        <ReactiveMarquee>
-          {TICKER.map((item) => (
-            <span key={item} className="mx-5 flex items-center gap-5 whitespace-nowrap text-[13px] font-medium text-slate-500">
-              {item}
-              <span className="h-1 w-1 rounded-full bg-slate-600" />
-            </span>
-          ))}
-        </ReactiveMarquee>
-      </div>
-
-      <div className="scroll-cue pointer-events-none absolute bottom-24 left-1/2 hidden -translate-x-1/2 lg:block">
-        <div className="flex h-9 w-5 items-start justify-center rounded-full border border-white/25 p-1.5">
-          <div className="h-2 w-1 rounded-full bg-white/60" />
-        </div>
+      {/* Scroll cue: bobbing 1px hairline + SCROLL label. */}
+      <div className="pointer-events-none absolute bottom-9 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-2.5 text-white/45 lg:flex">
+        <div className="scroll-cue h-[38px] w-px bg-current" />
+        <span className="text-[10px] font-medium uppercase tracking-[0.16em]">Scroll</span>
       </div>
     </section>
   );
 }
 
+// ── Marquee band (its own darkest-navy strip, per the reference) ────────────
+function MarqueeBand() {
+  return (
+    <div className="relative overflow-hidden border-y border-white/[0.12] bg-[#090c1f] py-5">
+      <ReactiveMarquee>
+        {TICKER.map((item) => (
+          <span key={item} className="flex items-center gap-6 whitespace-nowrap pr-6">
+            <span className="text-[13px] font-semibold uppercase tracking-[0.1em] text-white/60">{item}</span>
+            <span className="text-brand-light">&bull;</span>
+          </span>
+        ))}
+      </ReactiveMarquee>
+    </div>
+  );
+}
+
+// ── The Problem ─────────────────────────────────────────────────────────────
 function Problem() {
   return (
-    <DiagonalSection id="story" numeral="02" seam="rising-right" className="bg-ps-bg">
-      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
-        <div className="flex justify-center">
-          <span className="inline-flex items-center gap-2.5 rounded-full border border-rose-200 bg-rose-50 px-4 py-1.5 text-[12.5px] font-medium text-rose-600">
-            <span className="h-2 w-2 rounded-full bg-rose-400" />
-            Every CA firm runs like this
-          </span>
-        </div>
-        <h2 className="mx-auto mt-6 max-w-2xl text-center font-display text-[32px] font-normal leading-[1.15] tracking-tight text-brand-dark md:text-[48px]">
-          <KineticLine text="Five tools. Five logins." className="text-center" />
-          <KineticLine text="One deadline falling through the cracks." italic className="mt-1 text-center text-brand" />
-        </h2>
-        <FocusReveal className="mx-auto mt-5 max-w-md text-center text-[15px] leading-relaxed text-slate-500 md:text-[16px]">
-          <p>
-            Compliance in one app, client chats in another, ledgers in a third —
-            and nothing talks to anything else.
-          </p>
-        </FocusReveal>
-
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-          {PAIN_POINTS.map((tool, i) => (
-            <ParallaxLabel key={tool.name} factor={i % 2 === 0 ? 0.03 : -0.03}>
-              <Card className="h-full">
-                <span className="grid h-10 w-10 place-items-center rounded-lg bg-rose-50 text-rose-500">
-                  {tool.icon}
-                </span>
-                <p className="mt-4 text-[15px] font-bold text-brand-dark">{tool.name}</p>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">{tool.pain}</p>
-              </Card>
-            </ParallaxLabel>
-          ))}
+    <DiagonalSection id="story" numeral="02" numeralCorner="bottom-left" seam="rising-right" className="bg-ps-bg text-brand-dark">
+      <div className="mx-auto max-w-[1100px] px-6 pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)] md:px-[72px]">
+        <div className="ml-auto max-w-[640px]">
+          <ParallaxLabel factor={0.05}>
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">The problem</span>
+          </ParallaxLabel>
+          <h2 className="mt-7 font-display font-normal tracking-[-0.015em] text-brand-dark">
+            <KineticLine text="Every CA firm runs like this." className="text-[clamp(28px,4vw,46px)] leading-[1.18]" />
+            <KineticLine text="Five tools. Five logins." italic className="mt-1.5 text-[clamp(30px,4.6vw,54px)] leading-[1.18]" />
+            <KineticLine text="One deadline falling through the cracks." className="mt-1.5 text-[clamp(28px,4vw,46px)] leading-[1.18]" />
+          </h2>
+          <FocusReveal targetOpacity={0.65} className="mt-9 max-w-[52ch] text-[17px] leading-[1.65] text-brand-dark">
+            <p>Compliance in one app, client chats in another, ledgers in a third — and nothing talks to anything else.</p>
+          </FocusReveal>
         </div>
       </div>
     </DiagonalSection>
   );
 }
 
+// ── The Platform ─────────────────────────────────────────────────────────────
 function Platform() {
-  return (
-    <DiagonalSection numeral="03" seam="rising-left" className="bg-white">
-      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
-        <SectionHeading
-          eyebrow="One platform"
-          title="Every module your practice needs, already connected"
-          subtitle="No exports, no re-keying, no second login — GST, books, payroll and clients share one source of truth."
-        />
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {MODULES.map((m) => (
-            <FocusReveal key={m.title}>
-              <Card className="h-full">
-                <span className="icon-pop inline-flex">
-                  <IconBadge>{m.icon}</IconBadge>
-                </span>
-                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">{m.title}</h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{m.desc}</p>
-              </Card>
-            </FocusReveal>
-          ))}
-        </div>
-      </div>
-    </DiagonalSection>
-  );
-}
-
-function Trust() {
   const glow = useCursorGlow();
   return (
-    <DiagonalSection id="security" numeral="04" seam="rising-right" className="bg-brand-dark text-white">
-      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
-        <div
-          className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-10 md:p-14"
-          {...glow.handlers}
-        >
-          <div className="bg-grid absolute inset-0 opacity-70" />
-          <div className="aurora aurora-2 -right-40 -top-40 h-[420px] w-[420px] opacity-60" />
-          <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-          <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
-            <div>
-              <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.15em] text-gold">
-                <Lock size={15} /> Control &amp; trust
-              </span>
-              <h2 className="mt-4 font-display text-[30px] font-normal leading-tight tracking-tight md:text-[42px]">
-                <KineticLine text="Nothing is filed without your click" />
-              </h2>
-              <FocusReveal className="mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
-                <p>
-                  AI prepares the working papers and flags what needs attention —
-                  but the CA always makes the final call. No return, no challan and
-                  no MCA form is ever submitted to a government portal
-                  automatically.
-                </p>
-              </FocusReveal>
-              <ul className="mt-6 space-y-3">
-                {[
-                  "Explicit CA confirmation on every government submission",
-                  "Full audit log of who reviewed and filed what",
-                  "Role-based access, MFA and data hosted in India",
-                ].map((point) => (
-                  <FocusReveal key={point}>
-                    <li className="flex items-start gap-3 text-[15px] text-slate-200">
-                      <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" />
-                      {point}
-                    </li>
-                  </FocusReveal>
-                ))}
-              </ul>
-            </div>
+    <DiagonalSection numeral="03" numeralCorner="top-right" seam="rising-left" className="bg-brand-dark text-white">
+      <div className="relative" {...glow.handlers}>
+        <div className="bg-grid absolute inset-0 opacity-70" />
+        <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+        <div className="relative mx-auto max-w-[1100px] px-6 pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)] md:px-[72px]">
+          <ParallaxLabel factor={0.05}>
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">The platform</span>
+          </ParallaxLabel>
+          <h2 className="mt-7 font-display font-normal tracking-[-0.015em] text-white">
+            <KineticLine text="One workspace." className="text-[clamp(28px,4vw,46px)] leading-[1.18]" />
+            <KineticLine text="Every compliance domain." italic className="mt-1.5 text-[clamp(30px,4.6vw,54px)] leading-[1.18]" />
+            <KineticLine text="Nothing falls through." className="mt-1.5 text-[clamp(28px,4vw,46px)] leading-[1.18]" />
+          </h2>
+          <FocusReveal targetOpacity={0.6} className="mt-11 max-w-[900px] text-[14px] font-medium leading-[1.9] text-white">
+            <p>
+              GSTR-1 &nbsp;/&nbsp; GSTR-3B &nbsp;/&nbsp; GSTR-9 &nbsp;/&nbsp; ITR filing &nbsp;/&nbsp; TDS 24Q &amp; 26Q
+              &nbsp;/&nbsp; MCA filings &nbsp;/&nbsp; Advance tax &nbsp;/&nbsp; Payroll &amp; PF/ESI &nbsp;/&nbsp; Schedule III
+              &nbsp;/&nbsp; AI document extraction &nbsp;/&nbsp; Client portal &nbsp;/&nbsp; Practice analytics
+            </p>
+          </FocusReveal>
+        </div>
+      </div>
+    </DiagonalSection>
+  );
+}
 
-            <FocusReveal>
-              <Tilt max={6}>
-                <div className="rounded-2xl border border-white/10 bg-brand-dark/60 p-6 backdrop-blur-sm">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
-                      <Shield size={20} />
-                    </span>
-                    <div>
-                      <p className="text-[14px] font-bold text-white">GSTR-3B ready to file</p>
-                      <p className="text-[12px] text-slate-400">Reviewed by CA · awaiting confirmation</p>
-                    </div>
-                  </div>
-                  <div className="mt-5 rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/10">
-                    <p className="text-[12px] text-slate-400">Tax payable</p>
-                    <p className="text-[24px] font-bold text-white">₹ 2,48,600</p>
-                    <div className="mt-4 flex gap-2">
-                      <span className="btn-shine flex-1 rounded-lg bg-brand-light py-2.5 text-center text-[13px] font-semibold text-brand-dark">
-                        Confirm &amp; file
-                      </span>
-                      <span className="rounded-lg border border-white/15 px-3 py-2.5 text-center text-[13px] font-medium text-slate-300">
-                        Review
-                      </span>
-                    </div>
-                    <p className="mt-3 text-center text-[11px] text-slate-500">
-                      You click. We never auto-submit.
-                    </p>
-                  </div>
-                </div>
-              </Tilt>
-            </FocusReveal>
+// ── Control & Trust ──────────────────────────────────────────────────────────
+// Preserves the CLAUDE.md compliance stance: the headline "Nothing is filed
+// without your click" + row 01 "Explicit CA confirmation on every government
+// submission" carry the never-auto-submit guarantee.
+function Trust() {
+  return (
+    <DiagonalSection id="control" numeral="04" numeralCorner="bottom-left" seam="rising-right" className="bg-ps-bg text-brand-dark">
+      <div className="mx-auto max-w-[1100px] px-6 pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)] md:px-[72px]">
+        <div className="ml-auto max-w-[640px]">
+          <ParallaxLabel factor={0.05}>
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">Control &amp; trust</span>
+          </ParallaxLabel>
+          <h2 className="mt-7 font-display font-normal tracking-[-0.015em] text-brand-dark">
+            <KineticLine text="Nothing is filed" className="text-[clamp(28px,4vw,46px)] leading-[1.18]" />
+            <KineticLine text="without your click." italic className="mt-1.5 text-[clamp(30px,4.6vw,54px)] leading-[1.18]" />
+          </h2>
+          <div className="mt-10 flex max-w-[60ch] flex-col gap-4">
+            {TRUST_ROWS.map((row, i) => (
+              <FocusReveal
+                key={row}
+                targetOpacity={0.7}
+                className={`flex items-baseline gap-4 border-t border-slate-900/10 pt-4 text-[16px] leading-[1.6] text-brand-dark ${
+                  i === TRUST_ROWS.length - 1 ? "border-b pb-4" : ""
+                }`}
+              >
+                <span className="min-w-[40px] font-display text-[26px] italic text-slate-900/50">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span>{row}</span>
+              </FocusReveal>
+            ))}
           </div>
         </div>
       </div>
@@ -350,129 +314,110 @@ function Trust() {
   );
 }
 
+// ── Stats ────────────────────────────────────────────────────────────────────
 function Stats() {
   return (
-    <DiagonalSection numeral="05" seam="rising-left" className="bg-white">
-      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
-        <SectionHeading
-          title="The whole practice, finally visible"
-          subtitle="Deadlines, revenue, clients and filings — one screen, not five tabs."
-        />
-        <SectionReveal className="mt-14 grid gap-8 rounded-3xl border border-ps-border bg-ps-bg p-10 sm:grid-cols-2 lg:grid-cols-4">
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center">
-              <p className="text-[40px] font-bold tracking-tight text-brand md:text-[46px]">
-                <CountUp to={s.target} suffix={s.suffix} duration={1400} />
-              </p>
-              <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{s.label}</p>
-            </div>
-          ))}
-        </SectionReveal>
-        <div className="mt-10 text-center">
-          <Button href="/products" variant="secondary" className="btn-shine">
-            See everything inside PracticeSync
-            <ArrowRight size={16} />
-          </Button>
-        </div>
-      </div>
+    <DiagonalSection seam="rising-left" className="bg-brand-dark text-white">
+      <StatsInner />
     </DiagonalSection>
   );
 }
 
+function StatsInner() {
+  const glow = useCursorGlow();
+  return (
+    <SectionReveal>
+      <div className="relative" {...glow.handlers}>
+        <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+        <div className="relative mx-auto grid max-w-[1100px] grid-cols-1 gap-12 px-6 pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)] sm:grid-cols-2 md:px-[72px] lg:grid-cols-4">
+          {STATS.map((s, i) => (
+            <div key={s.label} className={i % 2 === 1 ? "sm:mt-8" : ""}>
+              <p className="font-display text-[clamp(48px,6vw,84px)] leading-none text-white">
+                <CountUp to={s.value} suffix={s.suffix} duration={1200} />
+              </p>
+              <p className="mt-2.5 text-[13px] font-medium leading-[1.5] text-white/55">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </SectionReveal>
+  );
+}
+
+// ── Testimonial ──────────────────────────────────────────────────────────────
 function Testimonial() {
   return (
-    <DiagonalSection numeral="06" seam="rising-right" className="bg-ps-bg">
-      <div className="container-ps pt-32 pb-20 md:pt-40 md:pb-28">
-        <FocusReveal>
-          <Tilt max={3}>
-            <Card className="mx-auto max-w-3xl text-center">
-              <div className="flex justify-center gap-1 text-gold">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} size={18} />
-                ))}
-              </div>
-              <blockquote className="mt-5 text-[20px] font-medium leading-relaxed text-brand-dark md:text-[24px]">
-                “We shut down four subscriptions and a dozen spreadsheets. My team
-                finally sees every client&apos;s deadlines, books and documents in
-                one screen — and the AI catches mismatches before we file.”
-              </blockquote>
-              <div className="mt-6 flex items-center justify-center gap-3">
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-brand text-[14px] font-bold text-white">
-                  RA
-                </span>
-                <div className="text-left">
-                  <p className="text-[14px] font-bold text-brand-dark">CA Rohan Agarwal</p>
-                  <p className="text-[13px] text-slate-500">Partner · Agarwal &amp; Co., Bengaluru</p>
-                </div>
-              </div>
-            </Card>
-          </Tilt>
+    <DiagonalSection numeral={"“"} numeralCorner="top-left" numeralItalic seam="rising-right" className="bg-ps-bg text-brand-dark">
+      <div className="mx-auto max-w-[960px] px-6 pt-[calc(clamp(100px,16vw,170px)+64px)] pb-[clamp(100px,16vw,170px)] text-center md:px-[72px]">
+        <FocusReveal className="font-display text-[clamp(26px,3.6vw,40px)] italic leading-[1.4] tracking-[-0.01em] text-brand-dark">
+          <p>
+            &ldquo;We shut down four subscriptions and a dozen spreadsheets. My team finally sees every
+            client&apos;s deadlines, books and documents in one screen — and the AI catches mismatches before
+            we file.&rdquo;
+          </p>
+        </FocusReveal>
+        <FocusReveal targetOpacity={0.6} className="mt-8 text-[13px] font-semibold text-brand-dark">
+          <p>CA Rohan Agarwal — Partner, Agarwal &amp; Co., Bengaluru</p>
         </FocusReveal>
       </div>
     </DiagonalSection>
   );
 }
 
+// ── Final CTA ────────────────────────────────────────────────────────────────
 function FinalCTA() {
   const glow = useCursorGlow();
   return (
-    <DiagonalSection numeral="07" seam="rising-left" className="bg-brand text-white">
-      <div className="relative" {...glow.handlers}>
-        <div className="bg-grid absolute inset-0" />
-        <ParallaxLabel factor={0.04} className="pointer-events-none absolute inset-0">
-          <div className="aurora aurora-1 -left-32 -top-32 h-[420px] w-[420px] opacity-70" />
-        </ParallaxLabel>
-        <ParallaxLabel factor={-0.03} className="pointer-events-none absolute inset-0">
-          <div className="aurora aurora-3 -bottom-40 -right-32 h-[460px] w-[460px] opacity-70" />
-        </ParallaxLabel>
-        <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-        <div className="container-ps relative pt-32 pb-24 text-center md:pt-40 md:pb-28">
-          <FocusReveal>
-            <h2 className="mx-auto max-w-2xl font-display text-[30px] font-normal leading-tight tracking-tight md:text-[46px]">
-              Bring your whole practice into one place
+    <DiagonalSection seam="rising-left" className="bg-brand-dark text-white">
+      <SectionReveal>
+        <div className="relative text-center" {...glow.handlers}>
+          <div className="bg-grid absolute inset-0" />
+          <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
+          <div className="relative mx-auto max-w-[1100px] px-6 pt-[calc(clamp(90px,14vw,160px)+64px)] pb-[clamp(90px,14vw,160px)] md:px-[72px]">
+            <h2 className="mx-auto max-w-[16ch] font-display text-[clamp(34px,5.4vw,64px)] italic font-normal leading-[1.12] tracking-[-0.015em] text-white">
+              Bring your whole practice into one place.
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-[16px] leading-relaxed text-slate-300">
-              Start a free trial today, or talk to us about moving your firm across
-              from Tally, ClearTax or Winman.
-            </p>
-          </FocusReveal>
-          <FocusReveal>
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className="mt-10 flex flex-wrap justify-center gap-6">
               <Magnetic>
                 <a
                   href={appLinks.signup}
-                  className="btn-shine group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-[15px] font-semibold text-brand shadow-sm transition-transform duration-300 hover:scale-[1.03]"
+                  className="btn-shine inline-flex items-center justify-center rounded-md bg-brand-light px-7 py-3.5 text-[14px] font-semibold text-brand-dark transition-transform duration-300 hover:scale-[1.03]"
                 >
                   Start free trial
-                  <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
                 </a>
               </Magnetic>
               <Link
                 href="/support"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 px-7 py-4 text-[15px] font-semibold text-white transition-colors duration-300 hover:bg-white/10"
+                className="inline-flex items-center justify-center rounded-md border border-white/30 px-7 py-3.5 text-[14px] font-semibold text-white transition-colors hover:bg-white/10"
               >
                 Book a demo
               </Link>
             </div>
-            <p className="mt-7 text-[13px] text-slate-400">
+            <p className="mt-7 text-[13px] text-white/50">
               Already using PracticeSync?{" "}
-              <Link href="/access" className="font-semibold text-white underline-offset-4 hover:underline">
+              <Link href="/access" className="font-semibold text-white underline underline-offset-4">
                 Log in here
               </Link>
             </p>
-          </FocusReveal>
+          </div>
         </div>
-      </div>
+      </SectionReveal>
     </DiagonalSection>
   );
 }
 
 export default function HomePage() {
+  const [heroIn, setHeroIn] = useState(false);
+  // Stable identity so IntroLoader's effect doesn't re-run (and restart the
+  // loader count) when heroIn flips.
+  const handleExit = useCallback(() => setHeroIn(true), []);
+
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
-      <IntroLoader onExit={() => {}} />
+      <IntroLoader onExit={handleExit} />
       <ScrollJack>
-        <Hero />
+        <Hero revealed={heroIn} />
+        <MarqueeBand />
         <Problem />
         <Platform />
         <Trust />
