@@ -2,15 +2,17 @@
 POST /api/vendors/bulk — collapses the CSV-import UI's N-sequential-POST loop
 (one HTTP round-trip per vendor row) into a single request.
 
-vendors.py has no proactive duplicate pre-check (unlike customers.py) — it
-just attempts the insert and lets a DB-level unique-constraint violation
-surface the friendly "A vendor with this GSTIN or PAN already exists for this
-client." message. A batch insert is all-or-nothing in Postgres, so this
-harness simulates that DB behaviour: an insert into "vendors" (batch or
-single) raises a duplicate-key error if any row in the payload collides on
-(firm_id, client_id, gstin) with an already-persisted row, and otherwise
-inserts normally — same shape/semantics as test_tenant_isolation_phase4.py's
-simulated duplicate-key error.
+vendors.py now has the SAME proactive app-level duplicate pre-check as
+customers.py's bulk_create_customers (GSTIN, then PAN — CGST Act §25 / IT Act
+§139A), added after discovering vendors previously had NO duplicate
+protection at any layer: no app-level check, and no real DB unique
+constraint either (confirmed against live migrations), so a retried/
+re-uploaded vendor CSV silently created full duplicate vendor rows —
+mirroring the purchase-bills bulk-import incident this fix was modeled on.
+The insert-error classifier further down (_classify_db_error) is now a
+pure defense-in-depth backstop for a constraint that doesn't currently
+exist; this harness no longer needs to simulate one for the app-level-dedup
+scenarios below.
 """
 import routers.vendors as ven
 import services.opening_balance_service as obs
@@ -105,12 +107,49 @@ def test_gstin_collision_with_existing_row_reported_as_duplicate(monkeypatch):
     dup = res["data"]["duplicates"][0]
     assert dup["index"] == 0
     assert dup["name"] == "Duplicate Co"
-    assert dup["error"] == "A vendor with this GSTIN or PAN already exists for this client."
+    assert dup["existing_id"]  # matched against the pre-existing "Existing Co" row
     assert res["data"]["errors"] == []
     # Existing row untouched; only the one non-colliding vendor was added.
     assert len(db.rows("vendors")) == 2
     assert any(v["name"] == "Existing Co" for v in db.rows("vendors"))
     assert not any(v["name"] == "Duplicate Co" for v in db.rows("vendors"))
+
+
+# ── retry / resubmit safety — the actual production incident this mirrors ────
+
+def test_resubmitting_the_same_batch_creates_no_duplicates(monkeypatch):
+    """Reproduces the real incident: a large CSV import gets resubmitted
+    (browser timeout, ambiguous failure, user re-uploading the same file)
+    after the first submission already succeeded. Without app-level dedup,
+    the retry silently doubles every vendor. GSTIN is required here — like
+    customers.py, a vendor with neither GSTIN nor PAN has no reliable match
+    key and is a known, pre-existing gap shared with the customers importer,
+    not something this fix introduces."""
+    db = _setup(monkeypatch)
+    batch = [
+        dict(client_id="CLI", name="Alpha Supplies", gstin=GSTIN_B),
+        dict(client_id="CLI", name="Bravo Traders", gstin=GSTIN_A),
+    ]
+    first = _bulk(batch)
+    assert len(first["data"]["created"]) == 2
+
+    retry = _bulk(batch)
+    assert retry["success"] is True
+    assert retry["data"]["created"] == []
+    assert len(retry["data"]["duplicates"]) == 2
+    assert len(db.rows("vendors")) == 2  # not 4
+
+
+def test_same_gstin_twice_within_one_batch_only_creates_one(monkeypatch):
+    db = _setup(monkeypatch)
+    batch = [
+        dict(client_id="CLI", name="Duplicate Row One", gstin=GSTIN_A),
+        dict(client_id="CLI", name="Duplicate Row Two", gstin=GSTIN_A),
+    ]
+    res = _bulk(batch)
+    assert len(res["data"]["created"]) == 1
+    assert len(res["data"]["duplicates"]) == 1
+    assert len(db.rows("vendors")) == 1
 
 
 # ── malformed item ────────────────────────────────────────────────────────────
@@ -135,6 +174,20 @@ def test_malformed_item_reported_as_error_rest_of_batch_succeeds(monkeypatch):
 
 
 # ── opening balance auto-post ────────────────────────────────────────────────
+
+def test_single_create_vendor_returns_existing_on_gstin_collision(monkeypatch):
+    """Same guard on the single-row POST /api/vendors/ endpoint, not just
+    /bulk — a duplicate GSTIN silently returns the existing vendor (marked
+    duplicate=True) instead of creating a second row."""
+    db = _setup(monkeypatch)
+    db.seed("vendors", {"firm_id": FIRM, "client_id": "CLI", "name": "Existing Co",
+                        "gstin": GSTIN_A, "is_active": True, "opening_balance_paise": 0})
+    res = ven.create_vendor(VendorIn(client_id="CLI", name="Duplicate Co", gstin=GSTIN_A), CALLER)
+    assert res["success"] is True
+    assert res["data"]["duplicate"] is True
+    assert res["data"]["name"] == "Existing Co"
+    assert len(db.rows("vendors")) == 1
+
 
 def test_opening_balance_on_bulk_created_vendor_triggers_gl_post(monkeypatch):
     db = _setup(monkeypatch)

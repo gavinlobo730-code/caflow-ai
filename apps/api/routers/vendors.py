@@ -57,6 +57,38 @@ def _validate_gstin(gstin: str, state_code: Optional[str] = None) -> None:
         )
 
 
+def _norm(v: Optional[str]) -> str:
+    """Normalise an identifier for comparison (trim + upper). GSTIN/PAN are
+    canonically uppercase, so case never distinguishes two real records."""
+    return (v or "").strip().upper()
+
+
+def _match_existing_vendor(candidates: list[dict], gstin: str, pan: str) -> Optional[dict]:
+    """Master-data duplicate detection — mirrors customers.py's _match_existing
+    exactly (same CGST Act §25 / IT Act §139A rationale), applied to vendors.
+    Before this, vendors had ZERO duplicate protection at any layer (no app
+    check, no DB unique constraint) — the only "duplicate" handling was a
+    per-row insert-error classifier that could never fire, since nothing ever
+    raises the unique-violation it was watching for. A retried/re-uploaded
+    vendor CSV silently created full duplicate vendor rows, exactly like the
+    purchase-bills bulk-import bug this mirrors the fix for.
+
+    Match priority: GSTIN first (uniquely identifies a registration), then
+    PAN (identifies the entity, used only when no GSTIN). Only ACTIVE vendors
+    block creation — a previously deactivated namesake must never prevent
+    re-creating the vendor."""
+    if gstin:
+        for c in candidates:
+            if c.get("is_active", True) and _norm(c.get("gstin")) == gstin:
+                return c
+        return None
+    if pan:
+        for c in candidates:
+            if c.get("is_active", True) and _norm(c.get("pan")) == pan:
+                return c
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -104,13 +136,38 @@ def create_vendor(
         payload["is_active"] = True
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
 
+        gstin = _norm(payload.get("gstin"))
+        pan = _norm(payload.get("pan"))
+        client_id = payload.get("client_id")
+        firm_id = payload["firm_id"]
+
         if _USE_MOCK:
+            if gstin or pan:
+                candidates = [v for v in MOCK_VENDORS if v.get("client_id") == client_id and v.get("firm_id") == firm_id]
+                existing = _match_existing_vendor(candidates, gstin, pan)
+                if existing:
+                    return api_response(True, {**existing, "duplicate": True})
             payload["id"] = str(uuid.uuid4())
             MOCK_VENDORS.append(payload)
             return api_response(True, payload)
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+
+        # ── Duplicate guard (master-data integrity) — mirrors create_customer.
+        # Never silently create a second vendor matching an existing active one
+        # by GSTIN or PAN for the same client; re-importing/resubmitting must
+        # not create duplicates. ──────────────────────────────────────────────
+        if gstin or pan:
+            existing_resp = (
+                db.table("vendors").select("*")
+                .eq("client_id", client_id).eq("firm_id", firm_id).eq("is_active", True)
+                .execute()
+            )
+            existing = _match_existing_vendor(existing_resp.data or [], gstin, pan)
+            if existing:
+                return api_response(True, {**existing, "duplicate": True})
+
         resp = db.table("vendors").insert(payload).execute()
         if not resp.data:
             _logger.error("create_vendor: Supabase insert returned no data. payload=%s", payload)
@@ -301,6 +358,43 @@ def create_vendors_bulk(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+
+        # ── Duplicate guard — same rationale as create_vendor / customers.py's
+        # bulk_create_customers: ONE dedup-snapshot fetch per distinct client_id
+        # in the batch, checked against BOTH the pre-fetched existing rows AND
+        # rows already accepted earlier in this same batch, so two duplicate
+        # CSV rows never both get inserted. Without this, retrying/re-uploading
+        # the same vendor CSV silently created full duplicate vendor rows —
+        # there was no protection at any layer (no DB unique constraint either)
+        # before this fix. ────────────────────────────────────────────────────
+        firm_id = current_user.get("firm_id")
+        client_ids = sorted({p.get("client_id") for _, p in valid_items})
+        existing_by_client: dict[str, list[dict]] = {}
+        for cid in client_ids:
+            resp = (
+                db.table("vendors").select("*")
+                .eq("client_id", cid).eq("firm_id", firm_id).eq("is_active", True)
+                .execute()
+            )
+            existing_by_client[cid] = resp.data or []
+
+        accepted_in_batch: dict[str, list[dict]] = {cid: [] for cid in client_ids}
+        deduped_items: list[tuple[int, dict]] = []
+        for idx, payload in valid_items:
+            cid = payload.get("client_id")
+            gstin = _norm(payload.get("gstin"))
+            pan = _norm(payload.get("pan"))
+            candidates = existing_by_client.get(cid, []) + accepted_in_batch.get(cid, [])
+            match = _match_existing_vendor(candidates, gstin, pan) if (gstin or pan) else None
+            if match:
+                duplicates.append({"index": idx, "name": payload.get("name"), "existing_id": match.get("id")})
+                continue
+            accepted_in_batch.setdefault(cid, []).append(payload)
+            deduped_items.append((idx, payload))
+        valid_items = deduped_items
+
+        if not valid_items:
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
 
         # ── Attempt 1: single batch insert (the fast path) ──────────────────
         batch_rows = None
