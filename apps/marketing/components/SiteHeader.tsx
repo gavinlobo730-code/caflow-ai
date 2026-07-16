@@ -4,20 +4,36 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo } from "./Logo";
 import { Magnetic } from "./Cursor";
+import { useScrollJackContentRef } from "./ScrollJack";
 import { Menu, X, ArrowRight } from "./icons";
 import { NAV, appLinks } from "@/lib/site";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const contentRef = useScrollJackContentRef();
 
-  // Header condenses and gains depth once the page scrolls.
+  // Header condenses and gains depth once the page scrolls. On the home
+  // page, ScrollJack disables native scroll entirely (window.scrollY never
+  // changes), so this reads the content wrapper's own transformed position
+  // instead when it's mounted (contentRef.current — set only while the home
+  // page's own <ScrollJack> is on screen) — same fallback pattern as
+  // ReactiveMarquee. A plain 'scroll' listener can't cover both cases at
+  // once (native scroll never fires while ScrollJack is active), so this
+  // polls every frame instead — cheap for a single comparison, and correct
+  // across client-side navigation between home and every other page without
+  // this effect needing to re-run (SiteHeader stays mounted across route
+  // changes within the shared layout).
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    let raf = 0;
+    const tick = () => {
+      const signal = contentRef?.current ? -contentRef.current.getBoundingClientRect().top : window.scrollY;
+      setScrolled(signal > 12);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [contentRef]);
 
   return (
     <header

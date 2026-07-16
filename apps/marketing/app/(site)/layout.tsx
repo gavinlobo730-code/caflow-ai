@@ -1,6 +1,10 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { CustomCursor } from "@/components/Cursor";
+import { ScrollJackProvider } from "@/components/ScrollJack";
 
 // Shared chrome for the public marketing pages. The login gateway (/access)
 // lives OUTSIDE this group so it renders as a clean, standalone chooser without
@@ -8,29 +12,29 @@ import { CustomCursor } from "@/components/Cursor";
 // CustomCursor is mounted once here so it's live across every page in the
 // group without each page needing to remember to include it.
 //
-// NOT wrapped in components/SmoothScroll.tsx (site-wide eased scroll): it
-// fundamentally conflicts with `position: sticky`, which every pin mechanism
-// on the home page (StoryStage, ScrollStage x2) depends on. Sticky needs an
-// ancestor that *actually, natively* scrolls to compute its stuck state
-// against; SmoothScroll fakes scrolling with a transform on a fixed
-// (never-scrolling) ancestor instead, and confirmed by hand, multiple pinned
-// sections ended up rendering stacked/overlapping — the rail stuck on
-// "Scattered" while Trust-chapter content bled through underneath it. Fixing
-// that properly means replacing every sticky pin with a JS-driven one (the
-// standard fix libraries like GSAP ScrollSmoother document for this same
-// conflict), which is a much larger, riskier rewrite of already-verified
-// mechanisms than "add smooth scroll" was ever scoped to be.
+// ScrollJackProvider wraps everything (not just `main`) so SiteHeader's own
+// scroll-condense effect can read the same signal as the home page's content
+// — see ScrollJack.tsx's doc comment. The provider itself applies no
+// transform and costs nothing on the 5 pages that never mount `<ScrollJack>`.
+//
+// The home page renders its own footer (inside its <ScrollJack>, so it's
+// part of the same fake-scrolled content — anything outside that wrapper
+// would be unreachable once native scroll is disabled) instead of this
+// shared one, hence the isHome check below.
 export default function SiteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
+
   return (
-    <>
+    <ScrollJackProvider>
       <CustomCursor />
       <SiteHeader />
       <main>{children}</main>
-      <SiteFooter />
-    </>
+      {!isHome && <SiteFooter />}
+    </ScrollJackProvider>
   );
 }
