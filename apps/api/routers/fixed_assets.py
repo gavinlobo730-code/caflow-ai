@@ -213,13 +213,12 @@ def dispose_asset(
     (WHERE is_disposed = false) before any journal is posted. A second/retry
     request that loses the race — or arrives after a prior successful
     disposal — affects zero rows and 409s before ever touching the ledger,
-    so a duplicate disposal journal can never be created. `_journal_svc`
-    methods swallow their own exceptions and return None on failure (an
-    existing, intentional contract shared by every journal_for_* method in
-    Phase2JournalService — not something this fix changes); a None return is
-    therefore treated as a failed post here, and either that or a genuinely
-    raised exception rolls the claim back so the asset is never left
-    "disposed" with no corresponding journal.
+    so a duplicate disposal journal can never be created. As of task #103,
+    `journal_for_asset_disposal` re-raises unexpected errors instead of
+    swallowing them into a None return (a None return can now only mean
+    `_USE_MOCK`); either a raised exception or a None journal_id rolls the
+    claim back so the asset is never left "disposed" with no corresponding
+    journal.
     """
     db = _db()
     if not db:

@@ -525,8 +525,10 @@ def finalize_run(
     svc = Phase2JournalService()
     journal_id = svc.journal_for_payroll(run, firm_id, client_id)
     if not journal_id:
-        # In DB mode journal_for_payroll returns None only on a swallowed posting
-        # failure (logged there). Do NOT mark the run finalized — leaving it
+        # As of task #103, journal_for_payroll re-raises unexpected posting
+        # failures instead of swallowing them into a None return — so a
+        # falsy journal_id here can now only happen in _USE_MOCK mode. Kept
+        # as a defensive guard: do NOT mark the run finalized — leaving it
         # re-runnable so the Partner can retry once the cause is cleared (a retry is
         # safe: the kernel dedupes on reference_no=PAY-{month}). Prevents an
         # immutable "finalized" run with no GL entry reported as success.

@@ -10,8 +10,8 @@ import uuid
 
 import pytest
 
-from domain.inventory_service import seed_opening_balance, seed_opening_balances_batch
-from tests.e2e_harness import FakeDB, account_balance
+from domain.inventory_service import seed_opening_balance, seed_opening_balances_batch, record_stock_out
+from tests.e2e_harness import FakeDB, account_balance, trial_balance
 
 FIRM = "firm-inv-1"
 CLIENT = "client-inv-1"
@@ -64,6 +64,42 @@ def test_single_row_opening_balance_posts_a_journal(monkeypatch):
     entries = [e for e in db.rows("journal_entries") if e.get("firm_id") == FIRM]
     assert len(entries) == 1
     assert entries[0]["entry_type"] == "Opening"
+
+
+def test_opening_balance_covering_prior_oversold_position_splits_inventory_and_cogs(monkeypatch):
+    """task #103: opening stock entered for an item ALREADY oversold in the
+    ledger (a sale recorded before its opening balance was set up) must
+    split between real on-hand Inventory value and a COGS true-up for the
+    portion covering the earlier sale's now-known real cost — not silently
+    drop that cost, and not capitalise value for units that no longer exist."""
+    db = FakeDB()
+    _wire(monkeypatch, db)
+    inv_id, obe_id = _seed_coa(db)
+    cogs_id = db.seed("chart_of_accounts", {
+        "firm_id": FIRM, "client_id": CLIENT, "system_account_key": "cogs",
+        "account_name": "Cost of Goods Sold", "is_active": True,
+    })["id"]
+    item_id = str(uuid.uuid4())
+    _seed_item(db, item_id)
+
+    # Sell 3 units before any stock exists — oversold to -3, Rs 0 cost basis.
+    record_stock_out(db, firm_id=FIRM, client_id=CLIENT, service_catalogue_id=item_id,
+                     movement_date="2026-04-01", quantity=3, movement_type="sale")
+
+    # Opening balance: 10 units @ Rs 100 = Rs 1,000. 3 of those cover the
+    # deficit (Rs 300 true-up to COGS); 7 are genuine on-hand stock (Rs 700).
+    row = seed_opening_balance(
+        db, firm_id=FIRM, client_id=CLIENT, service_catalogue_id=item_id,
+        movement_date="2026-04-01", opening_qty=10, opening_cost_paise=1_000_00,
+    )
+
+    assert row is not None
+    assert row["running_qty_units"] == "7"
+    assert account_balance(db, inv_id) == 700_00        # Dr Inventory (excess only)
+    assert account_balance(db, cogs_id) == 300_00        # Dr COGS (true-up)
+    assert account_balance(db, obe_id) == -1_000_00      # Cr OBE — combined, full Rs 1,000
+    tb = trial_balance(db, FIRM, CLIENT)
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
 
 
 def test_single_row_still_seeds_ledger_when_coa_missing(monkeypatch):

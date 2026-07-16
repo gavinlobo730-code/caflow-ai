@@ -49,22 +49,64 @@ def _compute_stock_in(prev_qty: Decimal, prev_value_paise: int, quantity: Decima
     new average = (prior value + this movement's exact total cost) / new qty
     — computed from the exact total, never from qty * a rounded unit cost,
     so the average never drifts across repeated stock-ins.
+
+    task #103 (oversold absorb + COGS true-up): while prev_qty <= 0 — an
+    oversold position, force-closed to prev_value_paise == 0 by
+    _compute_stock_out — this stock-in is at least partly REPLENISHING units
+    that were already sold at an assumed cost (Rs 0, since the sale had
+    nothing to price them at) before their real cost was known. That
+    covering portion's cost must NOT become "value on hand": the quantity it
+    corresponds to is already gone. It comes back out as `trueup_paise` —
+    the real cost of those already-sold units — for the caller to post as a
+    Dr COGS correcting entry (mirroring mainstream ERPs: QuickBooks assigns
+    Rs 0 average cost to an oversold item, then "posts... an adjustment
+    entry to both COGS and inventory assets" once the bill arrives;
+    Microsoft Dynamics names this exact mechanism "Adjusting Transaction for
+    the Oversold Inventory Item" — reverse the estimated-cost posting,
+    repost at the real cost). Only the portion of this stock-in beyond what
+    clears the deficit is genuine new on-hand stock, valued at its own real
+    cost — this mirrors _compute_stock_out's existing force-close invariant
+    (qty <= 0 always pairs with value == 0) instead of contradicting it.
     """
     if quantity <= 0:
         raise ValueError("Stock-in quantity must be positive.")
     if total_cost_paise < 0:
         raise ValueError("Stock-in cost cannot be negative.")
     new_qty = prev_qty + quantity
-    new_value = prev_value_paise + total_cost_paise
-    new_avg = _round_paise(new_value / new_qty) if new_qty > 0 else 0
     unit_cost = _round_paise(total_cost_paise / quantity)
+
+    deficit_qty = min(quantity, -prev_qty) if prev_qty < 0 else Decimal(0)
+    trueup_paise = _round_paise(unit_cost * deficit_qty) if deficit_qty > 0 else 0
+
+    if new_qty <= 0:
+        # Still oversold (or exactly zeroed out) after this stock-in — the
+        # whole movement covers the deficit; none of it is value on hand.
+        return {
+            "quantity_delta": quantity,
+            "unit_cost_paise": unit_cost,
+            "value_delta_paise": 0,
+            "running_qty_units": new_qty,
+            "running_avg_cost_paise": 0,
+            "running_value_paise": 0,
+            "trueup_paise": total_cost_paise,
+        }
+
+    # Any deficit is now fully cleared; the remainder is genuine new stock.
+    # prev_value_paise is always 0 here whenever prev_qty <= 0 (force-close
+    # invariant), so when there was no deficit at all (prev_qty >= 0,
+    # deficit_qty == 0, trueup_paise == 0) this reduces to exactly the
+    # original formula: new_value = prev_value_paise + total_cost_paise.
+    excess_value = total_cost_paise - trueup_paise
+    new_value = prev_value_paise + excess_value
+    new_avg = _round_paise(new_value / new_qty)
     return {
         "quantity_delta": quantity,
         "unit_cost_paise": unit_cost,
-        "value_delta_paise": total_cost_paise,
+        "value_delta_paise": excess_value,
         "running_qty_units": new_qty,
         "running_avg_cost_paise": new_avg,
         "running_value_paise": new_value,
+        "trueup_paise": trueup_paise,
     }
 
 
@@ -221,6 +263,7 @@ def seed_opening_balance(
     journal_id = post_opening_stock_journal_entry(
         db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
         value_paise=int(calc["value_delta_paise"]), item_count=1, created_by=created_by,
+        trueup_paise=int(calc.get("trueup_paise", 0)),
     )
     _set_ledger_journal_entry_id(db, row.get("id") if row else None, journal_id)
     return row
@@ -358,11 +401,17 @@ def record_stock_in(
     prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
     prev_value = int(prev["running_value_paise"]) if prev else 0
     calc = _compute_stock_in(prev_qty, prev_value, Decimal(str(quantity)), int(total_cost_paise))
-    return _insert_and_cache(
+    row = _insert_and_cache(
         db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
         movement_date=movement_date, movement_type=movement_type, calc=calc,
         source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
     )
+    # task #103: surfaced separately from the ledger row (no DB column for
+    # it) — apply_purchase_to_inventory uses this to post a Dr COGS true-up
+    # for the portion of this stock-in that covered a prior oversold
+    # deficit; see _compute_stock_in's docstring.
+    row["trueup_paise"] = calc.get("trueup_paise", 0)
+    return row
 
 
 def record_stock_out_at_value(
@@ -557,9 +606,69 @@ def post_inventory_receipt_journal_entry(
         return None
 
 
+def post_inventory_trueup_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
+    reference_no: str, items: list[dict],
+    source_type: Optional[str] = None, source_id: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr Cost of Goods Sold (one combined total) / Cr [each line's own
+    resolved expense account, grouped] — task #103's oversold-replenishment
+    true-up. For the portion of a stock-in that covers units already sold
+    while the item was oversold (COGS assumed Rs 0 at sale time, since the
+    real cost wasn't known yet — see _compute_stock_in), this corrects that
+    estimate to the now-known real cost. Mirrors
+    post_inventory_receipt_journal_entry's account-resolution/grouping
+    exactly, but the debit lands on COGS instead of Inventory: this cost was
+    already consumed by an earlier sale, it was never going to sit on the
+    balance sheet as on-hand stock.
+
+    items: [{"value_paise": int, "expense_account_id": Optional[str]}, ...]
+    — one entry per stock-in line that had a true-up (deficit-covering)
+    portion; a line whose stock-in was entirely genuine new stock (no prior
+    deficit) simply contributes 0 here and is skipped."""
+    total_value = sum(int(i["value_paise"]) for i in items if int(i["value_paise"]) > 0)
+    if total_value <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        cogs_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Cost of Goods Sold%", system_key="cogs")
+        try:
+            purchases_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Purchase%")
+        except ValueError:
+            purchases_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Expense%")
+
+        by_account: dict = {}
+        for i in items:
+            value_paise = int(i["value_paise"])
+            if value_paise <= 0:
+                continue
+            acc = i.get("expense_account_id") or purchases_id
+            by_account[acc] = by_account.get(acc, 0) + value_paise
+
+        lines = [
+            {"account_id": cogs_id, "debit_paise": total_value, "credit_paise": 0,
+             "narration": f"Cost of goods sold — oversold true-up — {item_name}"},
+        ]
+        lines.extend(
+            {"account_id": acc, "debit_paise": 0, "credit_paise": amt,
+             "narration": f"Reclassify from expense — oversold true-up — {item_name}"}
+            for acc, amt in by_account.items()
+        )
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=f"{reference_no}-COGSTRUEUP", narration=f"Oversold cost true-up — {item_name}",
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
+            lines=lines,
+        )
+    except Exception as e:
+        _logger.warning("post_inventory_trueup_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
 def post_opening_stock_journal_entry(
     db, *, firm_id: str, client_id: str, movement_date: str, value_paise: int,
-    item_count: int, created_by: Optional[str] = None,
+    item_count: int, created_by: Optional[str] = None, trueup_paise: int = 0,
 ) -> Optional[str]:
     """Dr Inventory / Cr Opening Balance Equity for opening stock brought
     onto the books — the SAME contra ACCOUNT opening_balance_service already
@@ -597,31 +706,46 @@ def post_opening_stock_journal_entry(
     batch and call this ONCE — calling it per item would reintroduce the
     same per-row round-trip cost seed_opening_balances_batch exists to avoid.
 
+    trueup_paise (task #103): opening stock entered for an item ALREADY
+    oversold in the ledger (a sale recorded before its opening balance was
+    set up — see seed_opening_balance's docstring) corrects part of that
+    earlier sale's assumed-Rs-0 COGS to its now-known real cost, per
+    _compute_stock_in's oversold-absorb split. That portion is Dr Cost of
+    Goods Sold instead of Dr Inventory — it was never going to sit on the
+    balance sheet as on-hand stock — but still nets against the same Opening
+    Balance Equity contra as the rest of this entry.
+
     Never raises — a missing chart-of-accounts entry degrades the journal
     (the opening quantity/cost is still recorded in the ledger either way),
     not a reason to fail whatever created the item(s)."""
-    if value_paise <= 0:
+    total = int(value_paise) + int(trueup_paise)
+    if total <= 0:
         return None
     try:
         from services.phase2_journal_service import phase2_journal_service
 
-        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
         obe_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Opening Balance Equity%")
         reference_no = f"OPENING-STOCK-{uuid.uuid4().hex[:8].upper()}"
         narration = (
             f"Opening stock brought forward — {item_count} item{'s' if item_count != 1 else ''}"
         )
+        lines = []
+        if value_paise > 0:
+            inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+            lines.append({"account_id": inventory_id, "debit_paise": int(value_paise), "credit_paise": 0, "narration": "Opening stock"})
+        if trueup_paise > 0:
+            cogs_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Cost of Goods Sold%", system_key="cogs")
+            lines.append({"account_id": cogs_id, "debit_paise": int(trueup_paise), "credit_paise": 0,
+                          "narration": "Cost of goods sold — oversold true-up on opening stock"})
+        lines.append({"account_id": obe_id, "debit_paise": 0, "credit_paise": total, "narration": "Opening balance contra"})
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=reference_no, narration=narration,
             entry_type="Opening", source_type="InventoryOpening", source_id=None, created_by=created_by,
-            lines=[
-                {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": "Opening stock"},
-                {"account_id": obe_id, "debit_paise": 0, "credit_paise": value_paise, "narration": "Opening balance contra"},
-            ],
+            lines=lines,
         )
     except Exception as e:
-        _logger.warning("post_opening_stock_journal_entry skipped (value=%d, items=%d): %s", value_paise, item_count, e)
+        _logger.warning("post_opening_stock_journal_entry skipped (value=%d, trueup=%d, items=%d): %s", value_paise, trueup_paise, item_count, e)
         return None
 
 
@@ -708,6 +832,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         from services.phase2_journal_service import purchase_bill_journal_ref
         journal_ref = purchase_bill_journal_ref(bill["id"])
         receipt_items = []
+        trueup_items = []
         movement_ids = []
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
@@ -725,6 +850,16 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 "value_paise": int(movement["value_delta_paise"]),
                 "expense_account_id": line.get("expense_account_id"),
             })
+            # task #103: a stock-in that (fully or partly) covers a prior
+            # oversold deficit splits its cost between real on-hand value
+            # (receipt_items above) and a COGS true-up (this) — see
+            # _compute_stock_in / post_inventory_trueup_journal_entry.
+            trueup_paise = int(movement.get("trueup_paise") or 0)
+            if trueup_paise > 0:
+                trueup_items.append({
+                    "value_paise": trueup_paise,
+                    "expense_account_id": line.get("expense_account_id"),
+                })
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
         # ONE combined journal for the WHOLE bill (grouped by resolved expense
@@ -743,6 +878,17 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             )
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
+        # Separate COGS true-up journal (own reference suffix, see
+        # post_inventory_trueup_journal_entry) — posted independently of the
+        # receipt journal above since a bill fully absorbed into a prior
+        # deficit has trueup_items but no receipt_items at all.
+        if trueup_items:
+            post_inventory_trueup_journal_entry(
+                db, firm_id=firm_id, client_id=client_id, movement_date=bill.get("bill_date"),
+                item_name=f"purchase bill {reference_no}", reference_no=journal_ref,
+                items=trueup_items,
+                source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
+            )
     except Exception as e:
         _logger.error("apply_purchase_to_inventory failed for bill %s: %s", bill.get("id"), e, exc_info=True)
 
@@ -1075,6 +1221,33 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
                 )
                 for mid in movement_ids:
                     _set_ledger_journal_entry_id(db, mid, reversal_id)
+
+        # task #103: also reverse any oversold COGS true-up posted alongside
+        # this bill's receipt (post_inventory_trueup_journal_entry) —
+        # cancelling the bill withdraws the "real cost" that correction was
+        # based on, so leaving it standing would permanently correct an
+        # earlier oversold sale's COGS using a cost from a bill that no
+        # longer exists. Independent of the -INV journal above: a bill that
+        # was ENTIRELY a true-up (fully absorbed into a prior deficit, no
+        # excess) never posts a -INV journal at all.
+        trueup_ref = f"{purchase_bill_journal_ref(bill_id)}-COGSTRUEUP"
+        tjr = (
+            db.table("journal_entries").select("id")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("reference_no", trueup_ref).eq("is_posted", True)
+            .limit(1).execute().data
+        )
+        if tjr:
+            tjrnl_id = tjr[0]["id"]
+            already_reversed_trueup = (
+                db.table("journal_entries").select("id").eq("firm_id", firm_id).eq("reversal_of", tjrnl_id)
+                .limit(1).execute().data
+            )
+            if not already_reversed_trueup:
+                phase2_journal_service.reverse_entry(
+                    db, firm_id, tjrnl_id, today,
+                    narration=f"Cancellation of purchase bill {bill_reference} — oversold true-up reversal",
+                    created_by=created_by,
+                )
     except Exception as e:
         _logger.error("reverse_purchase_stock failed for bill %s: %s", bill_id, e, exc_info=True)
 
