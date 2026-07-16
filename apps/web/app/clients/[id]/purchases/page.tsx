@@ -1712,6 +1712,7 @@ interface OpenBillOption {
   net_payable_paise: number;
   paid_paise: number;
   debited_paise: number;
+  credit_note_paise: number;
 }
 
 function DebitNoteForm({
@@ -1743,7 +1744,7 @@ function DebitNoteForm({
     const supabase = getSupabaseClient();
     const { data } = await selectAll(() => supabase
       .from("purchase_bills")
-      .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise")
+      .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
       .eq("client_id", clientId)
       .eq("vendor_id", vId)
       .in("status", ["received", "partially_paid", "paid"])
@@ -1753,7 +1754,7 @@ function DebitNoteForm({
   }
 
   function outstanding(b: OpenBillOption): number {
-    return b.net_payable_paise - b.paid_paise - b.debited_paise;
+    return b.net_payable_paise + (b.credit_note_paise ?? 0) - b.paid_paise - b.debited_paise;
   }
 
   function setLine(idx: number, patch: Partial<DebitNoteLine>) {
@@ -2298,7 +2299,7 @@ function PurchaseCreditNoteForm({
     const supabase = getSupabaseClient();
     const { data } = await selectAll(() => supabase
       .from("purchase_bills")
-      .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise")
+      .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
       .eq("client_id", clientId)
       .eq("vendor_id", vId)
       .in("status", ["received", "partially_paid", "paid"])
@@ -2308,7 +2309,7 @@ function PurchaseCreditNoteForm({
   }
 
   function outstanding(b: OpenBillOption): number {
-    return b.net_payable_paise - b.paid_paise - b.debited_paise;
+    return b.net_payable_paise + (b.credit_note_paise ?? 0) - b.paid_paise - b.debited_paise;
   }
 
   function setLine(idx: number, patch: Partial<PurchaseCreditNoteLine>) {
