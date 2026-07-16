@@ -363,8 +363,11 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
-            _logger.error("journal_for_credit_note error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — do not
+            # swallow unexpected errors into a None "silent failure"; re-raise so
+            # the caller surfaces a real error instead of a misleading generic one.
+            _logger.error("journal_for_credit_note error: %s", e, exc_info=True)
+            raise
 
     def journal_for_debit_note(
         self, dn: dict, firm_id: str, client_id: str
@@ -428,8 +431,10 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
-            _logger.error("journal_for_debit_note error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_credit_note's comment above.
+            _logger.error("journal_for_debit_note error: %s", e, exc_info=True)
+            raise
 
     def journal_for_sales_debit_note(
         self, dn: dict, firm_id: str, client_id: str
@@ -513,8 +518,10 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
-            _logger.error("journal_for_sales_debit_note error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_credit_note's comment above.
+            _logger.error("journal_for_sales_debit_note error: %s", e, exc_info=True)
+            raise
 
     def journal_for_purchase_credit_note(
         self, cn: dict, firm_id: str, client_id: str
@@ -582,8 +589,10 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
-            _logger.error("journal_for_purchase_credit_note error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_credit_note's comment above.
+            _logger.error("journal_for_purchase_credit_note error: %s", e, exc_info=True)
+            raise
 
     def journal_for_purchase_bill(
         self, bill: dict, firm_id: str, client_id: str
@@ -731,8 +740,10 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
-            _logger.error("journal_for_purchase_bill error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_credit_note's comment above.
+            _logger.error("journal_for_purchase_bill error: %s", e, exc_info=True)
+            raise
 
     def journal_for_purchase_payment(
         self, payment: dict, firm_id: str, client_id: str
@@ -918,8 +929,10 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
-            _logger.error("journal_for_payroll error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_credit_note's comment above.
+            _logger.error("journal_for_payroll error: %s", e, exc_info=True)
+            raise
 
     def journal_for_asset_acquisition(
         self, asset: dict, firm_id: str, client_id: str
@@ -964,9 +977,16 @@ class Phase2JournalService:
                      "narration": "Bank payment for asset acquisition"},
                 ],
             )
+        except ValueError:
+            # Re-raise account resolution errors (unmapped asset-category CoA
+            # account) so the router returns 422 instead of a bare 500.
+            raise
         except Exception as e:
-            _logger.error("journal_for_asset_acquisition error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — do not
+            # swallow unexpected errors into a None "silent failure"; re-raise so
+            # the caller surfaces a real error instead of a misleading generic one.
+            _logger.error("journal_for_asset_acquisition error: %s", e, exc_info=True)
+            raise
 
     def journal_for_depreciation(
         self, asset: dict, depreciation_paise: int, period: str, firm_id: str, client_id: str
@@ -998,9 +1018,15 @@ class Phase2JournalService:
                      "narration": f"Accumulated depreciation: {asset['asset_name']}"},
                 ],
             )
+        except ValueError:
+            # Re-raise account resolution errors so the router returns 422
+            # instead of a bare 500.
+            raise
         except Exception as e:
-            _logger.error("journal_for_depreciation error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_asset_acquisition's comment above.
+            _logger.error("journal_for_depreciation error: %s", e, exc_info=True)
+            raise
 
     def journal_for_asset_disposal(
         self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str
@@ -1064,9 +1090,15 @@ class Phase2JournalService:
                 entry_type="Journal",
                 lines=lines,
             )
+        except ValueError:
+            # Re-raise account resolution errors so the router returns 422
+            # instead of a bare 500.
+            raise
         except Exception as e:
-            _logger.error("journal_for_asset_disposal error: %s", e)
-            return None
+            # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
+            # journal_for_asset_acquisition's comment above.
+            _logger.error("journal_for_asset_disposal error: %s", e, exc_info=True)
+            raise
 
     # ------------------------------------------------------------------ #
     #  Private Helpers                                                      #
