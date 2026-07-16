@@ -20,15 +20,41 @@ export default function PortalPage() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Direct Supabase read (was api.portal.listContacts → backend select("*")
+  // on client_portal_users). EXPLICIT column list only — this table also has
+  // invite_token (a live, single-use invite secret; see
+  // migrations/153_secure_invite_flows.sql) and invite_expires_at. A
+  // browser-side query is a different trust boundary than a backend JSON
+  // response: never select("*") here, or a live invite token lands on the
+  // client's JS heap / devtools / network tab for anyone with portal-page
+  // access to this client. Confirmed unused by this page today — the only
+  // frontend read of invite_token is the one-time value returned inline by
+  // api.portal.inviteContact()'s POST response, used immediately to build
+  // the magic-link URL below, never persisted into `contacts` state.
+  async function loadContacts(id: string): Promise<PortalContact[] | null> {
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from("client_portal_users")
+        .select("id, client_id, email, name, status, invited_at")
+        .eq("client_id", id)
+        .order("created_at", { ascending: false });
+      if (error) return null;
+      return data as PortalContact[];
+    } catch {
+      return null;
+    }
+  }
+
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     async function load() {
-      const [c, contactsRes] = await Promise.all([
+      const [c, contactsData] = await Promise.all([
         getClient(clientId).catch(() => null),
-        api.portal.listContacts(clientId).catch(() => null),
+        loadContacts(clientId),
       ]);
       if (c) setClient(c);
-      if (contactsRes?.success) setContacts(contactsRes.data.contacts);
+      if (contactsData) setContacts(contactsData);
     }
     load();
   }, [clientId]);
@@ -66,8 +92,8 @@ export default function PortalPage() {
       });
       if (otpErr) throw new Error(otpErr.message);
 
-      const refreshed = await api.portal.listContacts(clientId).catch(() => null);
-      if (refreshed?.success) setContacts(refreshed.data.contacts);
+      const refreshed = await loadContacts(clientId);
+      if (refreshed) setContacts(refreshed);
       setInviteSent(true);
 
       try {

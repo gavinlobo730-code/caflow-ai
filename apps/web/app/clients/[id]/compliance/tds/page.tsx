@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
@@ -50,37 +51,69 @@ const KYC_COLORS: Record<string, string> = {
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 function TDSDashboard({ clientId }: { clientId: string }) {
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [summary, setSummary] = useState<{
+    total_challans: number; total_deposited_paise: number;
+    total_returns: number; total_certificates: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch(`/api/tds-workspace/?client_id=${clientId}`)
-      .then((r) => setData(r.success ? r.data : null))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const supabase = getSupabaseClient();
+      const [
+        { data: challans, error: e1 },
+        { data: returns, error: e2 },
+        { data: certs, error: e3 },
+      ] = await Promise.all([
+        selectAll(() => supabase.from("tds_challans").select("id, amount_paise").eq("client_id", clientId)),
+        selectAll(() => supabase.from("tds_returns").select("id").eq("client_id", clientId)),
+        selectAll(() => supabase.from("tds_certificates").select("id").eq("client_id", clientId)),
+      ]);
+      if (cancelled) return;
+      if (e1 || e2 || e3) {
+        setSummary(null);
+        setLoading(false);
+        return;
+      }
+
+      // Mirrors tds_workspace.py::tds_dashboard's summary math exactly:
+      // counts of each table's rows plus a plain sum of challan amounts.
+      const total_deposited_paise = (challans ?? []).reduce(
+        (sum, c) => sum + ((c as { amount_paise: number | null }).amount_paise ?? 0), 0,
+      );
+      setSummary({
+        total_challans: (challans ?? []).length,
+        total_deposited_paise,
+        total_returns: (returns ?? []).length,
+        total_certificates: (certs ?? []).length,
+      });
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [clientId]);
 
   if (loading) return <DashboardSkeleton cards={4} />;
-  if (!data) return <p className="text-sm text-red-500">Failed to load TDS dashboard.</p>;
-
-  const summary = data.summary as Record<string, number>;
+  if (!summary) return <p className="text-sm text-red-500">Failed to load TDS dashboard.</p>;
 
   return (
     <div className="grid grid-cols-2 gap-4">
       <div className="rounded border p-4 bg-blue-50">
         <p className="text-xs text-[#64748B]">Total Challans</p>
-        <p className="text-2xl font-bold">{summary?.total_challans ?? 0}</p>
+        <p className="text-2xl font-bold">{summary.total_challans}</p>
       </div>
       <div className="rounded border p-4 bg-green-50">
         <p className="text-xs text-[#64748B]">Total Deposited</p>
-        <p className="text-2xl font-bold">{rupees(summary?.total_deposited_paise ?? 0)}</p>
+        <p className="text-2xl font-bold">{rupees(summary.total_deposited_paise)}</p>
       </div>
       <div className="rounded border p-4 bg-amber-50">
         <p className="text-xs text-[#64748B]">TDS Returns</p>
-        <p className="text-2xl font-bold">{summary?.total_returns ?? 0}</p>
+        <p className="text-2xl font-bold">{summary.total_returns}</p>
       </div>
       <div className="rounded border p-4 bg-purple-50">
         <p className="text-xs text-[#64748B]">Certificates</p>
-        <p className="text-2xl font-bold">{summary?.total_certificates ?? 0}</p>
+        <p className="text-2xl font-bold">{summary.total_certificates}</p>
       </div>
     </div>
   );

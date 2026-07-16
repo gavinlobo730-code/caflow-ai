@@ -174,7 +174,7 @@ export const yearEndApi = {
   checklist: {
     list: (engagementId: string) =>
       request<{ success: boolean; data: ChecklistItem[]; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/checklist`
+        `/api/year-end/${engagementId}/checklist`
       ),
     updateItem: (engagementId: string, itemId: string, body: { status?: ChecklistItemStatus; notes?: string }) =>
       request<{ success: boolean; data: ChecklistItem; error: string | null }>(
@@ -227,17 +227,24 @@ export const yearEndApi = {
   },
 
   financialStatements: {
+    // Backend route is GET /api/year-end/{engagement_id}/financial-statements
+    // (registered by routers/year_end_statements.py, prefix "/year-end" — it
+    // never has an "engagements/" segment and there is no "/live" suffix
+    // route at all). The handler itself generates the statements fresh from
+    // the GL on every call (see generate_financial_statements in
+    // services/year_end_financial_service.py) — it IS the live view; saved
+    // snapshots are the separate /financial-statements/versions endpoint.
     getLive: (engagementId: string) =>
       request<{ success: boolean; data: { balance_sheet: Record<string, unknown>; profit_loss: Record<string, unknown>; is_balanced: boolean }; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/financial-statements/live`
+        `/api/year-end/${engagementId}/financial-statements`
       ),
     versions: (engagementId: string) =>
       request<{ success: boolean; data: FinancialStatementVersion[]; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/financial-statements/versions`
+        `/api/year-end/${engagementId}/financial-statements/versions`
       ),
     createSnapshot: (engagementId: string) =>
       request<{ success: boolean; data: FinancialStatementVersion; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/financial-statements/snapshot`,
+        `/api/year-end/${engagementId}/financial-statements/snapshot`,
         { method: "POST" }
       ),
   },
@@ -301,23 +308,5 @@ export const yearEndApi = {
         `/api/year-end/engagements/${engagementId}/exports/generate`,
         { method: "POST", body: JSON.stringify({ export_type: exportType }) }
       ),
-  },
-
-  dashboard: {
-    get: (engagementId: string) =>
-      request<{
-        success: boolean;
-        data: {
-          engagement: YearEndEngagement;
-          checklist_total: number;
-          checklist_complete: number;
-          adjustments_count: number;
-          adjustments_total_paise: number;
-          current_version: number | null;
-          statements_generated_at: string | null;
-          recent_events: YearEndEvent[];
-        };
-        error: string | null;
-      }>(`/api/year-end/engagements/${engagementId}/dashboard`),
   },
 };

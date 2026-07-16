@@ -11,7 +11,8 @@ import {
   TrendingUp,
   User,
 } from "lucide-react";
-import { yearEndApi, type EngagementStatus, type YearEndEvent } from "@/lib/api/yearEnd";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type { EngagementStatus, YearEndEvent } from "@/lib/api/yearEnd";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -56,6 +57,25 @@ const STATUS_COLOR: Record<EngagementStatus, string> = {
   locked: "text-blue-700 bg-blue-50",
 };
 
+// Human-readable text for the event_type values written by
+// apps/api/routers/year_end_reviews.py's _record_review_event() into
+// year_end_reviews.event_type. Falls back to a title-cased version of the
+// raw event_type for anything not in this list (defensive — new review
+// actions shouldn't make the dashboard render a blank description).
+const EVENT_DESCRIPTIONS: Record<string, string> = {
+  submitted_for_review: "Submitted for review",
+  approved: "Review approved",
+  revision_requested: "Revision requested",
+  final_approved_and_locked: "Final approval — engagement locked",
+};
+
+function describeEvent(eventType: string): string {
+  return (
+    EVENT_DESCRIPTIONS[eventType] ??
+    eventType.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+  );
+}
+
 interface DashboardData {
   engagement: {
     id: string;
@@ -86,9 +106,125 @@ export default function YearEndDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await yearEndApi.dashboard.get(engagementId);
-      if (!res.success) throw new Error(res.error ?? "Failed to load dashboard");
-      setData(res.data as DashboardData);
+      const supabase = getSupabaseClient();
+
+      const [
+        { data: engRow, error: engErr },
+        { data: checklistRows, error: checklistErr },
+        { data: adjRows, error: adjErr },
+        { data: versionRows, error: versionErr },
+        { data: eventRows, error: eventErr },
+        { data: selfRows },
+      ] = await Promise.all([
+        // year_end_engagements — firm-scoped RLS (migration 154: yee_firm_isolation).
+        // No `version` column exists on this table (grep-confirmed against every
+        // year_end migration and router) — defaulted below.
+        supabase
+          .from("year_end_engagements")
+          .select("id, financial_year, status, updated_at")
+          .eq("id", engagementId)
+          .maybeSingle(),
+        // year_end_checklists — same table checklist/_page.tsx's backend call
+        // (routers/year_end_checklist.py) reads from. Only "complete" is used
+        // for the completion count, so the not_started/pending naming drift
+        // between that table's CHECK constraint and yearEnd.ts's
+        // ChecklistItemStatus type doesn't affect this computation.
+        supabase
+          .from("year_end_checklists")
+          .select("id, status")
+          .eq("engagement_id", engagementId),
+        // year_end_adjustments — same table adjustments/_page.tsx's backend call
+        // (routers/year_end_adjustments.py) reads from. amount_paise is the one
+        // column name that matches the frontend Adjustment type exactly.
+        supabase
+          .from("year_end_adjustments")
+          .select("id, amount_paise")
+          .eq("engagement_id", engagementId),
+        // financial_statement_versions — latest snapshot. Column is created_at,
+        // not generated_at (routers/year_end_statements.py never writes a
+        // generated_at column); used as statements_generated_at below since
+        // that's the moment the snapshot was produced.
+        supabase
+          .from("financial_statement_versions")
+          .select("version_number, created_at")
+          .eq("engagement_id", engagementId)
+          .order("version_number", { ascending: false })
+          .limit(1),
+        // year_end_reviews — the review-workflow audit trail written by
+        // _record_review_event() in routers/year_end_reviews.py (submit /
+        // approve / request-revision / final-approve). This is the existing
+        // "recent_events"-shaped source for this engagement; the general
+        // audit_log table (services/audit_service.log_event) was considered
+        // but rejected — see note below.
+        supabase
+          .from("year_end_reviews")
+          .select("id, engagement_id, event_type, comment, actor_id, created_at")
+          .eq("engagement_id", engagementId)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        // users — RLS restricts SELECT to the caller's own row (migration 153/
+        // 009: "users_own_row"), so this can only ever resolve the CURRENT
+        // user's display name, never other actors'. Used below to label an
+        // event as performed by name when the viewer is that actor; other
+        // actors' events fall back to actor: null (matches team/page.tsx's
+        // documented workaround for the same RLS limit).
+        supabase.from("users").select("auth_user_id, full_name"),
+      ]);
+
+      if (engErr) throw new Error(engErr.message);
+      if (!engRow) throw new Error("Engagement not found");
+      if (checklistErr) throw new Error(checklistErr.message);
+      if (adjErr) throw new Error(adjErr.message);
+      if (versionErr) throw new Error(versionErr.message);
+      if (eventErr) throw new Error(eventErr.message);
+
+      const checklist = (checklistRows ?? []) as { id: string; status: string }[];
+      const adjustments = (adjRows ?? []) as { id: string; amount_paise: number }[];
+      const latestVersion = ((versionRows ?? []) as { version_number: number; created_at: string }[])[0];
+      const events = (eventRows ?? []) as {
+        id: string;
+        engagement_id: string;
+        event_type: string;
+        comment: string | null;
+        actor_id: string | null;
+        created_at: string;
+      }[];
+      const selfNameByAuthId = new Map(
+        ((selfRows ?? []) as { auth_user_id: string; full_name: string | null }[]).map(
+          (r) => [r.auth_user_id, r.full_name]
+        )
+      );
+
+      const dashboard: DashboardData = {
+        engagement: {
+          id: engRow.id as string,
+          financial_year: engRow.financial_year as string,
+          status: engRow.status as EngagementStatus,
+          // No `version` column on year_end_engagements — see comment above.
+          version: 1,
+          updated_at: engRow.updated_at as string,
+        },
+        checklist_total: checklist.length,
+        checklist_complete: checklist.filter((i) => i.status === "complete").length,
+        adjustments_count: adjustments.length,
+        adjustments_total_paise: adjustments.reduce((s, a) => s + (a.amount_paise ?? 0), 0),
+        current_version: latestVersion?.version_number ?? null,
+        statements_generated_at: latestVersion?.created_at ?? null,
+        recent_events: events.map(
+          (e): YearEndEvent => ({
+            id: e.id,
+            engagement_id: e.engagement_id,
+            event_type: e.event_type,
+            description: e.comment
+              ? `${describeEvent(e.event_type)} — ${e.comment}`
+              : describeEvent(e.event_type),
+            actor: (e.actor_id && selfNameByAuthId.get(e.actor_id)) || null,
+            created_at: e.created_at,
+          })
+        ),
+      };
+
+      setData(dashboard);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {

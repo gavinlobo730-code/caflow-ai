@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { yearEndApi, type NoteToAccount } from "@/lib/api/yearEnd";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -37,9 +38,20 @@ export default function NotesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await yearEndApi.notes.list(engagementId);
-      if (!res.success) throw new Error(res.error ?? "Failed to load notes");
-      setNotes(res.data ?? []);
+      // Plain filtered select (notes_to_accounts, RLS-scoped to the firm) —
+      // no server-side computation for an existing list, so read directly
+      // instead of round-tripping through the FastAPI backend. Mirrors
+      // routers/year_end_notes.py::list_notes (same table, engagement_id
+      // filter, sequence_no ordering). Note *generation* is a separate,
+      // button-gated write (generateAll below) and stays backend-routed.
+      const supabase = getSupabaseClient();
+      const { data, error: sbError } = await supabase
+        .from("notes_to_accounts")
+        .select("*")
+        .eq("engagement_id", engagementId)
+        .order("sequence_no");
+      if (sbError) throw sbError;
+      setNotes((data as NoteToAccount[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {

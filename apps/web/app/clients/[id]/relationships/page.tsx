@@ -84,26 +84,25 @@ export default function ClientRelationshipsPage() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch entity roles for this client by scanning entity_roles table
-      const [rolesJson, matchesJson]: [
-        ApiResponse<EntityRole[]>,
-        ApiResponse<CrossClientMatch[]>
-      ] = await Promise.all([
-        apiFetch(`/api/relationships/entities?limit=100`).then(async (allEntities) => {
-          // Get all entity roles that link to this client
-          if (!allEntities.success) return { success: false, data: [], error: "Failed" };
-          // We'll query cross-client matches scoped to this client
-          return { success: true, data: [] as EntityRole[], error: null };
-        }),
-        apiFetch(`/api/relationships/cross-client-matches?reviewed=false`),
-      ]);
-      setRoles(rolesJson.data ?? []);
-      const clientMatches = matchesJson.success
-        ? matchesJson.data.filter(
-            (m: CrossClientMatch) => m.client_id_a === clientId || m.client_id_b === clientId
-          )
-        : [];
-      setMatches(clientMatches);
+      // Direct Supabase read (not api/relationships/cross-client-matches) — a
+      // plain read with no server-side computation, so routing it through the
+      // FastAPI backend only adds a cold-start hit. Mirrors
+      // routers/relationships.py's list_cross_client_matches (reviewed=false,
+      // newest first), but scoped server-side to THIS client instead of
+      // fetching every unreviewed match for the whole firm and filtering
+      // client-side: a cross_client_matches row references two different
+      // clients (client_id_a / client_id_b), so "scoped to this client" means
+      // either side references it — same condition the old code applied
+      // in-browser after the firm-wide fetch.
+      const db = getSupabaseClient();
+      const { data, error: matchesError } = await db
+        .from("cross_client_matches")
+        .select("*")
+        .eq("reviewed", false)
+        .or(`client_id_a.eq.${clientId},client_id_b.eq.${clientId}`)
+        .order("created_at", { ascending: false });
+      if (matchesError) throw matchesError;
+      setMatches((data as CrossClientMatch[]) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
+import { toLocalISO } from "@/lib/dateMath";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
@@ -44,42 +46,75 @@ const STATUS_COLORS: Record<string, string> = {
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 function GSTDashboard({ clientId }: { clientId: string }) {
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [data, setData] = useState<{
+    gstr1Count: number; gstr3bCount: number; gstr1Due: string; gstr3bDue: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch(`/api/gst-workspace/?client_id=${clientId}`)
-      .then((r) => setData(r.success ? r.data : null))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const supabase = getSupabaseClient();
+      const [{ data: g1, error: e1 }, { data: g3b, error: e2 }] = await Promise.all([
+        selectAll(() => supabase.from("gstr1_returns").select("id").eq("client_id", clientId)),
+        selectAll(() => supabase.from("gstr3b_returns").select("id").eq("client_id", clientId)),
+      ]);
+      if (cancelled) return;
+      if (e1 || e2) {
+        setData(null);
+        setLoading(false);
+        return;
+      }
+
+      // Due-date math mirrors gst_workspace.py::gst_dashboard, which resolves
+      // the CURRENT calendar period (today's month/year) and computes:
+      //   CGST Act §37 — GSTR-1 due 11th of the month following the period
+      //   CGST Act §39 — GSTR-3B due 20th of the month following the period
+      // (services/compliance_engine.py::gstr1_due_date/gstr3b_due_date).
+      const today = new Date();
+      let nextMonth = today.getMonth() + 2; // getMonth() is 0-indexed; +1 for "next", +1 to 1-index
+      let nextYear = today.getFullYear();
+      if (nextMonth > 12) {
+        nextMonth -= 12;
+        nextYear += 1;
+      }
+      const dueDateOf = (day: number) => toLocalISO(new Date(nextYear, nextMonth - 1, day));
+
+      setData({
+        gstr1Count: (g1 ?? []).length,
+        gstr3bCount: (g3b ?? []).length,
+        gstr1Due: dueDateOf(11),
+        gstr3bDue: dueDateOf(20),
+      });
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [clientId]);
 
   if (loading) return <DashboardSkeleton cards={4} />;
   if (!data) return <p className="text-sm text-red-500">Failed to load GST dashboard.</p>;
-
-  const due = data.upcoming_due_dates as Record<string, string>;
-  const g1 = (data.gstr1_returns as unknown[]) ?? [];
-  const g3b = (data.gstr3b_returns as unknown[]) ?? [];
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded border p-4 bg-blue-50">
           <p className="text-xs text-[#64748B]">GSTR-1 due date</p>
-          <p className="font-semibold">{due?.gstr1 ?? "—"}</p>
+          <p className="font-semibold">{data.gstr1Due}</p>
         </div>
         <div className="rounded border p-4 bg-amber-50">
           <p className="text-xs text-[#64748B]">GSTR-3B due date</p>
-          <p className="font-semibold">{due?.gstr3b ?? "—"}</p>
+          <p className="font-semibold">{data.gstr3bDue}</p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div className="rounded border p-4">
           <p className="font-medium">GSTR-1 returns</p>
-          <p className="text-2xl font-bold mt-1">{g1.length}</p>
+          <p className="text-2xl font-bold mt-1">{data.gstr1Count}</p>
         </div>
         <div className="rounded border p-4">
           <p className="font-medium">GSTR-3B returns</p>
-          <p className="text-2xl font-bold mt-1">{g3b.length}</p>
+          <p className="text-2xl font-bold mt-1">{data.gstr3bCount}</p>
         </div>
       </div>
     </div>

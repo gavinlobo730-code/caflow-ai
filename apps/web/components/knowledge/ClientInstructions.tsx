@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { StickyNote, Plus, Pin, Archive, RefreshCw } from "lucide-react";
-import { api, type ApiResp } from "@/lib/api";
+import { api } from "@/lib/api";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 export interface Instruction {
   id: string; client_id: string; title: string; body: string;
@@ -23,12 +25,23 @@ export function ClientInstructions({
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", body: "", is_pinned: false });
 
+  // Direct Supabase read (RLS-enforced: knowledge_articles_own_firm /
+  // client_instructions_assignment / *_internal_partner_only policies mirror
+  // the backend's _assert_client_access + G1 gate) — avoids a FastAPI
+  // cold-start for a plain filtered select. Mirrors kb.list_client_instructions'
+  // ordering (pinned first, then newest).
   const load = useCallback(async () => {
     if (!clientId) return;
     setLoading(true); setError(null);
     try {
-      const r = await api.instructions.list(clientId) as ApiResp<Instruction[]>;
-      setItems(r.data ?? []);
+      const supabase = getSupabaseClient();
+      const { data } = await selectAll(() =>
+        supabase.from("client_instructions")
+          .select("id, client_id, title, body, is_pinned, created_at")
+          .eq("client_id", clientId)
+          .order("is_pinned", { ascending: false })
+          .order("created_at", { ascending: false }));
+      setItems((data as Instruction[]) ?? []);
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to load instructions"); }
     finally { setLoading(false); }
   }, [clientId]);

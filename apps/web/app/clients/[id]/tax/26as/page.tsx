@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Upload, RefreshCw, Loader2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
@@ -63,12 +64,30 @@ export default function Form26ASPage() {
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
-    const [uploadRes, reconRes] = await Promise.all([
-      apiFetch(`/api/form-26as/uploads?client_id=${clientId}&financial_year=${fy}`),
-      apiFetch(`/api/form-26as/reconciliation?client_id=${clientId}&financial_year=${fy}`),
+    // Plain reads — routed directly to Supabase (RLS: firm_isolation) instead
+    // of through the FastAPI backend, which cold-starts. Mirrors list_uploads
+    // and get_reconciliation in apps/api/domain/income_tax/form26as_service.py:
+    // get_reconciliation is just the last stored reconciliation row (no
+    // recompute) — the actual POST /reconcile matching logic stays backend-routed.
+    const supabase = getSupabaseClient();
+    const [{ data: uploadsData }, { data: reconData }] = await Promise.all([
+      supabase
+        .from("form_26as_uploads")
+        .select("id, financial_year, parse_status, total_records, uploaded_at")
+        .eq("client_id", clientId)
+        .eq("financial_year", fy)
+        .order("uploaded_at", { ascending: false }),
+      supabase
+        .from("form_26as_reconciliations")
+        .select("total_26as_records, matched_count, mismatch_count, missing_in_books_count, total_tds_26as_paise, total_tds_books_paise, variance_paise, ai_insight_triggered, status")
+        .eq("client_id", clientId)
+        .eq("financial_year", fy)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
-    setUploads(uploadRes.data ?? []);
-    setRecon(reconRes.data ?? null);
+    setUploads((uploadsData as Upload26AS[]) ?? []);
+    setRecon((reconData as Reconciliation | null) ?? null);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);

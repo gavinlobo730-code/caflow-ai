@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-react";
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 // ── Status cycle: not_started → in_progress → complete ────────────────────
 const STATUS_CYCLE: Record<ChecklistItemStatus, ChecklistItemStatus> = {
@@ -50,9 +51,29 @@ export default function ChecklistPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await yearEndApi.checklist.list(engagementId);
-      if (!res.success) throw new Error(res.error ?? "Failed to load checklist");
-      setItems(res.data ?? []);
+      // Plain filtered select (year_end_checklists, RLS-scoped to the firm) —
+      // no server-side computation for an existing list, so read directly
+      // instead of round-tripping through the FastAPI backend. Mirrors
+      // routers/year_end_checklist.py::list_checklist's own query (same
+      // table, engagement_id filter, sequence_no ordering).
+      const supabase = getSupabaseClient();
+      const { data, error: sbError } = await supabase
+        .from("year_end_checklists")
+        .select("*")
+        .eq("engagement_id", engagementId)
+        .order("sequence_no");
+      if (sbError) throw sbError;
+      if (data && data.length > 0) {
+        setItems(data as unknown as ChecklistItem[]);
+      } else {
+        // A brand-new engagement has no checklist rows yet. The backend
+        // auto-initializes the 12 standard items on first read (a real
+        // write — see list_checklist's "if not existing: insert…" branch),
+        // so that seeding stays backend-routed; only fall back to it here.
+        const res = await yearEndApi.checklist.list(engagementId);
+        if (!res.success) throw new Error(res.error ?? "Failed to load checklist");
+        setItems(res.data ?? []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {

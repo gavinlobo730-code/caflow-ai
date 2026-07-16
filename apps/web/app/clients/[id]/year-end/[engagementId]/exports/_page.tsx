@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { FileText, BarChart3, Package, Download, Loader2, AlertTriangle } from "lucide-react";
 import { yearEndApi, type ExportRecord, type EngagementStatus } from "@/lib/api/yearEnd";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -64,13 +65,25 @@ export default function ExportsPage() {
     setLoading(true);
     setError(null);
     try {
+      // Both are plain filtered/single-row selects (year_end_exports,
+      // year_end_engagements; RLS-scoped to the firm) — no server-side
+      // computation, so read directly instead of round-tripping through the
+      // FastAPI backend. Mirrors routers/year_end_exports.py::list_exports
+      // (same table, engagement_id filter, created_at-desc ordering) and
+      // routers/year_end.py::get_engagement (single row by id) — only the
+      // `status` field of the latter is used here.
+      const supabase = getSupabaseClient();
       const [exRes, engRes] = await Promise.all([
-        yearEndApi.exports.list(engagementId),
-        yearEndApi.engagements.get(engagementId),
+        supabase
+          .from("year_end_exports")
+          .select("*")
+          .eq("engagement_id", engagementId)
+          .order("created_at", { ascending: false }),
+        supabase.from("year_end_engagements").select("*").eq("id", engagementId).single(),
       ]);
-      if (!exRes.success) throw new Error(exRes.error ?? "Failed to load exports");
-      setExports(exRes.data ?? []);
-      if (engRes.success) setEngagementStatus(engRes.data.status);
+      if (exRes.error) throw exRes.error;
+      setExports((exRes.data as ExportRecord[]) ?? []);
+      if (!engRes.error && engRes.data) setEngagementStatus((engRes.data as { status: EngagementStatus }).status);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
