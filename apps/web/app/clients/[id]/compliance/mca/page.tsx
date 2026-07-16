@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
@@ -57,11 +58,15 @@ function CompaniesTab({ clientId }: { clientId: string }) {
     authorized_capital_paise: "", paid_up_capital_paise: "", company_type: "PVT",
   });
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    apiFetch(`/api/mca-workspace/companies?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
-      .finally(() => setLoading(false));
+    const supabase = getSupabaseClient();
+    const { data } = await selectAll(() => supabase
+      .from("mca_companies")
+      .select("id, company_name, cin, incorporation_date, registered_address, authorized_capital_paise, paid_up_capital_paise, company_type")
+      .eq("client_id", clientId));
+    setRows((data as Record<string, unknown>[]) ?? []);
+    setLoading(false);
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);

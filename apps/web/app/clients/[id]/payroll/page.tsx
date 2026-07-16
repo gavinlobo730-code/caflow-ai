@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
@@ -116,12 +116,18 @@ function DashboardTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const db = getSupabaseClient();
+    // Direct Supabase reads (not api/payroll/runs + api/payroll/employees) —
+    // these are plain client-scoped selects with no server-side computation,
+    // so routing them through the FastAPI backend only adds a cold-start hit.
+    // Mirrors routers/payroll.py's list_runs (order by month desc) and
+    // list_employees (eq status=active, order by name).
     Promise.all([
-      apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`).catch(() => ({ data: [] as PayrollRun[] })),
-      apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`).catch(() => ({ data: [] as Employee[] })),
+      db.from("payroll_runs").select("*").eq("client_id", clientId).order("month", { ascending: false }),
+      db.from("payroll_employees").select("*").eq("client_id", clientId).eq("status", "active").order("name"),
     ]).then(([r, e]) => {
-      setRuns(r.data || []);
-      setEmployees(e.data || []);
+      setRuns((r.data as PayrollRun[]) ?? []);
+      setEmployees((e.data as Employee[]) ?? []);
       setLoading(false);
     });
   }, [clientId]);

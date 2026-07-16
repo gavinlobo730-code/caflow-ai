@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Loader2, Calendar, ChevronRight, FileCode } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -57,9 +58,19 @@ export default function YearEndPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/year-end/engagements?client_id=${clientId}`);
-      if (!res.success) throw new Error(res.error ?? "Failed to load");
-      setEngagements(res.data ?? []);
+      // Plain filtered select (year_end_engagements, RLS-scoped to the firm) —
+      // no server-side computation, so read directly instead of round-tripping
+      // through the FastAPI backend (which cold-starts on its hosting tier).
+      // Mirrors routers/year_end.py::list_engagements: same table, same
+      // client_id filter, same created_at-desc ordering.
+      const supabase = getSupabaseClient();
+      const { data, error: sbError } = await supabase
+        .from("year_end_engagements")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      if (sbError) throw sbError;
+      setEngagements((data as Engagement[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {

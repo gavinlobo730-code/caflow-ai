@@ -136,26 +136,48 @@ export default function ClientHealthPage() {
   const [overrideForm, setOverrideForm] = useState(EMPTY_OVERRIDE);
   const [savingOverride, setSavingOverride] = useState(false);
 
+  // Plain filtered reads — routed directly to Supabase (RLS: health_scores,
+  // health_score_history, health_overrides, health_alerts all scope on
+  // firm_id = get_my_firm_id(), migration 154). The FastAPI backend cold-starts
+  // on its hosting tier, so reads that are just `.eq(...)` selects skip it
+  // entirely, matching the pattern already used by Sales/Inventory/etc.
+  // The actual score COMPUTATION (POST .../calculate) stays backend-routed —
+  // that's real business logic, not a plain read.
   const loadAll = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
     setError(null);
     try {
-      const [scoreJson, histJson, alertsJson, overridesJson]: [
-        ApiResponse<HealthScore>,
-        ApiResponse<HistoryRecord[]>,
-        ApiResponse<HealthAlert[]>,
-        ApiResponse<HealthOverride[]>
-      ] = await Promise.all([
-        apiFetch(`/api/health/scores/${clientId}`),
-        apiFetch(`/api/health/scores/${clientId}/history`),
-        apiFetch(`/api/health/alerts?client_id=${clientId}`),
-        apiFetch(`/api/health/overrides?client_id=${clientId}`),
+      const supabase = getSupabaseClient();
+      const [scoreRes, histRes, alertsRes, overridesRes] = await Promise.all([
+        supabase.from("health_scores").select("*").eq("client_id", clientId).maybeSingle(),
+        supabase
+          .from("health_score_history")
+          .select("id, overall_score, health_grade, recorded_at")
+          .eq("client_id", clientId)
+          .order("recorded_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("health_alerts")
+          .select("*")
+          .eq("client_id", clientId)
+          .eq("is_resolved", false)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("health_overrides")
+          .select("*")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false }),
       ]);
-      setScore(scoreJson.success ? scoreJson.data : null);
-      setHistory(histJson.success ? histJson.data : []);
-      setAlerts(alertsJson.success ? alertsJson.data.filter((a) => !a.is_resolved) : []);
-      setOverrides(overridesJson.success ? overridesJson.data : []);
+      if (scoreRes.error) throw new Error(scoreRes.error.message);
+      if (histRes.error) throw new Error(histRes.error.message);
+      if (alertsRes.error) throw new Error(alertsRes.error.message);
+      if (overridesRes.error) throw new Error(overridesRes.error.message);
+      setScore((scoreRes.data as HealthScore | null) ?? null);
+      setHistory((histRes.data as HistoryRecord[]) ?? []);
+      setAlerts((alertsRes.data as HealthAlert[]) ?? []);
+      setOverrides((overridesRes.data as HealthOverride[]) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {

@@ -1208,8 +1208,17 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
       const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
       setMcActive(active);
       if (!active) return;
-      const list = await apiGet(`/api/currencies?active_only=true`, token);
-      if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+      // Direct Supabase, not /api/currencies — that endpoint is a plain
+      // currencies-table select (domain/currency/currency_service.py:
+      // list_currencies, no business logic); the policy check above is the
+      // real server-side gate and stays backend-routed.
+      const supabase = getSupabaseClient();
+      const { data } = await supabase
+        .from("currencies")
+        .select("code, symbol, display_name, minor_unit, is_active")
+        .eq("is_active", true)
+        .order("code");
+      if (!cancelled) setCurrencies((data as CurrencyOption[]) ?? []);
     })();
     return () => { cancelled = true; };
   }, [clientId]);

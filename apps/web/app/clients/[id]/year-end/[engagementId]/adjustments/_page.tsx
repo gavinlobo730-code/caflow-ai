@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { yearEndApi, type Adjustment, type AdjustmentType, type AdjustmentStatus } from "@/lib/api/yearEnd";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -68,9 +69,19 @@ export default function AdjustmentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await yearEndApi.adjustments.list(engagementId);
-      if (!res.success) throw new Error(res.error ?? "Failed to load");
-      setAdjustments(res.data ?? []);
+      // Plain filtered select (year_end_adjustments, RLS-scoped to the firm)
+      // — no server-side computation, so read directly instead of
+      // round-tripping through the FastAPI backend. Mirrors
+      // routers/year_end_adjustments.py::list_adjustments (same table,
+      // engagement_id filter, created_at-ascending ordering).
+      const supabase = getSupabaseClient();
+      const { data, error: sbError } = await supabase
+        .from("year_end_adjustments")
+        .select("*")
+        .eq("engagement_id", engagementId)
+        .order("created_at", { ascending: true });
+      if (sbError) throw sbError;
+      setAdjustments((data as Adjustment[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {

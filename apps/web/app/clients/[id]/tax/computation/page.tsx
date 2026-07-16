@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -99,14 +100,34 @@ export default function TaxComputationPage() {
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
-    const [snapsRes, disallRes, lossRes] = await Promise.all([
-      apiFetch(`/api/itr/snapshots?client_id=${clientId}&financial_year=${fy}`),
-      apiFetch(`/api/itr/disallowances?client_id=${clientId}&financial_year=${fy}`),
-      apiFetch(`/api/itr/bf-losses?client_id=${clientId}`),
+    // Plain reads — routed directly to Supabase (RLS: firm_isolation) instead
+    // of through the FastAPI backend, which cold-starts. Mirrors the exact
+    // table/columns/filters/ordering of list_snapshots, list_disallowances,
+    // and list_bf_losses in apps/api/domain/income_tax/computation_workspace.py.
+    // The actual computation (POST /api/income-tax/compute) stays backend-routed.
+    const supabase = getSupabaseClient();
+    const [{ data: snapsData }, { data: disallData }, { data: lossData }] = await Promise.all([
+      supabase
+        .from("tax_computation_snapshots")
+        .select("id, version, regime, financial_year, taxable_income_paise, tax_liability_paise, net_payable_paise, is_refund, status, created_at")
+        .eq("client_id", clientId)
+        .eq("financial_year", fy)
+        .order("version", { ascending: false }),
+      supabase
+        .from("tax_disallowances")
+        .select("id, section, description, amount_paise, status, auto_detected")
+        .eq("client_id", clientId)
+        .eq("financial_year", fy)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("brought_forward_losses")
+        .select("id, assessment_year, loss_type, original_amount_paise, remaining_amount_paise, expiry_assessment_year")
+        .eq("client_id", clientId)
+        .order("assessment_year"),
     ]);
-    setSnapshots(snapsRes.data ?? []);
-    setDisallowances(disallRes.data ?? []);
-    setBfLosses(lossRes.data ?? []);
+    setSnapshots((snapsData as Snapshot[]) ?? []);
+    setDisallowances((disallData as Disallowance[]) ?? []);
+    setBfLosses((lossData as BFLoss[]) ?? []);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);

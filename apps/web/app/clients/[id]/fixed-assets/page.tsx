@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -127,9 +129,25 @@ function RegisterTab({ clientId }: { clientId: string }) {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
-      const j = await res.json();
-      setAssets(j.data ?? []);
+      // Direct Supabase, not api.fixed-assets.list() — that endpoint is a
+      // plain client_id-scoped select (RLS enforces firm_id) filtered to
+      // non-disposed assets, plus one derived field (current_wdv_paise =
+      // purchase_cost_paise - accumulated_depreciation_paise, recomputed on
+      // every read, never persisted — see routers/fixed_assets.py:list_assets).
+      // No business logic here worth an extra backend hop for.
+      const supabase = getSupabaseClient();
+      const { data } = await selectAll(() => supabase
+        .from("fixed_assets")
+        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, notes")
+        .eq("client_id", clientId)
+        .eq("is_disposed", false)
+        .order("purchase_date", { ascending: false })
+        .order("id"));
+      const rows = ((data as Omit<Asset, "current_wdv_paise">[]) ?? []).map((a) => ({
+        ...a,
+        current_wdv_paise: a.purchase_cost_paise - a.accumulated_depreciation_paise,
+      }));
+      setAssets(rows);
     } catch { setAssets([]); }
     setLoading(false);
   }, [clientId]);

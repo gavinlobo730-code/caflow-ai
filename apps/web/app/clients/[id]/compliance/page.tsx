@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
-import { getComplianceCalendar, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
+import { getComplianceCalendarDirect, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -55,9 +55,18 @@ function NoticesSection({ clientId }: { clientId: string }) {
   const [noticeText, setNoticeText] = useState("");
   const [extracting, setExtracting] = useState(false);
 
-  const loadNotices = useCallback(() => {
-    apiFetch(`/api/document-intelligence-v2/notices?client_id=${clientId}`)
-      .then((r) => setNotices(r.success ? r.data : []));
+  const loadNotices = useCallback(async () => {
+    // Direct Supabase (RLS-scoped: government_notices carries firm-isolation +
+    // assignment-scope + internal-client-guardrail policies, same pattern as
+    // sales/page.tsx's load()) — was previously an unconditional apiFetch on
+    // mount hitting the FastAPI list_notices handler for no reason beyond a
+    // plain .select("*").eq(firm_id).eq(client_id).
+    const { data, error } = await getSupabaseClient()
+      .from("government_notices")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+    setNotices(error || !data ? [] : data);
   }, [clientId]);
 
   useEffect(() => { loadNotices(); }, [loadNotices]);
@@ -178,10 +187,10 @@ export default function CompliancePage() {
     async function load() {
       setLoading(true);
       try {
-        let comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+        let comp = await getComplianceCalendarDirect(clientId).catch(() => [] as ComplianceEntry[]);
         if (comp.length === 0) {
           await seedComplianceCalendar(clientId).catch(() => undefined);
-          comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+          comp = await getComplianceCalendarDirect(clientId).catch(() => [] as ComplianceEntry[]);
         }
         setCompliance(comp);
       } finally {
@@ -195,7 +204,7 @@ export default function CompliancePage() {
 
   async function reloadCompliance() {
     if (!clientId || clientId === "_placeholder") return;
-    const comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+    const comp = await getComplianceCalendarDirect(clientId).catch(() => [] as ComplianceEntry[]);
     setCompliance(comp);
   }
 
