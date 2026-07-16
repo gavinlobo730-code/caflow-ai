@@ -210,24 +210,43 @@ def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: s
         pass
 
 
+# client_portal_users carries a live, single-use invite secret (invite_token),
+# its expiry, and the internal Supabase auth reference (auth_user_id). The
+# frontend's own direct-Supabase read of this table already excludes these
+# (apps/web/.../portal/page.tsx:loadContacts) with the same rationale: a
+# repeatable read must never hand back a still-valid, replayable credential.
+# invite_contact() below is the one deliberate exception — its POST response
+# is the one-time channel that hands the freshly-minted token back to the
+# inviting CA's own browser so it can immediately build the magic link (see
+# that function for why). Every other contact-returning function funnels
+# through here so that exception can't spread by accident.
+_SENSITIVE_CONTACT_FIELDS = {"invite_token", "invite_expires_at", "auth_user_id"}
+
+
+def _sanitize_contact(contact: dict) -> dict:
+    return {k: v for k, v in contact.items() if k not in _SENSITIVE_CONTACT_FIELDS}
+
+
 def list_contacts(firm_id: str, client_id: str, db=None) -> list[dict]:
     if _USE_MOCK:
-        return [dict(c) for c in MOCK_PORTAL_CONTACTS
+        return [_sanitize_contact(c) for c in MOCK_PORTAL_CONTACTS
                 if c.get("firm_id") == firm_id and c.get("client_id") == client_id]
     db = db or _db()
-    return (db.table("client_portal_users").select("*")
+    rows = (db.table("client_portal_users").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .order("created_at", desc=True).execute().data or [])
+    return [_sanitize_contact(r) for r in rows]
 
 
 def get_contact(firm_id: str, contact_id: str, db=None) -> Optional[dict]:
     if _USE_MOCK:
-        return next((dict(c) for c in MOCK_PORTAL_CONTACTS
-                     if c.get("id") == contact_id and c.get("firm_id") == firm_id), None)
+        contact = next((c for c in MOCK_PORTAL_CONTACTS
+                        if c.get("id") == contact_id and c.get("firm_id") == firm_id), None)
+        return _sanitize_contact(contact) if contact else None
     db = db or _db()
     rows = (db.table("client_portal_users").select("*")
             .eq("id", contact_id).eq("firm_id", firm_id).limit(1).execute().data or [])
-    return rows[0] if rows else None
+    return _sanitize_contact(rows[0]) if rows else None
 
 
 def _enable_portal(firm_id: str, client_id: str, db) -> None:
@@ -288,6 +307,12 @@ def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str]
 
     _audit(firm_id, client_id, contact.get("id"), "portal_invite", actor, {"email": email})
     _send_invite_email(email, client_id, firm_id, invite_token)
+    # Deliberately NOT run through _sanitize_contact(): this response is the
+    # one-time channel the inviting CA's own browser uses to build the magic
+    # link right now (apps/web/.../portal/page.tsx:handleSendInvite reads
+    # res.data.contact.invite_token immediately, never persists it). Every
+    # other function in this file returns a sanitized contact so that
+    # exception stays confined to this single call.
     return contact
 
 
@@ -309,7 +334,10 @@ def resend_invite(firm_id: str, contact_id: str, actor: Optional[dict] = None, d
         (db or _db()).table("client_portal_users").update(fields).eq("id", contact_id).eq("firm_id", firm_id).execute()
     _audit(firm_id, contact["client_id"], contact_id, "portal_invite_resend", actor)
     _send_invite_email(contact["email"], contact["client_id"], firm_id, invite_token)
-    return {**contact, **fields}
+    # Unlike invite_contact(), nothing in the frontend consumes this response's
+    # token today — the new one is delivered by email only. Sanitize so it
+    # can't leak if a future caller reads the response instead of the inbox.
+    return _sanitize_contact({**contact, **fields})
 
 
 def deactivate_contact(firm_id: str, contact_id: str, actor: Optional[dict] = None, db=None) -> dict:
@@ -324,4 +352,4 @@ def deactivate_contact(firm_id: str, contact_id: str, actor: Optional[dict] = No
     else:
         (db or _db()).table("client_portal_users").update(fields).eq("id", contact_id).eq("firm_id", firm_id).execute()
     _audit(firm_id, contact["client_id"], contact_id, "portal_deactivate", actor)
-    return {**contact, **fields}
+    return _sanitize_contact({**contact, **fields})
