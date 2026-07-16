@@ -21,6 +21,7 @@
  */
 import { api } from "@/lib/api";
 import type { ApiResp } from "@/lib/api";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 export interface ComplianceEntry {
   id: string;
@@ -85,6 +86,53 @@ export async function getComplianceCalendar(clientId?: string): Promise<Complian
   if (clientId) params.client_id = clientId;
   const res = (await api.complianceOps.obligations(params)) as ApiResp<{ obligations: RawObligation[]; total: number }>;
   return (res.data?.obligations ?? []).map(toEntry);
+}
+
+/**
+ * Direct-Supabase variant of getComplianceCalendar, for the internal-staff
+ * client workspace ONLY (apps/web/app/clients/[id]/compliance/page.tsx).
+ *
+ * list_obligations (routers/compliance_ops.py) does a plain
+ * compliance_record_service.list_records() (.eq(firm_id).eq(client_id), see
+ * repositories/compliance_records_repository.py) and then applies
+ * core.authz.filter_by_client() — assignment scope: Partner sees the whole
+ * firm, every other role only sees clients present in their own
+ * user_client_assignments rows (Module 9.0 / M2, M5).
+ *
+ * Migration 084_assignment_scoped_rls.sql puts the identical check
+ * (public.can_access_client(), keyed off the same user_client_assignments
+ * table, same Partner-is-firm-wide exception) directly on compliance_records
+ * as a RESTRICTIVE policy — it ANDs with the firm-isolation policy from
+ * 005_supabase_auth_rls.sql and the internal-client guardrail from
+ * 074_internal_client_rls_guardrails.sql, so a browser session authenticated
+ * via getSupabaseClient() (anon key + user JWT, real RLS enforcement — unlike
+ * the backend's service-role key) gets a result set that is a subset-or-equal
+ * of what filter_by_client() would return, never a superset. Verified safe to
+ * read directly for that reason.
+ *
+ * NOT wired into getComplianceCalendar() itself: that function is also called
+ * from app/deadlines/page.tsx, app/reports/page.tsx,
+ * app/clients/[id]/overview/page.tsx, and app/client-portal/page.tsx. The
+ * portal page authenticates portal users through a separate identity table
+ * (client_portal_users, hardened in 163_harden_client_portal_users_rls.sql)
+ * whose relationship to user_client_assignments/RLS has not been verified —
+ * changing the shared function would silently change what a portal client
+ * can read, which is outside what this conversion checked. Also note
+ * risk_score is computed in Python (_compute_risk_score in
+ * domain/compliance_record_service.py), not a stored column, so it comes
+ * back undefined here; the compliance page doesn't render it.
+ */
+export async function getComplianceCalendarDirect(clientId: string): Promise<ComplianceEntry[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("compliance_records")
+    .select(
+      "id, client_id, compliance_type, obligation_type, period_start, period_end, due_date, status, filed_date, acknowledgement_no, notes"
+    )
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .order("due_date");
+  if (error || !data) return [];
+  return (data as RawObligation[]).map(toEntry);
 }
 
 /** Generates the client's statutory obligations for the current FY
