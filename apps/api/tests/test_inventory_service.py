@@ -51,6 +51,54 @@ def test_compute_stock_in_blends_average_across_two_purchases():
     assert calc["running_avg_cost_paise"] == 1_100_00
 
 
+# ── Oversold absorb + COGS true-up (task #103) ──────────────────────────────
+
+def test_compute_stock_in_partial_cover_of_oversold_absorbs_entirely_as_trueup():
+    # -5 units on hand (oversold, force-closed to Rs 0 value). A purchase of
+    # only 3 units @ Rs 100 = Rs 300 doesn't clear the deficit (still -2
+    # after) — the WHOLE Rs 300 must be a COGS true-up, none of it "value on
+    # hand" (the old bug stranded Rs 300 on a still-negative quantity).
+    calc = _compute_stock_in(Decimal("-5"), 0, Decimal("3"), 300_00)
+    assert calc["running_qty_units"] == Decimal("-2")
+    assert calc["running_value_paise"] == 0
+    assert calc["running_avg_cost_paise"] == 0
+    assert calc["value_delta_paise"] == 0
+    assert calc["trueup_paise"] == 300_00
+    assert calc["unit_cost_paise"] == 100_00
+
+
+def test_compute_stock_in_exact_cover_of_oversold_leaves_zero_value():
+    # -5 units on hand; a purchase of exactly 5 units clears the deficit to
+    # zero — still no value on hand (nothing left over), whole cost trues up.
+    calc = _compute_stock_in(Decimal("-5"), 0, Decimal("5"), 500_00)
+    assert calc["running_qty_units"] == Decimal("0")
+    assert calc["running_value_paise"] == 0
+    assert calc["running_avg_cost_paise"] == 0
+    assert calc["trueup_paise"] == 500_00
+
+
+def test_compute_stock_in_full_cover_with_excess_splits_trueup_and_new_stock():
+    # -5 units on hand; a purchase of 8 units @ Rs 100 = Rs 800 clears the
+    # deficit (5 units, Rs 500 true-up) AND leaves 3 genuine new units on
+    # hand at real cost (Rs 300 value, Rs 100/unit average — not diluted by
+    # the true-up portion).
+    calc = _compute_stock_in(Decimal("-5"), 0, Decimal("8"), 800_00)
+    assert calc["running_qty_units"] == Decimal("3")
+    assert calc["trueup_paise"] == 500_00
+    assert calc["value_delta_paise"] == 300_00
+    assert calc["running_value_paise"] == 300_00
+    assert calc["running_avg_cost_paise"] == 100_00
+
+
+def test_compute_stock_in_no_deficit_has_zero_trueup():
+    # prev_qty >= 0 (nothing oversold) must behave exactly as before — the
+    # new split logic is a no-op here.
+    calc = _compute_stock_in(Decimal("10"), 10_000_00, Decimal("10"), 12_000_00)
+    assert calc["trueup_paise"] == 0
+    assert calc["value_delta_paise"] == 12_000_00
+    assert calc["running_value_paise"] == 22_000_00
+
+
 def test_compute_stock_in_rejects_nonpositive_quantity():
     with pytest.raises(ValueError):
         _compute_stock_in(Decimal("0"), 0, Decimal("0"), 100_00)
@@ -474,6 +522,123 @@ def test_apply_purchase_to_inventory_records_stock_in_and_updates_average():
     goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
     assert goods_row["stock_qty_units"] == "10"
     assert goods_row["avg_cost_paise"] == 1_000_00
+
+
+def _capture_journal_calls(monkeypatch, accounts):
+    """Shared helper: monkeypatch _find_account/_create_journal to capture
+    EVERY _create_journal call (not just the last) as a list of kwargs, since
+    apply_purchase_to_inventory can post two independent journals (receipt +
+    true-up) for one bill."""
+    import services.phase2_journal_service as pjs
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account",
+                        lambda db, firm_id, client_id, pattern, system_key=None: accounts[pattern])
+    calls = []
+    def _fake_create_journal(db, **kwargs):
+        calls.append(kwargs)
+        return f"journal-{len(calls)}"
+    monkeypatch.setattr(pjs.phase2_journal_service, "_create_journal", _fake_create_journal)
+    return calls
+
+
+def test_apply_purchase_to_inventory_partial_cover_posts_trueup_only(monkeypatch):
+    # Item is oversold to -5 (Rs 0 cost basis, as with any oversold sale). A
+    # purchase bill covering only 3 of those units must post NO receipt/
+    # capitalisation journal (nothing becomes on-hand value) — only a COGS
+    # true-up for the real cost of the units already sold.
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_out(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+                     movement_date="2026-04-01", quantity=Decimal("5"), movement_type="sale")
+    db.store["purchase_bill_lines"] = [
+        {"id": "pline-1", "bill_id": "bill-1", "description": "Widget x3", "quantity": "3",
+         "taxable_amount_paise": 300_00, "expense_account_id": "acct-expense", "service_catalogue_id": "good-1"},
+    ]
+    bill = {"id": "bill-1", "bill_no": "BILL-2", "bill_date": "2026-04-10", "client_id": "client-1"}
+    # %Purchase% is probed eagerly as the expense-account FALLBACK even though
+    # this line's own expense_account_id is set (and wins) — see
+    # post_inventory_trueup_journal_entry's account-resolution order.
+    calls = _capture_journal_calls(monkeypatch, {"%Cost of Goods Sold%": "acct-cogs", "%Purchase%": "acct-fallback"})
+
+    apply_purchase_to_inventory(db, firm_id="firm-1", client_id="client-1", bill=bill)
+
+    ledger = get_stock_ledger(db, "good-1")
+    assert ledger[-1]["running_qty_units"] == "-2"
+    assert ledger[-1]["running_value_paise"] == 0
+
+    assert len(calls) == 1  # no receipt journal — nothing capitalised
+    trueup = calls[0]
+    assert trueup["reference_no"].endswith("-COGSTRUEUP")
+    assert any(l["account_id"] == "acct-cogs" and l["debit_paise"] == 300_00 for l in trueup["lines"])
+    assert any(l["account_id"] == "acct-expense" and l["credit_paise"] == 300_00 for l in trueup["lines"])
+
+
+def test_apply_purchase_to_inventory_full_cover_with_excess_posts_both_journals(monkeypatch):
+    # Item oversold to -5. A purchase of 8 units @ Rs 100 clears the deficit
+    # (Rs 500 true-up) AND leaves 3 genuine new units on hand (Rs 300
+    # capitalised as Inventory) — both journals must post, independently.
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_out(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+                     movement_date="2026-04-01", quantity=Decimal("5"), movement_type="sale")
+    db.store["purchase_bill_lines"] = [
+        {"id": "pline-1", "bill_id": "bill-1", "description": "Widget x8", "quantity": "8",
+         "taxable_amount_paise": 800_00, "expense_account_id": "acct-expense", "service_catalogue_id": "good-1"},
+    ]
+    bill = {"id": "bill-1", "bill_no": "BILL-3", "bill_date": "2026-04-10", "client_id": "client-1"}
+    calls = _capture_journal_calls(monkeypatch, {
+        "%Inventor%": "acct-inventory", "%Purchase%": "acct-expense", "%Cost of Goods Sold%": "acct-cogs",
+    })
+
+    apply_purchase_to_inventory(db, firm_id="firm-1", client_id="client-1", bill=bill)
+
+    ledger = get_stock_ledger(db, "good-1")
+    assert ledger[-1]["running_qty_units"] == "3"
+    assert ledger[-1]["running_value_paise"] == 300_00
+    assert ledger[-1]["running_avg_cost_paise"] == 100_00
+
+    assert len(calls) == 2
+    receipt = next(c for c in calls if c["reference_no"].endswith("-INV"))
+    trueup = next(c for c in calls if c["reference_no"].endswith("-COGSTRUEUP"))
+    assert any(l["account_id"] == "acct-inventory" and l["debit_paise"] == 300_00 for l in receipt["lines"])
+    assert any(l["account_id"] == "acct-cogs" and l["debit_paise"] == 500_00 for l in trueup["lines"])
+    assert any(l["account_id"] == "acct-expense" and l["credit_paise"] == 500_00 for l in trueup["lines"])
+
+
+def test_reverse_purchase_stock_also_reverses_trueup_journal(monkeypatch):
+    # Cancelling a bill that fully absorbed into a prior deficit (partial-
+    # cover case above) must reverse the true-up journal too — otherwise a
+    # COGS correction survives with no purchase behind it.
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_out(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+                     movement_date="2026-04-01", quantity=Decimal("5"), movement_type="sale")
+    db.store["purchase_bill_lines"] = [
+        {"id": "pline-1", "bill_id": "bill-1", "description": "Widget x3", "quantity": "3",
+         "taxable_amount_paise": 300_00, "expense_account_id": "acct-expense", "service_catalogue_id": "good-1"},
+    ]
+    bill = {"id": "bill-1", "bill_no": "BILL-4", "bill_date": "2026-04-10", "client_id": "client-1"}
+    import services.phase2_journal_service as pjs
+    accounts = {"%Cost of Goods Sold%": "acct-cogs", "%Purchase%": "acct-fallback"}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account",
+                        lambda db, firm_id, client_id, pattern, system_key=None: accounts[pattern])
+
+    def _fake_create_journal(db, **k):
+        table = db.store.setdefault("journal_entries", [])
+        row = {"id": f"je-{len(table)}", "firm_id": k["firm_id"], "client_id": k["client_id"],
+               "reference_no": k["reference_no"], "is_posted": True}
+        table.append(row)
+        return row["id"]
+    monkeypatch.setattr(pjs.phase2_journal_service, "_create_journal", _fake_create_journal)
+    reversed_calls = []
+    monkeypatch.setattr(pjs.phase2_journal_service, "reverse_entry",
+                        lambda db, firm_id, journal_id, date, **k: reversed_calls.append(journal_id) or "rev-id")
+
+    apply_purchase_to_inventory(db, firm_id="firm-1", client_id="client-1", bill=bill)
+    trueup_entry = next(e for e in db.store["journal_entries"] if e["reference_no"].endswith("-COGSTRUEUP"))
+
+    reverse_purchase_stock(db, firm_id="firm-1", client_id="client-1", bill_id="bill-1", bill_reference="BILL-4")
+
+    assert reversed_calls == [trueup_entry["id"]]
 
 
 # ── Reversal on cancellation ─────────────────────────────────────────────────
