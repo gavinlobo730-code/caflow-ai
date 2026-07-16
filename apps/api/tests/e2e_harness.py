@@ -352,7 +352,9 @@ class _Rpc:
             )
             if inv is None:
                 raise Exception(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
-            total = int(inv.get("total_paise", 0))
+            # A sales debit note (CGST Act §34(3)) increases what's collectible —
+            # mirrors migration 211's patch to the real settle_receipt_atomic.
+            total = int(inv.get("total_paise", 0)) + int(inv.get("debit_note_paise", 0) or 0)
             credited = int(inv.get("credited_paise", 0) or 0)
             new_paid = int(inv.get("paid_paise", 0) or 0) + allocated_paise
             if new_paid + credited > total:

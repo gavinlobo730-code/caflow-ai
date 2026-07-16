@@ -463,15 +463,17 @@ def get_outstanding_summary(
         for cust in (customers.data or []):
             inv_resp = (
                 db.table("client_sales_invoices")
-                .select("id,total_paise,paid_paise,credited_paise,status")
+                .select("id,total_paise,paid_paise,credited_paise,debit_note_paise,status")
                 .eq("customer_id", cust["id"])
                 .eq("firm_id", firm_id)
                 .not_.in_("status", ["paid", "cancelled"])
                 .execute()
             )
-            # Net receivable = total − cash paid − credit notes applied (integer paise).
+            # Net receivable = (total + debit notes) − cash paid − credit notes
+            # applied (CGST Act §34, integer paise).
             inv_outstanding = sum(
-                (i.get("total_paise", 0) - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
+                (i.get("total_paise", 0) + (i.get("debit_note_paise", 0) or 0)
+                 - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
                 for i in (inv_resp.data or [])
             )
             # Integer arithmetic only; opening balance always >= 0
@@ -752,16 +754,18 @@ def get_customer_outstanding(
 
         inv_resp = (
             db.table("client_sales_invoices")
-            .select("id,invoice_no,invoice_date,total_paise,paid_paise,credited_paise,status")
+            .select("id,invoice_no,invoice_date,total_paise,paid_paise,credited_paise,debit_note_paise,status")
             .eq("customer_id", customer_id)
             .eq("firm_id", firm_id)
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
         )
         invoices = inv_resp.data or []
-        # Net receivable = total − cash paid − credit notes applied (integer paise).
+        # Net receivable = (total + debit notes) − cash paid − credit notes
+        # applied (CGST Act §34, integer paise).
         inv_outstanding = sum(
-            (i.get("total_paise", 0) - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
+            (i.get("total_paise", 0) + (i.get("debit_note_paise", 0) or 0)
+             - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
             for i in invoices
         )
         total_outstanding = inv_outstanding + opening_balance  # integer paise

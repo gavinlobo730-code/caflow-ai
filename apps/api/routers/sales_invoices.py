@@ -245,7 +245,8 @@ def get_outstanding(
     try:
         if _USE_MOCK:
             total = sum(
-                (inv.get("total_paise", 0) - inv.get("paid_paise", 0) - (inv.get("credited_paise", 0) or 0))
+                (inv.get("total_paise", 0) + (inv.get("debit_note_paise", 0) or 0)
+                 - inv.get("paid_paise", 0) - (inv.get("credited_paise", 0) or 0))
                 for inv in MOCK_SALES_INVOICES
                 if inv["client_id"] == client_id and inv.get("status") not in ("paid", "cancelled")
             )
@@ -255,15 +256,17 @@ def get_outstanding(
         db = get_supabase()
         resp = (
             db.table("client_sales_invoices")
-            .select("total_paise,paid_paise,credited_paise")
+            .select("total_paise,paid_paise,credited_paise,debit_note_paise")
             .eq("client_id", client_id)
             .eq("firm_id", current_user.get("firm_id"))
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
         )
-        # Net receivable = total − cash paid − credit notes applied (integer paise).
+        # Net receivable = (total + debit notes) − cash paid − credit notes applied
+        # (CGST Act §34, integer paise).
         outstanding = sum(
-            (r.get("total_paise", 0) - r.get("paid_paise", 0) - (r.get("credited_paise", 0) or 0))
+            (r.get("total_paise", 0) + (r.get("debit_note_paise", 0) or 0)
+             - r.get("paid_paise", 0) - (r.get("credited_paise", 0) or 0))
             for r in (resp.data or [])
         )
         return api_response(True, {"client_id": client_id, "outstanding_paise": outstanding})
@@ -1380,7 +1383,7 @@ def cancel_invoice(
         db = get_supabase()
         firm_id = current_user.get("firm_id")
         resp = (db.table("client_sales_invoices")
-                .select("status, journal_entry_id, invoice_no, client_id, paid_paise, credited_paise")
+                .select("status, journal_entry_id, invoice_no, client_id, paid_paise, credited_paise, debit_note_paise")
                 .eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
@@ -1391,13 +1394,15 @@ def cancel_invoice(
         if status == "draft":
             raise HTTPException(status_code=422, detail="Draft invoices are deleted, not cancelled.")
         # Accounting guard (prevent cancellation where the rules require): never cancel
-        # an invoice that carries settlements — the receipt/credit-note journals would
-        # be stranded. Reverse those or issue a credit note instead (CGST Act §34).
-        if int(inv.get("paid_paise") or 0) > 0 or int(inv.get("credited_paise") or 0) > 0:
+        # an invoice that carries settlements — the receipt/credit-note/debit-note
+        # journals would be stranded (a debit note's allocation would orphan too).
+        # Reverse those or issue a credit/debit note instead (CGST Act §34).
+        if (int(inv.get("paid_paise") or 0) > 0 or int(inv.get("credited_paise") or 0) > 0
+                or int(inv.get("debit_note_paise") or 0) > 0):
             raise HTTPException(
                 status_code=409,
-                detail=("This invoice has receipts or credit notes applied and cannot be cancelled. "
-                        "Reverse the receipt(s) or issue a credit note instead."),
+                detail=("This invoice has receipts, credit notes or debit notes applied and cannot be cancelled. "
+                        "Reverse the receipt(s) or issue a credit/debit note instead."),
             )
 
         # A cancellation reversal is a NEW posting dated today — it must fall in an
