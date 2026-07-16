@@ -15,18 +15,18 @@ export type PortalContact = {
   invited_at?: string | null; activated_at?: string | null; deactivated_at?: string | null;
 };
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  // Perf/UX: bound every request so a cold-starting/unreachable backend fails
-  // fast with a clear message instead of hanging the UI indefinitely. 45s covers
-  // a Render cold start; the warm-up ping (AuthContext) usually avoids hitting it.
+// Perf/UX: bound every request so a cold-starting/unreachable backend fails
+// fast with a clear message instead of hanging the UI indefinitely. 45s covers
+// a Render cold start; the warm-up ping (AuthContext) usually avoids hitting it.
+async function fetchWithTimeout(path: string, options: RequestInit | undefined, token: string | undefined): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 45_000);
-  let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, {
+    return await fetch(`${BASE_URL}${path}`, {
       ...options,
       signal: options?.signal ?? controller.signal,
       headers: {
@@ -35,13 +35,36 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         ...(options?.headers ?? {}),
       },
     });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("The server is taking too long to respond (it may be waking up). Please retry in a moment.");
-    }
-    throw e;
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(path, options, token);
+  } catch (e) {
+    // A sleeping Render free-tier instance takes 30-60s to cold-start. The
+    // first request either times out (our own AbortError above) or the
+    // connection fails outright before any response comes back (TypeError
+    // "Failed to fetch" — the same underlying symptom the browser reports as
+    // a misleading CORS error, since there's no response to carry a CORS
+    // header). Either way nothing was processed server-side, so one retry
+    // after a short delay is safe — by then the instance has usually
+    // finished waking up.
+    const isTimeout = e instanceof DOMException && e.name === "AbortError";
+    const isNetworkFailure = e instanceof TypeError;
+    if (!isTimeout && !isNetworkFailure) throw e;
+    await sleep(5_000);
+    try {
+      res = await fetchWithTimeout(path, options, token);
+    } catch {
+      throw new Error("The server is taking too long to respond (it may be waking up). Please retry in a moment.");
+    }
   }
   if (!res.ok) {
     const err = await res.text();
