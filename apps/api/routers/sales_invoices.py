@@ -1140,6 +1140,11 @@ def update_invoice(
             inv_resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
             inv = inv_resp.data[0]
             is_interstate = data.get("is_interstate", inv.get("is_interstate", False))
+            # task #103: currency/exchange_rate can never change on edit (no such
+            # fields on SalesInvoiceUpdateIn) — reconstruct the FROZEN DocumentCurrency
+            # from the already-stored row (never re-resolve/re-validate a new rate).
+            from domain.currency.document_currency import document_currency_from_row
+            dc = document_currency_from_row(db, inv)
 
             computed_lines = []
             total_taxable = 0
@@ -1196,19 +1201,37 @@ def update_invoice(
 
             # Update aggregate totals in invoice
             data.pop("lines")
+            # task #103: the per-line totals above are in the document's TXN currency
+            # minor units (same as _create_invoice_core's pre-conversion sums) — they
+            # must be converted to base (INR) paise via dc.to_base before being written
+            # to the base *_paise columns, exactly like create does (and like
+            # update_purchase_bill already does via _compute_bill_lines_and_totals).
+            # Previously this wrote the raw txn-currency sums straight into the base
+            # columns (a $1,000 line at rate 83.5 wrote ₹1,000, not ₹83,500 — a ~83x
+            # understatement) and never refreshed txn_taxable/txn_total_gst/txn_total,
+            # leaving them stale from creation.
+            txn_taxable    = total_taxable
+            txn_total_gst  = total_cgst + total_sgst + total_igst
+            txn_total      = txn_taxable + txn_total_gst
+            base_taxable   = dc.to_base(total_taxable)
+            base_cgst      = dc.to_base(total_cgst)
+            base_sgst      = dc.to_base(total_sgst)
+            base_igst      = dc.to_base(total_igst)
+            base_total_gst = base_cgst + base_sgst + base_igst
+            base_total     = base_taxable + base_total_gst
             # Invoice-level round-off (nearest ₹1), mirroring the create path. INR
-            # only — a foreign-currency draft (txn_currency != INR) is not rounded.
-            base_total_edit = total_taxable + total_cgst + total_sgst + total_igst
-            round_off_edit = (
-                _round_off_paise(base_total_edit)
-                if (inv.get("txn_currency") or "INR") == "INR" else 0
-            )
-            data["taxable_amount_paise"] = total_taxable
-            data["cgst_paise"]           = total_cgst
-            data["sgst_paise"]           = total_sgst
-            data["igst_paise"]           = total_igst
+            # only — a foreign-currency draft (dc.currency != INR) is not rounded.
+            round_off_edit = _round_off_paise(base_total) if dc.currency == "INR" else 0
+            data["taxable_amount_paise"] = base_taxable
+            data["cgst_paise"]           = base_cgst
+            data["sgst_paise"]           = base_sgst
+            data["igst_paise"]           = base_igst
+            data["total_gst_paise"]      = base_total_gst
             data["round_off_paise"]      = round_off_edit
-            data["total_paise"]          = base_total_edit + round_off_edit
+            data["total_paise"]          = base_total + round_off_edit
+            data["txn_taxable"]          = txn_taxable
+            data["txn_total_gst"]        = txn_total_gst
+            data["txn_total"]            = txn_total + round_off_edit
 
         # Per-line unit correction — independent of the full lines-replace
         # block above (draft-only), safe on any non-cancelled status since

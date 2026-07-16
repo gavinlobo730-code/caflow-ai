@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from models.parties import CustomerIn, VendorIn
 from models.invoices import (
     SalesInvoiceIn, InvoiceLineIn, ReceiptIn, ReceiptAllocationIn,
-    PurchaseBillIn, PurchaseBillLineIn, PurchasePaymentIn,
+    PurchaseBillIn, PurchaseBillLineIn, PurchasePaymentIn, SalesInvoiceUpdateIn,
 )
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, trial_balance, account_balance, coa_id
 
@@ -88,6 +88,47 @@ def test_foreign_sales_cycle_gl_balances_in_base(monkeypatch):
     assert account_balance(db, coa_id(db, FIRM, "bank")) == 9_853_000
     tb = trial_balance(db, FIRM, "CLI")
     assert tb["total_debit_paise"] == tb["total_credit_paise"]
+
+
+# ── Editing a foreign-currency DRAFT invoice must reconvert to base (task #103) ──
+def test_foreign_draft_invoice_edit_converts_totals_to_base(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="US Buyer", state_code="27"), CALLER)["data"]
+
+    # USD 1000.00 taxable @ 18% intra-state, rate 83.5 — left as a DRAFT (not issued).
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust["id"], invoice_no="MC3-006", invoice_date="2025-06-01",
+        currency="USD", exchange_rate="83.5",
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Export consulting", hsn_sac="9982",
+                             quantity=1, rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
+    assert inv["taxable_amount_paise"] == 8_350_000            # 1000 * 83.5
+    assert inv["total_paise"] == 9_853_000
+
+    # Edit the draft: bump quantity to 2 (rate/GST% unchanged, currency/rate frozen
+    # — SalesInvoiceUpdateIn has no currency/exchange_rate field to edit).
+    updated = si.update_invoice(inv["id"], SalesInvoiceUpdateIn(
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Export consulting", hsn_sac="9982",
+                             quantity=2, rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
+
+    # New txn-currency (USD) totals: taxable 2000, GST 360 (18%), total 2360.
+    assert updated["txn_taxable"] == 200000
+    assert updated["txn_total_gst"] == 36000
+    assert updated["txn_total"] == 236000
+    # Base (INR) columns must be dc.to_base-converted at the frozen rate 83.5,
+    # NOT the raw txn-currency figures (the pre-fix bug wrote 200000/236000 here).
+    assert updated["taxable_amount_paise"] == 16_700_000        # 200000 * 83.5
+    assert updated["total_gst_paise"] == 3_006_000              # 36000 * 83.5
+    assert updated["total_paise"] == 19_706_000                 # 236000 * 83.5
+    # Frozen currency metadata is untouched by the edit.
+    assert updated["txn_currency"] == "USD"
+    assert str(updated["exchange_rate"]) in ("83.5", "83.50000000")
+
+    # Issuing now posts the CORRECTED base total to the GL (proves the edit's
+    # base columns, not stale creation-time ones, are what get journalised).
+    si.issue_invoice(inv["id"], CALLER)
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 19_706_000
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"] == 19_706_000
 
 
 # ── Foreign purchase bill → payment (settle at booked rate) ───────────────────
