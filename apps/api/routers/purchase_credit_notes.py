@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
@@ -40,6 +40,11 @@ from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+
+# Same private Storage bucket routers/documents.py and debit_notes.py use —
+# plain attachment, no AI extraction (a credit note is CA-authored, not
+# scanned from an incoming document).
+_BUCKET = "Documents"
 
 
 class PurchaseCreditNoteIn(BaseModel):
@@ -58,6 +63,18 @@ class PurchaseCreditNoteIn(BaseModel):
         if not v:
             raise ValueError("Credit note must have at least one line.")
         return v
+
+
+class PurchaseCreditNoteUpdateIn(BaseModel):
+    vendor_id: str | None = None
+    credit_note_date: str | None = None
+    purchase_bill_id: str | None = None
+    reason: str | None = None
+    is_interstate: bool | None = None
+    is_reverse_charge: bool | None = None
+    lines: list[InvoiceLineIn] | None = None
+    notes: str | None = None
+    document_url: str | None = None
 
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -219,6 +236,149 @@ def get_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("acc
         raise
     except Exception as e:
         _logger.error("get_purchase_credit_note: %s", e)
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
+
+
+@router.patch("/{pcn_id}")
+def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
+    """Edit a DRAFT purchase credit note — full edit, including lines. Once
+    issued, a credit note is immutable like a Purchase Bill past receipt; the
+    correction path is a fresh note, not an edit (CGST Act §34). notes/
+    document_url stay editable regardless of status — mirrors debit_notes.py's
+    identical draft/locked split."""
+    try:
+        data = data.model_dump(exclude_none=True)
+        lines_data = data.pop("lines", None)
+        soft_fields = {"notes", "document_url"}
+
+        if _USE_MOCK:
+            for i, d in enumerate(MOCK_PURCHASE_CREDIT_NOTES):
+                if d["id"] == pcn_id and not d.get("deleted_at"):
+                    if d.get("status") != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
+                        raise HTTPException(status_code=422, detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).")
+                    computed = []
+                    if lines_data is not None:
+                        is_interstate = data.get("is_interstate", d.get("is_interstate", False))
+                        computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+                        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+                        if total_paise <= 0:
+                            raise HTTPException(status_code=422, detail="Credit note total must be positive.")
+                        data.update({
+                            "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
+                            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                            "total_gst_paise": total_cgst + total_sgst + total_igst,
+                        })
+                        MOCK_PURCHASE_CREDIT_NOTE_LINES[:] = [l for l in MOCK_PURCHASE_CREDIT_NOTE_LINES if l.get("credit_note_id") != pcn_id]
+                        for ln in computed:
+                            MOCK_PURCHASE_CREDIT_NOTE_LINES.append({**ln, "credit_note_id": pcn_id})
+                    MOCK_PURCHASE_CREDIT_NOTES[i] = {**d, **data}
+                    return api_response(True, {**MOCK_PURCHASE_CREDIT_NOTES[i], "lines": computed or [l for l in MOCK_PURCHASE_CREDIT_NOTE_LINES if l.get("credit_note_id") == pcn_id]})
+            raise HTTPException(status_code=404, detail=f"Credit note {pcn_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        resp = (db.table("purchase_credit_notes").select("*")
+                .eq("id", pcn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute())
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Credit note {pcn_id} not found")
+        d = resp.data[0]
+        status = d.get("status")
+        if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
+            raise HTTPException(
+                status_code=422,
+                detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).",
+            )
+        if data.get("credit_note_date"):
+            period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
+
+        if lines_data is not None:
+            is_interstate = data.get("is_interstate", d.get("is_interstate", False))
+            computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+            total_paise = total_taxable + total_cgst + total_sgst + total_igst
+            if total_paise <= 0:
+                raise HTTPException(status_code=422, detail="Credit note total must be positive.")
+            data.update({
+                "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
+                "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                "total_gst_paise": total_cgst + total_sgst + total_igst,
+            })
+            db.table("purchase_credit_note_lines").delete().eq("credit_note_id", pcn_id).execute()
+            for ln in computed:
+                db.table("purchase_credit_note_lines").insert({**ln, "credit_note_id": pcn_id}).execute()
+
+        if data:
+            upd = db.table("purchase_credit_notes").update(data).eq("id", pcn_id).eq("firm_id", firm_id).execute()
+            updated = upd.data[0] if upd.data else {**d, **data}
+        else:
+            updated = d
+        lines = (db.table("purchase_credit_note_lines").select("*").eq("credit_note_id", pcn_id).execute().data or [])
+        return api_response(True, {**updated, "lines": lines})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("update_purchase_credit_note: %s", e)
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
+
+
+@router.post("/upload")
+async def upload_purchase_credit_note_document(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Plain attachment upload (no AI extraction). Mirrors debit_notes.py's
+    upload_debit_note_document."""
+    try:
+        content = await file.read()
+        firm_id = current_user.get("firm_id")
+        if _USE_MOCK:
+            return api_response(True, {"document_url": f"mock/{firm_id}/{client_id}/purchase_credit_note/{uuid.uuid4()}"})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        safe_name = (file.filename or "upload").replace("/", "_")
+        storage_path = f"{firm_id}/{client_id}/purchase_credit_note/{uuid.uuid4()}_{safe_name}"
+        db.storage.from_(_BUCKET).upload(
+            path=storage_path, file=content,
+            file_options={"content-type": file.content_type or "application/octet-stream"},
+        )
+        return api_response(True, {"document_url": storage_path})
+    except Exception as e:
+        _logger.error("upload_purchase_credit_note_document: %s", e)
+        return api_response(False, None, "Unable to upload attachment. Please try again.")
+
+
+@router.get("/{pcn_id}/document-url")
+def get_purchase_credit_note_document_url(pcn_id: str, current_user: dict = Depends(rbac("accounting", "read"))):
+    """Mint a fresh signed URL for the note's attachment. Mirrors
+    debit_notes.py's get_debit_note_document_url."""
+    try:
+        if _USE_MOCK:
+            d = next((x for x in MOCK_PURCHASE_CREDIT_NOTES if x["id"] == pcn_id), None)
+            if not d:
+                raise HTTPException(status_code=404, detail=f"Credit note {pcn_id} not found")
+            if not d.get("document_url"):
+                raise HTTPException(status_code=404, detail="No document attached to this credit note")
+            return api_response(True, {"url": d["document_url"]})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        resp = db.table("purchase_credit_notes").select("document_url").eq("id", pcn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Credit note {pcn_id} not found")
+        path = resp.data[0].get("document_url")
+        if not path:
+            raise HTTPException(status_code=404, detail="No document attached to this credit note")
+        signed = db.storage.from_(_BUCKET).create_signed_url(path, expires_in=3600)
+        url = signed.get("signedURL") if isinstance(signed, dict) else None
+        if not url:
+            raise HTTPException(status_code=502, detail="Unable to generate a download link. Please try again.")
+        return api_response(True, {"url": url})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("get_purchase_credit_note_document_url: %s", e)
         return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 

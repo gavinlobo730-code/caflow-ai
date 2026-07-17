@@ -9,6 +9,9 @@ import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
+import { PurchaseCreditNoteViewDrawer } from "@/components/purchases/PurchaseCreditNoteViewDrawer";
+import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
+import { writePurchaseCreditNoteDuplicateSeed } from "@/lib/purchases/purchaseCreditNoteDuplicateSeed";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -17,15 +20,12 @@ import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
-import { HsnLookup } from "@/components/lookups/HsnLookup";
-import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
-import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
+import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
-import { dnLineGst } from "@/lib/purchases/debitNoteGst";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
@@ -236,22 +236,6 @@ const TDS_DEFAULT_RATES: Record<string, number> = {
   "194J":  1000, // 10%
   "194Q":  10,   // 0.1%
 };
-
-// CGST Act Schedule — all notified rates
-const GST_RATES = [
-  { label: "0%", bps: 0 },
-  { label: "0.1%", bps: 10 },
-  { label: "0.25%", bps: 25 },
-  { label: "1%", bps: 100 },
-  { label: "1.5%", bps: 150 },
-  { label: "3%", bps: 300 },
-  { label: "5%", bps: 500 },
-  { label: "6%", bps: 600 },
-  { label: "7.5%", bps: 750 },
-  { label: "12%", bps: 1200 },
-  { label: "18%", bps: 1800 },
-  { label: "28%", bps: 2800 },
-];
 
 // ── Purchase Bills ─────────────────────────────────────────────────────────
 
@@ -1931,19 +1915,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
 // The increase-side mirror of Debit Notes above: a vendor undercharged us on
 // the original bill and we now owe more. Same shape, same flow, just pointed
 // at /api/purchase-credit-notes and the opposite ledger direction (a credit
-// note CREDITS — increases — our trade payable). Still the old inline-form
-// flow pending its own dedicated-page parity build (mirrors what Debit Notes
-// just got) — PurchaseCreditNoteForm below still needs this local type.
-
-interface OpenBillOption {
-  id: string;
-  our_reference: string | null;
-  bill_no: string | null;
-  net_payable_paise: number;
-  paid_paise: number;
-  debited_paise: number;
-  credit_note_paise: number;
-}
+// note CREDITS — increases — our trade payable).
 
 interface PurchaseCreditNoteRow {
   id: string;
@@ -1961,21 +1933,20 @@ interface PurchaseCreditNoteRow {
 }
 
 function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<PurchaseCreditNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
-    const [cnRes, vendorsRes] = await Promise.all([
-      // purchase_credit_notes.vendor_id has no FK to vendors (matches
-      // debit_notes.vendor_id) — resolve the name via the vendors list below
-      // instead of a PostgREST embed.
+    const [pcnRes, vendorsRes] = await Promise.all([
       selectAll(() => supabase
         .from("purchase_credit_notes")
         .select("*, purchase_bills(bill_no, our_reference)")
@@ -1994,9 +1965,9 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
     ]);
     const vendorList = (vendorsRes.data as Vendor[]) ?? [];
     const vendorMap = new Map(vendorList.map((v) => [v.id, v.name]));
-    const rows = ((cnRes.data as PurchaseCreditNoteRow[]) ?? []).map((c) => ({
-      ...c,
-      vendor_name: vendorMap.get(c.vendor_id) ?? "—",
+    const rows = ((pcnRes.data as PurchaseCreditNoteRow[]) ?? []).map((d) => ({
+      ...d,
+      vendor_name: vendorMap.get(d.vendor_id) ?? "—",
     }));
     setCreditNotes(rows);
     setVendors(vendorList);
@@ -2004,6 +1975,11 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
+
+  function openMenuFor(e: React.MouseEvent, pcn: PurchaseCreditNoteRow) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: pcn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+  }
 
   async function issueCreditNote(id: string) {
     if (issuingId) return;
@@ -2021,19 +1997,41 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
     }
   }
 
-  // Bulk delete over the DataTable's selected rows. DELETE
-  // /api/purchase-credit-notes/{id} is draft-only on the backend (soft-deletes
-  // a draft; 422s "Cannot delete an issued credit note…" for anything already
-  // issued, 404 if not found) — loop per row so one rejection doesn't abort
-  // the rest, reuse the existing load() to refresh, and report a summary. If
-  // anything was skipped, keep the selection (return false) so the user can
-  // see what's left.
+  async function deletePcn(pcn: PurchaseCreditNoteRow | PurchaseCreditNoteDetail) {
+    const ok = await confirmDialog({
+      title: `Delete ${pcn.credit_note_no || "this credit note"}?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    setDetailId(null);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/purchase-credit-notes/${pcn.id}`, "DELETE", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to delete credit note");
+      setMsg({ type: "ok", text: `${pcn.credit_note_no || "Credit note"} deleted` });
+      load();
+    } catch (err) {
+      setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to delete credit note" });
+    }
+  }
+
+  function duplicatePcn(pcn: PurchaseCreditNoteDetail) {
+    writePurchaseCreditNoteDuplicateSeed(pcn);
+    setDetailId(null);
+    router.push(`/clients/${clientId}/purchases/credit-notes/new`);
+  }
+
+  // Bulk delete over the DataTable's selected rows — draft-only on the
+  // backend (422s "Cannot delete an issued credit note…" for anything
+  // already issued); loop per row so one rejection doesn't abort the rest.
   const handleBulkDelete = useCallback(async (rows: PurchaseCreditNoteRow[]): Promise<boolean> => {
     const token = await getAuthToken();
     const results = await Promise.all(
-      rows.map(async (c) => {
+      rows.map(async (d) => {
         try {
-          const result = await apiCall(`/api/purchase-credit-notes/${c.id}`, "DELETE", undefined, token);
+          const result = await apiCall(`/api/purchase-credit-notes/${d.id}`, "DELETE", undefined, token);
           return result.success;
         } catch {
           return false;
@@ -2052,36 +2050,36 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   }, [load]);
 
   const columns: Column<PurchaseCreditNoteRow>[] = useMemo(() => [
-    { key: "credit_note_no", header: "CN No", accessor: (c) => c.credit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (c) => <span className="font-mono font-medium text-[#1E293B]">{c.credit_note_no ?? "—"}</span> },
-    { key: "credit_note_date", header: "Date", accessor: (c) => c.credit_note_date, sortable: true,
-      render: (c) => <span className="text-[#64748B] whitespace-nowrap">{c.credit_note_date}</span> },
-    { key: "vendor_name", header: "Vendor", accessor: (c) => c.vendor_name ?? "", searchable: true,
-      render: (c) => <span className="font-medium text-[#1E293B]">{c.vendor_name ?? "—"}</span> },
-    { key: "linked_bill", header: "Linked Bill", accessor: (c) => c.purchase_bills?.our_reference ?? c.purchase_bills?.bill_no ?? "",
-      render: (c) => <span className="font-mono text-[#64748B]">{c.purchase_bills?.our_reference ?? c.purchase_bills?.bill_no ?? "—"}</span> },
-    { key: "reason", header: "Reason", accessor: (c) => c.reason ?? "", searchable: true,
-      render: (c) => <span className="block max-w-[120px] truncate text-[#475569]">{c.reason ?? "—"}</span> },
-    { key: "taxable", header: "Taxable", accessor: (c) => c.taxable_amount_paise, align: "right",
-      render: (c) => <span className="font-mono text-[#334155]">{fmt(c.taxable_amount_paise)}</span> },
-    { key: "gst", header: "GST", accessor: (c) => c.total_gst_paise, align: "right",
-      render: (c) => <span className="font-mono text-[#64748B]">{fmt(c.total_gst_paise)}</span> },
-    { key: "total_paise", header: "Total", accessor: (c) => c.total_paise, sortable: true, align: "right",
-      render: (c) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(c.total_paise)}</span> },
-    { key: "status", header: "Status", accessor: (c) => c.status, sortable: true,
-      render: (c) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[c.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
-          {c.status}
+    { key: "credit_note_no", header: "CN No", accessor: (d) => d.credit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (d) => <span className="font-mono font-medium text-[#1E293B]">{d.credit_note_no ?? "—"}</span> },
+    { key: "credit_note_date", header: "Date", accessor: (d) => d.credit_note_date, sortable: true,
+      render: (d) => <span className="text-[#64748B] whitespace-nowrap">{d.credit_note_date}</span> },
+    { key: "vendor_name", header: "Vendor", accessor: (d) => d.vendor_name ?? "", searchable: true,
+      render: (d) => <span className="font-medium text-[#1E293B]">{d.vendor_name ?? "—"}</span> },
+    { key: "linked_bill", header: "Linked Bill", accessor: (d) => d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "",
+      render: (d) => <span className="font-mono text-[#64748B]">{d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "—"}</span> },
+    { key: "reason", header: "Reason", accessor: (d) => d.reason ?? "", searchable: true,
+      render: (d) => <span className="block max-w-[120px] truncate text-[#475569]">{d.reason ?? "—"}</span> },
+    { key: "taxable", header: "Taxable", accessor: (d) => d.taxable_amount_paise, align: "right",
+      render: (d) => <span className="font-mono text-[#334155]">{fmt(d.taxable_amount_paise)}</span> },
+    { key: "gst", header: "GST", accessor: (d) => d.total_gst_paise, align: "right",
+      render: (d) => <span className="font-mono text-[#64748B]">{fmt(d.total_gst_paise)}</span> },
+    { key: "total_paise", header: "Total", accessor: (d) => d.total_paise, sortable: true, align: "right",
+      render: (d) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(d.total_paise)}</span> },
+    { key: "status", header: "Status", accessor: (d) => d.status, sortable: true,
+      render: (d) => (
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+          {d.status}
         </span>
       ) },
   ], []);
 
   const filters: FilterDef<PurchaseCreditNoteRow>[] = useMemo(() => [
-    { key: "status", label: "Status", type: "select", accessor: (c) => c.status, options: [
+    { key: "status", label: "Status", type: "select", accessor: (d) => d.status, options: [
       { value: "draft", label: "Draft" },
       { value: "issued", label: "Issued" },
     ] },
-    { key: "vendor_name", label: "Vendor", type: "select", accessor: (c) => c.vendor_name ?? "",
+    { key: "vendor_name", label: "Vendor", type: "select", accessor: (d) => d.vendor_name ?? "",
       options: vendors.map((v) => ({ value: v.name, label: v.name })) },
   ], [vendors]);
 
@@ -2113,12 +2111,57 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         </p>
       </div>
 
-      {showForm && (
-        <PurchaseCreditNoteForm
+      {/* Row overflow menu — View details always; Edit for any note (draft
+          gets the full editor, issued gets the same editor scoped to notes/
+          attachment only); Delete for drafts only. No Cancel — a credit note
+          has no reversal path, deliberately (CGST Act §34: correct with a
+          fresh note). */}
+      {menu && (() => {
+        const d = creditNotes.find((x) => x.id === menu.id);
+        if (!d) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              <button onClick={() => { setMenu(null); setDetailId(d.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                View details
+              </button>
+              <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/credit-notes/${d.id}/edit`); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                {d.status === "draft" ? "Edit draft" : "Edit"}
+              </button>
+              {d.status === "draft" && (
+                <>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <button onClick={() => { setMenu(null); deletePcn(d); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    Delete draft
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
+      {detailId && (
+        <PurchaseCreditNoteViewDrawer
+          pcnId={detailId}
           clientId={clientId}
-          vendors={vendors}
-          onSaved={() => { setShowForm(false); load(); setMsg({ type: "ok", text: "Credit note created." }); }}
-          onCancel={() => setShowForm(false)}
+          vendorName={
+            creditNotes.find((d) => d.id === detailId)?.vendor_name
+            ?? vendors.find((v) => v.id === creditNotes.find((d) => d.id === detailId)?.vendor_id)?.name
+            ?? ""
+          }
+          onClose={() => setDetailId(null)}
+          onEdit={(id) => router.push(`/clients/${clientId}/purchases/credit-notes/${id}/edit`)}
+          onIssue={(pcn) => { setDetailId(null); issueCreditNote(pcn.id); }}
+          onDelete={deletePcn}
+          onDuplicate={duplicatePcn}
         />
       )}
 
@@ -2127,7 +2170,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         data={creditNotes}
         columns={columns}
         filters={filters}
-        getRowId={(c) => c.id}
+        getRowId={(d) => d.id}
         loading={loading}
         onRefresh={load}
         searchPlaceholder="Search CN no., vendor, or reason…"
@@ -2136,354 +2179,35 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         persistKey="purchases.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
         toolbarExtra={
-          <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Create Credit Note</button>
+          <button
+            onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new`)}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={12} /> Create Credit Note
+          </button>
         }
         bulkActions={bulkActions}
-        rowActions={(c) =>
-          c.status === "draft" ? (
+        rowActions={(d) => (
+          <div className="flex items-center justify-end gap-2">
+            {d.status === "draft" && (
+              <button
+                onClick={() => issueCreditNote(d.id)}
+                disabled={issuingId === d.id}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+              >
+                {issuingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+              </button>
+            )}
             <button
-              onClick={() => issueCreditNote(c.id)}
-              disabled={issuingId === c.id}
-              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+              onClick={(e) => openMenuFor(e, d)}
+              aria-label={`Actions for credit note ${d.credit_note_no || d.id}`}
+              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
             >
-              {issuingId === c.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+              <MoreHorizontal size={16} />
             </button>
-          ) : null
-        }
+          </div>
+        )}
       />
-    </div>
-  );
-}
-
-// ── Purchase Credit Note Form ─────────────────────────────────────────────────
-
-interface PurchaseCreditNoteLine {
-  description: string;
-  hsn_sac: string;
-  quantity: number;
-  rate: number; // rupees
-  gst_rate_bps: number;
-  service_catalogue_id?: string;
-  product?: ServiceCatalogueItem | null;
-}
-
-function PurchaseCreditNoteForm({
-  clientId,
-  vendors,
-  onSaved,
-  onCancel,
-}: {
-  clientId: string;
-  vendors: Vendor[];
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const [vendorId, setVendorId] = useState("");
-  const [cnDate, setCnDate] = useState(toDate());
-  const [reason, setReason] = useState("");
-  const [billId, setBillId] = useState("");
-  const [openBills, setOpenBills] = useState<OpenBillOption[]>([]);
-  const [isInterstate, setIsInterstate] = useState(false);
-  const [lines, setLines] = useState<PurchaseCreditNoteLine[]>([
-    { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800 },
-  ]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function loadOpenBills(vId: string) {
-    setBillId("");
-    if (!vId) { setOpenBills([]); return; }
-    const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
-      .from("purchase_bills")
-      .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
-      .eq("client_id", clientId)
-      .eq("vendor_id", vId)
-      .in("status", ["received", "partially_paid", "paid"])
-      .order("bill_date", { ascending: false })
-      .order("id"));
-    setOpenBills(data ?? []);
-  }
-
-  function outstanding(b: OpenBillOption): number {
-    return b.net_payable_paise + (b.credit_note_paise ?? 0) - b.paid_paise - b.debited_paise;
-  }
-
-  function setLine(idx: number, patch: Partial<PurchaseCreditNoteLine>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
-  function addLine() {
-    setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800 }]);
-  }
-  function removeLine(idx: number) {
-    if (lines.length <= 1) return;
-    setLines((prev) => prev.filter((_, i) => i !== idx));
-  }
-  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
-    const line = serviceToLine(item);
-    setLine(idx, {
-      description: line.description, hsn_sac: line.hsn_sac,
-      gst_rate_bps: Math.round((line.gst_rate ?? 0) * 100),
-      rate: line.rate ? parseFloat(line.rate) : 0,
-      product: item, service_catalogue_id: item.id,
-    });
-  }
-
-  const totals = lines.reduce(
-    (acc, l) => {
-      const g = dnLineGst(l, isInterstate);
-      return {
-        taxable: acc.taxable + g.taxable_paise,
-        cgst: acc.cgst + g.cgst_paise,
-        sgst: acc.sgst + g.sgst_paise,
-        igst: acc.igst + g.igst_paise,
-        total: acc.total + g.line_total,
-      };
-    },
-    { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 }
-  );
-
-  async function handleSave() {
-    if (!vendorId) { setError("Select a vendor"); return; }
-    const validLines = lines.filter((l) => l.rate > 0);
-    if (validLines.length === 0) { setError("Add at least one line with a rate"); return; }
-    if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
-
-    setSaving(true); setError(null);
-    try {
-      const token = await getAuthToken();
-      const result = await apiCall(
-        "/api/purchase-credit-notes/",
-        "POST",
-        {
-          client_id: clientId,
-          vendor_id: vendorId,
-          credit_note_date: cnDate,
-          purchase_bill_id: billId || undefined,
-          reason: reason.trim() || undefined,
-          is_interstate: isInterstate,
-          lines: validLines.map((l) => ({
-            description: l.description.trim(),
-            hsn_sac: l.hsn_sac || undefined,
-            quantity: l.quantity,
-            rate_paise: Math.round(l.rate * 100),
-            // Backend's shared InvoiceLineIn model declares gst_rate_percent
-            // (not gst_rate_bps) — send the field it actually reads.
-            gst_rate_percent: l.gst_rate_bps / 100,
-            service_catalogue_id: l.service_catalogue_id || undefined,
-          })),
-        },
-        token
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to create credit note");
-
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save credit note");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0F172A]">Create Credit Note</h3>
-        <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
-          <VendorLookup
-            vendors={vendors}
-            value={vendorId}
-            onChange={(id) => { setVendorId(id); loadOpenBills(id); }}
-            ariaLabel="Vendor"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">CN Date *</label>
-          <input
-            type="date"
-            value={cnDate}
-            onChange={(e) => setCnDate(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Against Bill (optional)</label>
-          <EntityLookup
-            items={openBills}
-            value={billId}
-            onChange={setBillId}
-            getId={(b) => b.id}
-            getLabel={(b) => b.our_reference ?? b.bill_no ?? "—"}
-            getSecondary={(b) => `${fmt(outstanding(b))} outstanding`}
-            getSearchFields={(b) => [b.our_reference ?? "", b.bill_no ?? ""]}
-            clearable
-            disabled={!vendorId}
-            placeholder="— Standalone / Select bill —"
-            ariaLabel="Against bill"
-          />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Reason</label>
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Vendor undercharged / rate correction / additional charges"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div className="flex items-end pb-1.5">
-          <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isInterstate}
-              onChange={(e) => setIsInterstate(e.target.checked)}
-              className="rounded"
-            />
-            Interstate (IGST)
-          </label>
-        </div>
-      </div>
-
-      {/* Lines */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-              <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
-              <th className="pb-2 text-left font-semibold">Description</th>
-              <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
-              <th className="pb-2 text-right font-semibold w-16">Qty</th>
-              <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
-              <th className="pb-2 text-right font-semibold w-20">GST %</th>
-              <th className="pb-2 text-right font-semibold w-24">Amount</th>
-              <th className="pb-2 w-6" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {lines.map((line, idx) => {
-              const g = dnLineGst(line, isInterstate);
-              return (
-                <tr key={idx}>
-                  <td className="py-1.5 pr-2">
-                    <ServiceCataloguePicker
-                      clientId={clientId}
-                      value={line.product}
-                      onPick={(item) => onPickProduct(idx, item)}
-                      size="sm"
-                      ariaLabel={`Line ${idx + 1} product or service`}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      value={line.description}
-                      onChange={(e) => setLine(idx, { description: e.target.value })}
-                      placeholder="Item description"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <HsnLookup
-                      clientId={clientId}
-                      value={line.hsn_sac}
-                      onChange={(v) => setLine(idx, { hsn_sac: v })}
-                      onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate_bps: p.gst_rate_bps }); }}
-                      description={line.description}
-                      size="sm"
-                      ariaLabel="HSN or SAC code"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      type="number" min="0.001" step="0.001" value={line.quantity}
-                      onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })}
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      type="number" min="0" step="0.01" value={line.rate || ""}
-                      onChange={(e) => setLine(idx, { rate: parseFloat(e.target.value) || 0 })}
-                      placeholder="0.00"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <select
-                      value={line.gst_rate_bps}
-                      onChange={(e) => setLine(idx, { gst_rate_bps: parseInt(e.target.value) })}
-                      className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs"
-                    >
-                      {GST_RATES.map((r) => <option key={r.bps} value={r.bps}>{r.label}</option>)}
-                    </select>
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-[#334155]">
-                    {g.taxable_paise > 0 ? fmt(g.line_total) : "—"}
-                  </td>
-                  <td className="py-1.5">
-                    {lines.length > 1 && (
-                      <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600">
-                        <X size={13} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <button onClick={addLine} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-        <Plus size={12} /> Add line
-      </button>
-
-      {/* GST Preview */}
-      {totals.taxable > 0 && (
-        <div className="bg-[#F8FAFC] rounded-lg p-3 text-xs space-y-1">
-          <p className="font-semibold text-[#334155] mb-2">GST Computation (Credit Note)</p>
-          <div className="flex justify-between text-[#475569]">
-            <span>Taxable Value</span>
-            <span className="font-mono">{fmt(totals.taxable)}</span>
-          </div>
-          {isInterstate ? (
-            <div className="flex justify-between text-[#475569]">
-              <span>IGST</span>
-              <span className="font-mono">{fmt(totals.igst)}</span>
-            </div>
-          ) : (
-            <>
-              <div className="flex justify-between text-[#475569]">
-                <span>CGST</span>
-                <span className="font-mono">{fmt(totals.cgst)}</span>
-              </div>
-              <div className="flex justify-between text-[#475569]">
-                <span>SGST</span>
-                <span className="font-mono">{fmt(totals.sgst)}</span>
-              </div>
-            </>
-          )}
-          <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1 mt-1">
-            <span>Total Credit Note Amount</span>
-            <span className="font-mono">{fmt(totals.total)}</span>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
-      <div className="flex gap-3 justify-end">
-        <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save Credit Note"}
-        </button>
-      </div>
     </div>
   );
 }

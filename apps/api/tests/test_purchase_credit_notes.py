@@ -210,3 +210,58 @@ def test_vendor_payment_can_settle_the_credit_noted_amount(monkeypatch):
     assert bill["paid_paise"] == effective_payable
     assert bill["status"] == "paid"
     assert _ap(db) == 0
+
+
+# ── GET single / PATCH (feature-parity build: dedicated edit page + drawer) ──
+
+def test_get_single_purchase_credit_note_returns_lines(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    pcn_id, total = _create_pcn(db, bill_id, rate=20000)
+    res = pcn.get_purchase_credit_note(pcn_id, CALLER)
+    assert res["success"] is True
+    assert res["data"]["id"] == pcn_id
+    assert res["data"]["total_paise"] == total
+    assert len(res["data"]["lines"]) == 1
+    assert res["data"]["lines"][0]["description"] == "additional charge"
+
+
+def test_patch_draft_purchase_credit_note_recomputes_totals_from_new_lines(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    pcn_id, _ = _create_pcn(db, bill_id, rate=20000)               # 23600
+    res = pcn.update_purchase_credit_note(pcn_id, pcn.PurchaseCreditNoteUpdateIn(
+        lines=[InvoiceLineIn(description="corrected charge", quantity=1, rate_paise=50000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["total_paise"] == 59000                     # 50000 + 18%
+    assert len(res["data"]["lines"]) == 1
+    assert res["data"]["lines"][0]["description"] == "corrected charge"
+    assert pcn.get_purchase_credit_note(pcn_id, CALLER)["data"]["total_paise"] == 59000
+
+
+def test_patch_notes_and_document_url_allowed_on_issued_purchase_credit_note(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    pcn_id, _ = _create_pcn(db, bill_id, rate=20000)
+    assert pcn.issue_purchase_credit_note(pcn_id, CALLER)["success"] is True
+    res = pcn.update_purchase_credit_note(pcn_id, pcn.PurchaseCreditNoteUpdateIn(
+        notes="internal note", document_url="FIRM-A/CLI/purchase_credit_note/x.pdf",
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["notes"] == "internal note"
+    assert res["data"]["document_url"] == "FIRM-A/CLI/purchase_credit_note/x.pdf"
+
+
+def test_patch_lines_rejected_on_issued_purchase_credit_note(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    pcn_id, _ = _create_pcn(db, bill_id, rate=20000)
+    assert pcn.issue_purchase_credit_note(pcn_id, CALLER)["success"] is True
+    with pytest.raises(HTTPException) as ex:
+        pcn.update_purchase_credit_note(pcn_id, pcn.PurchaseCreditNoteUpdateIn(
+            lines=[InvoiceLineIn(description="x", quantity=1, rate_paise=1000,
+                                  gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+        ), CALLER)
+    assert ex.value.status_code == 422
