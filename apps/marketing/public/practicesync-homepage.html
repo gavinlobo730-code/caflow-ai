@@ -224,7 +224,7 @@
   var words = ['Compliance.', 'Clarity.', 'Control.', 'Automation.', 'Trust.'];
   var wordIdx = 0;
   var statsStarted = false;
-  var loaderDone = false;
+  var loaderDone = false, loaderReady = false, loaderPctValue = 0;
 
   var scrollTarget = 0, scrollCurrent = 0, maxScroll = 0;
   var mouseClientX = 0, mouseClientY = 0;
@@ -314,16 +314,25 @@
     setInterval(function () { grainEl.style.opacity = (0.035 + Math.random() * 0.03).toFixed(3); }, 110);
   }
 
+  // Real-readiness loader (not a fixed timer): the percentage eases toward 90
+  // while the page is still loading — an asymptotic creep, so it always shows
+  // motion and never visibly stalls — then, once the page is actually ready
+  // (window `load`: deferred Three.js + stylesheet fetched), it races the rest
+  // of the way to 100 and exits. On a warm load that's ~0.4s here instead of
+  // the reference's fixed 1.5s. The 3200ms hard fallback below still force-
+  // exits if `load` never fires (e.g. a hung asset).
   function loaderTick() {
     if (loaderDone) return;
-    var elapsed = performance.now() - loaderStart;
-    var p = Math.min(1, elapsed / 1500);
-    var pct = Math.round(p * 100);
+    var target = loaderReady ? 100 : 90;
+    var factor = loaderReady ? 0.55 : 0.08;
+    loaderPctValue += (target - loaderPctValue) * factor;
+    if (loaderReady && target - loaderPctValue < 2) loaderPctValue = 100;
+    var pct = Math.round(loaderPctValue);
     if (loaderPctEl) loaderPctEl.textContent = pct;
     if (loaderFillEl) loaderFillEl.style.width = pct + '%';
-    if (p >= 1) {
+    if (loaderReady && pct >= 100) {
       clearInterval(loaderInterval);
-      setTimeout(exitLoader, 250);
+      setTimeout(exitLoader, 80);
     }
   }
 
@@ -604,6 +613,11 @@
     loaderStart = performance.now();
     loaderInterval = setInterval(loaderTick, 40);
     loaderFallback = setTimeout(function () { if (!loaderDone) exitLoader(); }, 3200);
+    // Mark the loader ready as soon as the page has fully loaded (the deferred
+    // Three.js script and the stylesheet are both covered by `load`); this is
+    // what lets loaderTick finish and exit instead of waiting a fixed 1.5s.
+    if (document.readyState === 'complete') loaderReady = true;
+    else window.addEventListener('load', function () { loaderReady = true; });
 
     requestAnimationFrame(tick);
     waitForThree();
