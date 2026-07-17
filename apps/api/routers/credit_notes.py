@@ -602,14 +602,15 @@ def delete_credit_note(
     cn_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Soft-delete a DRAFT credit note.
+    """Hard-delete a DRAFT credit note.
 
     Only drafts may be deleted. Issued/applied credit notes are protected —
     once issued they carry a posted journal and, if linked to an invoice,
     have already reduced that invoice's outstanding balance (CGST Act §34);
-    removing one outright would corrupt both. Deletion is a soft-delete
-    (sets deleted_at, migration 183) plus an immutable audit_log 'delete'
-    event, mirroring sales_invoices.delete_invoice exactly.
+    removing one outright would corrupt both. The row is genuinely removed
+    (not soft-deleted): the create/delete audit_log events already capture
+    the full document and a status summary respectively, independent of
+    whether the row itself still exists.
     """
     try:
         if _USE_MOCK:
@@ -642,8 +643,12 @@ def delete_credit_note(
                 detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} credit note — only drafts can be deleted",
             )
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        db.table("credit_notes").update({"deleted_at": now_iso}).eq("id", cn_id).eq("firm_id", firm_id).execute()
+        # Hard delete — draft-only, so credit_note_lines cascades automatically
+        # (FK ON DELETE CASCADE); nothing else can reference a still-draft
+        # note. The audit_log 'delete' event below (and the 'create' event's
+        # full snapshot) survive independently — audit_log.entity_id is a
+        # bare text column, not an FK.
+        db.table("credit_notes").delete().eq("id", cn_id).eq("firm_id", firm_id).execute()
 
         log_event(
             firm_id or "", "credit_note", cn_id,

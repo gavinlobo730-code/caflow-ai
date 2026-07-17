@@ -242,13 +242,13 @@ def _draft_bill(db, bill_no="B-DRAFT"):
     return res["data"]["id"]
 
 
-def test_delete_draft_bill_soft_deletes_and_disappears_from_list(monkeypatch):
+def test_delete_draft_bill_hard_deletes_and_disappears_from_list(monkeypatch):
     db = _setup(monkeypatch)
     bill_id = _draft_bill(db)
     resp = pb.delete_purchase_bill(bill_id, CALLER)
     assert resp["success"] is True
-    bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
-    assert bill["deleted_at"] is not None
+    # Genuine hard delete — the row is gone, not just deleted_at-stamped.
+    assert not any(b["id"] == bill_id for b in db.rows("purchase_bills"))
 
     listed = pb.list_purchase_bills(client_id="CLI", vendor_id=None, status=None, from_date=None, to_date=None, limit=50, offset=0, current_user=CALLER)
     assert bill_id not in [b["id"] for b in listed["data"]]
