@@ -10,18 +10,31 @@ const SIZES: Record<string, { cls: string; rx: number }> = {
 export function LogoIcon({ size = "md" }: { size?: "sm" | "md" | "lg" | "xl" }) {
   const { cls, rx } = SIZES[size];
 
+  // The canonical PracticeSync mark — circular ring + accent arc + checkmark,
+  // identical to the marketing site / homepage logo. Dark strokes since it sits
+  // in the white badge tile. Kept in the existing tile so the app chrome layout
+  // is unchanged; only the glyph is unified.
   return (
-    <div className={`${cls} shrink-0 overflow-hidden bg-white`} style={{ borderRadius: rx }}>
+    <div className={`${cls} shrink-0 grid place-items-center bg-white`} style={{ borderRadius: rx }}>
       <svg
-        viewBox="0 0 200 200"
+        viewBox="0 0 64 64"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className="w-full h-full"
+        className="w-3/4 h-3/4"
         aria-label="PracticeSync"
       >
-        <rect x="66" y="81" width="92" height="62" rx="10" fill="#1E3A5F" />
-        <rect x="54" y="69" width="92" height="62" rx="10" fill="#2563EB" />
-        <rect x="42" y="57" width="92" height="62" rx="10" fill="#38BDF8" />
+        <circle cx="32" cy="32" r="24" stroke="rgba(27,30,51,0.16)" strokeWidth="3" />
+        <circle
+          cx="32"
+          cy="32"
+          r="24"
+          stroke="#4f71cc"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray="29.3 121.5"
+          transform="rotate(-50 32 32)"
+        />
+        <path d="M20,33 L28,41 L45,22" stroke="#1b1e33" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
