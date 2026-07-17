@@ -188,7 +188,21 @@ export function DataTable<T>({
       {/* ── Bulk action bar ─────────────────────────────────────────────── */}
       {hasBulk && t.selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
-          <span className="font-semibold text-[#3730A3]">{t.selected.size} selected</span>
+          <span className="font-semibold text-[#3730A3]">
+            {t.allFilteredSelected ? `All ${t.selected.size} matching rows selected` : `${t.selected.size} selected`}
+          </span>
+          {/* Every row on this page is checked, but there are more matching rows
+              beyond it — offer the deliberate, explicit way to select them all
+              instead of leaving the user to click "select all" page by page
+              (which silently accumulates a confusing multi-page selection). */}
+          {t.allOnPageSelected && !t.allFilteredSelected && t.page.total > t.page.rows.length && (
+            <button
+              onClick={t.selectAllFiltered}
+              className="font-medium text-[#4338CA] underline hover:text-[#3730A3]"
+            >
+              Select all {t.page.total} matching rows
+            </button>
+          )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {bulkActions!.map((a) => (
               <button

@@ -143,6 +143,23 @@ export function useDataTable<T>({
     [data, selected, getRowId],
   );
 
+  // ── cross-page "select all N matching rows" ─────────────────────────────────
+  // toggleAllOnPage only ever touches the CURRENT page's rows — selecting page 1
+  // then paging to page 3 leaves page 3 unaffected (selections accumulate per
+  // page you've touched, they don't silently apply everywhere). That's correct
+  // for "select these specific rows I'm looking at", but a table with a filtered
+  // set bigger than one page needs an explicit, deliberate way to select
+  // EVERYTHING matching — not "click select-all on every page one at a time".
+  // filteredRows is every row after search/filter/sort, before pagination.
+  const filteredRows = result.filtered;
+  const allFilteredSelected = useMemo(
+    () => filteredRows.length > 0 && filteredRows.every((r) => selected.has(getRowId(r))),
+    [filteredRows, selected, getRowId],
+  );
+  const selectAllFiltered = useCallback(() => {
+    setSelected(new Set(filteredRows.map(getRowId)));
+  }, [filteredRows, getRowId]);
+
   return {
     state,
     prefs,
@@ -165,5 +182,7 @@ export function useDataTable<T>({
     toggleAllOnPage,
     allOnPageSelected,
     clearSelection,
+    allFilteredSelected,
+    selectAllFiltered,
   };
 }
