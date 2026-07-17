@@ -119,7 +119,7 @@ function Hero({ revealed }: { revealed: boolean }) {
       </div>
 
       <div
-        className="relative z-[1] mx-auto grid w-full max-w-[1200px] items-center gap-10 px-[clamp(20px,6vw,72px)] pb-20 pt-[clamp(100px,14vh,160px)] lg:grid-cols-[1.15fr_1fr]"
+        className="relative z-[1] grid w-full items-center gap-10 px-[clamp(20px,6vw,72px)] pb-20 pt-[clamp(100px,14vh,160px)] lg:grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
       >
         <div>
           <ParallaxLabel factor={0.05}>
@@ -174,9 +174,12 @@ function Hero({ revealed }: { revealed: boolean }) {
           </div>
         </div>
 
-        {/* Three overlapping mockup cards floating over the 3D scene. */}
+        {/* Three overlapping mockup cards floating over the 3D scene. Right-
+            aligned within its grid track (the reference's justify-self:end),
+            not centered — it should sit flush toward the section's right
+            edge, near the 3D scene's own anchor point. */}
         <div
-          className="relative mx-auto hidden h-[360px] w-[min(90vw,380px)] lg:block"
+          className="relative ml-auto hidden h-[360px] w-[min(90vw,380px)] lg:block"
           style={{ perspective: "900px" }}
         >
           <TiltCard
@@ -370,9 +373,11 @@ function StatsInner() {
     <SectionReveal>
       <div className="relative" {...glow.handlers}>
         <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-        <div className={`relative mx-auto grid max-w-[1100px] grid-cols-1 gap-12 ${SIDE_PAD} pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)] sm:grid-cols-2 lg:grid-cols-4`}>
+        <div
+          className={`relative mx-auto grid max-w-[1100px] grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-12 ${SIDE_PAD} pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)]`}
+        >
           {STATS.map((s, i) => (
-            <div key={s.label} className={i % 2 === 1 ? "sm:mt-8" : ""}>
+            <div key={s.label} className={i % 2 === 1 ? "mt-8" : ""}>
               <p className="font-display text-[clamp(48px,6vw,84px)] leading-none text-white">
                 <CountUp to={s.value} suffix={s.suffix} duration={1200} linear />
               </p>
