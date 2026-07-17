@@ -131,16 +131,18 @@ export default function ResourcesPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
-        <SerifHeading
-          eyebrow="Resources"
-          lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
-          subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
-        />
+      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
+        <CineReveal>
+          <SerifHeading
+            eyebrow="Resources"
+            lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
+            subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
+          />
+        </CineReveal>
       </Panel>
 
       {/* ── Quick-reference guides ───────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light" seam="rising-right" numeral="02" numeralCorner="bottom-left">
         <CineReveal>
           <SerifHeading
             eyebrow="Quick references"
@@ -183,7 +185,7 @@ export default function ResourcesPage() {
       </Panel>
 
       {/* ── Compliance calendar ──────────────────────────────────────────── */}
-      <Panel id="calendar" theme="dark" seam="rising-left" innerClassName="scroll-mt-24">
+      <Panel id="calendar" theme="dark" seam="rising-left" numeral="03" numeralCorner="top-right" innerClassName="scroll-mt-24">
         <CineReveal>
           <SerifHeading
             eyebrow="Compliance calendar"
