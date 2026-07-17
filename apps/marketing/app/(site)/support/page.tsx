@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Panel, SerifHeading, CineReveal, GlassCard, CineCTA } from "@/components/cinematic";
+import { Panel, SerifHeading, GlassCard, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
 import { Button } from "@/components/ui";
 import { Mail, Phone, Calendar, ArrowRight } from "@/components/icons";
@@ -85,25 +85,21 @@ export default function SupportPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Support"
-            lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
-            subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Support"
+          lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
+          subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
+        />
       </Panel>
 
       {/* ── Channels ─────────────────────────────────────────────────────── */}
       <Panel theme="light" seam="rising-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="How we help"
-            theme="light"
-            lines={[{ text: "Help, whichever" }, { text: "way suits you.", italic: true }]}
-            subtitle="Self-serve when you're in a hurry, hands-on when you're switching over. Every PracticeSync plan includes real support from people who understand CA workflows."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="How we help"
+          theme="light"
+          lines={[{ text: "Help, whichever" }, { text: "way suits you.", italic: true }]}
+          subtitle="Self-serve when you're in a hurry, hands-on when you're switching over. Every PracticeSync plan includes real support from people who understand CA workflows."
+        />
         <div className="mt-12 grid gap-x-12 gap-y-9 sm:grid-cols-2">
           {CHANNELS.map((c, i) => (
             <Reveal key={c.title} variant="up" delay={i * 90}>
@@ -128,13 +124,11 @@ export default function SupportPage() {
 
       {/* ── Get in touch ─────────────────────────────────────────────────── */}
       <Panel id="get-in-touch" theme="dark" seam="rising-left">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Get in touch"
-            lines={[{ text: "Talk to a" }, { text: "real person.", italic: true }]}
-            subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Get in touch"
+          lines={[{ text: "Talk to a" }, { text: "real person.", italic: true }]}
+          subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
+        />
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
           <Reveal variant="up">
             <GlassCard className="flex h-full flex-col">
@@ -192,14 +186,12 @@ export default function SupportPage() {
 
       {/* ── Common questions ─────────────────────────────────────────────── */}
       <Panel theme="light" seam="rising-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Common questions"
-            theme="light"
-            lines={[{ text: "Answers before" }, { text: "you switch.", italic: true }]}
-            subtitle="A few things CA firms ask us most often."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Common questions"
+          theme="light"
+          lines={[{ text: "Answers before" }, { text: "you switch.", italic: true }]}
+          subtitle="A few things CA firms ask us most often."
+        />
         <div className="mt-12 grid gap-x-12 gap-y-8 md:grid-cols-2">
           {FAQ.map((f, i) => (
             <Reveal key={f.q} variant="up" delay={i * 80}>

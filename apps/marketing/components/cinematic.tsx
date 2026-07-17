@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { Reveal } from "./motion";
+import { Reveal, WordReveal, useInView } from "./motion";
 import { Button } from "./ui";
 import { ArrowRight, Check } from "./icons";
 import { appLinks } from "@/lib/site";
@@ -81,6 +81,15 @@ export function Panel({
 // Eyebrow + serif headline (with optional italic emphasis lines) + subtitle,
 // in the homepage's type treatment. `lines` lets a headline mix upright and
 // italic lines the way the homepage's kinetic headlines do.
+//
+// Owns its own scroll-triggered reveal (eyebrow/subtitle fade, headline words
+// materialise in) rather than relying on a wrapping <CineReveal> — nesting
+// this inside another opacity-fading wrapper would compound two concurrent
+// opacity transitions on top of each other (parent × child, both ramping
+// 0→1 at once), softening/slowing the reveal instead of a crisp one. Eyebrow
+// and subtitle each get their own single-level fade off the same `inView`
+// flag the headline's words use, so everything settles in sync without any
+// element sitting inside a second, independently-animating opacity ancestor.
 export function SerifHeading({
   eyebrow,
   lines,
@@ -96,6 +105,7 @@ export function SerifHeading({
   align?: "left" | "center";
   className?: string;
 }) {
+  const { ref, inView } = useInView<HTMLDivElement>();
   const titleColor = theme === "dark" ? "text-white" : "text-brand-dark";
   const subColor = theme === "dark" ? "text-slate-300" : "text-slate-600";
   // Matches the homepage exactly: the eyebrow is never an accent color, just
@@ -104,28 +114,38 @@ export function SerifHeading({
   const eyebrowColor = theme === "dark" ? "text-white/50" : "text-brand-dark/50";
   const alignCls = align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-2xl";
   return (
-    <div className={`${alignCls} ${className}`}>
+    <div ref={ref} className={`${alignCls} ${className}`}>
       {eyebrow ? (
-        <span className={`block text-[12px] font-semibold uppercase tracking-[0.18em] ${eyebrowColor} ${align === "center" ? "text-center" : ""}`}>
+        <span
+          data-in={inView ? "true" : "false"}
+          className={`rv rv-up block text-[12px] font-semibold uppercase tracking-[0.18em] ${eyebrowColor} ${align === "center" ? "text-center" : ""}`}
+        >
           {eyebrow}
         </span>
       ) : null}
       <h2 className={`mt-6 font-display font-normal leading-[1.14] tracking-[-0.015em] ${titleColor}`}>
-        {lines.map((l, i) => (
-          <span
-            key={i}
-            className={`block ${l.italic ? "italic" : ""} ${
-              l.italic
-                ? "text-[clamp(30px,4.6vw,54px)]"
-                : "text-[clamp(28px,4vw,46px)]"
-            }`}
-          >
-            {l.text}
-          </span>
-        ))}
+        {lines.map((l, i) => {
+          const priorWords = lines.slice(0, i).reduce((n, prior) => n + prior.text.split(" ").length, 0);
+          return (
+            <span
+              key={i}
+              className={`block ${l.italic ? "italic" : ""} ${
+                l.italic
+                  ? "text-[clamp(30px,4.6vw,54px)]"
+                  : "text-[clamp(28px,4vw,46px)]"
+              }`}
+            >
+              <WordReveal text={l.text} startDelay={priorWords * 60} stagger={60} inView={inView} />
+            </span>
+          );
+        })}
       </h2>
       {subtitle ? (
-        <p className={`mt-7 max-w-[52ch] text-[17px] leading-[1.65] ${subColor} ${align === "center" ? "mx-auto" : ""}`}>
+        <p
+          data-in={inView ? "true" : "false"}
+          className={`rv rv-up mt-7 max-w-[52ch] text-[17px] leading-[1.65] ${subColor} ${align === "center" ? "mx-auto" : ""}`}
+          style={{ transitionDelay: "150ms" }}
+        >
           {subtitle}
         </p>
       ) : null}
@@ -214,9 +234,7 @@ export function CineCTA({
 }) {
   return (
     <Panel theme="dark" seam="rising-left" innerClassName="text-center">
-      <CineReveal>
-        <SerifHeading align="center" lines={titleLines} subtitle={subtitle} />
-      </CineReveal>
+      <SerifHeading align="center" lines={titleLines} subtitle={subtitle} />
       <CineReveal delay={120}>
         <div className="mt-10 flex flex-wrap justify-center gap-5">
           <Button href={primary.href} external={primary.external} variant="light" className="px-7 py-[15px]">

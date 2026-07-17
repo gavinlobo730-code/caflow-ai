@@ -1,4 +1,4 @@
-import { Panel, SerifHeading, CineReveal, CineCTA } from "@/components/cinematic";
+import { Panel, SerifHeading, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
 import { Button } from "@/components/ui";
 import { Check, Star, ArrowRight } from "@/components/icons";
@@ -119,13 +119,11 @@ export default function PricingPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Pricing"
-            lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
-            subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Pricing"
+          lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
+          subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
+        />
       </Panel>
 
       {/* ── Tiers ────────────────────────────────────────────────────────── */}
@@ -191,13 +189,11 @@ export default function PricingPage() {
 
       {/* ── Included in every plan ───────────────────────────────────────── */}
       <Panel theme="dark" seam="rising-left">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Every plan"
-            lines={[{ text: "Included with", italic: false }, { text: "every plan.", italic: true }]}
-            subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Every plan"
+          lines={[{ text: "Included with", italic: false }, { text: "every plan.", italic: true }]}
+          subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
+        />
         <div className="mt-12 grid gap-x-12 gap-y-8 sm:grid-cols-2">
           {INCLUDED.map((item, i) => (
             <Reveal key={item.title} variant="up" delay={i * 90}>
@@ -212,14 +208,12 @@ export default function PricingPage() {
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
       <Panel theme="light" seam="rising-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="FAQ"
-            theme="light"
-            lines={[{ text: "Questions,", italic: false }, { text: "answered.", italic: true }]}
-            subtitle="A few things CAs ask us before getting started."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="FAQ"
+          theme="light"
+          lines={[{ text: "Questions,", italic: false }, { text: "answered.", italic: true }]}
+          subtitle="A few things CAs ask us before getting started."
+        />
         <div className="mt-12 grid gap-x-12 gap-y-8 md:grid-cols-2">
           {FAQS.map((item, i) => (
             <Reveal key={item.q} variant="up" delay={i * 80}>

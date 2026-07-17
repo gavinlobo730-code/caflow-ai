@@ -27,7 +27,7 @@ export function usePrefersReducedMotion(): boolean {
 }
 
 /** Fires once when the element scrolls into view. */
-function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
+export function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
   const ref = useRef<T | null>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
@@ -186,8 +186,10 @@ export function Parallax({
 }
 
 /**
- * Headline that materialises word by word (blur → sharp, rising). Pure CSS
- * animation with per-word delays, so it plays on page load without JS timing.
+ * Headline that materialises word by word (rising into place), staggered.
+ * Fires once when it scrolls into view — same trigger-once mechanism as
+ * `Reveal` above — so a headline below the fold stays hidden until the
+ * reader actually reaches it instead of finishing its entrance unseen.
  */
 export function WordReveal({
   text,
@@ -195,6 +197,7 @@ export function WordReveal({
   startDelay = 0,
   stagger = 70,
   accent = [],
+  inView: inViewProp,
 }: {
   text: string;
   className?: string;
@@ -204,18 +207,28 @@ export function WordReveal({
   stagger?: number;
   /** words (lowercased, punctuation stripped) to paint with the aurora gradient */
   accent?: string[];
+  /**
+   * Drive visibility from a parent's own scroll-trigger instead of observing
+   * independently — pass this when already nested inside another element
+   * that manages its own `inView` (e.g. SerifHeading), so the two don't end
+   * up as separate concurrent opacity transitions on nested elements.
+   */
+  inView?: boolean;
 }) {
+  const { ref, inView: selfInView } = useInView<HTMLSpanElement>();
+  const inView = inViewProp ?? selfInView;
   const words = text.split(" ");
   return (
-    <span className={className} aria-label={text}>
+    <span ref={ref} className={className} aria-label={text}>
       {words.map((word, i) => {
         const clean = word.toLowerCase().replace(/[^a-z0-9]/g, "");
         const isAccent = accent.includes(clean);
         return (
           <span key={`${word}-${i}`} className="inline-block overflow-visible" aria-hidden="true">
             <span
+              data-in={inView ? "true" : "false"}
               className={`word-in inline-block ${isAccent ? "text-aurora" : ""}`}
-              style={{ animationDelay: `${startDelay + i * stagger}ms` }}
+              style={{ transitionDelay: `${startDelay + i * stagger}ms` }}
             >
               {word}
             </span>

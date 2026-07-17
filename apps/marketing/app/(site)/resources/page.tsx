@@ -132,25 +132,21 @@ export default function ResourcesPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Resources"
-            lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
-            subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Resources"
+          lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
+          subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
+        />
       </Panel>
 
       {/* ── Quick-reference guides ───────────────────────────────────────── */}
       <Panel theme="light" seam="rising-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Quick references"
-            theme="light"
-            lines={[{ text: "The essentials," }, { text: "on one card each.", italic: true }]}
-            subtitle="The filings, migrations and close processes practices deal with every year — condensed to the facts you actually reach for."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Quick references"
+          theme="light"
+          lines={[{ text: "The essentials," }, { text: "on one card each.", italic: true }]}
+          subtitle="The filings, migrations and close processes practices deal with every year — condensed to the facts you actually reach for."
+        />
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {GUIDES.map((g, i) => (
             <Reveal key={g.title} variant="up" delay={(i % 3) * 100}>
@@ -186,13 +182,11 @@ export default function ResourcesPage() {
 
       {/* ── Compliance calendar ──────────────────────────────────────────── */}
       <Panel id="calendar" theme="dark" seam="rising-left" innerClassName="scroll-mt-24">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Compliance calendar"
-            lines={[{ text: "Key statutory due" }, { text: "dates at a glance.", italic: true }]}
-            subtitle="The deadlines every Indian practice tracks, in one place. PracticeSync watches these for each client so nothing slips through."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Compliance calendar"
+          lines={[{ text: "Key statutory due" }, { text: "dates at a glance.", italic: true }]}
+          subtitle="The deadlines every Indian practice tracks, in one place. PracticeSync watches these for each client so nothing slips through."
+        />
 
         <Reveal variant="scale" delay={120}>
           <div className="mt-12 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
