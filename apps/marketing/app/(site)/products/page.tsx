@@ -1,7 +1,7 @@
-import { Panel, SerifHeading, CineReveal } from "@/components/cinematic";
+import { Panel, SerifHeading, CineReveal, Checklist, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
 import { Button } from "@/components/ui";
-import { ArrowRight, Check, Shield } from "@/components/icons";
+import { ArrowRight, Shield } from "@/components/icons";
 import { instrumentSerif, manrope } from "@/lib/fonts";
 import { appLinks } from "@/lib/site";
 
@@ -91,32 +91,6 @@ const SECURITY = [
   { title: "Two-factor authentication", desc: "TOTP-based MFA protects every firm sign-in to the platform." },
   { title: "Full audit logs", desc: "A complete record of who viewed, edited and filed what, for every client." },
 ];
-
-function Checklist({ points, theme }: { points: string[]; theme: "dark" | "light" }) {
-  const rowBorder = theme === "dark" ? "border-white/10" : "border-slate-900/10";
-  const textColor = theme === "dark" ? "text-slate-200" : "text-slate-700";
-  const chip =
-    theme === "dark"
-      ? "bg-brand-light/10 text-brand-light ring-white/15"
-      : "bg-brand/[0.06] text-brand ring-brand/15";
-  return (
-    <ul className="flex flex-col">
-      {points.map((p, i) => (
-        <li
-          key={p}
-          className={`flex items-start gap-3.5 border-t ${rowBorder} py-4 text-[15px] leading-relaxed ${textColor} ${
-            i === points.length - 1 ? `border-b ${rowBorder}` : ""
-          }`}
-        >
-          <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 ${chip}`}>
-            <Check size={12} />
-          </span>
-          <span>{p}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export default function ProductsPage() {
   return (
@@ -230,26 +204,7 @@ export default function ProductsPage() {
       </Panel>
 
       {/* ── Closing CTA ──────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left" innerClassName="text-center">
-        <CineReveal>
-          <SerifHeading
-            align="center"
-            lines={[{ text: "Bring your whole practice", italic: true }, { text: "into one place." }]}
-            subtitle="Start a free trial today, or talk to us about moving your firm across from Tally, ClearTax or Winman."
-          />
-        </CineReveal>
-        <CineReveal delay={120}>
-          <div className="mt-10 flex flex-wrap justify-center gap-5">
-            <Button href={appLinks.signup} external variant="light" className="px-7 py-[15px]">
-              Start free trial
-              <ArrowRight size={16} />
-            </Button>
-            <Button href="/support" variant="ghost-light" className="px-7 py-[15px]">
-              Talk to us
-            </Button>
-          </div>
-        </CineReveal>
-      </Panel>
+      <CineCTA />
     </div>
   );
 }
