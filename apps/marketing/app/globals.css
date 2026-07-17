@@ -118,35 +118,41 @@ body {
 }
 
 /* ─── Word-by-word headline entrance (pure CSS, plays on load) ────────────── */
+/* No filter:blur() here either — same weak/integrated-GPU reasoning as the
+   scroll reveals below. This one is worse on low-end hardware because it
+   plays immediately on page load (per-word, staggered), competing with the
+   rest of the page's initial paint instead of one lazy scroll-triggered hit. */
 .word-in {
   opacity: 0;
   transform: translateY(0.6em) rotate(2deg);
-  filter: blur(10px);
   animation: word-in 0.9s var(--ease-out-expo) forwards;
-  will-change: transform, filter, opacity;
+  will-change: transform, opacity;
 }
 @keyframes word-in {
-  to { opacity: 1; transform: translateY(0) rotate(0); filter: blur(0); }
+  to { opacity: 1; transform: translateY(0) rotate(0); }
 }
 
 /* ─── Scroll reveals (driven by components/motion.tsx) ────────────────────── */
+/* No filter:blur() here on purpose — same reasoning as the aurora blobs
+   above: a blurred layer that also has to transition is expensive to
+   composite on weak/integrated GPUs, where it's been seen to glitch, stall,
+   or just never visibly animate. Opacity + transform alone is cheap and
+   reliable on every device, and reads just as "graceful" as a fade+rise. */
 .rv {
   opacity: 0;
   transition:
     opacity 0.9s var(--ease-out-expo),
-    transform 0.9s var(--ease-out-expo),
-    filter 0.9s var(--ease-out-expo);
+    transform 0.9s var(--ease-out-expo);
   will-change: opacity, transform;
 }
 .rv-up    { transform: translateY(28px); }
-.rv-blur  { transform: translateY(18px); filter: blur(12px); }
+.rv-blur  { transform: translateY(18px); }
 .rv-scale { transform: scale(0.94) translateY(12px); }
 .rv-left  { transform: translateX(-36px); }
 .rv-right { transform: translateX(36px); }
 .rv[data-in="true"] {
   opacity: 1;
   transform: none;
-  filter: none;
 }
 
 /* ─── Floating (hero satellite cards) ─────────────────────────────────────── */
