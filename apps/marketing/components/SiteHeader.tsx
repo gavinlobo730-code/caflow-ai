@@ -17,7 +17,7 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-transparent bg-[#f3f4f6]/70 backdrop-blur-[10px]">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-transparent bg-[#f3f4f6]/70 backdrop-blur-[10px]">
       <div className="container-ps flex h-[68px] items-center justify-between gap-4">
         <Logo />
 

@@ -112,6 +112,9 @@ dist
 # Serverless directories
 .serverless/
 
+# Cloudflare Wrangler local dev state/cache
+.wrangler/
+
 # FuseBox cache
 .fusebox/
 
