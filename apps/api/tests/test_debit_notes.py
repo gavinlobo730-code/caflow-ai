@@ -111,3 +111,59 @@ def test_create_debit_note_computes_gst_from_percent(monkeypatch):
     bill_id, _ = _received_bill(db)
     _dn_id, total = _create_dn(db, bill_id, rate=1_00000)
     assert total == 1_18000                                     # 100000 + 18% GST
+
+
+# ── GET single / PATCH (feature-parity build: dedicated edit page + drawer) ──
+
+def test_get_single_debit_note_returns_lines(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    dn_id, total = _create_dn(db, bill_id, rate=20000)
+    res = dn.get_debit_note(dn_id, CALLER)
+    assert res["success"] is True
+    assert res["data"]["id"] == dn_id
+    assert res["data"]["total_paise"] == total
+    assert len(res["data"]["lines"]) == 1
+    assert res["data"]["lines"][0]["description"] == "return"
+
+
+def test_patch_draft_debit_note_recomputes_totals_from_new_lines(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    dn_id, _ = _create_dn(db, bill_id, rate=20000)               # 23600
+    res = dn.update_debit_note(dn_id, dn.DebitNoteUpdateIn(
+        lines=[InvoiceLineIn(description="return more", quantity=1, rate_paise=50000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["total_paise"] == 59000                   # 50000 + 18%
+    assert len(res["data"]["lines"]) == 1
+    assert res["data"]["lines"][0]["description"] == "return more"
+    # Persisted, not just returned — a fresh GET sees the same total.
+    assert dn.get_debit_note(dn_id, CALLER)["data"]["total_paise"] == 59000
+
+
+def test_patch_notes_and_document_url_allowed_on_issued_note(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    dn_id, _ = _create_dn(db, bill_id, rate=20000)
+    assert dn.issue_debit_note(dn_id, CALLER)["success"] is True
+    res = dn.update_debit_note(dn_id, dn.DebitNoteUpdateIn(
+        notes="internal note", document_url="FIRM-A/CLI/debit_note/x.pdf",
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["notes"] == "internal note"
+    assert res["data"]["document_url"] == "FIRM-A/CLI/debit_note/x.pdf"
+
+
+def test_patch_lines_rejected_on_issued_note(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    dn_id, _ = _create_dn(db, bill_id, rate=20000)
+    assert dn.issue_debit_note(dn_id, CALLER)["success"] is True
+    with pytest.raises(HTTPException) as ex:
+        dn.update_debit_note(dn_id, dn.DebitNoteUpdateIn(
+            lines=[InvoiceLineIn(description="x", quantity=1, rate_paise=1000,
+                                  gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+        ), CALLER)
+    assert ex.value.status_code == 422
