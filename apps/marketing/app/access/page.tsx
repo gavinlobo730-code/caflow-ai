@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import { CustomCursor } from "@/components/Cursor";
 import { Building, Users, ArrowRight, ArrowLeft, Check, Lock } from "@/components/icons";
 import { instrumentSerif, manrope } from "@/lib/fonts";
 import { appLinks } from "@/lib/site";
@@ -43,7 +42,6 @@ export default function AccessPage() {
       className={`relative min-h-screen overflow-hidden bg-brand-dark text-white ${instrumentSerif.variable} ${manrope.variable} font-manrope`}
       style={VIGNETTE}
     >
-      <CustomCursor />
       {/* soft brand wash from the top, echoing the homepage's dark panels */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-brand-light/[0.06] to-transparent" />
       {/* Ghost page numeral — the same "page" motif carried across every page. */}

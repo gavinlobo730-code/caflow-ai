@@ -58,9 +58,9 @@
         <div style="justify-self:end; align-self:center; position:relative; width:min(90vw,380px); height:360px; perspective:900px;">
           <div class="tilt-card" data-tilt-base="rotate(-6deg)" style="position:absolute; left:0; bottom:20px; width:210px; background:oklch(97% 0.004 260); border-radius:10px; box-shadow:0 24px 55px oklch(10% 0.02 267 / 0.45); padding:16px 18px; transform:rotate(-6deg); will-change:transform;">
             <div style="display:flex; align-items:center; gap:10px;">
-              <div style="width:30px; height:30px; border-radius:50%; background:oklch(58% 0.13 267 / 0.15); display:flex; align-items:center; justify-content:center; font:600 12px/1 'Manrope',sans-serif; color:oklch(40% 0.1 267); flex-shrink:0;">PS</div>
+              <div style="width:30px; height:30px; border-radius:50%; background:oklch(58% 0.13 267 / 0.15); display:flex; align-items:center; justify-content:center; font:600 12px/1 'Manrope',sans-serif; color:oklch(40% 0.1 267); flex-shrink:0;">ME</div>
               <div>
-                <div style="font:600 12.5px/1.3 'Manrope',sans-serif; color:oklch(20% 0.01 267);">Priya Sharma</div>
+                <div style="font:600 12.5px/1.3 'Manrope',sans-serif; color:oklch(20% 0.01 267);">Meridian Exports</div>
                 <div style="font:500 11px/1.3 'Manrope',sans-serif; color:oklch(20% 0.01 267 / 0.5);">Documents received</div>
               </div>
             </div>
@@ -226,7 +226,13 @@
   var scrollEl, heroWordEl, marqueeEl, canvasEl, grainEl;
   var parallaxEls = [], kineticEls = [], focusEls = [], revealEls = [], heroFadeEls = [], glowEls = [];
   var wordTimer;
-  var renderer, scene, camera, group, rings = [], particles, particleCount = 240, threeRaf;
+  var renderer, scene, camera, group, rings = [], particles, particleCount = 150, threeRaf;
+  // Cap the WebGL render resolution well below native device pixels. The scene
+  // is a soft, glowy, decorative globe, so a lower internal resolution is
+  // visually near-identical but dramatically cheaper on the fill-rate-bound
+  // integrated GPUs in ordinary laptops — the difference between "smooth
+  // everywhere" and "only smooth on a high-end machine".
+  var RENDER_DPR = Math.min(window.devicePixelRatio || 1, 1.25);
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function computeMaxScroll() { if (scrollEl) maxScroll = Math.max(0, scrollEl.scrollHeight - window.innerHeight); }
@@ -441,7 +447,7 @@
       var w = parent.clientWidth || 600, h = parent.clientHeight || 600;
 
       renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true, antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setPixelRatio(RENDER_DPR);
       renderer.setSize(w, h);
 
       scene = new THREE.Scene();
@@ -475,7 +481,7 @@
         { r: 2.55, tube: 0.005, rx: -0.4, ry: 0.2, rz: 0.9, opacity: 0.3, speed: 0.0012 }
       ];
       ringDefs.forEach(function (def) {
-        var ring = new THREE.Mesh(new THREE.TorusGeometry(def.r, def.tube, 8, 128), new THREE.MeshBasicMaterial({ color: 0x587ad9, transparent: true, opacity: def.opacity }));
+        var ring = new THREE.Mesh(new THREE.TorusGeometry(def.r, def.tube, 8, 64), new THREE.MeshBasicMaterial({ color: 0x587ad9, transparent: true, opacity: def.opacity }));
         ring.rotation.set(def.rx, def.ry, def.rz);
         ring.userData.speed = def.speed;
         group.add(ring);
@@ -510,20 +516,18 @@
         return;
       }
       var pw = parent.clientWidth, ph = parent.clientHeight;
-      var dpr = Math.min(window.devicePixelRatio || 1, 2);
-      if (pw && ph && (canvasEl.width !== Math.round(pw * dpr) || canvasEl.height !== Math.round(ph * dpr))) {
+      if (pw && ph && (canvasEl.width !== Math.round(pw * RENDER_DPR) || canvasEl.height !== Math.round(ph * RENDER_DPR))) {
         camera.aspect = pw / ph;
         camera.updateProjectionMatrix();
         renderer.setSize(pw, ph);
       }
 
+      // Constant, autonomous spin only. The scene deliberately does NOT track
+      // the cursor: letting the pointer tug the globe's rotation made the
+      // particle inflow read as jittery and "disturbed" rather than a calm,
+      // continuous drift, so the mouse no longer influences it.
       group.rotation.y += 0.0016;
       group.rotation.x += 0.0006;
-
-      var nx = (mouseClientX / window.innerWidth - 0.5) * 2;
-      var ny = (mouseClientY / window.innerHeight - 0.5) * 2;
-      group.rotation.x += ((-ny * 0.25) - group.rotation.x) * 0.02;
-      group.rotation.y += ((nx * 0.35) - group.rotation.y) * 0.02;
 
       rings.forEach(function (ring) { ring.rotation.z += ring.userData.speed; });
 
