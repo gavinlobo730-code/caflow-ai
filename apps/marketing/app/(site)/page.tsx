@@ -17,7 +17,7 @@ import {
   ReactiveMarquee,
   RotatingWord,
 } from "@/components/Kinetic";
-import { SiteFooter } from "@/components/SiteFooter";
+import { HomeFooter } from "@/components/HomeFooter";
 import { instrumentSerif, manrope } from "@/lib/fonts";
 import { ArrowRight } from "@/components/icons";
 import { appLinks } from "@/lib/site";
@@ -474,7 +474,7 @@ export default function HomePage() {
         <Stats />
         <Testimonial />
         <FinalCTA />
-        <SiteFooter />
+        <HomeFooter />
       </ScrollJack>
     </div>
   );
