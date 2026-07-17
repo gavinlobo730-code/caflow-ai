@@ -118,7 +118,7 @@ export default function PricingPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
+      <Panel theme="dark" seam="none">
         <CineReveal>
           <SerifHeading
             eyebrow="Pricing"
@@ -129,7 +129,7 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── Tiers ────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right" numeral="02" numeralCorner="bottom-left">
+      <Panel theme="light" seam="rising-right">
         <div className="grid gap-6 md:grid-cols-3">
           {TIERS.map((tier, i) => (
             <Reveal key={tier.name} variant="up" delay={i * 120} className="h-full">
@@ -190,7 +190,7 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── Included in every plan ───────────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left" numeral="03" numeralCorner="top-right">
+      <Panel theme="dark" seam="rising-left">
         <CineReveal>
           <SerifHeading
             eyebrow="Every plan"
@@ -211,7 +211,7 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right" numeral="04" numeralCorner="bottom-left">
+      <Panel theme="light" seam="rising-right">
         <CineReveal>
           <SerifHeading
             eyebrow="FAQ"
