@@ -98,11 +98,15 @@ export function SerifHeading({
 }) {
   const titleColor = theme === "dark" ? "text-white" : "text-brand-dark";
   const subColor = theme === "dark" ? "text-slate-300" : "text-slate-600";
+  // Matches the homepage exactly: the eyebrow is never an accent color, just
+  // the section's own text color at ~50% opacity (the reference uses
+  // 0.45-0.55 per section; a flat 50% reads the same everywhere).
+  const eyebrowColor = theme === "dark" ? "text-white/50" : "text-brand-dark/50";
   const alignCls = align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-2xl";
   return (
     <div className={`${alignCls} ${className}`}>
       {eyebrow ? (
-        <span className={`block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold ${align === "center" ? "text-center" : ""}`}>
+        <span className={`block text-[12px] font-semibold uppercase tracking-[0.18em] ${eyebrowColor} ${align === "center" ? "text-center" : ""}`}>
           {eyebrow}
         </span>
       ) : null}
