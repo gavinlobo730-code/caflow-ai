@@ -19,6 +19,17 @@ export function fmt(paise: number): string {
   return paise === 0 ? "—" : formatPaise(paise);
 }
 
+// A bulk action can loop hundreds of these calls with a single token fetched
+// once at the start — refresh once and retry on 401 rather than surfacing a
+// raw "Token expired" mid-batch (see purchases/page.tsx's handleBulkReceive,
+// which hit exactly this on a 754-row selection). Safe to retry: a 401 means
+// auth rejected the request before any handler ran, so nothing was processed.
+async function refreshedAuthToken(): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.auth.refreshSession();
+  return data.session?.access_token ?? null;
+}
+
 // ── REST client (Supabase-authed calls to the FastAPI backend) ───────────────
 export async function apiCall(
   endpoint: string,
@@ -26,14 +37,19 @@ export async function apiCall(
   body?: unknown,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const res = await fetch(`${API}${endpoint}`, {
+  const doFetch = (t?: string) => fetch(`${API}${endpoint}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const newToken = await refreshedAuthToken();
+    if (newToken && newToken !== token) res = await doFetch(newToken);
+  }
   if (!res.ok && res.status !== 200) {
     // Try to parse as JSON first (FastAPI returns structured errors)
     const text = await res.text().catch(() => "Request failed");
@@ -66,13 +82,18 @@ export async function apiGet(
   endpoint: string,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const res = await fetch(`${API}${endpoint}`, {
+  const doFetch = (t?: string) => fetch(`${API}${endpoint}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
     },
   });
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const newToken = await refreshedAuthToken();
+    if (newToken && newToken !== token) res = await doFetch(newToken);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "Request failed");
     return { success: false, data: null, error: text };
