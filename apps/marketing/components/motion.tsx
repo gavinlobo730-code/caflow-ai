@@ -82,57 +82,6 @@ export function Reveal({
   );
 }
 
-/** Eases a number from 0 to `to` when scrolled into view. */
-export function CountUp({
-  to,
-  duration = 1600,
-  prefix = "",
-  suffix = "",
-  className = "",
-  linear = false,
-}: {
-  to: number;
-  duration?: number;
-  prefix?: string;
-  suffix?: string;
-  className?: string;
-  /** The design reference's stat counters interpolate linearly (no easing
-   * curve) — default false keeps the existing easeOutExpo feel for other
-   * callers. */
-  linear?: boolean;
-}) {
-  const { ref, inView } = useInView<HTMLSpanElement>();
-  const reduced = usePrefersReducedMotion();
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    if (!inView) return;
-    if (reduced) {
-      setValue(to);
-      return;
-    }
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      // easeOutExpo — fast start, long soft landing
-      const eased = linear ? t : t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
-      setValue(Math.round(to * eased));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [inView, to, duration, reduced, linear]);
-
-  return (
-    <span ref={ref} className={`tabular-nums ${className}`}>
-      {prefix}
-      {value.toLocaleString("en-IN")}
-      {suffix}
-    </span>
-  );
-}
-
 /** Pointer-tracking 3D tilt with a soft spring back on leave. */
 export function Tilt({
   children,
@@ -176,61 +125,6 @@ export function Tilt({
       onMouseLeave={onLeave}
       className={className}
       style={{ transformStyle: "preserve-3d" }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/**
- * Card that keeps a fixed base transform (e.g. `rotate(-6deg)` or a centering
- * `translate(-50%,-50%) rotate(-2deg)`) and layers a cursor-driven 3D tilt
- * (±14° rotateX/rotateY from the pointer's position within the card) on top,
- * snapping back to the base on mouse-leave — the hero mockup-card effect from
- * the design reference's `attachCard`. Distinct from `Tilt`, which has no base
- * transform and applies its own perspective/scale. The parent must set
- * `perspective` for the 3D rotation to read. Inert (base transform only, no
- * listeners' effect) under reduced motion.
- */
-export function TiltCard({
-  base,
-  className = "",
-  style,
-  children,
-}: {
-  base: string;
-  className?: string;
-  style?: CSSProperties;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduced = usePrefersReducedMotion();
-
-  function onMove(e: React.MouseEvent) {
-    if (reduced) return;
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const px = (e.clientX - r.left) / r.width - 0.5;
-    const py = (e.clientY - r.top) / r.height - 0.5;
-    el.style.transition = "transform 0.05s linear";
-    el.style.transform = `${base} rotateX(${(-py * 14).toFixed(2)}deg) rotateY(${(px * 14).toFixed(2)}deg)`;
-  }
-
-  function onLeave() {
-    const el = ref.current;
-    if (!el) return;
-    el.style.transition = "transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)";
-    el.style.transform = base;
-  }
-
-  return (
-    <div
-      ref={ref}
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
-      className={className}
-      style={{ transform: base, willChange: "transform", ...style }}
     >
       {children}
     </div>

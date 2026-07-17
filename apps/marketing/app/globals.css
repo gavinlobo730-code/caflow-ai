@@ -246,14 +246,6 @@ body {
   to { stroke-dashoffset: 0; }
 }
 
-/* ─── Scroll cue (hero bottom) — exact "bob" keyframe from the design
-   reference: translateY only, no opacity oscillation, 2s not 2.4s. ────────── */
-.scroll-cue { animation: bob 2s ease-in-out infinite; }
-@keyframes bob {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(8px); }
-}
-
 /* ─── Ambient shimmer line under section eyebrows ─────────────────────────── */
 @keyframes fade-up-simple {
   from { opacity: 0; transform: translateY(10px); }
