@@ -1,0 +1,12 @@
+# Cloudflare Pages rewrite: serve the design-reference homepage as the
+# literal top-level document at `/`, not an iframe. The 200 status makes
+# this a rewrite (URL stays `/`, content comes from the target path) rather
+# than a redirect — and per Cloudflare's docs, _redirects rules are always
+# applied ahead of a matching static asset, so this wins even though
+# out/index.html no longer exists for this route. Target is the
+# EXTENSIONLESS path: Cloudflare Pages auto-canonicalizes static .html
+# files to their extensionless URL and 308s any request for the .html
+# path itself, so rewriting to /practicesync-homepage.html here would just
+# chain into that redirect instead of returning content directly —
+# confirmed locally with `wrangler pages dev`, which reproduces this.
+/ /practicesync-homepage 200
