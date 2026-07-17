@@ -388,13 +388,18 @@
       k.el.style.opacity = (0.2 + p * 0.8).toFixed(2);
     });
 
-    var fStart = vh * 0.9, fEnd = vh * 0.45;
+    // Fire each reveal exactly once, the first time its top crosses into the
+    // lower 90% of the viewport — then leave it settled (CSS handles the
+    // transition). No per-frame recompute, no re-blurring on scroll-up.
+    var fStart = vh * 0.9;
     focusEls.forEach(function (f) {
-      var rect = f.el.getBoundingClientRect();
-      var p = clamp((fStart - rect.top) / (fStart - fEnd), 0, 1);
-      f.el.style.opacity = (f.target * (0.15 + p * 0.85)).toFixed(2);
-      f.el.style.filter = 'blur(' + ((1 - p) * 10).toFixed(1) + 'px)';
-      f.el.style.transform = 'scale(' + (0.94 + p * 0.06).toFixed(3) + ')';
+      if (f.el.__revealed) return;
+      if (f.el.getBoundingClientRect().top < fStart) {
+        f.el.__revealed = true;
+        f.el.style.opacity = f.target;
+        f.el.style.transform = 'none';
+        f.el.style.filter = 'none';
+      }
     });
   }
 
@@ -563,18 +568,27 @@
 
     document.querySelectorAll('.parallax-slow').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.05 }); });
     document.querySelectorAll('.parallax-med').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.11 }); });
-    // Headlines reveal as a whole line with the same graceful blur + fade used
-    // across the rest of the site (instead of the old per-word clip wipe), so
-    // every heading everywhere shares one consistent, graceful entrance. The
-    // per-word spans are unwrapped (clip-path cleared) and the line is driven
-    // by the same focus-reveal loop as the paragraphs.
+    // Headings and paragraphs use the same "plays once" reveal as the rest of
+    // the site: they start blurred, nudged down and invisible, then transition
+    // in ONE TIME (via CSS transition, not a per-frame recompute) when they
+    // scroll into view — and stay put, instead of re-blurring on scroll-up.
+    // Same blur + slide + fade the React pages' reveal uses. The headline
+    // per-word spans are unwrapped (clip-path cleared) so the whole line
+    // reveals together.
+    function initReveal(el, target) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(18px)';
+      el.style.filter = 'blur(12px)';
+      el.style.transition = 'opacity 0.9s ease, transform 0.9s ease, filter 0.9s ease';
+      focusEls.push({ el: el, target: target });
+    }
     document.querySelectorAll('.kinetic-line').forEach(function (line) {
       Array.from(line.children).forEach(function (word) { word.style.clipPath = 'none'; });
-      line.style.opacity = '0.15';
-      line.style.filter = 'blur(10px)';
-      focusEls.push({ el: line, target: 1 });
+      initReveal(line, 1);
     });
-    document.querySelectorAll('.focus-reveal').forEach(function (el) { focusEls.push({ el: el, target: parseFloat(el.dataset.targetOpacity || '1') }); });
+    document.querySelectorAll('.focus-reveal').forEach(function (el) {
+      initReveal(el, parseFloat(el.dataset.targetOpacity || '1'));
+    });
     document.querySelectorAll('.scroll-reveal').forEach(function (el) { revealEls.push(el); });
     document.querySelectorAll('.hero-fade').forEach(function (el) {
       el.style.filter = 'blur(10px)';
