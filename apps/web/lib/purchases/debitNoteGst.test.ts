@@ -23,9 +23,19 @@ test("0% GST line has zero tax on both intra- and inter-state", () => {
   assert.equal(dnLineGst({ quantity: 1, rate: 100, gst_rate_bps: 0 }, true).line_total, 10000);
 });
 
-test("an odd basis-point rate floors the halved rate first, exactly like the backend's integer division", () => {
-  // 0.1% (10 bps) intra-state: half = 10 // 2 = 5 bps.
-  // taxable = 1 * 1000 * 100 = 100000 paise; cgst = sgst = floor(100000*5/10000) = 50.
+test("full tax is computed first, then split — SGST carries any odd paise (matches the backend exactly, not the old halve-bps-first approach)", () => {
+  // 28 paise taxable @ 18%: full_gst = floor(28*1800/10000) = floor(5.04) = 5
+  // (odd) -> cgst = 5//2 = 2, sgst = 5-2 = 3, total 5. The old "halve the bps
+  // first" method computed floor(28*900/10000)=2 for BOTH legs — total 4,
+  // silently 1 paise short of what the backend actually posts.
+  const g = dnLineGst({ quantity: 1, rate: 0.28, gst_rate_bps: 1800 }, false);
+  assert.equal(g.taxable_paise, 28);
+  assert.equal(g.cgst_paise, 2);
+  assert.equal(g.sgst_paise, 3);
+  assert.equal(g.line_total, 33);
+});
+
+test("an even-paise total still splits CGST/SGST identically either way (regression guard)", () => {
   const g = dnLineGst({ quantity: 1, rate: 1000, gst_rate_bps: 10 }, false);
   assert.equal(g.taxable_paise, 100000);
   assert.equal(g.cgst_paise, 50);
