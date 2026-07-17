@@ -46,7 +46,6 @@ export function HomeFooter() {
   return (
     <DiagonalSection seam="rising-right" className="bg-brand-dark text-white" style={VIGNETTE}>
       <footer className="relative overflow-hidden">
-        <div className="bg-grid absolute inset-0 opacity-60" />
         <div
           className="relative mx-auto max-w-[1100px] px-[clamp(20px,6vw,72px)] pb-[34px]"
           style={{ paddingTop: "calc(70px + 64px)" }}

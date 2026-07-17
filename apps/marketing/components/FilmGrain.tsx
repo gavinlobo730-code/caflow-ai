@@ -13,8 +13,11 @@ const GRAIN_SVG =
  * the design reference: a static turbulence texture whose opacity is
  * re-randomized between 3.5% and 6.5% every 110ms for a living-grain shimmer.
  * Under prefers-reduced-motion the flicker is dropped and it holds a flat 5%
- * — the texture still reads, without the animation. Sits below the sticky
- * nav (z-40) so it grains the page content but not the header chrome.
+ * — the texture still reads, without the animation. Sits above the sticky
+ * nav (z-50) but below the intro loader (z-100), matching the reference's
+ * own z-index:9999 (well above its nav's z-index:50) — the grain texture
+ * reads over the nav too, not just the page content below it. pointer-
+ * events-none means this never blocks clicking through to the nav itself.
  */
 export function FilmGrain() {
   const ref = useRef<HTMLDivElement>(null);
@@ -38,7 +41,7 @@ export function FilmGrain() {
     <div
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-40"
+      className="pointer-events-none fixed inset-0 z-[60]"
       style={{ mixBlendMode: "overlay", opacity: 0.05 }}
     />
   );

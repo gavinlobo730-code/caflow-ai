@@ -73,8 +73,6 @@ const STATS = [
 
 // ── Hero ──────────────────────────────────────────────────────────────────
 function Hero({ revealed }: { revealed: boolean }) {
-  const glow = useCursorGlow();
-
   // Hero copy (subhead, paragraph, CTA row, trust row) staggers in when the
   // intro loader exits — 90ms per element, fade + translateY(16px→0), exactly
   // as the reference triggers from its loader's exit. Once `revealed` flips
@@ -91,15 +89,7 @@ function Hero({ revealed }: { revealed: boolean }) {
       id="hero"
       className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-brand-dark text-white"
       style={HERO_VIGNETTE}
-      {...glow.handlers}
     >
-      <div className="bg-grid absolute inset-0" />
-      <div className="aurora aurora-1 -left-40 -top-48 h-[560px] w-[560px]" />
-      <div className="aurora aurora-2 -right-48 top-1/4 h-[620px] w-[620px]" />
-      <div className="aurora aurora-3 bottom-[-200px] left-1/3 h-[520px] w-[520px]" />
-      <div className="bg-noise absolute inset-0" />
-      <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
-
       {/* 3D centrepiece — fills the right ~54% of the section, behind the
           content, per the reference. Its own wrapper is what ThreeScene
           measures (size + scroll-fade progress). */}
@@ -289,7 +279,6 @@ function Platform() {
   return (
     <DiagonalSection numeral="03" numeralCorner="top-right" seam="rising-left" className="bg-brand-dark text-white" style={VIGNETTE}>
       <div className="relative" {...glow.handlers}>
-        <div className="bg-grid absolute inset-0 opacity-70" />
         <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
         <div className={`relative mx-auto max-w-[1100px] ${SIDE_PAD} pt-[calc(clamp(90px,14vw,150px)+64px)] pb-[clamp(90px,14vw,150px)]`}>
           <ParallaxLabel factor={0.05}>
@@ -425,7 +414,6 @@ function FinalCTA() {
     <DiagonalSection seam="rising-left" className="bg-brand-dark text-white" style={VIGNETTE}>
       <SectionReveal>
         <div className="relative text-center" {...glow.handlers}>
-          <div className="bg-grid absolute inset-0" />
           <div ref={glow.ref} className="cursor-glow" aria-hidden="true" />
           <div className={`relative mx-auto max-w-[1100px] ${SIDE_PAD} pt-[calc(clamp(90px,14vw,160px)+64px)] pb-[clamp(90px,14vw,160px)]`}>
             <h2 className="mx-auto max-w-[16ch] font-display text-[clamp(34px,5.4vw,64px)] italic font-normal leading-[1.12] tracking-[-0.015em] text-white">
