@@ -119,7 +119,7 @@ def _compute_lines(lines_data: list, is_interstate: bool):
         total_taxable += taxable; total_cgst += cgst; total_sgst += sgst; total_igst += igst
         computed.append({
             "description": ln.get("description", ""), "hsn_sac": ln.get("hsn_sac", ""),
-            "quantity": qty, "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
+            "quantity": qty, "unit": ln.get("unit") or "NOS", "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
             "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
             "igst_paise": igst, "line_total_paise": taxable + cgst + sgst + igst,
             # Which Product/Service (goods only, in practice) this return
