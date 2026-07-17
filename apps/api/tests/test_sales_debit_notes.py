@@ -280,3 +280,29 @@ def test_patch_lines_rejected_on_issued_sales_debit_note(monkeypatch):
                                   gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
         ), CALLER)
     assert ex.value.status_code == 422
+
+
+def test_line_unit_persists_on_create_and_edit(monkeypatch):
+    # _compute_lines previously never read ln.get("unit") at all, so every
+    # line's unit silently landed NULL regardless of what the editor sent —
+    # unlike sales_invoices.py/purchase_bills.py, which always did.
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    res = sdn.create_sales_debit_note(sdn.SalesDebitNoteIn(
+        client_id="CLI", customer_id="CUST1", debit_note_date="2025-06-05",
+        sales_invoice_id=inv_id, reason="Rate correction — undercharged",
+        lines=[InvoiceLineIn(description="additional charge", quantity=2, unit="KGS", rate_paise=20000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert res["success"] is True
+    dn_id = res["data"]["id"]
+    assert res["data"]["lines"][0]["unit"] == "KGS"
+    assert sdn.get_sales_debit_note(dn_id, CALLER)["data"]["lines"][0]["unit"] == "KGS"
+
+    upd = sdn.update_sales_debit_note(dn_id, sdn.SalesDebitNoteUpdateIn(
+        lines=[InvoiceLineIn(description="additional charge", quantity=2, unit="BOX", rate_paise=20000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert upd["success"] is True
+    assert upd["data"]["lines"][0]["unit"] == "BOX"
+    assert sdn.get_sales_debit_note(dn_id, CALLER)["data"]["lines"][0]["unit"] == "BOX"
