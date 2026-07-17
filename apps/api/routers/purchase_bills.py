@@ -808,7 +808,7 @@ def delete_purchase_bill(
     bill_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Soft-delete a DRAFT purchase bill. Mirrors sales_invoices.py's
+    """Hard-delete a DRAFT purchase bill. Mirrors sales_invoices.py's
     delete_invoice exactly.
 
     Only drafts may be deleted. Received / partially-paid / paid / cancelled
@@ -816,6 +816,9 @@ def delete_purchase_bill(
     bills, possible ITC/inventory effects) and must never be removed. A
     draft never appears in any accounting report or ITC computation, so
     removing it has zero effect on the Trial Balance / P&L / Balance Sheet.
+    The row is genuinely removed (not soft-deleted): the create/delete
+    audit_log events already capture the full document and a status summary
+    respectively, independent of whether the row itself still exists.
     """
     try:
         if _USE_MOCK:
@@ -847,8 +850,13 @@ def delete_purchase_bill(
                 detail=f"Cannot delete {_BILL_DELETE_BLOCKED.get(st, st)} bill — only drafts can be deleted",
             )
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        db.table("purchase_bills").update({"deleted_at": now_iso}).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        # Hard delete — draft-only, so purchase_bill_lines cascades automatically
+        # (FK ON DELETE CASCADE) and nothing else can reference a still-draft
+        # bill (debit notes / purchase credit notes / payments only attach to
+        # received bills). The audit_log 'delete' event below (and the 'create'
+        # event's full snapshot, logged when the bill was made) survive
+        # independently — audit_log.entity_id is a bare text column, not an FK.
+        db.table("purchase_bills").delete().eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
