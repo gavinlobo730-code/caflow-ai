@@ -72,6 +72,12 @@
 /clients/:id/reports.txt                                      /clients/_placeholder/reports/index.txt  200
 /clients/:id/sales                                            /clients/_placeholder/sales/  200
 /clients/:id/sales.txt                                        /clients/_placeholder/sales/index.txt  200
+/clients/:id/sales/credit-notes/:cnId/edit                    /clients/_placeholder/sales/credit-notes/_placeholder/edit/  200
+/clients/:id/sales/credit-notes/:cnId/edit.txt                /clients/_placeholder/sales/credit-notes/_placeholder/edit/index.txt  200
+/clients/:id/sales/credit-notes/new                           /clients/_placeholder/sales/credit-notes/new/  200
+/clients/:id/sales/credit-notes/new.txt                       /clients/_placeholder/sales/credit-notes/new/index.txt  200
+/clients/:id/sales/credit-notes/new/                          /clients/_placeholder/sales/credit-notes/new/  200
+/clients/:id/sales/credit-notes/new/index.txt                 /clients/_placeholder/sales/credit-notes/new/index.txt  200
 /clients/:id/sales/debit-notes/:sdnId/edit                    /clients/_placeholder/sales/debit-notes/_placeholder/edit/  200
 /clients/:id/sales/debit-notes/:sdnId/edit.txt                /clients/_placeholder/sales/debit-notes/_placeholder/edit/index.txt  200
 /clients/:id/sales/debit-notes/new                            /clients/_placeholder/sales/debit-notes/new/  200
@@ -124,6 +130,7 @@
 /clients/:id/purchases/bills/:billId/*                        /clients/_placeholder/purchases/bills/_placeholder/:splat  200
 /clients/:id/purchases/credit-notes/:pcnId/*                  /clients/_placeholder/purchases/credit-notes/_placeholder/:splat  200
 /clients/:id/purchases/debit-notes/:dnId/*                    /clients/_placeholder/purchases/debit-notes/_placeholder/:splat  200
+/clients/:id/sales/credit-notes/:cnId/*                       /clients/_placeholder/sales/credit-notes/_placeholder/:splat  200
 /clients/:id/sales/debit-notes/:sdnId/*                       /clients/_placeholder/sales/debit-notes/_placeholder/:splat  200
 /clients/:id/sales/invoices/:invoiceId/*                      /clients/_placeholder/sales/invoices/_placeholder/:splat  200
 /clients/:id/year-end/:engagementId/*                         /clients/_placeholder/year-end/_placeholder/:splat  200

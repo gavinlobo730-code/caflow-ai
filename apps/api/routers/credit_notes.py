@@ -25,7 +25,6 @@ class CreditNoteIn(BaseModel):
     credit_note_date: str  # YYYY-MM-DD
     lines: list[InvoiceLineIn]
     sales_invoice_id: str | None = None
-    reference_no: str | None = None
     reason: str | None = None
     is_interstate: bool = False
 
@@ -35,6 +34,17 @@ class CreditNoteIn(BaseModel):
         if not v:
             raise ValueError("Credit note must have at least one line.")
         return v
+
+
+class CreditNoteUpdateIn(BaseModel):
+    customer_id: str | None = None
+    credit_note_date: str | None = None
+    sales_invoice_id: str | None = None
+    reason: str | None = None
+    is_interstate: bool | None = None
+    lines: list[InvoiceLineIn] | None = None
+    notes: str | None = None
+
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.credit_notes")
@@ -104,6 +114,36 @@ def _compute_line_gst(
     cgst = full_gst // 2
     sgst = full_gst - cgst
     return cgst, sgst, 0
+
+
+def _compute_lines(lines_data: list, is_interstate: bool):
+    """Shared by create and PATCH — matches debit_notes.py / purchase_credit_notes.py
+    / sales_debit_notes.py's own _compute_lines exactly, including "unit":
+    ln.get("unit") or "NOS" (those three routers originally omitted it,
+    silently dropping every line's unit despite the column, model field and
+    editor UI all supporting it — fixed here from the start)."""
+    computed, total_taxable, total_cgst, total_sgst, total_igst = [], 0, 0, 0, 0
+    for ln in lines_data:
+        ln = ln if isinstance(ln, dict) else ln.model_dump()
+        qty = ln.get("quantity", 1)
+        rate_paise = int(ln.get("rate_paise", 0))
+        gst_rate_bps = int(ln.get("gst_rate_bps") or 0)
+        if not gst_rate_bps and ln.get("gst_rate_percent"):
+            gst_rate_bps = int(round(float(ln.get("gst_rate_percent")) * 100))
+        taxable = int(Decimal(str(qty)) * rate_paise)
+        cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+        total_taxable += taxable; total_cgst += cgst; total_sgst += sgst; total_igst += igst
+        computed.append({
+            "description": ln.get("description", ""), "hsn_sac": ln.get("hsn_sac", ""),
+            "quantity": qty, "unit": ln.get("unit") or "NOS", "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
+            "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
+            "igst_paise": igst, "line_total_paise": taxable + cgst + sgst + igst,
+            # Which Product/Service (goods only, in practice) this return
+            # restocks — migration 189. Optional: a line with no pick just
+            # never moves stock (domain.inventory_service.apply_credit_note_to_inventory).
+            "service_catalogue_id": ln.get("service_catalogue_id"),
+        })
+    return computed, total_taxable, total_cgst, total_sgst, total_igst
 
 
 # ---------------------------------------------------------------------------
@@ -189,47 +229,8 @@ def create_credit_note(
                 if inv_resp.data:
                     is_interstate = inv_resp.data[0].get("is_interstate", False)
 
-        # Compute lines
-        computed_lines: list[dict] = []
-        total_taxable = 0
-        total_cgst    = 0
-        total_sgst    = 0
-        total_igst    = 0
-
-        for ln in lines_data:
-            qty          = ln.get("quantity", 1)
-            rate_paise   = int(ln.get("rate_paise", 0))
-            # Line rate arrives as gst_rate_percent on the shared InvoiceLineIn model;
-            # fall back to an explicit gst_rate_bps if a caller supplies one. (Reading
-            # only gst_rate_bps previously yielded 0% GST on standalone credit notes.)
-            gst_rate_bps = int(ln.get("gst_rate_bps") or 0)
-            if not gst_rate_bps and ln.get("gst_rate_percent"):
-                gst_rate_bps = int(round(float(ln.get("gst_rate_percent")) * 100))
-            taxable      = int(Decimal(str(qty)) * rate_paise)
-            cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
-
-            total_taxable += taxable
-            total_cgst    += cgst
-            total_sgst    += sgst
-            total_igst    += igst
-
-            computed_lines.append({
-                "description":          ln.get("description", ""),
-                "hsn_sac":              ln.get("hsn_sac", ""),
-                "quantity":             qty,
-                "rate_paise":           rate_paise,
-                "gst_rate_bps":         gst_rate_bps,
-                "taxable_amount_paise": taxable,
-                "cgst_paise":           cgst,
-                "sgst_paise":           sgst,
-                "igst_paise":           igst,
-                "line_total_paise":     taxable + cgst + sgst + igst,
-                # Which Product/Service (goods only, in practice) this return
-                # restocks — migration 189. Optional: a line with no pick just
-                # never moves stock (domain.inventory_service.apply_credit_note_to_inventory).
-                "service_catalogue_id": ln.get("service_catalogue_id"),
-            })
-
+        # Compute lines (shared with the PATCH endpoint — see _compute_lines)
+        computed_lines, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
 
         # Validate posting date is not in a locked financial year (migration 020)
@@ -336,6 +337,89 @@ def get_credit_note(
         raise
     except Exception as e:
         _logger.error("get_credit_note: %s", e)
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
+
+
+@router.patch("/{cn_id}")
+def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
+    """Edit a DRAFT credit note — full edit, including lines. Once issued, a
+    credit note is immutable like a Sales Invoice past issue; the correction
+    path is a fresh note, not an edit (CGST Act §34). notes stays editable
+    regardless of status (mirrors sales_invoices' own soft-update fields —
+    this router has no attachment concept, matching the Sales Invoice
+    baseline, which has none either)."""
+    try:
+        data = data.model_dump(exclude_none=True)
+        lines_data = data.pop("lines", None)
+        soft_fields = {"notes"}
+
+        if _USE_MOCK:
+            for i, c in enumerate(MOCK_CREDIT_NOTES):
+                if c["id"] == cn_id and not c.get("deleted_at"):
+                    if c.get("status") != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
+                        raise HTTPException(status_code=422, detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).")
+                    computed = []
+                    if lines_data is not None:
+                        is_interstate = data.get("is_interstate", c.get("is_interstate", False))
+                        computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+                        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+                        if total_paise <= 0:
+                            raise HTTPException(status_code=422, detail="Credit note total must be positive.")
+                        data.update({
+                            "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
+                            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                            "total_gst_paise": total_cgst + total_sgst + total_igst,
+                        })
+                        MOCK_CREDIT_NOTE_LINES[:] = [l for l in MOCK_CREDIT_NOTE_LINES if l.get("credit_note_id") != cn_id]
+                        for ln in computed:
+                            MOCK_CREDIT_NOTE_LINES.append({**ln, "credit_note_id": cn_id})
+                    MOCK_CREDIT_NOTES[i] = {**c, **data}
+                    return api_response(True, {**MOCK_CREDIT_NOTES[i], "lines": computed or [l for l in MOCK_CREDIT_NOTE_LINES if l.get("credit_note_id") == cn_id]})
+            raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        resp = (db.table("credit_notes").select("*")
+                .eq("id", cn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute())
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
+        c = resp.data[0]
+        status = c.get("status")
+        if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
+            raise HTTPException(
+                status_code=422,
+                detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).",
+            )
+        if data.get("credit_note_date"):
+            period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
+
+        if lines_data is not None:
+            is_interstate = data.get("is_interstate", c.get("is_interstate", False))
+            computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+            total_paise = total_taxable + total_cgst + total_sgst + total_igst
+            if total_paise <= 0:
+                raise HTTPException(status_code=422, detail="Credit note total must be positive.")
+            data.update({
+                "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
+                "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                "total_gst_paise": total_cgst + total_sgst + total_igst,
+            })
+            db.table("credit_note_lines").delete().eq("credit_note_id", cn_id).execute()
+            for ln in computed:
+                db.table("credit_note_lines").insert({**ln, "credit_note_id": cn_id}).execute()
+
+        if data:
+            upd = db.table("credit_notes").update(data).eq("id", cn_id).eq("firm_id", firm_id).execute()
+            updated = upd.data[0] if upd.data else {**c, **data}
+        else:
+            updated = c
+        lines = (db.table("credit_note_lines").select("*").eq("credit_note_id", cn_id).execute().data or [])
+        return api_response(True, {**updated, "lines": lines})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("update_credit_note: %s", e)
         return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 

@@ -14,10 +14,8 @@ import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatt
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
-import { HsnLookup } from "@/components/lookups/HsnLookup";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
-import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { clearReports } from "@/lib/accounting/reportCache";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -26,6 +24,9 @@ import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
 import { SalesDebitNoteViewDrawer } from "@/components/sales/SalesDebitNoteViewDrawer";
 import type { SalesDebitNoteDetail } from "@/components/sales/SalesDebitNoteEditor";
 import { writeSalesDebitNoteDuplicateSeed } from "@/lib/sales/salesDebitNoteDuplicateSeed";
+import { SalesCreditNoteViewDrawer } from "@/components/sales/SalesCreditNoteViewDrawer";
+import type { SalesCreditNoteDetail } from "@/components/sales/SalesCreditNoteEditor";
+import { writeSalesCreditNoteDuplicateSeed } from "@/lib/sales/salesCreditNoteDuplicateSeed";
 import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
@@ -34,9 +35,9 @@ import { useRouter } from "next/navigation";
 import { newInvoiceHref, editInvoiceHref } from "@/lib/invoices/workspaceNav";
 import { writeDuplicateSeed } from "@/lib/invoices/duplicateSeed";
 import {
-  API, apiCall, apiGet, getAuthToken, fmt, computeGst, GST_RATES, STATUS_BADGE, DELIVERY_STATUS_LABEL,
+  API, apiCall, apiGet, getAuthToken, fmt, STATUS_BADGE, DELIVERY_STATUS_LABEL,
   type InvoiceDelivery, type InvoiceDetail,
-  type Customer, type SalesInvoice, type InvoiceLine,
+  type Customer, type SalesInvoice,
   type CurrencyOption, type InvoiceStatus,
 } from "@/lib/invoices/shared";
 import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits";
@@ -72,8 +73,8 @@ interface Receipt {
 
 interface CreditNote {
   id: string;
-  cn_no: string;
-  cn_date: string;
+  credit_note_no: string;
+  credit_note_date: string;
   customer_id: string;
   customer_name?: string;
   original_invoice_id: string | null;
@@ -3399,12 +3400,14 @@ function CreditNotes({
   clientId: string;
   financialYear: string;
 }) {
+  const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -3439,8 +3442,8 @@ function CreditNotes({
         client_sales_invoices: { invoice_no: string } | null }
     >).map((r) => ({
       id: r.id,
-      cn_no: r.credit_note_no,
-      cn_date: r.credit_note_date,
+      credit_note_no: r.credit_note_no,
+      credit_note_date: r.credit_note_date,
       customer_id: r.customer_id,
       customer_name: r.customers?.name ?? "—",
       original_invoice_id: r.sales_invoice_id ?? null,
@@ -3464,6 +3467,11 @@ function CreditNotes({
     setTimeout(() => setToast(null), 4000);
   }
 
+  function openMenuFor(e: React.MouseEvent, cn: CreditNote) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: cn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+  }
+
   async function issueCreditNote(id: string) {
     if (issuingId) return;
     setIssuingId(id);
@@ -3480,6 +3488,35 @@ function CreditNotes({
     }
   }
 
+  async function deleteCreditNote(cn: CreditNote | SalesCreditNoteDetail) {
+    const ok = await confirmDialog({
+      title: `Delete ${cn.credit_note_no || "this credit note"}?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    setDetailId(null);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to delete credit note");
+      showToast(`${cn.credit_note_no || "Credit note"} deleted`, "success");
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete credit note", "error");
+    }
+  }
+
+  // "Duplicate credit note" — stash the full loaded detail and open New
+  // Credit Note, which prefills from it. Same sessionStorage hand-off as
+  // Sales Debit Note (lib/sales/salesCreditNoteDuplicateSeed).
+  function duplicateCreditNote(cn: SalesCreditNoteDetail) {
+    writeSalesCreditNoteDuplicateSeed(cn);
+    setDetailId(null);
+    router.push(`/clients/${clientId}/sales/credit-notes/new`);
+  }
+
   // Bulk delete — draft-only (backend rejects issued/applied credit notes
   // with a 422, CGST Act §34: once issued they've already reduced the
   // original invoice's outstanding balance and there is no cancel/void path
@@ -3494,7 +3531,7 @@ function CreditNotes({
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
-        failures.push(`${cn.cn_no}: ${e instanceof Error ? e.message : "failed"}`);
+        failures.push(`${cn.credit_note_no}: ${e instanceof Error ? e.message : "failed"}`);
       }
     }));
     const summary = failures.length
@@ -3507,10 +3544,10 @@ function CreditNotes({
 
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<CreditNote>[] = useMemo(() => [
-    { key: "cn_no", header: "CN No", accessor: (cn) => cn.cn_no, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (cn) => <span className="font-mono font-medium text-[#1E293B]">{cn.cn_no}</span> },
-    { key: "cn_date", header: "Date", accessor: (cn) => cn.cn_date, sortable: true,
-      render: (cn) => <span className="text-[#64748B] whitespace-nowrap">{cn.cn_date}</span> },
+    { key: "credit_note_no", header: "CN No", accessor: (cn) => cn.credit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (cn) => <span className="font-mono font-medium text-[#1E293B]">{cn.credit_note_no}</span> },
+    { key: "credit_note_date", header: "Date", accessor: (cn) => cn.credit_note_date, sortable: true,
+      render: (cn) => <span className="text-[#64748B] whitespace-nowrap">{cn.credit_note_date}</span> },
     { key: "customer_name", header: "Customer", accessor: (cn) => cn.customer_name ?? "", searchable: true,
       render: (cn) => <span className="text-[#334155]">{cn.customer_name}</span> },
     { key: "original_invoice_no", header: "Orig. Invoice", accessor: (cn) => cn.original_invoice_no ?? "",
@@ -3543,22 +3580,59 @@ function CreditNotes({
         <p className="text-xs font-semibold text-[#334155]">
           {creditNotes.length} credit note{creditNotes.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-          >
-            <Plus size={12} /> Create Credit Note
-          </button>
-        </div>
       </div>
 
-      {showForm && (
-        <CreditNoteForm
+      {/* Row overflow menu — View details always; Edit for any note (draft
+          gets the full editor, issued gets the same editor scoped to notes
+          only — see SalesCreditNoteEditor's isLocked handling); Delete for
+          drafts only. No Cancel — a credit note has no reversal path,
+          deliberately (CGST Act §34: correct with a fresh note). */}
+      {menu && (() => {
+        const c = creditNotes.find((x) => x.id === menu.id);
+        if (!c) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              <button onClick={() => { setMenu(null); setDetailId(c.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                View details
+              </button>
+              <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/sales/credit-notes/${c.id}/edit`); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                {c.status === "draft" ? "Edit draft" : "Edit"}
+              </button>
+              {c.status === "draft" && (
+                <>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <button onClick={() => { setMenu(null); deleteCreditNote(c); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    Delete draft
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
+      {detailId && (
+        <SalesCreditNoteViewDrawer
+          cnId={detailId}
           clientId={clientId}
-          customers={customers}
-          onSaved={() => { setShowForm(false); load(); showToast("Credit note created", "success"); }}
-          onCancel={() => setShowForm(false)}
+          customerName={
+            creditNotes.find((c) => c.id === detailId)?.customer_name
+            ?? customers.find((c) => c.id === creditNotes.find((x) => x.id === detailId)?.customer_id)?.name
+            ?? ""
+          }
+          onClose={() => setDetailId(null)}
+          onEdit={(id) => router.push(`/clients/${clientId}/sales/credit-notes/${id}/edit`)}
+          onIssue={(c) => { setDetailId(null); issueCreditNote(c.id); }}
+          onDelete={deleteCreditNote}
+          onDuplicate={duplicateCreditNote}
         />
       )}
 
@@ -3571,10 +3645,18 @@ function CreditNotes({
         loading={loading}
         onRefresh={load}
         searchPlaceholder="Search CN no., customer, or reason…"
-        initialSort={{ key: "cn_date", dir: "desc" }}
+        initialSort={{ key: "credit_note_date", dir: "desc" }}
         exportFilename="credit-notes"
         persistKey="sales.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
+        toolbarExtra={
+          <button
+            onClick={() => router.push(`/clients/${clientId}/sales/credit-notes/new`)}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={12} /> Create Credit Note
+          </button>
+        }
         bulkActions={[
           {
             id: "delete",
@@ -3586,330 +3668,27 @@ function CreditNotes({
           },
           exportSelectedAction("credit-notes-selected.csv", columns),
         ]}
-        rowActions={(cn) =>
-          cn.status === "draft" ? (
+        rowActions={(cn) => (
+          <div className="flex items-center justify-end gap-2">
+            {cn.status === "draft" && (
+              <button
+                onClick={() => issueCreditNote(cn.id)}
+                disabled={issuingId === cn.id}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+              >
+                {issuingId === cn.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+              </button>
+            )}
             <button
-              onClick={() => issueCreditNote(cn.id)}
-              disabled={issuingId === cn.id}
-              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+              onClick={(e) => openMenuFor(e, cn)}
+              aria-label={`Actions for credit note ${cn.credit_note_no || cn.id}`}
+              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
             >
-              {issuingId === cn.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+              <MoreHorizontal size={16} />
             </button>
-          ) : null
-        }
+          </div>
+        )}
       />
-    </div>
-  );
-}
-
-// ── Credit Note Form ───────────────────────────────────────────────────────
-
-// A credit note line reuses the invoice-line shape, plus the Product/Service
-// it was picked from — for a goods return this links the line to a stock-in
-// movement (domain.inventory_service.apply_credit_note_to_inventory).
-// Optional: a line with no pick just never moves stock.
-interface CreditNoteLine extends InvoiceLine {
-  service_catalogue_id?: string;
-  product?: ServiceCatalogueItem | null;
-}
-
-function CreditNoteForm({
-  clientId,
-  customers,
-  onSaved,
-  onCancel,
-}: {
-  clientId: string;
-  customers: Customer[];
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const today = new Date().toISOString().split("T")[0];
-  const [customerId, setCustomerId] = useState("");
-  const [cnDate, setCnDate] = useState(today);
-  const [reason, setReason] = useState("");
-  const [originalInvoiceId, setOriginalInvoiceId] = useState("");
-  const [isInterstate, setIsInterstate] = useState(false);
-  const [customerInvoices, setCustomerInvoices] = useState<SalesInvoice[]>([]);
-  const [lines, setLines] = useState<CreditNoteLine[]>([
-    { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" },
-  ]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const gst = computeGst(lines, isInterstate);
-
-  // Load customer's invoices for selection
-  useEffect(() => {
-    if (!customerId) { setCustomerInvoices([]); return; }
-    async function loadInvoices() {
-      const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
-        .from("client_sales_invoices")
-        .select("id, invoice_no, invoice_date, total_paise, status")
-        .eq("client_id", clientId)
-        .eq("customer_id", customerId)
-        .order("invoice_date", { ascending: false })
-        .order("id"));
-      setCustomerInvoices((data as SalesInvoice[]) ?? []);
-    }
-    loadInvoices();
-  }, [customerId, clientId]);
-
-  function setLine(idx: number, patch: Partial<CreditNoteLine>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
-  function addLine() {
-    setLines((prev) => [...prev, { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" }]);
-  }
-  function removeLine(idx: number) {
-    if (lines.length <= 1) return;
-    setLines((prev) => prev.filter((_, i) => i !== idx));
-  }
-  // A Product/Service picked on this row pre-fills description/HSN/rate and
-  // links the line for inventory stock-in tracking on issue (goods only —
-  // a service pick is harmless traceability, apply_credit_note_to_inventory
-  // only acts on kind='good' items server-side).
-  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
-    setLine(idx, { ...serviceToLine(item), service_catalogue_id: item.id, product: item });
-  }
-
-  async function handleSave() {
-    if (!customerId) { setError("Select a customer"); return; }
-    if (!reason.trim()) { setError("Reason is required"); return; }
-    const validLines = lines.filter((l) => parseFloat(l.rate) > 0);
-    if (validLines.length === 0) { setError("Add at least one line with a rate"); return; }
-    if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
-
-    setSaving(true); setError(null);
-    try {
-      const token = await getAuthToken();
-      const result = await apiCall(
-        "/api/credit-notes/",
-        "POST",
-        {
-          client_id: clientId,
-          customer_id: customerId,
-          credit_note_date: cnDate,
-          reason: reason.trim(),
-          sales_invoice_id: originalInvoiceId || undefined,
-          lines: validLines.map((l) => toInvoiceLinePayload({ ...l, serviceCatalogueId: l.service_catalogue_id })),
-        },
-        token
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to create credit note");
-
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save credit note");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0F172A]">Create Credit Note</h3>
-        <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
-          <CustomerLookup
-            customers={customers}
-            value={customerId}
-            onChange={setCustomerId}
-            ariaLabel="Customer"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">CN Date *</label>
-          <input
-            type="date"
-            value={cnDate}
-            onChange={(e) => setCnDate(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Original Invoice (optional)</label>
-          <select
-            value={originalInvoiceId}
-            onChange={(e) => setOriginalInvoiceId(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={!customerId}
-          >
-            <option value="">— None —</option>
-            {customerInvoices.map((inv) => (
-              <option key={inv.id} value={inv.id}>
-                {inv.invoice_no} — {fmt(inv.total_paise)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Reason *</label>
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Goods returned / rate correction / excess billed"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div className="flex items-end pb-1.5">
-          <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isInterstate}
-              onChange={(e) => setIsInterstate(e.target.checked)}
-              className="rounded"
-            />
-            Interstate (IGST)
-          </label>
-        </div>
-      </div>
-
-      {/* Lines */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-              <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
-              <th className="pb-2 text-left font-semibold">Description</th>
-              <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
-              <th className="pb-2 text-right font-semibold w-16">Qty</th>
-              <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
-              <th className="pb-2 text-right font-semibold w-20">GST %</th>
-              <th className="pb-2 text-right font-semibold w-24">Amount</th>
-              <th className="pb-2 w-6" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {lines.map((line, idx) => {
-              const lineTaxable = Math.round((parseFloat(line.qty) || 0) * (parseFloat(line.rate) || 0) * 100);
-              const lineTotal = lineTaxable + Math.round((lineTaxable * line.gst_rate) / 100);
-              return (
-                <tr key={idx}>
-                  <td className="py-1.5 pr-2">
-                    {/* Links this line to a Product/Service for inventory
-                        stock-in tracking on issue (goods only — optional,
-                        a return with no pick just never restocks anything). */}
-                    <ServiceCataloguePicker
-                      clientId={clientId}
-                      value={line.product}
-                      onPick={(item) => onPickProduct(idx, item)}
-                      size="sm"
-                      ariaLabel={`Line ${idx + 1} product or service`}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      value={line.description}
-                      onChange={(e) => setLine(idx, { description: e.target.value })}
-                      placeholder="Item description"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <HsnLookup
-                      clientId={clientId}
-                      value={line.hsn_sac}
-                      onChange={(v) => setLine(idx, { hsn_sac: v })}
-                      onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
-                      description={line.description}
-                      size="sm"
-                      ariaLabel="HSN or SAC code"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      type="number" min="0" step="0.001" value={line.qty}
-                      onChange={(e) => setLine(idx, { qty: e.target.value })}
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      type="number" min="0" step="0.01" value={line.rate}
-                      onChange={(e) => setLine(idx, { rate: e.target.value })}
-                      placeholder="0.00"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <select
-                      value={line.gst_rate}
-                      onChange={(e) => setLine(idx, { gst_rate: parseInt(e.target.value) })}
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    >
-                      {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
-                    </select>
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-[#334155]">
-                    {lineTotal > 0 ? fmt(lineTotal) : "—"}
-                  </td>
-                  <td className="py-1.5">
-                    {lines.length > 1 && (
-                      <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600">
-                        <X size={13} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <button onClick={addLine} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-        <Plus size={12} /> Add line
-      </button>
-
-      {/* GST Preview */}
-      {gst.taxable_paise > 0 && (
-        <div className="bg-[#F8FAFC] rounded-lg p-3 text-xs space-y-1">
-          <p className="font-semibold text-[#334155] mb-2">GST Computation (Credit Note)</p>
-          <div className="flex justify-between text-[#475569]">
-            <span>Taxable Value</span>
-            <span className="font-mono">{fmt(gst.taxable_paise)}</span>
-          </div>
-          {isInterstate ? (
-            <div className="flex justify-between text-[#475569]">
-              <span>IGST</span>
-              <span className="font-mono">{fmt(gst.igst_paise)}</span>
-            </div>
-          ) : (
-            <>
-              <div className="flex justify-between text-[#475569]">
-                <span>CGST</span>
-                <span className="font-mono">{fmt(gst.cgst_paise)}</span>
-              </div>
-              <div className="flex justify-between text-[#475569]">
-                <span>SGST</span>
-                <span className="font-mono">{fmt(gst.sgst_paise)}</span>
-              </div>
-            </>
-          )}
-          <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1 mt-1">
-            <span>Total Credit Note Amount</span>
-            <span className="font-mono">{fmt(gst.total_paise)}</span>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
-      <div className="flex gap-3 justify-end">
-        <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save Credit Note"}
-        </button>
-      </div>
     </div>
   );
 }
