@@ -1508,14 +1508,15 @@ def delete_invoice(
     invoice_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Soft-delete a DRAFT sales invoice.
+    """Hard-delete a DRAFT sales invoice.
 
     Only drafts may be deleted. Issued / partially-paid / paid / cancelled
     invoices are protected — they are legal records (CGST Act §31) with a posted
-    journal and must never be removed. Deletion is a soft-delete (sets
-    deleted_at, migration 100) plus an immutable audit_log 'delete' event. A draft
-    never appears in any accounting report, so removing it has zero effect on the
-    Trial Balance / P&L / Balance Sheet.
+    journal and must never be removed. A draft never appears in any accounting
+    report, so removing it has zero effect on the Trial Balance / P&L / Balance
+    Sheet. The row is genuinely removed (not soft-deleted): the create/delete
+    audit_log events already capture the full document and a status summary
+    respectively, independent of whether the row itself still exists.
     """
     try:
         if _USE_MOCK:
@@ -1547,8 +1548,13 @@ def delete_invoice(
                 detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} invoice — only drafts can be deleted",
             )
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        db.table("client_sales_invoices").update({"deleted_at": now_iso}).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
+        # Hard delete — draft-only, so client_sales_invoice_lines cascades
+        # automatically (FK ON DELETE CASCADE); nothing else can reference a
+        # still-draft invoice (credit notes / debit notes / payments / e-way
+        # bills only attach to issued invoices). The audit_log 'delete' event
+        # below (and the 'create' event's full snapshot) survive
+        # independently — audit_log.entity_id is a bare text column, not an FK.
+        db.table("client_sales_invoices").delete().eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,

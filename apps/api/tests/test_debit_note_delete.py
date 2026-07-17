@@ -1,8 +1,10 @@
 """
-Regression tests — soft-delete of DRAFT debit notes (bulk-select platform work).
+Regression tests — hard-delete of DRAFT debit notes (bulk-select platform work).
 
 delete_debit_note() must:
-  * soft-delete a DRAFT (set deleted_at) and write an audit 'delete' event
+  * hard-delete a DRAFT (genuine DB row removal) and write an audit 'delete'
+    event — the audit trail (create + delete events) survives independently
+    of the row, since audit_log.entity_id is a bare text column, not an FK
   * REFUSE issued debit notes (422) and never touch the row — once issued
     they carry a posted journal and, if linked to a bill, have already
     reduced that bill's payable (CGST Act §34)
@@ -99,7 +101,7 @@ def _dn_row(status):
 
 
 class TestDeleteDraft:
-    def test_draft_is_soft_deleted_and_audited(self, fake_db):
+    def test_draft_is_hard_deleted_and_audited(self, fake_db):
         recorder, holder, audit = fake_db
 
         def _ctl(event):
@@ -113,12 +115,10 @@ class TestDeleteDraft:
         assert resp["success"] is True
         assert resp["data"]["deleted"] is True
 
-        updates = [e for e in recorder if e["table"] == "debit_notes" and e["op"] == "update"]
-        assert len(updates) == 1
-        assert "deleted_at" in updates[0]["payload"]
-        assert updates[0]["payload"]["deleted_at"] is not None
         hard_deletes = [e for e in recorder if e["table"] == "debit_notes" and e["op"] == "delete"]
-        assert hard_deletes == [], "draft must be SOFT-deleted, never hard-deleted"
+        assert len(hard_deletes) == 1
+        soft_updates = [e for e in recorder if e["table"] == "debit_notes" and e["op"] == "update"]
+        assert soft_updates == [], "draft must be HARD-deleted, not soft-deleted via deleted_at"
 
         assert len(audit) == 1
         assert audit[0]["args"][3] == "delete"

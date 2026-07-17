@@ -510,9 +510,12 @@ _DELETE_BLOCKED = {"issued": "an issued"}
 
 @router.delete("/{pcn_id}")
 def delete_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("accounting", "write"))):
-    """Soft-delete a DRAFT purchase credit note. Only drafts may be deleted — once
+    """Hard-delete a DRAFT purchase credit note. Only drafts may be deleted — once
     issued they carry a posted journal and have already increased the linked
-    bill's payable (CGST Act §34); removing one outright would corrupt both."""
+    bill's payable (CGST Act §34); removing one outright would corrupt both.
+    The row is genuinely removed (not soft-deleted): the create/delete
+    audit_log events already capture the full document and a status summary
+    respectively, independent of whether the row itself still exists."""
     try:
         if _USE_MOCK:
             for i, d in enumerate(MOCK_PURCHASE_CREDIT_NOTES):
@@ -536,8 +539,12 @@ def delete_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("
         if st != "draft":
             raise HTTPException(status_code=422, detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} credit note — only drafts can be deleted")
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        db.table("purchase_credit_notes").update({"deleted_at": now_iso}).eq("id", pcn_id).eq("firm_id", firm_id).execute()
+        # Hard delete — draft-only, so purchase_credit_note_lines cascades
+        # automatically (FK ON DELETE CASCADE); nothing else can reference a
+        # still-draft note. The audit_log 'delete' event below (and the
+        # 'create' event's full snapshot) survive independently —
+        # audit_log.entity_id is a bare text column, not an FK.
+        db.table("purchase_credit_notes").delete().eq("id", pcn_id).eq("firm_id", firm_id).execute()
         log_event(
             firm_id or "", "purchase_credit_note", pcn_id,
             "delete", actor_id=current_user.get("auth_user_id"),
