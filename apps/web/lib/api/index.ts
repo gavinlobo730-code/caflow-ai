@@ -66,6 +66,18 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
       throw new Error("The server is taking too long to respond (it may be waking up). Please retry in a moment.");
     }
   }
+  // A long-running bulk action (hundreds of sequential/concurrent calls) can
+  // outlive the access token fetched at its start — refresh once and retry
+  // rather than surfacing a raw "Token expired" mid-batch. Safe to retry: a
+  // 401 means auth rejected the request before any handler ran, so nothing
+  // was processed server-side.
+  if (res.status === 401) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    const newToken = refreshed.session?.access_token;
+    if (newToken && newToken !== token) {
+      res = await fetchWithTimeout(path, options, newToken);
+    }
+  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`API error ${res.status}: ${err}`);
