@@ -226,3 +226,57 @@ def test_receipt_can_collect_the_debit_noted_amount(monkeypatch):
     assert inv["paid_paise"] == effective_total
     assert inv["status"] == "paid"
     assert _ar(db) == 0
+
+
+# ── GET single / PATCH (feature-parity build: dedicated edit page + drawer) ──
+
+def test_get_single_sales_debit_note_returns_lines(monkeypatch):
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    dn_id, total = _create_dn(db, inv_id, rate=20000)
+    res = sdn.get_sales_debit_note(dn_id, CALLER)
+    assert res["success"] is True
+    assert res["data"]["id"] == dn_id
+    assert res["data"]["total_paise"] == total
+    assert len(res["data"]["lines"]) == 1
+    assert res["data"]["lines"][0]["description"] == "additional charge"
+
+
+def test_patch_draft_sales_debit_note_recomputes_totals_from_new_lines(monkeypatch):
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    dn_id, _ = _create_dn(db, inv_id, rate=20000)                  # 23600
+    res = sdn.update_sales_debit_note(dn_id, sdn.SalesDebitNoteUpdateIn(
+        lines=[InvoiceLineIn(description="corrected charge", quantity=1, rate_paise=50000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["total_paise"] == 59000                     # 50000 + 18%
+    assert len(res["data"]["lines"]) == 1
+    assert res["data"]["lines"][0]["description"] == "corrected charge"
+    assert sdn.get_sales_debit_note(dn_id, CALLER)["data"]["total_paise"] == 59000
+
+
+def test_patch_notes_allowed_on_issued_sales_debit_note(monkeypatch):
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    dn_id, _ = _create_dn(db, inv_id, rate=20000)
+    assert sdn.issue_sales_debit_note(dn_id, CALLER)["success"] is True
+    res = sdn.update_sales_debit_note(dn_id, sdn.SalesDebitNoteUpdateIn(
+        notes="internal note",
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["notes"] == "internal note"
+
+
+def test_patch_lines_rejected_on_issued_sales_debit_note(monkeypatch):
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    dn_id, _ = _create_dn(db, inv_id, rate=20000)
+    assert sdn.issue_sales_debit_note(dn_id, CALLER)["success"] is True
+    with pytest.raises(HTTPException) as ex:
+        sdn.update_sales_debit_note(dn_id, sdn.SalesDebitNoteUpdateIn(
+            lines=[InvoiceLineIn(description="x", quantity=1, rate_paise=1000,
+                                  gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+        ), CALLER)
+    assert ex.value.status_code == 422
