@@ -61,7 +61,7 @@ export default function AccessPage() {
         {/* Chooser */}
         <div className="flex flex-1 flex-col justify-center py-10">
           <div className="mx-auto max-w-xl text-center">
-            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">Welcome back</span>
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-white/50">Welcome back</span>
             <h1 className="fade-up mt-5 font-display text-[clamp(34px,5vw,52px)] font-normal leading-[1.1] tracking-[-0.015em] text-white">
               Sign in to <span className="italic">PracticeSync.</span>
             </h1>

@@ -147,7 +147,11 @@ export default function ProductsPage() {
           >
             <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
               <Reveal variant={flip ? "right" : "left"} className={flip ? "lg:order-2" : ""}>
-                <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">
+                <span
+                  className={`block text-[12px] font-semibold uppercase tracking-[0.18em] ${
+                    theme === "dark" ? "text-white/50" : "text-brand-dark/50"
+                  }`}
+                >
                   {m.eyebrow}
                 </span>
                 <h2 className={`mt-5 font-display text-[clamp(26px,3.4vw,42px)] font-normal leading-[1.15] tracking-[-0.015em] ${headTone}`}>
