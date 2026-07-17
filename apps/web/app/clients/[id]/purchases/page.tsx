@@ -6,6 +6,9 @@ import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loade
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
+import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
+import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
+import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -1635,12 +1638,14 @@ interface DebitNoteRow {
 }
 
 function DebitNotes({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<DebitNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1678,6 +1683,11 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
 
   useEffect(() => { load(); }, [load]);
 
+  function openMenuFor(e: React.MouseEvent, dn: DebitNoteRow) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: dn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+  }
+
   async function issueDebitNote(id: string) {
     if (issuingId) return;
     setIssuingId(id);
@@ -1692,6 +1702,35 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
     } finally {
       setIssuingId(null);
     }
+  }
+
+  async function deleteDebitNote(dn: DebitNoteRow | DebitNoteDetail) {
+    const ok = await confirmDialog({
+      title: `Delete ${dn.debit_note_no || "this debit note"}?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    setDetailId(null);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/debit-notes/${dn.id}`, "DELETE", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to delete debit note");
+      setMsg({ type: "ok", text: `${dn.debit_note_no || "Debit note"} deleted` });
+      load();
+    } catch (err) {
+      setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to delete debit note" });
+    }
+  }
+
+  // "Duplicate debit note" — stash the full loaded detail and open New Debit
+  // Note, which prefills from it. Same sessionStorage hand-off as Purchase
+  // Bills (lib/purchases/debitNoteDuplicateSeed).
+  function duplicateDebitNote(dn: DebitNoteDetail) {
+    writeDebitNoteDuplicateSeed(dn);
+    setDetailId(null);
+    router.push(`/clients/${clientId}/purchases/debit-notes/new`);
   }
 
   // Bulk delete over the DataTable's selected rows. DELETE /api/debit-notes/{id}
@@ -1787,12 +1826,57 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         </p>
       </div>
 
-      {showForm && (
-        <DebitNoteForm
+      {/* Row overflow menu — View details always; Edit for any note (draft gets
+          the full editor, issued gets the same editor scoped to notes/
+          attachment only — see DebitNoteEditor's isLocked handling); Delete
+          for drafts only. No Cancel — a debit note has no reversal path,
+          deliberately (CGST Act §34: correct with a fresh note). */}
+      {menu && (() => {
+        const d = debitNotes.find((x) => x.id === menu.id);
+        if (!d) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              <button onClick={() => { setMenu(null); setDetailId(d.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                View details
+              </button>
+              <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/debit-notes/${d.id}/edit`); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                {d.status === "draft" ? "Edit draft" : "Edit"}
+              </button>
+              {d.status === "draft" && (
+                <>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <button onClick={() => { setMenu(null); deleteDebitNote(d); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    Delete draft
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
+      {detailId && (
+        <DebitNoteViewDrawer
+          dnId={detailId}
           clientId={clientId}
-          vendors={vendors}
-          onSaved={() => { setShowForm(false); load(); setMsg({ type: "ok", text: "Debit note created." }); }}
-          onCancel={() => setShowForm(false)}
+          vendorName={
+            debitNotes.find((d) => d.id === detailId)?.vendor_name
+            ?? vendors.find((v) => v.id === debitNotes.find((d) => d.id === detailId)?.vendor_id)?.name
+            ?? ""
+          }
+          onClose={() => setDetailId(null)}
+          onEdit={(id) => router.push(`/clients/${clientId}/purchases/debit-notes/${id}/edit`)}
+          onIssue={(dn) => { setDetailId(null); issueDebitNote(dn.id); }}
+          onDelete={deleteDebitNote}
+          onDuplicate={duplicateDebitNote}
         />
       )}
 
@@ -1810,40 +1894,46 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         persistKey="purchases.debit-notes"
         emptyTitle={`No debit notes in FY ${financialYear}`}
         toolbarExtra={
-          <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Create Debit Note</button>
+          <button
+            onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new`)}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={12} /> Create Debit Note
+          </button>
         }
         bulkActions={bulkActions}
-        rowActions={(d) =>
-          d.status === "draft" ? (
+        rowActions={(d) => (
+          <div className="flex items-center justify-end gap-2">
+            {d.status === "draft" && (
+              <button
+                onClick={() => issueDebitNote(d.id)}
+                disabled={issuingId === d.id}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+              >
+                {issuingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+              </button>
+            )}
             <button
-              onClick={() => issueDebitNote(d.id)}
-              disabled={issuingId === d.id}
-              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+              onClick={(e) => openMenuFor(e, d)}
+              aria-label={`Actions for debit note ${d.debit_note_no || d.id}`}
+              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
             >
-              {issuingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
+              <MoreHorizontal size={16} />
             </button>
-          ) : null
-        }
+          </div>
+        )}
       />
     </div>
   );
 }
 
-// ── Debit Note Form ──────────────────────────────────────────────────────────
-
-interface DebitNoteLine {
-  description: string;
-  hsn_sac: string;
-  quantity: number;
-  rate: number; // rupees
-  gst_rate_bps: number;
-  // Which Product/Service (goods only, in practice) this return de-stocks —
-  // required so a debit note line can be recognised as a stock-out movement
-  // for a specific item (domain/inventory_service.py). Pure traceability,
-  // same as BillLine's own field: never read by any GST/journal computation.
-  service_catalogue_id?: string;
-  product?: ServiceCatalogueItem | null;
-}
+// ── Purchase Credit Notes (CGST Act §34(3) — vendor undercharge correction) ──
+// The increase-side mirror of Debit Notes above: a vendor undercharged us on
+// the original bill and we now owe more. Same shape, same flow, just pointed
+// at /api/purchase-credit-notes and the opposite ledger direction (a credit
+// note CREDITS — increases — our trade payable). Still the old inline-form
+// flow pending its own dedicated-page parity build (mirrors what Debit Notes
+// just got) — PurchaseCreditNoteForm below still needs this local type.
 
 interface OpenBillOption {
   id: string;
@@ -1854,339 +1944,6 @@ interface OpenBillOption {
   debited_paise: number;
   credit_note_paise: number;
 }
-
-function DebitNoteForm({
-  clientId,
-  vendors,
-  onSaved,
-  onCancel,
-}: {
-  clientId: string;
-  vendors: Vendor[];
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const [vendorId, setVendorId] = useState("");
-  const [dnDate, setDnDate] = useState(toDate());
-  const [reason, setReason] = useState("");
-  const [billId, setBillId] = useState("");
-  const [openBills, setOpenBills] = useState<OpenBillOption[]>([]);
-  const [isInterstate, setIsInterstate] = useState(false);
-  const [lines, setLines] = useState<DebitNoteLine[]>([
-    { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800 },
-  ]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function loadOpenBills(vId: string) {
-    setBillId("");
-    if (!vId) { setOpenBills([]); return; }
-    const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
-      .from("purchase_bills")
-      .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
-      .eq("client_id", clientId)
-      .eq("vendor_id", vId)
-      .in("status", ["received", "partially_paid", "paid"])
-      .order("bill_date", { ascending: false })
-      .order("id"));
-    setOpenBills(data ?? []);
-  }
-
-  function outstanding(b: OpenBillOption): number {
-    return b.net_payable_paise + (b.credit_note_paise ?? 0) - b.paid_paise - b.debited_paise;
-  }
-
-  function setLine(idx: number, patch: Partial<DebitNoteLine>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
-  function addLine() {
-    setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800 }]);
-  }
-  function removeLine(idx: number) {
-    if (lines.length <= 1) return;
-    setLines((prev) => prev.filter((_, i) => i !== idx));
-  }
-  // A Product/Service picked on this row pre-fills description/HSN/rate and
-  // links the line for inventory stock-out tracking on issue (goods only —
-  // apply_debit_note_to_inventory only acts on kind='good' items server-side).
-  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
-    const line = serviceToLine(item);
-    setLine(idx, {
-      description: line.description, hsn_sac: line.hsn_sac,
-      gst_rate_bps: Math.round((line.gst_rate ?? 0) * 100),
-      rate: line.rate ? parseFloat(line.rate) : 0,
-      product: item, service_catalogue_id: item.id,
-    });
-  }
-
-  const totals = lines.reduce(
-    (acc, l) => {
-      const g = dnLineGst(l, isInterstate);
-      return {
-        taxable: acc.taxable + g.taxable_paise,
-        cgst: acc.cgst + g.cgst_paise,
-        sgst: acc.sgst + g.sgst_paise,
-        igst: acc.igst + g.igst_paise,
-        total: acc.total + g.line_total,
-      };
-    },
-    { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 }
-  );
-
-  async function handleSave() {
-    if (!vendorId) { setError("Select a vendor"); return; }
-    const validLines = lines.filter((l) => l.rate > 0);
-    if (validLines.length === 0) { setError("Add at least one line with a rate"); return; }
-    if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
-
-    setSaving(true); setError(null);
-    try {
-      const token = await getAuthToken();
-      const result = await apiCall(
-        "/api/debit-notes/",
-        "POST",
-        {
-          client_id: clientId,
-          vendor_id: vendorId,
-          debit_note_date: dnDate,
-          purchase_bill_id: billId || undefined,
-          reason: reason.trim() || undefined,
-          is_interstate: isInterstate,
-          lines: validLines.map((l) => ({
-            description: l.description.trim(),
-            hsn_sac: l.hsn_sac || undefined,
-            quantity: l.quantity,
-            rate_paise: Math.round(l.rate * 100),
-            // Backend's shared InvoiceLineIn model declares gst_rate_percent
-            // (not gst_rate_bps) — send the field it actually reads.
-            gst_rate_percent: l.gst_rate_bps / 100,
-            service_catalogue_id: l.service_catalogue_id || undefined,
-          })),
-        },
-        token
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to create debit note");
-
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save debit note");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0F172A]">Create Debit Note</h3>
-        <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
-          <VendorLookup
-            vendors={vendors}
-            value={vendorId}
-            onChange={(id) => { setVendorId(id); loadOpenBills(id); }}
-            ariaLabel="Vendor"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">DN Date *</label>
-          <input
-            type="date"
-            value={dnDate}
-            onChange={(e) => setDnDate(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Against Bill (optional)</label>
-          <EntityLookup
-            items={openBills}
-            value={billId}
-            onChange={setBillId}
-            getId={(b) => b.id}
-            getLabel={(b) => b.our_reference ?? b.bill_no ?? "—"}
-            getSecondary={(b) => `${fmt(outstanding(b))} outstanding`}
-            getSearchFields={(b) => [b.our_reference ?? "", b.bill_no ?? ""]}
-            clearable
-            disabled={!vendorId}
-            placeholder="— Standalone / Select bill —"
-            ariaLabel="Against bill"
-          />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Reason</label>
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Goods returned / rate correction / excess billed"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div className="flex items-end pb-1.5">
-          <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isInterstate}
-              onChange={(e) => setIsInterstate(e.target.checked)}
-              className="rounded"
-            />
-            Interstate (IGST)
-          </label>
-        </div>
-      </div>
-
-      {/* Lines */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-              <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
-              <th className="pb-2 text-left font-semibold">Description</th>
-              <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
-              <th className="pb-2 text-right font-semibold w-16">Qty</th>
-              <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
-              <th className="pb-2 text-right font-semibold w-20">GST %</th>
-              <th className="pb-2 text-right font-semibold w-24">Amount</th>
-              <th className="pb-2 w-6" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {lines.map((line, idx) => {
-              const g = dnLineGst(line, isInterstate);
-              return (
-                <tr key={idx}>
-                  <td className="py-1.5 pr-2">
-                    {/* Links this line to a Product/Service for inventory
-                        stock-out tracking on issue (goods only — optional,
-                        a return with no pick just never de-stocks anything). */}
-                    <ServiceCataloguePicker
-                      clientId={clientId}
-                      value={line.product}
-                      onPick={(item) => onPickProduct(idx, item)}
-                      size="sm"
-                      ariaLabel={`Line ${idx + 1} product or service`}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      value={line.description}
-                      onChange={(e) => setLine(idx, { description: e.target.value })}
-                      placeholder="Item description"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <HsnLookup
-                      clientId={clientId}
-                      value={line.hsn_sac}
-                      onChange={(v) => setLine(idx, { hsn_sac: v })}
-                      onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate_bps: p.gst_rate_bps }); }}
-                      description={line.description}
-                      size="sm"
-                      ariaLabel="HSN or SAC code"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      type="number" min="0.001" step="0.001" value={line.quantity}
-                      onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })}
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      type="number" min="0" step="0.01" value={line.rate || ""}
-                      onChange={(e) => setLine(idx, { rate: parseFloat(e.target.value) || 0 })}
-                      placeholder="0.00"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <select
-                      value={line.gst_rate_bps}
-                      onChange={(e) => setLine(idx, { gst_rate_bps: parseInt(e.target.value) })}
-                      className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs"
-                    >
-                      {GST_RATES.map((r) => <option key={r.bps} value={r.bps}>{r.label}</option>)}
-                    </select>
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-[#334155]">
-                    {g.taxable_paise > 0 ? fmt(g.line_total) : "—"}
-                  </td>
-                  <td className="py-1.5">
-                    {lines.length > 1 && (
-                      <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600">
-                        <X size={13} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <button onClick={addLine} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-        <Plus size={12} /> Add line
-      </button>
-
-      {/* GST Preview */}
-      {totals.taxable > 0 && (
-        <div className="bg-[#F8FAFC] rounded-lg p-3 text-xs space-y-1">
-          <p className="font-semibold text-[#334155] mb-2">GST Computation (Debit Note)</p>
-          <div className="flex justify-between text-[#475569]">
-            <span>Taxable Value</span>
-            <span className="font-mono">{fmt(totals.taxable)}</span>
-          </div>
-          {isInterstate ? (
-            <div className="flex justify-between text-[#475569]">
-              <span>IGST</span>
-              <span className="font-mono">{fmt(totals.igst)}</span>
-            </div>
-          ) : (
-            <>
-              <div className="flex justify-between text-[#475569]">
-                <span>CGST</span>
-                <span className="font-mono">{fmt(totals.cgst)}</span>
-              </div>
-              <div className="flex justify-between text-[#475569]">
-                <span>SGST</span>
-                <span className="font-mono">{fmt(totals.sgst)}</span>
-              </div>
-            </>
-          )}
-          <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1 mt-1">
-            <span>Total Debit Note Amount</span>
-            <span className="font-mono">{fmt(totals.total)}</span>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
-      <div className="flex gap-3 justify-end">
-        <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save Debit Note"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Purchase Credit Notes (CGST Act §34(3) — vendor undercharge correction) ──
-// The increase-side mirror of DebitNotes/DebitNoteForm above: a vendor
-// undercharged us on the original bill and we now owe more. Same shape, same
-// flow, just pointed at /api/purchase-credit-notes and the opposite ledger
-// direction (a credit note CREDITS — increases — our trade payable).
 
 interface PurchaseCreditNoteRow {
   id: string;
