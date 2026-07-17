@@ -183,10 +183,16 @@ export function computeGst(
       // IGST = full rate applied to taxable value (CGST Act §5)
       igst_paise += Math.round((lineTaxablePaise * line.gst_rate) / 100);
     } else {
-      // CGST = SGST = half rate each (CGST Act §9 + SGST Act §9)
-      const halfRateBps = line.gst_rate / 2;
-      cgst_paise += Math.round((lineTaxablePaise * halfRateBps) / 100);
-      sgst_paise += Math.round((lineTaxablePaise * halfRateBps) / 100);
+      // CGST = SGST = half the full tax (CGST Act §9 + SGST Act §9). Compute
+      // the FULL tax first, then split — splitting the rate first and
+      // rounding each half independently (the previous approach) could lose
+      // up to 1 paise vs. the backend's actual split, understating GST in
+      // the preview. SGST carries any odd paise, matching routers/
+      // sales_invoices.py's _compute_line_gst.
+      const lineFullGst = Math.round((lineTaxablePaise * line.gst_rate) / 100);
+      const lineCgst = Math.floor(lineFullGst / 2);
+      cgst_paise += lineCgst;
+      sgst_paise += lineFullGst - lineCgst;
     }
   }
 
