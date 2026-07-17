@@ -1,26 +1,8 @@
-import {
-  PageHero,
-  Section,
-  SectionHeading,
-  Card,
-  IconBadge,
-  Button,
-  CTASection,
-} from "@/components/ui";
-import {
-  ArrowRight,
-  Check,
-  FileText,
-  Calculator,
-  Receipt,
-  Users,
-  Bot,
-  BarChart,
-  Globe,
-  Lock,
-  Shield,
-} from "@/components/icons";
+import { Panel, SerifHeading, CineReveal } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
+import { Button } from "@/components/ui";
+import { ArrowRight, Check, Shield } from "@/components/icons";
+import { instrumentSerif, manrope } from "@/lib/fonts";
 import { appLinks } from "@/lib/site";
 
 export const metadata = {
@@ -29,12 +11,8 @@ export const metadata = {
     "Explore the PracticeSync platform — compliance, accounting, payroll, clients & CRM, an AI assistant and practice analytics in one workspace built for Indian CA firms.",
 };
 
-// Six modules that make up the platform. Each renders as an alternating
-// two-column section: a left-aligned SectionHeading paired with a Card that
-// lists the sub-features. Kept data-driven so the rhythm stays consistent.
 const MODULES = [
   {
-    icon: <FileText size={20} />,
     eyebrow: "Compliance",
     title: "Every return and every deadline, tracked per client",
     desc: "GST, Income Tax, TDS and MCA — from working papers to the final filing — with a due-date tracker that watches the whole financial year for you.",
@@ -48,7 +26,6 @@ const MODULES = [
     ],
   },
   {
-    icon: <Calculator size={20} />,
     eyebrow: "Accounting",
     title: "Books that are ready for the balance sheet",
     desc: "From daily ledgers to signed year-end statements, structured the way Indian statutory accounts are meant to be.",
@@ -62,7 +39,6 @@ const MODULES = [
     ],
   },
   {
-    icon: <Receipt size={20} />,
     eyebrow: "Payroll",
     title: "Salary runs with the statutory built in",
     desc: "Run payroll for your clients' teams, generate payslips and keep PF, ESI and TDS on salary in line — with a portal employees can use themselves.",
@@ -74,7 +50,6 @@ const MODULES = [
     ],
   },
   {
-    icon: <Users size={20} />,
     eyebrow: "Clients & CRM",
     title: "One record for everything about a client",
     desc: "Every entity, relationship and engagement in a single place, with health scoring and a secure portal to collect documents and share updates.",
@@ -87,7 +62,6 @@ const MODULES = [
     ],
   },
   {
-    icon: <Bot size={20} />,
     eyebrow: "AI Assistant & Document Intelligence",
     title: "An assistant that already knows your practice",
     desc: "Ask about any client in plain language, pull data straight out of invoices and documents, and let proactive insights surface what needs attention — always reviewed by you before anything is acted on.",
@@ -99,7 +73,6 @@ const MODULES = [
     ],
   },
   {
-    icon: <BarChart size={20} />,
     eyebrow: "Practice analytics",
     title: "See how the whole firm is doing",
     desc: "Revenue, receivables and deadline load in one executive view — so partners can run the practice, not just the compliance.",
@@ -113,158 +86,170 @@ const MODULES = [
 ];
 
 const SECURITY = [
-  {
-    icon: <Globe size={20} />,
-    title: "Data hosted in India",
-    desc: "Your firm's and your clients' data is stored on infrastructure hosted in India.",
-  },
-  {
-    icon: <Users size={20} />,
-    title: "Role-based access",
-    desc: "Give every team member exactly the access their role needs — and nothing more.",
-  },
-  {
-    icon: <Lock size={20} />,
-    title: "Two-factor authentication",
-    desc: "TOTP-based MFA protects every firm sign-in to the platform.",
-  },
-  {
-    icon: <FileText size={20} />,
-    title: "Full audit logs",
-    desc: "A complete record of who viewed, edited and filed what, for every client.",
-  },
+  { title: "Data hosted in India", desc: "Your firm's and your clients' data is stored on infrastructure hosted in India." },
+  { title: "Role-based access", desc: "Give every team member exactly the access their role needs — and nothing more." },
+  { title: "Two-factor authentication", desc: "TOTP-based MFA protects every firm sign-in to the platform." },
+  { title: "Full audit logs", desc: "A complete record of who viewed, edited and filed what, for every client." },
 ];
+
+function Checklist({ points, theme }: { points: string[]; theme: "dark" | "light" }) {
+  const rowBorder = theme === "dark" ? "border-white/10" : "border-slate-900/10";
+  const textColor = theme === "dark" ? "text-slate-200" : "text-slate-700";
+  const chip =
+    theme === "dark"
+      ? "bg-brand-light/10 text-brand-light ring-white/15"
+      : "bg-brand/[0.06] text-brand ring-brand/15";
+  return (
+    <ul className="flex flex-col">
+      {points.map((p, i) => (
+        <li
+          key={p}
+          className={`flex items-start gap-3.5 border-t ${rowBorder} py-4 text-[15px] leading-relaxed ${textColor} ${
+            i === points.length - 1 ? `border-b ${rowBorder}` : ""
+          }`}
+        >
+          <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 ${chip}`}>
+            <Check size={12} />
+          </span>
+          <span>{p}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function ProductsPage() {
   return (
-    <>
+    <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <PageHero
-        eyebrow="The platform"
-        title="One platform for every part of your practice"
-        subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
-      />
+      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
+        <SerifHeading
+          eyebrow="The platform"
+          lines={[
+            { text: "One platform for" },
+            { text: "every part of your practice.", italic: true },
+          ]}
+          subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
+        />
+        <div className="mt-10 flex flex-wrap items-center gap-5">
+          <Button href={appLinks.signup} external variant="light" className="px-6 py-3.5">
+            Start free trial
+            <ArrowRight size={16} />
+          </Button>
+          <Button href="/pricing" variant="ghost-light" className="px-6 py-3.5">
+            See plans &amp; pricing
+          </Button>
+        </div>
+      </Panel>
 
-      {/* ── Intro + early CTA ────────────────────────────────────────────── */}
-      <Section className="bg-white">
-        <Reveal variant="blur">
-          <SectionHeading
+      {/* ── Intro ────────────────────────────────────────────────────────── */}
+      <Panel theme="light" seam="rising-right">
+        <CineReveal>
+          <SerifHeading
             eyebrow="Six modules, one workspace"
-            title="Everything your practice runs on, connected"
+            theme="light"
+            align="center"
+            lines={[{ text: "Everything your practice" }, { text: "runs on, connected.", italic: true }]}
             subtitle="Compliance, accounting, payroll, clients, documents and analytics share one source of truth — so a client's returns, books and paperwork never live in separate tools again."
           />
-        </Reveal>
-        <Reveal delay={150}>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button href={appLinks.signup} external className="px-6 py-3.5">
-              Start free trial
-              <ArrowRight size={16} />
-            </Button>
-            <Button href="/pricing" variant="secondary" className="px-6 py-3.5">
-              See plans &amp; pricing
-            </Button>
-          </div>
-        </Reveal>
-      </Section>
+        </CineReveal>
+      </Panel>
 
       {/* ── Modules ──────────────────────────────────────────────────────── */}
       {MODULES.map((m, i) => {
+        const theme = i % 2 === 0 ? "dark" : "light";
+        const seam = theme === "dark" ? "rising-left" : "rising-right";
         const flip = i % 2 === 1;
+        const headTone = theme === "dark" ? "text-white" : "text-brand-dark";
         return (
-          <Section
+          <Panel
             key={m.eyebrow}
-            className={i % 2 === 0 ? "bg-ps-bg" : "bg-white"}
+            theme={theme}
+            seam={seam}
+            numeral={String(i + 1).padStart(2, "0")}
+            numeralCorner={theme === "dark" ? "top-right" : "bottom-left"}
           >
             <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-              <div className={flip ? "lg:order-2" : ""}>
-                <Reveal variant={flip ? "right" : "left"}>
-                  <IconBadge>{m.icon}</IconBadge>
-                  <div className="mt-6">
-                    <SectionHeading
-                      align="left"
-                      eyebrow={m.eyebrow}
-                      title={m.title}
-                      subtitle={m.desc}
-                    />
-                  </div>
-                </Reveal>
-              </div>
-              <Reveal
-                variant={flip ? "left" : "right"}
-                delay={150}
-                className={flip ? "lg:order-1" : ""}
-              >
-                <Card className="lg:p-8">
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    What&apos;s included
-                  </p>
-                  <ul className="mt-5 space-y-3.5">
-                    {m.points.map((point) => (
-                      <li
-                        key={point}
-                        className="flex items-start gap-3 text-[15px] leading-relaxed text-slate-700"
-                      >
-                        <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand/[0.06] text-brand ring-1 ring-brand/10">
-                          <Check size={13} />
-                        </span>
-                        <span>{point}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
+              <Reveal variant={flip ? "right" : "left"} className={flip ? "lg:order-2" : ""}>
+                <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">
+                  {m.eyebrow}
+                </span>
+                <h2 className={`mt-5 font-display text-[clamp(26px,3.4vw,42px)] font-normal leading-[1.15] tracking-[-0.015em] ${headTone}`}>
+                  {m.title}
+                </h2>
+                <p className={`mt-5 max-w-[46ch] text-[16px] leading-[1.65] ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>
+                  {m.desc}
+                </p>
+              </Reveal>
+              <Reveal variant={flip ? "left" : "right"} delay={120} className={flip ? "lg:order-1" : ""}>
+                <p className={`mb-1 text-[12px] font-semibold uppercase tracking-[0.14em] ${theme === "dark" ? "text-white/40" : "text-slate-400"}`}>
+                  What&apos;s included
+                </p>
+                <Checklist points={m.points} theme={theme} />
               </Reveal>
             </div>
-          </Section>
+          </Panel>
         );
       })}
 
       {/* ── Security & trust ─────────────────────────────────────────────── */}
-      <Section id="security" className="bg-brand-dark">
-        <Reveal variant="blur">
-          <SectionHeading
-            tone="dark"
+      <Panel id="security" theme="light" seam="rising-right">
+        <CineReveal>
+          <SerifHeading
             eyebrow="Security & trust"
-            title="Your clients' data — and your sign-off — protected"
+            theme="light"
+            lines={[{ text: "Your clients' data —" }, { text: "and your sign-off — protected.", italic: true }]}
             subtitle="PracticeSync is built around how Indian CA firms actually work: sensitive data stays in the country, access is controlled, everything is logged, and no filing ever leaves your hands without your confirmation."
           />
-        </Reveal>
+        </CineReveal>
 
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-12 grid gap-x-12 gap-y-8 sm:grid-cols-2">
           {SECURITY.map((s, i) => (
-            <Reveal key={s.title} delay={i * 100} className="h-full">
-              <div className="h-full rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-                <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
-                  {s.icon}
-                </span>
-                <h3 className="mt-5 text-[16px] font-bold text-white">{s.title}</h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-                  {s.desc}
-                </p>
+            <Reveal key={s.title} variant="up" delay={i * 90}>
+              <div className="border-t border-slate-900/10 pt-5">
+                <h3 className="font-display text-[22px] italic text-brand-dark">{s.title}</h3>
+                <p className="mt-2 text-[15px] leading-relaxed text-slate-600">{s.desc}</p>
               </div>
             </Reveal>
           ))}
         </div>
 
         {/* Never auto-submit — the principle at the heart of the platform. */}
-        <Reveal delay={150}>
-          <div className="mt-6 flex flex-col items-start gap-5 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:flex-row sm:items-center md:p-8">
+        <CineReveal delay={120}>
+          <div className="mt-12 flex flex-col items-start gap-5 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:flex-row sm:items-center md:p-8">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold ring-1 ring-gold/25">
               <Shield size={22} />
             </span>
-            <p className="text-[15px] leading-relaxed text-slate-200 md:text-[16px]">
-              <span className="font-semibold text-white">
-                Nothing is auto-submitted.
-              </span>{" "}
-              Every GST return, income-tax filing, TDS statement and MCA form waits
-              for an explicit confirmation click from a Chartered Accountant before
-              it is sent to any government portal.
+            <p className="text-[15px] leading-relaxed text-brand-dark md:text-[16px]">
+              <span className="font-semibold">Nothing is auto-submitted.</span>{" "}
+              Every GST return, income-tax filing, TDS statement and MCA form waits for an explicit
+              confirmation click from a Chartered Accountant before it is sent to any government portal.
             </p>
           </div>
-        </Reveal>
-      </Section>
+        </CineReveal>
+      </Panel>
 
       {/* ── Closing CTA ──────────────────────────────────────────────────── */}
-      <CTASection />
-    </>
+      <Panel theme="dark" seam="rising-left" innerClassName="text-center">
+        <CineReveal>
+          <SerifHeading
+            align="center"
+            lines={[{ text: "Bring your whole practice", italic: true }, { text: "into one place." }]}
+            subtitle="Start a free trial today, or talk to us about moving your firm across from Tally, ClearTax or Winman."
+          />
+        </CineReveal>
+        <CineReveal delay={120}>
+          <div className="mt-10 flex flex-wrap justify-center gap-5">
+            <Button href={appLinks.signup} external variant="light" className="px-7 py-[15px]">
+              Start free trial
+              <ArrowRight size={16} />
+            </Button>
+            <Button href="/support" variant="ghost-light" className="px-7 py-[15px]">
+              Talk to us
+            </Button>
+          </div>
+        </CineReveal>
+      </Panel>
+    </div>
   );
 }
