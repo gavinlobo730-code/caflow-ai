@@ -59,6 +59,16 @@ class SalesDebitNoteIn(BaseModel):
         return v
 
 
+class SalesDebitNoteUpdateIn(BaseModel):
+    customer_id: str | None = None
+    debit_note_date: str | None = None
+    sales_invoice_id: str | None = None
+    reason: str | None = None
+    is_interstate: bool | None = None
+    lines: list[InvoiceLineIn] | None = None
+    notes: str | None = None
+
+
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.sales_debit_notes")
 router = APIRouter(prefix="/api/sales-debit-notes", tags=["sales_debit_notes"])
@@ -218,6 +228,89 @@ def get_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("account
         raise
     except Exception as e:
         _logger.error("get_sales_debit_note: %s", e)
+        return api_response(False, None, "Unable to complete debit note operation. Please try again.")
+
+
+@router.patch("/{sdn_id}")
+def update_sales_debit_note(sdn_id: str, data: SalesDebitNoteUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
+    """Edit a DRAFT sales debit note — full edit, including lines. Once
+    issued, a debit note is immutable like a Sales Invoice past issue; the
+    correction path is a fresh note, not an edit (CGST Act §34). notes stays
+    editable regardless of status (mirrors sales_invoices' own soft-update
+    fields — this router has no attachment concept, matching the Sales
+    Invoice baseline, which has none either)."""
+    try:
+        data = data.model_dump(exclude_none=True)
+        lines_data = data.pop("lines", None)
+        soft_fields = {"notes"}
+
+        if _USE_MOCK:
+            for i, d in enumerate(MOCK_SALES_DEBIT_NOTES):
+                if d["id"] == sdn_id and not d.get("deleted_at"):
+                    if d.get("status") != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
+                        raise HTTPException(status_code=422, detail="Only a draft debit note can be edited — issue a new debit note to correct an issued one (CGST Act §34).")
+                    computed = []
+                    if lines_data is not None:
+                        is_interstate = data.get("is_interstate", d.get("is_interstate", False))
+                        computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+                        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+                        if total_paise <= 0:
+                            raise HTTPException(status_code=422, detail="Debit note total must be positive.")
+                        data.update({
+                            "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
+                            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                            "total_gst_paise": total_cgst + total_sgst + total_igst,
+                        })
+                        MOCK_SALES_DEBIT_NOTE_LINES[:] = [l for l in MOCK_SALES_DEBIT_NOTE_LINES if l.get("debit_note_id") != sdn_id]
+                        for ln in computed:
+                            MOCK_SALES_DEBIT_NOTE_LINES.append({**ln, "debit_note_id": sdn_id})
+                    MOCK_SALES_DEBIT_NOTES[i] = {**d, **data}
+                    return api_response(True, {**MOCK_SALES_DEBIT_NOTES[i], "lines": computed or [l for l in MOCK_SALES_DEBIT_NOTE_LINES if l.get("debit_note_id") == sdn_id]})
+            raise HTTPException(status_code=404, detail=f"Debit note {sdn_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        resp = (db.table("sales_debit_notes").select("*")
+                .eq("id", sdn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute())
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Debit note {sdn_id} not found")
+        d = resp.data[0]
+        status = d.get("status")
+        if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
+            raise HTTPException(
+                status_code=422,
+                detail="Only a draft debit note can be edited — issue a new debit note to correct an issued one (CGST Act §34).",
+            )
+        if data.get("debit_note_date"):
+            period_validation_service.validate_posting_date(firm_id or "", data["debit_note_date"])
+
+        if lines_data is not None:
+            is_interstate = data.get("is_interstate", d.get("is_interstate", False))
+            computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+            total_paise = total_taxable + total_cgst + total_sgst + total_igst
+            if total_paise <= 0:
+                raise HTTPException(status_code=422, detail="Debit note total must be positive.")
+            data.update({
+                "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
+                "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                "total_gst_paise": total_cgst + total_sgst + total_igst,
+            })
+            db.table("sales_debit_note_lines").delete().eq("debit_note_id", sdn_id).execute()
+            for ln in computed:
+                db.table("sales_debit_note_lines").insert({**ln, "debit_note_id": sdn_id}).execute()
+
+        if data:
+            upd = db.table("sales_debit_notes").update(data).eq("id", sdn_id).eq("firm_id", firm_id).execute()
+            updated = upd.data[0] if upd.data else {**d, **data}
+        else:
+            updated = d
+        lines = (db.table("sales_debit_note_lines").select("*").eq("debit_note_id", sdn_id).execute().data or [])
+        return api_response(True, {**updated, "lines": lines})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("update_sales_debit_note: %s", e)
         return api_response(False, None, "Unable to complete debit note operation. Please try again.")
 
 
