@@ -18,6 +18,7 @@ export function getSupabaseClient(): SupabaseClient {
 export const supabase = {
   auth: {
     getSession: () => getSupabaseClient().auth.getSession(),
+    refreshSession: () => getSupabaseClient().auth.refreshSession(),
     onAuthStateChange: (...args: Parameters<SupabaseClient["auth"]["onAuthStateChange"]>) =>
       getSupabaseClient().auth.onAuthStateChange(...args),
     signInWithPassword: (creds: { email: string; password: string }) =>

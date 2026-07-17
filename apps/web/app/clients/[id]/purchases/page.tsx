@@ -31,20 +31,39 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
 
+// A bulk action (handleBulkReceive etc.) fetches ONE token before looping
+// over hundreds of rows via mapWithConcurrency — a batch large enough to
+// outlive that token surfaces as "Token expired" on every call past the
+// expiry boundary (the actual incident this guards against: 754 selected
+// bills, 440 received then 314 failed once the token crossed expiry mid-
+// batch). Refresh once and retry on 401 instead of failing the rest of the
+// batch — safe because a 401 means auth rejected the request before any
+// handler ran, so nothing was processed server-side.
+async function refreshedAuthToken(): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.auth.refreshSession();
+  return data.session?.access_token ?? null;
+}
+
 async function apiCall(
   endpoint: string,
   method: "POST" | "PATCH" | "DELETE",
   body?: unknown,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const res = await fetch(`${API}${endpoint}`, {
+  const doFetch = (t?: string) => fetch(`${API}${endpoint}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const newToken = await refreshedAuthToken();
+    if (newToken && newToken !== token) res = await doFetch(newToken);
+  }
   if (!res.ok) {
     // Try to parse a structured error from the response body.
     // FastAPI returns { detail: ... } for 422/4xx; our API returns { error: ... }.
@@ -81,13 +100,18 @@ async function apiGet(
   endpoint: string,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const res = await fetch(`${API}${endpoint}`, {
+  const doFetch = (t?: string) => fetch(`${API}${endpoint}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
     },
   });
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const newToken = await refreshedAuthToken();
+    if (newToken && newToken !== token) res = await doFetch(newToken);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "Request failed");
     return { success: false, data: null, error: text };
