@@ -132,6 +132,11 @@ export function Magnetic({
   const frame = useRef(0);
   const pointerFine = usePointerFine(reduced);
 
+  // One constant transition throughout — tracking and spring-back alike —
+  // per the design reference's magnetic-button formula, rather than a
+  // different duration/easing for move vs. leave.
+  const MAGNETIC_TRANSITION = "transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)";
+
   function onMove(e: React.MouseEvent) {
     if (reduced || !pointerFine.current) return;
     const el = ref.current;
@@ -143,7 +148,7 @@ export function Magnetic({
     const ty = Math.max(-max, Math.min(max, dy * strength));
     cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
-      el.style.transition = "transform 150ms ease-out";
+      el.style.transition = MAGNETIC_TRANSITION;
       el.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0)`;
     });
   }
@@ -152,7 +157,7 @@ export function Magnetic({
     const el = ref.current;
     if (!el) return;
     cancelAnimationFrame(frame.current);
-    el.style.transition = "transform 500ms cubic-bezier(0.16, 1, 0.3, 1)";
+    el.style.transition = MAGNETIC_TRANSITION;
     el.style.transform = "translate3d(0, 0, 0)";
   }
 
