@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<!-- Plain, dependency-free reference implementation (only external dep: Three.js via CDN below). Port this logic directly into the target stack. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PracticeSync — AI practice management for Indian CAs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; font-family: 'Manrope', sans-serif; }
+  a { color: inherit; text-decoration: none; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
+</style>
+</head>
+<body>
+
+<div style="background:oklch(21% 0.05 267); color:oklch(20% 0.01 267); overflow:hidden; height:100vh; position:relative;">
+
+  <div id="grain" style="position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:0.05;mix-blend-mode:overlay;"></div>
+
+  <div id="loader" style="position:fixed; inset:0; z-index:10000; background:oklch(21% 0.05 267); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:opacity 0.7s ease, transform 0.8s cubic-bezier(0.6,0,0.3,1);">
+    <div style="font-family:'Instrument Serif', serif; font-style:italic; color:oklch(97% 0.004 267); font-size:15px; letter-spacing:0.02em; margin-bottom:18px; opacity:0.6;">PracticeSync</div>
+    <div style="font-family:'Instrument Serif', serif; color:oklch(97% 0.004 267); font-size:clamp(56px,10vw,120px); line-height:1;"><span id="loader-pct">0</span>%</div>
+    <div style="width:180px; height:1px; background:oklch(97% 0.004 267 / 0.2); margin-top:26px; position:relative; overflow:hidden;">
+      <div id="loader-fill" style="position:absolute; left:0; top:0; bottom:0; width:0%; background:oklch(97% 0.004 267);"></div>
+    </div>
+  </div>
+
+  <nav style="position:fixed; top:0; left:0; right:0; z-index:50; display:flex; align-items:center; justify-content:space-between; padding:22px clamp(20px,4vw,56px); background:oklch(97% 0.004 260 / 0.7); backdrop-filter:blur(10px); color:oklch(20% 0.01 267);">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke-width="3" style="stroke:oklch(20% 0.01 267 / 0.16)"></circle><circle cx="32" cy="32" r="24" stroke-width="5" stroke-linecap="round" style="stroke:oklch(58% 0.13 267)" stroke-dasharray="29.3 121.5" transform="rotate(-50 32 32)"></circle><path d="M20,33 L28,41 L45,22" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:oklch(20% 0.01 267)"></path></svg>
+      <div style="font:600 15px/1 'Manrope',sans-serif; letter-spacing:0.02em;">PracticeSync</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:clamp(14px,2.5vw,34px); font:500 13px/1 'Manrope',sans-serif;">
+      <a href="#story" class="anchor-link" style="opacity:0.75;">Our Story</a>
+      <a href="#" style="opacity:0.75;">Products</a>
+      <a href="#" style="opacity:0.75;">Pricing</a>
+      <a href="#" style="opacity:0.75;">Support</a>
+      <a href="#" style="opacity:0.75;">Resources</a>
+      <a href="#" style="opacity:0.75;">Login</a>
+      <a href="#" class="magnetic" style="background:oklch(58% 0.13 267); color:oklch(98% 0.004 260); padding:10px 18px; border-radius:6px; font-weight:600; display:inline-block;">Start free trial</a>
+    </div>
+  </nav>
+
+  <div id="scroll-content" style="position:relative; will-change:transform;">
+
+    <section style="min-height:100vh; background:oklch(21% 0.05 267); color:oklch(97% 0.004 267); display:flex; flex-direction:column; justify-content:center; position:relative; overflow:hidden; padding:clamp(100px,14vh,160px) clamp(20px,6vw,72px) 80px; box-shadow:inset 0 0 180px oklch(0% 0 0 / 0.4);">
+      <div style="position:absolute; top:-60px; right:-20px; font-family:'Instrument Serif',serif; font-size:clamp(220px,32vw,460px); line-height:1; color:oklch(97% 0.004 267 / 0.045); z-index:0; pointer-events:none; user-select:none;">01</div>
+      <canvas id="hero-canvas" style="position:absolute; top:0; right:0; width:min(54vw,700px); height:100%; z-index:0; pointer-events:none;"></canvas>
+      <div style="position:relative; z-index:1; display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:40px;">
+        <div>
+          <div class="parallax-slow" style="font:600 12px/1 'Manrope',sans-serif; letter-spacing:0.18em; opacity:0.55; margin-bottom:28px;">THE AI-FIRST PLATFORM FOR INDIAN CA FIRMS</div>
+          <div class="parallax-med" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(60px,11vw,168px); line-height:0.96; letter-spacing:-0.02em; margin:0 0 8px;"><span id="hero-word">Compliance.</span></div>
+          <div class="hero-fade" style="font-family:'Instrument Serif', serif; font-size:clamp(36px,5.6vw,76px); line-height:1.05; letter-spacing:-0.015em; max-width:16ch; margin:0 0 34px; opacity:0; transform:translateY(16px); transition:opacity 0.8s ease, transform 0.8s ease;">Run your entire practice on one intelligent platform</div>
+          <p class="hero-fade" style="font:400 17px/1.6 'Manrope',sans-serif; opacity:0; max-width:46ch; margin:0 0 40px; transform:translateY(16px); transition:opacity 0.8s ease, transform 0.8s ease;">PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single workspace for compliance, accounting, payroll, clients and documents.</p>
+          <div class="hero-fade" style="display:flex; align-items:center; gap:28px; flex-wrap:wrap; opacity:0; transform:translateY(16px); transition:opacity 0.8s ease, transform 0.8s ease;">
+            <a href="#" class="magnetic" style="background:oklch(58% 0.13 267); color:oklch(98% 0.004 260); padding:14px 26px; border-radius:6px; font:600 14px/1 'Manrope',sans-serif; display:inline-block;">Start free trial</a>
+            <a href="#control" class="anchor-link" style="font:600 14px/1 'Manrope',sans-serif; border-bottom:1px solid currentColor; padding-bottom:3px; opacity:0.85; display:inline-block;">See how it works &rarr;</a>
+          </div>
+          <div class="hero-fade" style="margin-top:44px; display:flex; gap:28px; flex-wrap:wrap; font:500 12.5px/1 'Manrope',sans-serif; opacity:0; transform:translateY(16px); transition:opacity 0.8s ease, transform 0.8s ease;">
+            <span style="opacity:0.5;">No credit card needed</span><span style="opacity:0.5;">Data hosted in India</span><span style="opacity:0.5;">Set up in a day</span>
+          </div>
+        </div>
+        <div style="justify-self:end; align-self:center; position:relative; width:min(90vw,380px); height:360px; perspective:900px;">
+          <div class="tilt-card" data-tilt-base="rotate(-6deg)" style="position:absolute; left:0; bottom:20px; width:210px; background:oklch(97% 0.004 260); border-radius:10px; box-shadow:0 24px 55px oklch(10% 0.02 267 / 0.45); padding:16px 18px; transform:rotate(-6deg); will-change:transform;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div style="width:30px; height:30px; border-radius:50%; background:oklch(58% 0.13 267 / 0.15); display:flex; align-items:center; justify-content:center; font:600 12px/1 'Manrope',sans-serif; color:oklch(40% 0.1 267); flex-shrink:0;">PS</div>
+              <div>
+                <div style="font:600 12.5px/1.3 'Manrope',sans-serif; color:oklch(20% 0.01 267);">Priya Sharma</div>
+                <div style="font:500 11px/1.3 'Manrope',sans-serif; color:oklch(20% 0.01 267 / 0.5);">Documents received</div>
+              </div>
+            </div>
+          </div>
+          <div class="tilt-card" data-tilt-base="rotate(4deg)" style="position:absolute; right:0; top:10px; background:oklch(58% 0.13 267); color:oklch(98% 0.004 260); border-radius:10px; box-shadow:0 16px 40px oklch(10% 0.02 267 / 0.35); padding:12px 16px; max-width:180px; transform:rotate(4deg); will-change:transform;">
+            <div style="font:600 11px/1.4 'Manrope',sans-serif; letter-spacing:0.06em; opacity:0.85;">AI FLAGGED</div>
+            <div style="font:500 12.5px/1.4 'Manrope',sans-serif; margin-top:3px;">2 mismatches before filing</div>
+          </div>
+          <div class="tilt-card" data-tilt-base="translate(-50%,-50%) rotate(-2deg)" style="position:absolute; left:50%; top:52%; transform:translate(-50%,-50%) rotate(-2deg); width:250px; background:oklch(97% 0.004 260); border-radius:14px; box-shadow:0 30px 70px oklch(10% 0.02 267 / 0.5); padding:20px 20px 16px; will-change:transform;">
+            <div style="font:600 11px/1 'Manrope',sans-serif; letter-spacing:0.12em; color:oklch(20% 0.01 267 / 0.45); margin-bottom:13px;">FILING CALENDAR</div>
+            <div style="display:flex; justify-content:space-between; font:500 13px/1 'Manrope',sans-serif; padding:9px 0; border-bottom:1px solid oklch(20% 0.01 267 / 0.1); color:oklch(20% 0.01 267);"><span>GSTR-3B</span><span style="opacity:0.5;">20 Aug</span></div>
+            <div style="display:flex; justify-content:space-between; font:500 13px/1 'Manrope',sans-serif; padding:9px 0; border-bottom:1px solid oklch(20% 0.01 267 / 0.1); color:oklch(20% 0.01 267);"><span>GSTR-1</span><span style="opacity:0.5;">11 Aug</span></div>
+            <div style="display:flex; justify-content:space-between; font:500 13px/1 'Manrope',sans-serif; padding:9px 0; border-bottom:1px solid oklch(20% 0.01 267 / 0.1); color:oklch(20% 0.01 267);"><span>TDS 26Q</span><span style="opacity:0.5;">31 Jul</span></div>
+            <div style="display:flex; justify-content:space-between; font:500 13px/1 'Manrope',sans-serif; padding:9px 0; color:oklch(20% 0.01 267);"><span>Advance Tax</span><span style="opacity:0.5;">15 Sep</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="position:absolute; bottom:36px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:10px; opacity:0.45; z-index:1;">
+        <div style="width:1px; height:38px; background:currentColor; animation:bob 2s ease-in-out infinite;"></div>
+        <span style="font:500 10px/1 'Manrope',sans-serif; letter-spacing:0.16em;">SCROLL</span>
+      </div>
+    </section>
+
+    <div style="position:relative; overflow:hidden; background:oklch(14% 0.04 267); border-top:1px solid oklch(97% 0.004 267 / 0.12); border-bottom:1px solid oklch(97% 0.004 267 / 0.12); padding:20px 0;">
+      <div id="marquee-track" style="display:flex; width:max-content;">
+        <div style="display:flex; align-items:center; gap:26px; padding-right:26px; white-space:nowrap;">
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-1</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-3B</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-9</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ITR FILING</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 24Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 26Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">MCA FILINGS</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ADVANCE TAX</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">PAYROLL &amp; PF/ESI</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">SCHEDULE III</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">AI DOCUMENT EXTRACTION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+        </div>
+        <div aria-hidden="true" style="display:flex; align-items:center; gap:26px; padding-right:26px; white-space:nowrap;">
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-1</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-3B</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-9</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ITR FILING</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 24Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 26Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">MCA FILINGS</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ADVANCE TAX</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">PAYROLL &amp; PF/ESI</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">SCHEDULE III</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">AI DOCUMENT EXTRACTION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+        </div>
+      </div>
+    </div>
+
+    <section id="story" style="position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 64px, 100% 0, 100% 100%, 0 100%); background:oklch(97% 0.004 260); color:oklch(20% 0.01 267); padding:calc(clamp(90px,14vw,150px) + 64px) clamp(20px,6vw,72px) clamp(90px,14vw,150px); max-width:1100px; margin-left:auto; margin-right:auto;">
+      <div style="position:absolute; left:-30px; bottom:-40px; font-family:'Instrument Serif',serif; font-size:clamp(200px,28vw,400px); line-height:1; color:oklch(20% 0.01 267 / 0.05); z-index:0; pointer-events:none; user-select:none;">02</div>
+      <div style="position:relative; z-index:1; max-width:640px; margin-left:auto;">
+        <div class="parallax-slow" style="font:600 12px/1 'Manrope',sans-serif; letter-spacing:0.18em; opacity:0.45; margin-bottom:26px;">THE PROBLEM</div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">Every</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">CA</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">firm</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">runs</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">like</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">this.</span></div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(30px,4.6vw,54px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">Five</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">tools.</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">Five</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">logins.</span></div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 34px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">One</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">deadline</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">falling</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">through</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">the</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">cracks.</span></div>
+        <p class="focus-reveal" data-target-opacity="0.65" style="font:400 17px/1.65 'Manrope',sans-serif; max-width:52ch; opacity:0.15; filter:blur(10px);">Compliance in one app, client chats in another, ledgers in a third — and nothing talks to anything else.</p>
+      </div>
+    </section>
+
+    <section style="position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 0, 100% 64px, 100% 100%, 0 100%); background:oklch(21% 0.05 267); color:oklch(97% 0.004 267); padding:calc(clamp(90px,14vw,150px) + 64px) clamp(20px,6vw,72px) clamp(90px,14vw,150px); box-shadow:inset 0 0 160px oklch(0% 0 0 / 0.45);">
+      <div style="position:absolute; right:-40px; top:-60px; font-family:'Instrument Serif',serif; font-size:clamp(200px,28vw,400px); line-height:1; color:oklch(97% 0.004 267 / 0.05); z-index:0; pointer-events:none; user-select:none;">03</div>
+      <div class="glow-layer" style="position:absolute; inset:0; z-index:0; pointer-events:none; background:radial-gradient(650px circle at 30% 60%, oklch(58% 0.13 267 / 0.14), transparent 65%);"></div>
+      <div style="position:relative; z-index:1; max-width:1100px; margin:0 auto;">
+        <div class="parallax-slow" style="font:600 12px/1 'Manrope',sans-serif; letter-spacing:0.18em; opacity:0.5; margin-bottom:26px;">THE PLATFORM</div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">One</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">workspace.</span></div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(30px,4.6vw,54px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">Every</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">compliance</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">domain.</span></div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 44px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">Nothing</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">falls</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">through.</span></div>
+        <p class="focus-reveal" data-target-opacity="0.6" style="font:500 14px/1.9 'Manrope',sans-serif; max-width:900px; opacity:0.15; filter:blur(10px);">GSTR-1 &nbsp;/&nbsp; GSTR-3B &nbsp;/&nbsp; GSTR-9 &nbsp;/&nbsp; ITR filing &nbsp;/&nbsp; TDS 24Q &amp; 26Q &nbsp;/&nbsp; MCA filings &nbsp;/&nbsp; Advance tax &nbsp;/&nbsp; Payroll &amp; PF/ESI &nbsp;/&nbsp; Schedule III &nbsp;/&nbsp; AI document extraction &nbsp;/&nbsp; Client portal &nbsp;/&nbsp; Practice analytics</p>
+      </div>
+    </section>
+
+    <section id="control" style="position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 64px, 100% 0, 100% 100%, 0 100%); background:oklch(97% 0.004 260); color:oklch(20% 0.01 267); padding:calc(clamp(90px,14vw,150px) + 64px) clamp(20px,6vw,72px) clamp(90px,14vw,150px); max-width:1100px; margin-left:auto; margin-right:auto;">
+      <div style="position:absolute; left:-30px; bottom:-50px; font-family:'Instrument Serif',serif; font-size:clamp(200px,28vw,400px); line-height:1; color:oklch(20% 0.01 267 / 0.05); z-index:0; pointer-events:none; user-select:none;">04</div>
+      <div style="position:relative; z-index:1; max-width:640px; margin-left:auto;">
+        <div class="parallax-slow" style="font:600 12px/1 'Manrope',sans-serif; letter-spacing:0.18em; opacity:0.45; margin-bottom:26px;">CONTROL &amp; TRUST</div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">Nothing</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">is</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">filed</span></div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(30px,4.6vw,54px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 40px;"><span style="display:inline-block; clip-path:inset(0 100% 0 0);">without</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">your</span> <span style="display:inline-block; clip-path:inset(0 100% 0 0);">click.</span></div>
+        <div style="display:flex; flex-direction:column; gap:16px; max-width:60ch;">
+          <div class="focus-reveal" data-target-opacity="0.7" style="display:flex; gap:16px; align-items:baseline; font:400 16px/1.6 'Manrope',sans-serif; border-top:1px solid oklch(20% 0.01 267 / 0.12); padding-top:16px; opacity:0.15; filter:blur(10px);"><span style="font-family:'Instrument Serif',serif; font-style:italic; font-size:26px; opacity:0.5; min-width:40px;">01</span><span>Explicit CA confirmation on every government submission</span></div>
+          <div class="focus-reveal" data-target-opacity="0.7" style="display:flex; gap:16px; align-items:baseline; font:400 16px/1.6 'Manrope',sans-serif; border-top:1px solid oklch(20% 0.01 267 / 0.12); padding-top:16px; opacity:0.15; filter:blur(10px);"><span style="font-family:'Instrument Serif',serif; font-style:italic; font-size:26px; opacity:0.5; min-width:40px;">02</span><span>Full audit log of who reviewed and filed what</span></div>
+          <div class="focus-reveal" data-target-opacity="0.7" style="display:flex; gap:16px; align-items:baseline; font:400 16px/1.6 'Manrope',sans-serif; border-top:1px solid oklch(20% 0.01 267 / 0.12); padding-top:16px; border-bottom:1px solid oklch(20% 0.01 267 / 0.12); padding-bottom:16px; opacity:0.15; filter:blur(10px);"><span style="font-family:'Instrument Serif',serif; font-style:italic; font-size:26px; opacity:0.5; min-width:40px;">03</span><span>Role-based access, MFA and data hosted in India</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="scroll-reveal" data-stats="1" style="opacity:0; transform:translateY(28px); transition:opacity 0.9s ease, transform 0.9s ease; position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 0, 100% 64px, 100% 100%, 0 100%); background:oklch(21% 0.05 267); color:oklch(97% 0.004 267); padding:calc(clamp(90px,14vw,150px) + 64px) clamp(20px,6vw,72px) clamp(90px,14vw,150px); box-shadow:inset 0 0 160px oklch(0% 0 0 / 0.45);">
+      <div class="glow-layer" style="position:absolute; inset:0; z-index:0; pointer-events:none; background:radial-gradient(650px circle at 60% 40%, oklch(58% 0.13 267 / 0.14), transparent 65%);"></div>
+      <div style="position:relative; z-index:1; max-width:1100px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:48px;">
+        <div><div style="font-family:'Instrument Serif', serif; font-size:clamp(48px,6vw,84px); line-height:1;"><span id="count-modules">0</span>+</div><div style="font:500 13px/1.5 'Manrope',sans-serif; opacity:0.55; margin-top:10px;">Modules, one connected workspace</div></div>
+        <div style="margin-top:32px;"><div style="font-family:'Instrument Serif', serif; font-size:clamp(48px,6vw,84px); line-height:1;"><span id="count-tools">0</span></div><div style="font:500 13px/1.5 'Manrope',sans-serif; opacity:0.55; margin-top:10px;">Separate tools replaced by one login</div></div>
+        <div><div style="font-family:'Instrument Serif', serif; font-size:clamp(48px,6vw,84px); line-height:1;"><span id="count-filings">0</span>%</div><div style="font:500 13px/1.5 'Manrope',sans-serif; opacity:0.55; margin-top:10px;">Filings reviewed by a CA before submit</div></div>
+        <div style="margin-top:32px;"><div style="font-family:'Instrument Serif', serif; font-size:clamp(48px,6vw,84px); line-height:1;"><span id="count-domains">0</span></div><div style="font:500 13px/1.5 'Manrope',sans-serif; opacity:0.55; margin-top:10px;">Compliance domains — GST, ITR, TDS, MCA</div></div>
+      </div>
+    </section>
+
+    <section style="position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 64px, 100% 0, 100% 100%, 0 100%); background:oklch(97% 0.004 260); color:oklch(20% 0.01 267); padding:calc(clamp(100px,16vw,170px) + 64px) clamp(20px,6vw,72px) clamp(100px,16vw,170px); max-width:960px; margin-left:auto; margin-right:auto; text-align:center;">
+      <div style="position:absolute; left:0; top:-60px; font-family:'Instrument Serif',serif; font-style:italic; font-size:clamp(260px,34vw,440px); line-height:1; color:oklch(20% 0.01 267 / 0.06); z-index:0; pointer-events:none; user-select:none;">&ldquo;</div>
+      <div style="position:relative; z-index:1;">
+        <div class="focus-reveal" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(26px,3.6vw,40px); line-height:1.4; letter-spacing:-0.01em; opacity:0.15; filter:blur(10px);">"We shut down four subscriptions and a dozen spreadsheets. My team finally sees every client's deadlines, books and documents in one screen — and the AI catches mismatches before we file."</div>
+        <div class="focus-reveal" data-target-opacity="0.6" style="margin-top:34px; font:600 13px/1.5 'Manrope',sans-serif; opacity:0.15; filter:blur(10px);">CA Rohan Agarwal — Partner, Agarwal &amp; Co., Bengaluru</div>
+      </div>
+    </section>
+
+    <section class="scroll-reveal" style="opacity:0; transform:translateY(28px); transition:opacity 0.9s ease, transform 0.9s ease; position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 0, 100% 64px, 100% 100%, 0 100%); background:oklch(21% 0.05 267); color:oklch(97% 0.004 267); padding:calc(clamp(90px,14vw,160px) + 64px) clamp(20px,6vw,72px) clamp(90px,14vw,160px); box-shadow:inset 0 0 160px oklch(0% 0 0 / 0.45); text-align:center;">
+      <div class="glow-layer" style="position:absolute; inset:0; z-index:0; pointer-events:none; background:radial-gradient(650px circle at 50% 50%, oklch(58% 0.13 267 / 0.15), transparent 65%);"></div>
+      <div style="position:relative; z-index:1; font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(34px,5.4vw,64px); line-height:1.12; letter-spacing:-0.015em; max-width:16ch; margin:0 auto 40px;">Bring your whole practice into one place.</div>
+      <div style="position:relative; z-index:1; display:flex; justify-content:center; gap:24px; flex-wrap:wrap; margin-bottom:26px;">
+        <a href="#" class="magnetic" style="background:oklch(58% 0.13 267); color:oklch(98% 0.004 260); padding:15px 28px; border-radius:6px; font:600 14px/1 'Manrope',sans-serif; display:inline-block;">Start free trial</a>
+        <a href="#" class="magnetic" style="border:1px solid oklch(97% 0.004 267 / 0.3); padding:15px 28px; border-radius:6px; font:600 14px/1 'Manrope',sans-serif; display:inline-block;">Book a demo</a>
+      </div>
+      <div style="position:relative; z-index:1; font:400 13px/1 'Manrope',sans-serif; opacity:0.5;">Already using PracticeSync? <a href="#" style="text-decoration:underline;">Log in here</a></div>
+    </section>
+
+    <footer style="position:relative; margin-top:-64px; clip-path:polygon(0 64px, 100% 0, 100% 100%, 0 100%); background:oklch(14% 0.04 267); color:oklch(90% 0.01 267 / 0.8); padding:calc(70px + 64px) clamp(20px,6vw,72px) 34px; box-shadow:inset 0 0 140px oklch(0% 0 0 / 0.5);">
+      <div style="max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:36px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px;">
+            <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke-width="3" style="stroke:oklch(97% 0.004 267 / 0.25)"></circle><circle cx="32" cy="32" r="24" stroke-width="5" stroke-linecap="round" style="stroke:oklch(58% 0.13 267)" stroke-dasharray="29.3 121.5" transform="rotate(-50 32 32)"></circle><path d="M20,33 L28,41 L45,22" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:oklch(97% 0.004 267)"></path></svg>
+            <div style="font:600 15px/1 'Manrope',sans-serif; color:oklch(97% 0.004 267);">PracticeSync</div>
+          </div>
+          <p style="font:400 13px/1.6 'Manrope',sans-serif; opacity:0.6; max-width:32ch;">The AI-first operating system for Indian CA practices — compliance, accounting, payroll and clients in one place.</p>
+        </div>
+        <div>
+          <div style="font:600 11px/1 'Manrope',sans-serif; letter-spacing:0.1em; opacity:0.45; margin-bottom:16px;">PRODUCT</div>
+          <div style="display:flex; flex-direction:column; gap:10px; font:400 13px/1 'Manrope',sans-serif; opacity:0.7;"><a href="#">Products</a><a href="#">Pricing</a><a href="#">Security</a></div>
+        </div>
+        <div>
+          <div style="font:600 11px/1 'Manrope',sans-serif; letter-spacing:0.1em; opacity:0.45; margin-bottom:16px;">COMPANY</div>
+          <div style="display:flex; flex-direction:column; gap:10px; font:400 13px/1 'Manrope',sans-serif; opacity:0.7;"><a href="#story" class="anchor-link">Our Story</a><a href="#">Support</a><a href="/cdn-cgi/l/email-protection#c6aea3aaaaa986b6b4a7a5b2afa5a3b5bfa8a5e8a5a9ab">Contact</a></div>
+        </div>
+        <div>
+          <div style="font:600 11px/1 'Manrope',sans-serif; letter-spacing:0.1em; opacity:0.45; margin-bottom:16px;">GET STARTED</div>
+          <div style="display:flex; flex-direction:column; gap:10px; font:400 13px/1 'Manrope',sans-serif; opacity:0.7;"><a href="#">Start free trial</a><a href="#">Firm login</a><a href="#">Client portal</a></div>
+        </div>
+      </div>
+      <div style="max-width:1100px; margin:50px auto 0; padding-top:22px; border-top:1px solid oklch(97% 0.004 267 / 0.1); display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; font:400 12px/1 'Manrope',sans-serif; opacity:0.45;">
+        <span>© 2026 PracticeSync. Built for Indian Chartered Accountants.</span>
+        <div style="display:flex; gap:20px;"><a href="#">Privacy</a><a href="#">Terms</a><span>Data hosted in India</span></div>
+      </div>
+    </footer>
+
+  </div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+(function () {
+  var words = ['Compliance.', 'Clarity.', 'Control.', 'Automation.', 'Trust.'];
+  var wordIdx = 0;
+  var statsStarted = false;
+  var loaderDone = false;
+
+  var scrollTarget = 0, scrollCurrent = 0, maxScroll = 0;
+  var mouseClientX = 0, mouseClientY = 0;
+  var marqueeOffset = 0, marqueeHalfWidth = 0, lastMarqueeScroll = 0;
+  var touchY = 0;
+
+  var scrollEl, loaderEl, loaderPctEl, loaderFillEl, heroWordEl, marqueeEl, canvasEl, grainEl;
+  var parallaxEls = [], kineticEls = [], focusEls = [], revealEls = [], heroFadeEls = [], glowEls = [];
+  var loaderStart, loaderInterval, loaderFallback, wordTimer;
+  var renderer, scene, camera, group, rings = [], particles, particleCount = 240, threeRaf;
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function computeMaxScroll() { if (scrollEl) maxScroll = Math.max(0, scrollEl.scrollHeight - window.innerHeight); }
+
+  function onMouseMove(e) { mouseClientX = e.clientX; mouseClientY = e.clientY; }
+  function onResize() { computeMaxScroll(); }
+
+  function onWheel(e) {
+    e.preventDefault();
+    computeMaxScroll();
+    scrollTarget = clamp(scrollTarget + e.deltaY, 0, maxScroll);
+  }
+  function onTouchStart(e) { touchY = e.touches[0].clientY; }
+  function onTouchMove(e) {
+    e.preventDefault();
+    var y = e.touches[0].clientY;
+    var dy = touchY - y;
+    touchY = y;
+    computeMaxScroll();
+    scrollTarget = clamp(scrollTarget + dy * 1.6, 0, maxScroll);
+  }
+  function onKeyDown(e) {
+    computeMaxScroll();
+    var vh = window.innerHeight;
+    if (e.key === 'ArrowDown') { e.preventDefault(); scrollTarget = clamp(scrollTarget + 90, 0, maxScroll); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); scrollTarget = clamp(scrollTarget - 90, 0, maxScroll); }
+    else if (e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); scrollTarget = clamp(scrollTarget + vh * 0.85, 0, maxScroll); }
+    else if (e.key === 'PageUp') { e.preventDefault(); scrollTarget = clamp(scrollTarget - vh * 0.85, 0, maxScroll); }
+    else if (e.key === 'Home') { e.preventDefault(); scrollTarget = 0; }
+    else if (e.key === 'End') { e.preventDefault(); scrollTarget = maxScroll; }
+  }
+
+  function bindAnchorLink(el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      var href = el.getAttribute('href') || '';
+      if (href.length < 2) return;
+      var target = document.querySelector(href);
+      if (!target) return;
+      computeMaxScroll();
+      var rect = target.getBoundingClientRect();
+      var dest = scrollCurrent + rect.top - 90;
+      scrollTarget = clamp(dest, 0, maxScroll);
+    });
+  }
+
+  function bindCardTilt(el) {
+    var base = el.dataset.tiltBase || '';
+    el.addEventListener('mouseenter', function () { el.style.transition = 'transform 0.05s linear'; });
+    el.addEventListener('mousemove', function (e) {
+      var r = el.getBoundingClientRect();
+      var px = (e.clientX - r.left) / r.width - 0.5;
+      var py = (e.clientY - r.top) / r.height - 0.5;
+      el.style.transform = (base ? base + ' ' : '') + 'rotateX(' + (-py * 14).toFixed(2) + 'deg) rotateY(' + (px * 14).toFixed(2) + 'deg)';
+    });
+    el.addEventListener('mouseleave', function () {
+      el.style.transition = 'transform 0.4s cubic-bezier(0.2,0.8,0.2,1)';
+      el.style.transform = base;
+    });
+  }
+
+  function bindMagnetic(el) {
+    el.style.transition = 'transform 0.25s cubic-bezier(0.2,0.8,0.2,1)';
+    el.addEventListener('mousemove', function (e) {
+      var r = el.getBoundingClientRect();
+      var x = (e.clientX - r.left - r.width / 2) * 0.35;
+      var y = (e.clientY - r.top - r.height / 2) * 0.35;
+      el.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px,0)';
+    });
+    el.addEventListener('mouseleave', function () { el.style.transform = 'translate3d(0,0,0)'; });
+  }
+
+  function setupGrain() {
+    if (!grainEl) return;
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>";
+    grainEl.style.backgroundImage = 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+    setInterval(function () { grainEl.style.opacity = (0.035 + Math.random() * 0.03).toFixed(3); }, 110);
+  }
+
+  function loaderTick() {
+    if (loaderDone) return;
+    var elapsed = performance.now() - loaderStart;
+    var p = Math.min(1, elapsed / 1500);
+    var pct = Math.round(p * 100);
+    if (loaderPctEl) loaderPctEl.textContent = pct;
+    if (loaderFillEl) loaderFillEl.style.width = pct + '%';
+    if (p >= 1) {
+      clearInterval(loaderInterval);
+      setTimeout(exitLoader, 250);
+    }
+  }
+
+  function exitLoader() {
+    if (loaderDone) return;
+    loaderDone = true;
+    clearInterval(loaderInterval);
+    clearTimeout(loaderFallback);
+    if (loaderEl) {
+      loaderEl.style.opacity = '0';
+      loaderEl.style.transform = 'translateY(-100%)';
+    }
+    heroFadeEls.forEach(function (el, i) {
+      setTimeout(function () {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+      }, i * 90);
+    });
+    setTimeout(function () { if (loaderEl) loaderEl.style.display = 'none'; }, 850);
+  }
+
+  function startCount() {
+    var targets = { modules: 11, tools: 4, filings: 100, domains: 4 };
+    var duration = 1200;
+    var startTime = performance.now();
+    var elModules = document.getElementById('count-modules');
+    var elTools = document.getElementById('count-tools');
+    var elFilings = document.getElementById('count-filings');
+    var elDomains = document.getElementById('count-domains');
+    function step(t) {
+      var p = Math.min(1, (t - startTime) / duration);
+      if (elModules) elModules.textContent = Math.round(targets.modules * p);
+      if (elTools) elTools.textContent = Math.round(targets.tools * p);
+      if (elFilings) elFilings.textContent = Math.round(targets.filings * p);
+      if (elDomains) elDomains.textContent = Math.round(targets.domains * p);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function applyGlow() {
+    var vh = window.innerHeight;
+    glowEls.forEach(function (g) {
+      var rect = g.getBoundingClientRect();
+      if (rect.bottom < -80 || rect.top > vh + 80 || rect.width === 0) return;
+      var relX = ((mouseClientX - rect.left) / rect.width * 100).toFixed(1);
+      var relY = ((mouseClientY - rect.top) / rect.height * 100).toFixed(1);
+      g.style.background = 'radial-gradient(650px circle at ' + relX + '% ' + relY + '%, oklch(58% 0.13 267 / 0.16), transparent 65%)';
+    });
+  }
+
+  function applyScrollEffects() {
+    var vh = window.innerHeight;
+
+    revealEls.forEach(function (el) {
+      if (el.__revealed) return;
+      var rect = el.getBoundingClientRect();
+      if (rect.top < vh * 0.85) {
+        el.__revealed = true;
+        el.style.opacity = 1;
+        el.style.transform = 'none';
+        if (el.dataset.stats && !statsStarted) { statsStarted = true; startCount(); }
+      }
+    });
+
+    parallaxEls.forEach(function (p) {
+      var rect = p.el.getBoundingClientRect();
+      var center = rect.top + rect.height / 2 - vh / 2;
+      p.el.style.transform = 'translate3d(0,' + (-center * p.factor).toFixed(2) + 'px,0)';
+    });
+
+    var kStart = vh * 0.88, kEnd = vh * 0.5;
+    kineticEls.forEach(function (k) {
+      var rect = k.el.parentElement.getBoundingClientRect();
+      var raw = clamp((kStart - rect.top) / (kStart - kEnd), 0, 1);
+      var delay = k.stagger * 0.1;
+      var p = clamp((raw - delay) / Math.max(0.001, 1 - delay), 0, 1);
+      k.el.style.clipPath = 'inset(0 ' + ((1 - p) * 100).toFixed(1) + '% 0 0)';
+      k.el.style.opacity = (0.2 + p * 0.8).toFixed(2);
+    });
+
+    var fStart = vh * 0.9, fEnd = vh * 0.45;
+    focusEls.forEach(function (f) {
+      var rect = f.el.getBoundingClientRect();
+      var p = clamp((fStart - rect.top) / (fStart - fEnd), 0, 1);
+      f.el.style.opacity = (f.target * (0.15 + p * 0.85)).toFixed(2);
+      f.el.style.filter = 'blur(' + ((1 - p) * 10).toFixed(1) + 'px)';
+      f.el.style.transform = 'scale(' + (0.94 + p * 0.06).toFixed(3) + ')';
+    });
+  }
+
+  function updateMarquee() {
+    if (!marqueeEl) return;
+    if (!marqueeHalfWidth) {
+      var first = marqueeEl.children[0];
+      if (first) marqueeHalfWidth = first.getBoundingClientRect().width;
+      if (!marqueeHalfWidth) return;
+    }
+    var delta = scrollCurrent - lastMarqueeScroll;
+    lastMarqueeScroll = scrollCurrent;
+    marqueeOffset += 0.6 + delta * 0.7;
+    var hw = marqueeHalfWidth;
+    marqueeOffset = ((marqueeOffset % hw) + hw) % hw;
+    marqueeEl.style.transform = 'translate3d(' + (-marqueeOffset).toFixed(1) + 'px,0,0)';
+  }
+
+  function tick() {
+    computeMaxScroll();
+    scrollCurrent += (scrollTarget - scrollCurrent) * 0.09;
+    if (Math.abs(scrollTarget - scrollCurrent) < 0.05) scrollCurrent = scrollTarget;
+    if (scrollEl) scrollEl.style.transform = 'translate3d(0,' + (-scrollCurrent).toFixed(2) + 'px,0)';
+    applyScrollEffects();
+    applyGlow();
+    updateMarquee();
+    requestAnimationFrame(tick);
+  }
+
+  function resetParticle(arr, i) {
+    var r = 2.1 + Math.random() * 2.3;
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.acos((Math.random() * 2) - 1);
+    arr[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    arr[i * 3 + 2] = r * Math.cos(phi);
+  }
+
+  function waitForThree(count) {
+    count = count || 0;
+    if (window.THREE) { setupThree(); return; }
+    if (count > 100) return;
+    setTimeout(function () { waitForThree(count + 1); }, 50);
+  }
+
+  function setupThree() {
+    if (!canvasEl) return;
+    try {
+      var THREE = window.THREE;
+      var parent = canvasEl.parentElement;
+      var w = parent.clientWidth || 600, h = parent.clientHeight || 600;
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(w, h);
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+      camera.position.set(0, 0, 7);
+
+      group = new THREE.Group();
+
+      group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 2), new THREE.MeshBasicMaterial({ color: 0x587ad9 })));
+
+      var shellGeo = new THREE.IcosahedronGeometry(0.64, 1);
+      group.add(new THREE.LineSegments(new THREE.WireframeGeometry(shellGeo), new THREE.LineBasicMaterial({ color: 0xc7d2f0, transparent: true, opacity: 0.55 })));
+
+      var glowCanvas = document.createElement('canvas');
+      glowCanvas.width = glowCanvas.height = 128;
+      var gctx = glowCanvas.getContext('2d');
+      var grad = gctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, 'rgba(88,122,217,0.85)');
+      grad.addColorStop(0.4, 'rgba(88,122,217,0.3)');
+      grad.addColorStop(1, 'rgba(88,122,217,0)');
+      gctx.fillStyle = grad;
+      gctx.fillRect(0, 0, 128, 128);
+      var glowTex = new THREE.CanvasTexture(glowCanvas);
+      var glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glowSprite.scale.set(4.6, 4.6, 1);
+      group.add(glowSprite);
+
+      var ringDefs = [
+        { r: 1.7, tube: 0.008, rx: 0.35, ry: 0, rz: 0.1, opacity: 0.5, speed: 0.0022 },
+        { r: 2.15, tube: 0.006, rx: 1.2, ry: 0.5, rz: 0, opacity: 0.4, speed: -0.0016 },
+        { r: 2.55, tube: 0.005, rx: -0.4, ry: 0.2, rz: 0.9, opacity: 0.3, speed: 0.0012 }
+      ];
+      ringDefs.forEach(function (def) {
+        var ring = new THREE.Mesh(new THREE.TorusGeometry(def.r, def.tube, 8, 128), new THREE.MeshBasicMaterial({ color: 0x587ad9, transparent: true, opacity: def.opacity }));
+        ring.rotation.set(def.rx, def.ry, def.rz);
+        ring.userData.speed = def.speed;
+        group.add(ring);
+        rings.push(ring);
+      });
+
+      var positions = new Float32Array(particleCount * 3);
+      for (var i = 0; i < particleCount; i++) resetParticle(positions, i);
+      var pGeo = new THREE.BufferGeometry();
+      pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0x587ad9, size: 0.045, transparent: true, opacity: 0.7, sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      group.add(particles);
+
+      scene.add(group);
+      renderThree();
+    } catch (e) {}
+  }
+
+  function renderThree() {
+    if (!renderer) return;
+    try {
+      var parent = canvasEl.parentElement;
+      var pw = parent.clientWidth, ph = parent.clientHeight;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      if (pw && ph && (canvasEl.width !== Math.round(pw * dpr) || canvasEl.height !== Math.round(ph * dpr))) {
+        camera.aspect = pw / ph;
+        camera.updateProjectionMatrix();
+        renderer.setSize(pw, ph);
+      }
+
+      group.rotation.y += 0.0016;
+      group.rotation.x += 0.0006;
+
+      var nx = (mouseClientX / window.innerWidth - 0.5) * 2;
+      var ny = (mouseClientY / window.innerHeight - 0.5) * 2;
+      group.rotation.x += ((-ny * 0.25) - group.rotation.x) * 0.02;
+      group.rotation.y += ((nx * 0.35) - group.rotation.y) * 0.02;
+
+      rings.forEach(function (ring) { ring.rotation.z += ring.userData.speed; });
+
+      var posAttr = particles.geometry.attributes.position;
+      var arr = posAttr.array;
+      for (var i = 0; i < particleCount; i++) {
+        var ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+        var x = arr[ix], y = arr[iy], z = arr[iz];
+        var len = Math.sqrt(x * x + y * y + z * z) || 1;
+        var speed = 0.008;
+        x -= (x / len) * speed; y -= (y / len) * speed; z -= (z / len) * speed;
+        if (len < 0.45) { resetParticle(arr, i); } else { arr[ix] = x; arr[iy] = y; arr[iz] = z; }
+      }
+      posAttr.needsUpdate = true;
+
+      var heroRect = parent.getBoundingClientRect();
+      var p = Math.min(1, Math.max(0, -heroRect.top / (heroRect.height * 0.9)));
+      camera.position.z = 7 - p * 2.6;
+      canvasEl.style.opacity = (1 - Math.max(0, (p - 0.55) / 0.45)).toFixed(2);
+
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+    } catch (e) {}
+    threeRaf = requestAnimationFrame(renderThree);
+  }
+
+  function init() {
+    scrollEl = document.getElementById('scroll-content');
+    loaderEl = document.getElementById('loader');
+    loaderPctEl = document.getElementById('loader-pct');
+    loaderFillEl = document.getElementById('loader-fill');
+    heroWordEl = document.getElementById('hero-word');
+    marqueeEl = document.getElementById('marquee-track');
+    canvasEl = document.getElementById('hero-canvas');
+    grainEl = document.getElementById('grain');
+
+    document.querySelectorAll('.parallax-slow').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.05 }); });
+    document.querySelectorAll('.parallax-med').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.11 }); });
+    document.querySelectorAll('.kinetic-line').forEach(function (line) {
+      Array.from(line.children).forEach(function (word, i) { kineticEls.push({ el: word, stagger: i }); });
+    });
+    document.querySelectorAll('.focus-reveal').forEach(function (el) { focusEls.push({ el: el, target: parseFloat(el.dataset.targetOpacity || '1') }); });
+    document.querySelectorAll('.scroll-reveal').forEach(function (el) { revealEls.push(el); });
+    document.querySelectorAll('.hero-fade').forEach(function (el) { heroFadeEls.push(el); });
+    document.querySelectorAll('.glow-layer').forEach(function (el) { glowEls.push(el); });
+    document.querySelectorAll('.tilt-card').forEach(bindCardTilt);
+    document.querySelectorAll('.magnetic').forEach(bindMagnetic);
+    document.querySelectorAll('.anchor-link').forEach(bindAnchorLink);
+
+    setupGrain();
+    computeMaxScroll();
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('mousemove', onMouseMove);
+
+    wordTimer = setInterval(function () {
+      wordIdx = (wordIdx + 1) % words.length;
+      if (heroWordEl) heroWordEl.textContent = words[wordIdx];
+    }, 2200);
+
+    loaderStart = performance.now();
+    loaderInterval = setInterval(loaderTick, 40);
+    loaderFallback = setTimeout(function () { if (!loaderDone) exitLoader(); }, 3200);
+
+    requestAnimationFrame(tick);
+    waitForThree();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+
+</body>
+</html>
