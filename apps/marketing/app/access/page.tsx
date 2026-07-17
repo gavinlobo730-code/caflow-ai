@@ -46,8 +46,15 @@ export default function AccessPage() {
       <CustomCursor />
       {/* soft brand wash from the top, echoing the homepage's dark panels */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-brand-light/[0.06] to-transparent" />
+      {/* Ghost page numeral — the same "page" motif carried across every page. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-[60px] -right-5 z-0 select-none font-display text-[clamp(200px,28vw,400px)] leading-none text-white/[0.05]"
+      >
+        01
+      </div>
 
-      <div className="relative mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-8">
+      <div className="relative z-[1] mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-8">
         {/* Top bar */}
         <div className="flex items-center justify-between">
           <Logo theme="dark" />

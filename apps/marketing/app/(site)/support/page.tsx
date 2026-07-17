@@ -84,7 +84,7 @@ export default function SupportPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
         <SerifHeading
           eyebrow="Support"
           lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
@@ -93,7 +93,7 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Channels ─────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light" seam="rising-right" numeral="02" numeralCorner="bottom-left">
         <CineReveal>
           <SerifHeading
             eyebrow="How we help"
@@ -125,7 +125,7 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Get in touch ─────────────────────────────────────────────────── */}
-      <Panel id="get-in-touch" theme="dark" seam="rising-left">
+      <Panel id="get-in-touch" theme="dark" seam="rising-left" numeral="03" numeralCorner="top-right">
         <CineReveal>
           <SerifHeading
             eyebrow="Get in touch"
@@ -189,7 +189,7 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Common questions ─────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light" seam="rising-right" numeral="04" numeralCorner="bottom-left">
         <CineReveal>
           <SerifHeading
             eyebrow="Common questions"

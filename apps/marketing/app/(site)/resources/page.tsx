@@ -131,7 +131,7 @@ export default function ResourcesPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
         <SerifHeading
           eyebrow="Resources"
           lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
@@ -140,7 +140,7 @@ export default function ResourcesPage() {
       </Panel>
 
       {/* ── Quick-reference guides ───────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light" seam="rising-right" numeral="02" numeralCorner="bottom-left">
         <CineReveal>
           <SerifHeading
             eyebrow="Quick references"
@@ -183,7 +183,7 @@ export default function ResourcesPage() {
       </Panel>
 
       {/* ── Compliance calendar ──────────────────────────────────────────── */}
-      <Panel id="calendar" theme="dark" seam="rising-left" innerClassName="scroll-mt-24">
+      <Panel id="calendar" theme="dark" seam="rising-left" numeral="03" numeralCorner="top-right" innerClassName="scroll-mt-24">
         <CineReveal>
           <SerifHeading
             eyebrow="Compliance calendar"
