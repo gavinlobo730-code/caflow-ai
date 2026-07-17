@@ -26,6 +26,18 @@ test("intra-state totals split CGST+SGST and round to a whole rupee", () => {
   assert.equal(t.grand_total_paise, t.taxable_paise + t.gst_paise + t.round_off_paise);
 });
 
+test("full tax is computed first, then split — SGST carries any odd paise (matches routers/sales_invoices.py's _compute_line_gst)", () => {
+  // taxable = 28 paise, 18% -> full_gst = floor(28*1800/10000) = 5. Splitting
+  // the RATE first (half = 9%) and rounding each leg independently gives
+  // cgst=Math.round(28*9/1000)=3, sgst=3 -> 6, one paise MORE than the
+  // backend's actual 5 (2+3). The old computeGst had this exact divergence.
+  const t = previewTotals([line("0.28", 18)], false, false);
+  assert.equal(t.taxable_paise, 28);
+  assert.equal(t.cgst_paise, 2);
+  assert.equal(t.sgst_paise, 3);
+  assert.equal(t.gst_paise, 5);
+});
+
 test("inter-state uses IGST only", () => {
   const t = previewTotals([line("1000", 18)], true);
   assert.equal(t.cgst_paise, 0);
