@@ -119,11 +119,13 @@ export default function PricingPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
-        <SerifHeading
-          eyebrow="Pricing"
-          lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
-          subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
-        />
+        <CineReveal>
+          <SerifHeading
+            eyebrow="Pricing"
+            lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
+            subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
+          />
+        </CineReveal>
       </Panel>
 
       {/* ── Tiers ────────────────────────────────────────────────────────── */}

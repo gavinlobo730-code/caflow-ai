@@ -85,11 +85,13 @@ export default function SupportPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
-        <SerifHeading
-          eyebrow="Support"
-          lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
-          subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
-        />
+        <CineReveal>
+          <SerifHeading
+            eyebrow="Support"
+            lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
+            subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
+          />
+        </CineReveal>
       </Panel>
 
       {/* ── Channels ─────────────────────────────────────────────────────── */}

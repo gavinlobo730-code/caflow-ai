@@ -323,6 +323,7 @@
       setTimeout(function () {
         el.style.opacity = '1';
         el.style.transform = 'none';
+        el.style.filter = 'none';
       }, i * 90);
     });
   }
@@ -562,12 +563,24 @@
 
     document.querySelectorAll('.parallax-slow').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.05 }); });
     document.querySelectorAll('.parallax-med').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.11 }); });
+    // Headlines reveal as a whole line with the same graceful blur + fade used
+    // across the rest of the site (instead of the old per-word clip wipe), so
+    // every heading everywhere shares one consistent, graceful entrance. The
+    // per-word spans are unwrapped (clip-path cleared) and the line is driven
+    // by the same focus-reveal loop as the paragraphs.
     document.querySelectorAll('.kinetic-line').forEach(function (line) {
-      Array.from(line.children).forEach(function (word, i) { kineticEls.push({ el: word, stagger: i }); });
+      Array.from(line.children).forEach(function (word) { word.style.clipPath = 'none'; });
+      line.style.opacity = '0.15';
+      line.style.filter = 'blur(10px)';
+      focusEls.push({ el: line, target: 1 });
     });
     document.querySelectorAll('.focus-reveal').forEach(function (el) { focusEls.push({ el: el, target: parseFloat(el.dataset.targetOpacity || '1') }); });
     document.querySelectorAll('.scroll-reveal').forEach(function (el) { revealEls.push(el); });
-    document.querySelectorAll('.hero-fade').forEach(function (el) { heroFadeEls.push(el); });
+    document.querySelectorAll('.hero-fade').forEach(function (el) {
+      el.style.filter = 'blur(10px)';
+      el.style.transition += ', filter 0.8s ease';
+      heroFadeEls.push(el);
+    });
     document.querySelectorAll('.glow-layer').forEach(function (el) { glowEls.push(el); });
     document.querySelectorAll('.tilt-card').forEach(bindCardTilt);
     document.querySelectorAll('.magnetic').forEach(bindMagnetic);

@@ -132,11 +132,13 @@ export default function ResourcesPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
-        <SerifHeading
-          eyebrow="Resources"
-          lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
-          subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
-        />
+        <CineReveal>
+          <SerifHeading
+            eyebrow="Resources"
+            lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
+            subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
+          />
+        </CineReveal>
       </Panel>
 
       {/* ── Quick-reference guides ───────────────────────────────────────── */}
