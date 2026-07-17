@@ -89,6 +89,45 @@ def _match_existing_vendor(candidates: list[dict], gstin: str, pan: str) -> Opti
     return None
 
 
+# Tables that hold a vendor's accounting history — mirrors customers.py's
+# _DEPENDENCY_TABLES exactly (same CGST Act §35/36 / IT Act §44AA rationale).
+# purchase_bills/purchase_payments are FK ON DELETE CASCADE to vendors; a raw
+# hard-delete would silently wipe them. debit_notes/purchase_credit_notes
+# carry a vendor_id column with NO enforced FK (added later, never backfilled
+# with one) — a hard-delete would leave those rows pointing at a vendor that
+# no longer exists instead of cascading, which is worse than data loss, so
+# they must be guarded here at the application layer regardless.
+_VENDOR_DEPENDENCY_TABLES: list[tuple[str, str]] = [
+    ("bills", "purchase_bills"),
+    ("payments", "purchase_payments"),
+    ("debit_notes", "debit_notes"),
+    ("credit_notes", "purchase_credit_notes"),
+]
+# Tables with a deleted_at (soft-delete) column — a deleted row is no longer
+# a live accounting record and must not block a vendor's permanent delete.
+_SOFT_DELETE_VENDOR_DEPENDENCY_TABLES = {"purchase_bills", "debit_notes", "purchase_credit_notes"}
+
+
+def _vendor_dependencies(db, vendor_id: str, opening_balance_paise: int) -> dict:
+    """Count the accounting records linked to a vendor. Mirrors
+    customers.py's _customer_dependencies exactly. Returns
+    {counts: {...}, total: int, has_any: bool}."""
+    counts: dict[str, int] = {}
+    for label, table in _VENDOR_DEPENDENCY_TABLES:
+        try:
+            q = db.table(table).select("id").eq("vendor_id", vendor_id)
+            if table in _SOFT_DELETE_VENDOR_DEPENDENCY_TABLES:
+                q = q.is_("deleted_at", None)
+            resp = q.execute()
+            counts[label] = len(resp.data or [])
+        except Exception as e:  # a missing/locked table must never mask a dependency
+            _logger.warning("dependency count failed for %s: %s", table, e)
+            counts[label] = 0
+    counts["opening_balance"] = 1 if (opening_balance_paise or 0) != 0 else 0
+    total = sum(counts.values())
+    return {"counts": counts, "total": total, "has_any": total > 0}
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -540,28 +579,113 @@ def update_vendor(
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
+@router.get("/{vendor_id}/dependencies")
+def get_vendor_dependencies(
+    vendor_id: str,
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """Report the accounting records linked to a vendor so the UI can decide
+    whether a permanent delete is safe (it is only when there are none).
+    Mirrors customers.py's get_customer_dependencies exactly."""
+    try:
+        firm_id = current_user.get("firm_id")
+        if _USE_MOCK:
+            vend = next((v for v in MOCK_VENDORS if v["id"] == vendor_id), None)
+            if not vend:
+                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+            opening = vend.get("opening_balance_paise") or 0
+            deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0,
+                               "opening_balance": 1 if opening else 0},
+                    "total": 1 if opening else 0, "has_any": bool(opening)}
+        else:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            vend_resp = (
+                db.table("vendors").select("opening_balance_paise")
+                .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
+            )
+            if not vend_resp.data:
+                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+            opening = vend_resp.data[0].get("opening_balance_paise") or 0
+            deps = _vendor_dependencies(db, vendor_id, opening)
+        return api_response(True, {
+            "can_delete": not deps["has_any"],
+            "dependencies": deps["counts"],
+            "total": deps["total"],
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("get_vendor_dependencies: %s", e)
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+
+
 @router.delete("/{vendor_id}")
 def delete_vendor(
     vendor_id: str,
     current_user: dict = Depends(rbac("client", "delete")),
+    # Plain default (not Query(...)) so direct callers get a real bool, not a
+    # truthy FieldInfo. FastAPI still exposes it as the ?permanent= query param.
+    permanent: bool = False,
 ):
-    """Soft delete — Partner only (client.delete RBAC)."""
+    """Vendor lifecycle removal — Partner only (client.delete RBAC). Mirrors
+    customers.py's delete_customer exactly.
+
+    Default (permanent=False): soft delete = deactivate (is_active=False). The
+    vendor leaves new-bill pickers but all history stays intact and it can be
+    reactivated.
+
+    permanent=True: hard delete. Allowed ONLY when the vendor has no linked
+    accounting records (bills, payments, debit notes, credit notes, opening
+    balance) — see _vendor_dependencies.
+    """
     try:
+        firm_id = current_user.get("firm_id")
         if _USE_MOCK:
             for i, v in enumerate(MOCK_VENDORS):
                 if v["id"] == vendor_id:
+                    if permanent:
+                        if (v.get("opening_balance_paise") or 0) != 0:
+                            raise HTTPException(status_code=409, detail="Vendor has accounting records and cannot be deleted. Deactivate instead.")
+                        MOCK_VENDORS.pop(i)
+                        return api_response(True, {"id": vendor_id, "deleted": True})
                     MOCK_VENDORS[i]["is_active"] = False
                     return api_response(True, {"id": vendor_id, "is_active": False})
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        # Tenant isolation (OOS-5): firm-scope the soft-delete write.
-        resp = db.table("vendors").update({"is_active": False}).eq("id", vendor_id).eq("firm_id", current_user.get("firm_id")).execute()
+
+        if permanent:
+            vend_resp = (
+                db.table("vendors").select("opening_balance_paise")
+                .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
+            )
+            if not vend_resp.data:
+                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+            opening = vend_resp.data[0].get("opening_balance_paise") or 0
+            deps = _vendor_dependencies(db, vendor_id, opening)
+            if deps["has_any"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This vendor has linked accounting records and cannot be permanently deleted. Deactivate the vendor instead to preserve history.",
+                )
+            del_resp = db.table("vendors").delete().eq("id", vendor_id).eq("firm_id", firm_id).execute()
+            if not del_resp.data:
+                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+            log_event(
+                firm_id or "", "vendor", vendor_id,
+                "delete_permanent", actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+            )
+            return api_response(True, {"id": vendor_id, "deleted": True})
+
+        # Soft delete (deactivate). Tenant isolation (OOS-5): firm-scope the write.
+        resp = db.table("vendors").update({"is_active": False}).eq("id", vendor_id).eq("firm_id", firm_id).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
         log_event(
-            current_user.get("firm_id", ""), "vendor", vendor_id,
+            firm_id or "", "vendor", vendor_id,
             "delete", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
         )

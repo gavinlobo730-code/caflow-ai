@@ -13,6 +13,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
@@ -1461,6 +1462,46 @@ function SalesInvoices({
     return failures.length === 0;
   }
 
+  // Bulk issue over the DataTable's selected rows. POST
+  // /api/sales-invoices/{id}/issue is draft-only on the backend — loop per
+  // row, at most 8 in flight at once (mapWithConcurrency) so a large import
+  // batch doesn't exhaust the browser's connection pool the way an unbounded
+  // Promise.all would (see the Purchase Bills tab's handleBulkReceive, the
+  // pattern this mirrors). Non-draft rows are skipped client-side rather
+  // than sent to the backend to 422.
+  async function bulkIssueInvoices(selected: SalesInvoice[]): Promise<boolean> {
+    const token = await getAuthToken();
+    const draftRows = selected.filter((inv) => inv.status === "draft");
+    const skipped = selected.length - draftRows.length;
+
+    type IssueResult = { ok: true } | { ok: false; reason: string };
+    const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (inv): Promise<IssueResult> => {
+      try {
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to issue invoice" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue invoice" };
+      }
+    });
+
+    const issued = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (issued > 0) load();
+
+    const parts: string[] = [];
+    if (issued > 0) parts.push(`${issued} issued`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not draft)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    showToast(parts.length > 0 ? `${parts.join(", ")}.` : "No draft invoices selected.", (skipped > 0 || failed > 0) ? "error" : "success");
+    return skipped === 0 && failed === 0;
+  }
+
   function openSend(inv: SalesInvoice) {
     const cust = customers.find((c) => c.id === inv.customer_id);
     setSendModal({ invoice: inv, customerEmail: cust?.email ?? null });
@@ -1801,6 +1842,13 @@ function SalesInvoices({
         emptyTitle="No invoices in this period"
         onRowClick={(inv) => setDetailId(inv.id)}
         bulkActions={[
+          {
+            id: "issue",
+            label: "Issue draft(s)",
+            icon: <CheckCircle size={13} />,
+            confirm: "Issue the selected draft invoices? This posts a journal entry for each and cannot be undone.",
+            run: bulkIssueInvoices,
+          },
           {
             id: "delete-void",
             label: "Delete / Void",
@@ -3542,6 +3590,43 @@ function CreditNotes({
     return failures.length === 0;
   }
 
+  // Bulk issue over the DataTable's selected rows. POST /api/credit-notes/{id}/issue
+  // is draft-only on the backend — loop per row, at most 8 in flight at once
+  // (mapWithConcurrency), mirroring the Purchase Bills tab's handleBulkReceive.
+  // Non-draft rows are skipped client-side rather than sent to 422.
+  async function bulkIssueCreditNotes(selected: CreditNote[]): Promise<boolean> {
+    const token = await getAuthToken();
+    const draftRows = selected.filter((cn) => cn.status === "draft");
+    const skipped = selected.length - draftRows.length;
+
+    type IssueResult = { ok: true } | { ok: false; reason: string };
+    const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (cn): Promise<IssueResult> => {
+      try {
+        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to issue credit note" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue credit note" };
+      }
+    });
+
+    const issued = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (issued > 0) load();
+
+    const parts: string[] = [];
+    if (issued > 0) parts.push(`${issued} issued`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not draft)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    showToast(parts.length > 0 ? `${parts.join(", ")}.` : "No draft credit notes selected.", (skipped > 0 || failed > 0) ? "error" : "success");
+    return skipped === 0 && failed === 0;
+  }
+
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<CreditNote>[] = useMemo(() => [
     { key: "credit_note_no", header: "CN No", accessor: (cn) => cn.credit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
@@ -3658,6 +3743,13 @@ function CreditNotes({
           </button>
         }
         bulkActions={[
+          {
+            id: "issue",
+            label: "Issue draft(s)",
+            icon: <CheckCircle size={13} />,
+            confirm: "Issue the selected draft credit notes? This posts a journal entry for each and cannot be undone.",
+            run: bulkIssueCreditNotes,
+          },
           {
             id: "delete",
             label: "Delete draft(s)",
@@ -3847,6 +3939,43 @@ function SalesDebitNotes({
     return failures.length === 0;
   }
 
+  // Bulk issue over the DataTable's selected rows. POST /api/sales-debit-notes/{id}/issue
+  // is draft-only on the backend — loop per row, at most 8 in flight at once
+  // (mapWithConcurrency), mirroring the Purchase Bills tab's handleBulkReceive.
+  // Non-draft rows are skipped client-side rather than sent to 422.
+  async function bulkIssueDebitNotes(selected: SalesDebitNote[]): Promise<boolean> {
+    const token = await getAuthToken();
+    const draftRows = selected.filter((dn) => dn.status === "draft");
+    const skipped = selected.length - draftRows.length;
+
+    type IssueResult = { ok: true } | { ok: false; reason: string };
+    const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (dn): Promise<IssueResult> => {
+      try {
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to issue debit note" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue debit note" };
+      }
+    });
+
+    const issued = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (issued > 0) load();
+
+    const parts: string[] = [];
+    if (issued > 0) parts.push(`${issued} issued`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not draft)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    showToast(parts.length > 0 ? `${parts.join(", ")}.` : "No draft debit notes selected.", (skipped > 0 || failed > 0) ? "error" : "success");
+    return skipped === 0 && failed === 0;
+  }
+
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<SalesDebitNote>[] = useMemo(() => [
     { key: "debit_note_no", header: "DN No", accessor: (dn) => dn.debit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
@@ -3962,6 +4091,13 @@ function SalesDebitNotes({
           </button>
         }
         bulkActions={[
+          {
+            id: "issue",
+            label: "Issue draft(s)",
+            icon: <CheckCircle size={13} />,
+            confirm: "Issue the selected draft debit notes? This posts a journal entry for each and cannot be undone.",
+            run: bulkIssueDebitNotes,
+          },
           {
             id: "delete",
             label: "Delete draft(s)",

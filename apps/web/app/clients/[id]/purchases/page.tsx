@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal } from "lucide-react";
+import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
@@ -989,6 +989,12 @@ interface VendorRow {
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
+interface VendorDependencies {
+  can_delete: boolean;
+  dependencies: Record<string, number>;
+  total: number;
+}
+
 function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1007,14 +1013,27 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [tdsRate, setTdsRate] = useState("2");
   const [openingBalance, setOpeningBalance] = useState("");
 
+  // Deactivate/Delete parity with the Customers tab (sales/page.tsx) — see
+  // its own comments for the full rationale (deactivate is unconditionally
+  // safe and reversible; permanent delete is backend-gated on zero linked
+  // accounting records).
+  const [deactivateTarget, setDeactivateTarget] = useState<VendorRow | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VendorRow | null>(null);
+  const [deleteDeps, setDeleteDeps] = useState<VendorDependencies | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
+    // Fetch active AND inactive vendors — active/inactive scoping is a
+    // client-side DataTable filter (mirrors Customers) so a deactivated
+    // vendor stays visible (and reactivatable) instead of vanishing.
     const { data } = await selectAll(() => supabase
       .from("vendors")
       .select("*")
       .eq("client_id", clientId)
-      .eq("is_active", true)
       .order("name")
       .order("id"));
     setVendors((data as VendorRow[]) ?? []);
@@ -1094,6 +1113,119 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
     }
   }
 
+  // Deactivation is unconditionally safe (existing bills/payments/journal
+  // entries are never touched) so it only needs a confirmation modal, not a
+  // dependency check — mirrors Customers' confirmDeactivate exactly, but
+  // routed through the real API (not a direct Supabase write) so it leaves
+  // an audit trail.
+  async function confirmDeactivate() {
+    if (!deactivateTarget) return;
+    setDeactivating(true);
+    const token = await getAuthToken();
+    const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token);
+    setDeactivating(false);
+    if (!result.success) {
+      setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
+      setDeactivateTarget(null);
+      return;
+    }
+    setMsg({ type: "ok", text: "Vendor deactivated." });
+    setDeactivateTarget(null);
+    load();
+  }
+
+  async function reactivateVendor(v: VendorRow) {
+    const token = await getAuthToken();
+    const result = await apiCall(`/api/vendors/${v.id}`, "PATCH", { is_active: true }, token);
+    if (!result.success) { setMsg({ type: "err", text: result.error ?? "Failed to reactivate vendor" }); return; }
+    setMsg({ type: "ok", text: "Vendor reactivated." });
+    load();
+  }
+
+  // Open the permanent-delete flow: ask the backend which accounting records (if
+  // any) reference this vendor, then show either the blocked or confirm dialog.
+  async function startDelete(v: VendorRow) {
+    setDeleteTarget(v);
+    setDeleteDeps(null);
+    const token = await getAuthToken();
+    const res = await apiGet(`/api/vendors/${v.id}/dependencies`, token);
+    if (res.success) setDeleteDeps(res.data as VendorDependencies);
+    else { setMsg({ type: "err", text: "Could not check vendor dependencies" }); setDeleteTarget(null); }
+  }
+
+  // Permanent delete — only reachable when the dependency check returned clean.
+  // The backend re-checks and refuses (409) if anything was created meanwhile.
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    const token = await getAuthToken();
+    const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+    setDeleteBusy(false);
+    if (!res.success) {
+      setMsg({ type: "err", text: res.error ?? "Failed to delete vendor" });
+      return;
+    }
+    setMsg({ type: "ok", text: "Vendor deleted." });
+    setDeleteTarget(null);
+    setDeleteDeps(null);
+    load();
+  }
+
+  // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  function openMenuFor(e: React.MouseEvent, v: VendorRow) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: v.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+  }
+
+  const bulkDeactivateVendors = useCallback(async (rows: VendorRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const targets = rows.filter((v) => v.is_active);
+    let deactivated = 0;
+    const failures: string[] = [];
+    await Promise.all(targets.map(async (v) => {
+      try {
+        const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token);
+        if (!result.success) throw new Error(result.error ?? "failed");
+        deactivated++;
+      } catch (e) {
+        failures.push(`${v.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const skipped = rows.length - targets.length;
+    const parts: string[] = [];
+    if (deactivated) parts.push(`${deactivated} deactivated`);
+    if (skipped) parts.push(`${skipped} already inactive`);
+    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+    setMsg({ type: failures.length ? "err" : "ok", text: parts.join(", ") || "Nothing to do" });
+    if (deactivated) load();
+    return failures.length === 0;
+  }, [load]);
+
+  // No pre-check GET here — the backend re-validates dependencies on every
+  // call and returns 409 for any vendor with linked accounting records, so a
+  // blocked row is just reported as a failure rather than fetched twice.
+  const bulkDeletePermanentVendors = useCallback(async (rows: VendorRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    let deleted = 0;
+    const failures: string[] = [];
+    await Promise.all(rows.map(async (v) => {
+      try {
+        const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token);
+        if (!result.success) throw new Error(result.error ?? "failed");
+        deleted++;
+      } catch (e) {
+        failures.push(`${v.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const text = failures.length
+      ? `${deleted} deleted, ${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
+      : `${deleted} vendor${deleted !== 1 ? "s" : ""} deleted`;
+    setMsg({ type: failures.length ? "err" : "ok", text });
+    if (deleted) load();
+    return failures.length === 0;
+  }, [load]);
+
   // ── DataTable columns (opening balance returns integer paise, right-aligned) ─
   const vendorColumns: Column<VendorRow>[] = useMemo(() => [
     { key: "name", header: "Name", accessor: (v) => v.name, searchable: true, sortable: true, sticky: true, hideable: false,
@@ -1112,11 +1244,40 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
       render: (v) => <span className="text-[#64748B]">{v.email ?? "—"}</span> },
     { key: "phone", header: "Phone", accessor: (v) => v.phone ?? "", searchable: true, defaultHidden: true,
       render: (v) => <span className="text-[#64748B]">{v.phone ?? "—"}</span> },
+    { key: "is_active", header: "Status", accessor: (v) => (v.is_active ? "active" : "inactive"),
+      render: (v) => v.is_active ? (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
+      ) : (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Inactive</span>
+      ) },
   ], []);
 
   const vendorFilters: FilterDef<VendorRow>[] = useMemo(() => [
     { key: "tds_applicable", label: "TDS", type: "boolean", accessor: (v) => v.tds_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
+    { key: "is_active", label: "Status", type: "select", accessor: (v) => (v.is_active ? "active" : "inactive"), options: [
+      { value: "active", label: "Active" },
+      { value: "inactive", label: "Inactive" },
+    ] },
   ], []);
+
+  const vendorBulkActions: BulkAction<VendorRow>[] = useMemo(() => [
+    {
+      id: "deactivate",
+      label: "Deactivate",
+      icon: <Ban size={12} />,
+      confirm: "Deactivate the selected vendors? They will no longer be available for new bills. Existing records are unaffected and this can be undone.",
+      run: bulkDeactivateVendors,
+    },
+    {
+      id: "delete-permanent",
+      label: "Delete permanently",
+      icon: <Trash2 size={12} />,
+      variant: "danger",
+      confirm: "Permanently delete the selected vendors? Any vendor with linked bills, payments, debit notes, credit notes or an opening balance will be skipped. This cannot be undone.",
+      run: bulkDeletePermanentVendors,
+    },
+    exportSelectedAction("vendors-selected.csv", vendorColumns),
+  ], [bulkDeactivateVendors, bulkDeletePermanentVendors, vendorColumns]);
 
   return (
     <div className="space-y-4 max-w-screen-2xl">
@@ -1127,6 +1288,168 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
         </div>
       )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-5 border-b border-[#F1F5F9]">
+              <h2 className="text-base font-semibold text-[#0F172A]">Deactivate Vendor?</h2>
+            </div>
+            <div className="px-6 py-5 space-y-2">
+              <p className="text-sm text-[#475569]">
+                <span className="font-medium text-[#1E293B]">{deactivateTarget.name}</span> will no
+                longer be available for new bills.
+              </p>
+              <p className="text-sm text-[#475569]">
+                Existing bills and accounting records will remain unchanged. You can reactivate
+                this vendor later.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+              <button
+                onClick={() => setDeactivateTarget(null)}
+                disabled={deactivating}
+                className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeactivate}
+                disabled={deactivating}
+                className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                {deactivating ? "Deactivating…" : "Deactivate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            {deleteDeps === null ? (
+              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-[#475569]">
+                <Loader2 size={16} className="animate-spin" /> Checking for linked records…
+              </div>
+            ) : deleteDeps.can_delete ? (
+              <>
+                <div className="px-6 py-5 border-b border-[#F1F5F9]">
+                  <h2 className="text-base font-semibold text-[#0F172A]">Delete Vendor?</h2>
+                </div>
+                <div className="px-6 py-5 space-y-2">
+                  <p className="text-sm text-[#475569]">
+                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has no
+                    linked bills, payments, debit notes, credit notes or opening balance.
+                  </p>
+                  <p className="text-sm text-[#475569]">
+                    This permanently removes the vendor and cannot be undone.
+                  </p>
+                </div>
+                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                  <button
+                    onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
+                    disabled={deleteBusy}
+                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    disabled={deleteBusy}
+                    className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleteBusy ? "Deleting…" : "Delete permanently"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-6 py-5 border-b border-[#F1F5F9] flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-amber-500" />
+                  <h2 className="text-base font-semibold text-[#0F172A]">Can&apos;t delete this vendor</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  <p className="text-sm text-[#475569]">
+                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has linked
+                    accounting records, so it can&apos;t be permanently deleted:
+                  </p>
+                  <ul className="text-sm text-[#475569] space-y-1">
+                    {([
+                      ["bills", "Bills"],
+                      ["payments", "Payments"],
+                      ["debit_notes", "Debit notes"],
+                      ["credit_notes", "Credit notes"],
+                      ["opening_balance", "Opening balance"],
+                    ] as const)
+                      .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)
+                      .map(([k, label]) => (
+                        <li key={k} className="flex items-center gap-2">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          {k === "opening_balance"
+                            ? "Has an opening balance"
+                            : `${label}: ${deleteDeps.dependencies[k]}`}
+                        </li>
+                      ))}
+                  </ul>
+                  <p className="text-sm text-[#475569]">
+                    Deactivate the vendor instead — this keeps all history and removes it from new
+                    bills.
+                  </p>
+                </div>
+                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                  <button
+                    onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
+                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                  >
+                    Close
+                  </button>
+                  {deleteTarget.is_active && (
+                    <button
+                      onClick={() => { const t = deleteTarget; setDeleteTarget(null); setDeleteDeps(null); setDeactivateTarget(t); }}
+                      className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-blue-600 hover:bg-blue-700"
+                    >
+                      Deactivate instead
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Row actions overflow menu (viewport-anchored to dodge table clipping) */}
+      {menu && (() => {
+        const v = vendors.find((x) => x.id === menu.id);
+        if (!v) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              {v.is_active ? (
+                <button onClick={() => { setMenu(null); setDeactivateTarget(v); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                  <Ban size={13} /> Deactivate
+                </button>
+              ) : (
+                <button onClick={() => { setMenu(null); reactivateVendor(v); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-green-700">
+                  <RotateCcw size={13} /> Reactivate
+                </button>
+              )}
+              <button onClick={() => { setMenu(null); startDelete(v); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          </>
+        );
+      })()}
 
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
@@ -1222,10 +1545,21 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
         onRefresh={load}
         searchPlaceholder="Search by name, GSTIN, email, or phone…"
         initialSort={{ key: "name", dir: "asc" }}
+        initialFilters={{ is_active: "active" }}
         exportFilename="vendors"
         persistKey="purchases.vendors"
         emptyTitle="No vendors"
         emptyDescription="No vendors added yet."
+        bulkActions={vendorBulkActions}
+        rowActions={(v) => (
+          <button
+            onClick={(e) => openMenuFor(e, v)}
+            aria-label={`Actions for ${v.name}`}
+            className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+          >
+            <MoreHorizontal size={14} />
+          </button>
+        )}
         toolbarExtra={
           <>
             <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"><Upload size={12} /> Import</button>
@@ -1746,6 +2080,50 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
     return true;
   }, [load]);
 
+  // Bulk issue over the DataTable's selected rows. POST /api/debit-notes/{id}/issue
+  // is draft-only on the backend — loop per row, at most 8 in flight at once
+  // (see handleBulkReceive on the Bills tab for why unbounded Promise.all
+  // breaks down at large selection sizes); non-draft rows are skipped
+  // client-side rather than sent to 422.
+  const handleBulkIssue = useCallback(async (rows: DebitNoteRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const draftRows = rows.filter((d) => d.status === "draft");
+    const skipped = rows.length - draftRows.length;
+
+    type IssueResult = { ok: true } | { ok: false; reason: string };
+    const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
+      try {
+        const result = await apiCall(`/api/debit-notes/${d.id}/issue`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to issue debit note" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue debit note" };
+      }
+    });
+
+    const issued = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (issued > 0) load();
+
+    const parts: string[] = [];
+    if (issued > 0) parts.push(`${issued} issued`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not draft)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft debit notes selected.";
+
+    if (skipped > 0 || failed > 0) {
+      setMsg({ type: "err", text });
+      return false;
+    }
+    setMsg({ type: "ok", text });
+    return true;
+  }, [load]);
+
   const columns: Column<DebitNoteRow>[] = useMemo(() => [
     { key: "debit_note_no", header: "DN No", accessor: (d) => d.debit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
       render: (d) => <span className="font-mono font-medium text-[#1E293B]">{d.debit_note_no ?? "—"}</span> },
@@ -1784,6 +2162,13 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   // debit notes with a 422); export just CSV-dumps the checked rows. ─────────
   const bulkActions: BulkAction<DebitNoteRow>[] = useMemo(() => [
     {
+      id: "issue",
+      label: "Issue draft(s)",
+      icon: <CheckCircle size={12} />,
+      confirm: "Issue the selected draft debit notes? This posts a journal entry for each and cannot be undone.",
+      run: handleBulkIssue,
+    },
+    {
       id: "delete",
       label: "Delete draft(s)",
       icon: <Trash2 size={12} />,
@@ -1792,7 +2177,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
       run: handleBulkDelete,
     },
     exportSelectedAction("debit-notes-selected.csv", columns),
-  ], [handleBulkDelete, columns]);
+  ], [handleBulkIssue, handleBulkDelete, columns]);
 
   return (
     <div className="space-y-4 max-w-screen-2xl">
@@ -2049,6 +2434,50 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
     return true;
   }, [load]);
 
+  // Bulk issue over the DataTable's selected rows. POST
+  // /api/purchase-credit-notes/{id}/issue is draft-only on the backend — loop
+  // per row, at most 8 in flight at once (see handleBulkReceive on the Bills
+  // tab for why unbounded Promise.all breaks down at large selection sizes);
+  // non-draft rows are skipped client-side rather than sent to 422.
+  const handleBulkIssue = useCallback(async (rows: PurchaseCreditNoteRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const draftRows = rows.filter((d) => d.status === "draft");
+    const skipped = rows.length - draftRows.length;
+
+    type IssueResult = { ok: true } | { ok: false; reason: string };
+    const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
+      try {
+        const result = await apiCall(`/api/purchase-credit-notes/${d.id}/issue`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to issue credit note" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue credit note" };
+      }
+    });
+
+    const issued = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (issued > 0) load();
+
+    const parts: string[] = [];
+    if (issued > 0) parts.push(`${issued} issued`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not draft)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft credit notes selected.";
+
+    if (skipped > 0 || failed > 0) {
+      setMsg({ type: "err", text });
+      return false;
+    }
+    setMsg({ type: "ok", text });
+    return true;
+  }, [load]);
+
   const columns: Column<PurchaseCreditNoteRow>[] = useMemo(() => [
     { key: "credit_note_no", header: "CN No", accessor: (d) => d.credit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
       render: (d) => <span className="font-mono font-medium text-[#1E293B]">{d.credit_note_no ?? "—"}</span> },
@@ -2085,6 +2514,13 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
 
   const bulkActions: BulkAction<PurchaseCreditNoteRow>[] = useMemo(() => [
     {
+      id: "issue",
+      label: "Issue draft(s)",
+      icon: <CheckCircle size={12} />,
+      confirm: "Issue the selected draft credit notes? This posts a journal entry for each and cannot be undone.",
+      run: handleBulkIssue,
+    },
+    {
       id: "delete",
       label: "Delete draft(s)",
       icon: <Trash2 size={12} />,
@@ -2093,7 +2529,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
       run: handleBulkDelete,
     },
     exportSelectedAction("purchase-credit-notes-selected.csv", columns),
-  ], [handleBulkDelete, columns]);
+  ], [handleBulkIssue, handleBulkDelete, columns]);
 
   return (
     <div className="space-y-4 max-w-screen-2xl">
