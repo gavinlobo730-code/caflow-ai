@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import {
-  Section,
-  SectionHeading,
-  Button,
-  Card,
-  IconBadge,
-  PageHero,
-  CTASection,
-} from "@/components/ui";
+import { Panel, SerifHeading, CineReveal, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
+import { Button } from "@/components/ui";
 import {
   Calendar,
   ArrowUpRight,
@@ -21,6 +14,7 @@ import {
   Shield,
   Check,
 } from "@/components/icons";
+import { instrumentSerif, manrope } from "@/lib/fonts";
 
 export const metadata: Metadata = {
   title: "Resources",
@@ -31,14 +25,9 @@ export const metadata: Metadata = {
 // Each guide card is a self-contained quick reference: the key facts live on the
 // card itself, so nothing links out and nothing is pending. Statutory dates are
 // legally significant — reproduced exactly, never altered.
-const GUIDES: {
-  icon: ReactNode;
-  title: string;
-  desc: string;
-  points: string[];
-}[] = [
+const GUIDES: { icon: ReactNode; title: string; desc: string; points: string[] }[] = [
   {
-    icon: <Calendar size={20} />,
+    icon: <Calendar size={18} />,
     title: "The GST filing rhythm",
     desc: "The monthly cadence every GST-registered client runs on, all financial year long.",
     points: [
@@ -48,7 +37,7 @@ const GUIDES: {
     ],
   },
   {
-    icon: <ArrowUpRight size={20} />,
+    icon: <ArrowUpRight size={18} />,
     title: "Moving from Tally",
     desc: "Bring a client's books across without losing history — in three passes.",
     points: [
@@ -58,7 +47,7 @@ const GUIDES: {
     ],
   },
   {
-    icon: <Receipt size={20} />,
+    icon: <Receipt size={18} />,
     title: "TDS returns 24Q & 26Q",
     desc: "The two quarterly statements most practices file, and how they differ.",
     points: [
@@ -68,7 +57,7 @@ const GUIDES: {
     ],
   },
   {
-    icon: <TrendingUp size={20} />,
+    icon: <TrendingUp size={18} />,
     title: "Advance-tax instalments",
     desc: "The cumulative schedule to plan client cash flows around.",
     points: [
@@ -78,7 +67,7 @@ const GUIDES: {
     ],
   },
   {
-    icon: <Calculator size={20} />,
+    icon: <Calculator size={18} />,
     title: "Schedule III statements",
     desc: "From trial balance to Companies Act-compliant financials.",
     points: [
@@ -88,7 +77,7 @@ const GUIDES: {
     ],
   },
   {
-    icon: <FileText size={20} />,
+    icon: <FileText size={18} />,
     title: "Year-end close, in order",
     desc: "The 31 March sequence that keeps audits calm.",
     points: [
@@ -108,30 +97,10 @@ const ADVANCE_TAX = [
   { d: "15 March", p: "100%" },
 ];
 
-const CALENDAR: {
-  name: string;
-  freq: string;
-  icon: ReactNode;
-  due: ReactNode;
-}[] = [
-  {
-    name: "GSTR-1",
-    freq: "Monthly",
-    icon: <Receipt size={16} />,
-    due: "11th of the following month",
-  },
-  {
-    name: "GSTR-3B",
-    freq: "Monthly",
-    icon: <Receipt size={16} />,
-    due: "20th of the following month",
-  },
-  {
-    name: "GSTR-9 (annual return)",
-    freq: "Annual",
-    icon: <FileText size={16} />,
-    due: "31 December",
-  },
+const CALENDAR: { name: string; freq: string; icon: ReactNode; due: ReactNode }[] = [
+  { name: "GSTR-1", freq: "Monthly", icon: <Receipt size={16} />, due: "11th of the following month" },
+  { name: "GSTR-3B", freq: "Monthly", icon: <Receipt size={16} />, due: "20th of the following month" },
+  { name: "GSTR-9 (annual return)", freq: "Annual", icon: <FileText size={16} />, due: "31 December" },
   {
     name: "TDS returns (24Q / 26Q)",
     freq: "Quarterly",
@@ -147,10 +116,10 @@ const CALENDAR: {
         {ADVANCE_TAX.map((i) => (
           <span
             key={i.d}
-            className="inline-flex items-center gap-1.5 rounded-full border border-ps-border bg-ps-bg px-2.5 py-1 text-[12px] font-medium text-brand-dark"
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[12px] font-medium text-white"
           >
             <span className="whitespace-nowrap">{i.d}</span>
-            <span className="font-semibold text-brand">{i.p}</span>
+            <span className="font-semibold text-brand-light">{i.p}</span>
           </span>
         ))}
       </div>
@@ -160,103 +129,98 @@ const CALENDAR: {
 
 export default function ResourcesPage() {
   return (
-    <>
+    <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <PageHero
-        eyebrow="Resources"
-        title="Guides & tools for Indian CA practices"
-        subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
-      />
+      <Panel theme="dark" seam="none">
+        <SerifHeading
+          eyebrow="Resources"
+          lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
+          subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
+        />
+      </Panel>
 
       {/* ── Quick-reference guides ───────────────────────────────────────── */}
-      <Section className="bg-ps-bg">
-        <Reveal variant="blur">
-          <SectionHeading
+      <Panel theme="light" seam="rising-right">
+        <CineReveal>
+          <SerifHeading
             eyebrow="Quick references"
-            title="The essentials, on one card each"
+            theme="light"
+            lines={[{ text: "The essentials," }, { text: "on one card each.", italic: true }]}
             subtitle="The filings, migrations and close processes practices deal with every year — condensed to the facts you actually reach for."
           />
-        </Reveal>
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        </CineReveal>
+        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {GUIDES.map((g, i) => (
-            <Reveal key={g.title} delay={(i % 3) * 110 + Math.floor(i / 3) * 60}>
-              <Card className="h-full">
-                <span className="icon-pop inline-flex">
-                  <IconBadge>{g.icon}</IconBadge>
+            <Reveal key={g.title} variant="up" delay={(i % 3) * 100}>
+              <div className="flex h-full flex-col rounded-2xl border border-slate-900/10 bg-white p-6">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand/[0.06] text-brand ring-1 ring-brand/10">
+                  {g.icon}
                 </span>
-                <h3 className="mt-5 text-[17px] font-bold text-brand-dark">{g.title}</h3>
+                <h3 className="mt-5 font-display text-[22px] italic leading-snug text-brand-dark">{g.title}</h3>
                 <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{g.desc}</p>
-                <ul className="mt-4 space-y-2 border-t border-ps-border pt-4">
+                <ul className="mt-4 space-y-2 border-t border-slate-900/10 pt-4">
                   {g.points.map((p) => (
                     <li key={p} className="flex items-start gap-2 text-[13px] leading-relaxed text-slate-600">
-                      <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                      <Check size={14} className="mt-0.5 shrink-0 text-brand" />
                       {p}
                     </li>
                   ))}
                 </ul>
-              </Card>
+              </div>
             </Reveal>
           ))}
         </div>
-        <Reveal delay={150}>
+        <CineReveal delay={120}>
           <div className="mt-12 flex flex-col items-center gap-4 text-center">
             <p className="text-[14px] text-slate-500">
-              PracticeSync tracks all of this automatically — per client, per deadline,
-              all financial year long.
+              PracticeSync tracks all of this automatically — per client, per deadline, all financial year long.
             </p>
             <Button href="/products" variant="secondary">
-              Explore the platform
-              <ArrowRight size={16} />
+              Explore the platform <ArrowRight size={16} />
             </Button>
           </div>
-        </Reveal>
-      </Section>
+        </CineReveal>
+      </Panel>
 
       {/* ── Compliance calendar ──────────────────────────────────────────── */}
-      <Section id="calendar" className="scroll-mt-24 bg-white">
-        <Reveal variant="blur">
-          <SectionHeading
+      <Panel id="calendar" theme="dark" seam="rising-left" innerClassName="scroll-mt-24">
+        <CineReveal>
+          <SerifHeading
             eyebrow="Compliance calendar"
-            title="Key statutory due dates at a glance"
+            lines={[{ text: "Key statutory due" }, { text: "dates at a glance.", italic: true }]}
             subtitle="The deadlines every Indian practice tracks, in one place. PracticeSync watches these for each client so nothing slips through."
           />
-        </Reveal>
+        </CineReveal>
 
         <Reveal variant="scale" delay={120}>
-          <div className="mt-12 overflow-x-auto rounded-2xl border border-ps-border bg-white shadow-card">
+          <div className="mt-12 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
             <table className="w-full min-w-[720px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-ps-border bg-ps-bg">
-                  <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    Return / obligation
-                  </th>
-                  <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    Frequency
-                  </th>
-                  <th className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    Statutory due date
-                  </th>
+                <tr className="border-b border-white/10">
+                  {["Return / obligation", "Frequency", "Statutory due date"].map((h) => (
+                    <th key={h} className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-white/45">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-border">
+              <tbody className="divide-y divide-white/10">
                 {CALENDAR.map((row) => (
-                  <tr key={row.name} className="transition-colors duration-300 hover:bg-ps-bg/60">
+                  <tr key={row.name} className="transition-colors duration-300 hover:bg-white/[0.04]">
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-3 text-[14px] font-bold text-brand-dark">
-                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/[0.06] text-brand ring-1 ring-brand/10">
+                      <span className="inline-flex items-center gap-3 text-[14px] font-semibold text-white">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-light/10 text-brand-light ring-1 ring-white/10">
                           {row.icon}
                         </span>
                         {row.name}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex whitespace-nowrap rounded-full bg-brand/[0.06] px-2.5 py-1 text-[12px] font-semibold text-brand">
+                      <span className="inline-flex whitespace-nowrap rounded-full bg-brand-light/10 px-2.5 py-1 text-[12px] font-semibold text-brand-light">
                         {row.freq}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-[14px] leading-relaxed text-slate-700">
-                      {row.due}
-                    </td>
+                    <td className="px-6 py-4 text-[14px] leading-relaxed text-slate-200">{row.due}</td>
                   </tr>
                 ))}
               </tbody>
@@ -264,17 +228,16 @@ export default function ResourcesPage() {
           </div>
         </Reveal>
 
-        <Reveal delay={200}>
-          <p className="mx-auto mt-5 flex max-w-2xl items-start justify-center gap-2 text-center text-[13px] leading-relaxed text-slate-500">
+        <Reveal variant="up" delay={200}>
+          <p className="mx-auto mt-5 flex max-w-2xl items-start justify-center gap-2 text-center text-[13px] leading-relaxed text-slate-400">
             <Shield size={15} className="mt-0.5 shrink-0 text-gold" />
-            Indicative statutory due dates — always confirm the latest CBIC/CBDT
-            notifications.
+            Indicative statutory due dates — always confirm the latest CBIC/CBDT notifications.
           </p>
         </Reveal>
-      </Section>
+      </Panel>
 
       {/* ── Closing CTA ──────────────────────────────────────────────────── */}
-      <CTASection />
-    </>
+      <CineCTA />
+    </div>
   );
 }

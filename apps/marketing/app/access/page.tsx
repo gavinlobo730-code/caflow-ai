@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import { WordReveal } from "@/components/motion";
 import { CustomCursor } from "@/components/Cursor";
 import { Building, Users, ArrowRight, ArrowLeft, Check, Lock } from "@/components/icons";
+import { instrumentSerif, manrope } from "@/lib/fonts";
 import { appLinks } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -11,10 +12,12 @@ export const metadata: Metadata = {
   description: "Sign in to PracticeSync — choose the firm workspace or the client portal.",
 };
 
+const VIGNETTE: CSSProperties = { boxShadow: "inset 0 0 200px rgba(0,0,0,0.5)" };
+
 const OPTIONS = [
   {
     key: "firm",
-    icon: <Building size={26} />,
+    icon: <Building size={24} />,
     title: "Chartered Accountant",
     tag: "Firm workspace",
     desc: "All modules — compliance, accounting, payroll, clients and practice analytics.",
@@ -24,7 +27,7 @@ const OPTIONS = [
   },
   {
     key: "client",
-    icon: <Users size={26} />,
+    icon: <Users size={24} />,
     title: "Client & SME",
     tag: "Client portal",
     desc: "View documents, approve invoices and access payslips shared by your CA.",
@@ -36,18 +39,21 @@ const OPTIONS = [
 
 export default function AccessPage() {
   return (
-    <main className="relative min-h-screen bg-ps-bg">
+    <main
+      className={`relative min-h-screen overflow-hidden bg-brand-dark text-white ${instrumentSerif.variable} ${manrope.variable} font-manrope`}
+      style={VIGNETTE}
+    >
       <CustomCursor />
-      {/* soft brand wash */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-brand/[0.05] to-transparent" />
+      {/* soft brand wash from the top, echoing the homepage's dark panels */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-brand-light/[0.06] to-transparent" />
 
       <div className="relative mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-8">
         {/* Top bar */}
         <div className="flex items-center justify-between">
-          <Logo />
+          <Logo theme="dark" />
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-500 transition-colors hover:bg-white hover:text-brand"
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white"
           >
             <ArrowLeft size={15} />
             Back to site
@@ -56,43 +62,46 @@ export default function AccessPage() {
 
         {/* Chooser */}
         <div className="flex flex-1 flex-col justify-center py-10">
-          <div className="mx-auto max-w-lg text-center">
-            <h1 className="text-[28px] font-bold tracking-tight text-brand-dark md:text-[32px]">
-              <WordReveal text="Sign in to PracticeSync" startDelay={100} stagger={70} />
+          <div className="mx-auto max-w-xl text-center">
+            <span className="block text-[12px] font-semibold uppercase tracking-[0.18em] text-gold">Welcome back</span>
+            <h1 className="fade-up mt-5 font-display text-[clamp(34px,5vw,52px)] font-normal leading-[1.1] tracking-[-0.015em] text-white">
+              Sign in to <span className="italic">PracticeSync.</span>
             </h1>
-            <p className="fade-up mt-3 text-[15px] text-slate-500" style={{ animationDelay: "450ms" }}>
+            <p className="fade-up mt-4 text-[16px] text-slate-300" style={{ animationDelay: "150ms" }}>
               Choose how you&apos;d like to continue.
             </p>
           </div>
 
-          <div className="mt-10 grid gap-5 sm:grid-cols-2">
+          <div className="mt-12 grid gap-5 sm:grid-cols-2">
             {OPTIONS.map((opt, i) => (
               <a
                 key={opt.key}
                 href={opt.href}
-                className="card-lift fade-up group flex flex-col rounded-2xl border border-ps-border bg-white p-6 shadow-card"
-                style={{ animationDelay: `${550 + i * 140}ms` }}
+                className={`fade-up group flex flex-col rounded-2xl border p-6 transition-colors ${
+                  opt.primary
+                    ? "border-brand-light/25 bg-white/[0.05] hover:bg-white/[0.08]"
+                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                }`}
+                style={{ animationDelay: `${300 + i * 130}ms` }}
               >
                 <span
                   className={`grid h-14 w-14 place-items-center rounded-2xl ${
                     opt.primary
-                      ? "bg-brand text-white"
-                      : "bg-brand/[0.06] text-brand ring-1 ring-brand/10"
+                      ? "bg-brand-light/15 text-brand-light ring-1 ring-white/10"
+                      : "bg-white/[0.06] text-white/80 ring-1 ring-white/10"
                   }`}
                 >
                   {opt.icon}
                 </span>
 
-                <p className="mt-5 text-[12px] font-semibold uppercase tracking-wider text-gold">
-                  {opt.tag}
-                </p>
-                <h2 className="mt-1 text-[20px] font-bold text-brand-dark">{opt.title}</h2>
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{opt.desc}</p>
+                <p className="mt-5 text-[12px] font-semibold uppercase tracking-[0.14em] text-gold">{opt.tag}</p>
+                <h2 className="mt-1.5 font-display text-[24px] italic text-white">{opt.title}</h2>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-300">{opt.desc}</p>
 
                 <ul className="mt-4 space-y-2">
                   {opt.points.map((p) => (
-                    <li key={p} className="flex items-start gap-2 text-[13px] text-slate-500">
-                      <Check size={15} className="mt-0.5 shrink-0 text-emerald-500" />
+                    <li key={p} className="flex items-start gap-2 text-[13px] text-slate-400">
+                      <Check size={15} className="mt-0.5 shrink-0 text-brand-light" />
                       {p}
                     </li>
                   ))}
@@ -101,8 +110,8 @@ export default function AccessPage() {
                 <span
                   className={`mt-6 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[14px] font-semibold transition-colors ${
                     opt.primary
-                      ? "bg-brand text-white group-hover:bg-brand-hover"
-                      : "border border-ps-border text-brand group-hover:bg-ps-muted"
+                      ? "bg-brand-light text-brand-dark group-hover:bg-white"
+                      : "border border-white/25 text-white group-hover:bg-white/10"
                   }`}
                 >
                   Login
@@ -113,17 +122,14 @@ export default function AccessPage() {
           </div>
 
           {/* Signup + trust */}
-          <div className="fade-up mx-auto mt-10 max-w-lg text-center" style={{ animationDelay: "900ms" }}>
-            <p className="text-[14px] text-slate-500">
+          <div className="fade-up mx-auto mt-10 max-w-lg text-center" style={{ animationDelay: "600ms" }}>
+            <p className="text-[14px] text-slate-300">
               New firm?{" "}
-              <a
-                href={appLinks.signup}
-                className="font-semibold text-brand underline-offset-4 hover:underline"
-              >
+              <a href={appLinks.signup} className="font-semibold text-brand-light underline-offset-4 hover:underline">
                 Start a free trial →
               </a>
             </p>
-            <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-ps-border bg-white px-3.5 py-1.5 text-[12px] text-slate-400">
+            <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-1.5 text-[12px] text-white/50">
               <Lock size={13} />
               Protected with 2-factor authentication · Data hosted in India
             </p>

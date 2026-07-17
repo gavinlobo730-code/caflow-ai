@@ -1,14 +1,8 @@
-import {
-  Section,
-  SectionHeading,
-  Button,
-  Card,
-  FeatureCard,
-  PageHero,
-  CTASection,
-} from "@/components/ui";
-import { Check, Star, ArrowRight, Globe, Lock, Shield, Zap } from "@/components/icons";
+import { Panel, SerifHeading, CineReveal, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
+import { Button } from "@/components/ui";
+import { Check, Star, ArrowRight } from "@/components/icons";
+import { instrumentSerif, manrope } from "@/lib/fonts";
 import { appLinks } from "@/lib/site";
 
 export const metadata = {
@@ -37,7 +31,7 @@ const TIERS: Tier[] = [
     cadence: "/month",
     priceNote: "Billed monthly · save ~2 months on annual",
     description: "For solo practitioners",
-    featuresLead: "What's included:",
+    featuresLead: "What's included",
     features: [
       "1 user",
       "Up to 25 clients",
@@ -56,7 +50,7 @@ const TIERS: Tier[] = [
     cadence: "/month",
     priceNote: "Billed monthly · save ~2 months on annual",
     description: "For growing practices",
-    featuresLead: "Everything in Solo, plus:",
+    featuresLead: "Everything in Solo, plus",
     features: [
       "Up to 5 users",
       "Up to 150 clients",
@@ -76,7 +70,7 @@ const TIERS: Tier[] = [
     cadence: null,
     priceNote: "Tailored to your firm's size",
     description: "For established firms",
-    featuresLead: "Everything in Practice, plus:",
+    featuresLead: "Everything in Practice, plus",
     features: [
       "Unlimited users & clients",
       "Dedicated onboarding & migration",
@@ -91,26 +85,10 @@ const TIERS: Tier[] = [
 ];
 
 const INCLUDED = [
-  {
-    icon: <Globe size={20} />,
-    title: "Data hosted in India",
-    desc: "Your firm's and clients' data stays on infrastructure hosted in India.",
-  },
-  {
-    icon: <Lock size={20} />,
-    title: "Two-factor authentication",
-    desc: "MFA and role-based access on every account, so only your team gets in.",
-  },
-  {
-    icon: <Shield size={20} />,
-    title: "Nothing auto-submitted",
-    desc: "A CA confirms every filing — no return is sent to a government portal automatically.",
-  },
-  {
-    icon: <Zap size={20} />,
-    title: "Free trial, no card",
-    desc: "Start on any plan with a free trial and no credit card required.",
-  },
+  { title: "Data hosted in India", desc: "Your firm's and clients' data stays on infrastructure hosted in India." },
+  { title: "Two-factor authentication", desc: "MFA and role-based access on every account, so only your team gets in." },
+  { title: "Nothing auto-submitted", desc: "A CA confirms every filing — no return is sent to a government portal automatically." },
+  { title: "Free trial, no card", desc: "Start on any plan with a free trial and no credit card required." },
 ];
 
 const FAQS = [
@@ -138,54 +116,50 @@ const FAQS = [
 
 export default function PricingPage() {
   return (
-    <>
-      <PageHero
-        eyebrow="Pricing"
-        title="Simple pricing for firms of every size"
-        subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
-      />
+    <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <Panel theme="dark" seam="none">
+        <SerifHeading
+          eyebrow="Pricing"
+          lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
+          subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
+        />
+      </Panel>
 
-      {/* ── Pricing tiers ────────────────────────────────────────────────── */}
-      <Section className="bg-ps-bg">
+      {/* ── Tiers ────────────────────────────────────────────────────────── */}
+      <Panel theme="light" seam="rising-right">
         <div className="grid gap-6 md:grid-cols-3">
           {TIERS.map((tier, i) => (
-            <Reveal key={tier.name} variant="up" delay={i * 130} className="h-full">
-              <Card
-                className={`relative flex h-full flex-col ${
-                  tier.highlighted ? "ring-2 ring-brand" : ""
+            <Reveal key={tier.name} variant="up" delay={i * 120} className="h-full">
+              <div
+                className={`relative flex h-full flex-col rounded-2xl border p-7 ${
+                  tier.highlighted
+                    ? "border-brand/30 bg-white shadow-[0_24px_60px_rgba(13,22,53,0.12)]"
+                    : "border-slate-900/10 bg-white/70"
                 }`}
               >
                 {tier.badge ? (
-                  <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm">
+                  <span className="absolute -top-3 left-7 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm">
                     <Star size={12} /> {tier.badge}
                   </span>
                 ) : null}
 
-                <h3 className="text-[18px] font-bold text-brand-dark">{tier.name}</h3>
-                <p className="mt-1 text-[14px] text-slate-600">{tier.description}</p>
+                <h3 className="font-display text-[26px] italic leading-none text-brand-dark">{tier.name}</h3>
+                <p className="mt-2 text-[14px] text-slate-500">{tier.description}</p>
 
-                <div className="mt-5 flex items-baseline gap-1">
-                  <span className="text-[34px] font-bold tracking-tight text-brand-dark">
-                    {tier.price}
-                  </span>
-                  {tier.cadence ? (
-                    <span className="text-[15px] font-medium text-slate-500">
-                      {tier.cadence}
-                    </span>
-                  ) : null}
+                <div className="mt-6 flex items-baseline gap-1.5">
+                  <span className="font-display text-[clamp(40px,5vw,54px)] leading-none text-brand-dark">{tier.price}</span>
+                  {tier.cadence ? <span className="text-[15px] font-medium text-slate-500">{tier.cadence}</span> : null}
                 </div>
-                <p className="mt-1.5 text-[12px] text-slate-500">{tier.priceNote}</p>
+                <p className="mt-2 text-[12px] text-slate-500">{tier.priceNote}</p>
 
-                <p className="mt-6 text-[13px] font-semibold text-brand-dark">
+                <p className="mt-7 text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                   {tier.featuresLead}
                 </p>
-                <ul className="mt-3 space-y-2.5">
+                <ul className="mt-4 space-y-2.5">
                   {tier.features.map((f) => (
-                    <li
-                      key={f}
-                      className="flex items-start gap-2.5 text-[14px] leading-relaxed text-slate-600"
-                    >
-                      <Check size={17} className="mt-0.5 shrink-0 text-emerald-500" />
+                    <li key={f} className="flex items-start gap-2.5 text-[14px] leading-relaxed text-slate-600">
+                      <Check size={16} className="mt-0.5 shrink-0 text-brand" />
                       <span>{f}</span>
                     </li>
                   ))}
@@ -202,58 +176,62 @@ export default function PricingPage() {
                     <ArrowRight size={16} />
                   </Button>
                 </div>
-              </Card>
+              </div>
             </Reveal>
           ))}
         </div>
 
         <p className="mx-auto mt-8 max-w-2xl text-center text-[13px] leading-relaxed text-slate-500">
-          All prices are indicative and shown in INR. Final pricing is confirmed
-          with you during onboarding — and choosing annual billing saves you
-          roughly two months.
+          All prices are indicative and shown in INR. Final pricing is confirmed with you during
+          onboarding — and choosing annual billing saves you roughly two months.
         </p>
-      </Section>
+      </Panel>
 
       {/* ── Included in every plan ───────────────────────────────────────── */}
-      <Section className="bg-white">
-        <Reveal variant="blur">
-          <SectionHeading
+      <Panel theme="dark" seam="rising-left">
+        <CineReveal>
+          <SerifHeading
             eyebrow="Every plan"
-            title="Included with every plan"
+            lines={[{ text: "Included with", italic: false }, { text: "every plan.", italic: true }]}
             subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
           />
-        </Reveal>
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        </CineReveal>
+        <div className="mt-12 grid gap-x-12 gap-y-8 sm:grid-cols-2">
           {INCLUDED.map((item, i) => (
-            <Reveal key={item.title} delay={i * 90} className="h-full">
-              <FeatureCard icon={item.icon} title={item.title} desc={item.desc} />
+            <Reveal key={item.title} variant="up" delay={i * 90}>
+              <div className="border-t border-white/10 pt-5">
+                <h3 className="font-display text-[22px] italic text-white">{item.title}</h3>
+                <p className="mt-2 text-[15px] leading-relaxed text-slate-300">{item.desc}</p>
+              </div>
             </Reveal>
           ))}
         </div>
-      </Section>
+      </Panel>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-      <Section className="bg-ps-bg">
-        <Reveal variant="blur">
-          <SectionHeading
+      <Panel theme="light" seam="rising-right">
+        <CineReveal>
+          <SerifHeading
             eyebrow="FAQ"
-            title="Questions, answered"
+            theme="light"
+            lines={[{ text: "Questions,", italic: false }, { text: "answered.", italic: true }]}
             subtitle="A few things CAs ask us before getting started."
           />
-        </Reveal>
-        <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+        </CineReveal>
+        <div className="mt-12 grid gap-x-12 gap-y-8 md:grid-cols-2">
           {FAQS.map((item, i) => (
-            <Reveal key={item.q} delay={i * 90} className="h-full">
-              <Card className="h-full">
-                <h3 className="text-[16px] font-bold text-brand-dark">{item.q}</h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{item.a}</p>
-              </Card>
+            <Reveal key={item.q} variant="up" delay={i * 80}>
+              <div className="border-t border-slate-900/10 pt-5">
+                <h3 className="font-display text-[21px] italic leading-snug text-brand-dark">{item.q}</h3>
+                <p className="mt-2.5 text-[15px] leading-relaxed text-slate-600">{item.a}</p>
+              </div>
             </Reveal>
           ))}
         </div>
-      </Section>
+      </Panel>
 
-      <CTASection />
-    </>
+      {/* ── Closing CTA ──────────────────────────────────────────────────── */}
+      <CineCTA />
+    </div>
   );
 }
