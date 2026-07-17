@@ -1,0 +1,55 @@
+/* Self-hosted replacement for the Google Fonts stylesheet this page used to
+   fetch from fonts.googleapis.com. Same family names/weights/styles/format
+   (woff2) and font-display:swap as Google Fonts itself serves to modern
+   browsers — sourced via Fontsource, which republishes the identical font
+   files straight from the Google Fonts repo, so text renders the same, it
+   just no longer costs a DNS/TLS round trip to fonts.googleapis.com +
+   fonts.gstatic.com before the browser can start downloading anything. */
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./fonts/instrument-serif-latin-400-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./fonts/instrument-serif-latin-400-italic.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./fonts/manrope-latin-400-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./fonts/manrope-latin-500-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./fonts/manrope-latin-600-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./fonts/manrope-latin-700-normal.woff2) format('woff2');
+}
