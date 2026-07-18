@@ -871,6 +871,26 @@ class Phase2JournalService:
                           "narration": narration})
         return lines
 
+    @staticmethod
+    def _build_payroll_disbursement_lines(net_sal_account_id: str, bank_account_id: str,
+                                          net_paise: int) -> list[dict]:
+        """Salary disbursement (mark-paid): clears the Net Salary Payable liability
+        raised at finalization against the bank the salaries were paid from.
+
+        Dr  Net Salary Payable   (total net pay)
+          Cr  Bank               (total net pay)
+
+        Balanced by construction (single debit == single credit == net pay)."""
+        net = int(net_paise or 0)
+        if net <= 0:
+            raise ValueError("Payroll run has no net pay to disburse.")
+        return [
+            {"account_id": net_sal_account_id, "debit_paise": net, "credit_paise": 0,
+             "narration": "Net salary paid (clears Net Salary Payable)"},
+            {"account_id": bank_account_id, "debit_paise": 0, "credit_paise": net,
+             "narration": "Bank payment for salary disbursement"},
+        ]
+
     def journal_for_payroll(
         self, run: dict, firm_id: str, client_id: str
     ) -> Optional[str]:
@@ -932,6 +952,43 @@ class Phase2JournalService:
             # task #103: align with journal_for_sales_invoice (F7/R2.9) — see
             # journal_for_credit_note's comment above.
             _logger.error("journal_for_payroll error: %s", e, exc_info=True)
+            raise
+
+    def journal_for_payroll_disbursement(
+        self, run: dict, bank_gl_account_id: str, firm_id: str, client_id: str,
+        payment_date: str,
+    ) -> Optional[str]:
+        """Salary disbursement journal — posted when a finalized run is marked paid.
+        Clears the Net Salary Payable liability raised at finalization against the
+        bank the salaries were actually paid from (Dr Net Salary Payable / Cr Bank).
+
+        reference_no is distinct from the accrual's (PAY-{month}) so both post; the
+        posting kernel dedupes on reference_no, so a retry after a partial failure
+        is safe (idempotent).
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_payroll_disbursement: %s", run.get("month"))
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            net_sal_id = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            lines = self._build_payroll_disbursement_lines(
+                net_sal_id, bank_gl_account_id, int(run.get("total_net_paise") or 0))
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=payment_date,
+                reference_no=f"PAY-DISB-{run['month']}",
+                narration=f"Salary disbursement for {run['month']}",
+                entry_type="Payment",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            # Mirror journal_for_payroll: never swallow a posting failure into a
+            # None "success" — re-raise so the run is NOT marked paid without a GL entry.
+            _logger.error("journal_for_payroll_disbursement error: %s", e, exc_info=True)
             raise
 
     def journal_for_asset_acquisition(

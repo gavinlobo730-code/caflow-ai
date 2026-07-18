@@ -366,6 +366,8 @@ export const api = {
       request(`/api/payroll/runs/${runId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
     finalizeRun: (runId: string) =>
       request(`/api/payroll/runs/${runId}/finalize`, { method: "POST" }),
+    disburseRun: (runId: string, body: { bank_account_id: string; payment_date?: string; payment_reference?: string }) =>
+      request(`/api/payroll/runs/${runId}/disburse`, { method: "POST", body: JSON.stringify(body) }),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
   },

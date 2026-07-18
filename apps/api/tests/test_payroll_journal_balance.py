@@ -120,3 +120,33 @@ def test_every_line_is_pure_debit_or_credit():
     for line in _build(run):
         d, c = line["debit_paise"], line["credit_paise"]
         assert (d > 0) != (c > 0), f"line must be debit XOR credit: {line}"
+
+
+# ── Salary disbursement (mark-paid) journal ───────────────────────────────────
+# Dr Net Salary Payable / Cr Bank — clears the payable raised at finalization.
+
+def _disb(net: int) -> list[dict]:
+    return Phase2JournalService._build_payroll_disbursement_lines(
+        "acc-net-payable", "acc-bank", net)
+
+
+def test_disbursement_balances_and_clears_the_payable():
+    lines = _disb(67250)
+    debit, credit = _sums(lines)
+    assert debit == credit == 67250          # single Dr == single Cr == net pay
+    dr = next(l for l in lines if l["debit_paise"] > 0)
+    cr = next(l for l in lines if l["credit_paise"] > 0)
+    assert dr["account_id"] == "acc-net-payable" and dr["debit_paise"] == 67250
+    assert cr["account_id"] == "acc-bank" and cr["credit_paise"] == 67250
+
+
+def test_disbursement_lines_are_pure_debit_or_credit():
+    for line in _disb(50000):
+        d, c = line["debit_paise"], line["credit_paise"]
+        assert (d > 0) != (c > 0), f"line must be debit XOR credit: {line}"
+
+
+def test_disbursement_rejects_non_positive_net():
+    for bad in (0, -100):
+        with pytest.raises(ValueError, match="no net pay"):
+            _disb(bad)
