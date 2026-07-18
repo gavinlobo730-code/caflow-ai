@@ -8,6 +8,7 @@ that never existed as columns.
 """
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
+from decimal import Decimal
 
 
 class BankAccountIn(BaseModel):
@@ -129,6 +130,58 @@ class MatchIn(BaseModel):
     matched_entity_type: str
     matched_entity_id: str
     category: Optional[str] = None
+
+
+class BankMatchAllocationIn(BaseModel):
+    entity_id: str
+    allocated_paise: int
+
+    @field_validator("allocated_paise")
+    @classmethod
+    def positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("allocated_paise must be positive.")
+        return v
+
+
+class BankMatchMultiIn(BaseModel):
+    """Match ONE bank transaction to MULTIPLE sales invoices (AR — a credit
+    transaction) or purchase bills (AP — a debit transaction) in a single
+    settlement (multi-invoice bank allocation). Creates a real receipt /
+    purchase_payment record (with per-document allocations) sourced from this
+    transaction, rather than a bare linkage — the bank transaction is matched
+    to THAT record, so exactly one journal is posted (never a second,
+    separate bank-side journal alongside the receipt/payment's own)."""
+    entity_type: str  # "sales_invoice" | "purchase_bill"
+    allocations: list[BankMatchAllocationIn]
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+    tds_paise: int = 0   # AR only — ignored when entity_type is purchase_bill
+    # Multi-Currency — must match every allocated document's currency; amounts
+    # are in that currency's minor units.
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
+
+    @field_validator("entity_type")
+    @classmethod
+    def valid_entity_type(cls, v: str) -> str:
+        if v not in ("sales_invoice", "purchase_bill"):
+            raise ValueError("entity_type must be 'sales_invoice' or 'purchase_bill'.")
+        return v
+
+    @field_validator("allocations")
+    @classmethod
+    def at_least_one(cls, v: list) -> list:
+        if not v:
+            raise ValueError("Select at least one invoice/bill to allocate.")
+        return v
+
+    @field_validator("tds_paise")
+    @classmethod
+    def tds_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("tds_paise must be non-negative.")
+        return v
 
 
 class ReconciliationCreateIn(BaseModel):

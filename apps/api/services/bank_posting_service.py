@@ -334,6 +334,135 @@ class BankPostingService:
             result["credited_to_party_paise"] = excess
         return result
 
+    # ── Multi-invoice bank allocation ────────────────────────────────────────
+    def match_and_settle_multi(
+        self, db, firm_id: str, txn_id: str, entity_type: str, allocations: list[dict],
+        reference_no: Optional[str] = None, notes: Optional[str] = None,
+        tds_paise: int = 0, currency: Optional[str] = None, exchange_rate=None,
+        actor: Optional[dict] = None,
+    ) -> dict:
+        """Match ONE bank transaction to MULTIPLE sales invoices / purchase bills
+        in a single settlement.
+
+        Unlike the 1:1 flow (match -> post a DRAFT 'BANK-{txn_id}' journal ->
+        approve -> settle_on_post, which settles the ALREADY-linked document
+        separately from posting), this creates the REAL receipt / purchase_payment
+        record with its own allocations — reusing receipt_service.create_receipt_core
+        / purchase_payment_service.create_payment_core VERBATIM, so the same
+        CAS-guarded settlement, live-outstanding pre-validation, and
+        compensation-on-failure machinery already hardened for the manual
+        Receipts/Payments pages applies here too, for both INR and foreign
+        currency (create_receipt_core/create_payment_core auto-dispatch to their
+        FX path when `currency` isn't INR).
+
+        Exactly ONE journal is posted — the receipt/payment's own — so the bank
+        transaction is linked to IT (matched_entity_type='receipt' /
+        'purchase_payment') rather than getting a second, separate
+        'BANK-{txn_id}' journal; posting both would double-count the cash
+        movement (the same class of gap that would exist if a bank transaction
+        were 1:1-matched to an ALREADY-existing receipt/payment and then posted
+        through the normal draft-journal flow).
+        """
+        txn = self._get_txn(db, firm_id, txn_id)
+        if txn.get("match_status") == "posted" or txn.get("posted_journal_id"):
+            raise HTTPException(status_code=409, detail="Transaction already matched/posted.")
+        amount, is_credit = _amount(txn)
+        if amount <= 0:
+            raise HTTPException(status_code=422, detail="Transaction has zero amount.")
+        if entity_type == "sales_invoice" and not is_credit:
+            raise HTTPException(status_code=422,
+                detail="A debit transaction (money leaving the bank) cannot settle sales invoices.")
+        if entity_type == "purchase_bill" and is_credit:
+            raise HTTPException(status_code=422,
+                detail="A credit transaction (money arriving in the bank) cannot settle purchase bills.")
+        if not allocations:
+            raise HTTPException(status_code=422, detail="Select at least one invoice/bill to allocate.")
+
+        client_id = txn["client_id"]
+        total_alloc = sum(int(a["allocated_paise"]) for a in allocations)
+        settlement_cap = amount + (tds_paise if entity_type == "sales_invoice" else 0)
+        if total_alloc > settlement_cap:
+            raise HTTPException(status_code=422,
+                detail=f"Total allocated ({total_alloc} paise) exceeds the transaction amount ({settlement_cap} paise).")
+
+        if entity_type == "sales_invoice":
+            party_col, doc_table, alloc_key = "customer_id", "client_sales_invoices", "sales_invoice_id"
+        else:
+            party_col, doc_table, alloc_key = "vendor_id", "purchase_bills", "purchase_bill_id"
+
+        doc_ids = [a["entity_id"] for a in allocations]
+        docs = (db.table(doc_table).select(f"id, {party_col}")
+                .in_("id", doc_ids).eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
+        found = {d["id"] for d in docs}
+        missing = [d for d in doc_ids if d not in found]
+        if missing:
+            raise HTTPException(status_code=422,
+                detail=f"Not part of this client's books: {', '.join(missing)}")
+        party_ids = {d[party_col] for d in docs}
+        if len(party_ids) != 1:
+            raise HTTPException(status_code=422,
+                detail="All selected invoices/bills must belong to the SAME customer/vendor — "
+                       "a single bank transaction settles one party's documents.")
+        party_id = party_ids.pop()
+
+        date = str(txn["transaction_date"])[:10]
+        alloc_payloads = [{alloc_key: a["entity_id"], "allocated_paise": int(a["allocated_paise"])} for a in allocations]
+
+        if entity_type == "sales_invoice":
+            from services import receipt_service
+            data = {
+                "client_id": client_id, "customer_id": party_id, "receipt_date": date,
+                "amount_paise": amount, "tds_paise": tds_paise, "payment_mode": "bank",
+                "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
+                "allocations": alloc_payloads,
+            }
+            if currency:
+                data["currency"] = currency
+            if exchange_rate is not None:
+                data["exchange_rate"] = exchange_rate
+            result = receipt_service.create_receipt_core(firm_id, data, actor or {}, db)
+            new_entity_type, category = "receipt", "Customer Payment"
+        else:
+            from services import purchase_payment_service
+            data = {
+                "client_id": client_id, "vendor_id": party_id, "payment_date": date,
+                "amount_paise": amount, "payment_mode": "bank",
+                "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
+                "allocations": alloc_payloads,
+            }
+            if currency:
+                data["currency"] = currency
+            if exchange_rate is not None:
+                data["exchange_rate"] = exchange_rate
+            result = purchase_payment_service.create_payment_core(firm_id, data, actor or {}, db)
+            new_entity_type, category = "purchase_payment", "Vendor Payment"
+
+        journal_id = result.get("journal_entry_id")
+        db.table("bank_transactions").update({
+            "matched_entity_type": new_entity_type, "matched_entity_id": result["id"],
+            "matched_by": (actor or {}).get("auth_user_id"), "matched_at": _now(),
+            "match_status": "posted", "posted_at": _now(), "posted_by": (actor or {}).get("auth_user_id"),
+            "posted_journal_id": journal_id, "category": category, "needs_review": False,
+            "updated_at": _now(),
+        }).eq("id", txn_id).eq("firm_id", firm_id).execute()
+
+        try:
+            timeline_service.log(
+                client_id, "accounting", "Bank Transaction Matched (multi)",
+                f"Matched to {len(allocations)} {'invoice(s)' if entity_type == 'sales_invoice' else 'bill(s)'} "
+                f"via {new_entity_type} {result.get('receipt_no') or result.get('payment_no') or ''}".strip(),
+                "success", firm_id=firm_id, entity_type="bank_transaction",
+                entity_id=txn_id, actor_id=(actor or {}).get("auth_user_id"),
+            )
+        except Exception:  # pragma: no cover
+            pass
+
+        return {
+            "id": txn_id, "match_status": "posted", "matched_entity_type": new_entity_type,
+            "matched_entity_id": result["id"], "journal_entry_id": journal_id,
+            "allocations_count": len(allocations), new_entity_type: result,
+        }
+
     # ── B.3.1 queues ──────────────────────────────────────────────────────────
     def ready_to_post(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
         q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
