@@ -107,3 +107,18 @@ def test_exactly_cap_boundary():
         db = _CapDB(_build_store(n))
         entries = SupabaseLedgerSource(db)._entries(FIRM, CLIENT)
         assert len(entries) == n
+
+
+def test_entries_paginated_beyond_one_concurrent_batch_round():
+    # _fetch_all now fetches pages in concurrent batches of up to
+    # _MAX_PARALLEL_FETCHES (6) instead of one at a time. 6500 rows needs 7
+    # pages (6 full + 1 short) — more than one batch's worth — exercising the
+    # loop's SECOND round (offset += batch_size), not just concurrency within
+    # a single round (already covered by the 2500-row test above, which fits
+    # in one round of 6). Also exact multiples of the batch size (6000 exactly
+    # == 6 full pages, the batch-boundary case where the short page needed to
+    # signal end-of-data falls in the very next round).
+    for n in (6500, 6000, 6001):
+        db = _CapDB(_build_store(n))
+        entries = SupabaseLedgerSource(db)._entries(FIRM, CLIENT)
+        assert len(entries) == n, f"expected {n} entries, got {len(entries)}"
