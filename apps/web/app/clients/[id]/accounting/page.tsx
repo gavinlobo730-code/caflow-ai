@@ -993,6 +993,11 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
   const [totals, setTotals] = useState({ debit: 0, credit: 0, balanced: true });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // True when the LAST load attempt failed (error/timeout) rather than
+  // genuinely finding zero posted entries — a large ledger can otherwise look
+  // bookless when the report simply couldn't load (found via a real 500 on a
+  // paginated fetch for a 12k-entry client; see domain/reporting/sources.py).
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1019,14 +1024,21 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
           credit: res.data.total_credit_paise,
           balanced: res.data.is_balanced,
         });
+        setLoadFailed(false);
       } else {
+        // res.success===false only ever comes from a backend error path — a
+        // genuinely empty ledger still returns success=true with empty lines.
         setRows([]);
         setTotals({ debit: 0, credit: 0, balanced: true });
+        setLoadFailed(true);
       }
     } catch {
-      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
+      // Backend error/timeout — degrade to empty, never an infinite skeleton
+      // (audit M17), but flagged so the UI shows a retry banner rather than
+      // rendering as if this client has no transactions.
       setRows([]);
       setTotals({ debit: 0, credit: 0, balanced: true });
+      setLoadFailed(true);
     } finally {
       setLoading(false); setLoaded(true);
     }
@@ -1082,7 +1094,16 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
             </tfoot>
           </table>
         </div>
-      ) : loaded ? <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div> : null}
+      ) : loaded ? (
+        loadFailed ? (
+          <div className="text-center py-12">
+            <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the trial balance — the request failed or timed out.</p>
+            <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
+        )
+      ) : null}
     </div>
   );
 }
@@ -1421,6 +1442,11 @@ interface PLColumnResult {
   label: string;
   balances: AccountBalance[];
   totals: { revenue: number; expenses: number; net: number };
+  // True when this column's backend call failed (error/timeout) rather than
+  // genuinely returning zero rows — kept distinct so the UI never renders a
+  // failed fetch as "no transactions" (a large-ledger client can otherwise
+  // look bookless when the report simply couldn't load).
+  error?: boolean;
 }
 
 function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
@@ -1463,7 +1489,11 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
           () => api.accounting.profitLoss({ basis, start_date: col.start, end_date: col.end, client_id: clientId }),
           { force },
         )) as { success: boolean; data: PLApiData | null };
-        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 } };
+        // res.success===false only ever comes from a backend error path (see
+        // api_response(False, ...) call sites) — a genuinely empty period still
+        // returns success=true with empty line arrays. So this branch is always
+        // a real failure, never legitimate emptiness; tag it as such.
+        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 }, error: true };
         const d = res.data;
         // Cash-basis lines carry no account_code/account_subtype (the cash
         // engine doesn't classify by Schedule III subtype) — they default
@@ -1484,8 +1514,11 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
           totals: { revenue: d.revenue?.total_paise ?? 0, expenses: d.operating_expenses?.total_paise ?? 0, net: d.net_profit_paise ?? 0 },
         };
       } catch {
-        // Backend error/timeout for this column — degrade to empty, never an infinite skeleton (audit M17).
-        return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 } };
+        // Backend error/timeout for this column — degrade the COLUMN to empty
+        // rather than an infinite skeleton (audit M17), but tag it as a failure
+        // (not silently-empty) so the UI can show a retry banner instead of
+        // rendering a large ledger's report as if it had no transactions.
+        return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 }, error: true };
       }
     }));
     setColumns(results);
@@ -1630,7 +1663,16 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
               </tr>
             </tbody>
           </table>
-          {unionAccounts.length === 0 && <div className="text-center py-12 text-[#94A3B8] text-sm">No posted entries with Revenue or Expense accounts in the selected period.</div>}
+          {columns.some((c) => c.error) ? (
+            <div className="text-center py-12">
+              <p className="text-sm text-red-600 font-medium mb-2">
+                Couldn&apos;t load {columns.filter((c) => c.error).length > 1 ? "some periods" : "this report"} — the request failed or timed out.
+              </p>
+              <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            </div>
+          ) : unionAccounts.length === 0 && (
+            <div className="text-center py-12 text-[#94A3B8] text-sm">No posted entries with Revenue or Expense accounts in the selected period.</div>
+          )}
         </div>
       )}
     </div>
@@ -1686,6 +1728,8 @@ interface BSColumnResult {
   label: string;
   balances: AccountBalance[];
   totals: { assets: number; liab: number; equity: number; liabEquity: number; balanced: boolean };
+  // See PLColumnResult.error — a failed fetch must never render as "no data".
+  error?: boolean;
 }
 
 function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
@@ -1725,7 +1769,9 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
           () => api.accounting.balanceSheet({ basis, as_of_date: col.end, client_id: clientId }),
           { force },
         )) as { success: boolean; data: BSApiData | null };
-        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true } };
+        // See ProfitAndLoss.load — res.success===false is always a real backend
+        // failure, never legitimate emptiness.
+        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true }, error: true };
         const d = res.data;
         const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
           (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
@@ -1750,8 +1796,10 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
           },
         };
       } catch {
-        // Backend error/timeout for this column — degrade to empty, never an infinite skeleton (audit M17).
-        return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true } };
+        // Backend error/timeout for this column — degrade the COLUMN to empty
+        // (audit M17), tagged as a failure so the UI never renders it as a
+        // bookless client.
+        return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true }, error: true };
       }
     }));
     setColumns(results);
@@ -1926,7 +1974,16 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
           <div className={`rounded-lg px-4 py-3 text-xs font-medium ${isBalanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
             {isBalanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : "✗ Out of balance in at least one period — check for unposted entries"}
           </div>
-          {unionAccounts.length === 0 && <div className="text-center py-8 text-[#94A3B8] text-sm">No posted journal entries found for this client.</div>}
+          {columns.some((c) => c.error) ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-600 font-medium mb-2">
+                Couldn&apos;t load {columns.filter((c) => c.error).length > 1 ? "some periods" : "this report"} — the request failed or timed out.
+              </p>
+              <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            </div>
+          ) : unionAccounts.length === 0 && (
+            <div className="text-center py-8 text-[#94A3B8] text-sm">No posted journal entries found for this client.</div>
+          )}
         </div>
       )}
     </div>
@@ -2029,6 +2086,9 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
   const [cf, setCf] = useState<CFData | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // See TrialBalance.loadFailed — distinguishes "backend call failed" from
+  // "genuinely no cash flow data" so a large ledger never silently renders as bookless.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
@@ -2044,10 +2104,14 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
         () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
         { force },
       )) as { success: boolean; data: CFData | null };
+      // res.success===false only ever comes from a backend error path.
       setCf(res.success && res.data ? res.data : null);
+      setLoadFailed(!res.success);
     } catch {
-      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
+      // Backend error/timeout — degrade to empty, never an infinite skeleton
+      // (audit M17), flagged so the UI shows a retry banner, not a false "no data".
       setCf(null);
+      setLoadFailed(true);
     } finally {
       setLoading(false); setLoaded(true);
     }
@@ -2103,7 +2167,14 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
 
       {!loading && loaded && !cf && (
-        <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
+        loadFailed ? (
+          <div className="text-center py-12">
+            <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the cash flow statement — the request failed or timed out.</p>
+            <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
+        )
       )}
 
       {!loading && cf && (
