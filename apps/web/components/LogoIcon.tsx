@@ -7,7 +7,11 @@ const SIZES: Record<string, { cls: string; rx: number }> = {
   xl: { cls: "w-14 h-14", rx: 18 },
 };
 
-export function LogoIcon({ size = "md" }: { size?: "sm" | "md" | "lg" | "xl" }) {
+// `spin` turns the mark into a loading indicator — the accent arc rotates
+// continuously (see .logo-arc-spin in globals.css). Used by PageLoader, the
+// CSV import modal and the auth gate so loading states show the brand mark
+// instead of a generic spinner. Respects prefers-reduced-motion (holds still).
+export function LogoIcon({ size = "md", spin = false }: { size?: "sm" | "md" | "lg" | "xl"; spin?: boolean }) {
   const { cls, rx } = SIZES[size];
 
   // The canonical PracticeSync mark — circular ring + accent arc + checkmark,
@@ -32,7 +36,8 @@ export function LogoIcon({ size = "md" }: { size?: "sm" | "md" | "lg" | "xl" }) 
           strokeWidth="5"
           strokeLinecap="round"
           strokeDasharray="29.3 121.5"
-          transform="rotate(-50 32 32)"
+          className={spin ? "logo-arc-spin" : undefined}
+          transform={spin ? undefined : "rotate(-50 32 32)"}
         />
         <path d="M20,33 L28,41 L45,22" stroke="#1b1e33" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>

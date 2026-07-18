@@ -10,8 +10,9 @@
  */
 
 import { useState, useRef } from "react";
-import { X, Download, Upload, AlertCircle, CheckCircle, Loader, Plus } from "lucide-react";
+import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import * as XLSX from "xlsx";
+import { LogoIcon } from "@/components/LogoIcon";
 
 export interface CsvColumn {
   key: string;          // CSV header name (must match template)
@@ -486,7 +487,9 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {/* Step 3 — Importing */}
           {step === "importing" && (
             <div className="py-16 text-center space-y-3">
-              <Loader className="w-8 h-8 text-blue-600 mx-auto animate-spin" />
+              <div className="mx-auto w-fit">
+                <LogoIcon size="lg" spin />
+              </div>
               <p className="text-sm text-[#475569]">Importing {validCount} rows…</p>
             </div>
           )}
