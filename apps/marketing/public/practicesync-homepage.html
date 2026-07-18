@@ -259,7 +259,18 @@
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function computeMaxScroll() { if (scrollEl) maxScroll = Math.max(0, scrollEl.scrollHeight - window.innerHeight); }
 
-  function onMouseMove(e) { mouseClientX = e.clientX; mouseClientY = e.clientY; }
+  // Recomputes on the actual mousemove event, not every animation frame —
+  // matches components/Cursor.tsx's useCursorGlow on the React pages, which
+  // only ever updates from its own onMouseMove handler. Rewriting a gradient
+  // background 60 times a second regardless of whether the pointer moved was
+  // pure wasted paint work, and unlike the rest of this page's continuous
+  // tick() loop (scroll physics, marquee), nothing here needs a per-frame
+  // recompute — the glow only has a reason to change when the mouse does.
+  function onMouseMove(e) {
+    mouseClientX = e.clientX;
+    mouseClientY = e.clientY;
+    applyGlow();
+  }
   function onResize() { computeMaxScroll(); }
 
   function onWheel(e) {
@@ -395,8 +406,15 @@
       }
     });
 
+    // Same off-screen skip as applyGlow/renderThree below — this page has
+    // several parallax-tagged eyebrows scattered across different sections,
+    // and recomputing + repainting every one of them every frame even while
+    // scrolled nowhere near them was wasted layout/paint work for no visible
+    // effect (an element you can't see moving doesn't need its transform
+    // updated 60 times a second).
     parallaxEls.forEach(function (p) {
       var rect = p.el.getBoundingClientRect();
+      if (rect.bottom < -80 || rect.top > vh + 80) return;
       var center = rect.top + rect.height / 2 - vh / 2;
       p.el.style.transform = 'translate3d(0,' + (-center * p.factor).toFixed(2) + 'px,0)';
     });
@@ -436,7 +454,6 @@
     if (Math.abs(scrollTarget - scrollCurrent) < 0.05) scrollCurrent = scrollTarget;
     if (scrollEl) scrollEl.style.transform = 'translate3d(0,' + (-scrollCurrent).toFixed(2) + 'px,0)';
     applyScrollEffects();
-    applyGlow();
     updateMarquee();
     requestAnimationFrame(tick);
   }
