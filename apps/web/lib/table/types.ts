@@ -100,13 +100,14 @@ export interface BulkAction<T> {
   label: string;
   icon?: React.ReactNode;
   /**
-   * Return `false` (or resolve to it) to signal the action did NOT fully
-   * succeed — DataTable keeps the current selection instead of clearing it,
-   * so the user can see what's still selected and retry or investigate
-   * (e.g. some rows were skipped/blocked and got reported in a toast).
-   * Returning void/undefined/true, same as before, clears the selection —
-   * existing callers that never return anything are unaffected. A thrown
-   * error is caught by DataTable and also does NOT clear the selection.
+   * Runs the action over the currently-selected rows. Once it COMPLETES,
+   * DataTable clears the selection — the rows have been acted on, so leaving
+   * them (especially the ones that succeeded) selected reads as "nothing
+   * happened". The action itself is responsible for reporting per-row
+   * skips/failures (typically via a toast), which is the real source of
+   * truth — not a lingering selection. The return value is ignored for
+   * selection purposes. Only a THROWN error keeps the selection intact
+   * (the action crashed rather than completing, so a retry makes sense).
    */
   run: (selected: T[]) => void | boolean | Promise<void | boolean>;
   /** Ask for confirmation before running. */

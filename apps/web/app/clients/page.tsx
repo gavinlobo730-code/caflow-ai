@@ -290,13 +290,16 @@ export default function ClientsPage() {
     setBulkBusy(false);
 
     if (failed.length > 0) {
-      // Partial (or total) failure: keep selection so the user can see what's
-      // left and retry, do not clear it.
+      // The action completed with partial failures — report them, but still
+      // clear the selection. The successfully-archived clients have left this
+      // active-only roster, so keeping them selected just leaves a stale
+      // "N selected" count. Mirrors the shared DataTable's bulk-action behavior.
       setBulkError(
         `Archived ${succeeded} of ${targets.length} client${targets.length === 1 ? "" : "s"}` +
         (skipped > 0 ? `, skipped ${skipped} already archived` : "") +
         `. Failed: ${failed.length} — ${failed[0].error}${failed.length > 1 ? ` (+${failed.length - 1} more)` : ""}.`
       );
+      setSelected(new Set());
       return;
     }
 

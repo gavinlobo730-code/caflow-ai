@@ -2285,11 +2285,15 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
     const failCount = results.filter((r) => r !== null).length;
     await load();
     setBulkBusy(false);
+    // The action has completed — clear the selection regardless of partial
+    // failures (the error banner reports what didn't go through). Leaving the
+    // successfully-categorized rows selected is confusing: they've already left
+    // the match queue, so the count would just be counting ghosts. Mirrors the
+    // shared DataTable's bulk-action behavior (components/ui/data-table.tsx).
     if (failCount > 0) {
       setBulkError(`Failed to categorize ${failCount} of ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`);
-    } else {
-      clearSelection();
     }
+    clearSelection();
   }
   async function loadSugg(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
@@ -3253,6 +3257,11 @@ function BankReconciliation({ clientId }: { clientId: string }) {
       const res = (await fn()) as { success: boolean; error: string | null };
       if (res && res.success === false) setError(res.error ?? "Action failed.");
       await refresh();
+      // The action completed — clear the row selection. Reconciled rows move to
+      // a different view, so keeping their ids selected just leaves a stale
+      // "N selected" count counting ghosts. (A thrown error below keeps the
+      // selection for a retry.) Mirrors the shared DataTable behavior.
+      setSel({});
     } catch (e) { setError(e instanceof Error ? e.message : "Action failed."); }
     finally { setBusy(false); }
   }
