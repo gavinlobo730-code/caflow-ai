@@ -212,12 +212,16 @@ export function DataTable<T>({
                   if (a.confirm && !(await confirmDialog({ message: a.confirm, danger: a.variant === "danger" }))) return;
                   setRunningActionId(a.id);
                   try {
-                    // A thrown error, same as an explicit `return false`, leaves
-                    // the selection intact — the action's own toast/report (if
-                    // any) is the source of truth for what happened per row, not
-                    // "the selection went away so it must have worked."
-                    const result = await a.run(t.selectedRows);
-                    if (result !== false) t.clearSelection();
+                    // Once the action COMPLETES, the selection is consumed —
+                    // always clear it. Leaving the successfully-processed rows
+                    // selected (e.g. drafts that were just bulk-issued) is
+                    // confusing and reads as "nothing happened". The action's
+                    // own toast/report is the source of truth for what was
+                    // skipped or failed, not the lingering selection. A THROWN
+                    // error is different — the action crashed rather than
+                    // completing, so the selection is left intact for a retry.
+                    await a.run(t.selectedRows);
+                    t.clearSelection();
                   } catch (e) {
                     console.error(`Bulk action "${a.id}" failed:`, e);
                   } finally {
