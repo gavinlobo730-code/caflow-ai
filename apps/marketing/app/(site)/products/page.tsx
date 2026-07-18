@@ -97,16 +97,14 @@ export default function ProductsPage() {
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="The platform"
-            lines={[
-              { text: "One platform for" },
-              { text: "every part of your practice.", italic: true },
-            ]}
-            subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="The platform"
+          lines={[
+            { text: "One platform for" },
+            { text: "every part of your practice.", italic: true },
+          ]}
+          subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
+        />
         <div className="mt-10 flex flex-wrap items-center gap-5">
           <Button href={appLinks.signup} external variant="light" className="px-6 py-3.5">
             Start free trial
@@ -120,15 +118,13 @@ export default function ProductsPage() {
 
       {/* ── Intro ────────────────────────────────────────────────────────── */}
       <Panel theme="light" seam="rising-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Six modules, one workspace"
-            theme="light"
-            align="center"
-            lines={[{ text: "Everything your practice" }, { text: "runs on, connected.", italic: true }]}
-            subtitle="Compliance, accounting, payroll, clients, documents and analytics share one source of truth — so a client's returns, books and paperwork never live in separate tools again."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Six modules, one workspace"
+          theme="light"
+          align="center"
+          lines={[{ text: "Everything your practice" }, { text: "runs on, connected.", italic: true }]}
+          subtitle="Compliance, accounting, payroll, clients, documents and analytics share one source of truth — so a client's returns, books and paperwork never live in separate tools again."
+        />
       </Panel>
 
       {/* ── Modules ──────────────────────────────────────────────────────── */}
@@ -174,14 +170,12 @@ export default function ProductsPage() {
 
       {/* ── Security & trust ─────────────────────────────────────────────── */}
       <Panel id="security" theme="light" seam="rising-right">
-        <CineReveal>
-          <SerifHeading
-            eyebrow="Security & trust"
-            theme="light"
-            lines={[{ text: "Your clients' data —" }, { text: "and your sign-off — protected.", italic: true }]}
-            subtitle="PracticeSync is built around how Indian CA firms actually work: sensitive data stays in the country, access is controlled, everything is logged, and no filing ever leaves your hands without your confirmation."
-          />
-        </CineReveal>
+        <SerifHeading
+          eyebrow="Security & trust"
+          theme="light"
+          lines={[{ text: "Your clients' data —" }, { text: "and your sign-off — protected.", italic: true }]}
+          subtitle="PracticeSync is built around how Indian CA firms actually work: sensitive data stays in the country, access is controlled, everything is logged, and no filing ever leaves your hands without your confirmation."
+        />
 
         <div className="mt-12 grid gap-x-12 gap-y-8 sm:grid-cols-2">
           {SECURITY.map((s, i) => (

@@ -117,19 +117,22 @@ body {
   color: transparent;
 }
 
-/* ─── Word-by-word headline entrance (pure CSS, plays on load) ────────────── */
-/* No filter:blur() here either — same weak/integrated-GPU reasoning as the
-   scroll reveals below. This one is worse on low-end hardware because it
-   plays immediately on page load (per-word, staggered), competing with the
-   rest of the page's initial paint instead of one lazy scroll-triggered hit. */
+/* ─── Word-by-word headline entrance (driven by components/motion.tsx) ────── */
+/* Same trigger-once-on-scroll-into-view mechanism as .rv below (gated by
+   data-in, not a plain on-mount animation) so a headline further down the
+   page doesn't materialize invisibly before the reader ever scrolls to it.
+   No filter:blur() here either — same weak/integrated-GPU reasoning as the
+   scroll reveals below. */
 .word-in {
+  display: inline-block;
   opacity: 0;
   transform: translateY(0.6em) rotate(2deg);
-  animation: word-in 0.9s var(--ease-out-expo) forwards;
+  transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
   will-change: transform, opacity;
 }
-@keyframes word-in {
-  to { opacity: 1; transform: translateY(0) rotate(0); }
+.word-in[data-in="true"] {
+  opacity: 1;
+  transform: none;
 }
 
 /* ─── Scroll reveals (driven by components/motion.tsx) ────────────────────── */
@@ -338,6 +341,7 @@ html.cursor-none * {
     opacity: 1 !important;
     transform: none !important;
     filter: none !important;
+    transition: none !important;
     animation: none !important;
   }
   .aurora-1, .aurora-2, .aurora-3,
