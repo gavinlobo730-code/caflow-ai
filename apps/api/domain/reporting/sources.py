@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from .model import (
@@ -24,11 +24,12 @@ from .model import (
 
 _logger = logging.getLogger("caflow.reporting.source")
 
-# Bounded worker pool for read-only Supabase fetches — used both for _base()'s
-# independent top-level fetches and for _fetch_all's page batches. httpx.Client
-# (which supabase-py/postgrest-py wrap) is documented thread-safe for
-# concurrent requests, so sharing one client instance across these workers is
-# safe; each fetch here is a read with no shared mutable state beyond that.
+# Bounded worker pool for read-only Supabase fetches — used by _base() to run its
+# independent top-level table fetches concurrently. (_fetch_all itself now pages
+# sequentially by keyset; see its docstring for why.) httpx.Client (which
+# supabase-py/postgrest-py wrap) is documented thread-safe for concurrent
+# requests, so sharing one client instance across these workers is safe; each
+# fetch here is a read with no shared mutable state beyond that.
 _MAX_PARALLEL_FETCHES = 6
 
 
@@ -251,68 +252,71 @@ class SupabaseLedgerSource(LedgerSource):
             for r in rows
         }
 
-    def _fetch_page(self, make_query, offset: int, max_retries: int) -> list[dict]:
-        """Fetch ONE page with retry-with-backoff on transient failure.
-        Confirmed in production: for a client with 12k+ posted entries (13 pages),
-        one page hit a transient PostgREST 500 while every other page — including
-        the SAME page moments later — succeeded. Before this fix, that single
-        transient failure aborted the entire report, which the frontend then
-        rendered as "no posted journal entries" (indistinguishable from a
-        genuinely empty ledger) instead of a retryable error."""
+    def _fetch_page(self, make_query, cursor, key: str, max_retries: int) -> list[dict]:
+        """Fetch ONE keyset page — the next <=_PAGE rows whose `key` is strictly
+        greater than `cursor` (None on the first page) — with retry-with-backoff
+        on transient failure.
+
+        Confirmed in production: for a client with 12k+ posted entries, one page
+        hit a transient PostgREST 500 while every other page — including the SAME
+        page moments later — succeeded. Before the retry, that single transient
+        failure aborted the entire report, which the frontend then rendered as "no
+        posted journal entries" (indistinguishable from a genuinely empty ledger)
+        instead of a retryable error."""
         last_err: Optional[Exception] = None
         for attempt in range(max_retries):
             try:
-                return make_query().range(offset, offset + self._PAGE - 1).execute().data or []
+                q = make_query()
+                if cursor is not None:
+                    q = q.gt(key, cursor)
+                return q.limit(self._PAGE).execute().data or []
             except Exception as e:  # noqa: BLE001 — retry transient PostgREST/network failures
                 last_err = e
                 if attempt < max_retries - 1:
                     _logger.warning(
-                        "Reporting fetch page failed (offset=%d, attempt=%d/%d) — retrying: %s",
-                        offset, attempt + 1, max_retries, e,
+                        "Reporting fetch page failed (cursor=%s, attempt=%d/%d) — retrying: %s",
+                        cursor, attempt + 1, max_retries, e,
                     )
                     time.sleep(0.3 * (attempt + 1))
         _logger.error(
-            "Reporting fetch page failed permanently after %d attempts (offset=%d): %s",
-            max_retries, offset, last_err,
+            "Reporting fetch page failed permanently after %d attempts (cursor=%s): %s",
+            max_retries, cursor, last_err,
         )
         raise last_err
 
-    def _fetch_all(self, make_query, max_retries: int = 3) -> list[dict]:
-        """Fetch EVERY matching row via offset paging over a stably-ordered query, so
-        results are never silently capped at PostgREST's ~1000-row limit (audit C6).
-        `make_query` must return a fresh, ordered query builder on each call.
+    def _fetch_all(self, make_query, key: str = "id", max_retries: int = 3) -> list[dict]:
+        """Fetch EVERY matching row via KEYSET (cursor) paging over a query ordered
+        ascending by `key`, so results are never silently capped at PostgREST's
+        ~1000-row limit (audit C6). `make_query` must return a fresh builder
+        ordered ascending by `key`, and its select MUST include `key` so the next
+        page's cursor can be read from the last row.
 
-        Fetches pages in BATCHES of up to _MAX_PARALLEL_FETCHES concurrently
-        instead of one at a time — for a client with 12k+ posted entries (13
-        pages) this was 13 sequential HTTP round trips before a single number
-        could be computed; now it's ~3 rounds. The end-of-data signal is still
-        the genuine one (a page shorter than a full page), NEVER an assumed
-        PostgREST row count — a `count=exact` total can be unreliable alongside
-        an embedded relation (journal_lines) on some PostgREST versions, and
-        trusting a wrong total here would mean silently truncating a financial
-        report rather than just being slow. Pages are appended in offset order
-        regardless of which one's HTTP call actually finished first."""
+        KEYSET, not OFFSET — this is the fix for the report timeout (2026-07-18).
+        With OFFSET, page k must re-scan (and, because journal_lines is embedded,
+        RE-RUN the per-row line-aggregate for) all k*_PAGE preceding rows, so
+        paging the whole ledger is O(entries^2): for a 12.8k-entry client the embed
+        aggregate ran ~91k times instead of ~12.8k, and the deep pages tripped the
+        database statement timeout (pg_stat_statements showed this exact query at
+        mean 3.2s / max 8.0s). Keyset makes every page a bounded `WHERE key > :cursor
+        ... LIMIT _PAGE` seek that touches only its own _PAGE rows regardless of
+        depth, so total work is linear and no single page can time out. The partial
+        index idx_journal_entries_firm_client_posted_id (migration 229) serves the
+        (firm_id, client_id, id) seek directly.
+
+        Paging is sequential (each cursor comes from the previous page's last row),
+        which also cuts the concurrent DB load that the old 6-wide offset batch
+        added to the contention. End-of-data is a short page (< _PAGE) — the
+        genuine signal, NEVER an assumed PostgREST row count, which can be
+        unreliable alongside an embedded relation and would silently truncate a
+        financial report rather than just be slow."""
         out: list[dict] = []
-        offset = 0
+        cursor = None
         while True:
-            batch_offsets = [offset + i * self._PAGE for i in range(_MAX_PARALLEL_FETCHES)]
-            batch_pages: dict[int, list[dict]] = {}
-            with ThreadPoolExecutor(max_workers=len(batch_offsets)) as ex:
-                futures = {ex.submit(self._fetch_page, make_query, off, max_retries): off
-                          for off in batch_offsets}
-                for fut in as_completed(futures):
-                    batch_pages[futures[fut]] = fut.result()
-
-            hit_end = False
-            for off in batch_offsets:                    # append IN OFFSET ORDER
-                page = batch_pages[off]
-                out.extend(page)
-                if len(page) < self._PAGE:
-                    hit_end = True                        # genuine end-of-data — ignore any pages after it
-                    break
-            if hit_end:
-                break
-            offset += len(batch_offsets) * self._PAGE
+            page = self._fetch_page(make_query, cursor, key, max_retries)
+            out.extend(page)
+            if len(page) < self._PAGE:
+                break                                    # genuine end-of-data
+            cursor = page[-1][key]                        # next page starts after this row
         return out
 
     def _entries(self, firm_id, client_id, date_from: Optional[str] = None,
@@ -402,7 +406,7 @@ class SupabaseLedgerSource(LedgerSource):
         ('account_id', 'YYYY-MM-01') to match balance_cache.build_buckets."""
         rows = self._fetch_all(lambda: (
             self.db.table("account_period_balances")
-            .select("account_id, period_month, debit_paise, credit_paise")
+            .select("id, account_id, period_month, debit_paise, credit_paise")
             .eq("firm_id", firm_id).eq("client_id", client_id).order("id")
         ))
         return {

@@ -28,22 +28,27 @@ class _Res:
 class _Q:
     def __init__(self, store, table):
         self.store, self.t, self.f, self._range = store, table, [], None
+        self._order: str | None = None
+        self._limit: int | None = None
     def select(self, *_a, **_k): return self
     def eq(self, k, v): self.f.append((k, ("eq", v))); return self
     def is_(self, k, _v): self.f.append((k, ("null", None))); return self
     def or_(self, *_a, **_k): return self
     def ilike(self, *_a, **_k): return self
+    def gt(self, k, v): self.f.append((k, ("gt", v))); return self
     def gte(self, k, v): self.f.append((k, ("gte", v))); return self
     def lte(self, k, v): self.f.append((k, ("lte", v))); return self
     def in_(self, k, vals): self.f.append((k, ("in", set(vals)))); return self
-    def order(self, *_a, **_k): return self
+    def order(self, col=None, *_a, **_k): self._order = col; return self
     def range(self, a, b): self._range = (a, b); return self
+    def limit(self, n): self._limit = n; return self
 
     def _match(self, r):
         for k, (op, v) in self.f:
             rv = r.get(k)
             if op == "eq" and rv != v: return False
             if op == "null" and rv is not None: return False
+            if op == "gt" and not (rv is not None and str(rv) > str(v)): return False
             if op == "gte" and not (rv is not None and str(rv) >= v): return False
             if op == "lte" and not (rv is not None and str(rv) <= v): return False
             if op == "in" and rv not in v: return False
@@ -51,9 +56,13 @@ class _Q:
 
     def execute(self):
         rows = [dict(r) for r in self.store.get(self.t, []) if self._match(r)]
+        if self._order is not None:                      # keyset paging needs stable ascending order
+            rows.sort(key=lambda r: str(r.get(self._order)))
         if self._range is not None:
             a, b = self._range
             rows = rows[a:b + 1]
+        if self._limit is not None:
+            rows = rows[:self._limit]
         return _Res(rows)
 
 

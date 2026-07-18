@@ -1,0 +1,36 @@
+-- Migration 229: Reporting hot-path index on journal_entries.
+--
+-- ROOT CAUSE (confirmed in production 2026-07-18):
+-- Trial Balance / P&L / Balance Sheet for a large client (e.g. Apex Trading,
+-- ~12k posted entries) failed with "the request failed or timed out". The
+-- postgres log showed dense bursts of `canceling statement due to statement
+-- timeout` — NOT a cold start and NOT a transient 500.
+--
+-- The reporting engine (domain/reporting/sources.py :: _entries) pages the
+-- ledger with exactly this shape, 6 pages fired concurrently:
+--     SELECT id, ..., journal_lines(...)
+--     FROM journal_entries
+--     WHERE firm_id = $1 AND is_posted = true AND deleted_at IS NULL
+--           AND client_id = $2
+--     ORDER BY id
+--     OFFSET n LIMIT 1000
+--
+-- The embed (journal_lines) is already covered by idx_journal_lines_journal_entry_id.
+-- But the PARENT query had no index serving the (firm_id, client_id) equality
+-- filter together with the ORDER BY id. The planner had to scan every one of the
+-- firm's entries and SORT them by id on EVERY page, then discard `offset` rows.
+-- With 6 such pages running concurrently the sorts contended and all tripped the
+-- statement timeout together — matching the burst pattern in the logs.
+--
+-- FIX: a partial composite index whose leading equality columns are (firm_id,
+-- client_id) and whose trailing column is id, with the report's constant
+-- predicate (is_posted = true AND deleted_at IS NULL) baked in. This turns each
+-- page into a pure index range scan already in id order — no sort, and OFFSET
+-- becomes a cheap index skip instead of a full-table walk. It fixes the timeout
+-- for EVERY client, needs no application change, and keeps the index small (only
+-- posted, non-deleted rows are indexed).
+--
+-- Additive and idempotent (IF NOT EXISTS); safe to re-run.
+CREATE INDEX IF NOT EXISTS idx_journal_entries_firm_client_posted_id
+  ON public.journal_entries (firm_id, client_id, id)
+  WHERE is_posted = true AND deleted_at IS NULL;
