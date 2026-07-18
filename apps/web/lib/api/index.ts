@@ -249,6 +249,16 @@ export const api = {
     suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),
     categorize: (txnId: string, data: { category: string }) => request(`/api/banking/transactions/${txnId}/categorize`, { method: "POST", body: JSON.stringify(data) }),
     matchEntity: (txnId: string, data: { matched_entity_type: string; matched_entity_id: string; category?: string }) => request(`/api/banking/transactions/${txnId}/match`, { method: "POST", body: JSON.stringify(data) }),
+    // Multi-invoice bank allocation — match ONE transaction to MULTIPLE sales
+    // invoices / purchase bills in a single settlement. Immediately creates the
+    // settling receipt/purchase_payment and posts its journal (unlike matchEntity,
+    // which only links — posting is a separate later step for the 1:1 flow).
+    matchMulti: (txnId: string, data: {
+      entity_type: "sales_invoice" | "purchase_bill";
+      allocations: { entity_id: string; allocated_paise: number }[];
+      reference_no?: string; notes?: string; tds_paise?: number;
+      currency?: string; exchange_rate?: string;
+    }) => request(`/api/banking/transactions/${txnId}/match-multi`, { method: "POST", body: JSON.stringify(data) }),
     unmatch: (txnId: string) => request(`/api/banking/transactions/${txnId}/unmatch`, { method: "POST" }),
     // B.3 — posting engine (explicit, human-initiated; never auto-posts)
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),

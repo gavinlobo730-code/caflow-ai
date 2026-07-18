@@ -40,7 +40,7 @@ def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn,
-    CategorizeIn, MatchIn,
+    CategorizeIn, MatchIn, BankMatchMultiIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
 )
 from core.permissions import rbac
@@ -354,6 +354,32 @@ def unmatch_transaction(
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "unmatched"})
     return api_response(True, bank_matching_service.unmatch(db, current_user["firm_id"], txn_id))
+
+
+@router.post("/transactions/{txn_id}/match-multi")
+def match_transaction_multi(
+    txn_id: str,
+    data: BankMatchMultiIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Multi-invoice bank allocation: match ONE bank transaction to MULTIPLE
+    sales invoices (a credit transaction) or purchase bills (a debit
+    transaction) in a single settlement. Unlike /match (linkage only, posts
+    nothing), this immediately creates the settling receipt/purchase_payment
+    and posts its journal — the CA's submission of the allocation split IS the
+    explicit confirmation, mirroring how recording a receipt/payment from the
+    Sales/Purchases pages is itself a single-step action."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, "match_status": "posted"})
+    result = bank_posting_service.match_and_settle_multi(
+        db, current_user["firm_id"], txn_id, data.entity_type,
+        [a.model_dump() for a in data.allocations],
+        reference_no=data.reference_no, notes=data.notes, tds_paise=data.tds_paise,
+        currency=data.currency, exchange_rate=data.exchange_rate,
+        actor=current_user,
+    )
+    return api_response(True, result)
 
 
 @router.patch("/transactions/{txn_id}")

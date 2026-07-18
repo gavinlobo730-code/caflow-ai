@@ -158,12 +158,21 @@ def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
 
 def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
                     created_by: Optional[str] = None) -> dict:
-    """Undo a vendor payment: decrement the linked bill's paid_paise back down
-    (CAS, using the payment's TRUE AP relief — booked-rate for a foreign
-    payment, not its cash-rate amount_paise), reverse the posted journal, and
-    mark the payment reversed. Firm-scoped lookup, client_id read from the
-    payment row itself. Raises HTTPException: 404, 422, 409 — same shape as
-    reverse_receipt."""
+    """Undo a vendor payment: decrement every settled bill's paid_paise back
+    down (CAS), reverse the posted journal, and mark the payment reversed.
+    Firm-scoped lookup, client_id read from the payment row itself. Raises
+    HTTPException: 404, 422, 409 — same shape as reverse_receipt.
+
+    Two payment shapes, both handled here:
+    - Legacy single-bill (purchase_bill_id set): roll back that one bill using
+      the payment's TRUE AP relief (booked-rate for a foreign payment, not its
+      cash-rate amount_paise — see _payment_ap_relief).
+    - Multi-bill (purchase_bill_id NULL, migration 226's
+      purchase_payment_allocations): roll back EVERY non-voided allocation's
+      bill by its own allocated_paise (already base-currency / booked-rate for
+      both domestic and foreign — see purchase_payment_service), then void
+      those allocation rows. Mirrors reverse_receipt's receipt_allocations
+      handling exactly."""
     from services.phase2_journal_service import phase2_journal_service
 
     rows = (db.table("purchase_payments").select("*")
@@ -179,10 +188,27 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
     period_validation_service.validate_posting_date(firm_id or "", reversal_date)
 
     bill_id = payment.get("purchase_bill_id")
+    bills_adjusted: list = []
     if bill_id:
         ap_relief = _payment_ap_relief(db, firm_id, client_id, payment)
         if ap_relief > 0:
             _rollback_bill_paid(db, firm_id, client_id, bill_id, ap_relief)
+        bills_adjusted = [bill_id]
+    else:
+        # Python-side is_voided filter (not .eq()) — a row lacking the key must
+        # be treated as not-voided, not silently excluded (mirrors
+        # reverse_receipt's identical guard, task #145/#148's lesson).
+        _allocs = (db.table("purchase_payment_allocations").select("*")
+                   .eq("purchase_payment_id", payment_id).execute().data or [])
+        allocations = [a for a in _allocs if not a.get("is_voided")]
+        for alloc in allocations:
+            _bill_id = alloc.get("purchase_bill_id")
+            amt = int(alloc.get("allocated_paise") or 0)
+            if _bill_id and amt > 0:
+                _rollback_bill_paid(db, firm_id, client_id, _bill_id, amt)
+                bills_adjusted.append(_bill_id)
+        if allocations:
+            db.table("purchase_payment_allocations").update({"is_voided": True}).eq("purchase_payment_id", payment_id).execute()
 
     journal_id = payment.get("journal_entry_id")
     if not journal_id:
@@ -195,6 +221,7 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
 
     db.table("purchase_payments").update({"is_reversed": True, "updated_at": _now()}).eq("id", payment_id).execute()
 
-    _logger.info("Reversed payment %s (firm=%s client=%s), bill=%s adjusted",
-                payment_id, firm_id, client_id, bill_id)
-    return {"id": payment_id, "reversed": True, "bill_adjusted": bill_id, "journal_reversed": journal_id}
+    _logger.info("Reversed payment %s (firm=%s client=%s), bills=%s adjusted",
+                payment_id, firm_id, client_id, bills_adjusted)
+    return {"id": payment_id, "reversed": True, "bill_adjusted": bill_id, "bills_adjusted": bills_adjusted,
+            "journal_reversed": journal_id}
