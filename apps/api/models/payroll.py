@@ -92,6 +92,7 @@ class EmployeeIn(BaseModel):
 
 class EmployeeUpdateIn(BaseModel):
     name: Optional[str] = None
+    pan: Optional[str] = None
     aadhaar_last4: Optional[str] = None
     gender: Optional[str] = None
     designation: Optional[str] = None
@@ -99,6 +100,7 @@ class EmployeeUpdateIn(BaseModel):
     basic_paise: Optional[int] = None
     hra_percent: Optional[float] = None
     da_percent: Optional[float] = None
+    other_allowances_paise: Optional[int] = None
     lta_paise: Optional[int] = None
     medical_paise: Optional[int] = None
     special_allowance_paise: Optional[int] = None
@@ -117,6 +119,18 @@ class EmployeeUpdateIn(BaseModel):
     @classmethod
     def normalize_gender(cls, v: Optional[str]) -> Optional[str]:
         return _normalize_gender(v)
+
+    @field_validator("status")
+    @classmethod
+    def valid_status(cls, v: Optional[str]) -> Optional[str]:
+        # Mirrors the payroll_employees.status CHECK; reject bad values up front
+        # rather than letting them hit the DB constraint as an opaque 500.
+        if v is None:
+            return v
+        s = v.strip().lower()
+        if s not in ("active", "resigned", "terminated"):
+            raise ValueError("status must be one of: active, resigned, terminated.")
+        return s
 
     @field_validator("aadhaar_last4")
     @classmethod

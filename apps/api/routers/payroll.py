@@ -302,15 +302,22 @@ def _compute_tds_192(taxable_annual_paise: int, fy: Optional[str] = None) -> int
 @router.get("/employees")
 def list_employees(
     client_id: Optional[str] = Query(None),
+    include_inactive: bool = Query(False),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """client_id is optional — a firm-wide payroll dashboard lists every
     client's employees in one call; a per-client workspace passes client_id
-    to scope the result."""
+    to scope the result.
+
+    include_inactive=True also returns resigned/terminated employees (for the
+    Employees roster's "show inactive" toggle); default keeps the historical
+    active-only behaviour so existing dashboard/run callers are unaffected."""
     db = _db()
     if not db:
         return api_response(True, [])
-    q = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("status", "active")
+    q = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"])
+    if not include_inactive:
+        q = q.eq("status", "active")
     if client_id:
         q = q.eq("client_id", client_id)
     res = q.order("name").execute()
@@ -349,6 +356,40 @@ def update_employee(
         return api_response(True, update)
     row = db.table("payroll_employees").update(update).eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
     return api_response(True, (row.data or [{}])[0])
+
+
+@router.delete("/employees/{employee_id}")
+def delete_employee(
+    employee_id: str,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Hard-delete an employee — allowed ONLY when they have never appeared in a
+    payroll run. An employee with payslips is part of the statutory record (Form
+    16, 24Q, PF/ESI returns) and must be preserved: the caller should deactivate
+    (PATCH status=resigned/terminated) instead, so history stays intact. Mirrors
+    the customer/vendor "delete-if-unused, else deactivate" guard."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": employee_id, "deleted": True})
+
+    # Firm-scoped existence check (maybe_single: another firm's row 404s as missing).
+    emp = (db.table("payroll_employees").select("id, name, client_id")
+           .eq("id", employee_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    slip = (db.table("payroll_slips").select("id")
+            .eq("employee_id", employee_id).limit(1).execute().data)
+    if slip:
+        raise HTTPException(
+            status_code=409,
+            detail="This employee has payroll history and cannot be deleted. Deactivate them (mark resigned/terminated) instead.",
+        )
+
+    db.table("payroll_employees").delete().eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
+    timeline_service.log(emp["client_id"], "work", "Employee Deleted",
+        f"{emp.get('name', 'Employee')} removed from payroll (no payroll history)", "info")
+    return api_response(True, {"id": employee_id, "deleted": True})
 
 
 # ─── Salary Structures ────────────────────────────────────────────────────────

@@ -351,12 +351,19 @@ export const api = {
   payroll: {
     // client_id omitted -> every client in the firm (firm-wide dashboard);
     // client_id given -> scoped to one client (per-client workspace).
-    listEmployees: (clientId?: string) =>
-      request(`/api/payroll/employees${clientId ? `?client_id=${clientId}` : ""}`),
+    listEmployees: (clientId?: string, includeInactive?: boolean) => {
+      const p = new URLSearchParams();
+      if (clientId) p.set("client_id", clientId);
+      if (includeInactive) p.set("include_inactive", "true");
+      const qs = p.toString();
+      return request(`/api/payroll/employees${qs ? `?${qs}` : ""}`);
+    },
     createEmployee: (body: unknown) =>
       request("/api/payroll/employees", { method: "POST", body: JSON.stringify(body) }),
     updateEmployee: (id: string, body: unknown) =>
       request(`/api/payroll/employees/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deleteEmployee: (id: string) =>
+      request(`/api/payroll/employees/${id}`, { method: "DELETE" }),
     listRuns: (clientId?: string) =>
       request(`/api/payroll/runs${clientId ? `?client_id=${clientId}` : ""}`),
     createRun: (body: { client_id: string; month: string }) =>
