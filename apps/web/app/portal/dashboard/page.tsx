@@ -219,6 +219,19 @@ export default function PortalDashboardPage() {
       </div>
     );
   }
+  // A successful memberships() call with zero results (deactivated access, or
+  // an invite that was never accepted) isn't a fetch `error` — but with no
+  // memberships, activeClient never gets set and the branch below falls
+  // through to `!dash ? <PageLoader />`, spinning forever with nothing to load
+  // it out of that state. Show the same "ask your accountant" message instead.
+  if (memberships.length === 0) {
+    return (
+      <div className="p-8 max-w-md">
+        <p className="text-sm text-gray-600">You don&apos;t have access to a client portal right now.</p>
+        <p className="text-xs text-gray-400 mt-2">If you believe you should have access, ask your accountant to invite you.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-5xl">

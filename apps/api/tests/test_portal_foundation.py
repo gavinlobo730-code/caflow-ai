@@ -25,8 +25,10 @@ def _isolate(monkeypatch):
     import services.audit_service as au
     monkeypatch.setattr(au, "log_event", lambda *a, **k: audit.append((a, k)))
     import services.email_service as es
-    monkeypatch.setattr(es, "_send", lambda *a, **k: True)
-    yield {"audit": audit}
+    sent_emails: list = []
+    monkeypatch.setattr(es, "_send", lambda to, subject, html: sent_emails.append(
+        {"to": to, "subject": subject, "html": html}) or True)
+    yield {"audit": audit, "sent_emails": sent_emails}
     pa.reset_mock_stores()
 
 
@@ -94,6 +96,23 @@ def test_membership_listing_never_auto_binds_a_matching_email(_isolate):
         assert pa.list_portal_memberships("uid-STRANGER", "a@c.test") == []
     bound = pa.MOCK_PORTAL_CONTACTS[0]
     assert bound.get("auth_user_id") is None and bound["status"] == "invited"
+
+
+def test_invite_email_links_to_activate_not_dashboard(_isolate, monkeypatch):
+    """The invite/resend email must send the client to the password-setting
+    activation page, not straight to the dashboard (which has no login form —
+    see portal_access_service._send_invite_email's own comment)."""
+    monkeypatch.delenv("PORTAL_BASE_URL", raising=False)
+    c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    assert len(_isolate["sent_emails"]) == 1
+    html = _isolate["sent_emails"][0]["html"]
+    assert "/portal/activate?invite=" in html
+    assert "/portal/dashboard" not in html
+    assert c["invite_token"] in html
+
+    pa.resend_invite(FIRM, c["id"], actor=ACTOR)
+    assert len(_isolate["sent_emails"]) == 2
+    assert "/portal/activate?invite=" in _isolate["sent_emails"][1]["html"]
 
 
 def test_accept_invite_wrong_token_rejected(_isolate):

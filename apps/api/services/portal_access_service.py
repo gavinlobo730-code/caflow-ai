@@ -197,14 +197,22 @@ def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: s
         # F22 fix: previously defaulted to https://.../portal — the legacy,
         # pre-Phase-4.5.1 page that never learned about invite tokens (it only
         # understood ?client=, and its own auto-bind was against the un-tokened
-        # clients.portal_user_id link). The token-gated accept-invite flow lives
-        # on the dashboard route (POST /api/portal/accept-invite, consumed by
-        # portal/dashboard/page.tsx) — that is the only page this link may point to.
-        base = os.environ.get("PORTAL_BASE_URL", "https://caflow-ai.pages.dev/portal/dashboard")
+        # clients.portal_user_id link). The token-gated accept-invite flow now
+        # lives on a dedicated activation route (POST /api/portal/accept-invite,
+        # consumed by portal/activate/page.tsx, which also collects the client's
+        # password) — that is the only page this link may point to. A client who
+        # re-clicks an already-accepted link there is simply redirected on to
+        # their dashboard instead of erroring.
+        #
+        # NOTE: if PORTAL_BASE_URL is set explicitly in the deployment environment
+        # (e.g. Render), it must be updated there too — this default only applies
+        # when the env var is unset.
+        base = os.environ.get("PORTAL_BASE_URL", "https://caflow-ai.pages.dev/portal/activate")
         link = f"{base}?invite={invite_token}"
         _send(email, "You've been invited to your accountant's client portal",
               f'<p>You have been granted access to your secure client portal.</p>'
-              f'<p><a href="{link}">Open the portal</a> and sign in with this email to continue.</p>'
+              f'<p><a href="{link}">Set up your account</a> — you\'ll choose a password so you can '
+              f'sign in any time at practicesync.com/portal/login.</p>'
               f'<p>This link expires in 14 days.</p>')
     except Exception:  # pragma: no cover - email is best-effort
         pass
