@@ -72,49 +72,103 @@ _PT_SLABS_WB = [
     (40000_01,  None,     200_00),    # > ₹40,000     → ₹200
 ]
 
-# ⚠️ Maharashtra & Tamil Nadu: the slabs below are KNOWN INCORRECT and are
-# retained only so an existing pt_state="MH"/"TN" employee still yields *some*
-# figure until the correct model lands. Their statutory rules cannot be
-# expressed by a plain monthly-gross→monthly-tax table:
-#   • Maharashtra (Prof. Tax Act 1975, Sch. I): ₹175 for ₹7,501–₹10,000 and
-#     ₹200 above ₹10,000 BUT ₹300 in February (annual cap ₹2,500); women are
-#     exempt up to ₹25,000/month (w.e.f. 01-Apr-2023). The February rule needs
-#     the payroll month (available) and the women's exemption needs an employee
-#     GENDER field (not yet modelled — adding it is a pending product decision).
-#   • Tamil Nadu (TN Municipal Laws / Greater Chennai Corp, rev. Oct-2024):
-#     levied HALF-YEARLY on half-yearly income (₹21,000 is a 6-month figure,
-#     not monthly), as a lump sum — a different basis entirely. Correct
-#     modelling (half-yearly accrual + deduction schedule + local body) is a
-#     pending decision. The old "> ₹21,000/month → ₹208" wildly under-charges.
-_PT_SLABS_MH = [
-    (0,       1000000, 0),
-    (1000001, None,    20000),   # KNOWN-WRONG placeholder — see note above
-]
-_PT_SLABS_TN = [
-    (0,       2100000, 0),
-    (2100001, None,    20800),   # KNOWN-WRONG placeholder — see note above
+# Maharashtra: Maharashtra State Tax on Professions, Trades, Callings and
+# Employments Act, 1975, Schedule I (salary & wage earners). Unlike KA/WB it is
+# NOT a plain monthly-gross slab — two statutory twists are handled in
+# _compute_pt_mh below rather than a table:
+#   • February differential: the top (>₹10,000) tier pays ₹300 in February and
+#     ₹200 in the other 11 months, so the year totals the ₹2,500 cap.
+#   • Women's exemption (w.e.f. 01-Apr-2023): women earning ≤ ₹25,000/month pay
+#     nil. Needs the employee's gender; an unspecified gender defaults to the
+#     standard (non-exempt) slab — we never grant an exemption we can't
+#     substantiate (that would under-withhold).
+# The men's/base slab itself: ≤₹7,500 nil, ₹7,501–₹10,000 → ₹175, >₹10,000 → ₹200.
+_MH_NIL_MAX          = 7500_00     # ≤ this → Nil (base slab)
+_MH_175_MAX          = 10000_00    # ₹7,501–₹10,000 → ₹175
+_MH_MID_TAX          = 175_00
+_MH_TOP_TAX          = 200_00      # >₹10,000, 11 months
+_MH_TOP_TAX_FEBRUARY = 300_00      # >₹10,000, February only
+_MH_WOMEN_EXEMPT_MAX = 25000_00    # women ≤ this → Nil (w.e.f. 01-Apr-2023)
+
+# Tamil Nadu: TN Municipal Laws (Second Amendment) Act 1998 / Greater Chennai
+# Corporation profession-tax schedule. TN is levied HALF-YEARLY on HALF-YEARLY
+# income (each band below is a 6-month figure and a 6-month tax), remitted by
+# 30 Sep (Apr–Sep) and 31 Mar (Oct–Mar). We therefore deduct the whole
+# half-yearly amount in the September (month 9) and March (month 3) payroll
+# runs and nil otherwise — this is common payroll practice, matches the
+# remittance cycle, and reconciles to the exact liability with no paise drift.
+# Half-yearly income is approximated as 6 × the run-month gross (the slip engine
+# is stateless per month, so it cannot sum the half-year's actual earnings).
+#
+# ⚠️ AMOUNTS PENDING CA CONFIRMATION: these are the long-standing Greater Chennai
+# Corporation half-yearly amounts. A revision was notified for H2 FY2024-25
+# (reported middle-band amounts ₹180 / ₹425 / ₹930) but public reporting is
+# inconsistent and local bodies outside Chennai differ. Confirm the current
+# local-body amounts before relying on TN withholding; they are isolated here
+# for a one-line swap. Thresholds are HALF-YEARLY rupees.
+_PT_SLABS_TN_HALF_YEARLY = [
+    (0,          21000_00,   0),        # ≤ ₹21,000 (6-mo) → Nil
+    (21000_01,   30000_00,  135_00),    # ₹21,001–₹30,000 → ₹135
+    (30000_01,   45000_00,  315_00),    # ₹30,001–₹45,000 → ₹315
+    (45000_01,   60000_00,  690_00),    # ₹45,001–₹60,000 → ₹690
+    (60000_01,   75000_00, 1025_00),    # ₹60,001–₹75,000 → ₹1,025
+    (75000_01,   None,     1250_00),    # > ₹75,000       → ₹1,250
 ]
 
+# States whose PT is a plain monthly-gross → monthly-tax slab.
 _PT_SLABS_BY_STATE = {
     "KA": _PT_SLABS_KA,
-    "MH": _PT_SLABS_MH,
     "WB": _PT_SLABS_WB,
-    "TN": _PT_SLABS_TN,
 }
 
+_FEMALE_TOKENS = {"f", "female", "woman", "women", "w"}
 
-def _compute_pt(gross_paise: int, state: Optional[str] = None) -> int:
-    """Professional Tax per month in paise. IT Act §16(iii) — PT actually paid
-    is deductible from salary income; the PT liability itself is fixed by the
-    employee's state (see _PT_SLABS_BY_STATE above). An unset or unrecognised
-    state has no known slab in this build and returns 0 rather than silently
-    falling back to any one state's rate — the CA must set pt_state explicitly
-    on the employee for PT to be withheld."""
-    slabs = _PT_SLABS_BY_STATE.get((state or "").strip().upper(), ())
+
+def _slab_lookup(slabs, amount_paise: int) -> int:
     for low, high, tax in slabs:
-        if gross_paise >= low and (high is None or gross_paise <= high):
+        if amount_paise >= low and (high is None or amount_paise <= high):
             return tax
     return 0
+
+
+def _compute_pt_mh(gross_paise: int, month: Optional[int], gender: Optional[str]) -> int:
+    """Maharashtra PT (Act 1975, Sch. I) — see the _MH_* constants above."""
+    is_february = (month == 2)
+    top = _MH_TOP_TAX_FEBRUARY if is_february else _MH_TOP_TAX
+    if (gender or "").strip().lower() in _FEMALE_TOKENS:
+        # Women: exempt up to ₹25,000/month; above that, same top rate as men.
+        return 0 if gross_paise <= _MH_WOMEN_EXEMPT_MAX else top
+    # Base/men's slab (also the default when gender is unspecified).
+    if gross_paise <= _MH_NIL_MAX:
+        return 0
+    if gross_paise <= _MH_175_MAX:
+        return _MH_MID_TAX
+    return top
+
+
+def _compute_pt_tn(gross_paise: int, month: Optional[int]) -> int:
+    """Tamil Nadu PT — half-yearly levy deducted in Sep (month 9) and Mar (month
+    3) only; nil in the other months. Half-yearly income ≈ 6 × monthly gross."""
+    if month not in (9, 3):
+        return 0
+    return _slab_lookup(_PT_SLABS_TN_HALF_YEARLY, gross_paise * 6)
+
+
+def _compute_pt(gross_paise: int, state: Optional[str] = None,
+                month: Optional[int] = None, gender: Optional[str] = None) -> int:
+    """Professional Tax for the run month in paise. IT Act §16(iii) — PT actually
+    paid is deductible from salary income; the PT liability itself is fixed by
+    the employee's state. KA/WB are plain monthly slabs; MH and TN have their
+    own rules (February differential + women's exemption / half-yearly levy) and
+    take the payroll `month` (1-12) and, for MH, the employee `gender`. An unset
+    or unrecognised state returns 0 rather than falling back to any one state's
+    rate — the CA must set pt_state explicitly for PT to be withheld."""
+    code = (state or "").strip().upper()
+    if code == "MH":
+        return _compute_pt_mh(gross_paise, month, gender)
+    if code == "TN":
+        return _compute_pt_tn(gross_paise, month)
+    return _slab_lookup(_PT_SLABS_BY_STATE.get(code, ()), gross_paise)
 
 
 def _compute_pf(basic_paise: int) -> dict:
@@ -143,13 +197,17 @@ def _compute_esi(gross_paise: int) -> dict:
     return {"employee": employee, "employer": employer}
 
 
-def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None) -> dict:
+def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None,
+                  pt_month: Optional[int] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
     projected / 12). `fy` should be the financial year the payroll month
     falls in (see current_fy()) so a retroactively-run payroll for an earlier
     FY doesn't pick up a later year's rates; defaults to today's FY if omitted.
+    `pt_month` is the calendar month (1-12) of the payroll run — required for the
+    states whose Professional Tax depends on the month (Maharashtra's February
+    differential, Tamil Nadu's Sep/Mar half-yearly deduction).
     """
     working_days  = (attendance or {}).get("working_days", 26)
     days_present  = (attendance or {}).get("days_present", 26)
@@ -172,7 +230,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
 
     pf   = _compute_pf(basic) if emp.get("pf_applicable") else {"employee": 0, "employer": 0}
     esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
-    pt   = _compute_pt(gross, emp.get("pt_state")) if emp.get("pt_applicable") else 0
+    pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender")) if emp.get("pt_applicable") else 0
 
     # IT Act §192: simplified monthly TDS = annual tax on (projected annual
     # gross - standard deduction) / 12. Standard deduction and slabs come
@@ -388,7 +446,7 @@ def create_run(
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
-        slip = _compute_slip(emp, attendance, fy=fy)
+        slip = _compute_slip(emp, attendance, fy=fy, pt_month=m)
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
 
