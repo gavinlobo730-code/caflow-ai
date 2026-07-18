@@ -12,6 +12,23 @@
   html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; font-family: 'Manrope', sans-serif; }
   a { color: inherit; text-decoration: none; }
   @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
+
+  /* Same "everything collapses to static" rule the rest of the site uses
+     (app/globals.css) — this page just has its own vanilla-JS equivalents of
+     the same classes, so it needs its own copy of the override. Entrance
+     reveals show their final state instantly; ambient/interactive motion
+     (ticker, scroll cue, tilt, magnetic pull) stops. The JS side skips
+     binding those same interactions (see the prefersReducedMotion checks in
+     the script below) so this isn't just visual — the listeners never
+     attach and the globe's autonomous spin never starts. */
+  @media (prefers-reduced-motion: reduce) {
+    .focus-reveal, .hero-fade, .scroll-reveal, .kinetic-line span {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+    .scroll-cue { animation: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -79,7 +96,7 @@
         </div>
       </div>
       <div style="position:absolute; bottom:36px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:10px; opacity:0.45; z-index:1;">
-        <div style="width:1px; height:38px; background:currentColor; animation:bob 2s ease-in-out infinite;"></div>
+        <div class="scroll-cue" style="width:1px; height:38px; background:currentColor; animation:bob 2s ease-in-out infinite;"></div>
         <span style="font:500 10px/1 'Manrope',sans-serif; letter-spacing:0.16em;">SCROLL</span>
       </div>
     </section>
@@ -217,6 +234,11 @@
   var wordIdx = 0;
   var statsStarted = false;
   var loaderDone = false;
+  // Same accessibility check the React pages make via usePrefersReducedMotion()
+  // (components/motion.tsx) — gates every autonomous/interactive motion below
+  // (parallax, tilt, magnetic pull, cursor-glow, ticker, globe spin), matching
+  // that hook's behavior 1:1 since this page can't share the React hook itself.
+  var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var scrollTarget = 0, scrollCurrent = 0, maxScroll = 0;
   var mouseClientX = 0, mouseClientY = 0;
@@ -348,6 +370,7 @@
   }
 
   function applyGlow() {
+    if (prefersReducedMotion) return;
     var vh = window.innerHeight;
     glowEls.forEach(function (g) {
       var rect = g.getBoundingClientRect();
@@ -393,7 +416,7 @@
   }
 
   function updateMarquee() {
-    if (!marqueeEl) return;
+    if (!marqueeEl || prefersReducedMotion) return;
     if (!marqueeHalfWidth) {
       var first = marqueeEl.children[0];
       if (first) marqueeHalfWidth = first.getBoundingClientRect().width;
@@ -521,22 +544,26 @@
       // the cursor: letting the pointer tug the globe's rotation made the
       // particle inflow read as jittery and "disturbed" rather than a calm,
       // continuous drift, so the mouse no longer influences it.
-      group.rotation.y += 0.0016;
-      group.rotation.x += 0.0006;
+      // Skipped entirely under reduced motion — the globe still renders, just
+      // frozen in its initial pose, instead of spinning indefinitely.
+      if (!prefersReducedMotion) {
+        group.rotation.y += 0.0016;
+        group.rotation.x += 0.0006;
 
-      rings.forEach(function (ring) { ring.rotation.z += ring.userData.speed; });
+        rings.forEach(function (ring) { ring.rotation.z += ring.userData.speed; });
 
-      var posAttr = particles.geometry.attributes.position;
-      var arr = posAttr.array;
-      for (var i = 0; i < particleCount; i++) {
-        var ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-        var x = arr[ix], y = arr[iy], z = arr[iz];
-        var len = Math.sqrt(x * x + y * y + z * z) || 1;
-        var speed = 0.008;
-        x -= (x / len) * speed; y -= (y / len) * speed; z -= (z / len) * speed;
-        if (len < 0.45) { resetParticle(arr, i); } else { arr[ix] = x; arr[iy] = y; arr[iz] = z; }
+        var posAttr = particles.geometry.attributes.position;
+        var arr = posAttr.array;
+        for (var i = 0; i < particleCount; i++) {
+          var ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+          var x = arr[ix], y = arr[iy], z = arr[iz];
+          var len = Math.sqrt(x * x + y * y + z * z) || 1;
+          var speed = 0.008;
+          x -= (x / len) * speed; y -= (y / len) * speed; z -= (z / len) * speed;
+          if (len < 0.45) { resetParticle(arr, i); } else { arr[ix] = x; arr[iy] = y; arr[iz] = z; }
+        }
+        posAttr.needsUpdate = true;
       }
-      posAttr.needsUpdate = true;
 
       var p = Math.min(1, Math.max(0, -heroRect.top / (heroRect.height * 0.9)));
       camera.position.z = 7 - p * 2.6;
@@ -555,8 +582,10 @@
     canvasEl = document.getElementById('hero-canvas');
     grainEl = document.getElementById('grain');
 
-    document.querySelectorAll('.parallax-slow').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.05 }); });
-    document.querySelectorAll('.parallax-med').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.11 }); });
+    if (!prefersReducedMotion) {
+      document.querySelectorAll('.parallax-slow').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.05 }); });
+      document.querySelectorAll('.parallax-med').forEach(function (el) { parallaxEls.push({ el: el, factor: 0.11 }); });
+    }
     // Headings and paragraphs use the same "plays once" reveal as the rest of
     // the site: they start nudged down and invisible, then transition in ONE
     // TIME (via CSS transition, not a per-frame recompute) when they scroll
@@ -592,8 +621,10 @@
       heroFadeEls.push(el);
     });
     document.querySelectorAll('.glow-layer').forEach(function (el) { glowEls.push(el); });
-    document.querySelectorAll('.tilt-card').forEach(bindCardTilt);
-    document.querySelectorAll('.magnetic').forEach(bindMagnetic);
+    if (!prefersReducedMotion) {
+      document.querySelectorAll('.tilt-card').forEach(bindCardTilt);
+      document.querySelectorAll('.magnetic').forEach(bindMagnetic);
+    }
     document.querySelectorAll('.anchor-link').forEach(bindAnchorLink);
 
     setupGrain();
