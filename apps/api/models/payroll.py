@@ -9,6 +9,24 @@ from typing import Optional
 import re
 
 
+def _normalize_gender(v: Optional[str]) -> Optional[str]:
+    """Normalize free-text gender to a canonical 'male'/'female'/'other'/None.
+    Used for Maharashtra Professional Tax, where women earning ≤ ₹25,000/month
+    are exempt (w.e.f. 01-Apr-2023). An unset gender stays None and is treated
+    as non-exempt by the PT engine (we never grant an exemption we can't
+    substantiate)."""
+    if v is None:
+        return None
+    s = v.strip().lower()
+    if not s:
+        return None
+    if s in {"m", "male", "man"}:
+        return "male"
+    if s in {"f", "female", "woman", "women", "w"}:
+        return "female"
+    return "other"
+
+
 class EmployeeIn(BaseModel):
     client_id: str
     name: str
@@ -16,6 +34,7 @@ class EmployeeIn(BaseModel):
     # Privacy-by-design: we store ONLY the last 4 digits of Aadhaar, never the full
     # number (UIDAI norms). The full value must never reach the backend.
     aadhaar_last4: Optional[str] = None
+    gender: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
     joining_date: Optional[str] = None
@@ -65,10 +84,16 @@ class EmployeeIn(BaseModel):
             raise ValueError("Paise values must be non-negative.")
         return v
 
+    @field_validator("gender")
+    @classmethod
+    def normalize_gender(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_gender(v)
+
 
 class EmployeeUpdateIn(BaseModel):
     name: Optional[str] = None
     aadhaar_last4: Optional[str] = None
+    gender: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
     basic_paise: Optional[int] = None
@@ -87,6 +112,11 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
+
+    @field_validator("gender")
+    @classmethod
+    def normalize_gender(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_gender(v)
 
     @field_validator("aadhaar_last4")
     @classmethod

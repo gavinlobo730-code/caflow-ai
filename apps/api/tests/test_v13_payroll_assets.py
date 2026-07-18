@@ -102,20 +102,55 @@ class TestPT:
         assert _compute_pt(4000001, "WB") == 20000   # ₹40,000.01     → ₹200
         assert _compute_pt(10000000, "WB") == 20000  # ₹1,00,000      → ₹200
 
-    def test_pt_maharashtra_placeholder(self):
-        """CHARACTERIZATION ONLY — pins the current MH *placeholder* output, which
-        is KNOWN INCORRECT (see _PT_SLABS_MH note: MH needs the ₹175 tier, the
-        February ₹300 rule, and a gender field for the women's exemption). Update
-        this test when the correct MH model lands."""
-        assert _compute_pt(1000000, "MH") == 0
-        assert _compute_pt(1000001, "MH") == 20000
+    def test_pt_maharashtra_base_slab(self):
+        """Maharashtra base/men's slab (Act 1975, Sch. I): ≤₹7,500 Nil, ₹7,501–
+        ₹10,000 → ₹175, >₹10,000 → ₹200. An unspecified gender uses this slab
+        (we never grant the women's exemption we can't substantiate)."""
+        assert _compute_pt(750000, "MH") == 0          # ₹7,500  → Nil
+        assert _compute_pt(750100, "MH") == 17500      # ₹7,501  → ₹175
+        assert _compute_pt(1000000, "MH") == 17500     # ₹10,000 → ₹175
+        assert _compute_pt(1000100, "MH") == 20000     # ₹10,001 → ₹200
+        assert _compute_pt(5000000, "MH") == 20000     # ₹50,000 → ₹200
+        assert _compute_pt(800000, "MH", gender="male") == 17500  # explicit male
 
-    def test_pt_tamil_nadu_placeholder(self):
-        """CHARACTERIZATION ONLY — pins the current TN *placeholder* output, which
-        is KNOWN INCORRECT (see _PT_SLABS_TN note: TN is a half-yearly, local-body
-        levy on half-yearly income, not a monthly slab). Update when TN is modelled."""
-        assert _compute_pt(2100000, "TN") == 0
-        assert _compute_pt(2100001, "TN") == 20800
+    def test_pt_maharashtra_february_top_up(self):
+        """Only the >₹10,000 tier pays ₹300 in February (₹200 the other 11 months,
+        totalling the ₹2,500 cap). The ₹175 tier has no February bump."""
+        assert _compute_pt(1200000, "MH", month=2) == 30000   # Feb, >₹10k → ₹300
+        assert _compute_pt(1200000, "MH", month=3) == 20000   # Mar        → ₹200
+        assert _compute_pt(800000, "MH", month=2) == 17500    # ₹175 tier, Feb → ₹175
+
+    def test_pt_maharashtra_women_exemption(self):
+        """Women earning ≤₹25,000/month are exempt (w.e.f. 01-Apr-2023); above that
+        they pay the same rate as men (₹200, ₹300 in February)."""
+        assert _compute_pt(800000, "MH", gender="female") == 0        # ₹8,000  → exempt
+        assert _compute_pt(2500000, "MH", gender="female") == 0       # ₹25,000 → exempt
+        assert _compute_pt(2500100, "MH", gender="female") == 20000   # ₹25,001 → ₹200
+        assert _compute_pt(3000000, "MH", gender="female", month=2) == 30000  # Feb → ₹300
+
+    def test_pt_tamil_nadu_only_sep_and_mar(self):
+        """TN PT is a half-yearly levy — nil every month except the remittance
+        months September (9) and March (3); nil too when no month is supplied."""
+        for m in (1, 2, 4, 5, 6, 7, 8, 10, 11, 12):
+            assert _compute_pt(5000000, "TN", month=m) == 0
+        assert _compute_pt(5000000, "TN") == 0
+
+    def test_pt_tamil_nadu_half_yearly_slab(self):
+        """In Sep/Mar the whole half-yearly amount is deducted, keyed on half-yearly
+        income ≈ 6 × monthly gross (Greater Chennai Corp schedule)."""
+        assert _compute_pt(350000, "TN", month=9) == 0        # ₹3,500 → ₹21,000/6mo → Nil
+        assert _compute_pt(350100, "TN", month=9) == 13500    # just over → ₹135
+        assert _compute_pt(400000, "TN", month=3) == 13500    # ₹4,000  → ₹24,000 → ₹135
+        assert _compute_pt(600000, "TN", month=9) == 31500    # ₹6,000  → ₹36,000 → ₹315
+        assert _compute_pt(900000, "TN", month=9) == 69000    # ₹9,000  → ₹54,000 → ₹690
+        assert _compute_pt(1200000, "TN", month=9) == 102500  # ₹12,000 → ₹72,000 → ₹1,025
+        assert _compute_pt(1500000, "TN", month=9) == 125000  # ₹15,000 → ₹90,000 → ₹1,250
+
+    def test_pt_ka_wb_ignore_month_and_gender(self):
+        """KA/WB are plain monthly slabs — the month and gender arguments must
+        never change their result."""
+        assert _compute_pt(3000000, "KA", month=2, gender="female") == 20000
+        assert _compute_pt(1200000, "WB", month=2, gender="female") == 11000
 
     def test_pt_unrecognised_state_is_zero_not_karnataka(self):
         """An unknown state code must not silently fall back to Karnataka's

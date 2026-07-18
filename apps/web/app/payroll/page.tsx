@@ -22,6 +22,7 @@ const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
   { key: "pan",                     label: "PAN",                 required: true,  hint: "e.g. AABCU9603R" },
   { key: "designation",             label: "Designation",         required: false, hint: "e.g. Senior Associate" },
+  { key: "gender",                  label: "Gender",              required: false, hint: "Male | Female | Other (for MH PT)" },
   { key: "client_name",             label: "Client Name",         required: true,  hint: "Must match existing client" },
   { key: "basic_rs",                label: "Basic Salary (₹/mo)", required: true,  hint: "e.g. 30000" },
   { key: "hra_percent",             label: "HRA %",               required: false, hint: "e.g. 40" },
@@ -62,6 +63,7 @@ type Employee = {
   esi_applicable: boolean;
   pt_applicable?: boolean;
   pt_state?: string | null;
+  gender?: string | null;
 };
 
 type PayrollRun = {
@@ -119,10 +121,10 @@ function employeeGrossPaise(emp: Employee): number {
 // PT computation; the frontend no longer computes PT itself — see R2.10).
 const PT_STATES = [
   { code: "NONE", label: "No Professional Tax" },
-  { code: "MH", label: "Maharashtra — Rs 175–200/month (approx, under revision)" },
+  { code: "MH", label: "Maharashtra — Rs 175/200/mo (Feb Rs 300); women ≤ Rs 25k exempt" },
   { code: "KA", label: "Karnataka — Rs 200/month if ≥ Rs 25,000" },
   { code: "WB", label: "West Bengal — Rs 110–200/month slab (> Rs 10,000)" },
-  { code: "TN", label: "Tamil Nadu — half-yearly levy (approx, under revision)" },
+  { code: "TN", label: "Tamil Nadu — half-yearly (Chennai), deducted Sep & Mar" },
 ];
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────
@@ -350,6 +352,7 @@ function AddEmployeeModal({
     client_id: clients[0]?.id ?? "",
     name: "",
     pan: "",
+    gender: "",
     designation: "",
     basic_rs: "",
     hra_percent: "40",
@@ -371,6 +374,7 @@ function AddEmployeeModal({
         client_id: form.client_id,
         name: form.name,
         pan: form.pan.toUpperCase() || null,
+        gender: form.gender || null,
         designation: form.designation || null,
         basic_paise: rsToP(parseFloat(form.basic_rs) || 0),
         hra_percent: parseFloat(form.hra_percent) || 0,
@@ -421,6 +425,16 @@ function AddEmployeeModal({
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Designation</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Gender</label>
+            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
+              <option value="">Not specified</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+            <p className="text-[10px] text-[#94A3B8] mt-1">Used for Maharashtra PT — women earning ≤ ₹25,000/month are exempt.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Basic Salary (Rs/month) *</label>
@@ -1202,6 +1216,7 @@ export default function PayrollPage() {
                   client_id: client.id,
                   name: row.name,
                   pan: row.pan?.toUpperCase() || null,
+                  gender: row.gender || null,
                   designation: row.designation || "",
                   basic_paise: Math.round(parseFloat(row.basic_rs ?? "0") * 100),
                   hra_percent: parseFloat(row.hra_percent ?? "40"),
