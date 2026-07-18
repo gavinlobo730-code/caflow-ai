@@ -508,8 +508,10 @@ class _FakeEntriesQuery:
     def select(self, cols): self._cols = cols; return self
     def eq(self, *a, **k): return self
     def is_(self, *a, **k): return self
+    def gt(self, *a, **k): return self
     def order(self, *a, **k): return self
     def range(self, *a, **k): return self
+    def limit(self, *a, **k): return self
 
     def execute(self):
         if "reversal_of" in self._cols:
@@ -574,8 +576,10 @@ class _GenericQuery:
     def or_(self, *a, **k): return self
     def is_(self, *a, **k): return self
     def in_(self, *a, **k): return self
+    def gt(self, *a, **k): return self
     def order(self, *a, **k): return self
     def range(self, *a, **k): return self
+    def limit(self, *a, **k): return self
 
     def execute(self):
         return _FakeExec(self._resolver(self._table, self._cols))

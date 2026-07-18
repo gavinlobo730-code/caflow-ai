@@ -147,8 +147,10 @@ class _Q:
     def or_(self, *_a, **_k): return self
     def in_(self, *_a, **_k): self.f.append(("__none__", object())); return self
     def is_(self, k, _v): self.f.append((k, None)); return self   # deleted_at IS NULL
+    def gt(self, *_a, **_k): return self
     def order(self, *_a, **_k): return self
     def range(self, *_a, **_k): return self
+    def limit(self, *_a, **_k): return self
     def execute(self):
         out = []
         for r in self.rows:

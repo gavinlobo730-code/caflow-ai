@@ -23,6 +23,8 @@ class _Query:
         self.store, self.t = store, table
         self.filters = []
         self._range = None
+        self._order = None
+        self._limit = None
         self._mode = "select"
         self._rows = None
 
@@ -31,8 +33,10 @@ class _Query:
     def eq(self, k, v): self.filters.append((k, v)); return self
     def is_(self, k, _v): self.filters.append((k, "__null__")); return self
     def or_(self, *_a, **_k): return self
-    def order(self, *_a, **_k): return self
+    def gt(self, k, v): self.filters.append((k, ("__gt__", v))); return self
+    def order(self, col=None, *_a, **_k): self._order = col; return self
     def range(self, a, b): self._range = (a, b); return self
+    def limit(self, n): self._limit = n; return self
     def in_(self, k, vals): self.filters.append((k, ("__in__", set(vals)))); return self
 
     # write builders
@@ -53,6 +57,9 @@ class _Query:
             elif isinstance(v, tuple) and v[0] == "__in__":
                 if r.get(k) not in v[1]:
                     return False
+            elif isinstance(v, tuple) and v[0] == "__gt__":
+                if not (r.get(k) is not None and str(r.get(k)) > str(v[1])):
+                    return False
             elif r.get(k) != v:
                 return False
         return True
@@ -66,9 +73,13 @@ class _Query:
             self.store[self.t] = [r for r in table if not self._match(r)]
             return _Res([])
         rows = [dict(r) for r in table if self._match(r)]
+        if self._order is not None:                      # keyset paging needs stable ascending order
+            rows.sort(key=lambda r: str(r.get(self._order)))
         if self._range is not None:
             a, b = self._range
             rows = rows[a:b + 1]
+        if self._limit is not None:
+            rows = rows[:self._limit]
         return _Res(rows)
 
 

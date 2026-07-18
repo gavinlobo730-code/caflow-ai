@@ -18,19 +18,23 @@ class _Res:
 
 
 class _CapQuery:
-    """Simulates PostgREST: an un-ranged select is hard-capped at CAP rows; a
-    ranged select returns exactly that slice."""
+    """Simulates PostgREST: an un-ranged/un-limited select is hard-capped at CAP
+    rows; a .limit()/.range() select returns exactly that slice. Supports keyset
+    paging (.gt + .limit over an ascending .order)."""
     def __init__(self, store, table):
         self.store, self.t = store, table
         self.f = []; self._range = None; self._cols = ""
+        self._order = None; self._limit = None
     def select(self, cols="*", **k): self._cols = cols; return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def is_(self, k, _v): self.f.append((k, "__null__")); return self
     def in_(self, k, vals): self.f.append((k, ("__in__", set(vals)))); return self
+    def gt(self, k, v): self.f.append((k, ("__gt__", v))); return self
     def or_(self, *_a, **_k): return self
     def ilike(self, *_a, **_k): return self
-    def order(self, *_a, **_k): return self
+    def order(self, col=None, *_a, **_k): self._order = col; return self
     def range(self, a, b): self._range = (a, b); return self
+    def limit(self, n): self._limit = n; return self
 
     def _match(self, r):
         for k, v in self.f:
@@ -38,16 +42,22 @@ class _CapQuery:
                 if r.get(k) is not None: return False
             elif isinstance(v, tuple) and v[0] == "__in__":
                 if r.get(k) not in v[1]: return False
+            elif isinstance(v, tuple) and v[0] == "__gt__":
+                if not (r.get(k) is not None and str(r.get(k)) > str(v[1])): return False
             elif r.get(k) != v:
                 return False
         return True
 
     def execute(self):
         rows = [dict(r) for r in self.store.get(self.t, []) if self._match(r)]
+        if self._order is not None:
+            rows.sort(key=lambda r: str(r.get(self._order)))
         if self._range is not None:
             a, b = self._range
             return _Res(rows[a:b + 1])
-        return _Res(rows[:CAP])          # the silent cap
+        if self._limit is not None:
+            return _Res(rows[:self._limit])
+        return _Res(rows[:CAP])          # the silent cap (un-limited select)
 
 
 class _CapDB:
@@ -109,15 +119,12 @@ def test_exactly_cap_boundary():
         assert len(entries) == n
 
 
-def test_entries_paginated_beyond_one_concurrent_batch_round():
-    # _fetch_all now fetches pages in concurrent batches of up to
-    # _MAX_PARALLEL_FETCHES (6) instead of one at a time. 6500 rows needs 7
-    # pages (6 full + 1 short) — more than one batch's worth — exercising the
-    # loop's SECOND round (offset += batch_size), not just concurrency within
-    # a single round (already covered by the 2500-row test above, which fits
-    # in one round of 6). Also exact multiples of the batch size (6000 exactly
-    # == 6 full pages, the batch-boundary case where the short page needed to
-    # signal end-of-data falls in the very next round).
+def test_entries_paginated_across_many_keyset_pages():
+    # _fetch_all pages by KEYSET (cursor): each page seeks `id > last_id LIMIT
+    # _PAGE`. These sizes exercise several pages plus the boundary cases: a short
+    # final page (6500 -> 6 full + 1 of 500), an EXACT multiple of the page size
+    # (6000 -> 6 full pages, where end-of-data is only learned from a 7th empty
+    # page), and one past it (6001 -> a trailing 1-row page).
     for n in (6500, 6000, 6001):
         db = _CapDB(_build_store(n))
         entries = SupabaseLedgerSource(db)._entries(FIRM, CLIENT)
