@@ -198,15 +198,21 @@ class BankingService:
             raise HTTPException(status_code=500, detail="Failed to create bank statement.")
         statement_id = stmt[0]["id"]
 
-        # 4) chunked transaction insert (large-statement safe).
+        # 4) chunked transaction insert (large-statement safe). upsert +
+        # ignore_duplicates makes the (client_id, import_hash) unique index
+        # (migration 224) a graceful backstop: a concurrent re-import that slips
+        # a duplicate past _existing_hashes above is silently ignored here rather
+        # than raising. Rows are already deduped, so in the normal path this is a
+        # plain insert (no conflicts).
         for i in range(0, len(new_rows), _IMPORT_BATCH):
-            db.table("bank_transactions").insert([{
+            db.table("bank_transactions").upsert([{
                 "statement_id": statement_id, "firm_id": firm_id, "client_id": client_id,
                 "transaction_date": r["transaction_date"], "description": r["description"],
                 "debit_paise": r["debit_paise"], "credit_paise": r["credit_paise"],
                 "balance_paise": r["balance_paise"], "reference_no": r["reference_no"],
                 "import_hash": r["import_hash"], "match_status": "unmatched",
-            } for r in new_rows[i:i + _IMPORT_BATCH]]).execute()
+            } for r in new_rows[i:i + _IMPORT_BATCH]],
+                on_conflict="client_id,import_hash", ignore_duplicates=True).execute()
 
         timeline_service.log(
             client_id, "accounting", "Bank Statement Imported",

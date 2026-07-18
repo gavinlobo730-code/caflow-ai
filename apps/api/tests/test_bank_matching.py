@@ -232,6 +232,36 @@ def test_match_invalid_entity_type_rejected():
         bank_matching_service.match(db, FIRM, "t1", "not_a_type", "x")
 
 
+def test_match_derives_category_when_none_given():
+    """Accepting a suggestion without a category must NOT leave the txn
+    uncategorized: a receivable match implies Customer Payment, a payable match
+    Vendor Payment (both AUTO-counter, settle the matched document downstream)."""
+    db = FakeDB(); _seed_txn(db)
+    res = bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
+    assert res["category"] == "Customer Payment"
+    assert db.store["bank_transactions"][0]["category"] == "Customer Payment"
+
+    db2 = FakeDB(); _seed_txn(db2, debit_paise=50000, credit_paise=0)
+    res2 = bank_matching_service.match(db2, FIRM, "t1", "purchase_bill", "bill-3")
+    assert res2["category"] == "Vendor Payment"
+
+
+def test_match_explicit_category_overrides_derived_default():
+    db = FakeDB(); _seed_txn(db)
+    res = bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9",
+                                     category="Sales Receipt")
+    assert res["category"] == "Sales Receipt"
+
+
+def test_match_journal_entry_leaves_category_null():
+    """journal_entry / manual have no unambiguous category — stay NULL for the CA
+    to classify explicitly, rather than guessing one."""
+    db = FakeDB(); _seed_txn(db)
+    res = bank_matching_service.match(db, FIRM, "t1", "journal_entry", "je-1")
+    assert res["category"] is None
+    assert db.store["bank_transactions"][0].get("category") is None
+
+
 # ── Duplicate prevention: cannot re-match a posted transaction ────────────────
 
 def test_cannot_match_posted_transaction():
