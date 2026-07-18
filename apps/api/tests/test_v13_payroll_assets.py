@@ -215,6 +215,31 @@ class TestPayrollSlip:
         expected_gross = basic + hra + lta + medical + special
         assert slip["gross_paise"] == expected_gross
 
+    def test_other_allowances_included_in_gross(self):
+        """Regression: other_allowances_paise was silently dropped from gross,
+        understating both gross and net for any employee who had one. It must
+        be folded in (and surfaced on the slip so the breakdown reconciles)."""
+        without = _compute_slip(self._emp(other_allowances_paise=0))
+        withoth = _compute_slip(self._emp(other_allowances_paise=300000))  # ₹3,000
+        assert withoth["other_allowances_paise"] == 300000
+        assert withoth["gross_paise"] == without["gross_paise"] + 300000
+        # The stored earning components must sum EXACTLY to gross (payslip breakdown).
+        components = (
+            withoth["basic_paise"] + withoth["hra_paise"] + withoth["da_paise"]
+            + withoth["lta_paise"] + withoth["medical_paise"]
+            + withoth["special_allowance_paise"] + withoth["other_allowances_paise"]
+        )
+        assert components == withoth["gross_paise"]
+
+    def test_other_allowances_lop_prorated(self):
+        """Other allowances are a fixed component → reduced proportionally by LOP,
+        exactly like basic/lta/medical/special."""
+        emp = self._emp(other_allowances_paise=260000)  # ₹2,600 over 26 days
+        full = _compute_slip(emp, {"working_days": 26, "days_present": 26, "lop_days": 0})
+        lop  = _compute_slip(emp, {"working_days": 26, "days_present": 13, "lop_days": 13})
+        # 13 LOP of 26 → half pay on every fixed component, incl. other allowances.
+        assert lop["other_allowances_paise"] == full["other_allowances_paise"] // 2
+
     def test_net_less_than_gross(self):
         slip = _compute_slip(self._emp())
         assert slip["net_paise"] < slip["gross_paise"]

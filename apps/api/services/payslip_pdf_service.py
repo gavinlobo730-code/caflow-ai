@@ -123,6 +123,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, firm: dict) -> byte
         ("LTA", "lta_paise"),
         ("Medical Allowance", "medical_paise"),
         ("Special Allowance", "special_allowance_paise"),
+        ("Other Allowances", "other_allowances_paise"),
     ]
     gross_paise = int(slip.get("gross_paise") or 0)
     earning_rows = [["Earnings", "Amount (₹)"]]
