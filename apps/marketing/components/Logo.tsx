@@ -20,7 +20,7 @@ function LogoMark({ theme }: { theme: "light" | "dark" }) {
         strokeWidth="5"
         strokeLinecap="round"
         strokeDasharray="29.3 121.5"
-        transform="rotate(-50 32 32)"
+        className="logo-arc"
       />
       <path d="M20,33 L28,41 L45,22" stroke={check} strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
