@@ -14,11 +14,18 @@
  */
 import { useState, FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { ArrowRight, ArrowLeft, MailCheck } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const supabase = getSupabaseClient();
+  // Shared by firm staff (/login/forgot-password) and client portal contacts
+  // (/login/forgot-password?portal=1) — one Supabase reset flow either way;
+  // this only changes the copy/back-link so a client isn't shown a CA-flavored
+  // placeholder or sent back to the wrong sign-in page.
+  const isPortal = useSearchParams().get("portal") === "1";
+  const backHref = isPortal ? "/portal/login" : "/login";
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -63,7 +70,7 @@ export default function ForgotPasswordPage() {
               we&apos;ve sent a link to reset your password. It expires shortly, so use it soon.
             </p>
             <Link
-              href="/login"
+              href={backHref}
               className="inline-flex items-center gap-1.5 text-[13px] text-blue-600 hover:text-blue-700 font-medium mt-6"
             >
               <ArrowLeft size={14} /> Back to sign in
@@ -83,7 +90,7 @@ export default function ForgotPasswordPage() {
                 <label className="block text-[13px] font-semibold text-[#0F172A]">Email address</label>
                 <input
                   autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ca@yourfirm.com"
+                  placeholder={isPortal ? "you@company.com" : "ca@yourfirm.com"}
                   className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                 />
               </div>
@@ -110,7 +117,7 @@ export default function ForgotPasswordPage() {
             </form>
 
             <p className="text-center text-[13px] text-[#94A3B8] mt-6">
-              <Link href="/login" className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors">
+              <Link href={backHref} className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors">
                 <ArrowLeft size={14} /> Back to sign in
               </Link>
             </p>

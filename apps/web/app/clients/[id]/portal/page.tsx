@@ -73,6 +73,11 @@ export default function PortalPage() {
   // carries is what the client must separately, explicitly redeem (POST
   // /api/portal/accept-invite) to bind that identity to THIS ONE client — no
   // more auto-binding by email match.
+  //
+  // The link lands on /portal/activate (not /portal/dashboard directly) — that
+  // page accepts the invite AND collects a password, so the client can sign
+  // in any time afterward at /portal/login instead of needing a fresh email
+  // link every visit.
   async function handleSendInvite() {
     if (!clientId || !inviteEmail.trim()) return;
     setLoading(true);
@@ -86,7 +91,7 @@ export default function PortalPage() {
       const supabase = getSupabaseClient();
       const portalUrl =
         (typeof window !== "undefined" ? window.location.origin : "") +
-        "/portal/dashboard?invite=" + encodeURIComponent(token ?? "");
+        "/portal/activate?invite=" + encodeURIComponent(token ?? "");
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email, options: { emailRedirectTo: portalUrl },
       });
@@ -106,7 +111,7 @@ export default function PortalPage() {
           event_type: "portal_invite_sent",
           severity: "info",
           title: "Portal invite sent",
-          description: `Magic link sent to ${email}`,
+          description: `Invite sent to ${email}`,
           actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
@@ -118,7 +123,7 @@ export default function PortalPage() {
   }
 
   const portalUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/portal/dashboard` : "/portal/dashboard";
+    typeof window !== "undefined" ? `${window.location.origin}/portal/login` : "/portal/login";
 
   const active = contacts.filter((c) => c.status === "active");
   const invited = contacts.filter((c) => c.status === "invited");
@@ -207,7 +212,8 @@ export default function PortalPage() {
               <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3">
                 <p className="text-sm text-green-700 font-medium">Invite sent!</p>
                 <p className="text-xs text-green-600 mt-0.5">
-                  A magic link has been sent to {inviteEmail}. The client can use it to log in.
+                  An invite has been sent to {inviteEmail}. They&apos;ll set a password and can sign in
+                  any time afterward.
                 </p>
               </div>
             ) : (
@@ -235,7 +241,7 @@ export default function PortalPage() {
                     disabled={loading || !inviteEmail.trim()}
                     className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
                   >
-                    {loading ? "Sending…" : "Send Magic Link"}
+                    {loading ? "Sending…" : "Send Invite"}
                   </button>
                 </div>
               </>

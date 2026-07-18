@@ -12,8 +12,9 @@ export const APP_URL =
 export const appLinks = {
   /** Chartered Accountant / firm staff sign-in (email + password + TOTP MFA). */
   firmLogin: `${APP_URL}/login`,
-  /** Client portal sign-in (magic-link, token-gated). */
-  clientPortal: `${APP_URL}/portal/dashboard`,
+  /** Client portal sign-in (email + password; access is provisioned by the CA,
+   *  who sends an invite the client uses once to set their password). */
+  clientPortal: `${APP_URL}/portal/login`,
   /** New-firm signup / free trial. */
   signup: `${APP_URL}/signup`,
 };

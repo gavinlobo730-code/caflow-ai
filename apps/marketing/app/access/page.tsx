@@ -30,7 +30,7 @@ const OPTIONS = [
     title: "Client & SME",
     tag: "Client portal",
     desc: "View documents, approve invoices and access payslips shared by your CA.",
-    points: ["For clients invited by their firm", "Secure magic-link sign-in"],
+    points: ["For clients invited by their firm", "Email & password sign-in"],
     href: appLinks.clientPortal,
     primary: false,
   },
