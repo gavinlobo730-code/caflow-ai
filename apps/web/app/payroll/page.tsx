@@ -119,10 +119,10 @@ function employeeGrossPaise(emp: Employee): number {
 // PT computation; the frontend no longer computes PT itself — see R2.10).
 const PT_STATES = [
   { code: "NONE", label: "No Professional Tax" },
-  { code: "MH", label: "Maharashtra — Rs 200/month if > Rs 10,000" },
+  { code: "MH", label: "Maharashtra — Rs 175–200/month (approx, under revision)" },
   { code: "KA", label: "Karnataka — Rs 200/month if ≥ Rs 25,000" },
-  { code: "WB", label: "West Bengal — Rs 200/month if > Rs 10,000" },
-  { code: "TN", label: "Tamil Nadu — Rs 208/month if > Rs 21,000" },
+  { code: "WB", label: "West Bengal — Rs 110–200/month slab (> Rs 10,000)" },
+  { code: "TN", label: "Tamil Nadu — half-yearly levy (approx, under revision)" },
 ];
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────

@@ -59,24 +59,40 @@ _PT_SLABS_KA = [
     (25000_00, None,     200_00),    # gross ≥ ₹25,000 → ₹200/month
 ]
 
-# Maharashtra / West Bengal / Tamil Nadu: carried over verbatim from this
-# project's pre-existing frontend implementation (apps/web/app/payroll/page.tsx
-# computeSlip/PT_STATES), which is the only source for these three states
-# anywhere in this repo. PENDING STATUTORY VERIFICATION — not independently
-# re-confirmed against each state's current Profession Tax notification during
-# this migration (same "verified baseline vs. pending verification" split
-# used for FY2026-27 income-tax figures in domain/income_tax/statutory_rates.py).
+# West Bengal: The West Bengal State Tax on Professions, Trades, Callings and
+# Employments Act, 1979, Schedule (salary & wage earners). A 5-tier monthly
+# slab on monthly gross (annual maximum ₹2,400). The old single-tier table
+# (flat ₹200 above ₹10,000) over-withheld everyone earning ₹10,001–₹40,000,
+# who owe ₹110/₹130/₹150 — not ₹200.
+_PT_SLABS_WB = [
+    (0,         10000_00,  0),        # ≤ ₹10,000 → Nil
+    (10000_01,  15000_00, 110_00),    # ₹10,001–₹15,000 → ₹110
+    (15000_01,  25000_00, 130_00),    # ₹15,001–₹25,000 → ₹130
+    (25000_01,  40000_00, 150_00),    # ₹25,001–₹40,000 → ₹150
+    (40000_01,  None,     200_00),    # > ₹40,000     → ₹200
+]
+
+# ⚠️ Maharashtra & Tamil Nadu: the slabs below are KNOWN INCORRECT and are
+# retained only so an existing pt_state="MH"/"TN" employee still yields *some*
+# figure until the correct model lands. Their statutory rules cannot be
+# expressed by a plain monthly-gross→monthly-tax table:
+#   • Maharashtra (Prof. Tax Act 1975, Sch. I): ₹175 for ₹7,501–₹10,000 and
+#     ₹200 above ₹10,000 BUT ₹300 in February (annual cap ₹2,500); women are
+#     exempt up to ₹25,000/month (w.e.f. 01-Apr-2023). The February rule needs
+#     the payroll month (available) and the women's exemption needs an employee
+#     GENDER field (not yet modelled — adding it is a pending product decision).
+#   • Tamil Nadu (TN Municipal Laws / Greater Chennai Corp, rev. Oct-2024):
+#     levied HALF-YEARLY on half-yearly income (₹21,000 is a 6-month figure,
+#     not monthly), as a lump sum — a different basis entirely. Correct
+#     modelling (half-yearly accrual + deduction schedule + local body) is a
+#     pending decision. The old "> ₹21,000/month → ₹208" wildly under-charges.
 _PT_SLABS_MH = [
     (0,       1000000, 0),
-    (1000001, None,    20000),   # > Rs 10,000/month -> Rs 200
-]
-_PT_SLABS_WB = [
-    (0,       1000000, 0),
-    (1000001, None,    20000),   # > Rs 10,000/month -> Rs 200
+    (1000001, None,    20000),   # KNOWN-WRONG placeholder — see note above
 ]
 _PT_SLABS_TN = [
     (0,       2100000, 0),
-    (2100001, None,    20800),   # > Rs 21,000/month -> Rs 208
+    (2100001, None,    20800),   # KNOWN-WRONG placeholder — see note above
 ]
 
 _PT_SLABS_BY_STATE = {

@@ -88,19 +88,32 @@ class TestPT:
         assert _compute_pt(3000000, "KA") == 20000    # ₹30,000
         assert _compute_pt(10000000, "KA") == 20000   # ₹1,00,000
 
-    def test_pt_maharashtra(self):
-        """Maharashtra: > ₹10,000/month → ₹200; at/below → nil."""
+    def test_pt_west_bengal(self):
+        """West Bengal (Act 1979, Schedule): 5-tier monthly slab on monthly gross;
+        annual maximum ₹2,400. Boundaries are inclusive of the upper rupee
+        (e.g. ₹15,000 → ₹110, ₹15,000.01 → ₹130)."""
+        assert _compute_pt(1000000, "WB") == 0       # ₹10,000        → Nil
+        assert _compute_pt(1000001, "WB") == 11000   # ₹10,000.01     → ₹110
+        assert _compute_pt(1500000, "WB") == 11000   # ₹15,000        → ₹110
+        assert _compute_pt(1500001, "WB") == 13000   # ₹15,000.01     → ₹130
+        assert _compute_pt(2500000, "WB") == 13000   # ₹25,000        → ₹130
+        assert _compute_pt(2500001, "WB") == 15000   # ₹25,000.01     → ₹150
+        assert _compute_pt(4000000, "WB") == 15000   # ₹40,000        → ₹150
+        assert _compute_pt(4000001, "WB") == 20000   # ₹40,000.01     → ₹200
+        assert _compute_pt(10000000, "WB") == 20000  # ₹1,00,000      → ₹200
+
+    def test_pt_maharashtra_placeholder(self):
+        """CHARACTERIZATION ONLY — pins the current MH *placeholder* output, which
+        is KNOWN INCORRECT (see _PT_SLABS_MH note: MH needs the ₹175 tier, the
+        February ₹300 rule, and a gender field for the women's exemption). Update
+        this test when the correct MH model lands."""
         assert _compute_pt(1000000, "MH") == 0
         assert _compute_pt(1000001, "MH") == 20000
-        assert _compute_pt(5000000, "MH") == 20000
 
-    def test_pt_west_bengal(self):
-        """West Bengal: > ₹10,000/month → ₹200; at/below → nil."""
-        assert _compute_pt(1000000, "WB") == 0
-        assert _compute_pt(1000001, "WB") == 20000
-
-    def test_pt_tamil_nadu(self):
-        """Tamil Nadu: > ₹21,000/month → ₹208; at/below → nil."""
+    def test_pt_tamil_nadu_placeholder(self):
+        """CHARACTERIZATION ONLY — pins the current TN *placeholder* output, which
+        is KNOWN INCORRECT (see _PT_SLABS_TN note: TN is a half-yearly, local-body
+        levy on half-yearly income, not a monthly slab). Update when TN is modelled."""
         assert _compute_pt(2100000, "TN") == 0
         assert _compute_pt(2100001, "TN") == 20800
 
