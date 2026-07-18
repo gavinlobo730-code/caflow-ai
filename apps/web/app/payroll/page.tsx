@@ -10,11 +10,12 @@ import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2, Upload,
+  Pencil, Ban, Trash2, RotateCcw,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import type { Column, FilterDef } from "@/lib/table/types";
+import type { Column, FilterDef, BulkAction } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";
 import { toLocalISO } from "@/lib/dateMath";
 
@@ -64,6 +65,9 @@ type Employee = {
   pt_applicable?: boolean;
   pt_state?: string | null;
   gender?: string | null;
+  // 'active' | 'resigned' | 'terminated' (payroll_employees.status). Absent on
+  // rows created before the roster started returning it — treat as active.
+  status?: string;
 };
 
 type PayrollRun = {
@@ -104,6 +108,21 @@ function fmtRs(paise: number): string {
 
 function rsToP(rs: number): number {
   return Math.round(rs * 100);
+}
+
+/** Pull a readable message out of a thrown API error. `request()` throws
+ *  `API error 409: {"detail":"…"}` on non-2xx; surface the detail, not the noise. */
+function apiErr(e: unknown, fallback: string): string {
+  if (!(e instanceof Error)) return fallback;
+  const m = e.message.match(/API error \d+:\s*([\s\S]*)$/);
+  if (m) {
+    try {
+      const j = JSON.parse(m[1]);
+      if (j && typeof j.detail === "string") return j.detail;
+    } catch { /* not JSON — fall through to raw text */ }
+    return m[1].trim() || fallback;
+  }
+  return e.message || fallback;
 }
 
 /** Monthly gross CTC for an employee, in integer paise. Mirrors the backend
@@ -346,26 +365,29 @@ function getTdsQuarterLabel(month: string): string {
 
 function AddEmployeeModal({
   clients,
+  employee,
   onClose,
   onSaved,
 }: {
   clients: Client[];
+  employee?: Employee | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const isEdit = !!employee;
   const [form, setForm] = useState({
-    client_id: clients[0]?.id ?? "",
-    name: "",
-    pan: "",
-    gender: "",
-    designation: "",
-    basic_rs: "",
-    hra_percent: "40",
-    da_percent: "10",
-    other_rs: "0",
-    pf_applicable: false,
-    esi_applicable: false,
-    pt_state: "NONE",
+    client_id: employee?.client_id ?? clients[0]?.id ?? "",
+    name: employee?.name ?? "",
+    pan: employee?.pan ?? "",
+    gender: employee?.gender ?? "",
+    designation: employee?.designation ?? "",
+    basic_rs: employee ? String(employee.basic_paise / 100) : "",
+    hra_percent: employee ? String(employee.hra_percent ?? 0) : "40",
+    da_percent: employee ? String(employee.da_percent ?? 0) : "10",
+    other_rs: employee ? String((employee.other_allowances_paise ?? 0) / 100) : "0",
+    pf_applicable: employee?.pf_applicable ?? false,
+    esi_applicable: employee?.esi_applicable ?? false,
+    pt_state: employee?.pt_applicable ? (employee.pt_state ?? "NONE") : "NONE",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -375,8 +397,7 @@ function AddEmployeeModal({
     setSaving(true);
     setErr("");
     try {
-      await api.payroll.createEmployee({
-        client_id: form.client_id,
+      const payload = {
         name: form.name,
         pan: form.pan.toUpperCase() || null,
         gender: form.gender || null,
@@ -390,10 +411,16 @@ function AddEmployeeModal({
         // Professional Tax — state-specific slab, computed server-side (R2.10).
         pt_applicable: form.pt_state !== "NONE",
         pt_state: form.pt_state === "NONE" ? null : form.pt_state,
-      });
+      };
+      if (isEdit && employee) {
+        // client_id can't change on edit (EmployeeUpdateIn has no client_id).
+        await api.payroll.updateEmployee(employee.id, payload);
+      } else {
+        await api.payroll.createEmployee({ client_id: form.client_id, ...payload });
+      }
       onSaved();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to add employee.");
+      setErr(e instanceof Error ? e.message : `Failed to ${isEdit ? "update" : "add"} employee.`);
     }
     setSaving(false);
   }
@@ -402,22 +429,28 @@ function AddEmployeeModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-[#0F172A]">Add Employee</h2>
+          <h2 className="font-semibold text-[#0F172A]">{isEdit ? "Edit Employee" : "Add Employee"}</h2>
           <button onClick={onClose}><X size={16} /></button>
         </div>
         {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-            <div className="w-full">
-              <ClientLookup
-                clients={clients}
-                value={form.client_id}
-                onChange={(id) => setForm(f => ({ ...f, client_id: id }))}
-                ariaLabel="Client"
-                placeholder="Select client…"
-              />
-            </div>
+            {isEdit ? (
+              <div className="w-full border rounded-lg px-3 py-2 text-sm bg-[#F8FAFC] text-[#64748B]">
+                {clients.find(c => c.id === form.client_id)?.client_name ?? "—"}
+              </div>
+            ) : (
+              <div className="w-full">
+                <ClientLookup
+                  clients={clients}
+                  value={form.client_id}
+                  onChange={(id) => setForm(f => ({ ...f, client_id: id }))}
+                  ariaLabel="Client"
+                  placeholder="Select client…"
+                />
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Name *</label>
@@ -474,7 +507,7 @@ function AddEmployeeModal({
         </div>
         <div className="flex gap-2 justify-end mt-5">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Add Employee"}</Button>
+          <Button onClick={save} disabled={saving}>{saving ? "Saving..." : isEdit ? "Update Employee" : "Add Employee"}</Button>
         </div>
       </div>
     </div>
@@ -933,7 +966,10 @@ export default function PayrollPage() {
     try {
       const [clientsRes, empRes, runsRes] = await Promise.all([
         api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>,
-        api.payroll.listEmployees() as Promise<ApiResp<Employee[]>>,
+        // include_inactive: the Employees roster shows resigned/terminated staff
+        // too (with a status filter). Payroll generation still uses only active
+        // employees — see the runEmployees derivation below.
+        api.payroll.listEmployees(undefined, true) as Promise<ApiResp<Employee[]>>,
         api.payroll.listRuns() as Promise<ApiResp<PayrollRun[]>>,
       ]);
       const clientList = clientsRes.data?.clients ?? [];
@@ -967,9 +1003,76 @@ export default function PayrollPage() {
 
   useEffect(() => {
     if (runClientId) {
-      setRunEmployees(employees.filter(e => e.client_id === runClientId));
+      // Only ACTIVE employees are eligible for a payroll run (mirrors the
+      // backend create_run filter); resigned/terminated staff must not appear.
+      setRunEmployees(employees.filter(e => e.client_id === runClientId && (e.status ?? "active") === "active"));
     }
   }, [runClientId, employees]);
+
+  // ── Employee roster CRUD (edit / deactivate / delete + bulk) ────────────────
+  const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
+  const [empActionMsg, setEmpActionMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const setEmployeeStatus = useCallback(async (emp: Employee, status: "active" | "resigned") => {
+    const deactivating = status !== "active";
+    if (!confirm(`${deactivating ? "Deactivate" : "Reactivate"} ${emp.name}? ${deactivating ? "They will be excluded from new payroll runs; existing payslips are unaffected." : "They will be eligible for payroll runs again."}`)) return;
+    try {
+      const res = await api.payroll.updateEmployee(emp.id, { status }) as ApiResp<unknown>;
+      if (!res.success) { setEmpActionMsg({ type: "err", text: res.error ?? "Could not update the employee." }); return; }
+      setEmpActionMsg({ type: "ok", text: `${emp.name} ${deactivating ? "deactivated" : "reactivated"}.` });
+      load();
+    } catch (e) { setEmpActionMsg({ type: "err", text: apiErr(e, "Could not update the employee.") }); }
+  }, [load]);
+
+  const deleteEmployeeAction = useCallback(async (emp: Employee) => {
+    if (!confirm(`Permanently delete ${emp.name}? Only an employee with no payroll history can be deleted — otherwise deactivate them instead.`)) return;
+    try {
+      const res = await api.payroll.deleteEmployee(emp.id) as ApiResp<unknown>;
+      if (!res.success) { setEmpActionMsg({ type: "err", text: res.error ?? "Could not delete the employee." }); return; }
+      setEmpActionMsg({ type: "ok", text: `${emp.name} deleted.` });
+      load();
+    } catch (e) { setEmpActionMsg({ type: "err", text: apiErr(e, "Could not delete the employee.") }); }
+  }, [load]);
+
+  // Bulk: set status for the selected rows (deactivate → resigned, reactivate → active).
+  const bulkSetEmployeeStatus = useCallback(async (rows: Employee[], status: "active" | "resigned"): Promise<void> => {
+    const targets = rows.filter(e => (e.status ?? "active") !== status);
+    if (targets.length === 0) { setEmpActionMsg({ type: "ok", text: "Nothing to change — the selected employees are already in that state." }); return; }
+    let ok = 0; const failures: string[] = [];
+    await Promise.all(targets.map(async (e) => {
+      try {
+        const res = await api.payroll.updateEmployee(e.id, { status }) as ApiResp<unknown>;
+        if (!res.success) throw new Error(res.error ?? "failed");
+        ok++;
+      } catch (err) { failures.push(`${e.name}: ${apiErr(err, "failed")}`); }
+    }));
+    const verb = status === "active" ? "reactivated" : "deactivated";
+    setEmpActionMsg(failures.length
+      ? { type: "err", text: `${ok} ${verb}, ${failures.length} failed. ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""}` }
+      : { type: "ok", text: `${ok} employee${ok === 1 ? "" : "s"} ${verb}.` });
+    if (ok) load();
+  }, [load]);
+
+  // Bulk delete: employees with payroll history are skipped (backend 409s); report both.
+  const bulkDeleteEmployees = useCallback(async (rows: Employee[]): Promise<void> => {
+    let deleted = 0, skipped = 0; const failures: string[] = [];
+    await Promise.all(rows.map(async (e) => {
+      try {
+        const res = await api.payroll.deleteEmployee(e.id) as ApiResp<unknown>;
+        if (!res.success) throw new Error(res.error ?? "failed");
+        deleted++;
+      } catch (err) {
+        const msg = apiErr(err, "failed");
+        if (/payroll history/i.test(msg)) skipped++;
+        else failures.push(`${e.name}: ${msg}`);
+      }
+    }));
+    const parts = [`${deleted} deleted`];
+    if (skipped) parts.push(`${skipped} skipped (has payroll history — deactivate instead)`);
+    if (failures.length) parts.push(`${failures.length} failed`);
+    setEmpActionMsg({ type: failures.length ? "err" : "ok", text: parts.join(", ") + "." });
+    if (deleted) load();
+  }, [load]);
 
   useEffect(() => {
     if (clients.length > 0 && !runClientId) {
@@ -1024,14 +1127,33 @@ export default function PayrollPage() {
           {e.esi_applicable ? "Yes" : "No"}
         </span>
       ) },
+    { key: "status", header: "Status", accessor: (e) => e.status ?? "active", sortable: true, align: "center",
+      render: (e) => {
+        const s = e.status ?? "active";
+        const cls = s === "active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]";
+        return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{s}</span>;
+      } },
   ], []);
 
-  // The payroll_employees model has no active/inactive status field; PF/ESI
-  // applicability are the meaningful boolean facets, so filter on those.
   const employeeFilters: FilterDef<Employee>[] = useMemo(() => [
+    { key: "status", label: "Status", type: "select", accessor: (e) => e.status ?? "active",
+      options: [{ value: "active", label: "Active" }, { value: "resigned", label: "Resigned" }, { value: "terminated", label: "Terminated" }] },
     { key: "pf_applicable", label: "PF", type: "boolean", accessor: (e) => e.pf_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
     { key: "esi_applicable", label: "ESI", type: "boolean", accessor: (e) => e.esi_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
   ], []);
+
+  const employeeBulkActions: BulkAction<Employee>[] = useMemo(() => [
+    { id: "deactivate", label: "Deactivate", icon: <Ban size={13} />,
+      confirm: "Deactivate the selected employees? They will be excluded from new payroll runs. Existing payslips are unaffected and this can be undone.",
+      run: (rows) => bulkSetEmployeeStatus(rows, "resigned") },
+    { id: "reactivate", label: "Reactivate", icon: <RotateCcw size={13} />,
+      confirm: "Reactivate the selected employees so they are eligible for payroll runs again?",
+      run: (rows) => bulkSetEmployeeStatus(rows, "active") },
+    { id: "delete", label: "Delete", icon: <Trash2 size={13} />, variant: "danger",
+      confirm: "Permanently delete the selected employees? Anyone with payroll history is skipped (deactivate them instead). This cannot be undone.",
+      run: bulkDeleteEmployees },
+    exportSelectedAction<Employee>("employees-selected.csv", employeeColumns),
+  ], [bulkSetEmployeeStatus, bulkDeleteEmployees, employeeColumns]);
 
   // ── Payslips table (shared DataTable) ──────────────────────────────────────
   const slipDeductions = (s: PayrollSlip) => s.pf_employee_paise + s.esi_employee_paise + s.pt_paise + s.tds_paise;
@@ -1087,8 +1209,14 @@ export default function PayrollPage() {
       {showAdd && (
         <AddEmployeeModal
           clients={clients}
-          onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); load(); }}
+          employee={editEmployee}
+          onClose={() => { setShowAdd(false); setEditEmployee(null); }}
+          onSaved={() => {
+            const wasEdit = !!editEmployee;
+            setShowAdd(false); setEditEmployee(null);
+            setEmpActionMsg({ type: "ok", text: wasEdit ? "Employee updated." : "Employee added." });
+            load();
+          }}
         />
       )}
       {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
@@ -1131,12 +1259,18 @@ export default function PayrollPage() {
                   <Button size="sm" variant="outline" onClick={() => setShowImportEmp(true)} className="flex items-center gap-1.5">
                     <Upload size={14} />Import CSV
                   </Button>
-                  <Button size="sm" onClick={() => setShowAdd(true)} className="flex items-center gap-1.5">
+                  <Button size="sm" onClick={() => { setEditEmployee(null); setShowAdd(true); }} className="flex items-center gap-1.5">
                     <Plus size={14} />Add Employee
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
+                {empActionMsg && (
+                  <div className={`mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${empActionMsg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                    {empActionMsg.text}
+                    <button onClick={() => setEmpActionMsg(null)} className="ml-auto"><X size={12} /></button>
+                  </div>
+                )}
                 <DataTable
                   data={employees}
                   columns={employeeColumns}
@@ -1146,8 +1280,28 @@ export default function PayrollPage() {
                   onRefresh={load}
                   searchPlaceholder="Search by name, PAN, or designation…"
                   initialSort={{ key: "name", dir: "asc" }}
+                  initialFilters={{ status: "active" }}
                   exportFilename="employees"
                   persistKey="payroll.employees"
+                  bulkActions={employeeBulkActions}
+                  rowActions={(e) => {
+                    const active = (e.status ?? "active") === "active";
+                    return (
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => { setEditEmployee(e); setShowAdd(true); }} title="Edit"
+                          className="p-1.5 rounded-lg text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#334155]"><Pencil size={14} /></button>
+                        {active ? (
+                          <button onClick={() => setEmployeeStatus(e, "resigned")} title="Deactivate"
+                            className="p-1.5 rounded-lg text-[#64748B] hover:bg-amber-50 hover:text-amber-700"><Ban size={14} /></button>
+                        ) : (
+                          <button onClick={() => setEmployeeStatus(e, "active")} title="Reactivate"
+                            className="p-1.5 rounded-lg text-[#64748B] hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></button>
+                        )}
+                        <button onClick={() => deleteEmployeeAction(e)} title="Delete (only if no payroll history)"
+                          className="p-1.5 rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                      </div>
+                    );
+                  }}
                   emptyTitle="No employees yet"
                   emptyDescription={'Click "Add Employee" or import a CSV to get started.'}
                 />
