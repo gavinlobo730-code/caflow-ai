@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoIcon } from "@/components/LogoIcon";
 
 /**
  * Shared loading primitives for PracticeSync. One source of truth so every
@@ -52,7 +53,7 @@ export function PageLoader({ label = "Loading…", className }: { label?: string
       aria-live="polite"
       className={cn("flex min-h-[40vh] w-full flex-col items-center justify-center gap-3 text-[#94A3B8]", className)}
     >
-      <Spinner className="h-6 w-6 text-[#94A3B8]" label={label} />
+      <LogoIcon size="lg" spin />
       <p className="text-sm font-medium">{label}</p>
     </div>
   );

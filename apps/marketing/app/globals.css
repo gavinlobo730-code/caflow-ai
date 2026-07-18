@@ -33,6 +33,21 @@ body {
   overflow-x: hidden;
 }
 
+/* ─── Logo mark — accent arc settles into place on load ────────────────── */
+/* Plays once per real page load (this component doesn't remount on
+   client-side nav within the site, since SiteHeader lives in the shared
+   layout) — a small flourish, never gating on anything actually finishing
+   loading. -50deg is the mark's resting angle everywhere it's used. */
+@keyframes logo-arc-settle {
+  from { transform: rotate(-230deg); }
+  to { transform: rotate(-50deg); }
+}
+.logo-arc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: logo-arc-settle 0.8s var(--ease-out-expo) both;
+}
+
 ::selection {
   background: #afd2fa;
   color: #0d1635;
@@ -330,6 +345,10 @@ html.cursor-none * {
 /* ─── Reduced motion: everything becomes calm, static, instant ────────────── */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  .logo-arc {
+    animation: none !important;
+    transform: rotate(-50deg) !important;
+  }
   .rv, .rv-up, .rv-blur, .rv-scale, .rv-left, .rv-right {
     opacity: 1 !important;
     transform: none !important;

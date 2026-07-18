@@ -44,13 +44,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-900">
-        <div className="text-center space-y-4">
-          <LogoIcon size="xl" />
-          <div className="flex items-center justify-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:0ms]" />
-            <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
-            <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
-          </div>
+        <div className="flex flex-col items-center space-y-4">
+          <LogoIcon size="xl" spin />
           <p className="text-indigo-300 text-sm font-medium">PracticeSync AI</p>
         </div>
       </div>
