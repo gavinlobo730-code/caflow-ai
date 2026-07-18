@@ -4,7 +4,8 @@ Payroll router — Employee master, salary structures, payroll runs, statutory, 
 IT Act §192: TDS on salary (monthly deduction, annual projected basis).
 PF Act: Employer PF = 12% of basic (up to ₹15,000 basic ceiling → ₹1,800 max employer contribution).
 ESI Act: Employee ESI = 0.75% of gross; Employer ESI = 3.25% of gross (applicable when gross ≤ ₹21,000/month).
-PT: State-specific professional tax slab (default: Karnataka slab used as fallback).
+PT: State-specific professional tax slab, keyed on the employee's pt_state; an
+    unset/unrecognised state withholds nothing (no silent single-state default).
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
@@ -43,12 +44,19 @@ def _db():
 # no single national default.
 #
 # Karnataka: Karnataka Tax on Professions, Trades, Callings and Employments
-# Act, 1976. This 3-tier slab is this codebase's original, unit-tested
-# baseline (test_v13_payroll_assets.py::TestPT) and is kept as-is.
+# Act, 1976, Schedule Serial No. 1 (salary & wage earners), as amended by the
+# Karnataka Tax on Professions, Trades, Callings and Employments (Amendment)
+# Act, 2023 (Governor's assent 13 Mar 2023; in force w.e.f. 1 April 2023).
+# The amendment raised the exemption ceiling from ₹15,000 to ₹25,000 and
+# collapsed the earlier graduated ₹150/₹200 tiers into a single flat rate:
+#     gross monthly salary/wage  < ₹25,000  → Nil
+#                               ≥ ₹25,000  → ₹200/month
+# Karnataka levies no February differential (unlike Maharashtra); annual
+# maximum is ₹2,400. Anyone earning < ₹25,000/month (the old code taxed them
+# from ₹15,000) must not have PT withheld post-01-Apr-2023.
 _PT_SLABS_KA = [
-    (0,        14999_00,  0),
-    (15000_00, 29999_00, 150_00),
-    (30000_00, None,     200_00),
+    (0,        24999_99,  0),        # gross < ₹25,000 → Nil
+    (25000_00, None,     200_00),    # gross ≥ ₹25,000 → ₹200/month
 ]
 
 # Maharashtra / West Bengal / Tamil Nadu: carried over verbatim from this

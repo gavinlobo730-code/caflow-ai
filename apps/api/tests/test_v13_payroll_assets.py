@@ -76,18 +76,17 @@ class TestESI:
 
 class TestPT:
     def test_pt_below_threshold(self):
-        """Karnataka: gross < ₹15,000 → no PT."""
-        assert _compute_pt(1400000, "KA") == 0
+        """Karnataka (Amendment Act 2023, w.e.f. 1 Apr 2023): gross < ₹25,000 → Nil.
+        The old code taxed from ₹15,000; ₹15,000 and ₹24,999 must now be exempt."""
+        assert _compute_pt(1400000, "KA") == 0   # ₹14,000
+        assert _compute_pt(1500000, "KA") == 0   # ₹15,000 — was ₹150 pre-amendment
+        assert _compute_pt(2499900, "KA") == 0   # ₹24,999 — top of the exempt band
 
-    def test_pt_slab_1(self):
-        """Karnataka: ₹15,000 to ₹29,999 → ₹150/month."""
-        assert _compute_pt(1500000, "KA") == 15000  # ₹150
-        assert _compute_pt(2500000, "KA") == 15000
-
-    def test_pt_slab_2(self):
-        """Karnataka: ₹30,000+ → ₹200/month."""
-        assert _compute_pt(3000000, "KA") == 20000  # ₹200
-        assert _compute_pt(10000000, "KA") == 20000
+    def test_pt_at_and_above_threshold(self):
+        """Karnataka: gross ≥ ₹25,000 → flat ₹200/month (the ₹150 tier is gone)."""
+        assert _compute_pt(2500000, "KA") == 20000    # ₹25,000 exactly → ₹200
+        assert _compute_pt(3000000, "KA") == 20000    # ₹30,000
+        assert _compute_pt(10000000, "KA") == 20000   # ₹1,00,000
 
     def test_pt_maharashtra(self):
         """Maharashtra: > ₹10,000/month → ₹200; at/below → nil."""

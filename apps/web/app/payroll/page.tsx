@@ -120,7 +120,7 @@ function employeeGrossPaise(emp: Employee): number {
 const PT_STATES = [
   { code: "NONE", label: "No Professional Tax" },
   { code: "MH", label: "Maharashtra — Rs 200/month if > Rs 10,000" },
-  { code: "KA", label: "Karnataka — Rs 150–200/month if > Rs 15,000 (slab)" },
+  { code: "KA", label: "Karnataka — Rs 200/month if ≥ Rs 25,000" },
   { code: "WB", label: "West Bengal — Rs 200/month if > Rs 10,000" },
   { code: "TN", label: "Tamil Nadu — Rs 208/month if > Rs 21,000" },
 ];
