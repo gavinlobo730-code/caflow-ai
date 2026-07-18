@@ -102,3 +102,41 @@ def audit_client(db, firm_id: str, client_id: str) -> dict:
         "discrepancy_count": len(discrepancies),
         "discrepancies": discrepancies[:100],   # cap the payload; the count is authoritative
     }
+
+
+def audit_and_heal_client(db, firm_id: str, client_id: str) -> dict:
+    """Audit one client and, if the stored buckets drifted, self-heal by
+    recomputing them from scratch. A recompute is always correct because it is a
+    pure function of the ledger, so this can never make things worse — worst case
+    it rewrites already-correct buckets. Drift is logged loudly (audit_client
+    already logs at ERROR) so a systematic maintenance bug is visible even though
+    the numbers stay right."""
+    res = audit_client(db, firm_id, client_id)
+    if not res["ok"]:
+        recompute_client(db, firm_id, client_id)
+        res["healed"] = True
+        _logger.warning("audit_and_heal_client firm=%s client=%s healed %d drifted bucket(s)",
+                        firm_id, client_id, res["discrepancy_count"])
+    return res
+
+
+def audit_and_heal_firm(db, firm_id: str) -> dict:
+    """Audit (and self-heal) every client of a firm — the unit the nightly
+    scheduler job runs. Returns a compact summary for the run log."""
+    clients = (db.table("clients").select("id").eq("firm_id", firm_id).execute().data or [])
+    checked = 0
+    healed = 0
+    drifted: list[dict] = []
+    for c in clients:
+        cid = c["id"]
+        try:
+            r = audit_and_heal_client(db, firm_id, cid)
+        except Exception as e:  # one bad client must not abort the whole firm sweep
+            _logger.error("audit_and_heal_firm firm=%s client=%s errored: %s", firm_id, cid, e)
+            drifted.append({"client_id": cid, "error": str(e)})
+            continue
+        checked += 1
+        if not r["ok"]:
+            healed += 1
+            drifted.append({"client_id": cid, "discrepancy_count": r["discrepancy_count"]})
+    return {"clients_checked": checked, "clients_healed": healed, "drift": drifted}

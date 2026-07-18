@@ -12,17 +12,46 @@ never affects GST returns (CGST Act) or any filing calculation.
 """
 from __future__ import annotations
 
+import logging
+import os
 from datetime import date
 from typing import Optional
 
 from core.ist_clock import ist_today
 
+from . import balance_cache
 from . import builders
 from . import schedule_iii as schedule_iii_builder
 from .model import ProjectedLine
 from .projector import CashBasisProjector
 from .resolver import AccountResolver
-from .sources import InMemoryLedgerSource, LedgerSource
+from .sources import InMemoryLedgerSource, LedgerSource, SupabaseLedgerSource
+
+_logger = logging.getLogger("caflow.reporting.service")
+
+
+def _passbook_mode() -> str:
+    """Reporting passbook rollout switch (env REPORTING_PASSBOOK_MODE):
+      off    — legacy full-history replay only (default; unchanged behaviour).
+      shadow — serve the legacy result, ALSO compute via the passbook and compare,
+               logging any mismatch. Proves equivalence on real traffic with no
+               user-facing risk before flipping.
+      on     — serve the fast passbook result (falling back to legacy if the fast
+               path errors, so a missing/stale cache degrades to slow, never wrong).
+    Applies to ACCRUAL Trial Balance / P&L / Balance Sheet only; cash basis,
+    Cash Flow and the ledger drill-down always use the legacy engine."""
+    m = os.environ.get("REPORTING_PASSBOOK_MODE", "off").strip().lower()
+    return m if m in ("off", "shadow", "on") else "off"
+
+
+def _log_shadow_mismatch(ctx: tuple, legacy_out: dict, fast_out: dict) -> None:
+    diffs = {
+        k: {"legacy": legacy_out.get(k), "fast": fast_out.get(k)}
+        for k in (set(legacy_out) | set(fast_out))
+        if isinstance(legacy_out.get(k), int) and legacy_out.get(k) != fast_out.get(k)
+    }
+    _logger.error("PASSBOOK SHADOW MISMATCH %s — top-level int diffs=%s "
+                  "(also check line-level rows)", ctx, diffs or "none-at-top-level")
 
 
 def _fy_start(today: date | None = None) -> str:
@@ -50,11 +79,57 @@ class ReportingService:
             for ln in entry.lines
         ]
 
+    # ── Passbook (fast accrual) plumbing ───────────────────────────────────────
+    def _passbook_applicable(self, basis: str) -> bool:
+        return (basis == "accrual" and _passbook_mode() != "off"
+                and isinstance(self.source, SupabaseLedgerSource))
+
+    def _passbook_accrual_lines(self, firm_id, client_id, start, end):
+        """Accrual accounts + ProjectedLines for [start, end] read from the
+        passbook (small buckets + at most two edge months) instead of the full
+        posted history."""
+        accounts = self.source._accounts(firm_id, client_id)
+        buckets = self.source.fetch_buckets(firm_id, client_id)
+        edge = self.source.fetch_edge_month_entries(firm_id, client_id, start, end)
+        lines = balance_cache.project_lines(buckets, start, end, edge)
+        return accounts, lines
+
+    def _serve(self, ctx: tuple, fast, legacy):
+        """Route a report through the passbook according to the rollout mode.
+        `on` serves fast (legacy fallback on error); `shadow` serves legacy but
+        computes fast and compares."""
+        mode = _passbook_mode()
+        if mode == "on":
+            try:
+                return fast()
+            except Exception as e:  # a missing/stale cache must degrade to slow, never wrong
+                _logger.error("passbook fast path failed %s — falling back to legacy: %s", ctx, e)
+                return legacy()
+        legacy_out = legacy()          # shadow: the trusted result is what we serve
+        try:
+            fast_out = fast()
+            if fast_out != legacy_out:
+                _log_shadow_mismatch(ctx, legacy_out, fast_out)
+        except Exception as e:  # shadow compute must never affect the served result
+            _logger.error("passbook shadow compute failed %s: %s", ctx, e)
+        return legacy_out
+
     def trial_balance(self, firm_id: str, client_id: Optional[str],
                       as_of_date: Optional[str], basis: str = "accrual") -> dict:
         as_of = as_of_date or ist_today().isoformat()
-        snap = self.source.snapshot(firm_id, client_id, None, as_of)
-        return builders.trial_balance(self._lines(snap, basis), snap.accounts, as_of, basis)
+
+        def legacy():
+            snap = self.source.snapshot(firm_id, client_id, None, as_of)
+            return builders.trial_balance(self._lines(snap, basis), snap.accounts, as_of, basis)
+
+        if not self._passbook_applicable(basis):
+            return legacy()
+
+        def fast():
+            accounts, lines = self._passbook_accrual_lines(firm_id, client_id, None, as_of)
+            return builders.trial_balance(lines, accounts, as_of, "accrual")
+
+        return self._serve(("trial_balance", firm_id, client_id, as_of), fast, legacy)
 
     def ledger(self, firm_id: str, client_id: Optional[str], account_id: str,
                start_date: Optional[str] = None, end_date: Optional[str] = None) -> dict:
@@ -71,14 +146,36 @@ class ReportingService:
                     basis: str = "accrual") -> dict:
         start = start_date or _fy_start()
         end = end_date or ist_today().isoformat()
-        snap = self.source.snapshot(firm_id, client_id, start, end)
-        return builders.profit_loss(self._lines(snap, basis), snap.accounts, start, end, basis)
+
+        def legacy():
+            snap = self.source.snapshot(firm_id, client_id, start, end)
+            return builders.profit_loss(self._lines(snap, basis), snap.accounts, start, end, basis)
+
+        if not self._passbook_applicable(basis):
+            return legacy()
+
+        def fast():
+            accounts, lines = self._passbook_accrual_lines(firm_id, client_id, start, end)
+            return builders.profit_loss(lines, accounts, start, end, "accrual")
+
+        return self._serve(("profit_loss", firm_id, client_id, start, end), fast, legacy)
 
     def balance_sheet(self, firm_id: str, client_id: Optional[str],
                       as_of_date: Optional[str], basis: str = "accrual") -> dict:
         as_of = as_of_date or ist_today().isoformat()
-        snap = self.source.snapshot(firm_id, client_id, None, as_of)
-        return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
+
+        def legacy():
+            snap = self.source.snapshot(firm_id, client_id, None, as_of)
+            return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
+
+        if not self._passbook_applicable(basis):
+            return legacy()
+
+        def fast():
+            accounts, lines = self._passbook_accrual_lines(firm_id, client_id, None, as_of)
+            return builders.balance_sheet(lines, accounts, as_of, "accrual")
+
+        return self._serve(("balance_sheet", firm_id, client_id, as_of), fast, legacy)
 
     def schedule_iii(self, firm_id: str, client_id: Optional[str],
                      fy_start: Optional[str], fy_end: Optional[str]) -> dict:
