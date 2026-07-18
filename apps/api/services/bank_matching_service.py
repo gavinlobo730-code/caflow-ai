@@ -92,9 +92,12 @@ class BankMatchingService:
             return {}
 
     def _invoice_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
+        # deleted_at filter: a soft-deleted invoice is not a live receivable and
+        # must never be suggested as the counterparty for a bank credit.
         rows = (db.table("client_sales_invoices")
                 .select("id, invoice_no, invoice_date, total_paise, paid_paise, customer_id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                .is_("deleted_at", "null")
                 .eq("total_paise", amount).execute().data or [])
         customers = self._party_names(db, "customers", firm_id, client_id)
         out = []
@@ -115,22 +118,30 @@ class BankMatchingService:
         return out
 
     def _bill_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
+        # Match on net_payable_paise, not total_paise: the money that actually
+        # leaves the bank for a vendor equals the bill's NET payable (total minus
+        # any TDS withheld / debit-note / credit-note adjustment) — which is also
+        # exactly what settlement relieves. Gating on total_paise meant any bill
+        # with TDS never surfaced as a candidate for its own outgoing payment.
+        # deleted_at filter: a soft-deleted bill is not a live payable.
         rows = (db.table("purchase_bills")
                 .select("id, bill_no, bill_date, total_paise, net_payable_paise, vendor_id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                .eq("total_paise", amount).execute().data or [])
+                .is_("deleted_at", "null")
+                .eq("net_payable_paise", amount).execute().data or [])
         vendors = self._party_names(db, "vendors", firm_id, client_id)
         out = []
         for r in rows:
             if str(r.get("status")) in ("cancelled", "paid"):
                 continue
             party = vendors.get(r.get("vendor_id"))
-            total = int(r.get("total_paise") or 0)
+            # Present the payable (what's owed), not the gross bill total.
+            net_payable = int(r.get("net_payable_paise") or r.get("total_paise") or 0)
             out.append(Candidate(
                 entity_type="purchase_bill", entity_id=r["id"],
                 label=f"{r.get('bill_no', '')} · {party or 'Vendor'}",
-                amount_paise=total, entity_date=str(r.get("bill_date") or "")[:10],
-                party_name=party, outstanding_paise=total,
+                amount_paise=net_payable, entity_date=str(r.get("bill_date") or "")[:10],
+                party_name=party, outstanding_paise=net_payable,
             ))
         return out
 
