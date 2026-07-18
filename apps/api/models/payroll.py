@@ -175,3 +175,22 @@ class RunStatusIn(BaseModel):
         if v not in ("draft", "review"):
             raise ValueError("status must be 'draft' or 'review'. Use /finalize to finalize.")
         return v
+
+
+class PayrollDisburseIn(BaseModel):
+    """Mark a finalized payroll run as paid — records the net-salary payout from a
+    bank account. bank_account_id is a bank_accounts row (must be linked to a
+    ledger account); payment_date defaults to today if omitted."""
+    bank_account_id: str
+    payment_date: Optional[str] = None
+    payment_reference: Optional[str] = None
+
+    @field_validator("payment_date")
+    @classmethod
+    def valid_payment_date(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        import re
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", v.strip()):
+            raise ValueError("payment_date must be YYYY-MM-DD.")
+        return v.strip()

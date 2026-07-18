@@ -13,7 +13,7 @@ from datetime import datetime, timezone, date
 import math
 
 from models.common import api_response
-from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn
+from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn, PayrollDisburseIn
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services.internal_client_service import assert_not_internal_for_payroll
@@ -641,6 +641,81 @@ def finalize_run(
         f"Payroll for {run['month']} finalized — {run.get('headcount', 0)} employees", "success")
 
     return api_response(True, {"id": run_id, "status": "finalized", "journal_entry_id": journal_id})
+
+
+@router.post("/runs/{run_id}/disburse")
+def disburse_run(
+    run_id: str,
+    data: PayrollDisburseIn,
+    current_user: dict = Depends(rbac("payroll", "finalize"))
+):
+    """
+    Mark a FINALIZED payroll run as PAID — Partner only.
+
+    Posts the salary disbursement journal, clearing the Net Salary Payable
+    liability raised at finalization against the bank the salaries were paid from:
+
+        Dr  Net Salary Payable   (total net pay)
+          Cr  Bank               (total net pay)
+
+    The run is marked paid ONLY if the journal actually posts, so a posting
+    failure leaves it re-runnable rather than 'paid' with no GL entry.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": run_id, "status": "paid"})
+
+    # Firm-scoped lookup (maybe_single: another firm's run 404s like a missing one).
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run["status"] == "paid":
+        raise HTTPException(status_code=409, detail="Payroll run already marked paid.")
+    if run["status"] != "finalized":
+        raise HTTPException(status_code=400, detail="Only a finalized payroll run can be disbursed. Finalize it first.")
+    if int(run.get("total_net_paise") or 0) <= 0:
+        raise HTTPException(status_code=400, detail="This payroll run has no net pay to disburse.")
+
+    # Resolve the chosen bank account (same client + firm) and its linked GL account.
+    bank = (db.table("bank_accounts").select("id, coa_account_id, bank_name, is_active")
+            .eq("id", data.bank_account_id).eq("firm_id", current_user["firm_id"])
+            .eq("client_id", run["client_id"]).maybe_single().execute().data)
+    if not bank:
+        raise HTTPException(status_code=404, detail="Bank account not found for this client.")
+    if not bank.get("coa_account_id"):
+        raise HTTPException(status_code=400,
+                            detail=f"Link {bank.get('bank_name', 'this bank account')} to a ledger account before disbursing salaries from it.")
+
+    payment_date = data.payment_date or str(datetime.now(timezone.utc).date())
+
+    from services.phase2_journal_service import Phase2JournalService
+    svc = Phase2JournalService()
+    journal_id = svc.journal_for_payroll_disbursement(
+        run, bank["coa_account_id"], run["firm_id"], run["client_id"], payment_date)
+    if not journal_id:
+        # Only reachable in mock mode (the service re-raises real posting failures);
+        # defensive — do NOT mark paid without a GL entry.
+        return api_response(False, None,
+                            "Salary disbursement journal could not be posted. The run was not marked paid; please retry.")
+
+    db.table("payroll_runs").update({
+        "status":                        "paid",
+        "paid_at":                       datetime.now(timezone.utc).isoformat(),
+        "disbursement_journal_entry_id": journal_id,
+        "paid_from_account_id":          data.bank_account_id,
+        "payment_reference":             (data.payment_reference or None),
+    }).eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+
+    _net = int(run.get("total_net_paise") or 0)  # integer paise → ₹ display, no float
+    timeline_service.log(run["client_id"], "work", "Salary Disbursed",
+        f"Payroll for {run['month']} paid from {bank.get('bank_name', 'bank')} "
+        f"(₹{_net // 100:,}.{_net % 100:02d} net)", "success",
+        firm_id=run["firm_id"], entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"id": run_id, "status": "paid",
+                              "disbursement_journal_entry_id": journal_id})
 
 
 # ─── Reports ──────────────────────────────────────────────────────────────────
