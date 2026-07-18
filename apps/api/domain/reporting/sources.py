@@ -315,7 +315,12 @@ class SupabaseLedgerSource(LedgerSource):
             offset += len(batch_offsets) * self._PAGE
         return out
 
-    def _entries(self, firm_id, client_id) -> dict[str, JournalEntry]:
+    def _entries(self, firm_id, client_id, date_from: Optional[str] = None,
+                 date_to: Optional[str] = None) -> dict[str, JournalEntry]:
+        """Posted, non-deleted entries for a tenant. date_from/date_to (inclusive
+        entry_date bounds) are used by the passbook read path to pull only the one
+        or two partial edge months it needs; unbounded (the default) is the full
+        history the legacy report path and the backfill use."""
         def entry_cols(with_rev: bool, with_ccy: bool) -> str:
             line_cols = self._BASE_LINE_COLS + ((", " + self._LINE_CURRENCY_COLS) if with_ccy else "")
             cols = self._ENTRY_SCALAR_COLS + f", journal_lines({line_cols})"
@@ -326,6 +331,10 @@ class SupabaseLedgerSource(LedgerSource):
                  .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
             if client_id:
                 q = q.eq("client_id", client_id)
+            if date_from:
+                q = q.gte("entry_date", date_from)
+            if date_to:
+                q = q.lte("entry_date", date_to)
             return q.order("id")   # stable key → correct offset paging
 
         # Probe reversal_of (migration 055) and the FX line memo (migration 147)
@@ -384,6 +393,48 @@ class SupabaseLedgerSource(LedgerSource):
                 reference_no=r.get("reference_no"), narration=r.get("narration"),
                 created_at=r.get("created_at"),
             )
+        return out
+
+    # ── Passbook read path (reporting perf) ────────────────────────────────────
+    def fetch_buckets(self, firm_id, client_id) -> dict[tuple[str, str], tuple[int, int]]:
+        """Read a client's monthly buckets from account_period_balances — the
+        small, time-bounded table that replaces replaying all history. Keys are
+        ('account_id', 'YYYY-MM-01') to match balance_cache.build_buckets."""
+        rows = self._fetch_all(lambda: (
+            self.db.table("account_period_balances")
+            .select("account_id, period_month, debit_paise, credit_paise")
+            .eq("firm_id", firm_id).eq("client_id", client_id).order("id")
+        ))
+        return {
+            (r["account_id"], str(r["period_month"])[:10]):
+                (int(r.get("debit_paise", 0) or 0), int(r.get("credit_paise", 0) or 0))
+            for r in rows
+        }
+
+    def fetch_edge_month_entries(self, firm_id, client_id, start, end) -> list[JournalEntry]:
+        """Fetch the raw posted entries for ONLY the partial edge months of a
+        window — the month of `start` when it isn't the 1st, and the month of
+        `end` when it isn't the month's last day. These are the months the whole-
+        month buckets can't represent exactly, so the passbook replays them from
+        raw. At most two calendar months regardless of history depth; empty for a
+        month-aligned window (a financial year, a calendar month, a quarter)."""
+        from .balance_cache import _is_month_first, _is_month_last  # local: avoid cycle at import
+
+        def _month_bounds(iso_date: str) -> tuple[str, str]:
+            import calendar as _cal
+            y, m = int(iso_date[:4]), int(iso_date[5:7])
+            return f"{y:04d}-{m:02d}-01", f"{y:04d}-{m:02d}-{_cal.monthrange(y, m)[1]:02d}"
+
+        ranges: list[tuple[str, str]] = []
+        if start is not None and not _is_month_first(start):
+            ranges.append(_month_bounds(start))
+        if end is not None and not _is_month_last(end):
+            eb = _month_bounds(end)
+            if eb not in ranges:
+                ranges.append(eb)
+        out: list[JournalEntry] = []
+        for mfrom, mto in ranges:
+            out.extend(self._entries(firm_id, client_id, date_from=mfrom, date_to=mto).values())
         return out
 
     def _invoices(self, firm_id, client_id) -> dict[str, Invoice]:

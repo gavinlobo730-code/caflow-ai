@@ -147,3 +147,29 @@ def test_audit_detects_drift():
     d = res["discrepancies"][0]
     assert d["account_id"] == "ar" and d["period_month"] == "2025-06-01"
     assert d["stored_debit"] == 11801 and d["computed_debit"] == 11800
+
+
+def test_audit_and_heal_client_repairs_drift():
+    db = _DB(_store())
+    svc.recompute_client(db, F, C)
+    # Corrupt two buckets and drop one entirely — self-heal must restore all.
+    apb = db.store["account_period_balances"]
+    apb[0]["debit_paise"] += 777
+    del apb[1]
+    res = svc.audit_and_heal_client(db, F, C)
+    assert res["ok"] is False and res.get("healed") is True
+    # After healing, a fresh audit is clean.
+    assert svc.audit_client(db, F, C)["ok"] is True
+
+
+def test_audit_and_heal_firm_sweeps_all_clients():
+    store = _store()
+    store["clients"] = [{"id": C, "firm_id": F}]
+    db = _DB(store)
+    svc.recompute_client(db, F, C)
+    # Introduce drift, then run the firm-wide sweep the nightly job calls.
+    db.store["account_period_balances"][0]["credit_paise"] += 5
+    out = svc.audit_and_heal_firm(db, F)
+    assert out["clients_checked"] == 1
+    assert out["clients_healed"] == 1
+    assert svc.audit_client(db, F, C)["ok"] is True

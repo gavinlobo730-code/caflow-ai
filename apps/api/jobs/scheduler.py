@@ -45,6 +45,7 @@ KNOWN_JOBS = [
     "recurring_invoices",
     "compliance_generation",
     "compliance_escalations",
+    "balance_cache_audit",
 ]
 
 
@@ -277,6 +278,25 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 _log_run("compliance_escalations", fid, "failed", {"error": str(e)})
         else:
             firm_result["compliance_escalations"] = {"skipped": "already ran today"}
+
+        # 9. Balance-cache audit (reporting passbook) — re-derive every client's
+        #    monthly buckets from scratch and self-heal any drift, so the
+        #    incrementally-maintained passbook can never silently diverge from
+        #    the ledger. Read-only for reports (it only touches the derived
+        #    account_period_balances cache); safe to run whether or not reports
+        #    are yet reading the passbook.
+        if force or not _already_ran_today("balance_cache_audit", fid):
+            try:
+                from services.balance_cache_service import audit_and_heal_firm
+                outcome = audit_and_heal_firm(_get_db(), fid)
+                firm_result["balance_cache_audit"] = outcome
+                _log_run("balance_cache_audit", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Balance-cache audit job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["balance_cache_audit"] = {"error": str(e)}
+                _log_run("balance_cache_audit", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["balance_cache_audit"] = {"skipped": "already ran today"}
 
         results["firms"][fid] = firm_result
 
