@@ -33,9 +33,19 @@ class _Query:
         self._lte = []
         self._payload = None
         self._op = None
+        self._on_conflict = None
+        self._ignore_dupes = False
 
     def insert(self, payload):
         self._op, self._payload = "insert", payload
+        return self
+
+    def upsert(self, payload, *, on_conflict=None, ignore_duplicates=False, **_k):
+        # Models the real client's upsert: with ignore_duplicates, rows whose
+        # on_conflict key already exists are skipped (ON CONFLICT DO NOTHING) —
+        # the DB-level dedup backstop (migration 224's unique index).
+        self._op, self._payload = "upsert", payload
+        self._on_conflict, self._ignore_dupes = on_conflict, ignore_duplicates
         return self
 
     def select(self, *_a, **_k):
@@ -63,10 +73,17 @@ class _Query:
 
     def execute(self):
         rows = self._store.setdefault(self._table, [])
-        if self._op == "insert":
+        if self._op in ("insert", "upsert"):
             payload = self._payload if isinstance(self._payload, list) else [self._payload]
+            keys = [k.strip() for k in self._on_conflict.split(",")] if self._on_conflict else []
+            seen = {tuple(r.get(k) for k in keys) for r in rows} if keys else set()
             inserted = []
             for p in payload:
+                if self._op == "upsert" and self._ignore_dupes and keys:
+                    key = tuple(p.get(k) for k in keys)
+                    if key in seen:
+                        continue  # ON CONFLICT DO NOTHING
+                    seen.add(key)
                 rec = dict(p)
                 rec.setdefault("id", f"{self._table}-{len(rows) + 1}")
                 rows.append(rec)
@@ -283,6 +300,25 @@ def test_reimport_same_file_is_idempotent():
     assert second["duplicates_skipped"] == 2
     assert second["statement_id"] is None
     assert len(db.store["bank_transactions"]) == 2  # unchanged
+
+
+def test_db_unique_key_backstops_a_race(monkeypatch):
+    """If the app-level dedup is bypassed — e.g. two concurrent re-imports that
+    each read an empty _existing_hashes before the other commits — the
+    (client_id, import_hash) unique index (migration 224) still prevents a
+    double-insert: the import's upsert(ignore_duplicates=True) silently drops the
+    racing duplicate rows rather than storing them twice."""
+    db = FakeDB()
+    csv = ("Date,Description,Debit,Credit,Balance\n"
+           "01/04/2026,A,500.00,,500.00\n"
+           "02/04/2026,B,,700.00,1200.00\n")
+    # Simulate the race: neither import sees the other's rows via _existing_hashes.
+    monkeypatch.setattr(banking_service, "_existing_hashes", lambda *a, **k: set())
+    banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv))
+    banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv))
+    # Exactly two transactions survive despite both imports believing all rows
+    # were new — the DB-level unique key deduplicated on (client_id, import_hash).
+    assert len(db.store["bank_transactions"]) == 2
 
 
 def test_distinct_same_day_same_amount_kept():

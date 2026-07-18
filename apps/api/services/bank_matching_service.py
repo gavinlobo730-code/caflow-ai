@@ -26,6 +26,21 @@ _MATCH_ENTITY_TYPES = frozenset({
     "sales_invoice", "purchase_bill", "receipt", "purchase_payment", "journal_entry", "manual",
 })
 
+# The unambiguous category implied by a matched entity, applied when the caller
+# accepts a suggestion without picking a category (otherwise the transaction is
+# left uncategorized and never posts cleanly). Only entities with a single
+# obvious classification whose counter is an AUTO control account
+# (posting_map.AUTO_COUNTER: Customer Payment → AR, Vendor Payment → AP) — so no
+# GL account is guessed and the matched document is settled downstream (Phase
+# B.3). journal_entry / manual have no safe default and stay NULL for the CA to
+# classify explicitly.
+_MATCH_DEFAULT_CATEGORY = {
+    "sales_invoice": "Customer Payment",
+    "receipt": "Customer Payment",
+    "purchase_bill": "Vendor Payment",
+    "purchase_payment": "Vendor Payment",
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -232,6 +247,11 @@ class BankMatchingService:
             raise HTTPException(status_code=422, detail="Invalid matched_entity_type.")
         if category is not None and not is_valid_category(category):
             raise HTTPException(status_code=422, detail="Invalid category.")
+        # Accepting a suggestion with no explicit category must not leave the
+        # transaction uncategorized — derive the category the matched entity
+        # implies (see _MATCH_DEFAULT_CATEGORY). An explicit category always wins.
+        if category is None:
+            category = _MATCH_DEFAULT_CATEGORY.get(entity_type)
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("match_status") == "posted":
             raise HTTPException(status_code=409, detail="Transaction already posted to the ledger.")
