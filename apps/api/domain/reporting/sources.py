@@ -12,6 +12,7 @@ Supabase query here MUST filter firm_id AND client_id explicitly.
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -217,14 +218,41 @@ class SupabaseLedgerSource(LedgerSource):
             for r in rows
         }
 
-    def _fetch_all(self, make_query) -> list[dict]:
+    def _fetch_all(self, make_query, max_retries: int = 3) -> list[dict]:
         """Fetch EVERY matching row via offset paging over a stably-ordered query, so
         results are never silently capped at PostgREST's ~1000-row limit (audit C6).
-        `make_query` must return a fresh, ordered query builder on each call."""
+        `make_query` must return a fresh, ordered query builder on each call.
+
+        Retries each PAGE (not the whole fetch) on failure, with a short backoff.
+        Confirmed in production: for a client with 12k+ posted entries (13 pages),
+        one page hit a transient PostgREST 500 while every other page — including
+        the SAME page moments later — succeeded. Before this fix, that single
+        transient failure aborted the entire report, which the frontend then
+        rendered as "no posted journal entries" (indistinguishable from a
+        genuinely empty ledger) instead of a retryable error."""
         out: list[dict] = []
         offset = 0
         while True:
-            page = make_query().range(offset, offset + self._PAGE - 1).execute().data or []
+            page = None
+            last_err: Optional[Exception] = None
+            for attempt in range(max_retries):
+                try:
+                    page = make_query().range(offset, offset + self._PAGE - 1).execute().data or []
+                    break
+                except Exception as e:  # noqa: BLE001 — retry transient PostgREST/network failures
+                    last_err = e
+                    if attempt < max_retries - 1:
+                        _logger.warning(
+                            "Reporting fetch page failed (offset=%d, attempt=%d/%d) — retrying: %s",
+                            offset, attempt + 1, max_retries, e,
+                        )
+                        time.sleep(0.3 * (attempt + 1))
+            if page is None:
+                _logger.error(
+                    "Reporting fetch page failed permanently after %d attempts (offset=%d): %s",
+                    max_retries, offset, last_err,
+                )
+                raise last_err
             out.extend(page)
             if len(page) < self._PAGE:
                 break
