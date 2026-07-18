@@ -51,6 +51,13 @@ type Employee = {
   hra_percent: number;
   da_percent: number;
   other_allowances_paise: number;
+  // Optional fixed components — this page's Add-Employee form doesn't capture
+  // them, but an employee created via the per-client payroll page can carry
+  // them, and the backend slip folds all of them into gross. Included here so
+  // the on-screen CTC preview matches the computed slip for every employee.
+  lta_paise?: number;
+  medical_paise?: number;
+  special_allowance_paise?: number;
   pf_applicable: boolean;
   esi_applicable: boolean;
   pt_applicable?: boolean;
@@ -92,12 +99,17 @@ function rsToP(rs: number): number {
   return Math.round(rs * 100);
 }
 
-/** Monthly gross CTC for an employee, in integer paise (basic + HRA + DA + other allowances). */
+/** Monthly gross CTC for an employee, in integer paise. Mirrors the backend
+ *  slip's gross = basic + HRA + DA + LTA + medical + special + other (any
+ *  component not captured on this page is absent → treated as 0). */
 function employeeGrossPaise(emp: Employee): number {
   return (
     emp.basic_paise +
     Math.round((emp.basic_paise * emp.hra_percent) / 100) +
     Math.round((emp.basic_paise * emp.da_percent) / 100) +
+    (emp.lta_paise ?? 0) +
+    (emp.medical_paise ?? 0) +
+    (emp.special_allowance_paise ?? 0) +
     emp.other_allowances_paise
   );
 }

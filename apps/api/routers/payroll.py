@@ -139,7 +139,12 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     lta       = math.floor(emp.get("lta_paise", 0) * lop_factor)
     medical   = math.floor(emp.get("medical_paise", 0) * lop_factor)
     special   = math.floor(emp.get("special_allowance_paise", 0) * lop_factor)
-    gross     = basic + hra + da + lta + medical + special
+    # other_allowances_paise is a real employee-master field (models/payroll.py,
+    # captured by the Add-Employee form and the CSV importer) that was
+    # previously dropped from gross entirely — understating gross AND net for
+    # any employee who had one. LOP-prorated like every other fixed component.
+    other     = math.floor(emp.get("other_allowances_paise", 0) * lop_factor)
+    gross     = basic + hra + da + lta + medical + special + other
 
     pf   = _compute_pf(basic) if emp.get("pf_applicable") else {"employee": 0, "employer": 0}
     esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
@@ -167,6 +172,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "lta_paise":          lta,
         "medical_paise":      medical,
         "special_allowance_paise": special,
+        "other_allowances_paise":  other,
         "pf_employee_paise":  pf["employee"],
         "pf_employer_paise":  pf["employer"],
         "esi_employee_paise": esi["employee"],
@@ -370,8 +376,17 @@ def create_run(
         totals["pt"]    += slip["pt_paise"]
         totals["tds"]   += slip["tds_paise"]
 
+    # Atomicity: the run header row was inserted first (above), but PostgREST
+    # exposes no multi-statement transaction here — so if the slip insert
+    # fails we compensate by deleting the just-created header. Without this a
+    # failed slip insert strands an empty run whose (firm, client, month)
+    # duplicate-guard then 409s every retry, permanently blocking that month.
     if slips:
-        db.table("payroll_slips").insert(slips).execute()
+        try:
+            db.table("payroll_slips").insert(slips).execute()
+        except Exception:
+            db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+            raise
 
     # Update run totals
     db.table("payroll_runs").update({
