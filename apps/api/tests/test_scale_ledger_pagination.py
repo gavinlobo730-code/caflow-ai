@@ -119,6 +119,81 @@ def test_exactly_cap_boundary():
         assert len(entries) == n
 
 
+# ── task #221: the other 6 top-level fetches, never exercised at scale ────────
+# The money-movement audit found these were never paginated (unlike _entries,
+# fixed for audit C6) and never tested beyond an empty fixture — _build_store
+# above always seeded them as []. A client with >1000 invoices/receipts/bills/
+# payments/credit notes silently dropped rows out of invoice_by_journal etc.,
+# misclassifying cash-basis revenue/expense recognition and Cash Flow entries.
+
+def _build_store_with(table: str, n: int) -> dict:
+    store = _build_store(0)
+    store["journal_entries"] = []
+    common = {"firm_id": FIRM, "client_id": CLIENT}
+    if table == "client_sales_invoices":
+        store[table] = [{"id": f"inv{i:06d}", "total_paise": 100, "journal_entry_id": f"je{i:06d}", **common}
+                        for i in range(n)]
+    elif table == "receipts":
+        store[table] = [{"id": f"r{i:06d}", "amount_paise": 100, "tds_paise": 0,
+                         "journal_entry_id": f"je{i:06d}", **common} for i in range(n)]
+    elif table == "credit_notes":
+        store[table] = [{"id": f"cn{i:06d}", "sales_invoice_id": f"inv{i:06d}",
+                         "journal_entry_id": f"jecn{i:06d}", **common} for i in range(n)]
+    elif table == "purchase_bills":
+        store[table] = [{"id": f"b{i:06d}", "total_paise": 100, "journal_entry_id": f"je{i:06d}", **common}
+                        for i in range(n)]
+    elif table == "purchase_payments":
+        store[table] = [{"id": f"p{i:06d}", "purchase_bill_id": f"b{i:06d}",
+                         "amount_paise": 100, "journal_entry_id": f"jep{i:06d}", **common} for i in range(n)]
+    return store
+
+
+def test_invoices_paginated_returns_all_beyond_cap():
+    db = _CapDB(_build_store_with("client_sales_invoices", 2500))
+    invoices = SupabaseLedgerSource(db)._invoices(FIRM, CLIENT)
+    assert len(invoices) == 2500
+
+
+def test_receipts_paginated_returns_all_beyond_cap():
+    db = _CapDB(_build_store_with("receipts", 2500))
+    receipts = SupabaseLedgerSource(db)._receipts(FIRM, CLIENT)
+    assert len(receipts) == 2500
+
+
+def test_credit_notes_paginated_returns_all_beyond_cap():
+    db = _CapDB(_build_store_with("credit_notes", 2500))
+    notes = SupabaseLedgerSource(db)._credit_notes(FIRM, CLIENT)
+    assert len(notes) == 2500
+
+
+def test_bills_paginated_returns_all_beyond_cap():
+    db = _CapDB(_build_store_with("purchase_bills", 2500))
+    bills = SupabaseLedgerSource(db)._bills(FIRM, CLIENT)
+    assert len(bills) == 2500
+
+
+def test_payments_paginated_returns_all_beyond_cap():
+    db = _CapDB(_build_store_with("purchase_payments", 2500))
+    payments = SupabaseLedgerSource(db)._payments(FIRM, CLIENT)
+    assert len(payments) == 2500
+
+
+def test_allocations_paginated_and_chunked_beyond_cap():
+    # 1500 receipts, each with ONE allocation row -> exercises both the >200
+    # receipt_ids .in_() chunking AND the >1000-row-per-chunk pagination.
+    store = _build_store(0)
+    store["journal_entries"] = []
+    receipt_ids = [f"r{i:06d}" for i in range(1500)]
+    store["receipt_allocations"] = [
+        {"id": f"alloc{i:06d}", "receipt_id": rid, "sales_invoice_id": f"inv{i:06d}", "allocated_paise": 50}
+        for i, rid in enumerate(receipt_ids)
+    ]
+    db = _CapDB(store)
+    out = SupabaseLedgerSource(db)._allocations(receipt_ids)
+    assert sum(len(v) for v in out.values()) == 1500
+    assert len(out) == 1500   # one allocation per receipt, distinct receipt_ids
+
+
 def test_entries_paginated_across_many_keyset_pages():
     # _fetch_all pages by KEYSET (cursor): each page seeks `id > last_id LIMIT
     # _PAGE`. These sizes exercise several pages plus the boundary cases: a short

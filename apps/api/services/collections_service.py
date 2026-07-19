@@ -34,6 +34,33 @@ def _db():
     return get_supabase()
 
 
+def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
+    """Fetch EVERY row of a Supabase query via keyset paging on `key` (task
+    #221, same audit-C6 class as domain/reporting/sources.py's _fetch_all).
+    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit —
+    an established firm invoicing many clients over several years can plausibly
+    cross it on its own fee-invoice/receipt history, understating the
+    Collections dashboard's cash-collected/AR totals with no error.
+    `make_query` returns a fresh query builder each call. Test doubles that
+    don't implement order/limit/gt just return their whole (small) fixture
+    from a single execute(), which is already correct."""
+    first = make_query()
+    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
+        return first.execute().data or []
+    out: list = []
+    cursor = None
+    while True:
+        q = make_query()
+        if cursor is not None:
+            q = q.gt(key, cursor)
+        rows = q.order(key).limit(page).execute().data or []
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        cursor = rows[-1][key]
+    return out
+
+
 def _today() -> date:
     return date.today()
 
@@ -103,11 +130,13 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
                 and i.get("status") in _OPEN_STATUSES
                 and (int(i.get("total_paise", 0)) + int(i.get("debit_note_paise", 0) or 0)
                      - int(i.get("paid_paise", 0)) - int(i.get("credited_paise", 0) or 0)) > 0]
-    q = (_db().table("client_sales_invoices").select("*")
-         .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES)))
-    if internal_id:
-        q = q.eq("client_id", internal_id)
-    rows = q.execute().data or []
+    def make_q():
+        q = (_db().table("client_sales_invoices").select("*")
+             .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES)))
+        if internal_id:
+            q = q.eq("client_id", internal_id)
+        return q
+    rows = _paginate_all(make_q)
     # Same outstanding formula as assess_invoice — a "partially_paid" invoice
     # whose debit note is the only thing still owed (paid_paise == total_paise)
     # must not be silently dropped from the sweep/aging/reminder pipeline.
@@ -169,14 +198,16 @@ def _collected_and_tds(firm_id: str, internal_id: Optional[str],
         rows = [r for r in MOCK_RECEIPTS if r.get("firm_id") == firm_id
                 and (internal_id is None or r.get("client_id") == internal_id)]
     else:
-        q = _db().table("receipts").select("amount_paise,tds_paise,receipt_date").eq("firm_id", firm_id)
-        if internal_id:
-            q = q.eq("client_id", internal_id)
-        if date_from:
-            q = q.gte("receipt_date", date_from)
-        if date_to:
-            q = q.lte("receipt_date", date_to)
-        rows = q.execute().data or []
+        def make_q():
+            q = _db().table("receipts").select("id,amount_paise,tds_paise,receipt_date").eq("firm_id", firm_id)
+            if internal_id:
+                q = q.eq("client_id", internal_id)
+            if date_from:
+                q = q.gte("receipt_date", date_from)
+            if date_to:
+                q = q.lte("receipt_date", date_to)
+            return q
+        rows = _paginate_all(make_q)
     if _USE_MOCK:
         if date_from:
             rows = [r for r in rows if str(r.get("receipt_date", "")) >= date_from]
