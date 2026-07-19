@@ -845,11 +845,17 @@ function LedgerDrillDown({
   const [endDate, setEndDate] = useState(fyRange.end);
   const [ledger, setLedger] = useState<LedgerView | null>(null);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "backend call failed" from "account genuinely has no posted
+  // activity in this window" — matches TrialBalance/ProfitAndLoss/BalanceSheet
+  // (audit M17): a large ledger's per-account fetch can fail/timeout, and
+  // silently rendering that as "no transactions" would misreport a real account
+  // as bookless instead of surfacing a retryable error.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // The backend reporting engine computes opening/running/closing balances —
   // the browser only fetches and renders (Phase 3.4: no accounting math in React).
-  const load = useCallback(async () => {
-    if (!accountId || !clientId || clientId === "_placeholder") { setLedger(null); return; }
+  const load = useCallback(async (force?: boolean) => {
+    if (!accountId || !clientId || clientId === "_placeholder") { setLedger(null); setLoadFailed(false); return; }
     setLoading(true);
     try {
       const res = (await cachedReport(
@@ -857,9 +863,21 @@ function LedgerDrillDown({
         () => api.accounting.ledger({
           client_id: clientId, account_id: accountId, start_date: startDate, end_date: endDate,
         }),
-      )) as { success: boolean; data: LedgerView };
-      setLedger(res.success ? res.data : null);
-    } catch { setLedger(null); } finally { setLoading(false); }
+        { force },
+      )) as { success: boolean; data: LedgerView | null };
+      if (res.success && res.data) {
+        setLedger(res.data);
+        setLoadFailed(false);
+      } else {
+        // res.success===false only ever comes from a backend error path — a
+        // genuinely empty account still returns success=true with empty lines.
+        setLedger(null);
+        setLoadFailed(true);
+      }
+    } catch {
+      setLedger(null);
+      setLoadFailed(true);
+    } finally { setLoading(false); }
   }, [clientId, accountId, startDate, endDate]);
 
   useEffect(() => { load(); }, [load]);
@@ -977,7 +995,14 @@ function LedgerDrillDown({
               </div>
             </div>
           ) : !loading ? (
-            <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account in the selected range.</div>
+            loadFailed ? (
+              <div className="text-center py-10">
+                <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load this ledger — the request failed or timed out.</p>
+                <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </div>
+            ) : (
+              <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account in the selected range.</div>
+            )
           ) : (
             <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" />
           )}
