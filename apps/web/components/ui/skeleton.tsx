@@ -222,6 +222,76 @@ export function TimelineSkeleton({ rows = 5, className }: { rows?: number; class
   );
 }
 
+/**
+ * Financial-statement placeholder — a captioned card with grouped, indented
+ * line-item rows (label + amount) and a bold total per section. Mirrors the
+ * P&L / Balance Sheet / Cash Flow / reconciliation layouts instead of a
+ * single blank block.
+ */
+export function StatementSkeleton({
+  sections = 2,
+  rowsPerSection = 3,
+  className,
+}: {
+  sections?: number;
+  rowsPerSection?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading statement"
+      className={cn("overflow-hidden rounded-xl border border-[#E2E8F0] bg-white", className)}
+    >
+      <div className="border-b border-[#F1F5F9] bg-[#F8FAFC] px-5 py-4">
+        <Skeleton className="h-3 w-48" />
+      </div>
+      <div className="divide-y divide-[#F1F5F9] px-5 py-4">
+        {Array.from({ length: sections }).map((_, s) => (
+          <div key={s} className="space-y-2.5 py-3 first:pt-0 last:pb-0">
+            <Skeleton className="h-2.5 w-32" />
+            {Array.from({ length: rowsPerSection }).map((_, r) => (
+              <div key={r} className="flex items-center justify-between pl-4">
+                <Skeleton className="h-2.5 w-40" />
+                <Skeleton className="h-2.5 w-16" />
+              </div>
+            ))}
+            <div className="flex items-center justify-between pt-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Transaction/queue row placeholder — title+subtitle left, amount right, in a
+ * single divided card. For bank-queue/approval-style lists that aren't a
+ * plain data table.
+ */
+export function TransactionListSkeleton({ rows = 4, className }: { rows?: number; className?: string }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading transactions"
+      className={cn("overflow-hidden rounded-xl border border-[#E2E8F0] bg-white divide-y divide-[#F1F5F9]", className)}
+    >
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-start justify-between gap-4 px-4 py-3">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="h-2.5 w-1/3" />
+          </div>
+          <Skeleton className="h-3 w-16 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Chart/report placeholder — a captioned box with faux bars. */
 export function ChartSkeleton({ height = 240, className }: { height?: number; className?: string }) {
   return (

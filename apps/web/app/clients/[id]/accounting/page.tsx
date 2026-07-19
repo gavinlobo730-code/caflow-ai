@@ -18,6 +18,7 @@ import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
 import { splitPeriodColumns, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { TableSkeleton, StatementSkeleton, TransactionListSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import {
   parseCSV,
   importBankStatement,
@@ -429,7 +430,16 @@ function AccountingDashboard({
 
   const netPL = stats.revenue_paise - stats.expenses_paise;
 
-  if (loading) return <div className="space-y-4 max-w-4xl mx-auto">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-[#F8FAFC] animate-pulse" />)}</div>;
+  if (loading) return (
+    <div className="space-y-3 max-w-4xl mx-auto">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {[...Array(3)].map((_, i) => <MetricCardSkeleton key={i} />)}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
@@ -975,7 +985,7 @@ function LedgerDrillDown({
           ) : !loading ? (
             <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account in the selected range.</div>
           ) : (
-            <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" />
+            <TableSkeleton cols={6} rows={6} />
           )}
         </div>
       </div>
@@ -1059,7 +1069,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
           Cash basis — management reporting only (IT Act §145). GST returns remain invoice-based per CGST Act.
         </div>
       )}
-      {loading ? <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" /> : loaded && rows.length > 0 ? (
+      {loading ? <TableSkeleton cols={5} rows={6} /> : loaded && rows.length > 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
             <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Code</th><th className="px-3 py-3 text-left font-semibold">Account</th><th className="px-3 py-3 text-left font-semibold">Type</th><th className="px-3 py-3 text-right font-semibold">Debit (₹)</th><th className="px-4 py-3 text-right font-semibold">Credit (₹)</th></tr></thead>
@@ -1200,7 +1210,7 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
         </div>
       </div>
 
-      {loading ? <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" /> : !loaded ? null : (
+      {loading ? <TableSkeleton cols={5} rows={5} /> : !loaded ? null : (
         <FXReportBody view={view} data={data} byC={byC} />
       )}
     </div>
@@ -1588,7 +1598,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         </div>
       )}
 
-      {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
+      {loading && <StatementSkeleton sections={2} rowsPerSection={3} />}
 
       {!loading && loaded && (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-x-auto print:border-0">
@@ -1865,7 +1875,7 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
         </div>
       )}
 
-      {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
+      {loading && <StatementSkeleton sections={3} rowsPerSection={3} />}
 
       {!loading && loaded && (
         <div className="space-y-4">
@@ -2102,7 +2112,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
         </div>
       </div>
 
-      {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
+      {loading && <StatementSkeleton sections={3} rowsPerSection={2} />}
 
       {!loading && loaded && !cf && (
         <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
@@ -2323,7 +2333,7 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
         ))}
       </div>
 
-      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : rows.length === 0 ? (
+      {loading ? <TransactionListSkeleton rows={4} /> : rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No transactions in this view.</div>
       ) : (
         <>
@@ -2515,7 +2525,7 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
         <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
       </div>
 
-      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : view === "pending" ? (
+      {loading ? <TableSkeleton cols={6} rows={5} /> : view === "pending" ? (
         pending.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
             No drafts awaiting approval. Create one from “Ready to Post”, then approve it under the Approvals tab.
@@ -2774,7 +2784,7 @@ function PostingReviewDrawer({
             {!ready ? (
               <p className="text-xs text-[#94A3B8] bg-[#F8FAFC] rounded-lg p-3">Select the required account(s) above to preview the entry.</p>
             ) : loadingPreview ? (
-              <div className="h-20 bg-[#F8FAFC] rounded-lg animate-pulse" />
+              <TableSkeleton cols={3} rows={2} bare className="rounded-lg border border-[#F1F5F9]" />
             ) : previewError ? (
               <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{previewError}</p>
             ) : preview ? (
@@ -2894,7 +2904,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
 
       {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
 
-      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : rows.length === 0 ? (
+      {loading ? <TableSkeleton cols={6} rows={5} /> : rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
           {status === "draft" ? "No drafts awaiting approval." : "No posted journals yet."}
         </div>
@@ -2989,7 +2999,7 @@ function BankAccounts({ clientId }: { clientId: string }) {
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+        <TableSkeleton cols={7} rows={3} />
       ) : statements.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <FileText size={32} className="text-gray-200 mx-auto" />
@@ -3299,7 +3309,7 @@ function BankReconciliation({ clientId }: { clientId: string }) {
       )}
 
       {/* Selected session */}
-      {selectedId && (loadingReport ? <div className="h-48 bg-[#F8FAFC] rounded-lg animate-pulse" /> : report && (
+      {selectedId && (loadingReport ? <StatementSkeleton sections={1} rowsPerSection={4} /> : report && (
         <>
           {/* Tie-out summary (cash-flow style reconciles flag) */}
           <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
@@ -3690,7 +3700,7 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
           <p className="text-[10px] text-[#94A3B8] mt-0.5">Reports previously shared with this client via portal.</p>
         </div>
         {loadingShared ? (
-          <div className="px-5 py-6"><div className="h-12 bg-[#F8FAFC] rounded animate-pulse" /></div>
+          <TableSkeleton cols={5} rows={2} bare />
         ) : sharedReports.length === 0 ? (
           <div className="text-center py-8 text-[#94A3B8] text-sm">No reports shared yet.</div>
         ) : (
