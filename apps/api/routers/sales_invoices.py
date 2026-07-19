@@ -248,7 +248,7 @@ def get_outstanding(
                 (inv.get("total_paise", 0) + (inv.get("debit_note_paise", 0) or 0)
                  - inv.get("paid_paise", 0) - (inv.get("credited_paise", 0) or 0))
                 for inv in MOCK_SALES_INVOICES
-                if inv["client_id"] == client_id and inv.get("status") not in ("paid", "cancelled")
+                if inv["client_id"] == client_id and inv.get("status") not in ("paid", "cancelled", "draft")
             )
             return api_response(True, {"client_id": client_id, "outstanding_paise": total})
 
@@ -259,11 +259,13 @@ def get_outstanding(
             .select("total_paise,paid_paise,credited_paise,debit_note_paise")
             .eq("client_id", client_id)
             .eq("firm_id", current_user.get("firm_id"))
-            .not_.in_("status", ["paid", "cancelled"])
+            .not_.in_("status", ["paid", "cancelled", "draft"])
             .execute()
         )
         # Net receivable = (total + debit notes) − cash paid − credit notes applied
-        # (CGST Act §34, integer paise).
+        # (CGST Act §34, integer paise). A draft invoice was never issued (no journal
+        # posted) so it isn't a receivable yet — matches customer_statement_service.py's
+        # _DEAD_INVOICE exclusion set.
         outstanding = sum(
             (r.get("total_paise", 0) + (r.get("debit_note_paise", 0) or 0)
              - r.get("paid_paise", 0) - (r.get("credited_paise", 0) or 0))

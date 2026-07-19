@@ -725,16 +725,18 @@ def get_vendor_outstanding(
         if not v_resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
 
-        # M5: outstanding = Σ (net_payable − paid) over NON-CANCELLED bills. Computing
-        # per-bill from the bill's own paid_paise avoids the double-subtraction the old
-        # code hit (a fully-paid bill was excluded from the sum yet its payment was still
+        # M5: outstanding = Σ (net_payable − paid) over live bills, excluding drafts
+        # (never received — no payable exists yet) and cancelled bills, matching
+        # vendor_statement_service.py's _DEAD_BILL exclusion set. Computing per-bill
+        # from the bill's own paid_paise avoids the double-subtraction the old code
+        # hit (a fully-paid bill was excluded from the sum yet its payment was still
         # subtracted). Payments now reconcile to the bill sub-ledger (H11).
         bills_resp = (
             db.table("purchase_bills")
             .select("id,net_payable_paise,paid_paise,debited_paise,credit_note_paise,status")
             .eq("firm_id", firm_id)
             .eq("vendor_id", vendor_id)
-            .neq("status", "cancelled")
+            .not_.in_("status", ["cancelled", "draft"])
             .execute()
         )
         # Net payable per bill = (net_payable + credit notes) − paid − debited

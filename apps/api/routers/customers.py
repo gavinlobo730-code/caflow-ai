@@ -466,11 +466,13 @@ def get_outstanding_summary(
                 .select("id,total_paise,paid_paise,credited_paise,debit_note_paise,status")
                 .eq("customer_id", cust["id"])
                 .eq("firm_id", firm_id)
-                .not_.in_("status", ["paid", "cancelled"])
+                .not_.in_("status", ["paid", "cancelled", "draft"])
                 .execute()
             )
             # Net receivable = (total + debit notes) − cash paid − credit notes
-            # applied (CGST Act §34, integer paise).
+            # applied (CGST Act §34, integer paise). A draft invoice was never issued
+            # (no journal posted) so it isn't a receivable yet — excluded here to match
+            # customer_statement_service.py's _DEAD_INVOICE set.
             inv_outstanding = sum(
                 (i.get("total_paise", 0) + (i.get("debit_note_paise", 0) or 0)
                  - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
@@ -757,12 +759,14 @@ def get_customer_outstanding(
             .select("id,invoice_no,invoice_date,total_paise,paid_paise,credited_paise,debit_note_paise,status")
             .eq("customer_id", customer_id)
             .eq("firm_id", firm_id)
-            .not_.in_("status", ["paid", "cancelled"])
+            .not_.in_("status", ["paid", "cancelled", "draft"])
             .execute()
         )
         invoices = inv_resp.data or []
         # Net receivable = (total + debit notes) − cash paid − credit notes
-        # applied (CGST Act §34, integer paise).
+        # applied (CGST Act §34, integer paise). A draft invoice was never issued
+        # (no journal posted) so it isn't a receivable yet — excluded here to match
+        # customer_statement_service.py's _DEAD_INVOICE set.
         inv_outstanding = sum(
             (i.get("total_paise", 0) + (i.get("debit_note_paise", 0) or 0)
              - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
