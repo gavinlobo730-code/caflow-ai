@@ -33,7 +33,11 @@ class CashBasisProjector:
       RECEIPT  -> keep cash legs; recognise revenue from allocated invoices
       PAYMENT  -> keep cash leg; recognise expense from the linked bill
       REVERSAL -> re-project the original entry and negate it
-      DIRECT   -> pass through unchanged (cash already, or non-AR/AP movement)
+      DIRECT   -> pass through, but any leg touching A/R or A/P (a manual entry
+                  that bypassed the document flow) is rerouted to the same
+                  Advance from Customers / Advance to Vendors accounts used for
+                  unallocated cash (Decision C), so it can never resurrect an
+                  accrual receivable/payable on the cash-basis Balance Sheet.
     """
 
     def __init__(self, snapshot: LedgerSnapshot, resolver: AccountResolver):
@@ -76,8 +80,45 @@ class CashBasisProjector:
     # ── projections ───────────────────────────────────────────────────────────
 
     def _passthrough(self, entry: JournalEntry, sign: int) -> list[ProjectedLine]:
-        return [self._signed(ln.account_id, ln.debit_paise, ln.credit_paise, sign)
-                for ln in entry.lines]
+        """Pass DIRECT (undocumented) entries through as-is, except any leg on the
+        A/R or A/P control account — those never happen via the normal document
+        flow (invoices/bills always route through _project_receipt/_project_payment),
+        so a manual journal that touches them is netted off and rerouted to the
+        advance control accounts instead of leaking an accrual balance into the
+        cash-basis books."""
+        ar_net = 0
+        ap_net = 0
+        out: list[ProjectedLine] = []
+        for ln in entry.lines:
+            if self.r.is_ar(ln.account_id):
+                ar_net += ln.credit_paise - ln.debit_paise
+                continue
+            if self.r.is_ap(ln.account_id):
+                ap_net += ln.debit_paise - ln.credit_paise
+                continue
+            out.append(self._signed(ln.account_id, ln.debit_paise, ln.credit_paise, sign))
+
+        if ar_net != 0:
+            _logger.warning(
+                "cash-basis: DIRECT entry %s touches A/R outside the document flow "
+                "(net %d paise) -- routed to Advance from Customers", entry.id, ar_net)
+            aid = self.r.advance_customer_id or self._ensure_synthetic(*ADVANCE_CUSTOMER)
+            if ar_net > 0:
+                out.append(self._signed(aid, 0, ar_net, sign))
+            else:
+                out.append(self._signed(aid, -ar_net, 0, sign))
+
+        if ap_net != 0:
+            _logger.warning(
+                "cash-basis: DIRECT entry %s touches A/P outside the document flow "
+                "(net %d paise) -- routed to Advance to Vendors", entry.id, ap_net)
+            aid = self.r.advance_vendor_id or self._ensure_synthetic(*ADVANCE_VENDOR)
+            if ap_net > 0:
+                out.append(self._signed(aid, ap_net, 0, sign))
+            else:
+                out.append(self._signed(aid, 0, -ap_net, sign))
+
+        return out
 
     def _project_receipt(self, entry: JournalEntry, sign: int) -> list[ProjectedLine]:
         """Dr Bank (+ Dr TDS Receivable) kept; Cr A/R replaced by recognised revenue."""

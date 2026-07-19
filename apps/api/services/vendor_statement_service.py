@@ -170,7 +170,7 @@ class VendorStatementService:
         b = (db.table("purchase_bills")
              .select("bill_no, bill_date, net_payable_paise, status, txn_currency, exchange_rate, txn_net_payable")
              .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
-             .execute().data or [])
+             .is_("deleted_at", "null").execute().data or [])
         bills = [x for x in b if (x.get("status") or "") not in _DEAD_BILL]
 
         _pay = (db.table("purchase_payments")
@@ -202,7 +202,7 @@ class VendorStatementService:
         dn = (db.table("debit_notes")
               .select("debit_note_no, debit_note_date, total_paise, status")
               .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
-              .execute().data or [])
+              .is_("deleted_at", "null").execute().data or [])
         debit_notes = [x for x in dn if (x.get("status") or "") not in _DEAD_DEBIT_NOTE]
 
         cn = (db.table("purchase_credit_notes")
@@ -221,7 +221,7 @@ class VendorStatementService:
                  .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, "
                          "debited_paise, credit_note_paise, status, txn_currency, exchange_rate, txn_net_payable, paid_txn")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
-                 .neq("status", "cancelled").execute().data or [])
+                 .is_("deleted_at", "null").execute().data or [])
         vnames = {v["id"]: v.get("name") for v in (db.table("vendors").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])}
 
@@ -229,6 +229,8 @@ class VendorStatementService:
         rows, total = [], 0
         ccy_entries: list[tuple] = []   # (currency, base_paise, foreign_minor) for the breakdown
         for b in bills:
+            if (b.get("status") or "") in _DEAD_BILL:
+                continue
             # (net_payable + credit notes) − paid − debited (CGST Act §34).
             outstanding = (int(b.get("net_payable_paise") or 0) + int(b.get("credit_note_paise") or 0)
                            - int(b.get("paid_paise") or 0) - int(b.get("debited_paise") or 0))

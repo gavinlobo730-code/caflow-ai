@@ -132,3 +132,27 @@ def test_vendor_statement_and_ap_aging(monkeypatch):
     aging = vendor_statement_service.ap_aging(db, FIRM, "CLI", as_of="2025-06-15")
     assert aging["total_outstanding_paise"] == net - 18000
     assert sum(aging["buckets"].values()) == net - 18000
+
+
+# ── task #104: draft (never-received) bills are not real payables ─────────────
+def test_draft_bill_excluded_from_ap_aging(monkeypatch):
+    """A draft purchase bill has no journal entry and never touched AP — it
+    must not appear in AP aging just because it's non-cancelled. ar_aging()
+    already excludes draft invoices this way; ap_aging() was missing the
+    mirror per-row check (task #104)."""
+    db = _setup(monkeypatch)
+    bid, net = _received_bill(db, no="B1", rate=1_00000)   # received, unpaid -> a real payable
+
+    draft = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B2-DRAFT",
+        lines=[PurchaseBillLineIn(description="m", rate_paise=50000, quantity=1, gst_rate_percent=18.0,
+                                  service_catalogue_id="SVC-1")],
+    ), CALLER)
+    draft_id = draft["data"]["id"]
+    assert _bill(db, draft_id)["status"] == "draft"     # never received
+
+    aging = vendor_statement_service.ap_aging(db, FIRM, "CLI", as_of="2025-06-15")
+    bill_ids = [row["bill_id"] for row in aging["bills"]]
+    assert bid in bill_ids
+    assert draft_id not in bill_ids
+    assert aging["total_outstanding_paise"] == net
