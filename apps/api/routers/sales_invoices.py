@@ -1943,6 +1943,8 @@ def list_invoice_reminders(
     try:
         rows = collections_service.invoice_reminder_history(current_user.get("firm_id", ""), invoice_id)
         return api_response(True, rows)
+    except HTTPException:
+        raise
     except Exception as e:
         _logger.error("list_invoice_reminders %s: %s", invoice_id, e)
         return api_response(False, None, "Unable to fetch reminder history. Please try again.")

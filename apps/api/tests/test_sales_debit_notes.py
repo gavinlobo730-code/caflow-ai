@@ -306,3 +306,45 @@ def test_line_unit_persists_on_create_and_edit(monkeypatch):
     assert upd["success"] is True
     assert upd["data"]["lines"][0]["unit"] == "BOX"
     assert sdn.get_sales_debit_note(dn_id, CALLER)["data"]["lines"][0]["unit"] == "BOX"
+
+
+def test_issue_sales_debit_note_propagates_journal_http_exception(monkeypatch):
+    """A deliberate business-rule rejection from the journal kernel (e.g. a
+    locked-FY check firing at posting time) carries a real, actionable
+    status+message the CA needs (task #97) — the rollback must still run, but
+    the exception itself must propagate as-is, not get collapsed into the
+    generic "Please try again" (retrying identical input would never succeed)."""
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    dn_id, _ = _create_dn(db, inv_id, rate=20000)
+
+    import services.phase2_journal_service as pjs
+    def _boom(*a, **k):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_sales_debit_note", _boom)
+
+    with pytest.raises(HTTPException) as e:
+        sdn.issue_sales_debit_note(dn_id, CALLER)
+    assert e.value.status_code == 422
+    assert "locked" in e.value.detail.lower()
+    inv = next(i for i in db.rows("client_sales_invoices") if i["id"] == inv_id)
+    assert inv["debit_note_paise"] == 0   # rollback ran — invoice not left partially applied
+
+
+def test_list_invoice_reminders_propagates_http_exception(monkeypatch):
+    """sales_invoices.py's list_invoice_reminders was missing the
+    except-HTTPException-then-raise guard its sibling remind_invoice already
+    has (task #97) — a permission/not-found rejection from collections_service
+    must propagate with its real status+detail, not the generic "Unable to
+    fetch reminder history. Please try again."."""
+    monkeypatch.setattr(si, "_USE_MOCK", False)
+
+    from services import collections_service
+    def _boom(*a, **k):
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    monkeypatch.setattr(collections_service, "invoice_reminder_history", _boom)
+
+    with pytest.raises(HTTPException) as e:
+        si.list_invoice_reminders("missing-invoice", CALLER)
+    assert e.value.status_code == 404
+    assert "not found" in e.value.detail.lower()

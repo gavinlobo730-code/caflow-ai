@@ -1,5 +1,6 @@
 """Phase 3 GST workspace tests — GSTR-1/3B persistence and GSTR-2B reconciliation."""
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 
@@ -84,6 +85,44 @@ def test_gstr3b_save_and_retrieve(client):
     get_resp = client.get(f"/api/gst-workspace/gstr3b/{ret_id}", headers=_HEADERS)
     assert get_resp.json()["success"] is True
     assert get_resp.json()["data"]["id"] == ret_id
+
+
+def test_save_gstr1_propagates_locked_period_rejection(client, monkeypatch):
+    """A locked-FY rejection from period_validation_service (raised deep
+    inside save_gstr1's try, CGST §37) must propagate as its real 422 +
+    detail — not get collapsed by the generic except-Exception handler into
+    "Please try again", which the CA could never fix by retrying (task #97).
+
+    Patches through routers.gst_workspace's own binding (not a fresh import
+    of the service module) — some other test in the suite reloads
+    services.period_validation_service, which would otherwise leave a
+    monkeypatch on the stale pre-reload singleton the router never calls."""
+    import routers.gst_workspace as gw
+
+    def _locked(firm_id, date_str):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(gw.period_validation_service, "validate_posting_date", _locked)
+
+    resp = client.post("/api/gst-workspace/gstr1", json={
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+    }, headers=_HEADERS)
+    assert resp.status_code == 422
+    assert "locked" in resp.json()["detail"].lower()
+
+
+def test_save_gstr3b_propagates_locked_period_rejection(client, monkeypatch):
+    """Same task #97 fix, applied to GSTR-3B (CGST §39)."""
+    import routers.gst_workspace as gw
+
+    def _locked(firm_id, date_str):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(gw.period_validation_service, "validate_posting_date", _locked)
+
+    resp = client.post("/api/gst-workspace/gstr3b", json={
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+    }, headers=_HEADERS)
+    assert resp.status_code == 422
+    assert "locked" in resp.json()["detail"].lower()
 
 
 def test_filing_history_only_submitted(client):

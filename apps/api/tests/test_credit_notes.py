@@ -125,3 +125,27 @@ def test_line_unit_persists_on_create_and_edit(monkeypatch):
     assert upd["success"] is True
     assert upd["data"]["lines"][0]["unit"] == "BOX"
     assert cn.get_credit_note(cn_id, CALLER)["data"]["lines"][0]["unit"] == "BOX"
+
+
+def test_issue_credit_note_propagates_journal_http_exception(monkeypatch):
+    """A deliberate business-rule rejection from the journal kernel (e.g. a
+    locked-FY check firing at posting time) carries a real, actionable
+    status+message the CA needs (task #97) — the rollback must still run, but
+    the exception itself must propagate as-is, not get collapsed into the
+    generic "Please try again" (retrying identical input would never succeed)."""
+    db = _setup(monkeypatch)
+    inv_id, _ = _issue_invoice(db)
+    cn_id, _ = _create_cn(db, inv_id, rate=20000)
+
+    import services.phase2_journal_service as pjs
+    def _boom(*a, **k):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_credit_note", _boom)
+
+    with pytest.raises(HTTPException) as e:
+        cn.issue_credit_note(cn_id, CALLER)
+    assert e.value.status_code == 422
+    assert "locked" in e.value.detail.lower()
+    # The sub-ledger rollback must still have run — invoice not left partially applied.
+    inv = next(i for i in db.rows("client_sales_invoices") if i["id"] == inv_id)
+    assert inv["credited_paise"] == 0

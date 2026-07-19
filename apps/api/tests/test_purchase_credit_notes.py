@@ -291,3 +291,26 @@ def test_line_unit_persists_on_create_and_edit(monkeypatch):
     assert upd["success"] is True
     assert upd["data"]["lines"][0]["unit"] == "BOX"
     assert pcn.get_purchase_credit_note(pcn_id, CALLER)["data"]["lines"][0]["unit"] == "BOX"
+
+
+def test_issue_purchase_credit_note_propagates_journal_http_exception(monkeypatch):
+    """A deliberate business-rule rejection from the journal kernel (e.g. a
+    locked-FY check firing at posting time) carries a real, actionable
+    status+message the CA needs (task #97) — the rollback must still run, but
+    the exception itself must propagate as-is, not get collapsed into the
+    generic "Please try again" (retrying identical input would never succeed)."""
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    pcn_id, _ = _create_pcn(db, bill_id, rate=20000)
+
+    import services.phase2_journal_service as pjs
+    def _boom(*a, **k):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_purchase_credit_note", _boom)
+
+    with pytest.raises(HTTPException) as e:
+        pcn.issue_purchase_credit_note(pcn_id, CALLER)
+    assert e.value.status_code == 422
+    assert "locked" in e.value.detail.lower()
+    bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
+    assert bill["credit_note_paise"] == 0   # rollback ran — bill not left partially applied
