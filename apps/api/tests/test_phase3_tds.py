@@ -40,7 +40,12 @@ def test_create_challan(client):
     }, headers=_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["amount_paise"] == 500000
+    # tds_challans has no amount_paise column (migration 037) — the amount is
+    # booked as tds_paise/total_paise (no surcharge/interest/penalty on this
+    # quick-create form, so both equal the full amount).
+    assert data["tds_paise"] == 500000
+    assert data["total_paise"] == 500000
+    assert data["payment_date"] == "2025-07-07"
     assert data["bsr_code"] == "1234567"
     assert data["status"] == "deposited"
 
@@ -88,7 +93,9 @@ def test_tds_return_status_transitions(client):
 
 
 def test_certificate_generation_draft_only(client):
-    """IT Act §203 — certificates always draft, ca_review_required=True."""
+    """IT Act §203 — certificates always draft; "draft" status itself IS the
+    CA-review-required signal (tds_certificates has no separate
+    ca_review_required column — migration 037/232)."""
     resp = client.post("/api/tds-workspace/certificates", json={
         "client_id": _CLIENT_ID,
         "deductee_pan": "ABCDE1234F",
@@ -101,7 +108,9 @@ def test_certificate_generation_draft_only(client):
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["status"] == "draft"
-    assert data["ca_review_required"] is True
+    # tds_amount_paise (request field) persists as tds_deducted_paise (real column).
+    assert data["tds_deducted_paise"] == 100000
+    assert data["section"] == "194C"
 
 
 def test_form26as_reconciliation(client):
