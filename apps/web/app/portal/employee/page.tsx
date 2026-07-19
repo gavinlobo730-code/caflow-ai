@@ -85,6 +85,12 @@ export default function EmployeePortalPage() {
   const [activeTab, setActiveTab] = useState<TabId>("payslips");
   const [payslips, setPayslips] = useState<SalarySlip[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
+  // True when the LAST payslip fetch failed (error/timeout) rather than the
+  // employee genuinely having no payslips. Without this, a failed salary-record
+  // load renders as "No payslips found" — indistinguishable, to the employee,
+  // from having none issued (audit M17). Mirrors TrialBalance.loadFailed in
+  // clients/[id]/accounting/page.tsx.
+  const [payslipsError, setPayslipsError] = useState(false);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -139,6 +145,7 @@ export default function EmployeePortalPage() {
   const loadPayslips = useCallback(async () => {
     if (!employee) return;
     setPayslipsLoading(true);
+    setPayslipsError(false);
     try {
       const supabase = getSupabaseClient();
       const { data, error: err } = await supabase
@@ -150,7 +157,11 @@ export default function EmployeePortalPage() {
       if (err) throw new Error(err.message);
       setPayslips(data ?? []);
     } catch (e) {
+      // A failed fetch must NOT fall through to the empty "No payslips found"
+      // state — flag it so the UI shows a retryable error instead (audit M17).
       console.error("loadPayslips:", e);
+      setPayslips([]);
+      setPayslipsError(true);
     } finally {
       setPayslipsLoading(false);
     }
@@ -263,6 +274,16 @@ export default function EmployeePortalPage() {
             {payslipsLoading ? (
               <div className="text-center py-10 text-sm text-[#94A3B8] flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
+              </div>
+            ) : payslipsError ? (
+              <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-3">
+                <p className="text-sm text-red-600 font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
+                <button
+                  onClick={() => loadPayslips()}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                >
+                  Retry
+                </button>
               </div>
             ) : payslips.length === 0 ? (
               <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center">

@@ -142,6 +142,11 @@ export default function ClientPortalPage() {
   // Dues state
   const [apiDues, setApiDues] = useState<ApiDue[]>([]);
   const [duesLoading, setDuesLoading] = useState(false);
+  // True when the LAST dues fetch failed (error/timeout) rather than the client
+  // genuinely having nothing outstanding. Without this, a failed load renders as
+  // "No outstanding dues" — indistinguishable, to the portal viewer, from a
+  // paid-up client (audit M17). Mirrors TrialBalance.loadFailed in accounting.
+  const [duesFailed, setDuesFailed] = useState(false);
 
   // Load clients list on mount
   useEffect(() => {
@@ -244,9 +249,18 @@ export default function ClientPortalPage() {
     try {
       const firmId = await getFirmId();
       const res = await api.portal.getDues(firmId, clientId) as { success: boolean; data: DuesResponse };
-      setApiDues(res.data?.dues ?? []);
+      // res.success===false only ever comes from a backend error path — a client
+      // with nothing outstanding still returns success=true with an empty list.
+      if (res.success) {
+        setApiDues(res.data?.dues ?? []);
+        setDuesFailed(false);
+      } else {
+        setApiDues([]);
+        setDuesFailed(true);
+      }
     } catch {
       setApiDues([]);
+      setDuesFailed(true);
     } finally {
       setDuesLoading(false);
     }
@@ -781,6 +795,19 @@ export default function ClientPortalPage() {
                     ) : (() => {
                       const duesData = apiDues.length > 0 ? apiDues : unpaidInvoices;
                       if (duesData.length === 0) {
+                        if (duesFailed) {
+                          return (
+                            <div className="text-center py-10 space-y-3">
+                              <p className="text-sm text-red-600 font-medium">Couldn&apos;t load outstanding dues — the request failed or timed out.</p>
+                              <button
+                                onClick={() => loadDues(selectedClientId)}
+                                className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          );
+                        }
                         return (
                           <div className="text-center py-10 space-y-2">
                             <Receipt size={32} className="text-gray-200 mx-auto" />
