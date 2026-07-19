@@ -36,7 +36,10 @@ class _Q:
     def insert(self, p): self.op, self.payload = "insert", p; return self
     def update(self, p): self.op, self.payload = "update", p; return self
     def select(self, *a, **k): self.op = "select"; self.cols = " ".join(str(x) for x in a); return self
-    def eq(self, k, v): self.f.append((k, v)); return self
+    def eq(self, k, v):
+        if "." not in k:            # ignore embedded-resource filters (journal_lines.account_id)
+            self.f.append((k, v))
+        return self
     def or_(self, *_a, **_k): return self
     def ilike(self, *_a, **_k): return self
     def in_(self, k, vals): self.f.append((k, ("__in__", list(vals)))); return self

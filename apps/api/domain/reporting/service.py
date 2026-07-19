@@ -145,6 +145,16 @@ class ReportingService:
         from before `start`; the snapshot's full posted history supplies it."""
         start = start_date or _fy_start()
         end = end_date or ist_today().isoformat()
+        # Read ONLY this account's posted entries (all dates — the opening balance
+        # needs history strictly before `start`), not the client's ENTIRE ledger.
+        # For a large client that is a fraction of the data and avoids the
+        # full-history fetch that made this drill-down slow and memory-heavy.
+        # builders.ledger already filters by account_id, so the result is identical.
+        # Non-Supabase sources (InMemory tests) keep the snapshot path.
+        if isinstance(self.source, SupabaseLedgerSource):
+            accounts = self.source._accounts(firm_id, client_id)
+            entries = self.source._entries(firm_id, client_id, account_id=account_id)
+            return builders.ledger(entries, accounts, account_id, start, end)
         snap = self.source.snapshot(firm_id, client_id, start, end)
         return builders.ledger(snap.entries_by_id, snap.accounts, account_id, start, end)
 

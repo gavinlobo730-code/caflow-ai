@@ -143,7 +143,10 @@ class _Resp:
 class _Q:
     def __init__(self, rows): self.rows = rows; self.f = []
     def select(self, *_a, **_k): return self
-    def eq(self, k, v): self.f.append((k, v)); return self
+    def eq(self, k, v):
+        if "." not in k:            # ignore embedded-resource filters (journal_lines.account_id)
+            self.f.append((k, v))
+        return self
     def or_(self, *_a, **_k): return self
     def in_(self, *_a, **_k): self.f.append(("__none__", object())); return self
     def is_(self, k, _v): self.f.append((k, None)); return self   # deleted_at IS NULL
