@@ -2729,7 +2729,7 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
 
           {partyId && (
             loadingDocs ? (
-              <div className="h-24 rounded-lg bg-[#F8FAFC] animate-pulse" />
+              <TransactionListSkeleton rows={3} />
             ) : docs.length === 0 ? (
               <p className="text-xs text-[#94A3B8] text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
             ) : (
@@ -3380,7 +3380,7 @@ function BankAccounts({ clientId }: { clientId: string }) {
           </button>
         </div>
         {loading ? (
-          <div className="p-4 space-y-2">{[...Array(2)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+          <TableSkeleton cols={6} rows={2} />
         ) : accounts.length === 0 ? (
           <div className="text-center py-8 px-4 space-y-1">
             <p className="text-sm text-[#64748B]">No bank accounts yet.</p>
