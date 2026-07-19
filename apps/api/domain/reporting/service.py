@@ -32,16 +32,23 @@ _logger = logging.getLogger("caflow.reporting.service")
 
 def _passbook_mode() -> str:
     """Reporting passbook rollout switch (env REPORTING_PASSBOOK_MODE):
-      off    — legacy full-history replay only (default; unchanged behaviour).
+      off    — legacy full-history replay only.
       shadow — serve the legacy result, ALSO compute via the passbook and compare,
                logging any mismatch. Proves equivalence on real traffic with no
                user-facing risk before flipping.
       on     — serve the fast passbook result (falling back to legacy if the fast
                path errors, so a missing/stale cache degrades to slow, never wrong).
     Applies to ACCRUAL Trial Balance / P&L / Balance Sheet only; cash basis,
-    Cash Flow and the ledger drill-down always use the legacy engine."""
-    m = os.environ.get("REPORTING_PASSBOOK_MODE", "off").strip().lower()
-    return m if m in ("off", "shadow", "on") else "off"
+    Cash Flow and the ledger drill-down always use the legacy engine.
+
+    DEFAULTS TO "on": the buckets are backfilled + trigger-maintained and were
+    verified paise-identical to the raw ledger, and the legacy fall-back makes
+    "on" safe. The default lives here (not only in render.yaml) because the host's
+    blueprint does not auto-apply env-var changes — a code default deploys
+    reliably, whereas the env var would sit unapplied. Tests force "off" via
+    conftest (their fake DBs have no buckets); an explicit env var still wins."""
+    m = os.environ.get("REPORTING_PASSBOOK_MODE", "on").strip().lower()
+    return m if m in ("off", "shadow", "on") else "on"
 
 
 def _log_shadow_mismatch(ctx: tuple, legacy_out: dict, fast_out: dict) -> None:
