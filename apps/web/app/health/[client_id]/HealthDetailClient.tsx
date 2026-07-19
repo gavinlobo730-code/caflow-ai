@@ -200,6 +200,34 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [factors, setFactors] = useState<DimensionFactor[] | null>(null);
   const [loadingFactors, setLoadingFactors] = useState(false);
+  // M17: distinguish "backend call failed" from "dimension genuinely has no
+  // dragging factors". Previously both collapsed to factors=[] and rendered the
+  // reassuring "healthy" message — hiding real risk behind a failed load.
+  const [factorsFailed, setFactorsFailed] = useState(false);
+
+  async function loadFactors() {
+    setLoadingFactors(true);
+    setFactorsFailed(false);
+    try {
+      const json: ApiResponse<{ factors: DimensionFactor[] }> = await apiFetch(
+        `/api/health/clients/${clientId}/dimension-detail?dimension=${dimKey}`
+      );
+      if (json.success) {
+        setFactors(json.data?.factors ?? []);
+      } else {
+        // success:false is only ever a backend error path — a healthy dimension
+        // returns success:true with an empty factors array. Leave factors null
+        // so a re-expand (or Retry) refetches rather than caching the failure.
+        setFactors(null);
+        setFactorsFailed(true);
+      }
+    } catch {
+      setFactors(null);
+      setFactorsFailed(true);
+    } finally {
+      setLoadingFactors(false);
+    }
+  }
 
   async function handleExpand() {
     if (expanded) {
@@ -208,17 +236,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
     }
     setExpanded(true);
     if (factors !== null) return; // already loaded
-    setLoadingFactors(true);
-    try {
-      const json: ApiResponse<{ factors: DimensionFactor[] }> = await apiFetch(
-        `/api/health/clients/${clientId}/dimension-detail?dimension=${dimKey}`
-      );
-      setFactors(json.success ? (json.data?.factors ?? []) : []);
-    } catch {
-      setFactors([]);
-    } finally {
-      setLoadingFactors(false);
-    }
+    loadFactors();
   }
 
   const weightLabel = meta.weightLabel ?? weightBpToLabel(value.weight ?? 0);
@@ -265,6 +283,16 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
           <div className="mt-3 pt-3 border-t border-gray-100">
             {loadingFactors ? (
               <p className="text-xs text-gray-400 animate-pulse">Loading factors…</p>
+            ) : factorsFailed ? (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-red-600">Couldn&apos;t load factors — the request failed or timed out.</p>
+                <button
+                  onClick={loadFactors}
+                  className="text-[10px] text-[#182350] border border-[#182350]/30 px-2 py-0.5 rounded hover:bg-[#AFD2FA]/20 whitespace-nowrap"
+                >
+                  Retry
+                </button>
+              </div>
             ) : !factors || factors.length === 0 ? (
               <p className="text-xs text-gray-500">No dragging factors — this dimension is healthy.</p>
             ) : (

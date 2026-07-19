@@ -221,8 +221,11 @@ export default function RisksPage() {
         .select("id, client_id, compliance_type, due_date, filing_status")
         .eq("firm_id", firmId)
         .lt("due_date", todayStr);
+      // M17: a failed category query must surface as pageError (retryable),
+      // never be swallowed to [] and rendered as a reassuring "All Clear".
+      if (compErr) throw compErr;
 
-      const compliance: ComplianceEntry[] = compErr ? [] : ((complianceData ?? []) as ComplianceEntry[]);
+      const compliance: ComplianceEntry[] = (complianceData ?? []) as ComplianceEntry[];
       const clientMap: Record<string, string> = Object.fromEntries(clients.map((c) => [c.id, c.client_name]));
 
       // Overdue filing risk
@@ -257,7 +260,8 @@ export default function RisksPage() {
       // Inactive clients (no entries in last 90 days)
       const ninetyAgo = new Date(today);
       ninetyAgo.setDate(ninetyAgo.getDate() - 90);
-      const { data: recentData } = await sb.from("compliance_calendar").select("client_id").eq("firm_id", firmId).gte("due_date", ninetyAgo.toISOString().slice(0, 10));
+      const { data: recentData, error: recentErr } = await sb.from("compliance_calendar").select("client_id").eq("firm_id", firmId).gte("due_date", ninetyAgo.toISOString().slice(0, 10));
+      if (recentErr) throw recentErr;
       const activeIds = new Set((recentData ?? []).map((r: { client_id: string }) => r.client_id));
       setInactiveClients(clients.filter((c) => !activeIds.has(c.id)).map((c) => ({ clientId: c.id, clientName: c.client_name, daysInactive: 90 })));
 
@@ -277,12 +281,13 @@ export default function RisksPage() {
         { label: "3rd Installment (75%)", date: `${curYear}-12-15` },
         { label: "4th Installment (100%)", date: `${curYear + 1}-03-15` },
       ];
-      const { data: advTaxData } = await sb
+      const { data: advTaxData, error: advTaxErr } = await sb
         .from("compliance_calendar")
         .select("client_id, compliance_type, due_date, filing_status")
         .eq("firm_id", firmId)
         .eq("compliance_type", "ADVANCE_TAX")
         .lt("due_date", todayStr);
+      if (advTaxErr) throw advTaxErr;
       const filedAdvTax = new Set(
         ((advTaxData ?? []) as { client_id: string; due_date: string; filing_status: string }[])
           .filter((e) => e.filing_status === "filed")
@@ -312,12 +317,13 @@ export default function RisksPage() {
       const sixtyAhead = new Date(today);
       sixtyAhead.setDate(sixtyAhead.getDate() + 60);
       const sixtyAheadStr = sixtyAhead.toISOString().slice(0, 10);
-      const { data: dscData } = await sb
+      const { data: dscData, error: dscErr } = await sb
         .from("dsc_tracker")
         .select("client_id, dsc_holder_name, expiry_date")
         .eq("firm_id", firmId)
         .lte("expiry_date", sixtyAheadStr)
         .gte("expiry_date", todayStr);
+      if (dscErr) throw dscErr;
       setDscExpiryRisks(
         ((dscData ?? []) as { client_id: string; dsc_holder_name: string; expiry_date: string }[]).map((d) => ({
           clientId: d.client_id,
@@ -329,11 +335,12 @@ export default function RisksPage() {
       );
 
       // Loan Overdue
-      const { data: loanData } = await sb
+      const { data: loanData, error: loanErr } = await sb
         .from("loans")
         .select("client_id, lender_name, loan_type, outstanding_paise")
         .eq("firm_id", firmId)
         .eq("status", "overdue");
+      if (loanErr) throw loanErr;
       setLoanOverdueRisks(
         ((loanData ?? []) as { client_id: string; lender_name: string; loan_type: string; outstanding_paise: number }[]).map((l) => ({
           clientId: l.client_id,
@@ -347,13 +354,14 @@ export default function RisksPage() {
       // FD Maturity within 30 days — Section 194A TDS on interest
       const thirtyAhead = new Date(today);
       thirtyAhead.setDate(thirtyAhead.getDate() + 30);
-      const { data: fdData } = await sb
+      const { data: fdData, error: fdErr } = await sb
         .from("fixed_deposits")
         .select("client_id, bank_name, maturity_date, maturity_amount_paise")
         .eq("firm_id", firmId)
         .eq("status", "active")
         .lte("maturity_date", thirtyAhead.toISOString().slice(0, 10))
         .gte("maturity_date", todayStr);
+      if (fdErr) throw fdErr;
       setFdMaturityRisks(
         ((fdData ?? []) as { client_id: string; bank_name: string; maturity_date: string; maturity_amount_paise: number }[]).map((f) => ({
           clientId: f.client_id,

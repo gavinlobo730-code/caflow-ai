@@ -25,6 +25,12 @@ export default function OverviewPage() {
   const [alerts, setAlerts] = useState<HealthAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // M17: the per-fetch `.catch(() => [])` fallbacks below silently degrade a
+  // failed tasks/compliance/health load into "0 open tasks / 0 overdue filings"
+  // and drop the Health card — reassuring, and wrong. Track whether any of them
+  // actually failed so we can show a retryable error instead of stale zeros.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
@@ -32,6 +38,7 @@ export default function OverviewPage() {
     async function load() {
       setLoading(true);
       setError(null);
+      setLoadFailed(false);
       try {
         // Every one of these is independent of the others — firing them
         // together instead of as a waterfall matters a lot here: the health
@@ -42,12 +49,13 @@ export default function OverviewPage() {
         // for the compliance calendar's first-visit seed step. Running them
         // concurrently drops the critical path from "sum of every step" to
         // roughly "the slowest single step".
+        let anyFailed = false;
         const [c, t, firmId, comp0, health] = await Promise.all([
           getClient(clientId),
-          getTasks({ clientId, limit: 50 }).catch(() => [] as Task[]),
-          getFirmId().catch(() => null),
-          getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]),
-          getOrCalculateClientHealth(clientId).catch(() => null),
+          getTasks({ clientId, limit: 50 }).catch(() => { anyFailed = true; return [] as Task[]; }),
+          getFirmId().catch(() => { anyFailed = true; return null; }),
+          getComplianceCalendar(clientId).catch(() => { anyFailed = true; return [] as ComplianceEntry[]; }),
+          getOrCalculateClientHealth(clientId).catch(() => { anyFailed = true; return null; }),
         ]);
         if (cancelled) return;
         setClient(c);
@@ -64,10 +72,11 @@ export default function OverviewPage() {
         let comp = comp0;
         if (comp.length === 0 && firmId) {
           await seedComplianceCalendar(clientId).catch(() => undefined);
-          comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+          comp = await getComplianceCalendar(clientId).catch(() => { anyFailed = true; return [] as ComplianceEntry[]; });
         }
         if (cancelled) return;
         setCompliance(comp);
+        setLoadFailed(anyFailed);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load client");
       } finally {
@@ -76,10 +85,23 @@ export default function OverviewPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [clientId, financialYear]);
+  }, [clientId, financialYear, reloadKey]);
 
   if (loading) return <OverviewSkeleton />;
   if (error) return <div className="p-6 text-red-500 text-sm">{error}</div>;
+  if (loadFailed) return (
+    <div className="p-6">
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+        <span>Couldn&apos;t load this client&apos;s overview — the request failed or timed out. Some figures may be incomplete, so they aren&apos;t shown.</span>
+        <button
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="shrink-0 text-xs font-medium text-red-700 underline"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
   if (!client) return <div className="p-6 text-[#94A3B8] text-sm">Client not found.</div>;
 
   const today = new Date().toISOString().split("T")[0];
