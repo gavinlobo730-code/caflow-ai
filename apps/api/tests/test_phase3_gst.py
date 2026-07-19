@@ -128,11 +128,11 @@ def test_save_gstr3b_propagates_locked_period_rejection(client, monkeypatch):
 def test_filing_history_only_submitted(client):
     # Save two returns — one draft, one submitted
     r1 = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "X",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
     }, headers=_HEADERS).json()["data"]["id"]
 
     r2 = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "052025", "gstin": "X",
+        "client_id": _CLIENT_ID, "period": "052025", "gstin": "27AABCU9603R1ZX",
     }, headers=_HEADERS).json()["data"]["id"]
 
     # Submit r2

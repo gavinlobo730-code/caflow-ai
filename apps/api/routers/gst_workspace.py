@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from models.common import api_response
 from core.permissions import rbac
 from core.ist_clock import ist_today
+from core.validators import validate_gstin
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
@@ -161,6 +162,10 @@ def save_gstr1(
     """Save GSTR-1 return as draft. CGST Act §37."""
     try:
         firm_id = current_user["firm_id"]
+        gstin = body.gstin.strip().upper()
+        err = validate_gstin(gstin)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
         # Validate period date
         period_date = f"{body.period[2:]}-{body.period[:2]}-01"
         period_validation_service.validate_posting_date(firm_id, period_date)
@@ -170,7 +175,7 @@ def save_gstr1(
             "firm_id": firm_id,
             "client_id": body.client_id,
             "period": body.period,
-            "gstin": body.gstin,
+            "gstin": gstin,
             "payload_json": body.payload_json,
             "summary_json": body.summary_json,
             "total_taxable_paise": body.total_taxable_paise,
@@ -278,6 +283,10 @@ def save_gstr3b(
     """Save GSTR-3B return as draft. CGST Act §39."""
     try:
         firm_id = current_user["firm_id"]
+        gstin = body.gstin.strip().upper()
+        err = validate_gstin(gstin)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
         period_date = f"{body.period[2:]}-{body.period[:2]}-01"
         period_validation_service.validate_posting_date(firm_id, period_date)
 
@@ -286,7 +295,7 @@ def save_gstr3b(
             "firm_id": firm_id,
             "client_id": body.client_id,
             "period": body.period,
-            "gstin": body.gstin,
+            "gstin": gstin,
             "payload_json": body.payload_json,
             "summary_json": body.summary_json,
             "tax_liability_paise": body.tax_liability_paise,

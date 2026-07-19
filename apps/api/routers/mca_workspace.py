@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from core.validators import validate_cin, validate_din, validate_pan
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.compliance_engine import mca_due_date
@@ -126,11 +127,15 @@ def create_company(
     """Create or register company master record."""
     try:
         firm_id = current_user["firm_id"]
+        cin = body.cin.strip().upper()
+        err = validate_cin(cin)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
-            "cin": body.cin,
+            "cin": cin,
             "company_name": body.company_name,
             # Real columns are incorp_date/registered_office/company_category
             # (migration 038) — the request model keeps the frontend's field
@@ -153,6 +158,10 @@ def create_company(
         log_event(firm_id, "mca_company", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
+    except HTTPException:
+        # A CIN-format rejection carries a real, actionable message — collapsing
+        # it into "Please try again" would hide exactly what needs to change.
+        raise
     except Exception as e:
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
@@ -208,18 +217,27 @@ def create_director(
     """Add director with DIN. Companies Act 2013 §165."""
     try:
         firm_id = current_user["firm_id"]
+        din = body.din.strip()
+        err = validate_din(din)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
+        pan = body.pan.strip().upper() if body.pan else body.pan
+        if pan:
+            err = validate_pan(pan)
+            if err:
+                raise HTTPException(status_code=422, detail=err)
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
             "company_id": body.company_id,
-            "din": body.din,
+            "din": din,
             # Real column is director_name (migration 038); request model
             # keeps the frontend's "name" field (task #219 schema-drift fix).
             "director_name": body.name,
             "designation": body.designation,
             "date_of_appointment": body.date_of_appointment,
-            "pan": body.pan,
+            "pan": pan,
             "email": body.email,
             "kyc_status": body.kyc_status,
             "date_of_cessation": None,
@@ -235,6 +253,11 @@ def create_director(
         log_event(firm_id, "mca_director", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
+    except HTTPException:
+        # A DIN/PAN-format rejection carries a real, actionable message —
+        # collapsing it into "Please try again" would hide exactly what needs
+        # to change.
+        raise
     except Exception as e:
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
