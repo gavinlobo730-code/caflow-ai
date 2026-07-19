@@ -320,14 +320,23 @@ class SupabaseLedgerSource(LedgerSource):
         return out
 
     def _entries(self, firm_id, client_id, date_from: Optional[str] = None,
-                 date_to: Optional[str] = None) -> dict[str, JournalEntry]:
+                 date_to: Optional[str] = None, account_id: Optional[str] = None) -> dict[str, JournalEntry]:
         """Posted, non-deleted entries for a tenant. date_from/date_to (inclusive
         entry_date bounds) are used by the passbook read path to pull only the one
         or two partial edge months it needs; unbounded (the default) is the full
-        history the legacy report path and the backfill use."""
+        history the legacy report path and the backfill use.
+
+        account_id (optional): restrict to entries that TOUCH this one account, with
+        only that account's lines embedded (an INNER-join filter on journal_lines).
+        The per-account ledger uses this to read a fraction of the ledger instead of
+        the client's entire posted history — builders.ledger filters by account_id
+        anyway, so the result is identical, just far cheaper."""
         def entry_cols(with_rev: bool, with_ccy: bool) -> str:
             line_cols = self._BASE_LINE_COLS + ((", " + self._LINE_CURRENCY_COLS) if with_ccy else "")
-            cols = self._ENTRY_SCALAR_COLS + f", journal_lines({line_cols})"
+            # !inner → only parent entries that HAVE a line for `account_id`; the
+            # embed filter below also trims the embedded lines to that account.
+            embed = f"journal_lines!inner({line_cols})" if account_id else f"journal_lines({line_cols})"
+            cols = self._ENTRY_SCALAR_COLS + f", {embed}"
             return cols + (", reversal_of" if with_rev else "")
 
         def make_q(with_rev: bool, with_ccy: bool):
@@ -335,11 +344,13 @@ class SupabaseLedgerSource(LedgerSource):
                  .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
             if client_id:
                 q = q.eq("client_id", client_id)
+            if account_id:
+                q = q.eq("journal_lines.account_id", account_id)   # embedded-resource filter
             if date_from:
                 q = q.gte("entry_date", date_from)
             if date_to:
                 q = q.lte("entry_date", date_to)
-            return q.order("id")   # stable key → correct offset paging
+            return q.order("id")   # stable key → correct keyset paging
 
         # Probe reversal_of (migration 055) and the FX line memo (migration 147)
         # independently; on a missing column, disable that probe and retry. This
