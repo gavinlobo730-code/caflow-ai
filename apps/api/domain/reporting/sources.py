@@ -453,20 +453,28 @@ class SupabaseLedgerSource(LedgerSource):
         return out
 
     def _invoices(self, firm_id, client_id) -> dict[str, Invoice]:
-        q = self.db.table("client_sales_invoices").select(
-            "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.execute().data or []
+        def make_q():
+            q = self.db.table("client_sales_invoices").select(
+                "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q.order("id")
+        # Paged (task #221, same audit C6 class as _entries): unpaged, this
+        # silently dropped invoices past PostgREST's ~1000-row cap for any
+        # client with a large sales history, corrupting cash-basis revenue
+        # recognition and the Cash Flow Statement's entry classification.
+        rows = self._fetch_all(make_q)
         return {r["id"]: Invoice(r["id"], int(r.get("total_paise", 0) or 0),
                                  r.get("journal_entry_id")) for r in rows}
 
     def _receipts(self, firm_id, client_id) -> dict[str, Receipt]:
-        q = self.db.table("receipts").select(
-            "id, amount_paise, tds_paise, journal_entry_id").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.execute().data or []
+        def make_q():
+            q = self.db.table("receipts").select(
+                "id, amount_paise, tds_paise, journal_entry_id").eq("firm_id", firm_id)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q.order("id")
+        rows = self._fetch_all(make_q)
         return {r["id"]: Receipt(r["id"], r.get("journal_entry_id"),
                                  int(r.get("amount_paise", 0) or 0),
                                  int(r.get("tds_paise", 0) or 0)) for r in rows}
@@ -475,36 +483,52 @@ class SupabaseLedgerSource(LedgerSource):
         out: dict[str, list[ReceiptAllocation]] = {}
         if not receipt_ids:
             return out
-        rows = (self.db.table("receipt_allocations")
-                .select("receipt_id, sales_invoice_id, allocated_paise")
-                .in_("receipt_id", receipt_ids).execute().data or [])
-        for r in rows:
+        # Chunked (PostgREST .in_() with thousands of receipt ids risks the
+        # request URL/payload limit) AND paged per chunk (task #221) — a client
+        # with many multi-invoice receipts can have >1000 allocation rows even
+        # with far fewer receipts.
+        all_rows: list[dict] = []
+        for i in range(0, len(receipt_ids), 200):
+            chunk = receipt_ids[i:i + 200]
+
+            def make_q(chunk=chunk):
+                return (self.db.table("receipt_allocations")
+                        .select("id, receipt_id, sales_invoice_id, allocated_paise")
+                        .in_("receipt_id", chunk).order("id"))
+            all_rows.extend(self._fetch_all(make_q))
+        for r in all_rows:
             out.setdefault(r["receipt_id"], []).append(ReceiptAllocation(
                 r["receipt_id"], r["sales_invoice_id"], int(r.get("allocated_paise", 0) or 0)))
         return out
 
     def _credit_notes(self, firm_id, client_id) -> list[CreditNote]:
-        q = self.db.table("credit_notes").select(
-            "id, sales_invoice_id, journal_entry_id").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.execute().data or []
+        def make_q():
+            q = self.db.table("credit_notes").select(
+                "id, sales_invoice_id, journal_entry_id").eq("firm_id", firm_id)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q.order("id")
+        rows = self._fetch_all(make_q)
         return [CreditNote(r["id"], r.get("sales_invoice_id"), r.get("journal_entry_id")) for r in rows]
 
     def _bills(self, firm_id, client_id) -> dict[str, Bill]:
-        q = self.db.table("purchase_bills").select(
-            "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.execute().data or []
+        def make_q():
+            q = self.db.table("purchase_bills").select(
+                "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q.order("id")
+        rows = self._fetch_all(make_q)
         return {r["id"]: Bill(r["id"], int(r.get("total_paise", 0) or 0),
                               r.get("journal_entry_id")) for r in rows}
 
     def _payments(self, firm_id, client_id) -> list[Payment]:
-        q = self.db.table("purchase_payments").select(
-            "id, purchase_bill_id, amount_paise, journal_entry_id").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.execute().data or []
+        def make_q():
+            q = self.db.table("purchase_payments").select(
+                "id, purchase_bill_id, amount_paise, journal_entry_id").eq("firm_id", firm_id)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q.order("id")
+        rows = self._fetch_all(make_q)
         return [Payment(r["id"], r.get("purchase_bill_id"), r.get("journal_entry_id"),
                         int(r.get("amount_paise", 0) or 0)) for r in rows]

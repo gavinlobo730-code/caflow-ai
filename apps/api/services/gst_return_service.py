@@ -33,6 +33,33 @@ _SALES_POSTED = ("issued", "partially_paid", "paid")
 _BILL_POSTED = ("received", "partially_paid", "paid")
 
 
+def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
+    """Fetch EVERY row of a Supabase query via keyset paging on `key` (task
+    #221, same audit-C6 class as domain/reporting/sources.py's _fetch_all).
+    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit —
+    for a high-volume client, a single busy filing month can plausibly exceed
+    that, understating GSTR-1/3B output tax or ITC with no error and risking a
+    wrongly filed government return (CGST Act §37/§39). `make_query` returns a
+    fresh query builder each call. Test doubles that don't implement
+    order/limit/gt just return their whole (small) fixture from a single
+    execute(), which is already correct."""
+    first = make_query()
+    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
+        return first.execute().data or []
+    out: list = []
+    cursor = None
+    while True:
+        q = make_query()
+        if cursor is not None:
+            q = q.gt(key, cursor)
+        rows = q.order(key).limit(page).execute().data or []
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        cursor = rows[-1][key]
+    return out
+
+
 def _period_bounds(period: str) -> tuple[str, str]:
     """'MMYYYY' → (first_iso, last_iso) for that calendar month."""
     if len(period) != 6 or not period.isdigit():
@@ -50,21 +77,28 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
     Output tax = net CREDIT on gst_cgst/gst_sgst/gst_igst (sales credit, credit-note
     reversals debit). ITC = net DEBIT on gst_input. Reads posted journal_lines only.
     """
-    coa = (db.table("chart_of_accounts").select("id, system_account_key")
-           .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
+    coa = _paginate_all(lambda: db.table("chart_of_accounts").select("id, system_account_key")
+           .eq("firm_id", firm_id).eq("client_id", client_id))
     key_by_id = {c["id"]: c.get("system_account_key") for c in coa}
     out_ids = {c["id"] for c in coa if c.get("system_account_key") in ("gst_cgst", "gst_sgst", "gst_igst")}
     in_ids = {c["id"] for c in coa if c.get("system_account_key") == "gst_input"}
 
-    entries = (db.table("journal_entries").select("id, entry_date, is_posted")
+    entries = _paginate_all(lambda: db.table("journal_entries").select("id, entry_date, is_posted")
                .eq("firm_id", firm_id).eq("client_id", client_id)
-               .gte("entry_date", start).lte("entry_date", end).execute().data) or []
+               .gte("entry_date", start).lte("entry_date", end))
     posted_ids = {e["id"] for e in entries if e.get("is_posted", True)}
     if not posted_ids:
         return {"output_paise": 0, "itc_paise": 0, "by_head": {}}
 
-    lines = (db.table("journal_lines").select("journal_entry_id, account_id, debit_paise, credit_paise")
-             .in_("journal_entry_id", list(posted_ids)).execute().data) or []
+    # Chunked (PostgREST .in_() with a large entry-id list risks the request
+    # URL/payload limit) AND paged per chunk — see _paginate_all's docstring.
+    posted_id_list = list(posted_ids)
+    lines: list[dict] = []
+    for i in range(0, len(posted_id_list), 200):
+        chunk = posted_id_list[i:i + 200]
+        lines.extend(_paginate_all(lambda chunk=chunk: db.table("journal_lines")
+            .select("id, journal_entry_id, account_id, debit_paise, credit_paise")
+            .in_("journal_entry_id", chunk)))
 
     by_head = {"cgst": 0, "sgst": 0, "igst": 0, "input": 0}
     output_paise = 0
@@ -84,31 +118,31 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
 
 
 def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
-    return (db.table("client_sales_invoices").select("*")
+    return _paginate_all(lambda: db.table("client_sales_invoices").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_SALES_POSTED))
-            .gte("invoice_date", start).lte("invoice_date", end).execute().data) or []
+            .gte("invoice_date", start).lte("invoice_date", end))
 
 
 def _issued_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return (db.table("credit_notes").select("*")
+    return _paginate_all(lambda: db.table("credit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "issued")
-            .gte("credit_note_date", start).lte("credit_note_date", end).execute().data) or []
+            .gte("credit_note_date", start).lte("credit_note_date", end))
 
 
 def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
-    return (db.table("purchase_bills").select("*")
+    return _paginate_all(lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
-            .gte("bill_date", start).lte("bill_date", end).execute().data) or []
+            .gte("bill_date", start).lte("bill_date", end))
 
 
 def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return (db.table("debit_notes").select("*")
+    return _paginate_all(lambda: db.table("debit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "issued")
-            .gte("debit_note_date", start).lte("debit_note_date", end).execute().data) or []
+            .gte("debit_note_date", start).lte("debit_note_date", end))
 
 
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str) -> dict:
