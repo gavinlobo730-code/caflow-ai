@@ -83,6 +83,55 @@ def test_debit_note_relieves_payable_and_reconciles(monkeypatch):
     assert ve.get_vendor_outstanding("VEND1", CALLER)["data"]["outstanding_paise"] == net_payable - dn_total
 
 
+def test_issue_debit_note_propagates_journal_http_exception(monkeypatch):
+    """A deliberate business-rule rejection from the journal kernel (e.g. a
+    locked-FY check firing at posting time) carries a real, actionable
+    status+message the CA needs (task #97) — the rollback must still run, but
+    the exception itself must propagate as-is, not get collapsed into the
+    generic "Please try again" (retrying identical input would never succeed)."""
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db, rate=1_00000)
+    dn_id, _ = _create_dn(db, bill_id, rate=20000)
+
+    import services.phase2_journal_service as pjs
+    def _boom(*a, **k):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_debit_note", _boom)
+
+    with pytest.raises(HTTPException) as e:
+        dn.issue_debit_note(dn_id, CALLER)
+    assert e.value.status_code == 422
+    assert "locked" in e.value.detail.lower()
+    bill = _bill(db, bill_id)
+    assert bill["debited_paise"] == 0   # rollback ran — bill not left partially applied
+
+
+def test_receive_purchase_bill_propagates_journal_http_exception(monkeypatch):
+    """Same task #97 fix, applied to receiving a purchase bill: the kernel's
+    rejection must propagate with its real status+detail, not the generic
+    "Please try again" — and the bill must roll back to draft."""
+    db = _setup(monkeypatch)
+    res = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="BILL-2",
+        lines=[PurchaseBillLineIn(description="mat", rate_paise=1_00000, quantity=1,
+                                   gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert res["success"] is True
+    bill_id = res["data"]["id"]
+
+    import services.phase2_journal_service as pjs
+    def _boom(*a, **k):
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked for posting.")
+    monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_purchase_bill", _boom)
+
+    with pytest.raises(HTTPException) as e:
+        pb.receive_purchase_bill(bill_id, CALLER)
+    assert e.value.status_code == 422
+    assert "locked" in e.value.detail.lower()
+    bill = _bill(db, bill_id)
+    assert bill["status"] == "draft"   # rollback ran — bill not left "received" with no GL entry
+
+
 def test_full_debit_note_marks_bill_paid(monkeypatch):
     db = _setup(monkeypatch)
     bill_id, net_payable = _received_bill(db, rate=1_00000)

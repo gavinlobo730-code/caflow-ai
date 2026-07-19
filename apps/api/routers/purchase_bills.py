@@ -1162,6 +1162,15 @@ def receive_purchase_bill(
             db.table("purchase_bills").update({
                 "status": "draft", "received_at": None,
             }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+            # A deliberate business-rule rejection (e.g. period_validation_service's
+            # locked-FY check inside the journal kernel) carries a real, actionable
+            # status+message the CA needs — collapsing it into "Please try again" is
+            # actively misleading, since retrying identical input will never succeed.
+            # Only a genuinely unexpected failure gets the safe generic message.
+            if isinstance(jerr, HTTPException):
+                _logger.error("receive_purchase_bill: journal posting failed (HTTP %s); receipt rolled back: %s",
+                               jerr.status_code, jerr.detail)
+                raise
             _logger.error("receive_purchase_bill: journal posting failed; receipt rolled back: %s", jerr)
             return api_response(False, None, "Unable to receive purchase bill. Please try again.")
 

@@ -196,6 +196,11 @@ def save_gstr1(
             title=f"GSTR-1 draft saved for {body.period}",
         )
         return api_response(True, record)
+    except HTTPException:
+        # period_validation_service's locked-FY rejection (CGST §37) carries a real,
+        # actionable message the CA needs — collapsing it into "Please try again" is
+        # actively misleading, since retrying identical input will never succeed.
+        raise
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
@@ -300,6 +305,11 @@ def save_gstr3b(
         log_event(firm_id, "gstr3b_return", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
+    except HTTPException:
+        # period_validation_service's locked-FY rejection (CGST §39) carries a real,
+        # actionable message the CA needs — collapsing it into "Please try again" is
+        # actively misleading, since retrying identical input will never succeed.
+        raise
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 

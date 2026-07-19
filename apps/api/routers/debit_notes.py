@@ -463,6 +463,15 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                         .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
                 except Exception:
                     pass
+            # A deliberate business-rule rejection (e.g. a locked-FY check inside the
+            # journal kernel) carries a real, actionable status+message the CA needs —
+            # collapsing it into "Please try again" is actively misleading, since
+            # retrying identical input will never succeed. Only a genuinely
+            # unexpected failure gets the safe generic message.
+            if isinstance(jerr, HTTPException):
+                _logger.error("issue_debit_note: journal failed (HTTP %s); application rolled back: %s",
+                               jerr.status_code, jerr.detail)
+                raise
             _logger.error("issue_debit_note: journal failed; application rolled back: %s", jerr)
             return api_response(False, None, "Unable to issue debit note. Please try again.")
 
