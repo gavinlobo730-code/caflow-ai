@@ -27,6 +27,31 @@ _BASE = "INR"
 _DEAD = {"draft", "cancelled", "paid"}
 
 
+def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
+    """Fetch EVERY row of a Supabase query via keyset paging on `key`.
+
+    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit, so
+    for a large ledger this would truncate the read and understate FX balances /
+    mis-date FX adjustments (no error). `make_query` returns a fresh query builder
+    each call. Test doubles that don't implement order/limit/gt just return their
+    whole (small) fixture from a single execute(), which is already correct."""
+    first = make_query()
+    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
+        return first.execute().data or []
+    out: list = []
+    cursor = None
+    while True:
+        q = make_query()
+        if cursor is not None:
+            q = q.gt(key, cursor)
+        rows = q.order(key).limit(page).execute().data or []
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        cursor = rows[-1][key]
+    return out
+
+
 def _today() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
@@ -47,10 +72,10 @@ def _within(when, start: Optional[str], end: Optional[str]) -> bool:
 class FXReportingService:
     # ── shared open-document readers (foreign only) ────────────────────────────
     def _open_foreign_invoices(self, db, firm_id, client_id, as_of: str) -> list[dict]:
-        rows = (db.table("client_sales_invoices")
-                .select("id, invoice_no, invoice_date, customer_id, status, total_paise, paid_paise, "
-                        "credited_paise, txn_currency, exchange_rate, txn_total, paid_txn")
-                .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
+        rows = _paginate_all(lambda: db.table("client_sales_invoices")
+                             .select("id, invoice_no, invoice_date, customer_id, status, total_paise, paid_paise, "
+                                     "credited_paise, txn_currency, exchange_rate, txn_total, paid_txn")
+                             .eq("firm_id", firm_id).eq("client_id", client_id))
         out = []
         for r in rows:
             cur = (r.get("txn_currency") or _BASE).upper()
@@ -68,10 +93,10 @@ class FXReportingService:
         return out
 
     def _open_foreign_bills(self, db, firm_id, client_id, as_of: str) -> list[dict]:
-        rows = (db.table("purchase_bills")
-                .select("id, bill_no, bill_date, vendor_id, status, net_payable_paise, paid_paise, "
-                        "debited_paise, txn_currency, exchange_rate, txn_net_payable, paid_txn")
-                .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
+        rows = _paginate_all(lambda: db.table("purchase_bills")
+                             .select("id, bill_no, bill_date, vendor_id, status, net_payable_paise, paid_paise, "
+                                     "debited_paise, txn_currency, exchange_rate, txn_net_payable, paid_txn")
+                             .eq("firm_id", firm_id).eq("client_id", client_id))
         out = []
         for r in rows:
             cur = (r.get("txn_currency") or _BASE).upper()
@@ -115,19 +140,21 @@ class FXReportingService:
         """{journal_entry_id: entry_date} for posted entries — so an FX adjustment is
         reported in its SETTLEMENT/posting period (period-accurate for backdated and
         multi-year settlements), not by the audit row's insert timestamp."""
-        rows = (db.table("journal_entries").select("id, entry_date")
-                .eq("firm_id", firm_id).eq("client_id", client_id)
-                .eq("is_posted", True).is_("deleted_at", "null").execute().data) or []
+        rows = _paginate_all(lambda: db.table("journal_entries").select("id, entry_date")
+                             .eq("firm_id", firm_id).eq("client_id", client_id)
+                             .eq("is_posted", True).is_("deleted_at", "null"))
         return {r["id"]: _d(r.get("entry_date")) for r in rows}
 
     # ── 1. Realized FX gain/loss ───────────────────────────────────────────────
     def realized_fx(self, db, firm_id, client_id, start=None, end=None) -> dict:
-        q = db.table("fx_adjustments").select("*").eq("firm_id", firm_id).eq("kind", "realized")
-        if client_id:
-            q = q.eq("client_id", client_id)
+        def _adj_query():
+            qq = db.table("fx_adjustments").select("*").eq("firm_id", firm_id).eq("kind", "realized")
+            if client_id:
+                qq = qq.eq("client_id", client_id)
+            return qq
         entry_dates = self._entry_dates(db, firm_id, client_id)
         lines, by_ccy, gain, loss = [], {}, 0, 0
-        for r in (q.execute().data or []):
+        for r in _paginate_all(_adj_query):
             when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
             if not _within(when, start, end):
                 continue
@@ -153,12 +180,14 @@ class FXReportingService:
 
     # ── 2. Unrealized FX revaluation ───────────────────────────────────────────
     def unrealized_fx(self, db, firm_id, client_id, period_end=None) -> dict:
-        q = db.table("fx_revaluations").select("*").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        if period_end:
-            q = q.eq("period_end", _d(period_end))
-        rows = q.execute().data or []
+        def _reval_query():
+            qq = db.table("fx_revaluations").select("*").eq("firm_id", firm_id)
+            if client_id:
+                qq = qq.eq("client_id", client_id)
+            if period_end:
+                qq = qq.eq("period_end", _d(period_end))
+            return qq
+        rows = _paginate_all(_reval_query)
         groups: dict = {}
         for r in rows:
             key = (_d(r.get("period_end")), (r.get("currency") or "").upper(), r.get("item_type"))
@@ -222,10 +251,10 @@ class FXReportingService:
         documents = []
         for tbl, no_col, date_col in (("client_sales_invoices", "invoice_no", "invoice_date"),
                                       ("purchase_bills", "bill_no", "bill_date")):
-            rows = (db.table(tbl)
-                    .select(f"id, {no_col}, {date_col}, txn_currency, exchange_rate, rate_source, "
-                            f"rate_type, rate_date, rate_selected_by, rate_overridden")
-                    .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
+            rows = _paginate_all(lambda tbl=tbl, no_col=no_col, date_col=date_col: db.table(tbl)
+                                 .select(f"id, {no_col}, {date_col}, txn_currency, exchange_rate, rate_source, "
+                                         f"rate_type, rate_date, rate_selected_by, rate_overridden")
+                                 .eq("firm_id", firm_id).eq("client_id", client_id))
             for r in rows:
                 cur = (r.get("txn_currency") or _BASE).upper()
                 if cur == _BASE or not _within(r.get(date_col), start, end):
@@ -237,12 +266,14 @@ class FXReportingService:
                     "rate_type": r.get("rate_type"), "rate_date": (_d(r["rate_date"]) if r.get("rate_date") else None),
                     "rate_selected_by": r.get("rate_selected_by"), "rate_overridden": bool(r.get("rate_overridden")),
                 })
-        q = db.table("fx_adjustments").select("*").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
+        def _adj_query():
+            qq = db.table("fx_adjustments").select("*").eq("firm_id", firm_id)
+            if client_id:
+                qq = qq.eq("client_id", client_id)
+            return qq
         entry_dates = self._entry_dates(db, firm_id, client_id)
         adjustments = []
-        for r in (q.execute().data or []):
+        for r in _paginate_all(_adj_query):
             when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
             if not _within(when, start, end):
                 continue
@@ -283,15 +314,15 @@ def _account_foreign_and_base(db, firm_id, client_id, account_id, currency=_BASE
     txn_currency='INR'), so the reported foreign balance and its carrying base are the
     stable booked values. Derived purely from posted data; tolerant of an absent FX
     column set (returns 0/0 for a foreign filter) so it is safe on any schema."""
-    entries = (db.table("journal_entries").select("id, is_posted, deleted_at")
-               .eq("firm_id", firm_id).eq("client_id", client_id)
-               .eq("is_posted", True).is_("deleted_at", "null").execute().data) or []
+    entries = _paginate_all(lambda: db.table("journal_entries").select("id, is_posted, deleted_at")
+                            .eq("firm_id", firm_id).eq("client_id", client_id)
+                            .eq("is_posted", True).is_("deleted_at", "null"))
     entry_ids = {e["id"] for e in entries}
     if not entry_ids:
         return 0, 0
-    lines = (db.table("journal_lines")
-             .select("journal_entry_id, account_id, debit_paise, credit_paise, txn_debit, txn_credit, txn_currency")
-             .eq("account_id", account_id).execute().data) or []
+    lines = _paginate_all(lambda: db.table("journal_lines")
+                          .select("id, journal_entry_id, account_id, debit_paise, credit_paise, txn_debit, txn_credit, txn_currency")
+                          .eq("account_id", account_id))
     cur = (currency or _BASE).upper()
     foreign = base = 0
     for l in lines:
