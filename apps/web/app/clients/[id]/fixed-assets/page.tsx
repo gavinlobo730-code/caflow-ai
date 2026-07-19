@@ -133,6 +133,10 @@ export default function FixedAssetsPage() {
 function RegisterTab({ clientId }: { clientId: string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST load failed (thrown/PostgREST error) rather than the
+  // client genuinely having no assets — without this a failed load renders
+  // identically to an empty register: "No assets" + Gross/Net Block ₹0 (M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -147,20 +151,23 @@ function RegisterTab({ clientId }: { clientId: string }) {
       // every read, never persisted — see routers/fixed_assets.py:list_assets).
       // No business logic here worth an extra backend hop for.
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("fixed_assets")
         .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes")
         .eq("client_id", clientId)
         .eq("is_disposed", false)
         .order("purchase_date", { ascending: false })
         .order("id"));
+      // A non-null PostgREST error is a real failure, not an empty register.
+      if (error) throw error;
       const rows = ((data as Omit<Asset, "current_wdv_paise" | "status">[]) ?? []).map((a) => ({
         ...a,
         current_wdv_paise: a.purchase_cost_paise - a.accumulated_depreciation_paise,
         status: computeAssetStatus(a),
       }));
       setAssets(rows);
-    } catch { setAssets([]); }
+      setLoadFailed(false);
+    } catch { setAssets([]); setLoadFailed(true); }
     setLoading(false);
   }, [clientId]);
 
@@ -182,9 +189,9 @@ function RegisterTab({ clientId }: { clientId: string }) {
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Gross Block", value: fmt(totalCost), accent: "blue" },
-          { label: "Accumulated Depreciation", value: fmt(totalAccum), accent: "amber" },
-          { label: "Net Block (WDV)", value: fmt(totalWDV), accent: "green" },
+          { label: "Gross Block", value: loadFailed ? "—" : fmt(totalCost), accent: "blue" },
+          { label: "Accumulated Depreciation", value: loadFailed ? "—" : fmt(totalAccum), accent: "amber" },
+          { label: "Net Block (WDV)", value: loadFailed ? "—" : fmt(totalWDV), accent: "green" },
         ].map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
             <p className="text-[11px] text-[#94A3B8] font-medium">{c.label}</p>
@@ -208,6 +215,11 @@ function RegisterTab({ clientId }: { clientId: string }) {
 
       {loading ? (
         <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+      ) : loadFailed ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+          <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the asset register — the request failed or timed out.</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : assets.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <TrendingDown size={32} className="text-gray-200 mx-auto" />
@@ -418,6 +430,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 function DepreciationTab({ clientId }: { clientId: string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST load failed (error/timeout / success:false) rather than
+  // genuinely finding no assets — otherwise the charge tiles read ₹0 as if
+  // there were simply nothing to depreciate (M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [posting, setPosting] = useState<string | null>(null);
   const [period, setPeriod] = useState(() => {
     const now = new Date();
@@ -433,8 +449,10 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       // anything); disposed assets are already excluded by the default.
       const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
       const j = await res.json();
+      if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
-    } catch { setAssets([]); }
+      setLoadFailed(false);
+    } catch { setAssets([]); setLoadFailed(true); }
     setLoading(false);
   }, [clientId]);
 
@@ -508,17 +526,22 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
           <p className="text-[11px] text-[#94A3B8]">Total Annual Depreciation</p>
-          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{fmt(totalAnnual)}</p>
+          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{loadFailed ? "—" : fmt(totalAnnual)}</p>
         </div>
         <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
           <p className="text-[11px] text-[#94A3B8]">Monthly Charge</p>
-          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{fmt(Math.floor(totalAnnual / 12))}</p>
+          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{loadFailed ? "—" : fmt(Math.floor(totalAnnual / 12))}</p>
         </div>
       </div>
 
       {/* Table */}
       {loading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+      ) : loadFailed ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+          <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
@@ -583,6 +606,9 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 function DisposalTab({ clientId }: { clientId: string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST load failed rather than genuinely finding no disposable
+  // assets — otherwise a failed load reads as "No active assets" (M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<Asset | null>(null);
   const [proceeds, setProceeds] = useState("");
   const [disposalDate, setDisposalDate] = useState(new Date().toISOString().slice(0, 10));
@@ -597,8 +623,10 @@ function DisposalTab({ clientId }: { clientId: string }) {
       // assets are excluded without needing a (nonexistent) status filter.
       const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
       const j = await res.json();
+      if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
-    } catch { setAssets([]); }
+      setLoadFailed(false);
+    } catch { setAssets([]); setLoadFailed(true); }
     setLoading(false);
   }, [clientId]);
 
@@ -640,6 +668,11 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
       {loading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+      ) : loadFailed ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12 space-y-3">
+          <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : assets.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
           <p className="text-sm text-[#64748B]">No active assets available for disposal.</p>
@@ -722,6 +755,10 @@ function DisposalTab({ clientId }: { clientId: string }) {
 function ReportsTab({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST load failed rather than genuinely finding no assets —
+  // without it every figure here (Gross/Net Block, counts) reads ₹0 / 0 on a
+  // failed load, indistinguishable from a client that holds no assets (M17).
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
@@ -732,9 +769,11 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       // with currently-held assets.
       const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}&include_disposed=true`, { credentials: "include" });
       const j = await res.json();
+      if (!j.success) throw new Error(j.error ?? "Failed to load");
       const rows = ((j.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
       setAssets(rows);
-    } catch { setAssets([]); }
+      setLoadFailed(false);
+    } catch { setAssets([]); setLoadFailed(true); }
     setLoading(false);
   }, [clientId]);
 
@@ -753,6 +792,19 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
     acc[k].accum += a.accumulated_depreciation_paise;
     return acc;
   }, {});
+
+  // Failed load: one banner in place of every zeroed tile/table below, so the
+  // report is never mistaken for a client that genuinely holds no assets (M17).
+  if (loadFailed) {
+    return (
+      <div className="space-y-5 max-w-4xl">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+          <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the fixed-asset report — the request failed or timed out.</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-4xl">
