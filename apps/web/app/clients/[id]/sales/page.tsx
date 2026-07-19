@@ -1198,6 +1198,11 @@ function SalesInvoices({
 
   // Summary stats
   const [stats, setStats] = useState({ outstanding: 0, issued: 0, paid: 0 });
+  // True when the LAST invoice fetch failed (thrown OR a non-null PostgREST
+  // error from selectAll, which never throws) rather than genuinely finding no
+  // invoices — otherwise a failed load renders identically to an empty FY:
+  // "No invoices" + ₹0 summary tiles (audit M17).
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // ── URL state: hydrate the FY window + customer scope once on mount, then
   // mirror them back. (Search/sort/filters now persist via the DataTable.) ───
@@ -1241,81 +1246,96 @@ function SalesInvoices({
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
 
-    const [{ data: invData }, { data: custData }, { data: servicesData }] = await Promise.all([
-      selectAll(() => supabase
-        .from("client_sales_invoices")
-        .select(
-          "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, is_overdue, days_overdue, reminder_count, last_reminded_at, customers(name)"
-        )
-        .eq("client_id", clientId)
-        .is("deleted_at", null)
-        .gte("invoice_date", range.start)
-        .lte("invoice_date", range.end)
-        .order("invoice_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("customers")
-        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-      // Direct Supabase, not api.serviceCatalogue.list() — that endpoint's
-      // relevance/recency ranking only matters for ServiceCataloguePicker's
-      // typeahead; this list drives the CSV import's product_service
-      // resolver, which just needs the WHOLE active catalogue (matches
-      // purchases/page.tsx's identical direct fetch for the same purpose).
-      selectAll(() => supabase
-        .from("service_catalogue")
-        .select("id, name, description, hsn_sac, gst_rate_bps, default_rate_paise, unit, kind, is_active")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
-    setServices((servicesData as ServiceCatalogueItem[]) ?? []);
+    try {
+      const [{ data: invData, error: invError }, { data: custData }, { data: servicesData }] = await Promise.all([
+        selectAll(() => supabase
+          .from("client_sales_invoices")
+          .select(
+            "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, is_overdue, days_overdue, reminder_count, last_reminded_at, customers(name)"
+          )
+          .eq("client_id", clientId)
+          .is("deleted_at", null)
+          .gte("invoice_date", range.start)
+          .lte("invoice_date", range.end)
+          .order("invoice_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("customers")
+          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+        // Direct Supabase, not api.serviceCatalogue.list() — that endpoint's
+        // relevance/recency ranking only matters for ServiceCataloguePicker's
+        // typeahead; this list drives the CSV import's product_service
+        // resolver, which just needs the WHOLE active catalogue (matches
+        // purchases/page.tsx's identical direct fetch for the same purpose).
+        selectAll(() => supabase
+          .from("service_catalogue")
+          .select("id, name, description, hsn_sac, gst_rate_bps, default_rate_paise, unit, kind, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      // selectAll swallows the PostgREST error into { data: [], error } and
+      // never throws — surface it so a failed fetch isn't mistaken for an
+      // empty period (audit M17). Only the invoice list drives this tab's
+      // rows + summary; the customer/service pickers degrade independently.
+      if (invError) throw invError;
+      setServices((servicesData as ServiceCatalogueItem[]) ?? []);
 
-    const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
-      { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
-        customer_id: string; taxable_amount_paise: number; total_gst_paise: number;
-        total_paise: number; paid_paise: number; status: string; supply_state_code: string | null;
-        is_interstate: boolean; is_overdue: boolean | null; days_overdue: number | null;
-        reminder_count: number | null; last_reminded_at: string | null;
-        customers: { name: string } | null }
-    >).map((r) => ({
-      id: r.id,
-      invoice_no: r.invoice_no,
-      invoice_date: r.invoice_date,
-      due_date: r.due_date,
-      customer_id: r.customer_id,
-      customer_name: r.customers?.name ?? "—",
-      taxable_paise: r.taxable_amount_paise,
-      gst_paise: r.total_gst_paise,
-      total_paise: r.total_paise,
-      paid_paise: r.paid_paise,
-      status: r.status as InvoiceStatus,
-      supply_state_code: r.supply_state_code,
-      is_interstate: r.is_interstate,
-      is_overdue: r.is_overdue ?? false,
-      days_overdue: r.days_overdue ?? 0,
-      reminder_count: r.reminder_count ?? 0,
-      last_reminded_at: r.last_reminded_at,
-    }));
+      const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
+        { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
+          customer_id: string; taxable_amount_paise: number; total_gst_paise: number;
+          total_paise: number; paid_paise: number; status: string; supply_state_code: string | null;
+          is_interstate: boolean; is_overdue: boolean | null; days_overdue: number | null;
+          reminder_count: number | null; last_reminded_at: string | null;
+          customers: { name: string } | null }
+      >).map((r) => ({
+        id: r.id,
+        invoice_no: r.invoice_no,
+        invoice_date: r.invoice_date,
+        due_date: r.due_date,
+        customer_id: r.customer_id,
+        customer_name: r.customers?.name ?? "—",
+        taxable_paise: r.taxable_amount_paise,
+        gst_paise: r.total_gst_paise,
+        total_paise: r.total_paise,
+        paid_paise: r.paid_paise,
+        status: r.status as InvoiceStatus,
+        supply_state_code: r.supply_state_code,
+        is_interstate: r.is_interstate,
+        is_overdue: r.is_overdue ?? false,
+        days_overdue: r.days_overdue ?? 0,
+        reminder_count: r.reminder_count ?? 0,
+        last_reminded_at: r.last_reminded_at,
+      }));
 
-    setInvoices(mapped);
-    setCustomers((custData as Customer[]) ?? []);
+      setInvoices(mapped);
+      setCustomers((custData as Customer[]) ?? []);
 
-    // Summary: outstanding = issued + partially_paid (total_paise), paid FY, issued FY
-    let outstanding = 0, issued = 0, paid = 0;
-    for (const inv of mapped) {
-      if (inv.status === "issued" || inv.status === "partially_paid") outstanding += inv.total_paise;
-      if (inv.status === "issued" || inv.status === "partially_paid" || inv.status === "paid") issued += inv.total_paise;
-      if (inv.status === "paid") paid += inv.total_paise;
+      // Summary: outstanding = issued + partially_paid (total_paise), paid FY, issued FY
+      let outstanding = 0, issued = 0, paid = 0;
+      for (const inv of mapped) {
+        if (inv.status === "issued" || inv.status === "partially_paid") outstanding += inv.total_paise;
+        if (inv.status === "issued" || inv.status === "partially_paid" || inv.status === "paid") issued += inv.total_paise;
+        if (inv.status === "paid") paid += inv.total_paise;
+      }
+      setStats({ outstanding, issued, paid });
+    } catch {
+      // Never leave the failure looking like an empty FY: clear the rows, drop
+      // the ₹0 tiles behind the "—" placeholder, and flag the retry banner.
+      setInvoices([]);
+      setStats({ outstanding: 0, issued: 0, paid: 0 });
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
     }
-    setStats({ outstanding, issued, paid });
-    setLoading(false);
   }, [clientId, range]);
 
   useEffect(() => { load(); }, [load]);
@@ -1717,9 +1737,9 @@ function SalesInvoices({
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="Outstanding" value={fmt(stats.outstanding)} color="amber" />
-        <SummaryCard label="Issued This FY" value={fmt(stats.issued)} color="blue" />
-        <SummaryCard label="Paid This FY" value={fmt(stats.paid)} color="green" />
+        <SummaryCard label="Outstanding" value={loadFailed ? "—" : fmt(stats.outstanding)} color="amber" />
+        <SummaryCard label="Issued This FY" value={loadFailed ? "—" : fmt(stats.issued)} color="blue" />
+        <SummaryCard label="Paid This FY" value={loadFailed ? "—" : fmt(stats.paid)} color="green" />
       </div>
 
       {/* Header */}
@@ -1840,6 +1860,8 @@ function SalesInvoices({
         exportFilename="sales-invoices"
         persistKey="sales.invoices"
         emptyTitle="No invoices in this period"
+        error={loadFailed ? "Couldn't load invoices — the request failed or timed out." : null}
+        onRetry={load}
         onRowClick={(inv) => setDetailId(inv.id)}
         bulkActions={[
           {
@@ -2958,43 +2980,57 @@ function Receipts({
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST receipt fetch failed (thrown OR a non-null PostgREST
+  // error from selectAll, which never throws) rather than genuinely finding no
+  // receipts — otherwise a failed load reads identically to an empty FY (M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
 
-    const [{ data: recData }, { data: custData }] = await Promise.all([
-      selectAll(() => supabase
-        .from("receipts")
-        .select("id, receipt_no, receipt_date, customer_id, amount_paise, payment_mode, reference_no, allocated_paise, is_reversed, customers(name)")
-        .eq("client_id", clientId)
-        .gte("receipt_date", start)
-        .lte("receipt_date", end)
-        .order("receipt_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("customers")
-        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
+    try {
+      const [{ data: recData, error: recError }, { data: custData }] = await Promise.all([
+        selectAll(() => supabase
+          .from("receipts")
+          .select("id, receipt_no, receipt_date, customer_id, amount_paise, payment_mode, reference_no, allocated_paise, is_reversed, customers(name)")
+          .eq("client_id", clientId)
+          .gte("receipt_date", start)
+          .lte("receipt_date", end)
+          .order("receipt_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("customers")
+          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      // selectAll returns the PostgREST error without throwing — surface it so
+      // a failed fetch isn't rendered as an empty FY (audit M17).
+      if (recError) throw recError;
 
-    const mapped: Receipt[] = ((recData ?? []) as unknown as Array<
-      Receipt & { customers: { name: string } | null }
-    >).map((r) => ({
-      ...r,
-      customer_name: r.customers?.name ?? "—",
-    }));
+      const mapped: Receipt[] = ((recData ?? []) as unknown as Array<
+        Receipt & { customers: { name: string } | null }
+      >).map((r) => ({
+        ...r,
+        customer_name: r.customers?.name ?? "—",
+      }));
 
-    setReceipts(mapped);
-    setCustomers((custData as Customer[]) ?? []);
-    setLoading(false);
+      setReceipts(mapped);
+      setCustomers((custData as Customer[]) ?? []);
+    } catch {
+      setReceipts([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -3132,6 +3168,8 @@ function Receipts({
         exportFilename="receipts"
         persistKey="sales.receipts"
         emptyTitle={`No receipts in FY ${financialYear}`}
+        error={loadFailed ? "Couldn't load receipts — the request failed or timed out." : null}
+        onRetry={load}
         rowActions={(r) => !r.is_reversed && (
           <button onClick={() => reverseReceipt(r)}
             className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
@@ -3452,6 +3490,10 @@ function CreditNotes({
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST credit-note fetch failed (thrown OR a non-null PostgREST
+  // error from selectAll, which never throws) rather than genuinely finding no
+  // credit notes — otherwise a failed load reads as an empty FY (audit M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
@@ -3459,53 +3501,63 @@ function CreditNotes({
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
 
-    const [{ data: cnData }, { data: custData }] = await Promise.all([
-      selectAll(() => supabase
-        .from("credit_notes")
-        .select(
-          "id, credit_note_no, credit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
-        )
-        .eq("client_id", clientId)
-        .gte("credit_note_date", start)
-        .lte("credit_note_date", end)
-        .order("credit_note_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("customers")
-        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
+    try {
+      const [{ data: cnData, error: cnError }, { data: custData }] = await Promise.all([
+        selectAll(() => supabase
+          .from("credit_notes")
+          .select(
+            "id, credit_note_no, credit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
+          )
+          .eq("client_id", clientId)
+          .gte("credit_note_date", start)
+          .lte("credit_note_date", end)
+          .order("credit_note_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("customers")
+          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      // selectAll returns the PostgREST error without throwing — surface it so
+      // a failed fetch isn't rendered as an empty FY (audit M17).
+      if (cnError) throw cnError;
 
-    const mapped: CreditNote[] = ((cnData ?? []) as unknown as Array<
-      { id: string; credit_note_no: string; credit_note_date: string; customer_id: string;
-        sales_invoice_id: string | null; reason: string; taxable_amount_paise: number;
-        cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
-        status: string; customers: { name: string } | null;
-        client_sales_invoices: { invoice_no: string } | null }
-    >).map((r) => ({
-      id: r.id,
-      credit_note_no: r.credit_note_no,
-      credit_note_date: r.credit_note_date,
-      customer_id: r.customer_id,
-      customer_name: r.customers?.name ?? "—",
-      original_invoice_id: r.sales_invoice_id ?? null,
-      original_invoice_no: r.client_sales_invoices?.invoice_no ?? null,
-      reason: r.reason,
-      taxable_paise: r.taxable_amount_paise,
-      gst_paise: r.cgst_paise + r.sgst_paise + r.igst_paise,
-      total_paise: r.total_paise,
-      status: r.status as "draft" | "issued" | "cancelled",
-    }));
+      const mapped: CreditNote[] = ((cnData ?? []) as unknown as Array<
+        { id: string; credit_note_no: string; credit_note_date: string; customer_id: string;
+          sales_invoice_id: string | null; reason: string; taxable_amount_paise: number;
+          cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
+          status: string; customers: { name: string } | null;
+          client_sales_invoices: { invoice_no: string } | null }
+      >).map((r) => ({
+        id: r.id,
+        credit_note_no: r.credit_note_no,
+        credit_note_date: r.credit_note_date,
+        customer_id: r.customer_id,
+        customer_name: r.customers?.name ?? "—",
+        original_invoice_id: r.sales_invoice_id ?? null,
+        original_invoice_no: r.client_sales_invoices?.invoice_no ?? null,
+        reason: r.reason,
+        taxable_paise: r.taxable_amount_paise,
+        gst_paise: r.cgst_paise + r.sgst_paise + r.igst_paise,
+        total_paise: r.total_paise,
+        status: r.status as "draft" | "issued" | "cancelled",
+      }));
 
-    setCreditNotes(mapped);
-    setCustomers((custData as Customer[]) ?? []);
-    setLoading(false);
+      setCreditNotes(mapped);
+      setCustomers((custData as Customer[]) ?? []);
+    } catch {
+      setCreditNotes([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -3734,6 +3786,8 @@ function CreditNotes({
         exportFilename="credit-notes"
         persistKey="sales.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
+        error={loadFailed ? "Couldn't load credit notes — the request failed or timed out." : null}
+        onRetry={load}
         toolbarExtra={
           <button
             onClick={() => router.push(`/clients/${clientId}/sales/credit-notes/new`)}
@@ -3802,6 +3856,10 @@ function SalesDebitNotes({
   const [debitNotes, setDebitNotes] = useState<SalesDebitNote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the LAST debit-note fetch failed (thrown OR a non-null PostgREST
+  // error from selectAll, which never throws) rather than genuinely finding no
+  // debit notes — otherwise a failed load reads as an empty FY (audit M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
@@ -3809,53 +3867,63 @@ function SalesDebitNotes({
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
 
-    const [{ data: dnData }, { data: custData }] = await Promise.all([
-      selectAll(() => supabase
-        .from("sales_debit_notes")
-        .select(
-          "id, debit_note_no, debit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
-        )
-        .eq("client_id", clientId)
-        .gte("debit_note_date", start)
-        .lte("debit_note_date", end)
-        .order("debit_note_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("customers")
-        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
+    try {
+      const [{ data: dnData, error: dnError }, { data: custData }] = await Promise.all([
+        selectAll(() => supabase
+          .from("sales_debit_notes")
+          .select(
+            "id, debit_note_no, debit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
+          )
+          .eq("client_id", clientId)
+          .gte("debit_note_date", start)
+          .lte("debit_note_date", end)
+          .order("debit_note_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("customers")
+          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      // selectAll returns the PostgREST error without throwing — surface it so
+      // a failed fetch isn't rendered as an empty FY (audit M17).
+      if (dnError) throw dnError;
 
-    const mapped: SalesDebitNote[] = ((dnData ?? []) as unknown as Array<
-      { id: string; debit_note_no: string; debit_note_date: string; customer_id: string;
-        sales_invoice_id: string | null; reason: string; taxable_amount_paise: number;
-        cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
-        status: string; customers: { name: string } | null;
-        client_sales_invoices: { invoice_no: string } | null }
-    >).map((r) => ({
-      id: r.id,
-      debit_note_no: r.debit_note_no,
-      debit_note_date: r.debit_note_date,
-      customer_id: r.customer_id,
-      customer_name: r.customers?.name ?? "—",
-      original_invoice_id: r.sales_invoice_id ?? null,
-      original_invoice_no: r.client_sales_invoices?.invoice_no ?? null,
-      reason: r.reason,
-      taxable_paise: r.taxable_amount_paise,
-      gst_paise: r.cgst_paise + r.sgst_paise + r.igst_paise,
-      total_paise: r.total_paise,
-      status: r.status as "draft" | "issued",
-    }));
+      const mapped: SalesDebitNote[] = ((dnData ?? []) as unknown as Array<
+        { id: string; debit_note_no: string; debit_note_date: string; customer_id: string;
+          sales_invoice_id: string | null; reason: string; taxable_amount_paise: number;
+          cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
+          status: string; customers: { name: string } | null;
+          client_sales_invoices: { invoice_no: string } | null }
+      >).map((r) => ({
+        id: r.id,
+        debit_note_no: r.debit_note_no,
+        debit_note_date: r.debit_note_date,
+        customer_id: r.customer_id,
+        customer_name: r.customers?.name ?? "—",
+        original_invoice_id: r.sales_invoice_id ?? null,
+        original_invoice_no: r.client_sales_invoices?.invoice_no ?? null,
+        reason: r.reason,
+        taxable_paise: r.taxable_amount_paise,
+        gst_paise: r.cgst_paise + r.sgst_paise + r.igst_paise,
+        total_paise: r.total_paise,
+        status: r.status as "draft" | "issued",
+      }));
 
-    setDebitNotes(mapped);
-    setCustomers((custData as Customer[]) ?? []);
-    setLoading(false);
+      setDebitNotes(mapped);
+      setCustomers((custData as Customer[]) ?? []);
+    } catch {
+      setDebitNotes([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -4082,6 +4150,8 @@ function SalesDebitNotes({
         exportFilename="sales-debit-notes"
         persistKey="sales.debit-notes"
         emptyTitle={`No debit notes in FY ${financialYear}`}
+        error={loadFailed ? "Couldn't load debit notes — the request failed or timed out." : null}
+        onRetry={load}
         toolbarExtra={
           <button
             onClick={() => router.push(`/clients/${clientId}/sales/debit-notes/new`)}
