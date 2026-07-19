@@ -26,3 +26,11 @@ services:
         sync: false
       - key: ENABLE_SCHEDULER
         value: "true"
+      # Reporting passbook: serve accrual Trial Balance / P&L / Balance Sheet from
+      # the pre-aggregated account_period_balances cache (one small read) instead
+      # of replaying the whole posted ledger. "on" serves the fast path with an
+      # automatic fall-back to the legacy full-history engine on any error. Buckets
+      # are backfilled + trigger-maintained and verified paise-identical to raw.
+      # Quoted so YAML doesn't parse the bareword `on` as a boolean.
+      - key: REPORTING_PASSBOOK_MODE
+        value: "on"
