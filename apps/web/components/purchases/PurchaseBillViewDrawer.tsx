@@ -19,6 +19,7 @@ import { formatDateTime } from "@/lib/services/formatting";
 import { termLabelForDays } from "@/lib/sales/paymentTerms";
 import { diffDaysISO } from "@/lib/sales/dateMath";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
+import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 // Vendor-payment modes — must match the purchase_payments.payment_mode CHECK
 // constraint (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/
@@ -187,8 +188,10 @@ export function PurchaseBillViewDrawer({
   return (
     <Drawer open onClose={onClose} title={bill ? (bill.bill_no || "Purchase Bill") : "Purchase Bill"} widthClass="sm:max-w-lg">
       {loading ? (
-        <div className="p-6 space-y-3">
-          {[...Array(6)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
+        <div className="p-6 space-y-5">
+          {/* Header detail fields, then the line-items table */}
+          <FormSkeleton fields={6} />
+          <TableSkeleton cols={7} rows={4} />
         </div>
       ) : error || !bill ? (
         <div className="p-8 text-center">

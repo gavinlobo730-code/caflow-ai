@@ -22,6 +22,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column } from "@/lib/table/types";
 import { formatServicePrice } from "@/lib/catalogue/service";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 interface StockItem {
   id: string;
@@ -147,9 +148,7 @@ export default function InventoryPage() {
   if (!clientId || clientId === "_placeholder") {
     return (
       <div className="px-6 py-4">
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}
-        </div>
+        <TableSkeleton cols={7} rows={4} />
       </div>
     );
   }
@@ -329,7 +328,7 @@ function StockLedgerDrillDown({
 
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
-            <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" />
+            <TableSkeleton cols={7} rows={4} />
           ) : loadFailed ? (
             <div className="text-center py-10">
               <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the stock ledger — the request failed or timed out.</p>

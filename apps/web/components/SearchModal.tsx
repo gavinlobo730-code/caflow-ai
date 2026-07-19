@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type SearchResult = {
   id: string;
@@ -167,9 +168,12 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
         {/* Results */}
         <div className="max-h-96 overflow-y-auto">
           {loading && (
-            <div className="p-4 space-y-2">
+            <div className="py-2" role="status" aria-label="Loading results">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-12 bg-[#F1F5F9] rounded-lg animate-pulse" />
+                <div key={i} className="px-4 py-2.5 space-y-1.5">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="h-2.5 w-24" />
+                </div>
               ))}
             </div>
           )}

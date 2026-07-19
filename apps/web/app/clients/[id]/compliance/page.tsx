@@ -5,6 +5,7 @@ import { CheckCircle, Download, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { getComplianceCalendarDirect, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
@@ -393,7 +394,7 @@ export default function CompliancePage() {
           </div>
         </CardHeader>
         {loading ? (
-          <CardContent><div className="h-32 animate-pulse bg-[#F8FAFC] rounded" /></CardContent>
+          <TableSkeleton cols={7} rows={5} bare />
         ) : (
           <>
             {selected.size > 0 && (

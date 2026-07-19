@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Loader2, AlertTriangle, CheckCircle, XCircle, Code } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
@@ -139,7 +140,7 @@ export default function XBRLPage() {
       )}
 
       {loading ? (
-        <div className="space-y-2">{[...Array(2)].map((_, i) => <div key={i} className="h-14 bg-[#F8FAFC] rounded-xl animate-pulse" />)}</div>
+        <ListSkeleton rows={2} />
       ) : packages.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
           <Code size={28} className="text-gray-200 mx-auto" />

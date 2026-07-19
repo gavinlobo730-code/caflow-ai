@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, Pencil, Check, X, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Card, CardContent } from "@/components/ui/card";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Account } from "@/lib/types";
@@ -315,8 +316,9 @@ export default function BudgetPage() {
 
       {/* Loading */}
       {loading ? (
-        <div className="space-y-2 animate-pulse">
-          {[1, 2, 3].map(i => <div key={i} className="h-10 bg-[#F1F5F9] rounded" />)}
+        <div className="space-y-4">
+          <TableSkeleton cols={9} rows={4} />
+          <TableSkeleton cols={9} rows={4} />
         </div>
       ) : (
         <>

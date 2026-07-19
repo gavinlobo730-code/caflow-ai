@@ -22,6 +22,7 @@ import { isSimulatable, DEMO_STATUS_LABEL } from "@/lib/filing/demoFiling";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useToast } from "@/components/ui/use-toast";
+import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -63,12 +64,15 @@ const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 
 function LoadingSpinner() {
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-white/[0.08] rounded w-48" />
-      <div className="grid grid-cols-5 gap-3">
-        {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-20 bg-[#F1F5F9] rounded-lg" />)}
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-3 w-72" />
       </div>
-      <div className="h-64 bg-[#F1F5F9] rounded-xl" />
+      {/* Stat cards (Due This Week / Overdue / In Progress / Pending / Filed / Demo Filed) */}
+      <DashboardSkeleton cards={6} className="grid-cols-2 md:grid-cols-6" />
+      {/* Compliance table (Client, Type, Period, Due Date, Status, ARN) */}
+      <TableSkeleton cols={6} rows={5} />
     </div>
   );
 }

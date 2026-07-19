@@ -29,6 +29,7 @@ import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -162,9 +163,7 @@ export default function PurchasesPage() {
   if (!clientId || clientId === "_placeholder") {
     return (
       <div className="px-6 py-4">
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}
-        </div>
+        <TableSkeleton cols={9} rows={4} />
       </div>
     );
   }

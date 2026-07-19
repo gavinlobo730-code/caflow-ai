@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { RefreshCw, Camera, ChevronDown, ChevronRight } from "lucide-react";
 import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData } from "@/lib/api/yearEnd";
+import { StatementSkeleton } from "@/components/ui/skeleton";
 
 /** Format paise → ₹ Indian number format (Companies Act §128: accounts in INR) */
 function fmt(paise: number): string {
@@ -218,9 +219,10 @@ export default function FinancialStatementsPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-4xl">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-32 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <StatementSkeleton sections={3} rowsPerSection={3} />
+          <StatementSkeleton sections={2} rowsPerSection={4} />
+        </div>
       </div>
     );
   }

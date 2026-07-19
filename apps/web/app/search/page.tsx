@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, Users, CheckSquare, FileText, Shield } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import Link from "next/link";
 
@@ -103,7 +104,10 @@ function SearchContent() {
         {loading && (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-14 bg-white/[0.08] rounded-lg animate-pulse" />
+              <div key={i} className="bg-white border rounded-lg px-4 py-3 space-y-1.5">
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-2.5 w-1/3" />
+              </div>
             ))}
           </div>
         )}

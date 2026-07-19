@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-react";
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
 // ── Status cycle: pending → in_progress → complete ─────────────────────────
 const STATUS_CYCLE: Record<ChecklistItemStatus, ChecklistItemStatus> = {
@@ -157,9 +158,16 @@ export default function ChecklistPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-3xl">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-20 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        ))}
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <div className="flex items-center justify-between mb-2">
+            <Skeleton className="h-2.5 w-32" />
+            <Skeleton className="h-2.5 w-8" />
+          </div>
+          <Skeleton className="h-2 w-full rounded-full" />
+        </div>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <TimelineSkeleton rows={4} />
+        </div>
       </div>
     );
   }

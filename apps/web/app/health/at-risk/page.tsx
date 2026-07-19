@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 type Grade = "A" | "B" | "C" | "D" | "F";
 interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: Grade; is_at_risk: boolean; last_calculated_at?: string; }
@@ -57,7 +58,7 @@ export default function AtRiskClientsPage() {
       </div>
       {error && <div className="bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>}
       {loading ? (
-        <div className="space-y-2 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-14 bg-gray-100 rounded-xl" />)}</div>
+        <TableSkeleton cols={5} rows={3} />
       ) : clients.length === 0 ? (
         <Card className="bg-white border-gray-200 shadow-sm"><CardContent className="py-12 text-center"><p className="text-sm text-gray-500">No at-risk clients</p></CardContent></Card>
       ) : (

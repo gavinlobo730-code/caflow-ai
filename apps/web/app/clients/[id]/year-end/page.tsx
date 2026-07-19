@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Loader2, Calendar, ChevronRight, FileCode } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -154,9 +155,7 @@ export default function YearEndPage() {
       )}
 
       {loading ? (
-        <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-14 rounded-xl bg-[#F8FAFC] animate-pulse" />)}
-        </div>
+        <ListSkeleton rows={3} />
       ) : error ? (
         <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
           {error} <button onClick={load} className="ml-2 underline text-xs">Retry</button>

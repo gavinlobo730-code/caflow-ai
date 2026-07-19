@@ -5,6 +5,7 @@ import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, Alert
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -214,7 +215,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+        <TableSkeleton cols={10} rows={4} />
       ) : loadFailed ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the asset register — the request failed or timed out.</p>
@@ -536,7 +537,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
       {/* Table */}
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+        <TableSkeleton cols={6} rows={3} />
       ) : loadFailed ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
@@ -667,7 +668,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
+        <TableSkeleton cols={5} rows={3} />
       ) : loadFailed ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
@@ -830,7 +831,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           <p className="text-xs font-semibold text-[#334155]">Assets by Category — FY {financialYear}</p>
         </div>
         {loading ? (
-          <div className="p-5 space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-8 rounded bg-[#F8FAFC] animate-pulse" />)}</div>
+          <TableSkeleton cols={5} rows={4} bare />
         ) : (
           <table className="w-full text-xs">
             <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]">

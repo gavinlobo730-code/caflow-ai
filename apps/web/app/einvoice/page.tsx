@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Loader2, AlertTriangle, Zap } from "lucide-react";
+import { TransactionListSkeleton } from "@/components/ui/skeleton";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -150,7 +151,7 @@ export default function EInvoicePage() {
       )}
 
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-[#F8FAFC] rounded-xl animate-pulse" />)}</div>
+        <TransactionListSkeleton rows={3} />
       ) : (
         <div className="space-y-2">
           {records.map(r => (

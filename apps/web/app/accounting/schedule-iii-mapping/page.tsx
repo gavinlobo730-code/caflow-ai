@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, GitBranch } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 interface CoaRow {
   id: string;
@@ -58,7 +59,13 @@ export default function ScheduleIIIMappingPage() {
 
   const unmapped = accounts.filter(a => a.is_active && !a.schedule_iii_mapping);
 
-  if (loading) return <div className="p-6 animate-pulse space-y-4">{[1,2,3].map(i => <div key={i} className="h-24 bg-[#F1F5F9] rounded-xl" />)}</div>;
+  if (loading) return (
+    <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <TableSkeleton cols={4} rows={4} />
+      <TableSkeleton cols={4} rows={4} />
+      <TableSkeleton cols={4} rows={4} />
+    </div>
+  );
   if (error) return <div className="p-6"><div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div></div>;
 
   return (

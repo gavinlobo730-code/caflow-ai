@@ -24,6 +24,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import type { Column } from "@/lib/table/types";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
@@ -331,9 +332,7 @@ export default function FirmHsnLibraryPage() {
         {/* List */}
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           {loading ? (
-            <div className="p-4 space-y-2">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-11 rounded bg-[#F8FAFC] animate-pulse" />)}
-            </div>
+            <TableSkeleton cols={6} rows={4} bare />
           ) : error ? (
             <div className="p-8 text-center text-sm">
               <p className="text-[#334155] font-medium">Couldn&apos;t load your library</p>

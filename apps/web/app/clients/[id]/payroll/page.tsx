@@ -14,6 +14,7 @@ import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
+import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -140,7 +141,15 @@ function DashboardTab({ clientId }: { clientId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="p-6 space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-[#F1F5F9] rounded-xl animate-pulse" />)}</div>;
+  if (loading) return (
+    <div className="p-6 space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
+      </div>
+      <StatementSkeleton sections={1} rowsPerSection={3} />
+      <TransactionListSkeleton rows={6} />
+    </div>
+  );
 
   if (loadFailed) return (
     <div className="p-5">
@@ -284,7 +293,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
     setSaving(false);
   }
 
-  if (loading) return <div className="p-6 space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-[#F1F5F9] rounded-lg animate-pulse" />)}</div>;
+  if (loading) return <div className="p-6"><TableSkeleton cols={7} rows={5} /></div>;
 
   if (loadFailed) return (
     <div className="p-6">
@@ -443,7 +452,18 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
     fetchSlips(runId);
   }
 
-  if (loading) return <div className="p-6"><div className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" /></div>;
+  if (loading) return (
+    <div className="p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+        <Skeleton className="h-2.5 w-24 mb-3" />
+        <div className="flex items-end gap-3">
+          <Skeleton className="h-9 w-40 rounded-lg" />
+          <Skeleton className="h-9 w-32 rounded-lg" />
+        </div>
+      </div>
+      <TransactionListSkeleton rows={3} />
+    </div>
+  );
 
   return (
     <div className="p-5 space-y-4">
@@ -502,7 +522,7 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
             {selectedRun === r.id && (
               <div className="border-t border-[#F1F5F9] px-4 py-3">
                 {loadingSlips ? (
-                  <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-8 bg-[#F1F5F9] rounded animate-pulse" />)}</div>
+                  <TableSkeleton cols={7} rows={3} bare />
                 ) : slipsFailed ? (
                   <div className="text-center py-6">
                     <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load slips — the request failed or timed out.</p>
@@ -743,7 +763,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
     setSaving(false);
   }
 
-  if (loading) return <div className="p-6"><div className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" /></div>;
+  if (loading) return <div className="p-6"><CardGridSkeleton count={4} /></div>;
 
   if (loadFailed) return (
     <div className="p-6">

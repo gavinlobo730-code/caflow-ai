@@ -19,6 +19,7 @@ import type { ComplianceEntry } from "@/lib/data/compliance";
 import type { Transaction } from "@/lib/data/transactions";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
+import { ListSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
@@ -523,7 +524,7 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent>
                     {requestsLoading ? (
-                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                      <ListSkeleton rows={3} />
                     ) : docRequests.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FileText size={32} className="text-gray-200 mx-auto" />
@@ -617,7 +618,7 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent>
                     {sharedLoading ? (
-                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                      <ListSkeleton rows={3} />
                     ) : sharedDocs.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FolderOpen size={32} className="text-gray-200 mx-auto" />
@@ -791,7 +792,7 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {duesLoading ? (
-                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                      <TransactionListSkeleton rows={3} />
                     ) : (() => {
                       const duesData = apiDues.length > 0 ? apiDues : unpaidInvoices;
                       if (duesData.length === 0) {
@@ -872,7 +873,7 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {messagesLoading ? (
-                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                      <ListSkeleton rows={3} />
                     ) : portalMessages.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <MessageSquare size={32} className="text-gray-200 mx-auto" />
