@@ -61,7 +61,6 @@ EXPECTED_MIGRATION_FAILURES: set[str] = {
     "070_ai_memory.sql",                 # client_profiles CREATE IF NOT EXISTS no-ops (059) -> is_current missing
     "071_rls_policies.sql",              # references workflow_instances (never created due to 068 failure)
     "095_grant_reconciliation.sql",      # references ai_memory_triggers before it exists; dup 095 number
-    "113_work_page_performance_indexes.sql",  # index on tasks.assignee_id before column is added
     "144_security_search_path_and_rls.sql",   # references function prevent_snapshot_mutation() not yet defined
 }
 

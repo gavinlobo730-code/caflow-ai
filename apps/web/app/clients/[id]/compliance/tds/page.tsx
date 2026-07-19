@@ -67,7 +67,7 @@ function TDSDashboard({ clientId }: { clientId: string }) {
         { data: returns, error: e2 },
         { data: certs, error: e3 },
       ] = await Promise.all([
-        selectAll(() => supabase.from("tds_challans").select("id, amount_paise").eq("client_id", clientId)),
+        selectAll(() => supabase.from("tds_challans").select("id, total_paise").eq("client_id", clientId)),
         selectAll(() => supabase.from("tds_returns").select("id").eq("client_id", clientId)),
         selectAll(() => supabase.from("tds_certificates").select("id").eq("client_id", clientId)),
       ]);
@@ -80,8 +80,10 @@ function TDSDashboard({ clientId }: { clientId: string }) {
 
       // Mirrors tds_workspace.py::tds_dashboard's summary math exactly:
       // counts of each table's rows plus a plain sum of challan amounts.
+      // total_paise (not amount_paise, which tds_challans has never had —
+      // migration 037) is the challan's grand-total column.
       const total_deposited_paise = (challans ?? []).reduce(
-        (sum, c) => sum + ((c as { amount_paise: number | null }).amount_paise ?? 0), 0,
+        (sum, c) => sum + ((c as { total_paise: number | null }).total_paise ?? 0), 0,
       );
       setSummary({
         total_challans: (challans ?? []).length,
@@ -250,10 +252,10 @@ function ChallansTab({ clientId }: { clientId: string }) {
             {rows.map((r) => (
               <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2 font-mono text-xs">{r.challan_no as string}</td>
-                <td className="px-3 py-2">{r.challan_date as string}</td>
+                <td className="px-3 py-2">{r.payment_date as string}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.bsr_code as string}</td>
                 <td className="px-3 py-2">§{r.section as string}</td>
-                <td className="px-3 py-2">{rupees((r.amount_paise as number) ?? 0)}</td>
+                <td className="px-3 py-2">{rupees((r.total_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{r.quarter as string}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status as string] ?? ""}`}>
@@ -547,7 +549,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">{r.deductee_name as string}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.deductee_pan as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string}</td>
-                <td className="px-3 py-2">{rupees((r.tds_amount_paise as number) ?? 0)}</td>
+                <td className="px-3 py-2">{rupees((r.tds_deducted_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${KYC_COLORS["pending"]}`}>
                     Draft — CA Review Required

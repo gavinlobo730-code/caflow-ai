@@ -55,6 +55,24 @@ class _Query:
         f[("lte", key)] = val
         return _Query(self._rows, f)
 
+    def gt(self, key, val):
+        f = dict(self._filters)
+        f[("gt", key)] = val
+        return _Query(self._rows, f)
+
+    def is_(self, key, val):
+        f = dict(self._filters)
+        f[("is_", key)] = val
+        return _Query(self._rows, f)
+
+    def order(self, *_a, **_k):
+        # No-op — _fetch_lines' keyset pagination only needs .order()/.limit()
+        # not to crash; this fixture's row count never exceeds a single page.
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
     def _get(self, row, dotted_key):
         # "journal_entries.entry_date" -> row["journal_entries"]["entry_date"];
         # a bare key ("firm_id") reads directly off the row.
@@ -72,6 +90,10 @@ class _Query:
                 out = [r for r in out if self._get(r, key) >= val]
             elif kind == "lte":
                 out = [r for r in out if self._get(r, key) <= val]
+            elif kind == "gt":
+                out = [r for r in out if self._get(r, key) > val]
+            elif kind == "is_":
+                out = [r for r in out if self._get(r, key) is None]
         return type("Result", (), {"data": out})()
 
 

@@ -32,6 +32,17 @@ CREATE INDEX IF NOT EXISTS idx_tasks_firm_updated
     WHERE deleted_at IS NULL;
 
 -- 4. assignee_id — workload Python join matches on this column
+--    R2.6 fix: no earlier migration ever added this column (the comment above
+--    was wrong — assignee_id was never created, only assumed). Every write/
+--    read touching it has been failing with "column does not exist" since
+--    Phase 1.2. Add it before indexing it, backfilled from the legacy
+--    assigned_to FK so existing rows aren't orphaned.
+ALTER TABLE public.tasks
+    ADD COLUMN IF NOT EXISTS assignee_id UUID REFERENCES public.team_members(id);
+
+UPDATE public.tasks SET assignee_id = assigned_to
+    WHERE assignee_id IS NULL AND assigned_to IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id
     ON public.tasks (assignee_id)
     WHERE deleted_at IS NULL;

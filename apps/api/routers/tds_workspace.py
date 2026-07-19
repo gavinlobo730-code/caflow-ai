@@ -124,7 +124,9 @@ def tds_dashboard(
             returns = sb.table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
             certs = sb.table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
 
-        total_deposited_paise = sum(c.get("amount_paise", 0) for c in challans)
+        # tds_challans has no amount_paise column (migration 037) — total_paise
+        # is the real grand-total column.
+        total_deposited_paise = sum(c.get("total_paise", 0) for c in challans)
         return api_response(True, {
             "challans": challans,
             "returns": returns,
@@ -173,8 +175,8 @@ def list_deductions(
 @router.get("/challans")
 def list_challans(
     client_id: str = Query(...),
-    from_date: Optional[str] = Query(None, description="Filter by challan_date >= from_date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, description="Filter by challan_date <= to_date (YYYY-MM-DD)"),
+    from_date: Optional[str] = Query(None, description="Filter by payment_date >= from_date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Filter by payment_date <= to_date (YYYY-MM-DD)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
@@ -185,17 +187,19 @@ def list_challans(
         if _USE_MOCK:
             rows = [c for c in _MOCK_CHALLANS.values() if c["client_id"] == client_id]
             if from_date:
-                rows = [r for r in rows if r.get("challan_date", "") >= from_date]
+                rows = [r for r in rows if r.get("payment_date", "") >= from_date]
             if to_date:
-                rows = [r for r in rows if r.get("challan_date", "") <= to_date]
+                rows = [r for r in rows if r.get("payment_date", "") <= to_date]
             rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
+            # tds_challans has no challan_date column (migration 037) — payment_date
+            # is the real date column.
             q = get_supabase().table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
             if from_date:
-                q = q.gte("challan_date", from_date)
+                q = q.gte("payment_date", from_date)
             if to_date:
-                q = q.lte("challan_date", to_date)
+                q = q.lte("payment_date", to_date)
             rows = q.range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
@@ -217,8 +221,13 @@ def create_challan(
             "firm_id": firm_id,
             "client_id": body.client_id,
             "bsr_code": body.bsr_code,
-            "challan_date": body.challan_date,
-            "amount_paise": body.amount_paise,
+            # tds_challans has no challan_date/amount_paise columns (migration
+            # 037) — payment_date is the real date column, and with no
+            # surcharge/interest/penalty breakout on this quick-create form
+            # the full amount is booked as pure TDS (tds_paise == total_paise).
+            "payment_date": body.challan_date,
+            "tds_paise": body.amount_paise,
+            "total_paise": body.amount_paise,
             "challan_no": body.challan_no,
             "section": body.section,
             "financial_year": body.financial_year,
@@ -308,11 +317,15 @@ def create_return(
             "return_type": body.return_type,
             "quarter": body.quarter,
             "financial_year": body.financial_year,
-            "deductee_details": body.deductee_details,
             "status": "pending",
             "due_date": _tds_return_due_date(body.quarter, body.financial_year),
             "created_at": datetime.utcnow().isoformat(),
         }
+        # tds_returns has no deductee_details column (migration 037) — fvu_json
+        # is the real holder for deductee-level detail. Only set it when the
+        # caller actually supplied rows (this quick-create form never does).
+        if body.deductee_details:
+            record["fvu_json"] = {"deductees": body.deductee_details}
 
         if _USE_MOCK:
             _MOCK_RETURNS[record["id"]] = record
@@ -447,10 +460,13 @@ def create_certificate(
             "deductee_name": body.deductee_name,
             "financial_year": body.financial_year,
             "certificate_type": body.certificate_type,
-            "tds_amount_paise": body.tds_amount_paise,
+            # tds_certificates has no tds_amount_paise/ca_review_required
+            # columns (migration 037) — tds_deducted_paise is the real amount
+            # column, and "draft" status (below) already IS the CA-review-
+            # required signal. section is genuinely missing (migration 232).
+            "tds_deducted_paise": body.tds_amount_paise,
             "section": body.section,
             "status": "draft",
-            "ca_review_required": True,
             "created_at": datetime.utcnow().isoformat(),
         }
 
@@ -521,6 +537,13 @@ def upload_form26as(
             },
         }
 
+        # form_26as_uploads (migration 156) has none of file_url/raw_data/
+        # reconciliation_result/status/created_by — it's shaped for the
+        # separate document-upload+parse pipeline (routers/form_26as.py),
+        # not this paste-JSON-and-reconcile-inline tool. Persist a minimal,
+        # valid audit row (who reconciled, when, how many book rows); the
+        # full reconciliation result still goes out in the API response
+        # below for the frontend, it's just not persisted server-side.
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -538,7 +561,17 @@ def upload_form26as(
             _MOCK_FORM26AS[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("form_26as_uploads").insert(record).execute()
+            db_record = {
+                "id": record["id"],
+                "firm_id": firm_id,
+                "client_id": body.client_id,
+                "financial_year": body.financial_year,
+                "total_records": len(book_deductions),
+                "parse_status": "parsed",
+                "uploaded_by": current_user.get("id"),
+                "uploaded_at": record["uploaded_at"],
+            }
+            get_supabase().table("form_26as_uploads").insert(db_record).execute()
 
         log_event(firm_id, "form_26as_upload", record["id"], "create",
                   actor_id=current_user.get("id"))
