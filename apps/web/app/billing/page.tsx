@@ -346,6 +346,13 @@ export default function BillingPage() {
         sb.from("fee_invoices").select("*").eq("firm_id", firmId).order("invoice_date", { ascending: false }),
         sb.from("fee_receipts").select("*").eq("firm_id", firmId).order("receipt_date", { ascending: false }),
       ]);
+      // A non-null PostgREST error is a real failure (RLS denial, network, timeout),
+      // not "zero rows" — .data would still be null/[] either way, so skipping this
+      // check would silently render engagements/invoices/receipts as empty instead
+      // of surfacing the failure.
+      if (engRes.error) throw new Error(engRes.error.message);
+      if (invRes.error) throw new Error(invRes.error.message);
+      if (recRes.error) throw new Error(recRes.error.message);
 
       const engs: Engagement[] = (engRes.data ?? []).map((e: Engagement) => ({
         ...e,

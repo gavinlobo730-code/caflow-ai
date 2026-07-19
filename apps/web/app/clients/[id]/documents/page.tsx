@@ -31,6 +31,9 @@ export default function DocumentsPage() {
   const { clientId, financialYear } = useClientNav();
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "client genuinely has no documents" —
+  // a masked failure here reads as an empty document store, which it may not be.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadLabel, setUploadLabel] = useState("");
@@ -47,12 +50,17 @@ export default function DocumentsPage() {
     setLoading(true);
     try {
       const supabase = getSupabaseClient();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("client_documents")
         .select("id, file_name, label, storage_path, file_size_bytes, mime_type, created_at, version, parent_document_id")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
+      if (error) throw error;
       setDocuments(data ?? []);
+      setLoadError(null);
+    } catch (e) {
+      setDocuments([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load documents.");
     } finally {
       setLoading(false);
     }
@@ -189,6 +197,11 @@ export default function DocumentsPage() {
 
       {loading ? (
         <div className="h-32 animate-pulse bg-[#F8FAFC] rounded-xl" />
+      ) : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : documents.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-2">
           <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />

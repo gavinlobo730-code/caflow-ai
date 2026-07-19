@@ -236,6 +236,11 @@ export default function AccountingPage() {
   const [tab, setTab] = useState<AccountingTab>("dashboard");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accsLoading, setAccsLoading] = useState(true);
+  // Distinguishes "load failed" from "firm genuinely has zero accounts" — a
+  // silently-swallowed fetch failure would otherwise render as an empty chart
+  // of accounts, which every tab on this page (dashboard, journal lines,
+  // bank posting) treats as authoritative.
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Multi-Currency Phase 5 — the FX Reports tab is shown ONLY when multi-currency is
   // active for this client, so an INR-only client sees no added complexity (CLAUDE.md).
@@ -249,16 +254,23 @@ export default function AccountingPage() {
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setAccsLoading(true);
-    const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
-      .from("chart_of_accounts")
-      .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
-      .or(`client_id.eq.${clientId},client_id.is.null`)
-      .eq("is_active", true)
-      .order("account_code")
-      .order("id"));
-    setAccounts((data as Account[]) ?? []);
-    setAccsLoading(false);
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await selectAll(() => supabase
+        .from("chart_of_accounts")
+        .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
+        .or(`client_id.eq.${clientId},client_id.is.null`)
+        .eq("is_active", true)
+        .order("account_code")
+        .order("id"));
+      if (error) throw error;
+      setAccounts((data as Account[]) ?? []);
+      setAccountsError(null);
+    } catch (e) {
+      setAccountsError(e instanceof Error ? e.message : "Couldn't load the chart of accounts.");
+    } finally {
+      setAccsLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
@@ -302,7 +314,7 @@ export default function AccountingPage() {
           <AccountingDashboard clientId={clientId} financialYear={financialYear} accounts={accounts} onNavigate={setTab} />
         )}
         {tab === "coa" && (
-          <ChartOfAccounts accounts={accounts} loading={accsLoading} onRefresh={loadAccounts} />
+          <ChartOfAccounts accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} />
         )}
         {tab === "journal" && (
           <JournalEntryForm
@@ -519,7 +531,7 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
 
 // ── Chart of Accounts ──────────────────────────────────────────────────────
 
-function ChartOfAccounts({ accounts, loading, onRefresh }: { accounts: Account[]; loading: boolean; onRefresh: () => void }) {
+function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Account[]; loading: boolean; error?: string | null; onRefresh: () => void }) {
   const TYPE_ORDER = ["Asset", "Liability", "Equity", "Revenue", "Expense"];
 
   // Type-grouping context preserved as a colored badge in the Type column (flat,
@@ -561,6 +573,8 @@ function ChartOfAccounts({ accounts, loading, onRefresh }: { accounts: Account[]
         filters={filters}
         getRowId={(a) => a.id}
         loading={loading}
+        error={error}
+        onRetry={onRefresh}
         onRefresh={onRefresh}
         searchPlaceholder="Search by code or name…"
         initialSort={{ key: "account_code", dir: "asc" }}
@@ -597,6 +611,10 @@ function JournalEntryForm({
   // silently truncated at PostgREST's row cap (mirrors the other accounting tabs).
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
+  // Separate from `error` above (which is the create/post-entry form's own
+  // validation/save error) — a failed list fetch must not be conflated with,
+  // or silently cleared by, an unrelated form action.
+  const [entriesError, setEntriesError] = useState<string | null>(null);
   // Mirrors how QuickBooks/Xero/Zoho/Tally all scope their "Journal" screen to
   // manually-created entries by default, keeping every auto-posted GL entry
   // (invoices, bills, inventory COGS/capitalisation, opening balances, ...)
@@ -616,18 +634,25 @@ function JournalEntryForm({
   const loadEntries = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setEntriesLoading(true);
-    const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
-      .from("journal_entries")
-      // Alias the embed to `lines` so it matches the JournalEntry type (and the
-      // amount column, which sums debit_paise across the entry's lines).
-      .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
-      .eq("client_id", clientId)
-      .is("deleted_at", null)
-      .order("entry_date", { ascending: false })
-      .order("id"));
-    setEntries((data as unknown as JournalEntry[]) ?? []);
-    setEntriesLoading(false);
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error: fetchErr } = await selectAll(() => supabase
+        .from("journal_entries")
+        // Alias the embed to `lines` so it matches the JournalEntry type (and the
+        // amount column, which sums debit_paise across the entry's lines).
+        .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
+        .eq("client_id", clientId)
+        .is("deleted_at", null)
+        .order("entry_date", { ascending: false })
+        .order("id"));
+      if (fetchErr) throw fetchErr;
+      setEntries((data as unknown as JournalEntry[]) ?? []);
+      setEntriesError(null);
+    } catch (e) {
+      setEntriesError(e instanceof Error ? e.message : "Couldn't load journal entries.");
+    } finally {
+      setEntriesLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { loadEntries(); }, [loadEntries, success]);
@@ -816,6 +841,8 @@ function JournalEntryForm({
           filters={journalFilters}
           getRowId={(e) => e.id}
           loading={entriesLoading}
+          error={entriesError}
+          onRetry={loadEntries}
           onRefresh={loadEntries}
           searchPlaceholder="Search by reference or narration…"
           initialSort={{ key: "entry_date", dir: "desc" }}
@@ -2344,6 +2371,9 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  // Distinguishes "fetch failed" from "queue genuinely empty" (a masked
+  // failure here reads as a fully-reconciled bank, which it may not be).
+  const [loadError, setLoadError] = useState<string | null>(null);
   // Multi-invoice bank allocation — split ONE transaction across several
   // invoices/bills for one party, in a single settlement.
   const [splitTxn, setSplitTxn] = useState<QueueTxn | null>(null);
@@ -2353,8 +2383,15 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
     setLoading(true);
     try {
       const res = (await api.banking.queue({ client_id: clientId, status })) as { success: boolean; data: QueueTxn[] };
-      setRows(res.success ? (res.data ?? []) : []);
-    } catch { setRows([]); } finally { setLoading(false); }
+      if (!res.success) throw new Error("Couldn't load the bank match queue.");
+      setRows(res.data ?? []);
+      setLoadError(null);
+    } catch (e) {
+      setRows([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load the bank match queue.");
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, status]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setSelected(new Set()); }, [status]);
@@ -2440,7 +2477,12 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
         ))}
       </div>
 
-      {loading ? <TransactionListSkeleton rows={4} /> : rows.length === 0 ? (
+      {loading ? <TransactionListSkeleton rows={4} /> : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No transactions in this view.</div>
       ) : (
         <>
@@ -2822,6 +2864,9 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
   const [pending, setPending] = useState<ReadyTxn[]>([]);
   const [posted, setPosted] = useState<PostedTxn[]>([]);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "fetch failed" from "nothing ready/pending/posted" — a masked
+  // failure here reads as a fully-caught-up posting queue, which it may not be.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<ReadyTxn | null>(null);
 
   const load = useCallback(async () => {
@@ -2833,10 +2878,17 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
         api.banking.pending({ client_id: clientId }) as Promise<{ success: boolean; data: ReadyTxn[] }>,
         api.banking.posted({ client_id: clientId }) as Promise<{ success: boolean; data: PostedTxn[] }>,
       ]);
-      setReady(r.success ? (r.data ?? []) : []);
-      setPending(pen.success ? (pen.data ?? []) : []);
-      setPosted(p.success ? (p.data ?? []) : []);
-    } catch { setReady([]); setPending([]); setPosted([]); } finally { setLoading(false); }
+      if (!r.success || !pen.success || !p.success) throw new Error("Couldn't load the bank posting queue.");
+      setReady(r.data ?? []);
+      setPending(pen.data ?? []);
+      setPosted(p.data ?? []);
+      setLoadError(null);
+    } catch (e) {
+      setReady([]); setPending([]); setPosted([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load the bank posting queue.");
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
   useEffect(() => { load(); }, [load]);
 
@@ -2854,7 +2906,12 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
         <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
       </div>
 
-      {loading ? <TableSkeleton cols={6} rows={5} /> : view === "pending" ? (
+      {loading ? <TableSkeleton cols={6} rows={5} /> : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      ) : view === "pending" ? (
         pending.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
             No drafts awaiting approval. Create one from “Ready to Post”, then approve it under the Approvals tab.
@@ -3210,8 +3267,15 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
     setLoading(true);
     try {
       const res = (await api.accounting.journalsQueue({ client_id: clientId, status })) as { success: boolean; data: QueueJournal[] };
-      setRows(res.success ? (res.data ?? []) : []);
-    } catch { setRows([]); } finally { setLoading(false); }
+      if (!res.success) throw new Error("Couldn't load the approval queue.");
+      setRows(res.data ?? []);
+      setError(null);
+    } catch (e) {
+      setRows([]);
+      setError(e instanceof Error ? e.message : "Couldn't load the approval queue.");
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, status]);
   useEffect(() => { load(); }, [load]);
 
@@ -3807,8 +3871,15 @@ function BankReconciliation({ clientId }: { clientId: string }) {
     setLoading(true);
     try {
       const res = (await api.banking.reconciliations.list({ client_id: clientId })) as { success: boolean; data: ReconSession[] };
-      setSessions(res.success ? (res.data ?? []) : []);
-    } catch { setSessions([]); } finally { setLoading(false); }
+      if (!res.success) throw new Error("Couldn't load reconciliation sessions.");
+      setSessions(res.data ?? []);
+      setError(null);
+    } catch (e) {
+      setSessions([]);
+      setError(e instanceof Error ? e.message : "Couldn't load reconciliation sessions.");
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   const loadBankAccounts = useCallback(async () => {
@@ -3824,9 +3895,15 @@ function BankReconciliation({ clientId }: { clientId: string }) {
     setLoadingReport(true); setSel({}); setError(null);
     try {
       const res = (await api.banking.reconciliations.report(id)) as { success: boolean; data: ReconReport };
-      setReport(res.success ? res.data : null);
-      if (res.success) setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
-    } catch { setReport(null); } finally { setLoadingReport(false); }
+      if (!res.success) throw new Error("Couldn't load the reconciliation report.");
+      setReport(res.data);
+      setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
+    } catch (e) {
+      setReport(null);
+      setError(e instanceof Error ? e.message : "Couldn't load the reconciliation report.");
+    } finally {
+      setLoadingReport(false);
+    }
   }, []);
   useEffect(() => { if (selectedId) loadReport(selectedId); else setReport(null); }, [selectedId, loadReport]);
 
@@ -4013,31 +4090,47 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
   const [locked, setLocked] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // A failed lock-status check must never default to "open" (M17-class bug):
+  // that would tell a CA it's safe to post into a FY that's actually locked,
+  // or vice versa. Keep `locked` unknown (null) and surface the failure
+  // instead of guessing.
+  const [checkFailed, setCheckFailed] = useState(false);
 
-  useEffect(() => {
-    async function check() {
-      try {
-        const supabase = getSupabaseClient();
-        const firmId = await getFirmId();
-        const { data } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
-        const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
-        setLocked(years.includes(financialYear));
-      } catch { setLocked(false); } finally { setLoading(false); }
+  const check = useCallback(async () => {
+    setLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const firmId = await getFirmId();
+      const { data, error } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
+      if (error) throw error;
+      const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
+      setLocked(years.includes(financialYear));
+      setCheckFailed(false);
+    } catch {
+      setLocked(null);
+      setCheckFailed(true);
+    } finally {
+      setLoading(false);
     }
-    check();
   }, [financialYear]);
+  useEffect(() => { check(); }, [check]);
 
   async function toggleLock() {
     setSaving(true);
     try {
       const supabase = getSupabaseClient();
       const firmId = await getFirmId();
-      const { data } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
+      const { data, error } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
+      // A failed read here must abort, not proceed with years=[] — this is a
+      // read-modify-write: writing back an empty/partial list would silently
+      // wipe out every OTHER financial year this firm had locked.
+      if (error) throw error;
       const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
       const updated = locked
         ? years.filter((y) => y !== financialYear)
         : Array.from(new Set([...years, financialYear]));
-      await supabase.from("firms").update({ locked_financial_years: updated }).eq("id", firmId);
+      const { error: updErr } = await supabase.from("firms").update({ locked_financial_years: updated }).eq("id", firmId);
+      if (updErr) throw updErr;
       setLocked(!locked);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to update lock");
@@ -4054,23 +4147,37 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
       </div>
       <div className="px-5 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${loading ? "bg-[#E2E8F0]" : locked ? "bg-red-400" : "bg-green-400"}`} />
+          <div className={`w-3 h-3 rounded-full ${loading ? "bg-[#E2E8F0]" : checkFailed ? "bg-amber-400" : locked ? "bg-red-400" : "bg-green-400"}`} />
           <span className="text-sm text-[#334155]">
-            {loading ? "Checking…" : locked ? `FY ${financialYear} is locked` : `FY ${financialYear} is open`}
+            {loading ? "Checking…" : checkFailed ? `Couldn't verify FY ${financialYear}'s lock status` : locked ? `FY ${financialYear} is locked` : `FY ${financialYear} is open`}
           </span>
         </div>
-        <button
-          onClick={toggleLock}
-          disabled={loading || saving}
-          className={`flex items-center gap-2 text-xs px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${
-            locked
-              ? "bg-green-600 text-white hover:bg-green-700"
-              : "bg-red-600 text-white hover:bg-red-700"
-          }`}
-        >
-          {saving ? "Saving…" : locked ? "🔓 Unlock FY" : "🔒 Lock FY (Year-End Close)"}
-        </button>
+        {checkFailed ? (
+          <button onClick={check} className="text-xs px-4 py-2 rounded-lg font-medium border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#334155]">
+            Retry
+          </button>
+        ) : (
+          <button
+            onClick={toggleLock}
+            disabled={loading || saving}
+            className={`flex items-center gap-2 text-xs px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${
+              locked
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : "bg-red-600 text-white hover:bg-red-700"
+            }`}
+          >
+            {saving ? "Saving…" : locked ? "🔓 Unlock FY" : "🔒 Lock FY (Year-End Close)"}
+          </button>
+        )}
       </div>
+      {checkFailed && (
+        <div className="mx-5 mb-4 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          <p className="text-xs text-amber-800">
+            Couldn&apos;t confirm whether FY {financialYear} is locked — the check failed or timed out.
+            Lock/unlock is disabled until this is verified, to avoid overwriting the real status.
+          </p>
+        </div>
+      )}
       {locked && (
         <div className="mx-5 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
           <p className="text-xs text-red-700">

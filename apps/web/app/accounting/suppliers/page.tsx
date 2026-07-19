@@ -104,7 +104,8 @@ export default function SuppliersPage() {
     const sb = getSupabaseClient();
     getFirmId().then(async (fid) => {
       setFirmId(fid);
-      const { data } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_active", true).order("client_name");
+      const { data, error } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_active", true).order("client_name");
+      if (error) throw error;
       setClients((data ?? []) as Client[]);
       if (data && data.length > 0) setSelectedClientId((data[0] as Client).id);
     }).catch(() => setError("Failed to load")).finally(() => setLoading(false));
@@ -138,9 +139,16 @@ export default function SuppliersPage() {
 
   async function loadSuppliers() {
     if (!selectedClientId || !firmId) return;
-    const sb = getSupabaseClient();
-    const { data } = await sb.from("suppliers").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("supplier_name");
-    setSuppliers((data ?? []) as Supplier[]);
+    try {
+      const sb = getSupabaseClient();
+      const { data, error: fetchErr } = await sb.from("suppliers").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("supplier_name");
+      if (fetchErr) throw fetchErr;
+      setSuppliers((data ?? []) as Supplier[]);
+      setError(null);
+    } catch (e) {
+      setSuppliers([]);
+      setError(e instanceof Error ? e.message : "Couldn't load suppliers.");
+    }
   }
 
   function openAdd() {
