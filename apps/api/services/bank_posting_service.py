@@ -364,7 +364,8 @@ class BankPostingService:
         through the normal draft-journal flow).
         """
         txn = self._get_txn(db, firm_id, txn_id)
-        if txn.get("match_status") == "posted" or txn.get("posted_journal_id"):
+        raw_match_status = txn.get("match_status")
+        if raw_match_status in ("posted", "matched") or txn.get("posted_journal_id"):
             raise HTTPException(status_code=409, detail="Transaction already matched/posted.")
         amount, is_credit = _amount(txn)
         if amount <= 0:
@@ -405,37 +406,66 @@ class BankPostingService:
                        "a single bank transaction settles one party's documents.")
         party_id = party_ids.pop()
 
+        # Concurrency guard (task #220): claim exclusive posting rights on this
+        # transaction BEFORE creating the receipt/payment. Unlike the 1:1 post()
+        # flow — naturally protected by _create_journal's deterministic
+        # BANK-{txn_id} reference idempotency — this flow creates a REAL
+        # receipt/payment with its own freshly-sequenced reference each call, so
+        # two near-simultaneous calls that both read the txn as unmatched above
+        # would otherwise both create one, double-posting the cash movement.
+        # "matched" is the same real status bank_matching_service.match() already
+        # uses for a linked-but-not-yet-posted transaction — no schema change.
+        # A concurrent loser's CAS finds match_status already changed and gets
+        # zero rows back.
+        claim = (db.table("bank_transactions").update({
+            "match_status": "matched", "updated_at": _now(),
+        }).eq("id", txn_id).eq("firm_id", firm_id)
+          .eq("match_status", raw_match_status)
+          .is_("posted_journal_id", "null")
+          .execute())
+        if not claim.data:
+            raise HTTPException(status_code=409, detail="Transaction already matched/posted.")
+
         date = str(txn["transaction_date"])[:10]
         alloc_payloads = [{alloc_key: a["entity_id"], "allocated_paise": int(a["allocated_paise"])} for a in allocations]
 
-        if entity_type == "sales_invoice":
-            from services import receipt_service
-            data = {
-                "client_id": client_id, "customer_id": party_id, "receipt_date": date,
-                "amount_paise": amount, "tds_paise": tds_paise, "payment_mode": "bank",
-                "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
-                "allocations": alloc_payloads,
-            }
-            if currency:
-                data["currency"] = currency
-            if exchange_rate is not None:
-                data["exchange_rate"] = exchange_rate
-            result = receipt_service.create_receipt_core(firm_id, data, actor or {}, db)
-            new_entity_type, category = "receipt", "Customer Payment"
-        else:
-            from services import purchase_payment_service
-            data = {
-                "client_id": client_id, "vendor_id": party_id, "payment_date": date,
-                "amount_paise": amount, "payment_mode": "bank",
-                "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
-                "allocations": alloc_payloads,
-            }
-            if currency:
-                data["currency"] = currency
-            if exchange_rate is not None:
-                data["exchange_rate"] = exchange_rate
-            result = purchase_payment_service.create_payment_core(firm_id, data, actor or {}, db)
-            new_entity_type, category = "purchase_payment", "Vendor Payment"
+        try:
+            if entity_type == "sales_invoice":
+                from services import receipt_service
+                data = {
+                    "client_id": client_id, "customer_id": party_id, "receipt_date": date,
+                    "amount_paise": amount, "tds_paise": tds_paise, "payment_mode": "bank",
+                    "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
+                    "allocations": alloc_payloads,
+                }
+                if currency:
+                    data["currency"] = currency
+                if exchange_rate is not None:
+                    data["exchange_rate"] = exchange_rate
+                result = receipt_service.create_receipt_core(firm_id, data, actor or {}, db)
+                new_entity_type, category = "receipt", "Customer Payment"
+            else:
+                from services import purchase_payment_service
+                data = {
+                    "client_id": client_id, "vendor_id": party_id, "payment_date": date,
+                    "amount_paise": amount, "payment_mode": "bank",
+                    "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
+                    "allocations": alloc_payloads,
+                }
+                if currency:
+                    data["currency"] = currency
+                if exchange_rate is not None:
+                    data["exchange_rate"] = exchange_rate
+                result = purchase_payment_service.create_payment_core(firm_id, data, actor or {}, db)
+                new_entity_type, category = "purchase_payment", "Vendor Payment"
+        except Exception:
+            # Release the claim so a failed settlement (e.g. a 422 business-rule
+            # rejection) doesn't leave the transaction permanently stuck
+            # "matched" with no receipt/payment behind it — the CA can retry.
+            db.table("bank_transactions").update({
+                "match_status": raw_match_status, "updated_at": _now(),
+            }).eq("id", txn_id).eq("firm_id", firm_id).eq("match_status", "matched").execute()
+            raise
 
         journal_id = result.get("journal_entry_id")
         db.table("bank_transactions").update({
