@@ -26,6 +26,17 @@ _MATCH_ENTITY_TYPES = frozenset({
     "sales_invoice", "purchase_bill", "receipt", "purchase_payment", "journal_entry", "manual",
 })
 
+# Backing table for each matchable entity type, used to verify the caller's
+# firm/client actually owns the entity_id before linking it to a bank
+# transaction (a "manual" match has no backing document, so it's unchecked).
+_MATCH_ENTITY_TABLES = {
+    "sales_invoice": "client_sales_invoices",
+    "purchase_bill": "purchase_bills",
+    "receipt": "receipts",
+    "purchase_payment": "purchase_payments",
+    "journal_entry": "journal_entries",
+}
+
 # The unambiguous category implied by a matched entity, applied when the caller
 # accepts a suggestion without picking a category (otherwise the transaction is
 # left uncategorized and never posts cleanly). Only entities with a single
@@ -261,6 +272,16 @@ class BankMatchingService:
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("match_status") == "posted":
             raise HTTPException(status_code=409, detail="Transaction already posted to the ledger.")
+        # Tenant-ownership check: entity_id is caller-supplied and must actually
+        # belong to this transaction's firm+client, not just be well-formed
+        # (mirrors bank_posting_service.match_and_settle_multi's doc lookup).
+        table = _MATCH_ENTITY_TABLES.get(entity_type)
+        if table is not None:
+            owned = (db.table(table).select("id").eq("id", entity_id)
+                     .eq("firm_id", firm_id).eq("client_id", txn["client_id"])
+                     .execute().data or [])
+            if not owned:
+                raise HTTPException(status_code=422, detail="Not part of this client's books.")
         update = {
             "matched_entity_type": entity_type, "matched_entity_id": entity_id,
             "matched_by": actor_id, "matched_at": _now(),

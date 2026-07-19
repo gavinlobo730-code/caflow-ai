@@ -119,8 +119,8 @@ def _create_task_for_notice(firm_id: str, client_id: str, notice: dict, db=None)
             ),
             "due_date": notice.get("response_due_date"),
             "priority": "high",
-            "status": "pending",
-            "category": "compliance",
+            "status": "todo",
+            "source": "AI",
             "created_at": datetime.utcnow().isoformat(),
         }
 

@@ -308,6 +308,48 @@ class TestNoticeExtractionV2:
         assert not hasattr(mod, "_mock_extract")
 
 
+class TestCreateTaskForNoticeSchema:
+    """task #225 finding #2: _create_task_for_notice built an invalid tasks
+    row — status='pending' (not in the tasks.status CHECK constraint: 'todo',
+    'in_progress', 'waiting_client', 'review_required', 'completed') and a
+    'category' column that does not exist on the tasks table — so every real
+    (non-mock) DB insert silently failed inside the try/except and the
+    notice was left permanently missing its linked compliance task, with the
+    caller never told. Exercises the real (_USE_MOCK=False) insert path
+    directly against a fake db.table("tasks").insert(...) capture."""
+
+    def test_inserted_task_uses_valid_status_and_drops_nonexistent_column(self, monkeypatch):
+        import routers.document_intelligence_v2 as mod
+
+        captured = {}
+
+        class _FakeTable:
+            def insert(self, data):
+                captured.update(data)
+                return self
+
+            def execute(self):
+                return None
+
+        class _FakeDB:
+            def table(self, name):
+                assert name == "tasks"
+                return _FakeTable()
+
+        monkeypatch.setattr(mod, "_USE_MOCK", False)
+        notice = {
+            "notice_type": "gst_scrutiny", "authority": "GSTN",
+            "reference_no": "REF-1", "response_due_date": "2026-08-01",
+            "description": "Respond to notice.",
+        }
+        task_id = mod._create_task_for_notice(FIRM_A, "c-001", notice, _FakeDB())
+
+        assert task_id is not None
+        assert captured["status"] == "todo"
+        assert "category" not in captured
+        assert captured["source"] == "AI"
+
+
 # ─── 3a. documents.py /parse: dead mock endpoint no longer fabricates ───────
 
 class TestDocumentsParseNoLongerFabricates:

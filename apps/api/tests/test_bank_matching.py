@@ -197,6 +197,15 @@ def _seed_txn(db, **kw):
     return row
 
 
+def _seed_entity(db, table, entity_id, **kw):
+    """Seed a backing document (sales invoice / purchase bill / journal entry /
+    etc.) so match()'s tenant-ownership check finds it owned by FIRM/CLIENT."""
+    row = dict(id=entity_id, firm_id=FIRM, client_id=CLIENT)
+    row.update(kw)
+    db.store.setdefault(table, []).append(row)
+    return row
+
+
 # ── B.2.2 categorize ──────────────────────────────────────────────────────────
 
 def test_categorize_sets_controlled_category():
@@ -216,6 +225,7 @@ def test_categorize_rejects_freeform():
 
 def test_manual_match_acceptance_links_entity():
     db = FakeDB(); _seed_txn(db)
+    _seed_entity(db, "client_sales_invoices", "inv-9")
     res = bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9",
                                       category="Sales Receipt", actor_id="u1")
     assert res["match_status"] == "matched"
@@ -237,17 +247,20 @@ def test_match_derives_category_when_none_given():
     uncategorized: a receivable match implies Customer Payment, a payable match
     Vendor Payment (both AUTO-counter, settle the matched document downstream)."""
     db = FakeDB(); _seed_txn(db)
+    _seed_entity(db, "client_sales_invoices", "inv-9")
     res = bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
     assert res["category"] == "Customer Payment"
     assert db.store["bank_transactions"][0]["category"] == "Customer Payment"
 
     db2 = FakeDB(); _seed_txn(db2, debit_paise=50000, credit_paise=0)
+    _seed_entity(db2, "purchase_bills", "bill-3")
     res2 = bank_matching_service.match(db2, FIRM, "t1", "purchase_bill", "bill-3")
     assert res2["category"] == "Vendor Payment"
 
 
 def test_match_explicit_category_overrides_derived_default():
     db = FakeDB(); _seed_txn(db)
+    _seed_entity(db, "client_sales_invoices", "inv-9")
     res = bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9",
                                      category="Sales Receipt")
     assert res["category"] == "Sales Receipt"
@@ -257,9 +270,44 @@ def test_match_journal_entry_leaves_category_null():
     """journal_entry / manual have no unambiguous category — stay NULL for the CA
     to classify explicitly, rather than guessing one."""
     db = FakeDB(); _seed_txn(db)
+    _seed_entity(db, "journal_entries", "je-1")
     res = bank_matching_service.match(db, FIRM, "t1", "journal_entry", "je-1")
     assert res["category"] is None
     assert db.store["bank_transactions"][0].get("category") is None
+
+
+# ── tenant-ownership check (task #225 finding #3) ─────────────────────────────
+
+def test_match_rejects_entity_from_another_firm():
+    """matched_entity_id is caller-supplied — must be verified to actually
+    belong to this transaction's firm, not merely well-formed."""
+    db = FakeDB(); _seed_txn(db)
+    _seed_entity(db, "client_sales_invoices", "inv-9", firm_id="firm-OTHER")
+    with pytest.raises(Exception):
+        bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
+    assert db.store["bank_transactions"][0]["match_status"] == "unmatched"
+
+
+def test_match_rejects_entity_from_another_client_same_firm():
+    db = FakeDB(); _seed_txn(db)
+    _seed_entity(db, "purchase_bills", "bill-3", client_id="client-OTHER")
+    with pytest.raises(Exception):
+        bank_matching_service.match(db, FIRM, "t1", "purchase_bill", "bill-3")
+    assert db.store["bank_transactions"][0]["match_status"] == "unmatched"
+
+
+def test_match_rejects_nonexistent_entity():
+    db = FakeDB(); _seed_txn(db)
+    with pytest.raises(Exception):
+        bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-does-not-exist")
+
+
+def test_manual_match_type_has_no_ownership_check():
+    """'manual' has no backing document table — matching it must not attempt
+    a lookup (and must therefore succeed with any caller-supplied id)."""
+    db = FakeDB(); _seed_txn(db)
+    res = bank_matching_service.match(db, FIRM, "t1", "manual", "free-text-ref")
+    assert res["match_status"] == "matched"
 
 
 # ── Duplicate prevention: cannot re-match a posted transaction ────────────────

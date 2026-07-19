@@ -391,3 +391,19 @@ class PurchasePaymentIn(BaseModel):
         if v <= 0:
             raise ValueError("Payment amount must be positive.")
         return v
+
+
+class PurchasePaymentAllocationIn(BaseModel):
+    purchase_bill_id: str
+    allocated_paise: int
+
+    @field_validator("allocated_paise")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("allocated_paise must be non-negative.")
+        return v
+
+
+class PurchasePaymentAllocationsUpdateIn(BaseModel):
+    allocations: list[PurchasePaymentAllocationIn]
