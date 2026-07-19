@@ -63,7 +63,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
     const supabase = getSupabaseClient();
     const { data } = await selectAll(() => supabase
       .from("mca_companies")
-      .select("id, company_name, cin, incorporation_date, registered_address, authorized_capital_paise, paid_up_capital_paise, company_type")
+      .select("id, company_name, cin, incorp_date, registered_office, authorized_capital_paise, paid_up_capital_paise, company_category")
       .eq("client_id", clientId));
     setRows((data as Record<string, unknown>[]) ?? []);
     setLoading(false);
@@ -138,15 +138,15 @@ function CompaniesTab({ clientId }: { clientId: string }) {
             <div key={c.id as string} className="border rounded p-4 space-y-1">
               <div className="flex justify-between items-start">
                 <p className="font-medium">{c.company_name as string}</p>
-                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{c.company_type as string}</span>
+                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{c.company_category as string}</span>
               </div>
               <p className="text-xs text-[#64748B] font-mono">{c.cin as string}</p>
-              {!!c.incorporation_date && <p className="text-xs text-[#64748B]">Incorporated: {c.incorporation_date as string}</p>}
+              {!!c.incorp_date && <p className="text-xs text-[#64748B]">Incorporated: {c.incorp_date as string}</p>}
               <div className="flex gap-6 text-xs text-[#475569] mt-2">
                 <span>Auth. Capital: {crore((c.authorized_capital_paise as number) ?? 0)}</span>
                 <span>Paid-up: {crore((c.paid_up_capital_paise as number) ?? 0)}</span>
               </div>
-              {!!c.registered_address && <p className="text-xs text-[#64748B] mt-1">{c.registered_address as string}</p>}
+              {!!c.registered_office && <p className="text-xs text-[#64748B] mt-1">{c.registered_office as string}</p>}
             </div>
           ))}
           {rows.length === 0 && <p className="text-center text-[#94A3B8] text-sm py-4">No companies registered.</p>}
@@ -253,7 +253,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
             {rows.map((r) => (
               <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2 font-mono text-xs">{r.din as string}</td>
-                <td className="px-3 py-2">{r.name as string}</td>
+                <td className="px-3 py-2">{r.director_name as string}</td>
                 <td className="px-3 py-2 text-xs">{r.designation as string}</td>
                 <td className="px-3 py-2 text-xs">{r.date_of_appointment as string}</td>
                 <td className="px-3 py-2">
@@ -508,7 +508,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.srn as string ?? "—"}</td>
-                <td className="px-3 py-2 text-xs">{r.filing_date as string ?? "—"}</td>
+                <td className="px-3 py-2 text-xs">{r.filed_date as string ?? "—"}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${FILING_STATUS_COLORS[r.status as string] ?? ""}`}>
                     {r.status as string}

@@ -92,6 +92,11 @@ _ANNUAL_FORMS = {"AOC-4", "MGT-7", "ADT-1"}
 # Event filing forms
 _EVENT_FORMS = {"DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"}
 
+# CompaniesTab's <select> sends the short form (frontend); mca_companies.company_category's
+# CHECK constraint (migration 038) requires the full Companies Act 2013 term. Anything not
+# in this map (e.g. "Section 8", "Nidhi" sent directly) passes through unchanged.
+_COMPANY_TYPE_MAP = {"PVT": "Private Limited", "PUB": "Public Limited"}
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -127,11 +132,15 @@ def create_company(
             "client_id": body.client_id,
             "cin": body.cin,
             "company_name": body.company_name,
-            "incorporation_date": body.incorporation_date,
-            "registered_address": body.registered_address,
+            # Real columns are incorp_date/registered_office/company_category
+            # (migration 038) — the request model keeps the frontend's field
+            # names, mapped here (task #219 schema-drift fix).
+            "incorp_date": body.incorporation_date,
+            "registered_office": body.registered_address,
             "authorized_capital_paise": body.authorized_capital_paise,
             "paid_up_capital_paise": body.paid_up_capital_paise,
-            "company_type": body.company_type,
+            "company_category": (_COMPANY_TYPE_MAP.get(body.company_type, body.company_type)
+                                  if body.company_type else "Private Limited"),
             "created_at": datetime.utcnow().isoformat(),
         }
 
@@ -205,7 +214,9 @@ def create_director(
             "client_id": body.client_id,
             "company_id": body.company_id,
             "din": body.din,
-            "name": body.name,
+            # Real column is director_name (migration 038); request model
+            # keeps the frontend's "name" field (task #219 schema-drift fix).
+            "director_name": body.name,
             "designation": body.designation,
             "date_of_appointment": body.date_of_appointment,
             "pan": body.pan,
@@ -325,10 +336,15 @@ def create_filing(
             "financial_year": body.financial_year,
             "period": body.period,
             "due_date": body.due_date,
-            "description": body.description,
+            # mca_filings has no "description" column; reuses the existing
+            # free-text "notes" column instead of adding a duplicate one
+            # (task #219 schema-drift fix).
+            "notes": body.description,
             "status": "not_started",
             "srn": None,
-            "filing_date": None,
+            # Real column is filed_date (migration 012); request/response
+            # keep "filing_date" as the API field name, mapped below.
+            "filed_date": None,
             "acknowledgement_url": None,
             "created_at": datetime.utcnow().isoformat(),
         }
@@ -379,7 +395,9 @@ def update_filing_status(
         if body.srn:
             updates["srn"] = body.srn
         if body.filing_date:
-            updates["filing_date"] = body.filing_date
+            # Real column is filed_date (migration 012); request field keeps
+            # the frontend's "filing_date" name, mapped here.
+            updates["filed_date"] = body.filing_date
         if body.acknowledgement_url:
             updates["acknowledgement_url"] = body.acknowledgement_url
 
