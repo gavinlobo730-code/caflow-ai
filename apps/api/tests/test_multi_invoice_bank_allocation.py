@@ -272,6 +272,109 @@ def test_bank_multi_match_rejects_already_posted_transaction(monkeypatch):
     assert exc.value.status_code == 409
 
 
+# ── task #220: double-submit race guard ──────────────────────────────────────
+
+def test_bank_multi_match_rejects_concurrent_claim(monkeypatch):
+    """The top-level guard only checked match_status == 'posted', not 'matched'
+    — a second near-simultaneous call that read the txn BEFORE a concurrent
+    winner's compare-and-set claim would still pass it. Simulates the race by
+    setting match_status to the same 'matched' claim state a winning call
+    would set (before it creates its receipt/payment), and confirms a second
+    call is rejected rather than creating its own independent receipt/journal."""
+    cu, ve, si, pb, db = _setup(monkeypatch)
+    import services.bank_posting_service as bps
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="Cust E", state_code="27"), CALLER)["data"]
+    inv1 = _invoice(si, cust["id"], 60_000, "INV-RACE-1")
+    txn = _txn(db, 60_000, is_credit=True)
+    db.table("bank_transactions").update({"match_status": "matched"}).eq("id", txn["id"]).execute()
+
+    with pytest.raises(HTTPException) as exc:
+        bps.bank_posting_service.match_and_settle_multi(
+            db, FIRM, txn["id"], "sales_invoice",
+            [{"entity_id": inv1["id"], "allocated_paise": 60_000}],
+            actor=CALLER,
+        )
+    assert exc.value.status_code == 409
+    assert db.table("receipts").select("*").eq("client_id", "CLI").execute().data == []
+
+
+def test_bank_multi_match_claim_prevents_double_posting_when_second_call_races_in(monkeypatch):
+    """Directly proves the CAS claim: once match_and_settle_multi has claimed
+    the transaction (match_status flipped from 'unmatched' -> 'matched'), a
+    second call racing in with the SAME stale 'unmatched' read it captured
+    before the claim is rejected — not just a call that happens to read the
+    post-claim state (covered by the test above)."""
+    cu, ve, si, pb, db = _setup(monkeypatch)
+    import services.bank_posting_service as bps
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="Cust F", state_code="27"), CALLER)["data"]
+    inv1 = _invoice(si, cust["id"], 30_000, "INV-RACE-2A")
+    inv2 = _invoice(si, cust["id"], 30_000, "INV-RACE-2B")
+    txn = _txn(db, 30_000, is_credit=True)
+
+    original_claim_update = db.table
+
+    def racing_update(name):
+        q = original_claim_update(name)
+        if name == "bank_transactions" and not racing_update.fired:
+            racing_update.fired = True
+            # Simulate a second request's CAS claim winning the race a moment
+            # after this call already read raw_match_status="unmatched" but
+            # before its own claim executes.
+            db.table("bank_transactions").update({"match_status": "matched"}).eq("id", txn["id"]).execute()
+        return q
+    racing_update.fired = False
+    monkeypatch.setattr(db, "table", racing_update)
+
+    with pytest.raises(HTTPException) as exc:
+        bps.bank_posting_service.match_and_settle_multi(
+            db, FIRM, txn["id"], "sales_invoice",
+            [{"entity_id": inv1["id"], "allocated_paise": 30_000}],
+            actor=CALLER,
+        )
+    assert exc.value.status_code == 409
+    assert db.table("receipts").select("*").eq("client_id", "CLI").execute().data == []
+    inv1_row = db.table("client_sales_invoices").select("*").eq("id", inv1["id"]).execute().data[0]
+    assert inv1_row["status"] != "paid"   # never settled
+
+
+def test_bank_multi_match_releases_claim_on_settlement_failure(monkeypatch):
+    """A failed settlement (business-rule rejection deep inside
+    create_receipt_core) must not leave the transaction stuck 'matched' with
+    no receipt behind it — the claim is released so the CA can retry."""
+    cu, ve, si, pb, db = _setup(monkeypatch)
+    import services.bank_posting_service as bps
+    import services.receipt_service as rs
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="Cust G", state_code="27"), CALLER)["data"]
+    inv1 = _invoice(si, cust["id"], 60_000, "INV-FAIL-1")
+    txn = _txn(db, 60_000, is_credit=True)
+
+    real_create_receipt_core = rs.create_receipt_core
+
+    def _boom(*a, **k):
+        raise HTTPException(status_code=422, detail="simulated settlement failure")
+    monkeypatch.setattr(rs, "create_receipt_core", _boom)
+
+    with pytest.raises(HTTPException) as exc:
+        bps.bank_posting_service.match_and_settle_multi(
+            db, FIRM, txn["id"], "sales_invoice",
+            [{"entity_id": inv1["id"], "allocated_paise": 60_000}],
+            actor=CALLER,
+        )
+    assert exc.value.status_code == 422
+
+    txn_row = db.table("bank_transactions").select("*").eq("id", txn["id"]).execute().data[0]
+    assert txn_row["match_status"] == "unmatched"   # released, not stuck "matched"
+
+    # Retry (without the simulated failure) now succeeds.
+    monkeypatch.setattr(rs, "create_receipt_core", real_create_receipt_core)
+    result = bps.bank_posting_service.match_and_settle_multi(
+        db, FIRM, txn["id"], "sales_invoice",
+        [{"entity_id": inv1["id"], "allocated_paise": 60_000}],
+        actor=CALLER,
+    )
+    assert result["match_status"] == "posted"
+
+
 # ── Bank multi-match: AP (debit txn -> multiple bills, one payment) ──────────────
 
 def test_bank_multi_match_settles_two_bills_via_one_payment(monkeypatch):
