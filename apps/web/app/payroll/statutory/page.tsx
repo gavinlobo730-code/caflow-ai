@@ -144,9 +144,14 @@ export default function StatutoryPage() {
   const [selMonth, setSelMonth] = useState(today.getMonth() + 1);
   const [selYear, setSelYear] = useState(today.getFullYear());
   const [showChallan, setShowChallan] = useState(false);
+  // M17: a swallowed load failure previously rendered as an empty roster with
+  // ₹0 PF/ESIC/gratuity challan totals — indistinguishable from a client that
+  // genuinely has no employees. Surface the failure and offer a retry instead.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const fid = await getFirmId();
       const sb = getSupabaseClient();
@@ -154,13 +159,14 @@ export default function StatutoryPage() {
         sb.from("clients").select("id, client_name").eq("firm_id", fid),
         sb.from("payroll_employees").select("*").eq("firm_id", fid),
       ]);
+      if (clientsRes.error || empRes.error) throw clientsRes.error ?? empRes.error;
       const cls: Client[] = clientsRes.data ?? [];
       const emps: Employee[] = empRes.data ?? [];
       setClients(cls);
       setEmployees(emps);
       if (cls.length > 0) setSelectedClientId(cls[0].id);
     } catch {
-      // not authenticated
+      setLoadFailed(true);
     }
     setLoading(false);
   }, []);
@@ -248,6 +254,17 @@ export default function StatutoryPage() {
 
   if (loading) {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading...</p></div>;
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load statutory data — the request failed or timed out.</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -99,6 +99,11 @@ export default function AttendancePage() {
   const [firmId, setFirmId] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  // M17: a swallowed load failure previously rendered as an empty roster; the
+  // leave-balance loader further fabricated default 12/12/15 allocations as if
+  // real on a failed query. Track both failures and offer a retry instead.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [leaveLoadFailed, setLeaveLoadFailed] = useState(false);
 
   // Attendance tab state
   const today = new Date();
@@ -117,6 +122,7 @@ export default function AttendancePage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const fid = await getFirmId();
       setFirmId(fid);
@@ -124,6 +130,7 @@ export default function AttendancePage() {
 
       // Load employees from payroll_employees table
       const empRes = await sb.from("payroll_employees").select("id, name, designation").eq("firm_id", fid);
+      if (empRes.error) throw empRes.error;
       const emps: Employee[] = empRes.data ?? [];
       setEmployees(emps);
 
@@ -132,6 +139,7 @@ export default function AttendancePage() {
         .eq("firm_id", fid)
         .eq("month", attMonth)
         .eq("year", attYear);
+      if (attRes.error) throw attRes.error;
 
       const attMap: Record<string, AttendanceRow> = {};
       for (const emp of emps) {
@@ -156,13 +164,14 @@ export default function AttendancePage() {
       }
       setAttendance(attMap);
     } catch {
-      // not authenticated
+      setLoadFailed(true);
     }
     setLoading(false);
   }, [attMonth, attYear]);
 
   const loadLeaveBalances = useCallback(async () => {
     if (!firmId) return;
+    setLeaveLoadFailed(false);
     const sb = getSupabaseClient();
 
     const [lbRes, attRes] = await Promise.all([
@@ -171,6 +180,10 @@ export default function AttendancePage() {
         .eq("firm_id", firmId)
         .eq("year", leaveYear),
     ]);
+
+    // A failed query must NOT fall through to the employees.map below, which
+    // would fabricate default 12/12/15 allocations as if they were real records.
+    if (lbRes.error || attRes.error) { setLeaveLoadFailed(true); setLeaveBalances([]); return; }
 
     // Aggregate used leaves per employee across all months
     const usedMap: Record<string, { casual: number; sick: number; earned: number }> = {};
@@ -254,6 +267,17 @@ export default function AttendancePage() {
 
   if (loading) {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading...</p></div>;
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load attendance data — the request failed or timed out.</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -445,6 +469,12 @@ export default function AttendancePage() {
                 </p>
               </CardHeader>
               <CardContent className="p-0">
+                {leaveLoadFailed ? (
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load leave balances — the request failed or timed out.</p>
+                    <button onClick={() => loadLeaveBalances()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -559,6 +589,7 @@ export default function AttendancePage() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

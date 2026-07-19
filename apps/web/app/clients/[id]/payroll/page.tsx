@@ -114,25 +114,42 @@ function DashboardTab({ clientId }: { clientId: string }) {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  // M17: a failed Supabase read must not fall through to ₹0 stat cards /
+  // "No payroll runs yet" — that is indistinguishable from a client that
+  // genuinely has no payroll. Track the failure and surface a retry instead.
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     const db = getSupabaseClient();
+    setLoading(true);
+    setLoadFailed(false);
     // Direct Supabase reads (not api/payroll/runs + api/payroll/employees) —
     // these are plain client-scoped selects with no server-side computation,
     // so routing them through the FastAPI backend only adds a cold-start hit.
     // Mirrors routers/payroll.py's list_runs (order by month desc) and
     // list_employees (eq status=active, order by name).
-    Promise.all([
+    const [r, e] = await Promise.all([
       db.from("payroll_runs").select("*").eq("client_id", clientId).order("month", { ascending: false }),
       db.from("payroll_employees").select("*").eq("client_id", clientId).eq("status", "active").order("name"),
-    ]).then(([r, e]) => {
-      setRuns((r.data as PayrollRun[]) ?? []);
-      setEmployees((e.data as Employee[]) ?? []);
-      setLoading(false);
-    });
+    ]);
+    if (r.error || e.error) { setLoadFailed(true); setLoading(false); return; }
+    setRuns((r.data as PayrollRun[]) ?? []);
+    setEmployees((e.data as Employee[]) ?? []);
+    setLoading(false);
   }, [clientId]);
 
+  useEffect(() => { load(); }, [load]);
+
   if (loading) return <div className="p-6 space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-[#F1F5F9] rounded-xl animate-pulse" />)}</div>;
+
+  if (loadFailed) return (
+    <div className="p-5">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+        <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the payroll dashboard — the request failed or timed out.</p>
+        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+      </div>
+    </div>
+  );
 
   const latest = runs[0];
 
@@ -208,9 +225,14 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [form, setForm] = useState({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
   const [aadhaarError, setAadhaarError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // M17: distinguish a failed roster fetch from a client with no employees.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`).catch(() => ({ data: [] as Employee[] }));
+    setLoading(true);
+    setLoadFailed(false);
+    const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`).catch(() => null);
+    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setLoading(false); return; }
     setEmployees(res.data || []);
     setLoading(false);
   }, [clientId]);
@@ -263,6 +285,15 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   }
 
   if (loading) return <div className="p-6 space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-[#F1F5F9] rounded-lg animate-pulse" />)}</div>;
+
+  if (loadFailed) return (
+    <div className="p-6">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+        <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load employees — the request failed or timed out.</p>
+        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-5 space-y-4">
@@ -363,13 +394,20 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   const [slips, setSlips] = useState<Slip[]>([]);
   const [loadingSlips, setLoadingSlips] = useState(false);
   const [finalizing, setFinalizing] = useState<string | null>(null);
+  // M17: a failed runs/slips fetch must not render as "No payroll runs yet" /
+  // an empty slip table — both look identical to genuinely having no data.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [slipsFailed, setSlipsFailed] = useState(false);
 
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
 
   const load = useCallback(async () => {
-    const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`).catch(() => ({ data: [] as PayrollRun[] }));
+    setLoading(true);
+    setLoadFailed(false);
+    const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`).catch(() => null);
+    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setLoading(false); return; }
     setRuns(res.data || []);
     setLoading(false);
   }, [clientId]);
@@ -390,13 +428,19 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
     setFinalizing(null);
   }
 
-  async function loadSlips(runId: string) {
-    if (selectedRun === runId) { setSelectedRun(null); return; }
-    setSelectedRun(runId);
+  async function fetchSlips(runId: string) {
     setLoadingSlips(true);
-    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => ({ data: [] as Slip[] }));
+    setSlipsFailed(false);
+    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => null);
+    if (!res || (res as { success?: boolean }).success === false) { setSlipsFailed(true); setSlips([]); setLoadingSlips(false); return; }
     setSlips(res.data || []);
     setLoadingSlips(false);
+  }
+
+  function loadSlips(runId: string) {
+    if (selectedRun === runId) { setSelectedRun(null); return; }
+    setSelectedRun(runId);
+    fetchSlips(runId);
   }
 
   if (loading) return <div className="p-6"><div className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" /></div>;
@@ -419,6 +463,13 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
       </div>
 
       <div className="space-y-2">
+        {loadFailed ? (
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+            <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load payroll runs — the request failed or timed out.</p>
+            <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          </div>
+        ) : (
+        <>
         {runs.length === 0 && (
           <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8] text-sm">No payroll runs yet</div>
         )}
@@ -452,6 +503,11 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
               <div className="border-t border-[#F1F5F9] px-4 py-3">
                 {loadingSlips ? (
                   <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-8 bg-[#F1F5F9] rounded animate-pulse" />)}</div>
+                ) : slipsFailed ? (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load slips — the request failed or timed out.</p>
+                    <button onClick={() => fetchSlips(r.id)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                  </div>
                 ) : (
                   <table className="w-full text-[11px]">
                     <thead>
@@ -488,6 +544,8 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
             )}
           </div>
         ))}
+        </>
+        )}
       </div>
     </div>
   );
@@ -501,10 +559,15 @@ function StatutoryTab({ clientId }: { clientId: string }) {
   const [month, setMonth] = useState(defaultMonth);
   const [data, setData] = useState<StatutoryData | null>(null);
   const [loading, setLoading] = useState(false);
+  // M17: a failed statutory-summary fetch must not render as the "click Load"
+  // prompt — PF/ESI/PT/TDS dues would look un-run when the fetch actually failed.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   async function load() {
     setLoading(true);
-    const res = await apiFetch<StatutoryData>(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`).catch(() => ({ data: null }));
+    setLoadFailed(false);
+    const res = await apiFetch<StatutoryData>(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`).catch(() => null);
+    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); setLoading(false); return; }
     setData(res.data);
     setLoading(false);
   }
@@ -537,9 +600,16 @@ function StatutoryTab({ clientId }: { clientId: string }) {
       )}
 
       {!data && !loading && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8] text-sm">
-          Select a month and click Load to view statutory dues
-        </div>
+        loadFailed ? (
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+            <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load statutory dues — the request failed or timed out.</p>
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8] text-sm">
+            Select a month and click Load to view statutory dues
+          </div>
+        )
       )}
     </div>
   );
@@ -648,9 +718,14 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", basic_percent: "40", hra_percent: "20", pf_applicable: true, esi_applicable: true });
   const [saving, setSaving] = useState(false);
+  // M17: distinguish a failed fetch from a client with no salary structures.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await apiFetch<SalaryStructure[]>(`/api/payroll/salary-structures?client_id=${clientId}`).catch(() => ({ data: [] as SalaryStructure[] }));
+    setLoading(true);
+    setLoadFailed(false);
+    const res = await apiFetch<SalaryStructure[]>(`/api/payroll/salary-structures?client_id=${clientId}`).catch(() => null);
+    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setLoading(false); return; }
     setStructures(res.data || []);
     setLoading(false);
   }, [clientId]);
@@ -669,6 +744,15 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   }
 
   if (loading) return <div className="p-6"><div className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" /></div>;
+
+  if (loadFailed) return (
+    <div className="p-6">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+        <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load salary structures — the request failed or timed out.</p>
+        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-5 space-y-4">
@@ -723,10 +807,15 @@ function ReportsTab({ clientId }: { clientId: string }) {
   const [month, setMonth] = useState(defaultMonth);
   const [data, setData] = useState<SalaryRegister | null>(null);
   const [loading, setLoading] = useState(false);
+  // M17: a failed salary-register fetch must not render blank — that reads as
+  // "no salary data" when the request actually failed.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   async function load() {
     setLoading(true);
-    const res = await apiFetch<SalaryRegister>(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`).catch(() => ({ data: null }));
+    setLoadFailed(false);
+    const res = await apiFetch<SalaryRegister>(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`).catch(() => null);
+    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); setLoading(false); return; }
     setData(res.data);
     setLoading(false);
   }
@@ -769,6 +858,12 @@ function ReportsTab({ clientId }: { clientId: string }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {loadFailed && !loading && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the salary register — the request failed or timed out.</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
         </div>
       )}
       {data && !data.slips?.length && <p className="text-center text-sm text-[#94A3B8] py-8">No salary data for {fmtMonth(month)}</p>}
