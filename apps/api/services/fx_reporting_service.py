@@ -25,6 +25,12 @@ _BASE = "INR"
 # A document no longer contributes to an OPEN foreign balance once it is a draft,
 # cancelled, or fully paid — matching FXRevaluationService's open-item filter.
 _DEAD = {"draft", "cancelled", "paid"}
+# For the rate-audit trail (below), a draft was never issued (no journal posted, no
+# real transaction) and a cancelled document was voided — neither used its stamped
+# rate for anything real. "paid" is intentionally NOT excluded here: a fully-settled
+# document is exactly the kind of completed FX transaction the audit trail exists to
+# show, unlike the open-balance filter above.
+_DEAD_UNISSUED = {"draft", "cancelled"}
 
 
 def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
@@ -253,11 +259,11 @@ class FXReportingService:
                                       ("purchase_bills", "bill_no", "bill_date")):
             rows = _paginate_all(lambda tbl=tbl, no_col=no_col, date_col=date_col: db.table(tbl)
                                  .select(f"id, {no_col}, {date_col}, txn_currency, exchange_rate, rate_source, "
-                                         f"rate_type, rate_date, rate_selected_by, rate_overridden")
+                                         f"rate_type, rate_date, rate_selected_by, rate_overridden, status")
                                  .eq("firm_id", firm_id).eq("client_id", client_id))
             for r in rows:
                 cur = (r.get("txn_currency") or _BASE).upper()
-                if cur == _BASE or not _within(r.get(date_col), start, end):
+                if cur == _BASE or (r.get("status") or "") in _DEAD_UNISSUED or not _within(r.get(date_col), start, end):
                     continue
                 documents.append({
                     "document_type": tbl, "document_id": r.get("id"), "document_no": r.get(no_col),

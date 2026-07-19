@@ -117,7 +117,10 @@ class BankMatchingService:
         customers = self._party_names(db, "customers", firm_id, client_id)
         out = []
         for r in rows:
-            if str(r.get("status")) == "cancelled":
+            # A draft invoice was never issued — no AR journal exists for a bank
+            # transaction to settle against (task #222: same pattern as the
+            # outstanding-balance functions excluding draft/cancelled).
+            if str(r.get("status")) in ("cancelled", "draft"):
                 continue
             paid = int(r.get("paid_paise") or 0)
             total = int(r.get("total_paise") or 0)
@@ -147,7 +150,10 @@ class BankMatchingService:
         vendors = self._party_names(db, "vendors", firm_id, client_id)
         out = []
         for r in rows:
-            if str(r.get("status")) in ("cancelled", "paid"):
+            # A draft bill was never received — no AP journal exists for a bank
+            # transaction to settle against (task #222: same pattern as the
+            # outstanding-balance functions excluding draft/cancelled).
+            if str(r.get("status")) in ("cancelled", "paid", "draft"):
                 continue
             party = vendors.get(r.get("vendor_id"))
             # Present the payable (what's owed), not the gross bill total.
