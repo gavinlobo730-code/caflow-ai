@@ -93,13 +93,17 @@ async function fetchActualsForQuarter(
 ): Promise<Record<string, number>> {
   const sb = getSupabaseClient();
   // Query journal_entry_lines joined with journal_entries for posted entries
-  const { data } = await sb
+  const { data, error } = await sb
     .from("journal_entry_lines")
     .select("account_id, debit_paise, credit_paise, journal_entries!inner(entry_date, status)")
     .eq("journal_entries.firm_id", firmId)
     .eq("journal_entries.status", "posted")
     .gte("journal_entries.entry_date", start)
     .lte("journal_entries.entry_date", end);
+  // A non-null PostgREST error is a real failure, not "no postings this
+  // quarter" — silently returning {} would show ₹0 actuals and a misleading
+  // budget-vs-actual variance instead of surfacing the failure.
+  if (error) throw error;
 
   const map: Record<string, number> = {};
   for (const row of (data ?? []) as unknown as LineRow[]) {

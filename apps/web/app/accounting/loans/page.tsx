@@ -220,11 +220,7 @@ export default function LoansAndFDPage() {
     try {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
-      const [
-        { data: clientsData },
-        { data: loansData },
-        { data: fdsData },
-      ] = await Promise.all([
+      const [clientsRes, loansRes, fdsRes] = await Promise.all([
         sb.from("clients").select("id, name:client_name").eq("firm_id", firmId).order("client_name"),
         sb
           .from("loans")
@@ -237,9 +233,14 @@ export default function LoansAndFDPage() {
           .eq("firm_id", firmId)
           .order("created_at", { ascending: false }),
       ]);
-      setClients((clientsData ?? []) as Client[]);
-      setLoans((loansData ?? []) as Loan[]);
-      setFDs((fdsData ?? []) as FixedDeposit[]);
+      // A non-null PostgREST error is a real failure, not "zero loans/FDs" —
+      // silently proceeding would understate a firm's tracked liabilities/assets.
+      if (clientsRes.error) throw clientsRes.error;
+      if (loansRes.error) throw loansRes.error;
+      if (fdsRes.error) throw fdsRes.error;
+      setClients((clientsRes.data ?? []) as Client[]);
+      setLoans((loansRes.data ?? []) as Loan[]);
+      setFDs((fdsRes.data ?? []) as FixedDeposit[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {

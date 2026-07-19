@@ -78,7 +78,7 @@ export default function CashFlowForecastPage() {
       const sixMonthsLater = new Date(baseYear, baseMonth + 6, 1).toISOString();
       const today = new Date().toISOString();
 
-      const [{ data: invoices }, { data: loans }, { data: compliance }] = await Promise.all([
+      const [invRes, loanRes, compRes] = await Promise.all([
         // Inflows: unpaid invoices due in next 6 months
         supabase
           .from("fee_invoices")
@@ -102,6 +102,15 @@ export default function CashFlowForecastPage() {
           .gte("due_date", today)
           .lt("due_date", sixMonthsLater),
       ]);
+      // A non-null PostgREST error is a real failure, not "no rows" — silently
+      // proceeding with partial data (e.g. loan EMIs missing) would render a
+      // falsely rosy forecast with no indication anything went wrong.
+      if (invRes.error) throw invRes.error;
+      if (loanRes.error) throw loanRes.error;
+      if (compRes.error) throw compRes.error;
+      const invoices = invRes.data;
+      const loans = loanRes.data;
+      const compliance = compRes.data;
 
       // Aggregate by month
       const inflowByMonth: Record<string, number> = {};
