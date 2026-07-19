@@ -192,6 +192,12 @@ export default function DashboardContent() {
   const [recentClients, setRecentClients] = useState<RecentClient[] | null>(null);
   const [recentTasks, setRecentTasks] = useState<RecentTask[] | null>(null);
   const [loading, setLoading] = useState(true);
+  // M17: a failed load previously zeroed every KPI and emptied both lists with
+  // no signal — indistinguishable from a genuinely empty firm ("0 Clients / All
+  // caught up"). Track the failure so we can surface a retryable banner instead
+  // of presenting stale zeros as truth. reloadKey re-runs the effect on Retry.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [showWelcome, setShowWelcome] = useState(false);
 
   const today = new Date();
@@ -212,6 +218,8 @@ export default function DashboardContent() {
   useEffect(() => {
     if (!user) return;
     async function load() {
+      setLoading(true);
+      setLoadFailed(false);
       try {
         const { data: userData } = await supabase
           .from("users").select("firm_id").eq("auth_user_id", user!.id).maybeSingle();
@@ -273,19 +281,45 @@ export default function DashboardContent() {
       } catch {
         setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
         setRecentClients([]); setRecentTasks([]);
+        setLoadFailed(true);
       } finally {
         setLoading(false);
       }
     }
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, reloadKey]);
 
   const greeting = user?.email ? getGreeting(fullName, user.email) : "Good day";
   const dateLabel = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+
+      {/* ── Load-failure banner (M17) ─────────────────────────────────── */}
+      {/* A failed load must never read as "0 Clients / All caught up". Keep the
+          KPIs on screen but make it explicit they may be stale, and offer Retry. */}
+      {loadFailed && (
+        <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertTriangle size={16} className="text-red-600 shrink-0" />
+          <p className="text-[13px] text-red-700 flex-1">
+            Couldn&apos;t load your dashboard — please retry. The figures below may be stale.
+          </p>
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="text-[12px] font-medium text-red-700 underline shrink-0"
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => setLoadFailed(false)}
+            aria-label="Dismiss"
+            className="text-red-400 hover:text-red-600 shrink-0"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* ── Welcome card (shown once after onboarding completes) ─────── */}
       {showWelcome && (
