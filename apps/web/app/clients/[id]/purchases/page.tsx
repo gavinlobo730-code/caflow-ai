@@ -281,6 +281,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   // this plays on the Sales Invoices tab.
   const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "the bills fetch failed" from "this period genuinely has no
+  // bills" (audit M17) — a failed load must show a retryable error, not the same
+  // ₹0 summary + "No purchase bills" empty state as an actually-empty period.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [receivingId, setReceivingId] = useState<string | null>(null);
@@ -312,37 +316,48 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = range;
-    const [billsRes, vendorsRes, servicesRes] = await Promise.all([
-      selectAll(() => supabase
-        .from("purchase_bills")
-        .select("*, vendors(name)")
-        .eq("client_id", clientId)
-        .is("deleted_at", null)
-        .gte("bill_date", start)
-        .lte("bill_date", end)
-        .order("bill_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("vendors")
-        .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-      selectAll(() => supabase
-        .from("service_catalogue")
-        .select("id, name, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit, kind, is_active")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
-    setBills((billsRes.data as PurchaseBillRow[]) ?? []);
-    setVendors((vendorsRes.data as Vendor[]) ?? []);
-    setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
-    setLoading(false);
+    try {
+      const [billsRes, vendorsRes, servicesRes] = await Promise.all([
+        selectAll(() => supabase
+          .from("purchase_bills")
+          .select("*, vendors(name)")
+          .eq("client_id", clientId)
+          .is("deleted_at", null)
+          .gte("bill_date", start)
+          .lte("bill_date", end)
+          .order("bill_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("vendors")
+          .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+        selectAll(() => supabase
+          .from("service_catalogue")
+          .select("id, name, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit, kind, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      setVendors((vendorsRes.data as Vendor[]) ?? []);
+      setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
+      // M17: a failed bills fetch — a thrown network error OR a non-null
+      // PostgREST error — must surface as retryable, not read as an empty
+      // period; otherwise a real book renders as ₹0 payable + "No purchase bills".
+      if (billsRes.error) throw billsRes.error;
+      setBills((billsRes.data as PurchaseBillRow[]) ?? []);
+    } catch {
+      setBills([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, range]);
 
   useEffect(() => { load(); }, [load]);
@@ -753,15 +768,15 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <p className="text-[10px] text-[#64748B] mb-1">Outstanding Payable</p>
-          <p className="text-lg font-bold text-orange-700 tabular-nums">{fmt(totalPayable)}</p>
+          <p className="text-lg font-bold text-orange-700 tabular-nums">{loadFailed ? "—" : fmt(totalPayable)}</p>
         </div>
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <p className="text-[10px] text-[#64748B] mb-1">Total Bills (Selected Period)</p>
-          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{fmt(totalThisFy)}</p>
+          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{loadFailed ? "—" : fmt(totalThisFy)}</p>
         </div>
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <p className="text-[10px] text-[#64748B] mb-1">Bills in Selected Period</p>
-          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{bills.length}</p>
+          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{loadFailed ? "—" : bills.length}</p>
         </div>
       </div>
 
@@ -787,6 +802,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         filters={billFilters}
         getRowId={(b) => b.id}
         loading={loading}
+        error={loadFailed ? "Couldn't load purchase bills — the request failed or timed out." : null}
+        onRetry={load}
         onRefresh={load}
         searchPlaceholder="Search by our ref, vendor invoice, or vendor…"
         initialSort={{ key: "bill_date", dir: "desc" }}
@@ -1594,6 +1611,9 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
     txn_currency?: string | null; exchange_rate?: string | null; txn_net_payable?: number | null;
   }[]>([]);
   const [loading, setLoading] = useState(true);
+  // See PurchaseBills.loadFailed (audit M17): a failed payments fetch must show a
+  // retryable error, not the same ₹0 "Total Paid (FY)" + "No payments" empty state.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -1657,22 +1677,33 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
-    const [pmtRes, vendorRes] = await Promise.all([
-      selectAll(() => supabase
-        .from("purchase_payments")
-        .select("*, vendors(name)")
-        .eq("client_id", clientId)
-        .gte("payment_date", start)
-        .lte("payment_date", end)
-        .order("payment_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase.from("vendors").select("id, name").eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
-    ]);
-    setPayments((pmtRes.data as PaymentRow[]) ?? []);
-    setVendors(vendorRes.data ?? []);
-    setLoading(false);
+    try {
+      const [pmtRes, vendorRes] = await Promise.all([
+        selectAll(() => supabase
+          .from("purchase_payments")
+          .select("*, vendors(name)")
+          .eq("client_id", clientId)
+          .gte("payment_date", start)
+          .lte("payment_date", end)
+          .order("payment_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase.from("vendors").select("id, name").eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
+      ]);
+      setVendors(vendorRes.data ?? []);
+      // M17: a failed payments fetch (thrown or non-null PostgREST error) must
+      // surface as retryable, not read as an empty FY — otherwise real payments
+      // render as ₹0 "Total Paid (FY)".
+      if (pmtRes.error) throw pmtRes.error;
+      setPayments((pmtRes.data as PaymentRow[]) ?? []);
+    } catch {
+      setPayments([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -1800,11 +1831,11 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <p className="text-[10px] text-[#64748B] mb-1">Total Paid (FY)</p>
-          <p className="text-lg font-bold text-green-700 tabular-nums">{fmt(totalPaid)}</p>
+          <p className="text-lg font-bold text-green-700 tabular-nums">{loadFailed ? "—" : fmt(totalPaid)}</p>
         </div>
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <p className="text-[10px] text-[#64748B] mb-1">Transactions</p>
-          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{payments.length}</p>
+          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{loadFailed ? "—" : payments.length}</p>
         </div>
       </div>
 
@@ -1912,6 +1943,8 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
         filters={paymentFilters}
         getRowId={(p) => p.id}
         loading={loading}
+        error={loadFailed ? "Couldn't load payments — the request failed or timed out." : null}
+        onRetry={load}
         onRefresh={load}
         searchPlaceholder="Search by payment no, vendor, mode, or reference…"
         initialSort={{ key: "payment_date", dir: "desc" }}
@@ -1960,6 +1993,9 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   const [debitNotes, setDebitNotes] = useState<DebitNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
+  // See PurchaseBills.loadFailed (audit M17): a failed fetch must show a retryable
+  // error, not the "No debit notes" empty state that a genuinely empty FY shows.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
@@ -1967,36 +2003,46 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
-    const [dnRes, vendorsRes] = await Promise.all([
-      // debit_notes.vendor_id has no FK to vendors — resolve the name via the
-      // vendors list below instead of a PostgREST embed.
-      selectAll(() => supabase
-        .from("debit_notes")
-        .select("*, purchase_bills(bill_no, our_reference)")
-        .eq("client_id", clientId)
-        .gte("debit_note_date", start)
-        .lte("debit_note_date", end)
-        .order("debit_note_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("vendors")
-        .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
-    const vendorList = (vendorsRes.data as Vendor[]) ?? [];
-    const vendorMap = new Map(vendorList.map((v) => [v.id, v.name]));
-    const rows = ((dnRes.data as DebitNoteRow[]) ?? []).map((d) => ({
-      ...d,
-      vendor_name: vendorMap.get(d.vendor_id) ?? "—",
-    }));
-    setDebitNotes(rows);
-    setVendors(vendorList);
-    setLoading(false);
+    try {
+      const [dnRes, vendorsRes] = await Promise.all([
+        // debit_notes.vendor_id has no FK to vendors — resolve the name via the
+        // vendors list below instead of a PostgREST embed.
+        selectAll(() => supabase
+          .from("debit_notes")
+          .select("*, purchase_bills(bill_no, our_reference)")
+          .eq("client_id", clientId)
+          .gte("debit_note_date", start)
+          .lte("debit_note_date", end)
+          .order("debit_note_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("vendors")
+          .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      // M17: a failed debit-notes fetch (thrown or non-null PostgREST error) must
+      // surface as retryable, not read as an empty FY (identical to having none).
+      if (dnRes.error) throw dnRes.error;
+      const vendorList = (vendorsRes.data as Vendor[]) ?? [];
+      const vendorMap = new Map(vendorList.map((v) => [v.id, v.name]));
+      const rows = ((dnRes.data as DebitNoteRow[]) ?? []).map((d) => ({
+        ...d,
+        vendor_name: vendorMap.get(d.vendor_id) ?? "—",
+      }));
+      setDebitNotes(rows);
+      setVendors(vendorList);
+    } catch {
+      setDebitNotes([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -2256,6 +2302,8 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         filters={filters}
         getRowId={(d) => d.id}
         loading={loading}
+        error={loadFailed ? "Couldn't load debit notes — the request failed or timed out." : null}
+        onRetry={load}
         onRefresh={load}
         searchPlaceholder="Search DN no., vendor, or reason…"
         initialSort={{ key: "debit_note_date", dir: "desc" }}
@@ -2322,6 +2370,9 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   const [creditNotes, setCreditNotes] = useState<PurchaseCreditNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
+  // See PurchaseBills.loadFailed (audit M17): a failed fetch must show a retryable
+  // error, not the "No credit notes" empty state that a genuinely empty FY shows.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
@@ -2329,34 +2380,44 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
-    const [pcnRes, vendorsRes] = await Promise.all([
-      selectAll(() => supabase
-        .from("purchase_credit_notes")
-        .select("*, purchase_bills(bill_no, our_reference)")
-        .eq("client_id", clientId)
-        .gte("credit_note_date", start)
-        .lte("credit_note_date", end)
-        .order("credit_note_date", { ascending: false })
-        .order("id")),
-      selectAll(() => supabase
-        .from("vendors")
-        .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("name")
-        .order("id")),
-    ]);
-    const vendorList = (vendorsRes.data as Vendor[]) ?? [];
-    const vendorMap = new Map(vendorList.map((v) => [v.id, v.name]));
-    const rows = ((pcnRes.data as PurchaseCreditNoteRow[]) ?? []).map((d) => ({
-      ...d,
-      vendor_name: vendorMap.get(d.vendor_id) ?? "—",
-    }));
-    setCreditNotes(rows);
-    setVendors(vendorList);
-    setLoading(false);
+    try {
+      const [pcnRes, vendorsRes] = await Promise.all([
+        selectAll(() => supabase
+          .from("purchase_credit_notes")
+          .select("*, purchase_bills(bill_no, our_reference)")
+          .eq("client_id", clientId)
+          .gte("credit_note_date", start)
+          .lte("credit_note_date", end)
+          .order("credit_note_date", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
+          .from("vendors")
+          .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+      ]);
+      // M17: a failed credit-notes fetch (thrown or non-null PostgREST error) must
+      // surface as retryable, not read as an empty FY (identical to having none).
+      if (pcnRes.error) throw pcnRes.error;
+      const vendorList = (vendorsRes.data as Vendor[]) ?? [];
+      const vendorMap = new Map(vendorList.map((v) => [v.id, v.name]));
+      const rows = ((pcnRes.data as PurchaseCreditNoteRow[]) ?? []).map((d) => ({
+        ...d,
+        vendor_name: vendorMap.get(d.vendor_id) ?? "—",
+      }));
+      setCreditNotes(rows);
+      setVendors(vendorList);
+    } catch {
+      setCreditNotes([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -2608,6 +2669,8 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         filters={filters}
         getRowId={(d) => d.id}
         loading={loading}
+        error={loadFailed ? "Couldn't load credit notes — the request failed or timed out." : null}
+        onRetry={load}
         onRefresh={load}
         searchPlaceholder="Search CN no., vendor, or reason…"
         initialSort={{ key: "credit_note_date", dir: "desc" }}
