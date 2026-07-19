@@ -14,11 +14,12 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
@@ -310,6 +311,14 @@ def create_return(
             fy_start_year = int(fy_str[:4])
             fy_start_date = f"{fy_start_year}-04-01"
             period_validation_service.validate_posting_date(firm_id or "", fy_start_date)
+        # IT Act §206AA: PAN sentinels ("PANNOTAVBL"/"PANAPPLIED") are valid —
+        # same rule domain/tds/tds_computer.py enforces for return computation.
+        for d in body.deductee_details:
+            pan = d.get("deductee_pan")
+            if pan and not TDSValidator.validate_pan(str(pan).strip().upper()):
+                raise HTTPException(status_code=422,
+                                    detail=f"Invalid deductee PAN format: '{pan}'. "
+                                           "Expected: AAAAA9999A, or PANNOTAVBL/PANAPPLIED if unavailable.")
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -336,6 +345,8 @@ def create_return(
         log_event(firm_id, "tds_return", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
+    except HTTPException:
+        raise
     except Exception as e:
         return api_response(False, None, str(e))
 
@@ -451,12 +462,19 @@ def create_certificate(
     """
     try:
         firm_id = current_user["firm_id"]
+        deductee_pan = body.deductee_pan.strip().upper()
+        # IT Act §206AA: PAN sentinels ("PANNOTAVBL"/"PANAPPLIED") are valid —
+        # same rule domain/tds/tds_computer.py enforces for return computation.
+        if not TDSValidator.validate_pan(deductee_pan):
+            raise HTTPException(status_code=422,
+                                detail=f"Invalid deductee PAN format: '{deductee_pan}'. "
+                                       "Expected: AAAAA9999A, or PANNOTAVBL/PANAPPLIED if unavailable.")
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
-            "deductee_pan": body.deductee_pan,
+            "deductee_pan": deductee_pan,
             "deductee_name": body.deductee_name,
             "financial_year": body.financial_year,
             "certificate_type": body.certificate_type,
@@ -479,6 +497,8 @@ def create_certificate(
         log_event(firm_id, "tds_certificate", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
+    except HTTPException:
+        raise
     except Exception as e:
         return api_response(False, None, str(e))
 

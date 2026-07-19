@@ -3,6 +3,7 @@ Shared Indian tax identifier validators.
 GSTIN: CGST Act §25 — 15-char format: 2-digit state + 10-char PAN + 1 entity + Z + 1 check
 PAN:   IT Act §139A — AAAAA9999A (5 upper + 4 digit + 1 upper)
 CIN:   Companies Act 2013 — 21-char: L/U + 5 digit + 2 upper state + 3 digit category + 4 digit year + 6 seq
+DIN:   Companies Act 2013 §153/154 — 8-digit Director Identification Number
 TAN:   IT Act §203A — AAAA99999A (4 upper + 5 digit + 1 upper)
 """
 import re
@@ -18,6 +19,7 @@ _TAN_RE   = re.compile(r"^[A-Z]{4}[0-9]{5}[A-Z]{1}$")
 _CIN_RE   = re.compile(
     r"^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$"
 )
+_DIN_RE   = re.compile(r"^[0-9]{8}$")
 _PHONE_RE  = re.compile(r"^\+?[\d\s\-]{10,16}$")  # allows spaces/hyphens; e.g. +91 98765 43210
 _EMAIL_RE  = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PINCODE_RE = re.compile(r"^[1-9][0-9]{5}$")
@@ -71,6 +73,19 @@ def validate_cin(value: Optional[str]) -> Optional[str]:
     v = value.strip().upper()
     if not _CIN_RE.match(v):
         return "CIN format is invalid. Expected: L/U + 5 digits + 2-char state + 4-digit year + 3-char category + 6-digit seq (e.g. L17110MH1973PLC019786)."
+    return None
+
+
+def validate_din(value: Optional[str]) -> Optional[str]:
+    """Return None if valid, error message string if invalid.
+    Companies Act 2013 §153/154: DIN is an 8-digit number allotted by the
+    Central Government to every individual intending to be a director.
+    """
+    if not value:
+        return "DIN is required. Companies Act 2013 §153: every director must hold a valid DIN."
+    v = value.strip()
+    if not _DIN_RE.match(v):
+        return "DIN format is invalid. Expected: 8 digits (e.g. 00012345)."
     return None
 
 

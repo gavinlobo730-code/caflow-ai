@@ -56,7 +56,7 @@ def test_create_company_type_passthrough_for_full_term(client):
     """A caller sending the CHECK-valid full term directly ("LLP", "Section 8")
     is not garbled by the PVT/PUB abbreviation map."""
     resp = client.post("/api/mca-workspace/companies", json={
-        "client_id": _CLIENT_ID, "cin": "AAA11AA2020LLC000001",
+        "client_id": _CLIENT_ID, "cin": "U74999MH2020PTC000001",
         "company_name": "Test LLP", "company_type": "Section 8",
     }, headers=_HEADERS)
     assert resp.json()["data"]["company_category"] == "Section 8"

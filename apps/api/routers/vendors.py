@@ -4,7 +4,6 @@ CGST Act Section 25: Registration of person. GSTIN format: 2-digit state + PAN (
 IT Act Section 194C/194I/194J: TDS applicable vendors tracked here.
 """
 import os
-import re
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -28,9 +27,6 @@ def _current_fy_long() -> str:
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.vendors")
 
-# CGST Act §25: GSTIN format validation
-GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
-
 router = APIRouter(prefix="/api/vendors", tags=["vendors"])
 
 # ---------------------------------------------------------------------------
@@ -42,20 +38,6 @@ MOCK_VENDORS: list[dict] = []
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _validate_gstin(gstin: str, state_code: Optional[str] = None) -> None:
-    """Raise 422 if GSTIN is syntactically invalid or state code mismatches."""
-    if not GSTIN_RE.match(gstin):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid GSTIN format: '{gstin}'. Expected: 2-digit state + PAN(10) + entity + Z + check.",
-        )
-    if state_code and gstin[:2] != state_code:
-        raise HTTPException(
-            status_code=422,
-            detail=f"GSTIN state code '{gstin[:2]}' does not match provided state_code '{state_code}'.",
-        )
-
 
 def _norm(v: Optional[str]) -> str:
     """Normalise an identifier for comparison (trim + upper). GSTIN/PAN are

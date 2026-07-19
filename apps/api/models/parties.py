@@ -42,12 +42,20 @@ class CustomerIn(BaseModel):
     def validate_identifiers(self) -> "CustomerIn":
         errors = []
         if self.gstin:
+            # CGST Act §25: GSTIN is canonically uppercase — normalize what's
+            # stored to what's validated, so a lowercase-typed GSTIN doesn't
+            # persist in a form that mismatches every other case-normalized
+            # comparison/display of the same value.
+            self.gstin = self.gstin.strip().upper()
             err = validate_gstin(self.gstin)
             if err:
                 errors.append(err)
             elif self.state_code and self.gstin[:2] != self.state_code:
                 errors.append(f"GSTIN state code '{self.gstin[:2]}' does not match state_code '{self.state_code}'.")
         if self.pan:
+            # IT Act §139A: PAN is canonically uppercase — same normalization
+            # as GSTIN above.
+            self.pan = self.pan.strip().upper()
             err = validate_pan(self.pan)
             if err:
                 errors.append(err)
@@ -88,10 +96,18 @@ class CustomerUpdateIn(BaseModel):
     def validate_identifiers(self) -> "CustomerUpdateIn":
         errors = []
         if self.gstin:
+            # CGST Act §25: GSTIN is canonically uppercase — normalize what's
+            # stored to what's validated, so a lowercase-typed GSTIN doesn't
+            # persist in a form that mismatches every other case-normalized
+            # comparison/display of the same value.
+            self.gstin = self.gstin.strip().upper()
             err = validate_gstin(self.gstin)
             if err:
                 errors.append(err)
         if self.pan:
+            # IT Act §139A: PAN is canonically uppercase — same normalization
+            # as GSTIN above.
+            self.pan = self.pan.strip().upper()
             err = validate_pan(self.pan)
             if err:
                 errors.append(err)
@@ -158,12 +174,20 @@ class VendorIn(BaseModel):
     def validate_identifiers(self) -> "VendorIn":
         errors = []
         if self.gstin:
+            # CGST Act §25: GSTIN is canonically uppercase — normalize what's
+            # stored to what's validated, so a lowercase-typed GSTIN doesn't
+            # persist in a form that mismatches every other case-normalized
+            # comparison/display of the same value.
+            self.gstin = self.gstin.strip().upper()
             err = validate_gstin(self.gstin)
             if err:
                 errors.append(err)
             elif self.state_code and self.gstin[:2] != self.state_code:
                 errors.append(f"GSTIN state code '{self.gstin[:2]}' does not match state_code '{self.state_code}'.")
         if self.pan:
+            # IT Act §139A: PAN is canonically uppercase — same normalization
+            # as GSTIN above.
+            self.pan = self.pan.strip().upper()
             err = validate_pan(self.pan)
             if err:
                 errors.append(err)
@@ -207,10 +231,18 @@ class VendorUpdateIn(BaseModel):
     def validate_identifiers(self) -> "VendorUpdateIn":
         errors = []
         if self.gstin:
+            # CGST Act §25: GSTIN is canonically uppercase — normalize what's
+            # stored to what's validated, so a lowercase-typed GSTIN doesn't
+            # persist in a form that mismatches every other case-normalized
+            # comparison/display of the same value.
+            self.gstin = self.gstin.strip().upper()
             err = validate_gstin(self.gstin)
             if err:
                 errors.append(err)
         if self.pan:
+            # IT Act §139A: PAN is canonically uppercase — same normalization
+            # as GSTIN above.
+            self.pan = self.pan.strip().upper()
             err = validate_pan(self.pan)
             if err:
                 errors.append(err)
