@@ -40,6 +40,8 @@ ACCOUNTS = [
     Account("cap", "3000", "Capital Account", "Equity"),
     Account("advc", "2300", "Advance from Customers", "Liability", system_key="advance_customer"),
     Account("advv", "1500", "Advance to Vendors", "Asset", system_key="advance_vendor"),
+    Account("cogs", "5001", "Cost of Goods Sold", "Expense", system_key="cogs"),
+    Account("invacct", "1600", "Inventory", "Asset"),
 ]
 
 
@@ -327,6 +329,92 @@ def test_unallocated_receipt_parks_as_advance_not_revenue():
     bs = assert_bs_balances(svc, "cash")
     liab = [l["account_name"] for s in bs["liabilities"] for l in s["lines"]]
     assert any("Advance from Customers" in n for n in liab)
+
+
+# ── Cost of Sales / Gross Profit (task #104) ────────────────────────────────────
+
+def test_cogs_split_into_cost_of_sales_not_operating_expenses():
+    """domain/inventory_service.py posts every COGS journal to the account
+    matched by system_key="cogs" (falling back to the "%Cost of Goods Sold%"
+    name pattern it uses for _find_account). profit_loss() must present that
+    as Cost of Sales so Gross Profit = Revenue − COGS, not silently fold it
+    into Operating Expenses with Gross Profit == Revenue regardless of COGS."""
+    inv_a, je_a = invoice("A", "ja", [("rev1", 10000)])
+    je_cogs = _je("jcogs", [("cogs", 4000, 0), ("invacct", 0, 4000)])
+    je_opex = _je("jopex", [("exp1", 1000, 0), ("bank", 0, 1000)])
+    svc = build(entries=[je_a, je_cogs, je_opex], invoices=[inv_a])
+
+    pl = accrual_pl(svc)
+    assert pl["cost_of_sales"]["total_paise"] == 4000
+    assert pl["operating_expenses"]["total_paise"] == 1000
+    assert not any(l["account_name"] == "Cost of Goods Sold"
+                   for l in pl["operating_expenses"]["lines"])
+    assert pl["gross_profit_paise"] == pl["revenue"]["total_paise"] - 4000
+    assert pl["net_profit_paise"] == pl["gross_profit_paise"] - 1000
+
+
+def test_cogs_split_holds_on_cash_basis_too():
+    # DIRECT entries (no linked document) pass through unchanged on both
+    # bases, so the Cost-of-Sales split must hold for cash basis as well.
+    je_cogs = _je("jcogs", [("cogs", 4000, 0), ("invacct", 0, 4000)])
+    svc = build(entries=[je_cogs])
+    pl = cash_pl(svc)
+    assert pl["cost_of_sales"]["total_paise"] == 4000
+    assert pl["gross_profit_paise"] == -4000
+
+
+# ── DIRECT entries touching A/R or A/P — cash-basis edge (task #104) ────────────
+# CASH_BASIS_REMEDIATION_DESIGN.md §8: a manual journal that bypasses the
+# document flow and touches A/R or A/P directly must not resurrect an accrual
+# receivable/payable on the cash-basis Balance Sheet. Rerouted to the same
+# Advance from Customers / Advance to Vendors control accounts as Decision C.
+
+def test_direct_entry_touching_ar_reroutes_to_advance_customer():
+    manual = _je("jmanual", [("bank", 5000, 0), ("ar", 0, 5000)])
+    svc = build(entries=[manual])
+    bs = assert_bs_balances(svc, "cash")
+    assets = [l["account_name"] for s in bs["assets"] for l in s["lines"]]
+    liabs = [l["account_name"] for s in bs["liabilities"] for l in s["lines"]]
+    assert "Trade Receivables" not in assets
+    assert any("Advance from Customers" in n for n in liabs)
+    assert_tb_balances(svc, "cash")
+
+
+def test_direct_entry_touching_ap_reroutes_to_advance_vendor():
+    manual = _je("jmanual", [("ap", 3000, 0), ("bank", 0, 3000)])
+    svc = build(entries=[manual])
+    bs = assert_bs_balances(svc, "cash")
+    assets = [l["account_name"] for s in bs["assets"] for l in s["lines"]]
+    liabs = [l["account_name"] for s in bs["liabilities"] for l in s["lines"]]
+    assert "Trade Payables" not in liabs
+    assert any("Advance to Vendors" in n for n in assets)
+    assert_tb_balances(svc, "cash")
+
+
+def test_direct_entry_reversal_of_ar_touch_also_reroutes():
+    """A reversal of a DIRECT entry recurses through _project_entry with a
+    flipped sign, so it must hit the same A/R reroute on the way back out —
+    net Advance from Customers back to zero, not leak on undo."""
+    manual = _je("jmanual", [("bank", 5000, 0), ("ar", 0, 5000)])
+    rev = _je("jrev", [("ar", 5000, 0), ("bank", 0, 5000)], reversal_of="jmanual")
+    svc = build(entries=[manual, rev])
+    bs = assert_bs_balances(svc, "cash")
+    advance_total = sum(l["balance_paise"] for s in bs["liabilities"] for l in s["lines"]
+                        if "Advance from Customers" in l["account_name"])
+    assert advance_total == 0
+    assert_tb_balances(svc, "cash")
+
+
+def test_direct_entry_not_touching_ar_ap_unaffected():
+    """A DIRECT entry with no A/R or A/P leg is untouched by the reroute —
+    the existing pass-through behaviour for genuinely cash-basis-neutral
+    manual journals (e.g. an owner's capital contribution) is preserved."""
+    manual = _je("jmanual", [("bank", 2000, 0), ("cap", 0, 2000)])
+    svc = build(entries=[manual])
+    pl = cash_pl(svc)
+    assert pl["revenue"]["total_paise"] == 0
+    assert_tb_balances(svc, "cash")
+    assert_bs_balances(svc, "cash")
 
 
 # ── Tenant isolation ────────────────────────────────────────────────────────────

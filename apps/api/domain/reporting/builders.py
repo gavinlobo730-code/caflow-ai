@@ -12,6 +12,7 @@ from typing import Optional
 
 from core.ist_clock import ist_today
 from .model import Account, JournalEntry, ProjectedLine
+from .resolver import AccountResolver
 
 
 def _acc(accounts: dict[str, Account], aid: str) -> Account:
@@ -151,12 +152,16 @@ def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
 
 def profit_loss(lines: list[ProjectedLine], accounts: dict[str, Account],
                 start_date: str, end_date: str, basis: str) -> dict:
+    resolver = AccountResolver(accounts)
     income: dict[str, int] = {}
+    cogs: dict[str, int] = {}
     expense: dict[str, int] = {}
     for ln in lines:
         a = _acc(accounts, ln.account_id)
         if a.is_income:
             income[ln.account_id] = income.get(ln.account_id, 0) + ln.credit_paise - ln.debit_paise
+        elif resolver.is_cogs(ln.account_id):
+            cogs[ln.account_id] = cogs.get(ln.account_id, 0) + ln.debit_paise - ln.credit_paise
         elif a.is_expense:
             expense[ln.account_id] = expense.get(ln.account_id, 0) + ln.debit_paise - ln.credit_paise
 
@@ -180,15 +185,17 @@ def profit_loss(lines: list[ProjectedLine], accounts: dict[str, Account],
         return {"label": label, "lines": rows, "total_paise": sum(v for v in totals.values())}
 
     revenue = section("Revenue", income)
+    cost_of_sales = section("Cost of Sales", cogs)
     opex = section("Operating Expenses", expense)
+    gross_profit = revenue["total_paise"] - cost_of_sales["total_paise"]
     out = {
         "start_date": start_date,
         "end_date": end_date,
         "revenue": revenue,
-        "cost_of_sales": {"label": "Cost of Sales", "lines": [], "total_paise": 0},
-        "gross_profit_paise": revenue["total_paise"],
+        "cost_of_sales": cost_of_sales,
+        "gross_profit_paise": gross_profit,
         "operating_expenses": opex,
-        "net_profit_paise": revenue["total_paise"] - opex["total_paise"],
+        "net_profit_paise": gross_profit - opex["total_paise"],
     }
     if basis == "cash":
         out["basis"] = "cash"

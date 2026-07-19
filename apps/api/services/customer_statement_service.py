@@ -220,7 +220,7 @@ class CustomerStatementService:
         cns = (db.table("credit_notes")
                .select("credit_note_no, credit_note_date, total_paise, status")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-               .execute().data or [])
+               .is_("deleted_at", "null").execute().data or [])
         credit_notes = [c for c in cns if (c.get("status") or "") not in _DEAD_CREDIT_NOTE]
 
         dns = (db.table("sales_debit_notes")

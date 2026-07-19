@@ -18,6 +18,11 @@ _NAME_PATTERNS = {
     "ap": ("trade payable", "accounts payable", "sundry creditor"),
     "advance_customer": ("advance from customer", "customer advance", "advance received"),
     "advance_vendor": ("advance to vendor", "vendor advance", "advance paid"),
+    # domain/inventory_service.py posts every COGS journal to the account matched
+    # by this same "%Cost of Goods Sold%" pattern (_find_account); mirrored here
+    # so the P&L can separate Cost of Sales from Operating Expenses for Gross
+    # Profit, exactly as the account the money actually posted to.
+    "cogs": ("cost of goods sold",),
 }
 _BANK_NAME = ("bank", "cash")
 
@@ -32,6 +37,7 @@ class AccountResolver:
         self.bank_ids: frozenset[str] = self._resolve_bank()
         self.advance_customer_id = self._first("advance_customer", key="advance_customer")
         self.advance_vendor_id = self._first("advance_vendor", key="advance_vendor")
+        self.cogs_ids: frozenset[str] = self._by_key_or_name("cogs")
 
     def _by_key_or_name(self, kind: str) -> frozenset[str]:
         ids = {a.id for a in self._accounts.values() if a.system_key == kind}
@@ -70,3 +76,6 @@ class AccountResolver:
 
     def is_ap(self, account_id: str) -> bool:
         return account_id in self.ap_ids
+
+    def is_cogs(self, account_id: str) -> bool:
+        return account_id in self.cogs_ids
