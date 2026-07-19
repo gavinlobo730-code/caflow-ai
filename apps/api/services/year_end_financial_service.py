@@ -180,22 +180,43 @@ def generate_financial_statements(
     # carry-forward for any client with more than one year of ledger history.
     # Fetch both windows; §4 below picks the correct one per account by its
     # schedule_line classification.
+    # KEYSET-paginated: an un-paged .execute() is silently capped at PostgREST's
+    # ~1000-row limit, so for any client with >1000 posted journal lines the
+    # year-end statements were computed from a fraction of the ledger (wrong
+    # figures, no error). Page by journal_lines.id until a short page. Also filter
+    # deleted_at IS NULL — soft-deleted entries must be excluded, exactly as the
+    # authoritative reporting engine (domain/reporting) does.
+    _LINE_PAGE = 1000
+
     def _fetch_lines(gte_date: str | None) -> list:
-        q = (
-            supabase
-            .table("journal_lines")
-            .select(
-                "account_id, debit_paise, credit_paise, "
-                "journal_entries!inner(client_id, firm_id, entry_date, is_posted)"
+        out: list = []
+        cursor: str | None = None
+        while True:
+            q = (
+                supabase
+                .table("journal_lines")
+                .select(
+                    "id, account_id, debit_paise, credit_paise, "
+                    "journal_entries!inner(client_id, firm_id, entry_date, is_posted, deleted_at)"
+                )
+                .eq("journal_entries.client_id", client_id)
+                .eq("journal_entries.firm_id", firm_id)
+                .eq("journal_entries.is_posted", True)
+                .is_("journal_entries.deleted_at", "null")
+                .lte("journal_entries.entry_date", fy_end)
+                .order("id")
+                .limit(_LINE_PAGE)
             )
-            .eq("journal_entries.client_id", client_id)
-            .eq("journal_entries.firm_id", firm_id)
-            .eq("journal_entries.is_posted", True)
-            .lte("journal_entries.entry_date", fy_end)
-        )
-        if gte_date:
-            q = q.gte("journal_entries.entry_date", gte_date)
-        return q.execute().data or []
+            if gte_date:
+                q = q.gte("journal_entries.entry_date", gte_date)
+            if cursor is not None:
+                q = q.gt("id", cursor)
+            page = q.execute().data or []
+            out.extend(page)
+            if len(page) < _LINE_PAGE:
+                break
+            cursor = page[-1]["id"]
+        return out
 
     fy_window_lines = _fetch_lines(fy_start)     # P&L: this year's movement only
     cumulative_lines = _fetch_lines(None)        # Balance Sheet: all-time to fy_end
