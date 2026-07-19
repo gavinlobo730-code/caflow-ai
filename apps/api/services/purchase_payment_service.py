@@ -528,3 +528,142 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
     log_event(firm_id, "purchase_payment", payment_id, "create", actor_id=(actor or {}).get("auth_user_id"),
               actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
     return {**payment, "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
+
+
+def _adjust_bill_paid(db, firm_id: str, client_id: str, bill_id: str, delta_paise: int,
+                      max_retries: int = 5) -> None:
+    """Apply a signed delta to a purchase bill's paid_paise and recompute status.
+    Integer paise; paid clamped at >= 0. The AP mirror of routers/receipts.py's
+    _adjust_invoice_paid — used to REVERSE then RE-APPLY a payment's allocations
+    on re-allocation so paid_paise is recomputed from scratch and never inflated.
+    Firm+client scoped so a payment can never read/mutate another tenant's bill.
+    CAS-guarded (same shape as reversal_service._rollback_bill_paid /
+    purchase_payments._claim_bill_outstanding) against a concurrent write to the
+    same bill's paid_paise."""
+    if not bill_id or delta_paise == 0:
+        return
+    for _attempt in range(max_retries):
+        resp = (db.table("purchase_bills")
+                .select("net_payable_paise, paid_paise, debited_paise, credit_note_paise")
+                .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+        if not resp.data:
+            return
+        bill = resp.data[0]
+        raw_paid = bill.get("paid_paise")  # CAS guard must match this exact stored value
+        # Purchase credit notes (§34(3)) raise what's payable; debit notes lower
+        # what still needs cash — same effective-payable formula as
+        # create_payment_core / purchase_payments._claim_bill_outstanding.
+        effective_payable = int(bill.get("net_payable_paise") or 0) + int(bill.get("credit_note_paise") or 0)
+        debited = int(bill.get("debited_paise") or 0)
+        new_paid = int(raw_paid or 0) + delta_paise
+        if new_paid < 0:
+            new_paid = 0
+        status = ("paid" if new_paid + debited >= effective_payable
+                  else "partially_paid" if new_paid > 0 else "received")
+        result = (db.table("purchase_bills").update({"paid_paise": new_paid, "status": status})
+                  .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("paid_paise", raw_paid).execute())
+        if result.data:
+            return
+        # Lost the race — retry against the now-current paid_paise.
+    raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
+
+
+def update_allocations_core(firm_id: str, payment_id: str, allocations: list, actor: dict, db) -> dict:
+    """Re-allocate an existing vendor payment's cash across bills — the AP
+    mirror of receipts.py's PATCH /{receipt_id}/allocate. Lets a stranded
+    advance (purchase_payments.unallocated_paise > 0 — e.g. from a bank-match
+    settlement that exceeded the selected bills, or a payment simply recorded
+    before the bill it's meant for existed yet) be applied once a bill is
+    available, without creating a second payment.
+
+    Reverses this payment's PRIOR allocations first (so paid_paise is
+    recomputed from scratch, never inflated on re-allocation — mirrors
+    receipts.py's H3 fix), then re-applies the requested set. Firm+client
+    scoped throughout; `allocations` is a list of
+    {purchase_bill_id, allocated_paise} dicts.
+    """
+    resp = (db.table("purchase_payments").select("amount_paise, client_id")
+            .eq("id", payment_id).eq("firm_id", firm_id).limit(1).execute())
+    if not resp.data:
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found")
+    client_id = resp.data[0].get("client_id")
+    amount_paise = int(resp.data[0]["amount_paise"])
+
+    total_requested = sum(int(a.get("allocated_paise", 0) or 0) for a in allocations)
+    if total_requested > amount_paise:
+        raise HTTPException(status_code=422, detail="Allocated amount exceeds payment amount")
+
+    # This payment's PRIOR allocations (reversed below before re-applying) —
+    # also needed per bill so the over-application check measures the bill's
+    # outstanding as it will be AFTER that reversal.
+    prior = (db.table("purchase_payment_allocations").select("purchase_bill_id, allocated_paise")
+             .eq("purchase_payment_id", payment_id).execute().data) or []
+    prior_by_bill: dict = {}
+    for old in prior:
+        k = old.get("purchase_bill_id")
+        prior_by_bill[k] = prior_by_bill.get(k, 0) + int(old.get("allocated_paise", 0) or 0)
+
+    # Requested totals per bill (duplicate rows summed, mirroring
+    # create_payment_core's pre-aggregation).
+    requested_by_bill: dict = {}
+    for a in allocations:
+        bill_id = a.get("purchase_bill_id")
+        amt = int(a.get("allocated_paise", 0) or 0)
+        if bill_id and amt > 0:
+            requested_by_bill[bill_id] = requested_by_bill.get(bill_id, 0) + amt
+
+    # Every allocation must target a bill in THIS payment's firm+client books,
+    # must not be cancelled, and must not exceed the bill's live outstanding
+    # (net_payable + credit notes − debited − paid, plus whatever THIS payment
+    # already had on it, since that is reversed first).
+    for bill_id, req_amt in requested_by_bill.items():
+        chk = (db.table("purchase_bills")
+               .select("id, status, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
+               .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+               .limit(1).execute())
+        if not chk.data:
+            raise HTTPException(status_code=422, detail=f"Bill {bill_id} is not part of this client's books.")
+        bill = chk.data[0]
+        if (bill.get("status") or "") == "cancelled":
+            raise HTTPException(status_code=409, detail=f"Bill {bill_id} is cancelled and cannot be paid.")
+        effective_payable = int(bill.get("net_payable_paise") or 0) + int(bill.get("credit_note_paise") or 0)
+        outstanding = (effective_payable - int(bill.get("debited_paise") or 0)
+                       - int(bill.get("paid_paise") or 0) + prior_by_bill.get(bill_id, 0))
+        if req_amt > outstanding:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Allocation (₹{req_amt/100:,.2f}) exceeds the bill's outstanding (₹{max(outstanding, 0)/100:,.2f}).")
+
+    # Reverse this payment's PRIOR allocations before re-applying, so
+    # paid_paise is recomputed from scratch and never inflated by repeated
+    # re-allocation.
+    for old in prior:
+        _adjust_bill_paid(db, firm_id, client_id, old.get("purchase_bill_id"), -int(old.get("allocated_paise", 0) or 0))
+    db.table("purchase_payment_allocations").delete().eq("purchase_payment_id", payment_id).execute()
+
+    alloc_payloads = []
+    for a in allocations:
+        bill_id = a.get("purchase_bill_id")
+        amt = int(a.get("allocated_paise", 0) or 0)
+        if not bill_id or amt <= 0:
+            continue
+        alloc_payloads.append({
+            "purchase_payment_id": payment_id,
+            "purchase_bill_id":    bill_id,
+            "allocated_paise":     amt,
+        })
+        _adjust_bill_paid(db, firm_id, client_id, bill_id, amt)
+
+    if alloc_payloads:
+        db.table("purchase_payment_allocations").insert(alloc_payloads).execute()
+
+    unallocated_paise = amount_paise - total_requested
+    db.table("purchase_payments").update({"unallocated_paise": unallocated_paise}).eq("id", payment_id).execute()
+
+    log_event(
+        firm_id or "", "purchase_payment", payment_id, "update",
+        actor_id=(actor or {}).get("auth_user_id"), actor_email=(actor or {}).get("email"),
+        new_data={"allocations": alloc_payloads, "unallocated_paise": unallocated_paise},
+    )
+    return {"payment_id": payment_id, "allocations": alloc_payloads, "unallocated_paise": unallocated_paise}

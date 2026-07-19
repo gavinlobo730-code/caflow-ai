@@ -10,13 +10,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
-from models.invoices import PurchasePaymentIn
+from models.invoices import PurchasePaymentIn, PurchasePaymentAllocationsUpdateIn
 from models.accounting import JournalReversalIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from services import reversal_service
+from services import purchase_payment_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -483,6 +484,39 @@ def create_purchase_payment(
         raise
     except Exception as e:
         _logger.error("create_purchase_payment error: %s", e)
+        return api_response(False, None, "Unable to complete payment operation. Please try again.")
+
+
+@router.patch("/{payment_id}/allocate")
+def update_purchase_payment_allocations(
+    payment_id: str,
+    data: PurchasePaymentAllocationsUpdateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """
+    Re-allocate a vendor payment's cash across bills — resolves a stranded
+    advance (purchase_payments.unallocated_paise, e.g. left over from a
+    bank-match settlement or a payment recorded before its bill existed) once
+    a bill is available to apply it against, without recording a new payment.
+    Mirrors receipts.py's PATCH /{receipt_id}/allocate (the AR side of the
+    same gap). Body: {allocations: [{purchase_bill_id, allocated_paise}]}.
+    """
+    if _USE_MOCK:
+        return api_response(True, {
+            "payment_id": payment_id,
+            "allocations": [a.model_dump() for a in data.allocations],
+        })
+    try:
+        db = _get_db()
+        result = purchase_payment_service.update_allocations_core(
+            current_user["firm_id"], payment_id,
+            [a.model_dump() for a in data.allocations], current_user, db,
+        )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("update_purchase_payment_allocations: %s", e)
         return api_response(False, None, "Unable to complete payment operation. Please try again.")
 
 
