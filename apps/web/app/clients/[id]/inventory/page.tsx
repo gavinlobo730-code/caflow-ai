@@ -100,6 +100,10 @@ export default function InventoryPage() {
   const { clientId, financialYear } = useClientNav();
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(false);
+  // True when the LAST load attempt failed (thrown/PostgREST error) rather than
+  // genuinely finding no stock-tracked products — otherwise a failed load would
+  // render identically to an empty book: "No stock-tracked products" + ₹0 (M17).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [drillDown, setDrillDown] = useState<StockItem | null>(null);
 
   const load = useCallback(async () => {
@@ -114,20 +118,25 @@ export default function InventoryPage() {
       // domain/inventory_service.py at posting time, not read time. No
       // business logic here worth an extra backend hop for.
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("service_catalogue")
         .select("id, name, description, hsn_sac, unit, kind, is_active, stock_qty_units, avg_cost_paise")
         .eq("client_id", clientId)
         .eq("kind", "good")
         .order("name")
         .order("id"));
+      // A non-null PostgREST error is a real failure, not an empty catalogue —
+      // treat it as such so the register shows a retry banner, not a bare ₹0.
+      if (error) throw error;
       const rows = ((data as Omit<StockItem, "stock_value_paise">[]) ?? []).map((r) => ({
         ...r,
         stock_value_paise: Math.round((r.stock_qty_units ?? 0) * (r.avg_cost_paise ?? 0)),
       }));
       setItems(rows);
+      setLoadFailed(false);
     } catch {
       setItems([]);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -194,7 +203,9 @@ export default function InventoryPage() {
         <div>
           <p className="text-sm font-semibold text-[#0F172A]">Inventory</p>
           <p className="text-xs text-[#94A3B8] mt-0.5">
-            {items.length} stock-tracked product{items.length !== 1 ? "s" : ""} · Total value {formatServicePrice(totalValue) || "₹0"}
+            {loadFailed
+              ? "Couldn't load the stock register"
+              : `${items.length} stock-tracked product${items.length !== 1 ? "s" : ""} · Total value ${formatServicePrice(totalValue) || "₹0"}`}
           </p>
         </div>
         <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
@@ -208,6 +219,8 @@ export default function InventoryPage() {
           columns={columns}
           getRowId={(i) => i.id}
           loading={loading}
+          error={loadFailed ? "Couldn't load the stock register — the request failed or timed out." : null}
+          onRetry={load}
           onRefresh={load}
           searchPlaceholder="Search by product name or HSN…"
           initialSort={{ key: "name", dir: "asc" }}
@@ -240,6 +253,10 @@ function StockLedgerDrillDown({
   const [endDate, setEndDate] = useState(fyRange.end);
   const [lines, setLines] = useState<StockLedgerLine[]>([]);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "ledger fetch failed" from "no movements in this range" (M17):
+  // success===false is a backend error path; an empty range still returns
+  // success=true with an empty lines array.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [writedownOpen, setWritedownOpen] = useState(false);
 
@@ -249,9 +266,16 @@ function StockLedgerDrillDown({
       const res = (await api.inventory.ledger(item.id, { client_id: clientId, start_date: startDate, end_date: endDate })) as {
         success: boolean; data: { item: unknown; lines: StockLedgerLine[] } | null;
       };
-      setLines(res.success && res.data ? res.data.lines : []);
+      if (res.success && res.data) {
+        setLines(res.data.lines);
+        setLoadFailed(false);
+      } else {
+        setLines([]);
+        setLoadFailed(true);
+      }
     } catch {
       setLines([]);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -304,10 +328,15 @@ function StockLedgerDrillDown({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {!loading && lines.length === 0 ? (
-            <div className="text-center py-10 text-[#94A3B8] text-sm">No stock movements for this item in the selected range.</div>
-          ) : loading ? (
+          {loading ? (
             <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" />
+          ) : loadFailed ? (
+            <div className="text-center py-10">
+              <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the stock ledger — the request failed or timed out.</p>
+              <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            </div>
+          ) : lines.length === 0 ? (
+            <div className="text-center py-10 text-[#94A3B8] text-sm">No stock movements for this item in the selected range.</div>
           ) : (
             <table className="w-full text-xs">
               <thead>
