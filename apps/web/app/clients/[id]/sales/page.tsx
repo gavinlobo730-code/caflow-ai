@@ -946,9 +946,12 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
   }
 
   const loadCustomers = useCallback(async () => {
-    const token = await getAuthToken();
-    const res = await apiGet(`/api/customers/?client_id=${clientId}`, token);
-    if (res.success) setCustomers((res.data as { id: string; name: string; email: string | null }[]) ?? []);
+    try {
+      const token = await getAuthToken();
+      const res = await apiGet(`/api/customers/?client_id=${clientId}`, token);
+      if (res.success) setCustomers((res.data as { id: string; name: string; email: string | null }[]) ?? []);
+      else setError(res.error ?? "Could not load customers.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not load customers."); }
   }, [clientId]);
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
@@ -3219,14 +3222,18 @@ function ReceiptForm({
     if (!clientId) return;
     let cancelled = false;
     (async () => {
-      const token = await getAuthToken();
-      const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
-      if (cancelled) return;
-      const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
-      setMcActive(active);
-      if (!active) return;
-      const list = await apiGet(`/api/currencies?active_only=true`, token);
-      if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+      try {
+        const token = await getAuthToken();
+        const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
+        if (cancelled) return;
+        const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
+        setMcActive(active);
+        if (!active) return;
+        const list = await apiGet(`/api/currencies?active_only=true`, token);
+        if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+      } catch {
+        // Best-effort: multi-currency is optional; on failure the form stays INR-only.
+      }
     })();
     return () => { cancelled = true; };
   }, [clientId]);
