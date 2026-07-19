@@ -1,0 +1,13 @@
+-- Migration 231: grant the backend (service_role) DML on scheduler_runs.
+--
+-- The daily scheduler runs under SUPABASE_SERVICE_ROLE_KEY and records each job's
+-- start/finish in public.scheduler_runs. That table was created with only
+-- REFERENCES/TRIGGER/TRUNCATE granted to service_role — no SELECT/INSERT/UPDATE —
+-- so every job's "check last run" + "record run" call returned 403 (confirmed in
+-- the API logs: repeated `GET /scheduler_runs -> 403` for balance_cache_audit,
+-- collections, escalations, recurring, etc.). This meant the nightly jobs —
+-- including the reporting-passbook auditor that verifies/self-heals the balance
+-- cache — could not record (and likely could not complete) their runs.
+--
+-- service_role bypasses RLS, so it needs only the table privileges, not a policy.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.scheduler_runs TO service_role;
