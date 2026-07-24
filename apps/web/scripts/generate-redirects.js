@@ -46,14 +46,16 @@
  * the deeper group's splat (tried first, being more specific) would shadow
  * the static sibling, rewriting its requests as if "new" were a real
  * invoiceId. buildRedirectsFile detects exactly this (a shallower-group
- * route whose path still structurally matches a DEEPER group's pattern)
- * and enumerates that ONE route's trailing-slash/RSC shapes too, instead of
- * relying on any splat for it — every other route sharing the deeper
+ * route whose path still structurally matches a DEEPER group's pattern) and
+ * gives that ONE route its OWN single-member splat group, keyed by its full
+ * path instead of its natural (too-shallow) prefix — covering its
+ * trailing-slash/RSC shapes without falling back to full 4-shape
+ * enumeration, as long as nothing nests under it (true of every shadowed
+ * route so far — "new"/"xbrl" leaves). Every other route sharing the deeper
  * group's splat (e.g. "edit" under :invoiceId) is unaffected and stays
- * splat-covered, keeping the rule-count savings everywhere the ambiguity
- * doesn't apply.
+ * splat-covered.
  *
- * Ordering (first-match-wins) is load-bearing in two ways:
+ * Ordering (first-match-wins) is load-bearing in three ways:
  *   - EVERY enumerated (bare / bare-RSC) rule is listed before ANY splat
  *     rule. A splat like `/clients/:id/*` also technically matches a bare,
  *     no-trailing-slash request (e.g. `/clients/abc/overview`) — with the
@@ -66,6 +68,13 @@
  *     invoiceId into the target instead of "_placeholder". The nested
  *     group's own splat (`/clients/:id/sales/invoices/:invoiceId/*`) must be
  *     tried first so it wins for paths under it.
+ *   - On a depth TIE, most-literal-prefix-first (fewest dynamic
+ *     placeholders) breaks it. A shadowed leaf's own synthetic group (e.g.
+ *     `/clients/:id/sales/invoices/new/*`, 1 dynamic segment) ties in depth
+ *     with the colliding natural group it was shadowed by
+ *     (`/clients/:id/sales/invoices/:invoiceId/*`, 2 dynamic segments) —
+ *     the more-literal one must win, or the whole point of giving it its
+ *     own group is defeated.
  *
  * Usage:
  *   node scripts/generate-redirects.js        # (re)writes public/_redirects
@@ -164,19 +173,6 @@ function bareRules(segments) {
   ];
 }
 
-/** The other two shapes (trailing slash, RSC /index.txt) — safe to fold
- * into a group's shared splat rule ONLY when the page's own group isn't
- * shadowed (see pathMatchesPattern above); a shadowed page needs these
- * enumerated too, same as bareRules. */
-function slashRules(segments) {
-  const from = "/" + segments.join("/") + "/";
-  const to = "/" + replaceDynamic(segments).join("/") + "/";
-  return [
-    { from, to },
-    { from: `${from}index.txt`, to: `${to}index.txt` },
-  ];
-}
-
 /** Pure — returns the generated file content without touching disk. */
 export function buildRedirectsFile(appDir) {
   const dynamicRoutes = walkPages(appDir).filter((segments) => segments.some(isDynamicSeg));
@@ -186,17 +182,12 @@ export function buildRedirectsFile(appDir) {
   const groupPrefixes = new Map(); // prefix key -> prefix segments
   for (const prefix of groupOf.values()) groupPrefixes.set(prefix.join("/"), prefix);
 
-  // A route is "shadowed" — and needs its trailing-slash/RSC shapes
-  // enumerated too, not just left to a splat — if it belongs to a
-  // SHALLOWER group than some OTHER (deeper) group whose pattern its own
-  // path still structurally matches. That means the deeper group's
-  // placeholder segment lines up with this route's own static segment (the
-  // "new" vs ":invoiceId" case): the deeper splat would otherwise claim
-  // this route's requests first and rewrite them to the wrong target. Every
-  // OTHER route keeps relying on its own group's splat for those two shapes
-  // — only the specific shadowed routes need the extra rules, not their
-  // whole group, which keeps the total rule count much lower than falling
-  // back to full enumeration for every route sharing that group.
+  // A route is "shadowed" if it belongs to a SHALLOWER group than some
+  // OTHER (deeper) group whose pattern its own path still structurally
+  // matches. That means the deeper group's placeholder segment lines up
+  // with this route's own static segment (the "new" vs ":invoiceId" case):
+  // the deeper splat would otherwise claim this route's requests first and
+  // rewrite them to the wrong target.
   const shadowedRouteKeys = new Set();
   for (const prefix of groupPrefixes.values()) {
     for (const route of dynamicRoutes) {
@@ -208,21 +199,39 @@ export function buildRedirectsFile(appDir) {
     }
   }
 
+  // A shadowed route's trailing-slash/RSC shapes don't have to fall back to
+  // full per-shape enumeration (4 rules) — every shadowed route seen so far
+  // is a pure leaf (no route nests under it), so it can get its OWN
+  // single-member splat group instead, keyed by its FULL path rather than
+  // its natural (too-shallow) prefix. This ties the deeper colliding
+  // group's prefix in segment count, so splats are sorted deepest-first
+  // AND, on a depth tie, most-literal-first (fewest dynamic placeholders) —
+  // "new" (1 dynamic segment: the outer :id) correctly outranks the
+  // colliding ":invoiceId" group (2 dynamic segments) at the same depth,
+  // while that group's OTHER, genuinely dynamic siblings (e.g. "edit")
+  // still fall through to it exactly as before. Cuts 2 rules per shadowed
+  // route (3 total instead of the previous 4: bareRules + this one splat)
+  // without changing which requests resolve where.
+  for (const routeKey of shadowedRouteKeys) {
+    if (!groupPrefixes.has(routeKey)) groupPrefixes.set(routeKey, routeKey.split("/"));
+  }
+
   const enumerated = dynamicRoutes
-    .flatMap((segments) => {
-      const shadowed = shadowedRouteKeys.has(segments.join("/"));
-      return shadowed ? [...bareRules(segments), ...slashRules(segments)] : bareRules(segments);
-    })
+    .flatMap((segments) => bareRules(segments))
     .sort((a, b) => a.from.localeCompare(b.from));
 
+  const literalCount = (segments) => segments.filter((s) => !isDynamicSeg(s)).length;
   const splats = [...groupPrefixes.values()]
     .map((prefix) => ({
       from: "/" + prefix.join("/") + "/*",
       to: "/" + replaceDynamic(prefix).join("/") + "/:splat",
       depth: prefix.length,
+      literalCount: literalCount(prefix),
     }))
-    // Deepest (most specific) prefix first — see the module doc's ordering note.
-    .sort((a, b) => b.depth - a.depth || a.from.localeCompare(b.from));
+    // Deepest (most specific) prefix first; on a depth tie, most-literal
+    // (fewest dynamic placeholders) first — see the shadowed-leaf note
+    // above for why a tie can happen and why literal must win it.
+    .sort((a, b) => b.depth - a.depth || b.literalCount - a.literalCount || a.from.localeCompare(b.from));
 
   // Column-align "from" against the longest one in the whole file (purely
   // cosmetic — Cloudflare only needs whitespace between columns).

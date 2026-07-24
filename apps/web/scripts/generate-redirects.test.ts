@@ -74,28 +74,35 @@ test("a static sibling of a dynamic segment is never shadowed by that segment's 
   // the static "new" page's trailing-slash/RSC shapes would be silently
   // rewritten to the WRONG target (as if "new" were an invoice id). Both
   // known instances of this in the current route tree (new vs :invoiceId
-  // under sales/invoices; xbrl vs :engagementId under year-end) must always
-  // have every shape enumerated rather than relying on the deeper splat —
-  // while their DYNAMIC siblings (edit, checklist, ...) keep relying on it.
+  // under sales/invoices; xbrl vs :engagementId under year-end) get their
+  // OWN single-member splat group (its trailing-slash/RSC shapes), sorted
+  // to win the depth tie against the colliding deeper group by being more
+  // literal — while their DYNAMIC siblings (edit, checklist, ...) keep
+  // relying on that deeper group's own splat.
   const generated = buildRedirectsFile(APP_DIR);
+  // Shapes 1 & 4 (bare / bare-RSC) still can't be splat-covered — enumerated
+  // same as any other dynamic route.
   for (const shape of [
     "/clients/:id/sales/invoices/new  ",
-    "/clients/:id/sales/invoices/new/ ",
     "/clients/:id/sales/invoices/new.txt",
-    "/clients/:id/sales/invoices/new/index.txt",
     "/clients/:id/year-end/xbrl ",
-    "/clients/:id/year-end/xbrl/",
     "/clients/:id/year-end/xbrl.txt",
-    "/clients/:id/year-end/xbrl/index.txt",
   ]) {
     assert.ok(generated.includes(shape.trimEnd()), `missing rule for ${shape.trim()}`);
   }
-  // The deeper splats themselves must still exist — they're safe for every
-  // OTHER route sharing that group (e.g. "edit", "checklist"), which is why
-  // this fix enumerates just the shadowed sibling rather than dropping the
-  // whole group.
+  // Shapes 2 & 3 (trailing slash, RSC /index.txt) are now covered by each
+  // leaf's own splat group, not enumerated literally.
+  assert.ok(generated.includes("/clients/:id/sales/invoices/new/*"));
+  assert.ok(generated.includes("/clients/:id/year-end/xbrl/*"));
+  // The colliding deeper splats themselves must still exist — they're safe
+  // for every OTHER route sharing that group (e.g. "edit", "checklist").
   assert.ok(generated.includes("/clients/:id/sales/invoices/:invoiceId/*"));
   assert.ok(generated.includes("/clients/:id/year-end/:engagementId/*"));
+  // Ordering: each shadowed leaf's own (more literal) splat must be tried
+  // BEFORE the colliding deeper group's splat, or it would never win.
+  const idx = (s: string) => generated.indexOf(s);
+  assert.ok(idx("/clients/:id/sales/invoices/new/*") < idx("/clients/:id/sales/invoices/:invoiceId/*"));
+  assert.ok(idx("/clients/:id/year-end/xbrl/*") < idx("/clients/:id/year-end/:engagementId/*"));
 });
 
 test("a catch-all route segment is rejected rather than silently mishandled", () => {
