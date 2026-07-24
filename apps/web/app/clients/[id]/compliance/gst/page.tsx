@@ -134,6 +134,13 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [gstin, setGstin] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [showCompute, setShowCompute] = useState(false);
+  const [computePeriod, setComputePeriod] = useState("");
+  const [computing, setComputing] = useState(false);
+  const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
+  const [savingComputed, setSavingComputed] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
@@ -176,15 +183,116 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
     load();
   }
 
+  // CGST Act §37 — GSTR-1 derived ENTIRELY from posted sales invoices + issued
+  // credit/debit notes and reconciled to the General Ledger (services/
+  // gst_return_service.py::gstr1_from_books). All computation happens server-
+  // side; the frontend only displays the result (CLAUDE.md: zero business
+  // logic in the frontend).
+  async function computeFromBooks() {
+    setComputing(true);
+    setComputeError(null);
+    setComputeResult(null);
+    const r = await apiFetch("/api/gst/gstr1/from-books", {
+      method: "POST",
+      body: JSON.stringify({ client_id: clientId, period: computePeriod }),
+    });
+    if (r.success) setComputeResult(r.data as Record<string, unknown>);
+    else setComputeError(r.error ?? "Couldn't compute GSTR-1 from books.");
+    setComputing(false);
+  }
+
+  async function saveComputed() {
+    if (!computeResult) return;
+    setSavingComputed(true);
+    const d = computeResult;
+    await apiFetch("/api/gst-workspace/gstr1", {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: clientId,
+        period: d.period,
+        gstin: d.gstin,
+        payload_json: d.payload,
+        summary_json: d.summary,
+        total_taxable_paise: d.taxable_total_paise,
+        total_igst_paise: d.total_igst_paise,
+        total_cgst_paise: d.total_cgst_paise,
+        total_sgst_paise: d.total_sgst_paise,
+        total_cess_paise: d.total_cess_paise,
+      }),
+    });
+    setSavingComputed(false);
+    setShowCompute(false);
+    setComputeResult(null);
+    setComputePeriod("");
+    setComputeError(null);
+    load();
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-1 Returns</h3>
-        <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-          + New GSTR-1
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowCompute(true)}
+            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+            Compute from Books
+          </button>
+          <button onClick={() => setShowNew(true)}
+            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            + New GSTR-1
+          </button>
+        </div>
       </div>
+
+      {showCompute && (
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+          <p className="text-sm font-medium">Compute GSTR-1 from Books</p>
+          <p className="text-xs text-[#64748B]">
+            Derives GSTR-1 entirely from posted sales invoices and issued credit/debit notes,
+            and reconciles the output tax to the General Ledger. No manual entry.
+          </p>
+          <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
+            onChange={(e) => setComputePeriod(e.target.value)}
+            className="w-full border rounded px-3 py-1.5 text-sm" />
+          {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
+          <div className="flex gap-2">
+            <button onClick={computeFromBooks} disabled={computing || !computePeriod}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              {computing ? "Computing…" : "Compute"}
+            </button>
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
+              className="px-3 py-1 border rounded text-sm">Cancel</button>
+          </div>
+
+          {computeResult && (() => {
+            const rec = computeResult.reconciliation as Record<string, unknown>;
+            const netOut = rec?.net_output_gst as Record<string, number>;
+            const reconciled = Boolean(rec?.reconciled);
+            return (
+              <div className="border-t pt-3 space-y-2">
+                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+                  {reconciled ? "✓ Reconciled to the General Ledger" : "⚠ Does not reconcile to the General Ledger — review before saving"}
+                  {!reconciled && netOut && (
+                    <span className="block mt-1 text-xs">
+                      Books: {rupees(netOut.books_paise ?? 0)} vs Ledger: {rupees(netOut.ledger_paise ?? 0)}
+                      {" "}(diff {rupees(netOut.difference_paise ?? 0)})
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><p className="text-xs text-[#64748B]">Invoices</p><p className="font-medium">{computeResult.invoice_count as number}</p></div>
+                  <div><p className="text-xs text-[#64748B]">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
+                  <div><p className="text-xs text-[#64748B]">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
+                </div>
+                <button onClick={saveComputed} disabled={savingComputed}
+                  className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+                  {savingComputed ? "Saving…" : "Save as Draft"}
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {showNew && (
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
@@ -267,6 +375,13 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   const [gstin, setGstin] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [showCompute, setShowCompute] = useState(false);
+  const [computePeriod, setComputePeriod] = useState("");
+  const [computing, setComputing] = useState(false);
+  const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
+  const [savingComputed, setSavingComputed] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
@@ -309,15 +424,119 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     load();
   }
 
+  // CGST Act §39 — GSTR-3B derived ENTIRELY from posted sales/purchase
+  // documents (incl. issued credit/debit notes on both sides) and reconciled
+  // to the General Ledger's GST control accounts (services/
+  // gst_return_service.py::gstr3b_from_books). CA REVIEW REQUIRED before
+  // filing — this only computes and previews a draft.
+  async function computeFromBooks() {
+    setComputing(true);
+    setComputeError(null);
+    setComputeResult(null);
+    const r = await apiFetch("/api/gst/gstr3b/from-books", {
+      method: "POST",
+      body: JSON.stringify({ client_id: clientId, period: computePeriod }),
+    });
+    if (r.success) setComputeResult(r.data as Record<string, unknown>);
+    else setComputeError(r.error ?? "Couldn't compute GSTR-3B from books.");
+    setComputing(false);
+  }
+
+  async function saveComputed() {
+    if (!computeResult) return;
+    setSavingComputed(true);
+    const d = computeResult;
+    await apiFetch("/api/gst-workspace/gstr3b", {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: clientId,
+        period: d.period,
+        gstin: d.gstin,
+        payload_json: d.payload,
+        summary_json: d.working,
+        tax_liability_paise: d.tax_liability_paise,
+        itc_claimed_paise: d.itc_claimed_paise,
+        net_tax_paise: d.net_tax_paise,
+      }),
+    });
+    setSavingComputed(false);
+    setShowCompute(false);
+    setComputeResult(null);
+    setComputePeriod("");
+    setComputeError(null);
+    load();
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-3B Returns</h3>
-        <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-          + New GSTR-3B
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowCompute(true)}
+            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+            Compute from Books
+          </button>
+          <button onClick={() => setShowNew(true)}
+            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            + New GSTR-3B
+          </button>
+        </div>
       </div>
+
+      {showCompute && (
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+          <p className="text-sm font-medium">Compute GSTR-3B from Books</p>
+          <p className="text-xs text-[#64748B]">
+            Derives GSTR-3B entirely from posted sales/purchase documents (including issued
+            credit/debit notes) and reconciles output tax and ITC to the General Ledger.
+          </p>
+          <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
+            onChange={(e) => setComputePeriod(e.target.value)}
+            className="w-full border rounded px-3 py-1.5 text-sm" />
+          {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
+          <div className="flex gap-2">
+            <button onClick={computeFromBooks} disabled={computing || !computePeriod}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              {computing ? "Computing…" : "Compute"}
+            </button>
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
+              className="px-3 py-1 border rounded text-sm">Cancel</button>
+          </div>
+
+          {computeResult && (() => {
+            const rec = computeResult.reconciliation as Record<string, unknown>;
+            const output = rec?.output_gst as Record<string, number>;
+            const itc = rec?.itc as Record<string, number>;
+            const reconciled = Boolean(rec?.reconciled);
+            return (
+              <div className="border-t pt-3 space-y-2">
+                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+                  {reconciled ? "✓ Reconciled to the General Ledger" : "⚠ Does not reconcile to the General Ledger — review before saving"}
+                  {!reconciled && (
+                    <div className="mt-1 text-xs space-y-0.5">
+                      {output && !output.matched && (
+                        <p>Output GST — Books: {rupees(output.books_paise ?? 0)} vs Ledger: {rupees(output.ledger_paise ?? 0)}</p>
+                      )}
+                      {itc && !itc.matched && (
+                        <p>ITC — Books: {rupees(itc.books_paise ?? 0)} vs Ledger: {rupees(itc.ledger_paise ?? 0)}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><p className="text-xs text-[#64748B]">Tax Liability</p><p className="font-medium">{rupees(computeResult.tax_liability_paise as number)}</p></div>
+                  <div><p className="text-xs text-[#64748B]">ITC Claimed</p><p className="font-medium">{rupees(computeResult.itc_claimed_paise as number)}</p></div>
+                  <div><p className="text-xs text-[#64748B]">Net Tax</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
+                </div>
+                <button onClick={saveComputed} disabled={savingComputed}
+                  className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+                  {savingComputed ? "Saving…" : "Save as Draft"}
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {showNew && (
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">

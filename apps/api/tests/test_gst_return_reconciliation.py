@@ -10,8 +10,10 @@ import pytest
 import routers.sales_invoices as si
 import routers.purchase_bills as pb
 import routers.credit_notes as cn
+import routers.sales_debit_notes as sdn
+import routers.purchase_credit_notes as pcn
 import services.gst_return_service as grs
-from models.invoices import PurchaseBillIn, PurchaseBillLineIn
+from models.invoices import PurchaseBillIn, PurchaseBillLineIn, InvoiceLineIn
 from tests.e2e_harness import (
     FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance,
 )
@@ -24,7 +26,7 @@ GSTIN = "27AAAAA0000A1Z5"
 
 def _setup(monkeypatch):
     db = FakeDB()
-    wire_e2e(monkeypatch, db, [si, pb, cn])
+    wire_e2e(monkeypatch, db, [si, pb, cn, sdn, pcn])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": GSTIN, "financial_year_start": "2025-04-01"})
     db.seed("customers", {"id": "CUST1", "firm_id": FIRM, "client_id": "CLI", "name": "Acme",
@@ -133,3 +135,61 @@ def test_out_of_period_documents_are_excluded(monkeypatch):
     out = grs.gstr3b_from_books(db, FIRM, "CLI", PERIOD, GSTIN)   # June only
     assert out["reconciliation"]["output_gst"]["books_paise"] == 180000
     assert out["reconciliation"]["reconciled"] is True
+
+
+def test_sales_debit_note_increases_output_and_reconciles(monkeypatch):
+    # Regression pin: gstr3b_from_books/gstr1_from_books never fetched
+    # sales_debit_notes at all — a sales debit note (§34(3) undercharge
+    # correction, INCREASES output tax) posted a real GL journal but silently
+    # never appeared in either from-books return, understating output tax and
+    # permanently breaking the GL reconciliation for any client using this
+    # document type (task, 2026-07-24).
+    db = _setup(monkeypatch)
+    inv_id = _issue_invoice(db, "INV-4", taxable=10_00000, cgst=90000, sgst=90000)
+    sdn_res = sdn.create_sales_debit_note(sdn.SalesDebitNoteIn(
+        client_id="CLI", customer_id="CUST1", debit_note_date="2025-06-20",
+        sales_invoice_id=inv_id, reason="Undercharged — rate correction",
+        lines=[InvoiceLineIn(description="extra", quantity=1, rate_paise=2_00000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert sdn_res["success"] is True
+    assert sdn.issue_sales_debit_note(sdn_res["data"]["id"], CALLER)["success"] is True
+
+    out = grs.gstr3b_from_books(db, FIRM, "CLI", PERIOD, GSTIN)
+    rec = out["reconciliation"]
+    # Net output = 180000 (invoice) + 36000 (debit note @18% on ₹2,00,000) = 216000
+    assert rec["output_gst"]["books_paise"] == 216000
+    assert rec["output_gst"]["ledger_paise"] == 216000
+    assert rec["reconciled"] is True
+
+    gstr1 = grs.gstr1_from_books(db, FIRM, "CLI", PERIOD, GSTIN)
+    assert gstr1["reconciliation"]["net_output_gst"]["books_paise"] == 216000
+    assert gstr1["reconciliation"]["reconciled"] is True
+
+
+def test_purchase_credit_note_increases_itc_and_reconciles(monkeypatch):
+    # Regression pin: gstr3b_from_books never fetched purchase_credit_notes —
+    # a purchase credit note (§34(3) undercharge correction, INCREASES ITC,
+    # this codebase's naming convention per routers/purchase_credit_notes.py)
+    # posted a real Dr GST Input journal line but was never counted as book
+    # ITC, permanently under-claiming ITC in the return and breaking the GL
+    # reconciliation for any client using this document type (task, 2026-07-24).
+    db = _setup(monkeypatch)
+    _issue_invoice(db, "INV-5", taxable=10_00000, cgst=90000, sgst=90000)
+    bill_id = _receive_bill(db, "BILL-2", rate=5_00000)["id"]   # ITC 90000
+
+    pcn_res = pcn.create_purchase_credit_note(pcn.PurchaseCreditNoteIn(
+        client_id="CLI", vendor_id="VEND1", credit_note_date="2025-06-20",
+        purchase_bill_id=bill_id, reason="Vendor undercharged — rate correction",
+        lines=[InvoiceLineIn(description="extra", quantity=1, rate_paise=1_00000,
+                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+    ), CALLER)
+    assert pcn_res["success"] is True
+    assert pcn.issue_purchase_credit_note(pcn_res["data"]["id"], CALLER)["success"] is True
+
+    out = grs.gstr3b_from_books(db, FIRM, "CLI", PERIOD, GSTIN)
+    rec = out["reconciliation"]
+    # ITC = 90000 (bill) + 18000 (purchase credit note @18% on ₹1,00,000) = 108000
+    assert rec["itc"]["books_paise"] == 108000
+    assert rec["itc"]["ledger_paise"] == 108000
+    assert rec["reconciled"] is True

@@ -145,6 +145,20 @@ def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("debit_note_date", start).lte("debit_note_date", end))
 
 
+def _issued_sales_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
+    return _paginate_all(lambda: db.table("sales_debit_notes").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "issued")
+            .gte("debit_note_date", start).lte("debit_note_date", end))
+
+
+def _issued_purchase_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
+    return _paginate_all(lambda: db.table("purchase_credit_notes").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "issued")
+            .gte("credit_note_date", start).lte("credit_note_date", end))
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger."""
     start, end = _period_bounds(period)
@@ -171,6 +185,24 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             cess_paise=int(cn.get("cess_paise") or 0),
             supply_type=cn.get("supply_type") or "taxable",
             is_reverse_charge=bool(cn.get("is_reverse_charge", False)),
+        ))
+    # Sales debit notes (sales_debit_notes table) INCREASE what the customer owes
+    # (CGST Act §34(3)) — e.g. an undercharge correction — so they add to output
+    # tax exactly like an invoice. compute_gstr3b only special-cases
+    # transaction_type == "credit_note" (sign -1); anything else, including
+    # "debit_note", is added at sign +1. Omitting these previously understated
+    # every from-books GSTR-3B's output tax whenever a sales debit note was
+    # issued, and silently broke the GL reconciliation below (task, 2026-07-24).
+    for sdn in _issued_sales_debit_notes(db, firm_id, client_id, start, end):
+        sales.append(SalesTransaction(
+            transaction_type="debit_note",
+            taxable_amount_paise=int(sdn.get("taxable_amount_paise") or 0),
+            cgst_paise=int(sdn.get("cgst_paise") or 0),
+            sgst_paise=int(sdn.get("sgst_paise") or 0),
+            igst_paise=int(sdn.get("igst_paise") or 0),
+            cess_paise=int(sdn.get("cess_paise") or 0),
+            supply_type=sdn.get("supply_type") or "taxable",
+            is_reverse_charge=bool(sdn.get("is_reverse_charge", False)),
         ))
 
     purchases: list[PurchaseTransaction] = []
@@ -200,6 +232,25 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             cess_paise=-int(dn.get("cess_paise") or 0),
             is_reverse_charge=bool(dn.get("is_reverse_charge", False)),
         ))
+    # Purchase credit notes (purchase_credit_notes table) — in this codebase's
+    # convention (routers/purchase_credit_notes.py) these are an INCREASE to
+    # what we owe the vendor (undercharge correction), posted Dr Purchases /
+    # Dr GST Input / Cr Trade Payables — the mirror image of the (purchase)
+    # debit note above. They add to book ITC exactly like an extra purchase
+    # bill. Previously fed nowhere into gstr3b_from_books: the GL's gst_input
+    # debit already included them (they post a real journal), so the return's
+    # ITC silently undercounted book ITC and the reconciliation below flagged a
+    # permanent, unexplained mismatch for any client using this document type
+    # (task, 2026-07-24).
+    for pcn in _issued_purchase_credit_notes(db, firm_id, client_id, start, end):
+        purchases.append(PurchaseTransaction(
+            taxable_amount_paise=int(pcn.get("taxable_amount_paise") or 0),
+            cgst_paise=int(pcn.get("cgst_paise") or 0),
+            sgst_paise=int(pcn.get("sgst_paise") or 0),
+            igst_paise=int(pcn.get("igst_paise") or 0),
+            cess_paise=int(pcn.get("cess_paise") or 0),
+            is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
+        ))
 
     result = compute_gstr3b(sales, purchases, [])
 
@@ -221,6 +272,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         "period": period,
         "gstin": gstin,
         "source": "posted_general_ledger",
+        # Paise-precise header totals for gst-workspace SaveGSTR3BRequest — kept
+        # server-side (CLAUDE.md: zero business logic in the frontend) so the
+        # caller never has to derive these from the rupee-rounded payload/summary.
+        "tax_liability_paise": books_output,
+        "itc_claimed_paise": result.itc_igst + result.itc_cgst + result.itc_sgst,
+        "net_tax_paise": result.net_igst + result.net_cgst + result.net_sgst,
         "payload": result.as_gstn_payload(gstin, period),
         "working": {
             "outward": {
@@ -264,28 +321,40 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
 
 def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                      aggregate_turnover_paise: int = 0) -> dict:
-    """Build GSTR-1 from posted sales invoices + issued credit notes, and reconcile
-    the total output tax to the General Ledger GST-output control accounts."""
+    """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
+    reconcile the total output tax to the General Ledger GST-output control
+    accounts."""
     start, end = _period_bounds(period)
 
     invoices_raw = _posted_sales(db, firm_id, client_id, start, end)
     cns_raw = _issued_credit_notes(db, firm_id, client_id, start, end)
+    # Sales debit notes (sales_debit_notes) belong in Table 9B (CDNR/CDNUR) same
+    # as credit notes — domain/gst/classifier.py and gstr1_builder.py already
+    # treat transaction_type "debit_note" as a first-class CDNR member (the
+    # "ntty": "D" vs "C" flag). This function previously never fetched the
+    # table at all, so a sales debit note issued in the period never appeared
+    # in the from-books GSTR-1 and the reconciliation below silently ignored
+    # its GL output-tax movement (task, 2026-07-24).
+    sdns_raw = _issued_sales_debit_notes(db, firm_id, client_id, start, end)
 
     # Resolve customer GSTIN / name / place of supply (no nested select — join here).
-    cust_ids = {r.get("customer_id") for r in (invoices_raw + cns_raw) if r.get("customer_id")}
+    cust_ids = {r.get("customer_id") for r in (invoices_raw + cns_raw + sdns_raw) if r.get("customer_id")}
     cust_by_id: dict = {}
     if cust_ids:
         rows = (db.table("customers").select("id, name, gstin, state_code")
                 .eq("firm_id", firm_id).in_("id", list(cust_ids)).execute().data) or []
         cust_by_id = {c["id"]: c for c in rows}
 
-    def _to_gstr1(r: dict, is_cn: bool) -> InvoiceForGSTR1:
+    _REF_FIELD = {"sales_invoice": "invoice_no", "credit_note": "credit_note_no", "debit_note": "debit_note_no"}
+    _DATE_FIELD = {"sales_invoice": "invoice_date", "credit_note": "credit_note_date", "debit_note": "debit_note_date"}
+
+    def _to_gstr1(r: dict, doc_type: str) -> InvoiceForGSTR1:
         cust = cust_by_id.get(r.get("customer_id"), {})
         gstin_party = cust.get("gstin")
         pos = r.get("supply_state_code") or cust.get("state_code") or ""
         txn = TransactionForClassification(
             id=r.get("id", ""),
-            transaction_type="credit_note" if is_cn else "sales_invoice",
+            transaction_type=doc_type,
             party_gstin=gstin_party,
             is_interstate=bool(r.get("is_interstate", False)),
             taxable_amount_paise=int(r.get("taxable_amount_paise") or 0),
@@ -295,9 +364,9 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         )
         return InvoiceForGSTR1(
             id=r.get("id", ""),
-            transaction_type="credit_note" if is_cn else "sales_invoice",
-            reference_no=(r.get("credit_note_no") if is_cn else r.get("invoice_no")) or "",
-            transaction_date=(r.get("credit_note_date") if is_cn else r.get("invoice_date")) or "",
+            transaction_type=doc_type,
+            reference_no=r.get(_REF_FIELD[doc_type]) or "",
+            transaction_date=r.get(_DATE_FIELD[doc_type]) or "",
             party_gstin=gstin_party,
             party_name=cust.get("name") or "",
             place_of_supply=pos,
@@ -307,33 +376,47 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             sgst_paise=int(r.get("sgst_paise") or 0),
             igst_paise=int(r.get("igst_paise") or 0),
             cess_paise=int(r.get("cess_paise") or 0),
-            # Credit notes (credit_notes table) have no round_off column → .get None → 0.
+            # Credit/debit notes (credit_notes / sales_debit_notes tables) have no
+            # round_off column → .get None → 0.
             round_off_paise=int(r.get("round_off_paise") or 0),
             is_reverse_charge=bool(r.get("is_reverse_charge", False)),
             invoice_type="Regular",
             supply_type=r.get("supply_type") or "taxable",
             gst_invoice_category=classify_transaction(txn),
-            original_invoice_ref=r.get("sales_invoice_id") if is_cn else None,
+            original_invoice_ref=r.get("sales_invoice_id") if doc_type != "sales_invoice" else None,
             original_invoice_date=None,
             lines=[],
         )
 
-    invoices = [_to_gstr1(r, False) for r in invoices_raw] + [_to_gstr1(r, True) for r in cns_raw]
+    invoices = ([_to_gstr1(r, "sales_invoice") for r in invoices_raw]
+                + [_to_gstr1(r, "credit_note") for r in cns_raw]
+                + [_to_gstr1(r, "debit_note") for r in sdns_raw])
     payload = build_gstr1(invoices, gstin, period, aggregate_turnover_paise)
 
-    # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit notes);
-    # compare against sales-only GST in the GL (credit notes are the CDNR reduction).
+    # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit
+    # notes, before debit notes); compare against sales-only GST in the GL
+    # (credit notes are the CDNR reduction, debit notes the CDNR increase).
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
     inv_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
                      + int(r.get("igst_paise") or 0) for r in invoices_raw)
     cn_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
                     + int(r.get("igst_paise") or 0) for r in cns_raw)
-    net_books_output = inv_output - cn_output
+    dn_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
+                    + int(r.get("igst_paise") or 0) for r in sdns_raw)
+    net_books_output = inv_output - cn_output + dn_output
 
     return {
         "period": period,
         "gstin": gstin,
         "source": "posted_general_ledger",
+        # Paise-precise header totals for gst-workspace SaveGSTR1Request — mirrors
+        # build_gstr1()'s own "totals_rupees" (payload.summary), computed in paise
+        # here so the caller never rounds a rupee figure back into paise
+        # (CLAUDE.md: integer paise arithmetic only, never floats).
+        "total_igst_paise": sum(int(r.get("igst_paise") or 0) for r in invoices_raw),
+        "total_cgst_paise": sum(int(r.get("cgst_paise") or 0) for r in invoices_raw),
+        "total_sgst_paise": sum(int(r.get("sgst_paise") or 0) for r in invoices_raw),
+        "total_cess_paise": sum(int(r.get("cess_paise") or 0) for r in invoices_raw),
         "payload": payload.payload,
         "summary": payload.summary,
         "invoice_count": payload.invoice_count,
