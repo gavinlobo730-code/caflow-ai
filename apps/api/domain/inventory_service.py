@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
+from fastapi import HTTPException
+
 _logger = logging.getLogger("caflow.inventory")
 
 
@@ -173,11 +175,86 @@ def _last_ledger_row(db, service_catalogue_id: str) -> Optional[dict]:
     return resp.data[0] if resp.data else None
 
 
+class _StockCASConflict(Exception):
+    """Internal signal (task #241): another concurrent movement on the same
+    item already claimed service_catalogue.stock_version between our read
+    and our write attempt — the caller must re-read fresh state and retry.
+    See _with_stock_cas_retry."""
+
+
+def _read_stock_version(db, service_catalogue_id: str) -> int:
+    row = (
+        db.table("service_catalogue").select("stock_version")
+        .eq("id", service_catalogue_id).limit(1).execute().data
+    )
+    return int((row[0].get("stock_version") if row else None) or 0)
+
+
+def _with_stock_cas_retry(fn, *, max_attempts: int = 6):
+    """Runs `fn()` — a zero-arg closure that reads the current stock state,
+    computes a movement, and calls _insert_and_cache — retrying whenever a
+    concurrent movement on the same item wins the compare-and-set race
+    (_StockCASConflict), up to max_attempts. Raises HTTPException(409) once
+    exhausted; every current caller of the functions that use this already
+    wraps its own top-level call in try/except Exception and fails soft
+    (this module's docstring: "Stock-tracking failures must NEVER block the
+    sale/purchase they're attached to"), so a raised 409 here is only ever
+    logged, not propagated to block the document — mirroring the established
+    CAS-retry pattern in services/purchase_payment_service.py (task #148)
+    and services/bank_posting_service.py (task #220) for the same class of
+    lost-update race."""
+    for _attempt in range(max_attempts):
+        try:
+            return fn()
+        except _StockCASConflict:
+            continue
+    raise HTTPException(status_code=409, detail="Stock ledger is being updated concurrently — please retry.")
+
+
 def _insert_and_cache(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     movement_type: str, calc: dict, source_type: Optional[str], source_id: Optional[str],
-    reference_no: Optional[str], created_by: Optional[str],
+    reference_no: Optional[str], created_by: Optional[str], expected_version: int,
 ) -> dict:
+    """Lost-update guard (task #241): two concurrent movements on the SAME
+    item both reading the same _last_ledger_row before either writes would
+    otherwise both insert a ledger row chained from identical stale totals,
+    and race to overwrite service_catalogue's cache — silently dropping one
+    movement's effect (oversell goes undetected, moving-average cost
+    corrupted). CAS-claims service_catalogue.stock_version FIRST — an
+    INTEGER counter, not the NUMERIC(10,3) stock_qty_units cache itself,
+    which can round-trip through Postgres in a different string form than
+    what was written and make a string-equality guard unreliable — and only
+    once that succeeds is the append-only ledger row inserted.
+
+    expected_version == 0 also matches a row whose stock_version is NULL/
+    missing (a legacy row from before this column existed, or an in-memory
+    test double that never set it) — semantically the same "never
+    written" state as an explicit 0.
+    """
+    update_payload = {
+        "stock_qty_units": str(calc["running_qty_units"]),
+        "avg_cost_paise": calc["running_avg_cost_paise"],
+        "stock_version": expected_version + 1,
+    }
+    claim = (
+        db.table("service_catalogue").update(update_payload)
+        .eq("id", service_catalogue_id).eq("stock_version", expected_version)
+        .execute()
+    )
+    if not claim.data and expected_version == 0:
+        # A row whose stock_version is NULL/missing (a legacy row from
+        # before this column existed, or an in-memory test double that
+        # never set it) never matches .eq("stock_version", 0) — try the
+        # NULL form too before concluding a real conflict.
+        claim = (
+            db.table("service_catalogue").update(update_payload)
+            .eq("id", service_catalogue_id).is_("stock_version", "null")
+            .execute()
+        )
+    if not claim.data:
+        raise _StockCASConflict(service_catalogue_id)
+
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
@@ -201,10 +278,6 @@ def _insert_and_cache(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     inserted = db.table("inventory_stock_ledger").insert(row).execute()
-    db.table("service_catalogue").update({
-        "stock_qty_units": str(calc["running_qty_units"]),
-        "avg_cost_paise": calc["running_avg_cost_paise"],
-    }).eq("id", service_catalogue_id).execute()
     return inserted.data[0] if inserted.data else row
 
 
@@ -251,15 +324,28 @@ def seed_opening_balance(
     # was sold/oversold before the CA set up its opening stock) previously
     # recorded running_qty = opening qty alone and overwrote the cache with
     # it, silently discarding the prior movements from the running position.
-    prev = _last_ledger_row(db, service_catalogue_id)
-    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
-    prev_value = int(prev["running_value_paise"]) if prev else 0
-    calc = _compute_stock_in(prev_qty, prev_value, qty, int(opening_cost_paise))
-    row = _insert_and_cache(
-        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
-        movement_date=movement_date, movement_type="opening", calc=calc,
-        source_type=None, source_id=None, reference_no=None, created_by=created_by,
-    )
+    def _attempt():
+        # Version read BEFORE the ledger read (task #241): if a rival
+        # movement completes between the two, the ledger read then sees the
+        # rival's FRESH row while `version` is still the pre-rival token —
+        # the CAS below will correctly detect the mismatch and force a
+        # retry. Reading them in the opposite order would let a rival's
+        # write land invisibly in the gap and have the CAS pass against
+        # already-stale `calc`.
+        version = _read_stock_version(db, service_catalogue_id)
+        prev = _last_ledger_row(db, service_catalogue_id)
+        prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+        prev_value = int(prev["running_value_paise"]) if prev else 0
+        calc = _compute_stock_in(prev_qty, prev_value, qty, int(opening_cost_paise))
+        row = _insert_and_cache(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, movement_type="opening", calc=calc,
+            source_type=None, source_id=None, reference_no=None, created_by=created_by,
+            expected_version=version,
+        )
+        return row, calc
+
+    row, calc = _with_stock_cas_retry(_attempt)
     journal_id = post_opening_stock_journal_entry(
         db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
         value_paise=int(calc["value_delta_paise"]), item_count=1, created_by=created_by,
@@ -397,21 +483,28 @@ def record_stock_in(
     source_type: Optional[str] = None, source_id: Optional[str] = None,
     reference_no: Optional[str] = None, created_by: Optional[str] = None,
 ) -> dict:
-    prev = _last_ledger_row(db, service_catalogue_id)
-    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
-    prev_value = int(prev["running_value_paise"]) if prev else 0
-    calc = _compute_stock_in(prev_qty, prev_value, Decimal(str(quantity)), int(total_cost_paise))
-    row = _insert_and_cache(
-        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
-        movement_date=movement_date, movement_type=movement_type, calc=calc,
-        source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
-    )
-    # task #103: surfaced separately from the ledger row (no DB column for
-    # it) — apply_purchase_to_inventory uses this to post a Dr COGS true-up
-    # for the portion of this stock-in that covered a prior oversold
-    # deficit; see _compute_stock_in's docstring.
-    row["trueup_paise"] = calc.get("trueup_paise", 0)
-    return row
+    def _attempt():
+        # Version read BEFORE the ledger read — see seed_opening_balance's
+        # _attempt for why the order matters (task #241).
+        version = _read_stock_version(db, service_catalogue_id)
+        prev = _last_ledger_row(db, service_catalogue_id)
+        prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+        prev_value = int(prev["running_value_paise"]) if prev else 0
+        calc = _compute_stock_in(prev_qty, prev_value, Decimal(str(quantity)), int(total_cost_paise))
+        row = _insert_and_cache(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, movement_type=movement_type, calc=calc,
+            source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
+            expected_version=version,
+        )
+        # task #103: surfaced separately from the ledger row (no DB column for
+        # it) — apply_purchase_to_inventory uses this to post a Dr COGS true-up
+        # for the portion of this stock-in that covered a prior oversold
+        # deficit; see _compute_stock_in's docstring.
+        row["trueup_paise"] = calc.get("trueup_paise", 0)
+        return row
+
+    return _with_stock_cas_retry(_attempt)
 
 
 def record_stock_out_at_value(
@@ -428,34 +521,42 @@ def record_stock_out_at_value(
     average had moved between receive and cancel). The value is clamped to
     what's actually on the books so a reversal can never drive the running
     value negative; the mismatch case logs a warning for the CA."""
-    prev = _last_ledger_row(db, service_catalogue_id)
-    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
-    prev_value = int(prev["running_value_paise"]) if prev else 0
     qty = Decimal(str(quantity))
     if qty <= 0:
         raise ValueError("Stock-out quantity must be positive.")
-    new_qty = prev_qty - qty
-    out_value = prev_value if new_qty <= 0 else min(int(value_paise), prev_value)
-    if out_value != int(value_paise):
-        _logger.warning(
-            "record_stock_out_at_value: service_catalogue_id=%s requested value %d clamped to %d (books held less)",
-            service_catalogue_id, int(value_paise), out_value,
+
+    def _attempt():
+        # Version read BEFORE the ledger read — see seed_opening_balance's
+        # _attempt for why the order matters (task #241).
+        version = _read_stock_version(db, service_catalogue_id)
+        prev = _last_ledger_row(db, service_catalogue_id)
+        prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+        prev_value = int(prev["running_value_paise"]) if prev else 0
+        new_qty = prev_qty - qty
+        out_value = prev_value if new_qty <= 0 else min(int(value_paise), prev_value)
+        if out_value != int(value_paise):
+            _logger.warning(
+                "record_stock_out_at_value: service_catalogue_id=%s requested value %d clamped to %d (books held less)",
+                service_catalogue_id, int(value_paise), out_value,
+            )
+        new_value = prev_value - out_value
+        new_avg = _round_paise(new_value / new_qty) if new_qty > 0 else 0
+        calc = {
+            "quantity_delta": -qty,
+            "unit_cost_paise": _round_paise(Decimal(out_value) / qty) if qty else 0,
+            "value_delta_paise": -out_value,
+            "running_qty_units": new_qty,
+            "running_avg_cost_paise": new_avg,
+            "running_value_paise": new_value if new_qty > 0 else 0,
+        }
+        return _insert_and_cache(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, movement_type=movement_type, calc=calc,
+            source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
+            expected_version=version,
         )
-    new_value = prev_value - out_value
-    new_avg = _round_paise(new_value / new_qty) if new_qty > 0 else 0
-    calc = {
-        "quantity_delta": -qty,
-        "unit_cost_paise": _round_paise(Decimal(out_value) / qty) if qty else 0,
-        "value_delta_paise": -out_value,
-        "running_qty_units": new_qty,
-        "running_avg_cost_paise": new_avg,
-        "running_value_paise": new_value if new_qty > 0 else 0,
-    }
-    return _insert_and_cache(
-        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
-        movement_date=movement_date, movement_type=movement_type, calc=calc,
-        source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
-    )
+
+    return _with_stock_cas_retry(_attempt)
 
 
 def record_stock_out(
@@ -473,26 +574,33 @@ def record_stock_out(
     Cost stays 0 until a real purchase/opening balance establishes an
     average; the oversold quantity self-corrects the next time stock comes
     in, exactly like any other stock-in blending into the running average."""
-    prev = _last_ledger_row(db, service_catalogue_id)
-    if prev is None:
-        _logger.warning(
-            "record_stock_out: no stock history for service_catalogue_id=%s — recording as oversold at Rs 0 cost until stock is set up",
-            service_catalogue_id,
+    def _attempt():
+        # Version read BEFORE the ledger read — see seed_opening_balance's
+        # _attempt for why the order matters (task #241).
+        version = _read_stock_version(db, service_catalogue_id)
+        prev = _last_ledger_row(db, service_catalogue_id)
+        if prev is None:
+            _logger.warning(
+                "record_stock_out: no stock history for service_catalogue_id=%s — recording as oversold at Rs 0 cost until stock is set up",
+                service_catalogue_id,
+            )
+        prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+        prev_value = int(prev["running_value_paise"]) if prev else 0
+        prev_avg = int(prev["running_avg_cost_paise"]) if prev else 0
+        calc = _compute_stock_out(prev_qty, prev_value, prev_avg, Decimal(str(quantity)))
+        if calc["running_qty_units"] < 0:
+            _logger.warning(
+                "record_stock_out: service_catalogue_id=%s oversold by %s units — stock now negative",
+                service_catalogue_id, abs(calc["running_qty_units"]),
+            )
+        return _insert_and_cache(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, movement_type=movement_type, calc=calc,
+            source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
+            expected_version=version,
         )
-    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
-    prev_value = int(prev["running_value_paise"]) if prev else 0
-    prev_avg = int(prev["running_avg_cost_paise"]) if prev else 0
-    calc = _compute_stock_out(prev_qty, prev_value, prev_avg, Decimal(str(quantity)))
-    if calc["running_qty_units"] < 0:
-        _logger.warning(
-            "record_stock_out: service_catalogue_id=%s oversold by %s units — stock now negative",
-            service_catalogue_id, abs(calc["running_qty_units"]),
-        )
-    return _insert_and_cache(
-        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
-        movement_date=movement_date, movement_type=movement_type, calc=calc,
-        source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
-    )
+
+    return _with_stock_cas_retry(_attempt)
 
 
 def get_stock_ledger(db, service_catalogue_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list[dict]:
@@ -1488,19 +1596,26 @@ def record_nrv_writedown(
     """Returns None if this item has no stock (nothing to write down) or if
     the supplied NRV is already >= the current average cost — both
     legitimate no-ops, never an error."""
-    prev = _last_ledger_row(db, service_catalogue_id)
-    if prev is None:
-        return None
-    prev_qty = Decimal(str(prev["running_qty_units"]))
-    prev_value = int(prev["running_value_paise"])
-    calc = _compute_nrv_writedown(prev_qty, prev_value, nrv_per_unit_paise)
-    if calc is None:
-        return None
-    return _insert_and_cache(
-        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
-        movement_date=movement_date, movement_type="nrv_writedown", calc=calc,
-        source_type="nrv_writedown", source_id=None, reference_no=reference_no, created_by=created_by,
-    )
+    def _attempt():
+        # Version read BEFORE the ledger read — see seed_opening_balance's
+        # _attempt for why the order matters (task #241).
+        version = _read_stock_version(db, service_catalogue_id)
+        prev = _last_ledger_row(db, service_catalogue_id)
+        if prev is None:
+            return None
+        prev_qty = Decimal(str(prev["running_qty_units"]))
+        prev_value = int(prev["running_value_paise"])
+        calc = _compute_nrv_writedown(prev_qty, prev_value, nrv_per_unit_paise)
+        if calc is None:
+            return None
+        return _insert_and_cache(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, movement_type="nrv_writedown", calc=calc,
+            source_type="nrv_writedown", source_id=None, reference_no=reference_no, created_by=created_by,
+            expected_version=version,
+        )
+
+    return _with_stock_cas_retry(_attempt)
 
 
 def post_nrv_writedown_journal_entry(
