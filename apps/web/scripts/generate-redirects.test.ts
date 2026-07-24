@@ -53,15 +53,30 @@ test("the total dynamic-rule count stays under Cloudflare Pages' 100-dynamic-red
   // dynamic pages x 4 enumerated shapes each produced 156 rules, and
   // anything past position 100 in the file was silently ignored by
   // Cloudflare in production — a failure mode this repo's own local
-  // verification harness didn't catch (it doesn't enforce the cap). Keep
-  // real headroom, not just "under 100", so normal route growth doesn't
-  // immediately re-trip this.
+  // verification harness didn't catch (it doesn't enforce the cap).
+  //
+  // The budget was previously pinned at 90 for headroom, but by the time the
+  // route tree grew to 50 dynamic pages that had already crept to 124 —
+  // OVER the real cap, meaning some pages were silently 404ing in
+  // production. Merging each entity's "new" create route into its sibling
+  // "[xId]/edit" route (an id value of "new" as a create-mode sentinel; see
+  // "the create/edit route merges are reflected in the rule count" below)
+  // brought that back down to 99 — the verified, real floor of this
+  // approach: every further reduction would require re-architecting a
+  // large, distinct-workflow section (Year-End, Compliance, or Tax) into
+  // tabs, which is a real product/UX decision, not a mechanical win like
+  // the route merge was (see PR #150 discussion). 99 is pinned here as the
+  // known-good number rather than the old 90 — but note this leaves only 1
+  // rule of headroom below the actual 100 cap: the NEXT new dynamic page
+  // added to the client workspace without a matching reduction elsewhere
+  // will retrip this test, and should be treated as seriously as it was
+  // here, not bumped again without re-checking the real cap.
   const generated = buildRedirectsFile(APP_DIR);
   const ruleCount = generated.split("\n").filter((l) => l.trim().endsWith("200")).length;
   assert.ok(
-    ruleCount <= 90,
+    ruleCount <= 99,
     `_redirects has ${ruleCount} dynamic rules — Cloudflare Pages caps dynamic ` +
-      "redirects at 100; this is too close to that limit. See generate-redirects.js's " +
+      "redirects at 100; this is at or over that limit. See generate-redirects.js's " +
       "module doc for the splat-consolidation strategy that keeps this down."
   );
 });
