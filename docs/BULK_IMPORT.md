@@ -15,6 +15,10 @@ or kept in Excel).
 | **Vendors** | Purchases → Vendors | `POST /api/vendors/` | — |
 | **Purchase Bills** | Purchases → Purchase Bills | `POST /api/purchase-bills/` | Vendor (by name) |
 | **Employees** | Payroll → Employees | `POST /api/payroll/employees` | — |
+| **Sales Credit Notes** | Sales → Credit Notes | `POST /api/credit-notes/` | Customer (by name), Sales Invoice (by number, optional) |
+| **Sales Debit Notes** | Sales → Debit Notes | `POST /api/sales-debit-notes/` | Customer (by name), Sales Invoice (by number, optional) |
+| **Purchase Debit Notes** | Purchases → Debit Notes | `POST /api/debit-notes/` | Vendor (by name), Purchase Bill (by number, optional) |
+| **Purchase Credit Notes** | Purchases → Credit Notes | `POST /api/purchase-credit-notes/` | Vendor (by name), Purchase Bill (by number, optional) |
 
 Each appears as an **Import** button next to the entity's "New / Add" button.
 
@@ -57,7 +61,8 @@ earlier `lib/invoices/importMapping.ts`. The generic upload/preview UI is
 Some records reference others by **name**, so import the referenced entity first:
 
 1. **Customers** and **Vendors** (no references) →
-2. **Sales Invoices** / **Receipts** (need customers) and **Purchase Bills** (need vendors).
+2. **Sales Invoices** / **Receipts** (need customers) and **Purchase Bills** (need vendors) →
+3. **Credit & Debit Notes** (need customers/vendors; a linked Invoice No/Bill No is optional but recommended — see below).
 
 Unknown names are reported per-row and skipped, never silently created.
 
@@ -99,6 +104,31 @@ backend rejects any `aadhaar_last4` that is not exactly 4 digits.
 (\* = required) — Sales-invoice columns are documented in
 [`SALES_INVOICE_IMPORT.md`](./SALES_INVOICE_IMPORT.md).
 
+### Credit & Debit Notes (Sales Credit Notes, Sales Debit Notes, Purchase Debit Notes, Purchase Credit Notes)
+
+`customer`*/`vendor`* · `invoice_no`/`bill_no` (optional, recommended) · `credit_note_date`*/`debit_note_date`*
+(YYYY-MM-DD) · `reason` · `is_interstate` (yes/no) · `is_reverse_charge` (yes/no, purchase side only) ·
+`note_ref` (optional grouping key) · `product_service`* · `description` · `hsn_sac` · `quantity`* · `rate` (₹) ·
+`gst_rate` (%).
+
+Unlike Sales Invoices/Purchase Bills, **`product_service` is REQUIRED on every line, not optional** — the
+shared `InvoiceLineIn`/`PurchaseBillLineIn` backend model makes `service_catalogue_id` mandatory on every
+line item, so a line with no matched Product/Service is rejected at import time (this also means a
+description-only Sales Invoice/Purchase Bill import row is silently invalid today — a pre-existing gap this
+importer does not repeat).
+
+Rows group into one note by `note_ref` if given, else by `invoice_no`/`bill_no`, else by
+`customer`/`vendor` + note date (same fallback `purchase_bills` uses for a blank `bill_no`).
+
+**Linking an existing Invoice No/Bill No is the only reliable way to get correct GST treatment.** When
+given, the linked document's own `is_interstate` is used (the `is_interstate` column is ignored in that
+case); when blank, `is_interstate` falls back to the column. This matters because the four backend
+endpoints handle it inconsistently: `POST /api/credit-notes/` **always** re-derives `is_interstate` from a
+linked `sales_invoice_id` and forces `false` when none is linked (so a standalone Sales Credit Note can
+never be interstate via the API today); `POST /api/debit-notes/`, `POST /api/sales-debit-notes/` and
+`POST /api/purchase-credit-notes/` trust the client-sent value directly with no auto-derivation. Linking the
+original document sidesteps all three behaviours correctly at once.
+
 ## Scale
 
 Designed for hundreds-to-thousands of rows. Parsing and grouping happen in the
@@ -109,14 +139,15 @@ APIs so server-side rules and rate limits are respected.
 
 ```bash
 cd apps/web
-node --experimental-strip-types --test lib/imports/imports.test.ts        # customers, vendors, bills, receipts, employees
-node --experimental-strip-types --test lib/invoices/importMapping.test.ts # sales invoices
+node --experimental-strip-types --test lib/imports/imports.test.ts                  # customers, vendors, bills, receipts, employees
+node --experimental-strip-types --test lib/imports/creditDebitNoteImports.test.ts   # credit & debit notes (all four)
+node --experimental-strip-types --test lib/invoices/importMapping.test.ts           # sales invoices
 ```
 
 ## Not yet covered (deliberately)
 
 These have create forms but were left out of this batch — add on demand:
-chart of accounts, journal entries, fixed assets, loans/FDs, credit notes,
+chart of accounts, journal entries, fixed assets, loans/FDs,
 purchase payments, firm-level accounting invoices, and **payroll monthly
 variable inputs** (the current payroll run computes from the employee master +
 statutory rules; there is no separate per-month input entity to import yet).

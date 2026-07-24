@@ -25,7 +25,12 @@ import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFo
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
-import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
+import {
+  buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS,
+  buildPurchaseDebitNotes, PURCHASE_DEBIT_NOTE_IMPORT_COLUMNS,
+  buildPurchaseCreditNotes, PURCHASE_CREDIT_NOTE_IMPORT_COLUMNS,
+  type NameRef, type PurchaseServiceRef, type OriginalDocRef,
+} from "@/lib/imports/mappers";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
@@ -405,7 +410,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   function duplicateBill(bill: PurchaseBillDetail) {
     writePurchaseBillDuplicateSeed(bill);
     setDetailId(null);
-    router.push(`/clients/${clientId}/purchases/bills/new`);
+    router.push(`/clients/${clientId}/purchases/bills/new/edit`);
   }
 
   // Cancel a RECEIVED bill: reverses its posted journal and inventory stock-in
@@ -830,7 +835,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => router.push(`/clients/${clientId}/purchases/bills/new`)}
+              onClick={() => router.push(`/clients/${clientId}/purchases/bills/new/edit`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> New Bill
@@ -1996,6 +2001,12 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<DebitNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  // Client's own Product/Service catalogue + full (not FY-scoped) bill list,
+  // needed only for the CSV import's product_service resolver and bill_no
+  // linking/is_interstate derivation — same role as PurchaseBills' own fetch.
+  const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
+  const [originalBills, setOriginalBills] = useState<OriginalDocRef[]>([]);
+  const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must show a retryable
   // error, not the "No debit notes" empty state that a genuinely empty FY shows.
@@ -2011,7 +2022,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
     try {
-      const [dnRes, vendorsRes] = await Promise.all([
+      const [dnRes, vendorsRes, servicesRes, billsRes] = await Promise.all([
         // debit_notes.vendor_id has no FK to vendors — resolve the name via the
         // vendors list below instead of a PostgREST embed.
         selectAll(() => supabase
@@ -2029,6 +2040,19 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
           .eq("is_active", true)
           .order("name")
           .order("id")),
+        selectAll(() => supabase
+          .from("service_catalogue")
+          .select("id, name, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit, kind, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+        selectAll(() => supabase
+          .from("purchase_bills")
+          .select("id, bill_no, vendor_id, is_interstate")
+          .eq("client_id", clientId)
+          .order("bill_date", { ascending: false })
+          .order("id")),
       ]);
       // M17: a failed debit-notes fetch (thrown or non-null PostgREST error) must
       // surface as retryable, not read as an empty FY (identical to having none).
@@ -2041,6 +2065,12 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
       }));
       setDebitNotes(rows);
       setVendors(vendorList);
+      setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
+      setOriginalBills(
+        ((billsRes.data ?? []) as Array<{ id: string; bill_no: string | null; vendor_id: string; is_interstate: boolean }>)
+          .filter((r) => !!r.bill_no)
+          .map((r) => ({ id: r.id, no: r.bill_no as string, partyId: r.vendor_id, isInterstate: r.is_interstate }))
+      );
     } catch {
       setDebitNotes([]);
       setLoadFailed(true);
@@ -2050,6 +2080,29 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Bulk-import handler for the CSV/XLSX modal. Maps flat rows → grouped
+   * Purchase Debit Notes via buildPurchaseDebitNotes, then POSTs each note
+   * once through the existing create endpoint (draft-only, same as a manually
+   * created note). */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const vendorRefs: NameRef[] = vendors.map((v) => ({ id: v.id, name: v.name }));
+    const serviceRefs: PurchaseServiceRef[] = services.map((s) => ({
+      id: s.id, name: s.name, description: s.description, hsn_sac: s.hsn_sac,
+      gst_rate_bps: s.gst_rate_bps, purchase_price_paise: s.purchase_price_paise, unit: s.unit,
+    }));
+    const { notes, errors } = buildPurchaseDebitNotes(rows, clientId, vendorRefs, originalBills, serviceRefs);
+    if (notes.length === 0) return { imported: 0, errors };
+    const token = await getAuthToken();
+    let imported = 0;
+    for (const note of notes) {
+      const result = await apiCall("/api/debit-notes/", "POST", note, token);
+      if (result.success) imported += 1;
+      else errors.push(result.error ?? "Bulk import failed");
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
 
   function openMenuFor(e: React.MouseEvent, dn: DebitNoteRow) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -2098,7 +2151,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   function duplicateDebitNote(dn: DebitNoteDetail) {
     writeDebitNoteDuplicateSeed(dn);
     setDetailId(null);
-    router.push(`/clients/${clientId}/purchases/debit-notes/new`);
+    router.push(`/clients/${clientId}/purchases/debit-notes/new/edit`);
   }
 
   // Bulk delete over the DataTable's selected rows. DELETE /api/debit-notes/{id}
@@ -2299,6 +2352,17 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         />
       )}
 
+      {/* Bulk import (CSV / XLSX) — reuses the existing create endpoint */}
+      {showImport && (
+        <CsvImportModal
+          title="Import Debit Notes"
+          columns={PURCHASE_DEBIT_NOTE_IMPORT_COLUMNS}
+          templateFilename="purchase_debit_notes_template"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
+
       {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={debitNotes}
@@ -2315,12 +2379,20 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         persistKey="purchases.debit-notes"
         emptyTitle={`No debit notes in FY ${financialYear}`}
         toolbarExtra={
-          <button
-            onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new`)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-          >
-            <Plus size={12} /> Create Debit Note
-          </button>
+          <>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            >
+              <Upload size={12} /> Import
+            </button>
+            <button
+              onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new/edit`)}
+              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={12} /> Create Debit Note
+            </button>
+          </>
         }
         bulkActions={bulkActions}
         rowActions={(d) => (
@@ -2373,6 +2445,10 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<PurchaseCreditNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  // See DebitNotes' identical fetch above — same import-only purpose.
+  const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
+  const [originalBills, setOriginalBills] = useState<OriginalDocRef[]>([]);
+  const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must show a retryable
   // error, not the "No credit notes" empty state that a genuinely empty FY shows.
@@ -2388,7 +2464,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
     try {
-      const [pcnRes, vendorsRes] = await Promise.all([
+      const [pcnRes, vendorsRes, servicesRes, billsRes] = await Promise.all([
         selectAll(() => supabase
           .from("purchase_credit_notes")
           .select("*, purchase_bills(bill_no, our_reference)")
@@ -2404,6 +2480,19 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
           .eq("is_active", true)
           .order("name")
           .order("id")),
+        selectAll(() => supabase
+          .from("service_catalogue")
+          .select("id, name, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit, kind, is_active")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("name")
+          .order("id")),
+        selectAll(() => supabase
+          .from("purchase_bills")
+          .select("id, bill_no, vendor_id, is_interstate")
+          .eq("client_id", clientId)
+          .order("bill_date", { ascending: false })
+          .order("id")),
       ]);
       // M17: a failed credit-notes fetch (thrown or non-null PostgREST error) must
       // surface as retryable, not read as an empty FY (identical to having none).
@@ -2416,6 +2505,12 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
       }));
       setCreditNotes(rows);
       setVendors(vendorList);
+      setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
+      setOriginalBills(
+        ((billsRes.data ?? []) as Array<{ id: string; bill_no: string | null; vendor_id: string; is_interstate: boolean }>)
+          .filter((r) => !!r.bill_no)
+          .map((r) => ({ id: r.id, no: r.bill_no as string, partyId: r.vendor_id, isInterstate: r.is_interstate }))
+      );
     } catch {
       setCreditNotes([]);
       setLoadFailed(true);
@@ -2425,6 +2520,28 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Bulk-import handler for the CSV/XLSX modal. Maps flat rows → grouped
+   * Purchase Credit Notes via buildPurchaseCreditNotes, then POSTs each note
+   * once through the existing create endpoint (draft-only). */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const vendorRefs: NameRef[] = vendors.map((v) => ({ id: v.id, name: v.name }));
+    const serviceRefs: PurchaseServiceRef[] = services.map((s) => ({
+      id: s.id, name: s.name, description: s.description, hsn_sac: s.hsn_sac,
+      gst_rate_bps: s.gst_rate_bps, purchase_price_paise: s.purchase_price_paise, unit: s.unit,
+    }));
+    const { notes, errors } = buildPurchaseCreditNotes(rows, clientId, vendorRefs, originalBills, serviceRefs);
+    if (notes.length === 0) return { imported: 0, errors };
+    const token = await getAuthToken();
+    let imported = 0;
+    for (const note of notes) {
+      const result = await apiCall("/api/purchase-credit-notes/", "POST", note, token);
+      if (result.success) imported += 1;
+      else errors.push(result.error ?? "Bulk import failed");
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
 
   function openMenuFor(e: React.MouseEvent, pcn: PurchaseCreditNoteRow) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -2470,7 +2587,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   function duplicatePcn(pcn: PurchaseCreditNoteDetail) {
     writePurchaseCreditNoteDuplicateSeed(pcn);
     setDetailId(null);
-    router.push(`/clients/${clientId}/purchases/credit-notes/new`);
+    router.push(`/clients/${clientId}/purchases/credit-notes/new/edit`);
   }
 
   // Bulk delete over the DataTable's selected rows — draft-only on the
@@ -2666,6 +2783,17 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         />
       )}
 
+      {/* Bulk import (CSV / XLSX) — reuses the existing create endpoint */}
+      {showImport && (
+        <CsvImportModal
+          title="Import Credit Notes"
+          columns={PURCHASE_CREDIT_NOTE_IMPORT_COLUMNS}
+          templateFilename="purchase_credit_notes_template"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
+
       {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={creditNotes}
@@ -2682,12 +2810,20 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         persistKey="purchases.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
         toolbarExtra={
-          <button
-            onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new`)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-          >
-            <Plus size={12} /> Create Credit Note
-          </button>
+          <>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            >
+              <Upload size={12} /> Import
+            </button>
+            <button
+              onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new/edit`)}
+              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={12} /> Create Credit Note
+            </button>
+          </>
         }
         bulkActions={bulkActions}
         rowActions={(d) => (

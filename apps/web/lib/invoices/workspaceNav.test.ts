@@ -8,7 +8,7 @@ import {
 
 test("route href builders", () => {
   assert.equal(salesListHref("CL-1"), "/clients/CL-1/sales");
-  assert.equal(newInvoiceHref("CL-1"), "/clients/CL-1/sales/invoices/new");
+  assert.equal(newInvoiceHref("CL-1"), "/clients/CL-1/sales/invoices/new/edit");
   assert.equal(editInvoiceHref("CL-1", "INV-9"), "/clients/CL-1/sales/invoices/INV-9/edit");
 });
 
