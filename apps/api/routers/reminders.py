@@ -52,7 +52,7 @@ def mark_reminder_sent(reminder_id: str, current_user: dict = Depends(rbac("remi
     reminder = reminders_repo.find_by_id(reminder_id)
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
-    if reminder.get("firm_id") and reminder["firm_id"] != firm_id:
+    if reminder.get("firm_id") != firm_id:
         raise HTTPException(status_code=404, detail="Reminder not found")
     updates = mark_sent(reminder)
     updated = reminders_repo.update(reminder_id, updates)
