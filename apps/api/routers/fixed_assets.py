@@ -303,7 +303,7 @@ def post_depreciation(
         "depreciation_posted_through":   period,
         "depreciation_fy":               fy,
         "depreciation_fy_start_accum_paise": fy_start_accum,
-    }).eq("id", asset_id).execute()
+    }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).execute()
 
     timeline_service.log(asset["client_id"], "accounting", "Depreciation Posted",
         f"{asset.get('asset_code')}: ₹{monthly//100:,} depreciation for {period}", "info")
@@ -421,7 +421,19 @@ def depreciation_schedule(
     if not db:
         return api_response(True, [])
 
-    assets = db.table("fixed_assets").select("*").eq("client_id", client_id).eq("is_disposed", False).execute().data or []
+    # task #241 fix: this used to filter only by client_id, with no firm_id
+    # check at all -- any authenticated user in ANY firm could read another
+    # firm's fixed-asset register by supplying its client_id (IDOR). Every
+    # other endpoint in this file already scopes by firm_id (list_assets,
+    # create_asset, post_depreciation, dispose_asset) -- this was the one
+    # gap.
+    assets = (
+        db.table("fixed_assets").select("*")
+        .eq("firm_id", current_user["firm_id"])
+        .eq("client_id", client_id)
+        .eq("is_disposed", False)
+        .execute().data or []
+    )
     # Projected as of the CURRENT financial year — reuses each asset's own
     # cached depreciation_fy/depreciation_fy_start_accum_paise (task #232) so
     # the figure shown here matches what the next actual posting will charge,

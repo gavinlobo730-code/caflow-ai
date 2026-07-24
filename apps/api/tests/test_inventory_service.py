@@ -200,6 +200,10 @@ class _FakeQuery:
         self.f.append(("in", k, set(vals)))
         return self
 
+    def is_(self, k, v):
+        self.f.append(("is", k, v))
+        return self
+
     def order(self, key, desc=False):
         self._order.append((key, desc))
         return self
@@ -231,6 +235,12 @@ class _FakeQuery:
                 return False
             if op == "in" and r.get(k) not in v:
                 return False
+            if op == "is":
+                is_null = v in (None, "null")
+                if is_null and r.get(k) is not None:
+                    return False
+                if not is_null and r.get(k) is not v:
+                    return False
         return True
 
     def execute(self):
@@ -1269,3 +1279,100 @@ def test_two_same_day_nrv_writedowns_for_different_items_get_distinct_journal_re
     assert len(calls) == 2, "both write-downs must post their OWN journal, not dedupe onto one"
     refs = [c["reference_no"] for c in calls]
     assert refs[0] != refs[1]
+
+
+# ── Optimistic concurrency (task #241) ──────────────────────────────────────
+# Two concurrent movements on the SAME item reading the same stale running
+# totals before either writes would previously both succeed, silently
+# dropping one movement's effect (a lost update). stock_version is a
+# compare-and-set token guarding service_catalogue's cache; _with_stock_cas_retry
+# retries the whole read-compute-write sequence on a losing race.
+
+def test_stock_version_increments_on_each_successful_movement():
+    db = _FakeDB()
+    _seed_catalogue_item(db)
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+        movement_date="2026-04-10", quantity=Decimal("10"), total_cost_paise=10_000_00,
+    )
+    assert db.store["service_catalogue"][0]["stock_version"] == 1
+    record_stock_out(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+        movement_date="2026-04-11", quantity=Decimal("2"),
+    )
+    assert db.store["service_catalogue"][0]["stock_version"] == 2
+
+
+def test_with_stock_cas_retry_retries_on_conflict_then_succeeds():
+    calls = []
+
+    def fn():
+        calls.append(1)
+        if len(calls) < 3:
+            raise inventory_service._StockCASConflict("item-1")
+        return "done"
+
+    assert inventory_service._with_stock_cas_retry(fn) == "done"
+    assert len(calls) == 3
+
+
+def test_with_stock_cas_retry_raises_409_once_exhausted():
+    from fastapi import HTTPException
+
+    def fn():
+        raise inventory_service._StockCASConflict("item-1")
+
+    with pytest.raises(HTTPException) as ei:
+        inventory_service._with_stock_cas_retry(fn, max_attempts=3)
+    assert ei.value.status_code == 409
+
+
+def test_record_stock_in_retries_and_converges_under_simulated_concurrent_write():
+    """A rival record_stock_out completes in the window between our
+    stock_version read and our ledger read (the CAS guard's read order —
+    version first, then ledger — is what makes this window safe: see the
+    comment on each _attempt() closure in domain/inventory_service.py).
+    Proves the retry actually re-reads fresh state and converges to the
+    CORRECT total, not just that it detects SOME conflict."""
+    db = _FakeDB()
+    _seed_catalogue_item(db)
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00,
+    )
+    assert db.store["service_catalogue"][0]["stock_version"] == 1
+
+    real_last_row = inventory_service._last_ledger_row
+    calls = {"n": 0}
+
+    def _hook(db_, service_catalogue_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # Rival stock-out (10 -> 9 units) lands right after our version
+            # read but before our ledger read.
+            record_stock_out(
+                db_, firm_id="firm-1", client_id="client-1", service_catalogue_id=service_catalogue_id,
+                movement_date="2026-04-02", quantity=Decimal("1"),
+            )
+        return real_last_row(db_, service_catalogue_id)
+
+    inventory_service._last_ledger_row = _hook
+    try:
+        row = record_stock_in(
+            db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
+            movement_date="2026-04-03", quantity=Decimal("5"), total_cost_paise=6_000_00,
+        )
+    finally:
+        inventory_service._last_ledger_row = real_last_row
+
+    # Must chain from the rival's post-sale total (9 units), not the stale
+    # pre-rival total (10 units) our first attempt started from.
+    assert row["running_qty_units"] == "14"   # 9 + 5, NOT 10 + 5 == 15
+    cached = db.store["service_catalogue"][0]
+    assert cached["stock_qty_units"] == "14"
+    assert cached["stock_version"] == 3   # 1 (seed) -> 2 (rival) -> 3 (retried write)
+    ledger_types = [r["movement_type"] for r in get_stock_ledger(db, "item-1")]
+    assert ledger_types == ["purchase", "sale", "purchase"]
+    # The LOSING attempt's ledger row must never have been inserted at all —
+    # only 3 rows exist, not 4 (no orphaned/half-applied movement).
+    assert len(get_stock_ledger(db, "item-1")) == 3
