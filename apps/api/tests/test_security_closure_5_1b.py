@@ -125,6 +125,9 @@ def test_f1_create_receipt_same_client_ok(receipt_engine_quiet):
     db = FakeDB()
     db.seed("client_sales_invoices", {"id": "INV-A", "firm_id": "F", "client_id": "A",
                                       "total_paise": 100000, "paid_paise": 0, "status": "issued"})
+    # task #227: create_receipt_core now rejects a customer_id that isn't
+    # found in THIS firm+client's books (previously failed open on no match).
+    db.seed("customers", {"id": "C", "firm_id": "F", "client_id": "A", "is_active": True})
     data = {"client_id": "A", "customer_id": "C", "receipt_date": "2024-06-01", "amount_paise": 100000,
             "allocations": [{"sales_invoice_id": "INV-A", "allocated_paise": 100000}]}
     out = create_receipt_core("F", data, {"auth_user_id": "u", "email": "e@x.test"}, db)

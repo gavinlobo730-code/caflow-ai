@@ -150,8 +150,8 @@ def test_payment_webhook_receipt_date_uses_ist_across_fy_boundary(monkeypatch):
                                       "customer_id": "CUST-IST", "invoice_no": "SINV-IST",
                                       "total_paise": 100000, "paid_paise": 0, "status": "issued",
                                       "deleted_at": None})
-    db.seed("customers", {"id": "CUST-IST", "firm_id": FIRM, "name": "Acme",
-                          "email": "a@acme.test", "phone": "9"})
+    db.seed("customers", {"id": "CUST-IST", "firm_id": FIRM, "client_id": CLIENT, "name": "Acme",
+                          "email": "a@acme.test", "phone": "9", "is_active": True})
 
     link = payment_service.create_link(db, FIRM, "INV-IST", actor={"auth_user_id": "u1", "email": "ca@f.test"})
 

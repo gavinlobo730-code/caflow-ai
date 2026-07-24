@@ -250,12 +250,15 @@ def update_allocations(
         # invoice total.
         for inv_id, req_amt in requested_by_invoice.items():
             chk = (db.table("client_sales_invoices")
-                   .select("id, total_paise, paid_paise, credited_paise, debit_note_paise")
+                   .select("id, status, total_paise, paid_paise, credited_paise, debit_note_paise")
                    .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", receipt_client_id)
                    .limit(1).execute())
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
             inv = chk.data[0]
+            if inv.get("status") in ("draft", "cancelled"):
+                raise HTTPException(status_code=422,
+                    detail=f"Invoice {inv_id} is {inv.get('status')} and cannot receive a payment.")
             # (total + debit notes) is the true ceiling (CGST Act §34(3)).
             outstanding = (int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
                            - int(inv.get("paid_paise") or 0)

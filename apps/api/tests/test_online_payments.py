@@ -148,7 +148,11 @@ def _seed_invoice(db, *, firm=FIRM, client=CLIENT, customer=CUSTOMER, iid=INVOIC
         "id": iid, "firm_id": firm, "client_id": client, "customer_id": customer,
         "invoice_no": f"SINV-{iid}", "total_paise": total, "paid_paise": paid,
         "status": status, "deleted_at": None})
-    db.seed("customers", {"id": customer, "firm_id": firm, "name": "Acme", "email": "a@acme.test", "phone": "9"})
+    # task #227: create_receipt_core now rejects a customer_id that isn't found
+    # in THIS firm+client's books (previously failed open on no match) — the
+    # seeded row must carry client_id for that lookup to match.
+    db.seed("customers", {"id": customer, "firm_id": firm, "client_id": client,
+                          "name": "Acme", "email": "a@acme.test", "phone": "9", "is_active": True})
 
 
 @pytest.fixture(autouse=True)

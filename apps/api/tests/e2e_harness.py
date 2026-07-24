@@ -353,6 +353,10 @@ class _Rpc:
             )
             if inv is None:
                 raise Exception(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
+            # task #227 / migration 235: a draft invoice was never issued (no AR
+            # journal exists to settle) and a cancelled one is terminal.
+            if inv.get("status") in ("draft", "cancelled"):
+                raise Exception(f"settle_receipt_atomic: invoice {inv_id} is {inv.get('status')} and cannot receive a payment")
             # A sales debit note (CGST Act §34(3)) increases what's collectible —
             # mirrors migration 211's patch to the real settle_receipt_atomic.
             total = int(inv.get("total_paise", 0)) + int(inv.get("debit_note_paise", 0) or 0)

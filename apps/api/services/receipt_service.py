@@ -142,10 +142,13 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     for a in allocations:
         inv_id = a.get("sales_invoice_id")
         inv = (db.table("client_sales_invoices")
-               .select("id, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, txn_total")
+               .select("id, status, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, txn_total")
                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
         if not inv:
             raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
+        if inv.get("status") in ("draft", "cancelled"):
+            raise HTTPException(status_code=422,
+                detail=f"Invoice {inv_id} is {inv.get('status')} and cannot receive a payment.")
         if (inv.get("txn_currency") or "INR").upper() != ccy:
             raise HTTPException(status_code=422, detail=(
                 f"Currency mismatch: receipt is {ccy} but invoice {inv_id} is billed in {inv.get('txn_currency')}."))
@@ -267,7 +270,11 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
                     break                        # CAS won
             else:
                 raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
-            alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv_id, "allocated_paise": ar_relieved})
+            # task #227: record the foreign amount too (allocated_paise alone is
+            # base-currency) so a later reversal can roll back the invoice's
+            # paid_txn by the exact amount this allocation added to it.
+            alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv_id,
+                               "allocated_paise": ar_relieved, "allocated_txn": f})
         if alloc_rows:
             db.table("receipt_allocations").insert(alloc_rows).execute()
 
@@ -497,6 +504,23 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     and, in real mode, journal_entry_id). Integer paise throughout.
     """
     client_id    = data["client_id"]
+
+    # Ownership + business guard (task #227 audit finding): checked here, BEFORE
+    # the foreign-receipt dispatch below, so a non-INR receipt can no longer
+    # bypass it entirely — the old placement (after the dispatch) meant this
+    # check never ran for any foreign-currency receipt at all. Scoped by
+    # firm+client (customers.client_id is NOT NULL — every customer belongs to
+    # exactly one client) and rejects when the customer can't be found in
+    # THIS client's books at all, not just when found-but-inactive.
+    if db is not None:
+        _cust = (db.table("customers").select("is_active")
+                 .eq("id", data["customer_id"]).eq("firm_id", firm_id or "").eq("client_id", client_id)
+                 .limit(1).execute().data)
+        if not _cust:
+            raise HTTPException(status_code=422, detail="This customer is not part of this client's books.")
+        if _cust[0].get("is_active") is False:
+            raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before recording a receipt.")
+
     # ── Multi-Currency (Phase 4): a foreign receipt runs a dedicated realized-FX
     # path — each invoice is settled at ITS frozen booking rate, the cash is taken
     # at the receipt's rate, and the difference posts to Realized FX Gain/Loss. The
@@ -548,23 +572,21 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id)
         return {**receipt, "allocations": allocations}
 
-    # Business guard: never record a receipt against a deactivated customer.
-    _cust = (db.table("customers").select("is_active")
-             .eq("id", data["customer_id"]).eq("firm_id", firm_id or "").eq("client_id", client_id)
-             .limit(1).execute().data)
-    if _cust and _cust[0].get("is_active") is False:
-        raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before recording a receipt.")
-
     # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
     # validated BEFORE the receipt is created so a foreign invoice id can never be
-    # recorded or have its paid_paise mutated.
+    # recorded or have its paid_paise mutated. A draft invoice was never issued
+    # (no AR journal exists) and a cancelled one is terminal — neither can be
+    # settled (task #227 audit finding).
     for _a in allocations:
         _inv = _a.get("sales_invoice_id")
         if _inv and int(_a.get("allocated_paise", 0) or 0) > 0:
-            chk = (db.table("client_sales_invoices").select("id")
+            chk = (db.table("client_sales_invoices").select("id, status")
                    .eq("id", _inv).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Invoice {_inv} is not part of this client's books.")
+            if chk.data[0].get("status") in ("draft", "cancelled"):
+                raise HTTPException(status_code=422,
+                    detail=f"Invoice {_inv} is {chk.data[0].get('status')} and cannot receive a payment.")
 
     # F7 hardening: validate EVERY allocation against LIVE invoice outstanding
     # BEFORE posting anything (journal or receipt). Previously this check only ran

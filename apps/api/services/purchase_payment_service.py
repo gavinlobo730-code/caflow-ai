@@ -134,6 +134,22 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     Integer paise throughout.
     """
     client_id = data["client_id"]
+
+    # Ownership + business guard (task #227 audit finding): checked here,
+    # BEFORE the foreign-payment dispatch below, so a non-INR payment can no
+    # longer bypass it entirely — the old placement (after the dispatch) meant
+    # this check never ran for any foreign-currency payment at all. Scoped by
+    # firm+client (vendors.client_id is NOT NULL — every vendor belongs to
+    # exactly one client) and rejects when the vendor can't be found in THIS
+    # client's books at all, not just when found-but-inactive.
+    if db is not None:
+        _v = (db.table("vendors").select("is_active")
+              .eq("id", data["vendor_id"]).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+        if not _v:
+            raise HTTPException(status_code=422, detail="This vendor is not part of this client's books.")
+        if _v[0].get("is_active") is False:
+            raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
+
     if db is not None and (data.get("currency") or "INR").strip().upper() != "INR":
         return create_foreign_payment_core(firm_id, data, actor, db)
 
@@ -168,12 +184,6 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         phase2_journal_service.journal_for_purchase_payment(payment, firm_id or "", client_id)
         return {**payment, "allocations": allocations}
 
-    # Business guard: never pay a deactivated vendor (mirrors create_purchase_payment).
-    _v = (db.table("vendors").select("is_active")
-          .eq("id", data["vendor_id"]).eq("firm_id", firm_id).limit(1).execute().data)
-    if _v and _v[0].get("is_active") is False:
-        raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
-
     # Ownership + status guard — validated BEFORE any posting (mirrors receipt_service's F1).
     for _a in allocations:
         _bill_id = _a.get("purchase_bill_id")
@@ -182,8 +192,14 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
                    .eq("id", _bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Bill {_bill_id} is not part of this client's books.")
-            if (chk.data[0].get("status") or "") == "cancelled":
+            _bill_status = chk.data[0].get("status") or ""
+            if _bill_status == "cancelled":
                 raise HTTPException(status_code=409, detail=f"Bill {_bill_id} is cancelled and cannot be paid.")
+            # task #227 audit finding: a draft bill was never received (no AP
+            # journal exists — see receive_purchase_bill) so there is nothing
+            # to pay yet, same class of gap as a draft sales invoice (finding #1).
+            if _bill_status == "draft":
+                raise HTTPException(status_code=409, detail=f"Bill {_bill_id} is still a draft and has not been received yet.")
 
     # Pre-validate EVERY allocation against LIVE outstanding BEFORE posting anything
     # (mirrors receipt_service's F7 hardening — a same-request over-allocation must
@@ -395,6 +411,10 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
             raise HTTPException(status_code=422, detail=f"Bill {bill_id} is not part of this client's books.")
         if (bill.get("status") or "") == "cancelled":
             raise HTTPException(status_code=409, detail=f"Bill {bill_id} is cancelled and cannot be paid.")
+        # task #227 audit finding: a draft bill was never received (no AP
+        # journal exists yet) — same class of gap as a draft sales invoice.
+        if (bill.get("status") or "") == "draft":
+            raise HTTPException(status_code=409, detail=f"Bill {bill_id} is still a draft and has not been received yet.")
         if (bill.get("txn_currency") or "INR").upper() != ccy:
             raise HTTPException(status_code=422, detail=(
                 f"Currency mismatch: payment is {ccy} but bill {bill_id} is billed in {bill.get('txn_currency')}."))
@@ -495,7 +515,11 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
                     break                        # CAS won
             else:
                 raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
-            alloc_rows.append({"purchase_payment_id": payment_id, "purchase_bill_id": bill_id, "allocated_paise": ap_relieved})
+            # task #227: record the foreign amount too (allocated_paise alone is
+            # base-currency) so a later reversal can roll back the bill's
+            # paid_txn by the exact amount this allocation added to it.
+            alloc_rows.append({"purchase_payment_id": payment_id, "purchase_bill_id": bill_id,
+                               "allocated_paise": ap_relieved, "allocated_txn": f})
         if alloc_rows:
             db.table("purchase_payment_allocations").insert(alloc_rows).execute()
 
@@ -627,6 +651,10 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
         bill = chk.data[0]
         if (bill.get("status") or "") == "cancelled":
             raise HTTPException(status_code=409, detail=f"Bill {bill_id} is cancelled and cannot be paid.")
+        # task #227 audit finding: a draft bill was never received (no AP
+        # journal exists yet) — same class of gap as a draft sales invoice.
+        if (bill.get("status") or "") == "draft":
+            raise HTTPException(status_code=409, detail=f"Bill {bill_id} is still a draft and has not been received yet.")
         effective_payable = int(bill.get("net_payable_paise") or 0) + int(bill.get("credit_note_paise") or 0)
         outstanding = (effective_payable - int(bill.get("debited_paise") or 0)
                        - int(bill.get("paid_paise") or 0) + prior_by_bill.get(bill_id, 0))
