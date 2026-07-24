@@ -111,11 +111,21 @@ def ensure_customer_link(firm_id: str, practice_client_id: str, internal_client_
     if existing.data:
         return existing.data[0]["internal_customer_id"]
 
+    # task #230 audit finding: defense-in-depth twin of the router's
+    # assert_client_access(body.client_id) guard — this read was previously
+    # unscoped by firm_id, so ANY client id (including another firm's) would
+    # resolve here and its real PAN/GSTIN would be copied into a customer row
+    # in THIS firm's books. Scoped to the caller's own firm; a client that
+    # doesn't belong to this firm must fail loud, not silently fall back to
+    # "Client" with blank identifiers.
     pc = (
         db.table("clients").select("client_name, gstin, pan, state_code")
-        .eq("id", practice_client_id).limit(1).execute()
+        .eq("id", practice_client_id).eq("firm_id", firm_id).limit(1).execute()
     )
-    pcd = pc.data[0] if pc.data else {}
+    if not pc.data:
+        raise HTTPException(status_code=404,
+                            detail="Billing schedule's client not found for this firm.")
+    pcd = pc.data[0]
     cust = db.table("customers").insert({
         "firm_id": firm_id,
         "client_id": internal_client_id,           # customer lives in the internal client's books

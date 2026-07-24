@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from models.common import api_response
+from core.authz import assert_client_access
 from core.permissions import rbac
 from core.ist_clock import ist_today
 from domain.income_tax.itr_engine import (
@@ -498,6 +499,14 @@ def save_advance_tax(
     client. Interest itself is never stored (it is derived, not a fact);
     call /advance-tax/compute for the current computed breakdown.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    # task #230 audit finding: client_id was caller-supplied and never
+    # checked against the caller's firm. Combined with the (now-fixed, see
+    # migration 238) firm_id-blind UNIQUE(client_id, financial_year,
+    # installment_number), any authenticated income-tax user could upsert
+    # against ANOTHER firm's client_id, silently overwriting that firm's
+    # real advance-tax payment record (amount/date/challan) with attacker
+    # values and reassigning it to their own firm_id.
+    assert_client_access(current_user, req.client_id)
     db = _db()
     due_dates = dict(installment_schedule(req.fy))
     by_number = {i.installment_number: i for i in req.installments}
@@ -519,5 +528,5 @@ def save_advance_tax(
     if not db:
         return api_response(True, rows)
     result = (db.table("advance_tax_payments")
-              .upsert(rows, on_conflict="client_id,financial_year,installment_number").execute())
+              .upsert(rows, on_conflict="firm_id,client_id,financial_year,installment_number").execute())
     return api_response(True, result.data or rows)
