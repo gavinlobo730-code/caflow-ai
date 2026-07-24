@@ -122,7 +122,12 @@ export default function WorkflowsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no workflows exist" — a masked
+  // failure previously rendered "No workflows found — Create a workflow to
+  // start automating," which is false when the fetch simply failed.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const [tab, setTab] = useState<"templates" | "instances" | "analytics">("templates");
 
   const load = useCallback(async () => {
@@ -137,8 +142,10 @@ export default function WorkflowsPage() {
       ]);
       setTemplates(tplRes.data?.templates || []);
       setAnalytics(analyticsRes.data || null);
-    } catch {
+      setLoadError(null);
+    } catch (e) {
       setTemplates([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load workflows. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -148,9 +155,12 @@ export default function WorkflowsPage() {
 
   const toggle = async (id: string) => {
     setToggling(id);
+    setToggleError(null);
     try {
       await api.workflowEngine.toggleTemplate(id);
       setTemplates((prev: WorkflowTemplate[]) => prev.map((t: WorkflowTemplate) => t.id === id ? { ...t, is_active: !t.is_active } : t));
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : "Couldn't update the workflow. Please try again.");
     } finally {
       setToggling(null);
     }
@@ -253,9 +263,20 @@ export default function WorkflowsPage() {
         )}
 
         {/* Templates Tab */}
+        {toggleError && (
+          <div className="mb-3 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-red-700">{toggleError}</p>
+            <button onClick={() => setToggleError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
+          </div>
+        )}
         {tab === "templates" && (
           loading ? (
             <div className="text-center py-16 text-[#94A3B8]">Loading workflows...</div>
+          ) : loadError ? (
+            <div className="text-center py-16">
+              <p className="text-sm text-red-600 font-medium">{loadError}</p>
+              <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-16">
               <Zap size={40} className="mx-auto text-[#CBD5E1] mb-3" />
@@ -378,21 +399,28 @@ function WorkflowInstancesTab() {
   const [instances, setInstances] = useState<WorkflowInstance[]>([]);
   const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no runs yet" — a masked failure
+  // previously rendered "No workflow runs found" identically to a
+  // genuinely empty instance log.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const params: Record<string, string> = {};
-        if (status !== "all") params.status = status;
-        const res = (await api.workflowEngine.listInstances(params)) as { data: { instances: WorkflowInstance[] } };
-        setInstances(res.data?.instances || []);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, string> = {};
+      if (status !== "all") params.status = status;
+      const res = (await api.workflowEngine.listInstances(params)) as { data: { instances: WorkflowInstance[] } };
+      setInstances(res.data?.instances || []);
+      setLoadError(null);
+    } catch (e) {
+      setInstances([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load workflow runs. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }, [status]);
+
+  useEffect(() => { load(); }, [load]);
 
   const STATUS_STYLES: Record<string, string> = {
     completed: "bg-green-100 text-green-700",
@@ -419,6 +447,11 @@ function WorkflowInstancesTab() {
       </div>
       {loading ? (
         <div className="text-center py-12 text-[#94A3B8]">Loading...</div>
+      ) : loadError ? (
+        <div className="text-center py-12">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+        </div>
       ) : instances.length === 0 ? (
         <div className="text-center py-12 text-[#94A3B8]">No workflow runs found</div>
       ) : (

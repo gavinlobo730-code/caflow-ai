@@ -154,8 +154,8 @@ export default function ExecutiveDashboardPage() {
     try {
       const res = (await api.copilotV2.executiveDashboard()) as { data: ExecutiveDashboard };
       setData(res.data);
-    } catch {
-      setError("Failed to load executive dashboard");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load executive dashboard");
     } finally {
       setLoading(false);
     }

@@ -48,7 +48,12 @@ export default function ApprovalsPage() {
   const [approvalsCapped, setApprovalsCapped] = useState(false);
   const [status, setStatus] = useState("pending");
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no pending approvals" — a masked
+  // failure previously rendered "No approvals" with a green checkmark, a
+  // false "all caught up" signal on a compliance-approval queue.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [responding, setResponding] = useState<string | null>(null);
+  const [respondError, setRespondError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -60,6 +65,10 @@ export default function ApprovalsPage() {
       const rows = res.data?.approvals || [];
       setApprovals(rows);
       setApprovalsCapped(rows.length === APPROVALS_FETCH_LIMIT);
+      setLoadError(null);
+    } catch (e) {
+      setApprovals([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load approvals. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -69,9 +78,12 @@ export default function ApprovalsPage() {
 
   const respond = async (id: string, decision: "approved" | "rejected") => {
     setResponding(id);
+    setRespondError(null);
     try {
       await api.workflowEngine.respondApproval(id, { decision, response_notes: notes[id] || undefined });
       await load();
+    } catch (e) {
+      setRespondError(e instanceof Error ? e.message : "Couldn't record your response. Please try again.");
     } finally {
       setResponding(null);
     }
@@ -136,9 +148,22 @@ export default function ApprovalsPage() {
           </button>
         </div>
 
+        {respondError && (
+          <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+            <p className="text-xs text-red-700">{respondError}</p>
+            <button onClick={() => setRespondError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
+          </div>
+        )}
+
         {/* Approvals list */}
         {loading ? (
           <div className="text-center py-16 text-[#94A3B8]">Loading approvals...</div>
+        ) : loadError ? (
+          <div className="text-center py-16">
+            <AlertTriangle size={40} className="mx-auto text-red-300 mb-3" />
+            <p className="text-sm text-red-600 font-medium">{loadError}</p>
+            <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+          </div>
         ) : approvals.length === 0 ? (
           <div className="text-center py-16">
             <CheckCircle2 size={40} className="mx-auto text-green-300 mb-3" />

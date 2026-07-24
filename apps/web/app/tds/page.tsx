@@ -365,11 +365,22 @@ export default function TDSPage() {
   const [showAddChallan, setShowAddChallan] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [tableError, setTableError] = useState(false);
+  // The real Postgres error message, distinct from tableError's narrower
+  // "the tds_deductions table itself is missing" case — without this, a
+  // failed firm-id lookup or tds_returns/tds_certificates query silently
+  // left "Pending Returns"/"Pending Certificates" at their initial empty
+  // state with no indication anything went wrong.
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const fid = await getFirmId().catch(() => "");
+        let fid = "";
+        try {
+          fid = await getFirmId();
+        } catch (e) {
+          setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
+        }
         setFirmId(fid);
         if (!fid) return;
         const sb = getSupabaseClient();
@@ -380,6 +391,7 @@ export default function TDSPage() {
           .order("payment_date", { ascending: false });
         if (error) {
           setTableError(true);
+          setLoadErrorMessage(prev => prev ?? error.message);
         } else {
           setDeductions((data ?? []) as TDSDeduction[]);
         }
@@ -389,8 +401,18 @@ export default function TDSPage() {
           sb.from("tds_returns").select("*").eq("firm_id", fid).order("due_date", { ascending: false }),
           sb.from("tds_certificates").select("*").eq("firm_id", fid).order("issue_date", { ascending: false }),
         ]);
-        if (!retRes.error) setReturns((retRes.data ?? []) as TDSReturn[]);
-        if (!certRes.error) setCertificates((certRes.data ?? []) as TDSCertificate[]);
+        if (retRes.error) {
+          setTableError(true);
+          setLoadErrorMessage(prev => prev ?? retRes.error!.message);
+        } else {
+          setReturns((retRes.data ?? []) as TDSReturn[]);
+        }
+        if (certRes.error) {
+          setTableError(true);
+          setLoadErrorMessage(prev => prev ?? certRes.error!.message);
+        } else {
+          setCertificates((certRes.data ?? []) as TDSCertificate[]);
+        }
       } finally {
         setLoading(false);
       }
@@ -467,10 +489,12 @@ export default function TDSPage() {
       </div>
 
       {tableError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex gap-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <p className="text-sm text-amber-700">
-            TDS deductions table not found. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">tds_deductions</code> table.
+            {loadErrorMessage ?? (
+              <>TDS deductions table not found. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">tds_deductions</code> table.</>
+            )}
           </p>
         </div>
       )}
