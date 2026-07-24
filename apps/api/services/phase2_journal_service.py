@@ -1062,9 +1062,20 @@ class Phase2JournalService:
             depn_exp_id  = self._find_account(db, firm_id, client_id, "%Depreciation Expense%")
             accum_dep_id = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
 
+            # task #232 audit finding: this entry used to be dated "today"
+            # (whenever the CA happened to click Post) instead of the PERIOD
+            # it actually depreciates — misdating the expense into whatever
+            # month posting happened to occur in, not the month it belongs
+            # to. period is always "YYYY-MM" (routers/fixed_assets.py
+            # validates the shape before calling this); dated to that
+            # period's last calendar day.
+            import calendar
+            period_year, period_month = int(period[:4]), int(period[5:7])
+            entry_date = f"{period}-{calendar.monthrange(period_year, period_month)[1]:02d}"
+
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
-                entry_date=str(datetime.now(timezone.utc).date()),
+                entry_date=entry_date,
                 reference_no=f"FA-DEPN-{asset.get('asset_code', asset['id'][:8])}-{period}",
                 narration=f"Depreciation on {asset['asset_name']} for {period}",
                 entry_type="Journal",

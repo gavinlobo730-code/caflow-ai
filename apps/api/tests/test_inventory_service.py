@@ -4,6 +4,7 @@ read-modify-write cycle. Every arithmetic path here is a financial
 calculation (CLAUDE.md: every one needs a unit test), including the rounding
 edge cases moving-average costing is prone to.
 """
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -29,6 +30,7 @@ from domain.inventory_service import (
     _compute_nrv_writedown,
     record_nrv_writedown,
     apply_nrv_writedown,
+    _movement_journal_ref,
 )
 
 
@@ -236,7 +238,13 @@ class _FakeQuery:
         if self._insert_rows is not None:
             out = []
             for r in self._insert_rows:
-                row = {"id": f"{self.t}-{len(rows_table)}", **r}
+                # A real (uuid4-like) id — not a "{table}-{index}" placeholder —
+                # matters for task #232's reference_no tests: a long table name
+                # (e.g. "inventory_stock_ledger") made every row's id share the
+                # SAME first 8 characters regardless of index, which is exactly
+                # the kind of accidental collision the fix under test guards
+                # against; a real id must actually vary there.
+                row = {"id": str(uuid.uuid4()), **r}
                 rows_table.append(row)
                 out.append(row)
             return _Res(out)
@@ -1181,3 +1189,83 @@ def test_apply_nrv_writedown_returns_none_without_posting_when_not_needed(monkey
     )
     assert result is None
     assert len(get_stock_ledger(db, "good-1")) == 1  # only the opening row
+
+
+# ── Task #232: manual-adjustment/NRV journal reference_no collision ─────────
+# routers/inventory.py defaults reference_no to just the date when the CA
+# doesn't supply one ("ADJ-2026-04-15") — with no item/movement identifier,
+# two same-day adjustments (different items, or the same item twice) produced
+# IDENTICAL journal reference_no values, and _create_journal's (firm, client,
+# reference_no, entry_date) idempotency guard silently deduped the second
+# journal onto the first: its value never posted to the General Ledger even
+# though the stock ledger recorded the movement correctly. The fix derives
+# the JOURNAL reference from the ledger row's own unique id (mirrors
+# apply_purchase_to_inventory / purchase_bill_journal_ref's existing fix for
+# the identical bug class) while the human-facing reference_no (CA-supplied
+# or the router's date-based default) still lands on the ledger row itself.
+
+def test_movement_journal_ref_is_unique_per_movement_id():
+    assert _movement_journal_ref("ADJ", "abcdef12-3456") == "ADJ-ABCDEF12"
+    assert _movement_journal_ref("ADJ", "abcdef12-3456") != _movement_journal_ref("ADJ", "00000000-0000")
+
+
+def test_two_same_day_adjustments_for_different_items_get_distinct_journal_refs(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    _seed_catalogue_item(db, item_id="good-2", kind="good", name="Gadget")
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening")
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-2",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=5_000_00, movement_type="opening")
+
+    calls = _capture_journal_calls(monkeypatch, {"%Inventor%": "acct-inventory", "%Miscellaneous Income%": "acct-income"})
+
+    # Both adjustments share the SAME router-supplied reference_no (as they
+    # would with the router's date-only default, "ADJ-2026-04-15", for two
+    # different items adjusted the same day) — the journal ref must still differ.
+    apply_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", quantity=Decimal("1"), direction="increase",
+        reference_no="ADJ-2026-04-15",
+    )
+    apply_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-2",
+        movement_date="2026-04-15", quantity=Decimal("1"), direction="increase",
+        reference_no="ADJ-2026-04-15",
+    )
+
+    assert len(calls) == 2, "both adjustments must post their OWN journal, not dedupe onto one"
+    refs = [c["reference_no"] for c in calls]
+    assert refs[0] != refs[1]
+
+    # The ledger rows themselves still keep the human-facing (colliding)
+    # reference_no — only the JOURNAL reference had to become unique.
+    ledger1 = get_stock_ledger(db, "good-1")
+    ledger2 = get_stock_ledger(db, "good-2")
+    assert ledger1[-1]["reference_no"] == "ADJ-2026-04-15"
+    assert ledger2[-1]["reference_no"] == "ADJ-2026-04-15"
+
+
+def test_two_same_day_nrv_writedowns_for_different_items_get_distinct_journal_refs(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    _seed_catalogue_item(db, item_id="good-2", kind="good", name="Gadget")
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening")
+    record_stock_in(db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-2",
+                    movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening")
+
+    calls = _capture_journal_calls(monkeypatch, {"%Inventor%": "acct-inventory", "%Write%down%": "acct-writedown"})
+
+    apply_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", nrv_per_unit_paise=700_00, reference_no="NRV-2026-04-15",
+    )
+    apply_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-2",
+        movement_date="2026-04-15", nrv_per_unit_paise=700_00, reference_no="NRV-2026-04-15",
+    )
+
+    assert len(calls) == 2, "both write-downs must post their OWN journal, not dedupe onto one"
+    refs = [c["reference_no"] for c in calls]
+    assert refs[0] != refs[1]
