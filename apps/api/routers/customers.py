@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.parties import CustomerIn, CustomerUpdateIn
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from core.exceptions import NotFoundError
 from services.audit_service import log_event
@@ -149,6 +150,14 @@ def create_customer(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     try:
+        # task #231 audit finding: client_id was never checked against the
+        # caller's firm — a customer could be created stamped with the
+        # caller's OWN firm_id but pointing at ANOTHER firm's client_id,
+        # corrupting that firm's customer list and, if opening_balance_paise
+        # was set, leaking that firm's real opening balances into a journal
+        # the caller's own firm can post (see opening_balance_service's
+        # _fetch_masters, now also firm-scoped as defense-in-depth).
+        assert_client_access(current_user, data.client_id)
         payload = data.model_dump()
         payload["firm_id"] = current_user.get("firm_id")
         payload["is_active"] = True
@@ -297,6 +306,13 @@ def bulk_create_customers(
                 continue
             except Exception as e:
                 errors.append({"index": idx, "name": item.get("name"), "error": str(e)})
+                continue
+            # task #231 audit finding: same client_id ownership gap as the
+            # single-create endpoint — checked per-item so one bad row is
+            # rejected without 404ing the whole batch (mirrors the existing
+            # per-item error-collection design here).
+            if not can_access_client(current_user, parsed.client_id):
+                errors.append({"index": idx, "name": item.get("name"), "error": "Client not found for this firm."})
                 continue
             payload = parsed.model_dump()
             payload["firm_id"] = firm_id
