@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
 
 from models.common import api_response
+from core.authz import assert_client_access
 from core.permissions import rbac
 from services import billing_service
 from services import collections_service
@@ -74,6 +75,13 @@ def list_schedules(active_only: bool = Query(False),
 @router.post("/schedules")
 def create_schedule(body: BillingScheduleIn,
                     current_user: dict = Depends(rbac("billing", "write"))):
+    # task #230 audit finding: client_id is caller-supplied and was never
+    # checked against the caller's firm — a schedule created against another
+    # firm's client_id would later (on /generate or /run) read that OTHER
+    # firm's real client PAN/GSTIN unscoped (services/billing_service.py's
+    # ensure_customer_link) and persist it into a customer row in THIS firm's
+    # own books. Mirrors routers/engagements.py's identical body.client_id guard.
+    assert_client_access(current_user, body.client_id)
     sched = billing_service.create_schedule(
         current_user["firm_id"], body.model_dump(), current_user.get("auth_user_id"))
     return api_response(True, sched)
