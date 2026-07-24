@@ -198,6 +198,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<FirmForm>(EMPTY_FORM);
   const [firmId, setFirmId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -276,9 +277,11 @@ export default function SettingsPage() {
         state: firmData.state ?? "",
         pincode: firmData.pincode ?? "",
       });
+      setLoadError(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load firm data";
       setToast({ message: msg, type: "error" });
+      setLoadError(msg);
     } finally {
       setLoading(false);
     }
@@ -437,6 +440,17 @@ export default function SettingsPage() {
           <Building2 size={15} className="text-[#64748B]" />
           <h2 className="text-sm font-semibold text-[#0F172A]">Firm Profile</h2>
         </div>
+
+        {loadError && !loading && (
+          <div className="mx-5 mt-4 flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-red-700">
+              Couldn&apos;t load your saved firm profile — the form below may not reflect what&apos;s saved. {loadError}
+            </p>
+            <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+              Retry
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="px-5 py-5"><FormSkeleton fields={6} /></div>

@@ -149,6 +149,7 @@ export default function WorkAllocationPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clientNamesError, setClientNamesError] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [reassignTask, setReassignTask] = useState<TaskItem | null>(null);
@@ -160,11 +161,17 @@ export default function WorkAllocationPage() {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
 
+      let clientsFailed = false;
       const [membersRes, tasksRes, clientList] = await Promise.all([
         sb.from("users").select("id, full_name, email, role").eq("firm_id", firmId).eq("is_active", true),
         sb.from("tasks").select("id, title, client_id, due_date, priority, status, assignee_id").eq("firm_id", firmId).neq("status", "completed"),
-        getClients().catch(() => [] as Client[]),
+        getClients().catch((e) => {
+          clientsFailed = true;
+          setClientNamesError(e instanceof Error ? e.message : "Couldn't load client names.");
+          return [] as Client[];
+        }),
       ]);
+      if (!clientsFailed) setClientNamesError(null);
 
       const memberList: Member[] = (membersRes.data ?? []).map((m: Member) => ({
         id: m.id,
@@ -228,6 +235,11 @@ export default function WorkAllocationPage() {
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+      {!error && clientNamesError && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
+          Client names couldn&apos;t be loaded ({clientNamesError}) — tasks below may be missing their client name.
+        </div>
       )}
 
       {/* Filters */}

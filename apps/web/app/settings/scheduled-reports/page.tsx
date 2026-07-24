@@ -78,6 +78,7 @@ export default function ScheduledReportsPage() {
   const [schedules, setSchedules] = useState<ScheduledReport[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -98,7 +99,7 @@ export default function ScheduledReportsPage() {
       const supabase = getSupabaseClient();
       const firmId = await getFirmId();
 
-      const [{ data: srRaw }, { data: cl }] = await Promise.all([
+      const [{ data: srRaw, error: srError }, { data: cl, error: clError }] = await Promise.all([
         supabase
           .from("scheduled_reports")
           .select("id, client_id, report_type, frequency, recipients, day_of_month, is_active, last_sent_at, created_at")
@@ -110,6 +111,8 @@ export default function ScheduledReportsPage() {
           .eq("firm_id", firmId)
           .order("client_name"),
       ]);
+      if (srError) throw new Error(srError.message);
+      if (clError) throw new Error(clError.message);
 
       // Build client lookup
       const clientMap: Record<string, string> = {};
@@ -130,8 +133,9 @@ export default function ScheduledReportsPage() {
 
       setSchedules(mapped);
       setClients(cl ?? []);
+      setLoadError(null);
     } catch (e) {
-      console.error("loadData:", e);
+      setLoadError(e instanceof Error ? e.message : "Failed to load scheduled reports.");
     } finally {
       setLoading(false);
     }
@@ -239,6 +243,17 @@ export default function ScheduledReportsPage() {
         <div className="text-center py-12 flex items-center justify-center gap-2 text-[#94A3B8]">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span className="text-sm">Loading schedules…</span>
+        </div>
+      ) : loadError ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-14 text-center">
+          <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button
+            onClick={() => loadData()}
+            className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+          >
+            Retry
+          </button>
         </div>
       ) : schedules.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-14 text-center">

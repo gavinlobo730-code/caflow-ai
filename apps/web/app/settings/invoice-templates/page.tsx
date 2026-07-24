@@ -205,6 +205,7 @@ export default function InvoiceTemplatesPage() {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -216,8 +217,11 @@ export default function InvoiceTemplatesPage() {
     try {
       const res = await api.invoiceTemplates.list() as ApiResp<{ templates: InvoiceTemplate[] }>;
       if (res.success) setTemplates(res.data.templates ?? []);
-    } catch {
-      showToast("Failed to load templates", "error");
+      setLoadError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load templates";
+      showToast(msg, "error");
+      setLoadError(msg);
     } finally {
       setLoading(false);
     }
@@ -272,6 +276,16 @@ export default function InvoiceTemplatesPage() {
 
         {loading ? (
           <div className="py-12 text-center text-sm text-[#94A3B8]">Loading templates…</div>
+        ) : loadError ? (
+          <div className="py-12 text-center space-y-3">
+            <p className="text-sm text-red-600 font-medium">{loadError}</p>
+            <button
+              onClick={() => load()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-sm text-[#334155]"
+            >
+              Retry
+            </button>
+          </div>
         ) : templates.length === 0 ? (
           <div className="py-12 text-center space-y-3">
             <p className="text-sm text-[#64748B]">No invoice templates yet.</p>

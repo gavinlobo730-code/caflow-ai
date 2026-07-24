@@ -86,8 +86,13 @@ export default function TimeTrackingPage() {
   }, []);
 
   const loadClients = useCallback(async () => {
-    const list = await getClients().catch(() => [] as Client[]);
-    setClients(list);
+    try {
+      const list = await getClients();
+      setClients(list);
+    } catch (e) {
+      setClients([]);
+      setError(e instanceof Error ? e.message : "Failed to load clients");
+    }
   }, []);
 
   useEffect(() => {

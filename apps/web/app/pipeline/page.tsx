@@ -256,15 +256,11 @@ async function apiUpdateLead(lead: Lead): Promise<Lead> {
 
 async function apiDeleteLead(id: string): Promise<void> {
   // Backend has no DELETE endpoint — use PATCH to mark as deleted via a special stage
-  // We optimistically remove from UI; ignore backend errors gracefully
-  try {
-    await apiFetch(`/api/lifecycle/leads/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ stage: "_deleted" }),
-    });
-  } catch {
-    // non-fatal
-  }
+  const json = await apiFetch(`/api/lifecycle/leads/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ stage: "_deleted" }),
+  });
+  if (!json.success) throw new Error(json.error ?? "Failed to delete lead");
 }
 
 // ---------------------------------------------------------------------------

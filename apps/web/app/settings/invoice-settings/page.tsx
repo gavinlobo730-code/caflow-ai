@@ -76,6 +76,7 @@ export default function InvoiceSettingsPage() {
   const { user } = useAuth();
   const [form, setForm] = useState<InvoiceSettings>(DEFAULT);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -89,8 +90,11 @@ export default function InvoiceSettingsPage() {
       if (res.success && res.data.invoice_settings && Object.keys(res.data.invoice_settings).length > 0) {
         setForm({ ...DEFAULT, ...res.data.invoice_settings });
       }
-    } catch {
-      showToast("Failed to load invoice settings", "error");
+      setLoadError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load invoice settings";
+      showToast(msg, "error");
+      setLoadError(msg);
     } finally {
       setLoading(false);
     }
@@ -153,6 +157,17 @@ export default function InvoiceSettingsPage() {
           <h1 className="text-xl font-semibold text-[#0F172A]">Invoice Settings</h1>
           <p className="text-sm text-[#64748B] mt-0.5">Configure invoice numbering, payment details, and footer text.</p>
         </div>
+
+        {loadError && !loading && (
+          <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-red-700">
+              Couldn&apos;t load your saved invoice settings — showing defaults. {loadError}
+            </p>
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* ── Invoice Numbering ────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">

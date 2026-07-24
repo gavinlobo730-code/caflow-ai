@@ -310,23 +310,18 @@ export default function OnboardingPage() {
       const name = firmForm.name.trim() || stash.firmName || "";
       if (!name) return null;
       const partner = ownerName.trim() || stash.firmName || user.email;
-      try {
-        const resp = await api.account.createFirm({
-          firm_name: name,
-          firm_email: user.email,
-          partner_name: partner,
-          ...extra,
-        });
-        const newId = resp?.data?.firm?.id ?? null;
-        if (!newId) return null;
-        if (typeof window !== "undefined") localStorage.removeItem("practicesync_signup");
-        setFirmId(newId);
-        await refreshUserContext();
-        return newId;
-      } catch (e) {
-        console.error("createFirm failed:", e);
-        return null;
-      }
+      const resp = await api.account.createFirm({
+        firm_name: name,
+        firm_email: user.email,
+        partner_name: partner,
+        ...extra,
+      });
+      const newId = resp?.data?.firm?.id ?? null;
+      if (!newId) throw new Error(resp?.error ?? "Firm creation did not return a firm ID.");
+      if (typeof window !== "undefined") localStorage.removeItem("practicesync_signup");
+      setFirmId(newId);
+      await refreshUserContext();
+      return newId;
     },
     [firmId, user, firmForm.name, ownerName, refreshUserContext],
   );
@@ -376,7 +371,14 @@ export default function OnboardingPage() {
   async function finish() {
     // A firm must exist before entering the app, or AuthGuard will bounce the
     // (firm-less) user straight back to onboarding.
-    const id = firmId ?? (await ensureFirmExists());
+    let id: string | null;
+    try {
+      id = firmId ?? (await ensureFirmExists());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create your firm. Please try again.");
+      setStep(2);
+      return;
+    }
     if (!id) {
       setError("Please enter your firm name (Step 2) before continuing.");
       setStep(2);
@@ -539,7 +541,7 @@ export default function OnboardingPage() {
           city: firmForm.city.trim() || undefined,
           state: firmForm.state || undefined,
         });
-        if (!id) { setError("Could not create your firm. Please check the firm name and try again."); return; }
+        if (!id) { setError("Please enter your firm name and try again."); return; }
         setStep(3);
         return;
       }

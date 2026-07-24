@@ -20,16 +20,20 @@ export default function TasksPage() {
   const { clientId } = useClientNav();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => {
+  const load = () => {
     if (!clientId || clientId === "_placeholder") return;
+    setLoading(true);
     getTasks({ clientId, limit: 100 })
-      .catch(() => [] as Task[])
-      .then(setTasks)
+      .then((t) => { setTasks(t); setLoadError(null); })
+      .catch((e) => { setTasks([]); setLoadError(e instanceof Error ? e.message : "Couldn't load tasks."); })
       .finally(() => setLoading(false));
-  }, [clientId]);
+  };
+
+  useEffect(load, [clientId]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -40,6 +44,13 @@ export default function TasksPage() {
         <CardContent>
           {loading ? (
             <div className="h-32 animate-pulse bg-[#F8FAFC] rounded" />
+          ) : loadError ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-600 font-medium">{loadError}</p>
+              <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+                Retry
+              </button>
+            </div>
           ) : tasks.length === 0 ? (
             <p className="text-sm text-[#94A3B8] text-center py-8">No tasks for this client</p>
           ) : (

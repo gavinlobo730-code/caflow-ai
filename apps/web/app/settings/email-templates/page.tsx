@@ -232,6 +232,7 @@ export default function EmailTemplatesPage() {
     reminder: null,
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error") => setToast({ message, type });
@@ -250,8 +251,11 @@ export default function EmailTemplatesPage() {
         }
         setTemplates(map);
       }
-    } catch {
-      showToast("Failed to load email templates", "error");
+      setLoadError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load email templates";
+      showToast(msg, "error");
+      setLoadError(msg);
     } finally {
       setLoading(false);
     }
@@ -279,6 +283,17 @@ export default function EmailTemplatesPage() {
           <h1 className="text-xl font-semibold text-[#0F172A]">Email Templates</h1>
           <p className="text-sm text-[#64748B] mt-0.5">Customize the emails sent to clients for invoices, engagements, and reminders.</p>
         </div>
+
+        {loadError && !loading && (
+          <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-red-700">
+              Couldn&apos;t load your saved templates — showing defaults. {loadError}
+            </p>
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+              Retry
+            </button>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           {/* Tabs */}

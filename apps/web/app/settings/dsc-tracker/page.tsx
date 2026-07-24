@@ -6,7 +6,7 @@
  * and Income Tax returns. Expire every 1-2 years.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
@@ -190,23 +190,24 @@ function AddDSCModal({ onClose, onAdded }: {
 export default function DSCTrackerPage() {
   const [dscs, setDscs] = useState<DSCRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tableError, setTableError] = useState(false);
+  const [tableError, setTableError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        // firm_id is derived server-side from the caller's JWT — no need to resolve it here
-        const res = await apiFetch("/api/dsc");
-        setDscs((res.data?.dsc_records ?? []) as DSCRecord[]);   // real data only; empty firm → empty state
-      } catch {
-        setTableError(true);
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      // firm_id is derived server-side from the caller's JWT — no need to resolve it here
+      const res = await apiFetch("/api/dsc");
+      setDscs((res.data?.dsc_records ?? []) as DSCRecord[]);   // real data only; empty firm → empty state
+      setTableError(null);
+    } catch (e) {
+      setTableError(e instanceof Error ? e.message : "Couldn't load DSC records.");
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const expiringIn30 = dscs.filter(d => { const days = getDaysRemaining(d.expiry_date); return days >= 0 && days <= 30; }).length;
   const expiringIn90 = dscs.filter(d => { const days = getDaysRemaining(d.expiry_date); return days >= 0 && days <= 90; }).length;
@@ -235,9 +236,15 @@ export default function DSCTrackerPage() {
       )}
 
       {tableError && (
-        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700">DSC records table not found — showing sample data. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">dsc_records</code> table.</p>
+        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-red-700 font-medium">Couldn&apos;t load DSC records.</p>
+            <p className="text-xs text-red-600 mt-0.5">{tableError}</p>
+          </div>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+            Retry
+          </button>
         </div>
       )}
 

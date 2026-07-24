@@ -42,6 +42,7 @@ export default function ChecklistPage() {
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -91,8 +92,9 @@ export default function ChecklistPage() {
       const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { status: nextStatus });
       if (!res.success) throw new Error(res.error ?? "Failed to update");
       setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
-    } catch {
-      // silent — reload
+      setActionError(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update status");
       await load();
     } finally {
       setUpdatingId(null);
@@ -106,7 +108,9 @@ export default function ChecklistPage() {
       const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { status: "not_applicable" });
       if (!res.success) throw new Error(res.error ?? "Failed to update");
       setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
-    } catch {
+      setActionError(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to mark not applicable");
       await load();
     } finally {
       setUpdatingId(null);
@@ -121,8 +125,9 @@ export default function ChecklistPage() {
       if (!res.success) throw new Error(res.error ?? "Failed to save notes");
       setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
       setEditingNotes((prev) => { const n = { ...prev }; delete n[item.id]; return n; });
-    } catch {
-      // ignore
+      setActionError(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save notes");
     } finally {
       setUpdatingId(null);
     }
@@ -177,6 +182,12 @@ export default function ChecklistPage() {
 
   return (
     <div className="p-6 space-y-5 max-w-3xl">
+      {actionError && (
+        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 text-sm text-red-700 flex items-center justify-between gap-3">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
+        </div>
+      )}
       {/* Progress bar */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
         <div className="flex items-center justify-between mb-2">

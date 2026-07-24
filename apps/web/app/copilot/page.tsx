@@ -148,6 +148,7 @@ export default function CopilotPage() {
   // congratulatory message, not just an empty list).
   const [conversationsError, setConversationsError] = useState<string | null>(null);
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -193,7 +194,10 @@ export default function CopilotPage() {
     try {
       const res = (await api.copilotV2.getConversation(convId)) as { data: Conversation & { messages: Message[] } };
       setMessages(res.data?.messages || []);
-    } catch {}
+      setChatError(null);
+    } catch (e) {
+      setChatError(e instanceof Error ? e.message : "Couldn't open conversation.");
+    }
   };
 
   const newConversation = async () => {
@@ -203,7 +207,10 @@ export default function CopilotPage() {
       setConversations((prev: Conversation[]) => [conv, ...prev]);
       setActiveConv(conv.id);
       setMessages([]);
-    } catch {}
+      setChatError(null);
+    } catch (e) {
+      setChatError(e instanceof Error ? e.message : "Couldn't start a new conversation.");
+    }
   };
 
   const sendMessage = async (content?: string) => {
@@ -234,9 +241,12 @@ export default function CopilotPage() {
       const { message: assistantMsg, suggested_questions } = res.data;
       setMessages((prev: Message[]) => [...prev.filter((m: Message) => m.id !== optimistic.id), optimistic, assistantMsg]);
       if (suggested_questions?.length) setSuggestions(suggested_questions);
+      setChatError(null);
       loadConversations();
-    } catch {
+    } catch (e) {
       setMessages((prev: Message[]) => prev.filter((m: Message) => m.id !== optimistic.id));
+      setInput(text);
+      setChatError(e instanceof Error ? e.message : "Couldn't send message.");
     } finally {
       setSending(false);
     }
@@ -436,6 +446,12 @@ export default function CopilotPage() {
 
               {/* Input */}
               <div className="px-6 py-4 border-t border-[#E2E8F0] bg-white flex-shrink-0">
+                {chatError && (
+                  <div className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    <p className="text-xs text-red-700">{chatError}</p>
+                    <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
+                  </div>
+                )}
                 <div className="max-w-3xl mx-auto flex items-end gap-3">
                   <div className="flex-1 relative">
                     <textarea

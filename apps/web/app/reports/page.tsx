@@ -538,6 +538,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   // Form state
   const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoaded, setClientsLoaded] = useState(false);
+  const [clientsError, setClientsError] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
   const [fromDate, setFromDate] = useState(currentFYStart());
@@ -553,8 +554,9 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         setSelectedClientId(list[0].id);
       }
       setClientsLoaded(true);
-    } catch {
-      // non-fatal
+      setClientsError(null);
+    } catch (e) {
+      setClientsError(e instanceof Error ? e.message : "Couldn't load clients.");
     }
   }, [clientsLoaded, reportId]);
 
@@ -724,6 +726,12 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
                   placeholder="All Clients"
                 />
               </div>
+              {clientsError && (
+                <p className="text-[11px] text-red-600">
+                  {clientsError}{" "}
+                  <button onClick={ensureClients} className="underline hover:no-underline">Retry</button>
+                </p>
+              )}
             </div>
           )}
 

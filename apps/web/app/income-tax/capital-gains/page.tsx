@@ -145,14 +145,21 @@ export default function CapitalGainsPage() {
   const [regForm, setRegForm] = useState(BLANK_REG);
   const [saving, setSaving] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
+  const [clientsError, setClientsError] = useState<string | null>(null);
+  const [regLoadError, setRegLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadClients = useCallback(() => {
     (api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>).then(res => {
       const cl = res.data?.clients ?? [];
       setClients(cl);
       if (cl.length > 0) setSelectedClientId(cl[0].id);
-    }).catch(() => {});
+      setClientsError(null);
+    }).catch((e) => {
+      setClientsError(e instanceof Error ? e.message : "Couldn't load clients.");
+    });
   }, []);
+
+  useEffect(() => { loadClients(); }, [loadClients]);
 
   const loadRecords = useCallback(async () => {
     if (!selectedClientId) return;
@@ -160,8 +167,10 @@ export default function CapitalGainsPage() {
     try {
       const data = await listCapitalGains(selectedClientId);
       setRecords(data);
-    } catch {
+      setRegLoadError(null);
+    } catch (e) {
       setRecords([]);
+      setRegLoadError(e instanceof Error ? e.message : "Couldn't load the capital gains register.");
     }
     setRegLoading(false);
   }, [selectedClientId]);
@@ -226,7 +235,9 @@ export default function CapitalGainsPage() {
     try {
       await deleteCapitalGain(id);
       await loadRecords();
-    } catch { /* leave the row in place on failure */ }
+    } catch (e) {
+      setRegLoadError(e instanceof Error ? e.message : "Failed to delete the record.");
+    }
   }
 
   return (
@@ -481,6 +492,12 @@ export default function CapitalGainsPage() {
                   placeholder="Select client…"
                 />
               </div>
+              {clientsError && (
+                <p className="text-[11px] text-red-600 mt-1">
+                  {clientsError}{" "}
+                  <button onClick={loadClients} className="underline hover:no-underline">Retry</button>
+                </p>
+              )}
             </div>
             <Button size="sm" onClick={() => { setRegForm(BLANK_REG); setRegError(null); setShowModal(true); }} className="flex items-center gap-1">
               <Plus className="w-4 h-4" /> Add Transaction
@@ -495,6 +512,14 @@ export default function CapitalGainsPage() {
                 Capital Gains Register ({records.length})
               </CardTitle>
             </CardHeader>
+            {regLoadError && (
+              <div className="px-4 pb-3">
+                <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg flex items-center justify-between gap-3">
+                  <span>{regLoadError}</span>
+                  <button onClick={loadRecords} className="underline hover:no-underline shrink-0">Retry</button>
+                </div>
+              </div>
+            )}
             {regLoading ? (
               <TableSkeleton cols={10} bare />
             ) : (
