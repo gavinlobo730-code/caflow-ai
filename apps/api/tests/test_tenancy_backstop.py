@@ -204,7 +204,7 @@ def test_save_gstr9_cannot_overwrite_another_firms_draft(gst_app, monkeypatch):
         "return_type": "gstr9", "payload_json": {"secret": "F1's real draft"},
     })
     r = _client_for(app, PARTNER_F2).post("/api/gst-workspace/gstr9", json={
-        "client_id": "C1", "financial_year": "2025-26",
+        "client_id": "C1", "financial_year": "2025-26", "gstin": "27AABCU9603R1ZX",
         "payload_json": {"secret": "overwritten by attacker"},
     })
     assert r.status_code == 200  # the endpoint itself always 200s

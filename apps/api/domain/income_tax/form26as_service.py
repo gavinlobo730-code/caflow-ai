@@ -61,7 +61,9 @@ def create_upload(
         "client_id": client_id,
         "financial_year": financial_year,
         "document_id": document_id,
-        "uploaded_by": uploaded_by,
+        # form_26as_uploads has no separate uploaded_by column — created_by
+        # is the real column (migration 052) and means the same thing here.
+        "created_by": uploaded_by,
     }
     res = sb.table("form_26as_uploads").insert(row).execute()
     return res.data[0] if res.data else row

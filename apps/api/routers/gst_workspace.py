@@ -252,6 +252,15 @@ def update_gstr1_status(
             return api_response(False, None,
                 "Explicit ca_approved=true required for ca_approved/submitted status. CA must confirm.")
 
+        # CGST Act §37: only Manager+ can approve/submit a GSTR-1 return —
+        # ca_approved=true alone is a caller-supplied flag, not proof of role.
+        if body.status in ("ca_approved", "submitted"):
+            from core.permissions import can
+            role = current_user.get("role", "executive")
+            if not can(role, "gst", "approve"):
+                return api_response(False, None,
+                    "Only Manager or above can approve or submit a GST return.")
+
         if _USE_MOCK:
             if return_id not in _MOCK_GSTR1:
                 return api_response(False, None, "Not found")
@@ -364,6 +373,15 @@ def update_gstr3b_status(
         if body.status in ("ca_approved", "submitted") and not body.ca_approved:
             return api_response(False, None,
                 "Explicit ca_approved=true required for ca_approved/submitted status. CA must confirm.")
+
+        # CGST Act §39: only Manager+ can approve/submit a GSTR-3B return —
+        # ca_approved=true alone is a caller-supplied flag, not proof of role.
+        if body.status in ("ca_approved", "submitted"):
+            from core.permissions import can
+            role = current_user.get("role", "executive")
+            if not can(role, "gst", "approve"):
+                return api_response(False, None,
+                    "Only Manager or above can approve or submit a GST return.")
 
         if _USE_MOCK:
             if return_id not in _MOCK_GSTR3B:
@@ -500,6 +518,7 @@ def upload_gstr2b(
 class GSTR9In(BaseModel):
     client_id: str
     financial_year: str  # e.g. "2025-26"
+    gstin: str
     payload_json: dict = Field(default_factory=dict)
     summary_json: dict = Field(default_factory=dict)
     total_taxable_paise: int = 0
@@ -523,6 +542,10 @@ def save_gstr9(
         firm_id   = current_user.get("firm_id")
         client_id = data.client_id
         fy        = data.financial_year  # e.g. "2025-26"
+        gstin     = data.gstin.strip().upper()
+        err = validate_gstin(gstin)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
 
         # CGST Act §44 — GSTR-9 is annual; use April 1 of the FY for period validation
         fy_start_year = int(fy.split("-")[0]) if fy else ist_today().year
@@ -534,6 +557,7 @@ def save_gstr9(
             "financial_year":       fy,
             "period":               f"FY{fy}",
             "return_type":          "gstr9",
+            "gstin":                gstin,
             "status":               "draft",
             "payload_json":         data.payload_json,
             "summary_json":         data.summary_json,

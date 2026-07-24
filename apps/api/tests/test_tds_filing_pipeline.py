@@ -26,7 +26,7 @@ from routers.tds_workspace import (
     CreateReturnRequest, UpdateReturnStatusRequest, create_return, update_return_status,
 )
 
-USER = {"firm_id": "firm-1", "id": "u1"}
+USER = {"firm_id": "firm-1", "id": "u1", "role": "partner"}
 CLIENT_ID = "client-1"
 
 

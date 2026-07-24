@@ -93,9 +93,10 @@ def test_tds_return_status_transitions(client):
 
 
 def test_certificate_generation_draft_only(client):
-    """IT Act §203 — certificates always draft; "draft" status itself IS the
-    CA-review-required signal (tds_certificates has no separate
-    ca_review_required column — migration 037/232)."""
+    """IT Act §203 — certificates always start as status='pending' (the only
+    CHECK-allowed "not yet issued" value — migration 037; 'draft' is NOT in
+    the CHECK and was task #226's schema-drift bug). The CA-review-required
+    signal is the frontend's own badge, not the stored status value."""
     resp = client.post("/api/tds-workspace/certificates", json={
         "client_id": _CLIENT_ID,
         "deductee_pan": "ABCDE1234F",
@@ -107,10 +108,37 @@ def test_certificate_generation_draft_only(client):
     }, headers=_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["status"] == "draft"
+    assert data["status"] == "pending"
     # tds_amount_paise (request field) persists as tds_deducted_paise (real column).
     assert data["tds_deducted_paise"] == 100000
     assert data["section"] == "194C"
+
+
+def test_return_approval_requires_manager_role(client):
+    """IT Act §200/§203: only Manager+ can approve/file a TDS return —
+    ca_approved=true alone is a caller-supplied flag, not proof of role
+    (task #226 audit finding). An Executive gets rejected even with the flag
+    set; a Manager succeeds."""
+    exec_headers = {"X-User-Email": "exec@test.com", "X-User-Role": "executive", "X-Firm-ID": "firm-1"}
+    manager_headers = {"X-User-Email": "mgr@test.com", "X-User-Role": "manager", "X-Firm-ID": "firm-1"}
+
+    resp = client.post("/api/tds-workspace/returns", json={
+        "client_id": _CLIENT_ID, "return_type": "26Q", "quarter": "Q1",
+        "financial_year": "2025-26",
+    }, headers=exec_headers)
+    return_id = resp.json()["data"]["id"]
+
+    r_exec = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
+                          json={"status": "ca_approved", "ca_approved": True},
+                          headers=exec_headers)
+    assert r_exec.json()["success"] is False
+    assert "Manager" in r_exec.json()["error"]
+
+    r_mgr = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
+                         json={"status": "ca_approved", "ca_approved": True},
+                         headers=manager_headers)
+    assert r_mgr.json()["success"] is True
+    assert r_mgr.json()["data"]["status"] == "ca_approved"
 
 
 def test_form26as_reconciliation(client):

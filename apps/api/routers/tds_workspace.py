@@ -371,6 +371,16 @@ def update_return_status(
         if body.status in ("ca_approved", "filed") and not body.ca_approved:
             return api_response(False, None,
                 "Explicit ca_approved=true required for ca_approved/filed status. CA must confirm.")
+
+        # IT Act §200/§203: only Manager+ can approve/file a TDS return —
+        # ca_approved=true alone is a caller-supplied flag, not proof of role.
+        if body.status in ("ca_approved", "filed"):
+            from core.permissions import can
+            role = current_user.get("role", "executive")
+            if not can(role, "tds", "approve"):
+                return api_response(False, None,
+                    "Only Manager or above can approve or file a TDS return.")
+
         if body.status == "filed" and not (body.prn or "").strip():
             return api_response(False, None,
                 "PRN (Provisional Receipt Number) is required to mark a return as filed.")
@@ -480,11 +490,15 @@ def create_certificate(
             "certificate_type": body.certificate_type,
             # tds_certificates has no tds_amount_paise/ca_review_required
             # columns (migration 037) — tds_deducted_paise is the real amount
-            # column, and "draft" status (below) already IS the CA-review-
-            # required signal. section is genuinely missing (migration 232).
+            # column. status must be one of the real CHECK values ('pending',
+            # 'generated', 'issued', 'downloaded') — "pending" is also the
+            # column's own DEFAULT and matches "freshly generated, CA review
+            # required before issuance" (the frontend badge that already
+            # renders regardless of the stored value). section is genuinely
+            # missing (migration 232).
             "tds_deducted_paise": body.tds_amount_paise,
             "section": body.section,
-            "status": "draft",
+            "status": "pending",
             "created_at": datetime.utcnow().isoformat(),
         }
 
@@ -557,13 +571,9 @@ def upload_form26as(
             },
         }
 
-        # form_26as_uploads (migration 156) has none of file_url/raw_data/
-        # reconciliation_result/status/created_by — it's shaped for the
-        # separate document-upload+parse pipeline (routers/form_26as.py),
-        # not this paste-JSON-and-reconcile-inline tool. Persist a minimal,
-        # valid audit row (who reconciled, when, how many book rows); the
-        # full reconciliation result still goes out in the API response
-        # below for the frontend, it's just not persisted server-side.
+        # form_26as_uploads (migration 052) is file_url/raw_data/
+        # reconciliation_result/status/created_by/uploaded_at — record below
+        # already matches those real columns exactly, so it's inserted as-is.
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -581,17 +591,7 @@ def upload_form26as(
             _MOCK_FORM26AS[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            db_record = {
-                "id": record["id"],
-                "firm_id": firm_id,
-                "client_id": body.client_id,
-                "financial_year": body.financial_year,
-                "total_records": len(book_deductions),
-                "parse_status": "parsed",
-                "uploaded_by": current_user.get("id"),
-                "uploaded_at": record["uploaded_at"],
-            }
-            get_supabase().table("form_26as_uploads").insert(db_record).execute()
+            get_supabase().table("form_26as_uploads").insert(record).execute()
 
         log_event(firm_id, "form_26as_upload", record["id"], "create",
                   actor_id=current_user.get("id"))

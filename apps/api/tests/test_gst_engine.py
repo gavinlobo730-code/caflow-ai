@@ -255,11 +255,12 @@ class TestGSTR3BComputer:
         assert result.net_igst == 0
 
     def test_rule_36_4_cap_applied(self):
-        """ITC capped at 105% of GSTR-2A when book ITC exceeds cap."""
-        # Book ITC: ₹10,000 CGST. GSTR-2A: ₹8,000 CGST. Cap = 8,000 * 1.05 = 8,400
+        """ITC capped at 100% of GSTR-2A when book ITC exceeds cap (no
+        provisional buffer since Notification 40/2021, w.e.f. 1 Jan 2022)."""
+        # Book ITC: ₹10,000 CGST. GSTR-2A: ₹8,000 CGST. Cap = 8,000 (100%).
         book_cgst = 10_000_00
         gstr2a_cgst = 8_000_00
-        cap = (gstr2a_cgst * 105) // 100  # = 8,400_00
+        cap = gstr2a_cgst
 
         sales = [SalesTransaction("sales_invoice", 100_000_00, 9_000_00, 9_000_00, 0, 0, "taxable", False)]
         purchases = [PurchaseTransaction(55_555_55, book_cgst, book_cgst, 0, 0, False)]
@@ -270,10 +271,10 @@ class TestGSTR3BComputer:
         assert result.itc_capped_by_2a is True
 
     def test_rule_36_4_no_cap_when_book_within_limit(self):
-        """No cap applied when book ITC ≤ 105% of GSTR-2A."""
+        """No cap applied when book ITC ≤ 100% of GSTR-2A."""
         sales = [make_sale(taxable_paise=100_000_00, gst_rate=18.0)]
         purchases = [make_purchase(taxable_paise=50_000_00, gst_rate=18.0)]
-        gstr2a = [GSTR2ARecord(cgst_paise=5_000_00, sgst_paise=0, igst_paise=0)]  # 4500 book < 5000 * 1.05 = 5250
+        gstr2a = [GSTR2ARecord(cgst_paise=6_000_00, sgst_paise=0, igst_paise=0)]  # 4500 book < 6000
         result = compute_gstr3b(sales, purchases, gstr2a)
         assert result.itc_cgst == 4_500_00  # not capped
         assert result.itc_capped_by_2a is False
@@ -365,14 +366,18 @@ class TestGSTR3BComputer:
 # ── Rule 36(4) Unit Tests ─────────────────────────────────────────────────────
 
 class TestRule364Cap:
+    """Rule 36(4) (as amended by Notification 40/2021-Central Tax, w.e.f.
+    1 Jan 2022): ITC is capped at 100% of GSTR-2A/2B credit — the prior 105%
+    provisional buffer no longer applies."""
+
     def test_cap_applied(self):
         capped, was_capped = _apply_rule_36_4_cap(book=10_000_00, gstr2a=8_000_00)
-        assert capped == 8_400_00  # 8000 * 105 / 100
+        assert capped == 8_000_00  # strict 100% cap, no buffer
         assert was_capped is True
 
     def test_no_cap_within_limit(self):
         capped, was_capped = _apply_rule_36_4_cap(book=8_000_00, gstr2a=8_000_00)
-        assert capped == 8_000_00  # 8000 ≤ 8000 * 1.05 = 8400
+        assert capped == 8_000_00  # 8000 == 8000 (100%) — exactly at the cap
         assert was_capped is False
 
     def test_no_cap_when_gstr2a_zero(self):
@@ -386,10 +391,12 @@ class TestRule364Cap:
         assert was_capped is False
 
     def test_integer_arithmetic_no_float(self):
-        """105% cap must use integer division to avoid float rounding."""
-        # 8001 * 105 / 100 = 8401.05 → integer = 8401 (floor)
+        """The cap must use integer division to avoid float rounding, even
+        though 100/100 makes this a no-op multiplier today — guards against
+        a future rate change reintroducing float drift."""
         capped, was_capped = _apply_rule_36_4_cap(book=9_000_00, gstr2a=8_001_00)
-        assert capped == (8_001_00 * 105) // 100  # strict integer arithmetic
+        assert capped == 8_001_00
+        assert was_capped is True
         assert isinstance(capped, int)
 
 

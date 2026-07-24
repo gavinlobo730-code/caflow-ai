@@ -410,12 +410,13 @@ expected_outward_igst = 54_000_00 + 54_000_00              # 1,08,000.00
 
 # ITC book: cgst=9000+45000=54000, sgst same, igst=36000
 # GSTR-2A: cgst=9000+40000=49000, sgst same, igst=36000
-# Rule 36(4): 105% of GSTR-2A
-# cgst cap = 49000*105//100 = 51450 — book 54000 > cap, so capped at 51450
+# Rule 36(4) (Notification 40/2021, w.e.f. 1 Jan 2022): 100% of GSTR-2A/2B,
+# no provisional buffer.
+# cgst cap = 49000 — book 54000 > cap, so capped at 49000
 # sgst same
-# igst: 36000*105//100 = 37800 — book 36000 < cap, not capped
-expected_itc_cgst = (49_000_00 * 105) // 100   # 51,450.00
-expected_itc_sgst = (49_000_00 * 105) // 100   # 51,450.00
+# igst: cap = 36000 — book 36000 == cap, not capped (only > cap triggers)
+expected_itc_cgst = 49_000_00
+expected_itc_sgst = 49_000_00
 expected_itc_igst = 36_000_00                   # not capped
 
 print(f"\n  Outward taxable (CGST): ₹{gstr3b.outward_taxable_cgst/100:,.2f}")
@@ -456,11 +457,11 @@ check("Rule 36(4) cap applied on CGST/SGST ITC",
       gstr3b.itc_capped_by_2a == True,
       f"capped={gstr3b.itc_capped_by_2a}")
 
-check("ITC CGST capped at 105% of GSTR-2A",
+check("ITC CGST capped at 100% of GSTR-2A",
       gstr3b.itc_cgst == expected_itc_cgst,
       f"got ₹{gstr3b.itc_cgst/100:,.2f}, expected ₹{expected_itc_cgst/100:,.2f}")
 
-check("ITC IGST not capped (book ≤ 105% of GSTR-2A)",
+check("ITC IGST not capped (book ≤ 100% of GSTR-2A)",
       gstr3b.itc_igst == expected_itc_igst,
       f"got ₹{gstr3b.itc_igst/100:,.2f}")
 
@@ -855,7 +856,7 @@ engine_labels = [
     "Outward CGST matches expected",
     "Outward IGST matches expected",
     "Rule 36(4) cap applied on CGST/SGST ITC",
-    "ITC CGST capped at 105% of GSTR-2A",
+    "ITC CGST capped at 100% of GSTR-2A",
     "Net CGST is 0 (ITC exceeds output)",
     "Net IGST = outward IGST - eligible ITC IGST",
     "B2CS has both INTRA and INTER rows",
