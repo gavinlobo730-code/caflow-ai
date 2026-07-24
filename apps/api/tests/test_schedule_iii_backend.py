@@ -146,3 +146,45 @@ def test_build_schedule_iii_loss_is_negative():
     assert out["profit_and_loss"]["profit_before_tax_paise"] == -50_000_00
     assert out["profit_and_loss"]["profit_after_tax_paise"] == -50_000_00
     assert out["balance_sheet"]["total_assets_paise"] == 0
+
+
+def test_build_schedule_iii_includes_cost_of_sales():
+    # Regression pin: builders.profit_loss() (domain/reporting/builders.py) keeps
+    # Cost of Goods Sold in its OWN "cost_of_sales" section, separate from
+    # "operating_expenses" (so gross profit can be computed there) — every
+    # _pl() fixture above instead put COGS-like lines directly inside
+    # "operating_expenses", which is NOT the real engine's shape and let
+    # build_schedule_iii() silently never read "cost_of_sales" at all. That
+    # dropped COGS from both "Cost of Materials Consumed" and the Total
+    # Expenses / Profit figures on every real Schedule III P&L — caught by
+    # comparing the reported P&L against real ledger data (task, 2026-07-24).
+    pl = {
+        "revenue": {"lines": [
+            {"account_name": "Sales", "account_type": "Revenue", "account_subtype": "Operating Revenue", "amount_paise": 10_00_000_00},
+        ], "total_paise": 10_00_000_00},
+        "cost_of_sales": {"lines": [
+            {"account_name": "Cost of Goods Sold", "account_type": "Expense", "account_subtype": "Cost of Goods Sold", "amount_paise": 6_00_000_00},
+        ], "total_paise": 6_00_000_00},
+        "operating_expenses": {"lines": [
+            {"account_name": "Purchases", "account_type": "Expense", "account_subtype": "Purchases", "amount_paise": 1_00},  # near-zero: capitalised into Inventory
+            {"account_name": "Salaries", "account_type": "Expense", "account_subtype": "Employee Cost", "amount_paise": 1_00_000_00},
+        ], "total_paise": 1_00_100},
+        "gross_profit_paise": 4_00_000_00,
+        "net_profit_paise": 2_99_999_00,
+    }
+    out = build_schedule_iii(pl, {"assets": [], "liabilities": [], "equity": []}, "2025-04-01", "2026-03-31")
+    pl_out = out["profit_and_loss"]
+
+    caps = {ln["label"]: ln["paise"] for sec in pl_out["expenses"] for ln in sec["lines"]}
+    # Cost of Goods Sold and the near-zero Purchases balance both bucket into
+    # the same statutory caption — Schedule III has one "Cost of Materials
+    # Consumed" line, not a separate one per underlying GL account.
+    assert caps["Cost of Materials Consumed"] == 6_00_000_00 + 1_00
+
+    # Total Expenses (II) and Profit must reconcile against Total Revenue (I)
+    # exactly as displayed — this is the actual bug symptom: a CA reading the
+    # statement could add up Revenue minus the shown Expenses lines and get a
+    # different number than "Profit for the Period".
+    assert pl_out["total_expenses_paise"] == caps["Cost of Materials Consumed"] + 1_00_000_00
+    assert pl_out["total_revenue_paise"] - pl_out["total_expenses_paise"] == pl_out["profit_before_tax_paise"]
+    assert pl_out["profit_before_tax_paise"] == 2_99_999_00

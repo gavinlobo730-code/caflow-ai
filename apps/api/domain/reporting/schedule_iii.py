@@ -132,7 +132,14 @@ def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
                 bs_buckets[cap] = bs_buckets.get(cap, 0) + ln.get("balance_paise", 0)
 
     pl_buckets: dict[str, int] = {}
-    for group in ("revenue", "operating_expenses"):
+    # builders.profit_loss() keeps Cost of Goods Sold in its OWN "cost_of_sales"
+    # section (separate from "operating_expenses", so gross profit can be
+    # computed) — omitting it here silently dropped COGS from every Schedule III
+    # P&L entirely: "Cost of Materials Consumed" showed only the (near-zero, once
+    # goods purchases are reclassified into Inventory) "Purchases" balance, and
+    # "Total Expenses (II)" / "Profit for the Period" no longer reconciled
+    # against the displayed Revenue and Expense lines.
+    for group in ("revenue", "operating_expenses", "cost_of_sales"):
         for ln in pl.get(group, {}).get("lines", []):
             cap = pl_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
             if cap:
