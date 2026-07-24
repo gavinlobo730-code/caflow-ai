@@ -148,7 +148,7 @@ def list_entities(
 ):
     db = _db()
     if not db:
-        result = list(_MOCK_ENTITIES)
+        result = [e for e in _MOCK_ENTITIES if e.get("firm_id") == current_user["firm_id"]]
         if entity_type:
             result = [e for e in result if e.get("entity_type") == entity_type]
         if search:
@@ -225,7 +225,7 @@ def update_entity(
 
     if not db:
         for i, e in enumerate(_MOCK_ENTITIES):
-            if e["id"] == entity_id:
+            if e["id"] == entity_id and e.get("firm_id") == firm_id:
                 _MOCK_ENTITIES[i].update(update)
                 return api_response(True, _MOCK_ENTITIES[i])
         raise HTTPException(status_code=404, detail="Entity not found")
@@ -247,13 +247,13 @@ def get_entity(
     firm_id = current_user["firm_id"]
 
     if not db:
-        entity = next((e for e in _MOCK_ENTITIES if e["id"] == entity_id), None)
+        entity = next((e for e in _MOCK_ENTITIES if e["id"] == entity_id and e.get("firm_id") == firm_id), None)
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found")
-        roles = [r for r in _MOCK_ENTITY_ROLES if r.get("entity_id") == entity_id]
+        roles = [r for r in _MOCK_ENTITY_ROLES if r.get("entity_id") == entity_id and r.get("firm_id") == firm_id]
         relationships = [
             r for r in _MOCK_RELATIONSHIPS
-            if r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id
+            if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id) and r.get("firm_id") == firm_id
         ]
         return api_response(True, {**entity, "roles": roles, "relationships": relationships})
 
@@ -348,6 +348,9 @@ def remove_entity_role(
 
     if not db:
         global _MOCK_ENTITY_ROLES
+        target = next((r for r in _MOCK_ENTITY_ROLES if r["id"] == role_id and r.get("firm_id") == firm_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Role not found")
         _MOCK_ENTITY_ROLES = [r for r in _MOCK_ENTITY_ROLES if r["id"] != role_id]
         return api_response(True, {"deleted": True, "role_id": role_id})
 
@@ -384,6 +387,10 @@ def create_relationship(
     }
 
     if not db:
+        from_e_mock = next((e for e in _MOCK_ENTITIES if e["id"] == data.from_entity_id and e.get("firm_id") == firm_id), None)
+        to_e_mock = next((e for e in _MOCK_ENTITIES if e["id"] == data.to_entity_id and e.get("firm_id") == firm_id), None)
+        if not from_e_mock or not to_e_mock:
+            raise HTTPException(status_code=404, detail="One or both entities not found in firm")
         _MOCK_RELATIONSHIPS.append(row)
         timeline_service.log(
             data.from_entity_id, "lifecycle", "Relationship Added",
@@ -421,7 +428,8 @@ def list_relationships(
     if not db:
         result = [
             r for r in _MOCK_RELATIONSHIPS
-            if r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id
+            if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id)
+            and r.get("firm_id") == firm_id
         ]
         return api_response(True, result)
 
@@ -453,7 +461,7 @@ def list_cross_client_matches(
     # elifs unfiltered — `False` is falsy, so a plain `elif reviewed:` never
     # matches it and previously left the query with no reviewed filter at all.
     if not db:
-        result = list(_MOCK_CROSS_MATCHES)
+        result = [m for m in _MOCK_CROSS_MATCHES if m.get("firm_id") == firm_id]
         if entity_id:
             result = [m for m in result if m.get("entity_id") == entity_id]
         elif reviewed:
@@ -488,7 +496,9 @@ def detect_cross_client_matches(
     if not db:
         pan_map: dict[str, list[dict]] = {}
         for role in _MOCK_ENTITY_ROLES:
-            entity = next((e for e in _MOCK_ENTITIES if e["id"] == role.get("entity_id")), None)
+            if role.get("firm_id") != firm_id:
+                continue
+            entity = next((e for e in _MOCK_ENTITIES if e["id"] == role.get("entity_id") and e.get("firm_id") == firm_id), None)
             if entity and entity.get("pan"):
                 pan = entity["pan"].upper()
                 if pan not in pan_map:
@@ -507,7 +517,8 @@ def detect_cross_client_matches(
                     if a["role"]["client_id"] == b["role"]["client_id"]:
                         continue
                     already = any(
-                        m.get("match_value") == pan
+                        m.get("firm_id") == firm_id
+                        and m.get("match_value") == pan
                         and m.get("client_id_a") == a["role"]["client_id"]
                         and m.get("client_id_b") == b["role"]["client_id"]
                         for m in _MOCK_CROSS_MATCHES
@@ -591,7 +602,7 @@ def review_cross_client_match(
 
     if not db:
         for i, m in enumerate(_MOCK_CROSS_MATCHES):
-            if m["id"] == match_id:
+            if m["id"] == match_id and m.get("firm_id") == firm_id:
                 _MOCK_CROSS_MATCHES[i]["reviewed"] = True
                 _MOCK_CROSS_MATCHES[i]["confirmed"] = data.is_confirmed
                 return api_response(True, _MOCK_CROSS_MATCHES[i])
@@ -641,6 +652,10 @@ def create_entity_to_entity_relationship(
     }
 
     if not db:
+        from_e_mock = next((e for e in _MOCK_ENTITIES if e["id"] == data.from_entity_id and e.get("firm_id") == firm_id), None)
+        to_e_mock = next((e for e in _MOCK_ENTITIES if e["id"] == data.to_entity_id and e.get("firm_id") == firm_id), None)
+        if not from_e_mock or not to_e_mock:
+            raise HTTPException(status_code=404, detail="One or both entities not found in firm")
         _MOCK_ENTITY_TO_ENTITY_RELS.append(row)
         return api_response(True, row)
 
@@ -667,7 +682,8 @@ def list_entity_to_entity_relationships(
     if not db:
         result = [
             r for r in _MOCK_ENTITY_TO_ENTITY_RELS
-            if r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id
+            if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id)
+            and r.get("firm_id") == firm_id
         ]
         return api_response(True, result)
 
@@ -702,6 +718,10 @@ def create_loan(
     if db:
         entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).single().execute().data
         if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found in firm")
+    else:
+        entity_mock = next((e for e in _MOCK_ENTITIES if e["id"] == data.entity_id and e.get("firm_id") == firm_id), None)
+        if not entity_mock:
             raise HTTPException(status_code=404, detail="Entity not found in firm")
 
     # Section 185 Companies Act — loan to director auto-flag
@@ -763,7 +783,7 @@ def list_loans(
     firm_id = current_user["firm_id"]
 
     if not db:
-        result = list(_MOCK_LOANS)
+        result = [l for l in _MOCK_LOANS if l.get("firm_id") == firm_id]
         if client_id:
             result = [l for l in result if l.get("client_id") == client_id]
         if flagged_only:
@@ -793,7 +813,7 @@ def section_185_report(
     firm_id = current_user["firm_id"]
 
     if not db:
-        result = [l for l in _MOCK_LOANS if l.get("section_185_flagged")]
+        result = [l for l in _MOCK_LOANS if l.get("section_185_flagged") and l.get("firm_id") == firm_id]
         if client_id:
             result = [l for l in result if l.get("client_id") == client_id]
         total_paise = sum(l["principal_paise"] for l in result)
@@ -843,6 +863,10 @@ def create_property(
         entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).single().execute().data
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found in firm")
+    elif not db and data.entity_id:
+        entity_mock = next((e for e in _MOCK_ENTITIES if e["id"] == data.entity_id and e.get("firm_id") == firm_id), None)
+        if not entity_mock:
+            raise HTTPException(status_code=404, detail="Entity not found in firm")
 
     row = {
         "id":                 str(uuid.uuid4()),
@@ -877,7 +901,7 @@ def list_properties(
     firm_id = current_user["firm_id"]
 
     if not db:
-        result = list(_MOCK_PROPERTIES)
+        result = [p for p in _MOCK_PROPERTIES if p.get("firm_id") == firm_id]
         if client_id:
             result = [p for p in result if p.get("client_id") == client_id]
         if entity_id:
@@ -915,7 +939,7 @@ def related_party_report(
 
     if not db:
         # Collect all entity roles for this client
-        client_roles = [r for r in _MOCK_ENTITY_ROLES if r.get("client_id") == client_id]
+        client_roles = [r for r in _MOCK_ENTITY_ROLES if r.get("client_id") == client_id and r.get("firm_id") == firm_id]
         entity_ids = [r["entity_id"] for r in client_roles]
 
         # Get related party role types — CGST Act Sec 2(76)
@@ -925,11 +949,15 @@ def related_party_report(
         # Entity-to-entity relationships involving these entities
         e2e_rels = [
             r for r in _MOCK_ENTITY_TO_ENTITY_RELS
-            if r.get("from_entity_id") in entity_ids or r.get("to_entity_id") in entity_ids
+            if (r.get("from_entity_id") in entity_ids or r.get("to_entity_id") in entity_ids)
+            and r.get("firm_id") == firm_id
         ]
 
         # Section 185 loans for this client
-        sec185_loans = [l for l in _MOCK_LOANS if l.get("client_id") == client_id and l.get("section_185_flagged")]
+        sec185_loans = [
+            l for l in _MOCK_LOANS
+            if l.get("client_id") == client_id and l.get("section_185_flagged") and l.get("firm_id") == firm_id
+        ]
 
         # Transfer pricing: inter-company loans > ₹1 crore (Sec 92 IT Act)
         # TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00 paise
@@ -938,6 +966,7 @@ def related_party_report(
             if l.get("client_id") == client_id
             and l.get("loan_type") == "inter_company"
             and l.get("principal_paise", 0) >= TRANSFER_PRICING_THRESHOLD_PAISE
+            and l.get("firm_id") == firm_id
         ]
 
         return api_response(True, {

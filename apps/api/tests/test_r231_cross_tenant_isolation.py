@@ -214,10 +214,17 @@ def test_create_loan_rejects_another_firms_client(enforced):
 
 
 def test_create_loan_accepts_own_firms_client(enforced):
-    body = LoanIn(client_id="C1", entity_id="some-entity", loan_type="to_director",
-                  principal_paise=100000, interest_rate=10.0)
-    result = relationships_router.create_loan(body, PARTNER_F1)
-    assert result["success"] is True
+    # task #244: create_loan's mock-store branch now also verifies entity_id
+    # ownership (mirroring the pre-existing real-DB check) — seed a matching
+    # own-firm entity so this exercises the client_id-acceptance path cleanly.
+    relationships_router._MOCK_ENTITIES.append({"id": "some-entity", "firm_id": "F1"})
+    try:
+        body = LoanIn(client_id="C1", entity_id="some-entity", loan_type="to_director",
+                      principal_paise=100000, interest_rate=10.0)
+        result = relationships_router.create_loan(body, PARTNER_F1)
+        assert result["success"] is True
+    finally:
+        relationships_router._MOCK_ENTITIES.clear()
 
 
 def test_create_property_rejects_another_firms_client(enforced):

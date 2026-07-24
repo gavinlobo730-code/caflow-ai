@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from repositories.assignment_rule_repository import assignment_rule_repo
 
 router = APIRouter(prefix="/api/task-recurring", tags=["task-recurring"])
@@ -66,18 +67,22 @@ def list_recurring(current_user: dict = Depends(rbac("task", "read"))):
     result = db.table("task_recurring_configs").select("*").eq("firm_id", firm_id).order("next_due_date").execute()
     configs = result.data or []
 
-    # Enrich with template names
+    # Enrich with template names — scoped to this firm's own templates or
+    # shared system templates (firm_id IS NULL), never another firm's private
+    # template even if a stray template_id somehow ended up on a config row.
     template_ids = list({c["template_id"] for c in configs if c.get("template_id")})
     template_map = {}
     if template_ids:
-        tpl_result = db.table("task_templates").select("id, name").in_("id", template_ids).execute()
+        tpl_result = db.table("task_templates").select("id, name").in_("id", template_ids).or_(
+            f"firm_id.eq.{firm_id},firm_id.is.null"
+        ).execute()
         template_map = {t["id"]: t["name"] for t in (tpl_result.data or [])}
 
-    # Enrich with client names
+    # Enrich with client names — scoped to this firm only.
     client_ids = list({c["client_id"] for c in configs if c.get("client_id")})
     client_map = {}
     if client_ids:
-        cl_result = db.table("clients").select("id, client_name").in_("id", client_ids).execute()
+        cl_result = db.table("clients").select("id, client_name").in_("id", client_ids).eq("firm_id", firm_id).execute()
         client_map = {c["id"]: c["client_name"] for c in (cl_result.data or [])}
 
     for c in configs:
@@ -96,6 +101,20 @@ def create_recurring(body: RecurringCreate, current_user: dict = Depends(rbac("t
 
     firm_id = current_user.get("firm_id")
     db = _get_db()
+
+    # client_id/template_id are caller-supplied — verify ownership before
+    # inserting, so a recurring config can't be planted cross-referencing
+    # another firm's real client/template (which would then leak that firm's
+    # client_name/template_name back out through list_recurring's enrichment).
+    if body.client_id:
+        assert_client_access(current_user, body.client_id)
+    if body.template_id:
+        tpl = db.table("task_templates").select("id").eq("id", body.template_id).or_(
+            f"firm_id.eq.{firm_id},firm_id.is.null"
+        ).maybe_single().execute()
+        if not tpl.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+
     now = _now_iso()
     result = db.table("task_recurring_configs").insert({
         "firm_id": firm_id,
@@ -122,11 +141,14 @@ def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict =
     if not existing.data:
         raise HTTPException(status_code=404, detail="Recurring config not found")
 
+    if body.client_id:
+        assert_client_access(current_user, body.client_id)
+
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "frequency" in updates and updates["frequency"] not in VALID_FREQUENCIES:
         raise HTTPException(status_code=400, detail=f"Invalid frequency")
     updates["updated_at"] = _now_iso()
-    result = db.table("task_recurring_configs").update(updates).eq("id", config_id).execute()
+    result = db.table("task_recurring_configs").update(updates).eq("id", config_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"config": result.data[0] if result.data else None})
 
 

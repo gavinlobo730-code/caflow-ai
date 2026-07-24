@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from repositories.task_template_repository import task_template_repo
 
 router = APIRouter(prefix="/api/task-templates", tags=["task-templates"])
@@ -42,7 +43,8 @@ def list_templates(current_user: dict = Depends(rbac("task", "read"))):
 
 @router.get("/{template_id}")
 def get_template(template_id: str, current_user: dict = Depends(rbac("task", "read"))):
-    tpl = task_template_repo.find_by_id(template_id)
+    firm_id = current_user.get("firm_id")
+    tpl = task_template_repo.find_by_id(template_id, firm_id=firm_id)
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
     return api_response(True, {"template": tpl})
@@ -65,22 +67,32 @@ def create_template(body: TemplateCreate, current_user: dict = Depends(rbac("tas
 
 @router.put("/{template_id}")
 def update_template(template_id: str, body: TemplateUpdate, current_user: dict = Depends(rbac("task", "write"))):
-    tpl = task_template_repo.find_by_id(template_id)
+    firm_id = current_user.get("firm_id")
+    # find_by_id(firm_id=...) also allows reading shared system templates
+    # (firm_id IS NULL), which must stay read-only for every firm — reject
+    # here before the update is attempted, same guard delete_template uses.
+    tpl = task_template_repo.find_by_id(template_id, firm_id=firm_id)
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
+    if not tpl.get("firm_id"):
+        raise HTTPException(status_code=403, detail="Cannot edit system templates")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    updated = task_template_repo.update(template_id, updates)
+    updated = task_template_repo.update(template_id, updates, firm_id=firm_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Template not found")
     return api_response(True, {"template": updated})
 
 
 @router.delete("/{template_id}")
 def delete_template(template_id: str, current_user: dict = Depends(rbac("task", "write"))):
-    tpl = task_template_repo.find_by_id(template_id)
+    firm_id = current_user.get("firm_id")
+    tpl = task_template_repo.find_by_id(template_id, firm_id=firm_id)
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
     if not tpl.get("firm_id"):
         raise HTTPException(status_code=403, detail="Cannot delete system templates")
-    task_template_repo.delete(template_id)
+    if not task_template_repo.delete(template_id, firm_id=firm_id):
+        raise HTTPException(status_code=404, detail="Template not found")
     return api_response(True, {"deleted": True})
 
 
@@ -94,11 +106,13 @@ def instantiate_template(
     from repositories.task_extras_repository import task_extras_repo
     from core.supabase_client import get_supabase
 
-    tpl = task_template_repo.find_by_id(template_id)
+    firm_id = current_user.get("firm_id")
+    assert_client_access(current_user, body.client_id)
+
+    tpl = task_template_repo.find_by_id(template_id, firm_id=firm_id)
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    firm_id = current_user.get("firm_id")
     now = datetime.now(timezone.utc).isoformat()
 
     db = get_supabase()
