@@ -196,6 +196,49 @@ def test_create_property_rejects_entity_owned_by_another_firm(monkeypatch):
     assert rel._MOCK_PROPERTIES == []
 
 
+# ── Same-firm assignment-scoping on the loan/property/related-party reads ──
+# Module 9's core internal-confidentiality goal: an Executive/Reviewer must
+# not read another *assigned* client's data within their OWN firm just
+# because rbac("client", "read") is role-satisfied. list_loans/
+# section_185_report/list_properties/related_party_report accepted a
+# caller-supplied client_id and never called assert_client_access — proven
+# here the same way test_r231/test_r235 prove it's wired: reject a client_id
+# that (per the enforced fixture) doesn't resolve for the caller's firm.
+
+def test_list_loans_rejects_another_firms_client(enforced):
+    with pytest.raises(HTTPException) as ei:
+        rel.list_loans(client_id="c-other", flagged_only=False, current_user=USER_A)
+    assert ei.value.status_code == 404
+
+
+def test_list_loans_accepts_own_firms_client(enforced):
+    resp = rel.list_loans(client_id="c1", flagged_only=False, current_user=USER_A)
+    assert resp["success"] is True
+
+
+def test_section_185_report_rejects_another_firms_client(enforced):
+    with pytest.raises(HTTPException) as ei:
+        rel.section_185_report(client_id="c-other", current_user=USER_A)
+    assert ei.value.status_code == 404
+
+
+def test_list_properties_rejects_another_firms_client(enforced):
+    with pytest.raises(HTTPException) as ei:
+        rel.list_properties(client_id="c-other", entity_id=None, current_user=USER_A)
+    assert ei.value.status_code == 404
+
+
+def test_related_party_report_rejects_another_firms_client(enforced):
+    with pytest.raises(HTTPException) as ei:
+        rel.related_party_report(client_id="c-other", current_user=USER_A)
+    assert ei.value.status_code == 404
+
+
+def test_related_party_report_accepts_own_firms_client(enforced):
+    resp = rel.related_party_report(client_id="c1", current_user=USER_A)
+    assert resp["success"] is True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Area 2 — task_recurring.py: unchecked client_id/template_id + unscoped
 # enrichment lookups in list_recurring
@@ -401,3 +444,31 @@ def test_instantiate_template_rejects_another_firms_private_template(monkeypatch
         tpl_router.instantiate_template("tpl-b", body, current_user=USER_A)
     assert ei.value.status_code == 404
     assert db.table("tasks").select("*").execute().data == []  # no task created from the stolen template
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Low-severity hardening — routers/reminders.py:mark_reminder_sent used
+# `if reminder.get("firm_id") and reminder["firm_id"] != firm_id`, which
+# silently passes (never raises) whenever firm_id happens to be falsy/None,
+# instead of the strict `!=` pattern used elsewhere in the codebase.
+# ─────────────────────────────────────────────────────────────────────────────
+
+import routers.reminders as reminders_router
+
+
+def test_mark_reminder_sent_404s_when_reminder_has_no_firm_id(monkeypatch):
+    """A reminder row with firm_id=None must never be treated as sendable by
+    an arbitrary caller — the old `and` guard let this exact case through."""
+    monkeypatch.setattr(reminders_router.reminders_repo, "find_by_id", lambda _id: {"id": "r1", "firm_id": None})
+
+    with pytest.raises(HTTPException) as ei:
+        reminders_router.mark_reminder_sent("r1", current_user=USER_A)
+    assert ei.value.status_code == 404
+
+
+def test_mark_reminder_sent_404s_on_another_firms_reminder(monkeypatch):
+    monkeypatch.setattr(reminders_router.reminders_repo, "find_by_id", lambda _id: {"id": "r1", "firm_id": FIRM_B})
+
+    with pytest.raises(HTTPException) as ei:
+        reminders_router.mark_reminder_sent("r1", current_user=USER_A)
+    assert ei.value.status_code == 404

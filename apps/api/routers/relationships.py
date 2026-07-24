@@ -781,6 +781,12 @@ def list_loans(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
+    if client_id:
+        # Module 9 assignment-scoping: an Executive/Reviewer must not read
+        # Section 185/186 loan data for a client in their own firm that they
+        # aren't assigned to — role-only rbac() doesn't enforce this, only
+        # assert_client_access does.
+        assert_client_access(current_user, client_id)
 
     if not db:
         result = [l for l in _MOCK_LOANS if l.get("firm_id") == firm_id]
@@ -811,6 +817,8 @@ def section_185_report(
     """
     db = _db()
     firm_id = current_user["firm_id"]
+    if client_id:
+        assert_client_access(current_user, client_id)
 
     if not db:
         result = [l for l in _MOCK_LOANS if l.get("section_185_flagged") and l.get("firm_id") == firm_id]
@@ -899,6 +907,8 @@ def list_properties(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
+    if client_id:
+        assert_client_access(current_user, client_id)
 
     if not db:
         result = [p for p in _MOCK_PROPERTIES if p.get("firm_id") == firm_id]
@@ -936,6 +946,7 @@ def related_party_report(
     """
     db = _db()
     firm_id = current_user["firm_id"]
+    assert_client_access(current_user, client_id)
 
     if not db:
         # Collect all entity roles for this client
