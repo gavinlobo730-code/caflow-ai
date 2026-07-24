@@ -392,7 +392,7 @@ class AICopilotService:
         compliance_types: list[str] = []
 
         try:
-            client = _get_client_repo().find_by_id(client_id)
+            client = _get_client_repo().find_by_id(client_id, firm_id=firm_id)
             if client:
                 client_name = client.get("client_name", client_id)
                 client_pan = client.get("pan", "N/A")

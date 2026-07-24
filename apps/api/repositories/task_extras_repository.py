@@ -24,8 +24,11 @@ class TaskExtrasRepository(BaseRepository[dict]):
         }, on_conflict="task_id,tag").execute()
         return result.data[0]
 
-    def remove_tag(self, task_id: str, tag: str) -> bool:
-        result = _get_db().table("task_tags").delete().eq("task_id", task_id).eq("tag", tag.lower().strip()).execute()
+    def remove_tag(self, task_id: str, tag: str, firm_id: Optional[str] = None) -> bool:
+        query = _get_db().table("task_tags").delete().eq("task_id", task_id).eq("tag", tag.lower().strip())
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
         return len(result.data) > 0
 
     def get_firm_tags(self, firm_id: str) -> list[str]:
@@ -109,8 +112,14 @@ class TaskExtrasRepository(BaseRepository[dict]):
         }, on_conflict="task_id,depends_on_task_id").execute()
         return result.data[0]
 
-    def remove_dependency(self, dependency_id: str) -> bool:
-        result = _get_db().table("task_dependencies").delete().eq("id", dependency_id).execute()
+    def remove_dependency(self, task_id: str, dependency_id: str) -> bool:
+        # Scoped to task_id (not just the dependency row's own id) so a
+        # dependency_id belonging to a different task can't be deleted via
+        # this route -- the caller has already verified task_id's firm.
+        result = (
+            _get_db().table("task_dependencies").delete()
+            .eq("id", dependency_id).eq("task_id", task_id).execute()
+        )
         return len(result.data) > 0
 
     # ── Timeline Events ───────────────────────────────────────────────────────

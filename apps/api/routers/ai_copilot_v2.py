@@ -169,6 +169,7 @@ async def client_intelligence(
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """Generate AI-powered intelligence report for a specific client."""
+    assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
     result = await _service().get_client_intelligence(firm_id, client_id)
     return api_response(True, result)

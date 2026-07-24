@@ -40,12 +40,16 @@ def list_timeline_events(
         events = sorted(events, key=lambda e: e["created_at"], reverse=True)
         return api_response(True, events[offset: offset + limit])
 
+    from core.authz import assert_client_access
+    assert_client_access(current_user, client_id)
+
     from core.supabase_client import get_supabase
     db = get_supabase()
     q = (
         db.table("client_timeline_events")
         .select("*")
         .eq("client_id", client_id)
+        .eq("firm_id", current_user.get("firm_id"))
         .is_("deleted_at", "null")
     )
     if category:

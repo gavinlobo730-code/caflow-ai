@@ -45,8 +45,11 @@ class TimeTrackingRepository(BaseRepository[dict]):
         )
         return result.data
 
-    def find_by_id(self, id: str) -> Optional[dict]:
-        result = _get_db().table("time_entries").select("*").eq("id", id).maybe_single().execute()
+    def find_by_id(self, id: str, firm_id: Optional[str] = None) -> Optional[dict]:
+        query = _get_db().table("time_entries").select("*").eq("id", id)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.maybe_single().execute()
         return result.data
 
     def create(self, data: dict) -> dict:
@@ -57,15 +60,21 @@ class TimeTrackingRepository(BaseRepository[dict]):
         }).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
-        result = _get_db().table("time_entries").update({
+    def update(self, id: str, data: dict, firm_id: Optional[str] = None) -> Optional[dict]:
+        query = _get_db().table("time_entries").update({
             **data,
             "updated_at": self.now_iso(),
-        }).eq("id", id).execute()
+        }).eq("id", id)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
         return result.data[0] if result.data else None
 
-    def delete(self, id: str) -> bool:
-        result = _get_db().table("time_entries").delete().eq("id", id).execute()
+    def delete(self, id: str, firm_id: Optional[str] = None) -> bool:
+        query = _get_db().table("time_entries").delete().eq("id", id)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
         return len(result.data) > 0
 
     def get_summary(self, firm_id: str, user_id: Optional[str] = None, client_id: Optional[str] = None) -> dict:

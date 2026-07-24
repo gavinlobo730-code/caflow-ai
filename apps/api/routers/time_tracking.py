@@ -143,7 +143,8 @@ def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_en
 
 @router.post("/{entry_id}/stop")
 def stop_timer(entry_id: str, current_user: dict = Depends(rbac("time_entry", "write"))):
-    entry = time_tracking_repo.find_by_id(entry_id)
+    firm_id = current_user.get("firm_id")
+    entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Time entry not found")
     if entry.get("ended_at"):
@@ -151,7 +152,7 @@ def stop_timer(entry_id: str, current_user: dict = Depends(rbac("time_entry", "w
 
     now = _now()
     duration = _compute_duration(entry["started_at"], now)
-    updated = time_tracking_repo.update(entry_id, {"ended_at": now, "duration_minutes": duration})
+    updated = time_tracking_repo.update(entry_id, {"ended_at": now, "duration_minutes": duration}, firm_id=firm_id)
     return api_response(True, {"entry": updated})
 
 
@@ -183,23 +184,25 @@ def create_manual_entry(body: ManualEntryCreate, current_user: dict = Depends(rb
 
 @router.patch("/{entry_id}")
 def update_entry(entry_id: str, body: EntryUpdate, current_user: dict = Depends(rbac("time_entry", "write"))):
-    entry = time_tracking_repo.find_by_id(entry_id)
+    firm_id = current_user.get("firm_id")
+    entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Time entry not found")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "started_at" in updates and "ended_at" in updates:
         updates["duration_minutes"] = _compute_duration(updates["started_at"], updates["ended_at"])
-    updated = time_tracking_repo.update(entry_id, updates)
+    updated = time_tracking_repo.update(entry_id, updates, firm_id=firm_id)
     return api_response(True, {"entry": updated})
 
 
 @router.delete("/{entry_id}")
 def delete_entry(entry_id: str, current_user: dict = Depends(rbac("time_entry", "delete"))):
-    entry = time_tracking_repo.find_by_id(entry_id)
+    firm_id = current_user.get("firm_id")
+    entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Time entry not found")
-    time_tracking_repo.delete(entry_id)
+    time_tracking_repo.delete(entry_id, firm_id=firm_id)
     return api_response(True, {"deleted": True})
 
 
