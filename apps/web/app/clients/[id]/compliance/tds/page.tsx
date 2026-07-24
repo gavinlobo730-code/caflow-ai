@@ -126,12 +126,21 @@ function TDSDashboard({ clientId }: { clientId: string }) {
 function DeductionsTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no deductions recorded".
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     apiFetch(`/api/tds-workspace/deductions?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
+      .then((r) => {
+        if (r.success) { setRows(r.data); setLoadError(null); }
+        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS deductions."); }
+      })
+      .catch(() => { setRows([]); setLoadError("Couldn't load TDS deductions. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="space-y-4">
@@ -159,7 +168,12 @@ function DeductionsTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">{r.quarter as string ?? "—"}</td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={6} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No deductions recorded.</td></tr>
             )}
           </tbody>
@@ -174,13 +188,19 @@ function DeductionsTab({ clientId }: { clientId: string }) {
 function ChallansTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no challans yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_paise: "", financial_year: "", quarter: "Q1" });
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/tds-workspace/challans?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
+      .then((r) => {
+        if (r.success) { setRows(r.data); setLoadError(null); }
+        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS challans."); }
+      })
+      .catch(() => { setRows([]); setLoadError("Couldn't load TDS challans. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -264,7 +284,12 @@ function ChallansTab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={7} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={7} className="px-3 py-4 text-center text-[#94A3B8]">No challans yet.</td></tr>
             )}
           </tbody>
@@ -279,13 +304,19 @@ function ChallansTab({ clientId }: { clientId: string }) {
 function ReturnsTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no TDS returns yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ return_type: "26Q", quarter: "Q1", financial_year: "" });
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/tds-workspace/returns?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
+      .then((r) => {
+        if (r.success) { setRows(r.data); setLoadError(null); }
+        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS returns."); }
+      })
+      .catch(() => { setRows([]); setLoadError("Couldn't load TDS returns. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -377,7 +408,12 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={6} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No TDS returns yet.</td></tr>
             )}
           </tbody>
@@ -466,13 +502,19 @@ function Form26ASTab({ clientId }: { clientId: string }) {
 function CertificatesTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no certificates generated".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ deductee_pan: "", deductee_name: "", financial_year: "", certificate_type: "Form 16A", section: "", tds_amount_paise: "" });
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/tds-workspace/certificates?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
+      .then((r) => {
+        if (r.success) { setRows(r.data); setLoadError(null); }
+        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS certificates."); }
+      })
+      .catch(() => { setRows([]); setLoadError("Couldn't load TDS certificates. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -557,7 +599,12 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={6} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No certificates generated.</td></tr>
             )}
           </tbody>

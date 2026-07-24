@@ -52,6 +52,9 @@ const KYC_COLORS: Record<string, string> = {
 function CompaniesTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no companies registered" — the
+  // Supabase query's error field used to be destructured away entirely.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
     cin: "", company_name: "", incorporation_date: "", registered_address: "",
@@ -60,13 +63,21 @@ function CompaniesTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
-      .from("mca_companies")
-      .select("id, company_name, cin, incorp_date, registered_office, authorized_capital_paise, paid_up_capital_paise, company_category")
-      .eq("client_id", clientId));
-    setRows((data as Record<string, unknown>[]) ?? []);
-    setLoading(false);
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await selectAll(() => supabase
+        .from("mca_companies")
+        .select("id, company_name, cin, incorp_date, registered_office, authorized_capital_paise, paid_up_capital_paise, company_category")
+        .eq("client_id", clientId));
+      if (error) throw error;
+      setRows((data as Record<string, unknown>[]) ?? []);
+      setLoadError(null);
+    } catch (e) {
+      setRows([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load companies.");
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -132,7 +143,12 @@ function CompaniesTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <ListSkeleton rows={3} /> : (
+      {loading ? <ListSkeleton rows={3} /> : loadError ? (
+        <div className="text-center py-6 space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      ) : (
         <div className="space-y-3">
           {rows.map((c) => (
             <div key={c.id as string} className="border rounded p-4 space-y-1">
@@ -161,13 +177,19 @@ function CompaniesTab({ clientId }: { clientId: string }) {
 function DirectorsTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no directors added".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" });
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/mca-workspace/directors?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
+      .then((r) => {
+        if (r.success) { setRows(r.data); setLoadError(null); }
+        else { setRows([]); setLoadError(r.error ?? "Couldn't load directors."); }
+      })
+      .catch(() => { setRows([]); setLoadError("Couldn't load directors. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -271,7 +293,12 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={6} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No directors added.</td></tr>
             )}
           </tbody>
@@ -286,6 +313,8 @@ function DirectorsTab({ clientId }: { clientId: string }) {
 function FilingsTab({ clientId, category }: { clientId: string; category: "annual" | "event" }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no filings of this category yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ form_type: "", financial_year: "", due_date: "", description: "" });
   const [confirmFiling, setConfirmFiling] = useState<Record<string, unknown> | null>(null);
@@ -302,9 +331,16 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
     setLoading(true);
     apiFetch(`/api/mca-workspace/filings?client_id=${clientId}`)
       .then((r) => {
-        const all: Record<string, unknown>[] = r.success ? r.data : [];
-        setRows(all.filter((f) => f.category === category));
+        if (r.success) {
+          const all: Record<string, unknown>[] = r.data;
+          setRows(all.filter((f) => f.category === category));
+          setLoadError(null);
+        } else {
+          setRows([]);
+          setLoadError(r.error ?? "Couldn't load filings.");
+        }
       })
+      .catch(() => { setRows([]); setLoadError("Couldn't load filings. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId, category]);
 
@@ -437,7 +473,12 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={5} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={5} className="px-3 py-4 text-center text-[#94A3B8]">No {category} filings.</td></tr>
             )}
           </tbody>
@@ -480,13 +521,21 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
 function FilingHistoryTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no filed records".
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/mca-workspace/filing-history?client_id=${clientId}`)
-      .then((r) => setRows(r.success ? r.data : []))
+      .then((r) => {
+        if (r.success) { setRows(r.data); setLoadError(null); }
+        else { setRows([]); setLoadError(r.error ?? "Couldn't load filing history."); }
+      })
+      .catch(() => { setRows([]); setLoadError("Couldn't load filing history. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="space-y-4">
@@ -516,7 +565,12 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={5} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : rows.length === 0 && (
               <tr><td colSpan={5} className="px-3 py-4 text-center text-[#94A3B8]">No filed records.</td></tr>
             )}
           </tbody>

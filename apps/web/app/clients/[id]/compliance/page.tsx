@@ -51,6 +51,8 @@ interface MarkFiledForm {
 
 function NoticesSection({ clientId }: { clientId: string }) {
   const [notices, setNotices] = useState<Record<string, unknown>[]>([]);
+  // Distinguishes "fetch failed" from "no notices extracted yet".
+  const [noticesError, setNoticesError] = useState<string | null>(null);
   const [showExtract, setShowExtract] = useState(false);
   const [noticeText, setNoticeText] = useState("");
   const [extracting, setExtracting] = useState(false);
@@ -66,7 +68,13 @@ function NoticesSection({ clientId }: { clientId: string }) {
       .select("*")
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
-    setNotices(error || !data ? [] : data);
+    if (error) {
+      setNotices([]);
+      setNoticesError(error.message || "Couldn't load government notices.");
+      return;
+    }
+    setNotices(data ?? []);
+    setNoticesError(null);
   }, [clientId]);
 
   useEffect(() => { loadNotices(); }, [loadNotices]);
@@ -122,7 +130,12 @@ function NoticesSection({ clientId }: { clientId: string }) {
             </div>
           </div>
         )}
-        {notices.length === 0 ? (
+        {noticesError ? (
+          <div className="text-center py-4 space-y-2">
+            <p className="text-sm text-red-600 font-medium">{noticesError}</p>
+            <button onClick={loadNotices} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          </div>
+        ) : notices.length === 0 ? (
           <p className="text-sm text-[#94A3B8] text-center py-4">No government notices extracted yet.</p>
         ) : (
           <table className="w-full text-sm border-collapse">
@@ -173,6 +186,8 @@ export default function CompliancePage() {
   const { clientId, financialYear } = useClientNav();
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no compliance obligations yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<ComplianceSubTab>("all");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
@@ -186,13 +201,20 @@ export default function CompliancePage() {
     if (!clientId || clientId === "_placeholder") return;
     async function load() {
       setLoading(true);
+      setLoadError(null);
       try {
-        let comp = await getComplianceCalendarDirect(clientId).catch(() => [] as ComplianceEntry[]);
+        let comp = await getComplianceCalendarDirect(clientId);
         if (comp.length === 0) {
+          // Best-effort auto-seed — its own failure doesn't block the page;
+          // if seeding didn't run, the re-fetch below just stays empty
+          // (a genuine "nothing yet", not a load failure).
           await seedComplianceCalendar(clientId).catch(() => undefined);
-          comp = await getComplianceCalendarDirect(clientId).catch(() => [] as ComplianceEntry[]);
+          comp = await getComplianceCalendarDirect(clientId);
         }
         setCompliance(comp);
+      } catch (e) {
+        setCompliance([]);
+        setLoadError(e instanceof Error ? e.message : "Couldn't load the compliance calendar.");
       } finally {
         setLoading(false);
       }
@@ -204,8 +226,13 @@ export default function CompliancePage() {
 
   async function reloadCompliance() {
     if (!clientId || clientId === "_placeholder") return;
-    const comp = await getComplianceCalendarDirect(clientId).catch(() => [] as ComplianceEntry[]);
-    setCompliance(comp);
+    try {
+      const comp = await getComplianceCalendarDirect(clientId);
+      setCompliance(comp);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Couldn't reload the compliance calendar.");
+    }
   }
 
   async function handleMarkFiled() {
@@ -481,7 +508,12 @@ export default function CompliancePage() {
                 ))}
               </tbody>
             </table>
-            {filtered.length === 0 && (
+            {loadError ? (
+              <div className="text-center py-12 space-y-2">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={reloadCompliance} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </div>
+            ) : filtered.length === 0 && (
               <div className="text-center py-12 text-[#94A3B8] text-sm">No compliance entries</div>
             )}
           </div>

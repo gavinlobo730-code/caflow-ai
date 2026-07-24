@@ -131,8 +131,11 @@ export async function getComplianceCalendarDirect(clientId: string): Promise<Com
     .eq("client_id", clientId)
     .is("deleted_at", null)
     .order("due_date");
-  if (error || !data) return [];
-  return (data as RawObligation[]).map(toEntry);
+  // Throws (rather than swallowing to []) so the caller can distinguish a
+  // genuinely empty calendar from a failed fetch — the only call site
+  // (clients/[id]/compliance/page.tsx) is responsible for surfacing this.
+  if (error) throw error;
+  return ((data ?? []) as RawObligation[]).map(toEntry);
 }
 
 /** Generates the client's statutory obligations for the current FY

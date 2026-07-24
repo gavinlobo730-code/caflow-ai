@@ -49,19 +49,25 @@ const CATEGORY_LABELS = {
 // M2: search now goes through the backend /api/search, which enforces client
 // assignment server-side. The browser no longer queries Supabase directly, so a
 // user can only discover entities for clients they are authorized to access.
-async function runSearch(query: string): Promise<SearchResult[]> {
-  if (!query.trim() || query.length < 2) return [];
+async function runSearch(query: string): Promise<{ results: SearchResult[]; error: string | null }> {
+  if (!query.trim() || query.length < 2) return { results: [], error: null };
   try {
     const res = await api.search(query.trim());
-    return (res.data?.results ?? []).map((r) => ({
-      id: r.id,
-      category: (r.category as SearchResult["category"]) ?? "clients",
-      title: r.title,
-      subtitle: r.subtitle ?? "",
-      href: r.href,
-    }));
-  } catch {
-    return [];
+    if (!res.success) return { results: [], error: res.error ?? "Search failed." };
+    return {
+      results: (res.data?.results ?? []).map((r) => ({
+        id: r.id,
+        category: (r.category as SearchResult["category"]) ?? "clients",
+        title: r.title,
+        subtitle: r.subtitle ?? "",
+        href: r.href,
+      })),
+      error: null,
+    };
+  } catch (e) {
+    // Distinguishes "search failed" from "no results" — a masked failure
+    // previously rendered identically to a genuine zero-match search.
+    return { results: [], error: e instanceof Error ? e.message : "Search failed." };
   }
 }
 
@@ -69,6 +75,8 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "search failed" from "no results found".
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -92,10 +100,11 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   }, [open, onClose]);
 
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); return; }
+    if (!q.trim()) { setResults([]); setSearchError(null); return; }
     setLoading(true);
-    const res = await runSearch(q);
+    const { results: res, error } = await runSearch(q);
     setResults(res);
+    setSearchError(error);
     setSelectedIndex(0);
     setLoading(false);
   }, []);
@@ -174,7 +183,19 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
             </div>
           )}
 
-          {!loading && query && allResults.length === 0 && (
+          {!loading && query && searchError && (
+            <div className="py-12 text-center">
+              <p className="text-sm text-red-600 font-medium">{searchError}</p>
+              <button
+                onClick={() => search(query)}
+                className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!loading && query && !searchError && allResults.length === 0 && (
             <div className="py-12 text-center text-[#94A3B8]">
               <p className="text-sm">No results for &quot;{query}&quot;</p>
             </div>

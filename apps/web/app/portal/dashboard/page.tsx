@@ -86,6 +86,11 @@ export default function PortalDashboardPage() {
   const [stmtEnd, setStmtEnd] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // A failed loadSection() left the section's own state at null forever —
+  // the panel's own `xxx === null` guard reads that as "still loading," so
+  // it kept spinning underneath the (correctly firing) `notice` banner
+  // instead of resolving to a retryable error state.
+  const [sectionFailed, setSectionFailed] = useState<Record<string, boolean>>({});
 
   // 1. Accept a pending invite (F22 fix — a single-use token, not an auto-bind
   // on email/URL match), then resolve the identity's client memberships (one
@@ -146,6 +151,7 @@ export default function PortalDashboardPage() {
   // 3. Lazy-load the active section's data the first time it is opened.
   const loadSection = useCallback(async (key: string, client: string) => {
     setNotice(null);
+    setSectionFailed((f) => ({ ...f, [key]: false }));
     try {
       if (key === "invoices" && invoices === null) {
         const r = await api.portalSelf.invoices(client) as ApiResp<{ invoices: PortalInvoice[] }>;
@@ -162,6 +168,7 @@ export default function PortalDashboardPage() {
       }
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Unable to load this section");
+      setSectionFailed((f) => ({ ...f, [key]: true }));
     }
   }, [invoices, reminders, compliance, statement, stmtStart, stmtEnd]);
 
@@ -294,7 +301,7 @@ export default function PortalDashboardPage() {
           {/* ── Invoices ── */}
           {active === "invoices" && (
             <Panel title="Invoices">
-              {invoices === null ? <Loading /> : invoices.length === 0 ? <Empty label="No invoices yet." /> : (
+              {invoices === null ? (sectionFailed["invoices"] ? <ErrorRetry onRetry={() => loadSection("invoices", activeClient!)} /> : <Loading />) : invoices.length === 0 ? <Empty label="No invoices yet." /> : (
                 <Table head={["Invoice", "Date", "Due", "Total", "Outstanding", "Status", ""]}>
                   {invoices.map((i) => (
                     <tr key={i.id} className="border-t border-gray-100">
@@ -343,7 +350,7 @@ export default function PortalDashboardPage() {
                 </button>
                 <span className="text-[11px] text-gray-400">Defaults to the current financial year.</span>
               </div>
-              {statement === null ? <Loading /> : statement.available === false ? (
+              {statement === null ? (sectionFailed["statements"] ? <ErrorRetry onRetry={() => loadSection("statements", activeClient!)} /> : <Loading />) : statement.available === false ? (
                 <Empty label="No statement is available for this client yet." />
               ) : (
                 <>
@@ -372,7 +379,7 @@ export default function PortalDashboardPage() {
           {/* ── Payment Reminders ── */}
           {active === "reminders" && (
             <Panel title="Payment Reminders">
-              {reminders === null ? <Loading /> : reminders.length === 0 ? <Empty label="No reminders have been sent." /> : (
+              {reminders === null ? (sectionFailed["reminders"] ? <ErrorRetry onRetry={() => loadSection("reminders", activeClient!)} /> : <Loading />) : reminders.length === 0 ? <Empty label="No reminders have been sent." /> : (
                 <Table head={["Invoice", "Status", "Sent"]}>
                   {reminders.map((r, idx) => (
                     <tr key={idx} className="border-t border-gray-100">
@@ -389,7 +396,7 @@ export default function PortalDashboardPage() {
           {/* ── Compliance Status ── */}
           {active === "compliance" && (
             <Panel title="Compliance Status">
-              {compliance === null ? <Loading /> : compliance.length === 0 ? <Empty label="No compliance items to show." /> : (
+              {compliance === null ? (sectionFailed["compliance"] ? <ErrorRetry onRetry={() => loadSection("compliance", activeClient!)} /> : <Loading />) : compliance.length === 0 ? <Empty label="No compliance items to show." /> : (
                 <Table head={["Type", "Obligation", "Period", "Due", "Status"]}>
                   {compliance.map((c, idx) => (
                     <tr key={idx} className="border-t border-gray-100">
@@ -438,3 +445,13 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
 
 function Loading() { return <PageLoader className="min-h-[20vh]" />; }
 function Empty({ label }: { label: string }) { return <div className="p-4 text-sm text-gray-400">{label}</div>; }
+function ErrorRetry({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="p-6 text-center space-y-2">
+      <p className="text-sm text-red-600">Couldn&apos;t load this section.</p>
+      <button onClick={onRetry} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700">
+        Retry
+      </button>
+    </div>
+  );
+}

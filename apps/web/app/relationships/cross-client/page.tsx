@@ -48,6 +48,9 @@ export default function CrossClientMatchesPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "pending" | "confirmed" | "rejected">("all");
   const [updating, setUpdating] = useState<string | null>(null);
+  // Distinguishes a genuinely no-op click from a failed confirm/reject —
+  // previously the buttons appeared to do nothing at all on failure.
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
     loadMatches();
@@ -72,16 +75,22 @@ export default function CrossClientMatchesPage() {
 
   async function handleReview(id: string, confirmed: boolean) {
     setUpdating(id);
+    setActionError(null);
     try {
-      await apiFetch(`/api/relationships/cross-client-matches/${id}/review`, {
-        method: "POST",
-        body: JSON.stringify({ is_confirmed: confirmed }),
-      });
+      const res: ApiResponse<CrossClientMatch> = await apiFetch(
+        `/api/relationships/cross-client-matches/${id}/review`,
+        {
+          method: "POST",
+          body: JSON.stringify({ is_confirmed: confirmed }),
+        }
+      );
+      if (!res.success) throw new Error(res.error ?? "Action failed");
       setMatches((prev) =>
         prev.map((m) => (m.id === id ? { ...m, is_confirmed: confirmed } : m))
       );
-    } catch {
-      // silent — match state stays unchanged
+    } catch (e) {
+      // The buttons must not appear to do nothing on failure.
+      setActionError({ id, message: e instanceof Error ? e.message : "Action failed. Please retry." });
     } finally {
       setUpdating(null);
     }
@@ -184,6 +193,9 @@ export default function CrossClientMatchesPage() {
                     </p>
                     {m.notes && (
                       <p className="text-xs text-gray-500 mt-1">{m.notes}</p>
+                    )}
+                    {actionError?.id === m.id && (
+                      <p className="text-xs text-red-600 mt-1">{actionError.message}</p>
                     )}
                   </div>
 

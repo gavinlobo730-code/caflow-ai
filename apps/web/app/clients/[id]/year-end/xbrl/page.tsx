@@ -49,6 +49,9 @@ export default function XBRLPage() {
 
   const [packages, setPackages] = useState<XBRLPackage[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no XBRL packages yet" — the
+  // Supabase query's error field used to be destructured away entirely.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<XBRLPackage | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [fy, setFy] = useState(FY_OPTIONS[0]);
@@ -64,12 +67,19 @@ export default function XBRLPage() {
     // domain/income_tax/xbrl_service.py::list_xbrl_packages (same table,
     // client_id filter, created_at-desc ordering).
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("xbrl_packages")
       .select("*")
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
+    if (error) {
+      setPackages([]);
+      setLoadError(error.message || "Couldn't load XBRL packages.");
+      setLoading(false);
+      return;
+    }
     setPackages((data as XBRLPackage[]) ?? []);
+    setLoadError(null);
     setLoading(false);
   }, [clientId]);
 
@@ -140,6 +150,11 @@ export default function XBRLPage() {
 
       {loading ? (
         <div className="space-y-2">{[...Array(2)].map((_, i) => <div key={i} className="h-14 bg-[#F8FAFC] rounded-xl animate-pulse" />)}</div>
+      ) : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : packages.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
           <Code size={28} className="text-gray-200 mx-auto" />
