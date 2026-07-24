@@ -67,13 +67,27 @@ def run_sync_job(
     from domain.gst.portal_service import run_sync_job as _run, list_sync_jobs
     try:
         result = _run(current_user["firm_id"], job_id)
+        # A failed/partial sync must read as such to the CA, not as a plain
+        # "completed" -- see run_sync_job's own status computation.
+        status = result.get("status", "completed")
+        failed = result.get("failed") or []
+        if status == "completed":
+            title, severity = "GST portal sync completed", "success"
+        elif status == "partial_failure":
+            title, severity = "GST portal sync partially failed", "warning"
+        else:
+            title, severity = "GST portal sync failed", "critical"
+        description = f"{result.get('snapshots_created', 0)} snapshot(s) synced"
+        if failed:
+            description += "; failed: " + ", ".join(f["snap_type"] for f in failed)
         timeline_service.log(
             client_id="",  # Firm-level event
+            firm_id=current_user["firm_id"],
             category="compliance",
-            action="gst_sync_completed",
-            description=f"GST portal sync completed: {result.get('snapshots_created', 0)} snapshots",
-            severity="info",
-            metadata={"job_id": job_id, **result},
+            title=title,
+            description=description,
+            severity=severity,
+            entity_type="gst_sync_job", entity_id=job_id,
         )
         return api_response(True, result)
     except Exception as e:

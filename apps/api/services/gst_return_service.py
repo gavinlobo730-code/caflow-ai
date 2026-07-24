@@ -182,6 +182,11 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             igst_paise=int(b.get("igst_paise") or 0),
             cess_paise=int(b.get("cess_paise") or 0),
             is_reverse_charge=bool(b.get("is_reverse_charge", False)),
+            # CGST Act §17(5) — blocked credit (migration 240).
+            ineligible_igst_paise=int(b.get("ineligible_itc_igst_paise") or 0),
+            ineligible_cgst_paise=int(b.get("ineligible_itc_cgst_paise") or 0),
+            ineligible_sgst_paise=int(b.get("ineligible_itc_sgst_paise") or 0),
+            ineligible_cess_paise=int(b.get("ineligible_itc_cess_paise") or 0),
         ))
     # Debit notes (purchase returns) REVERSE ITC — they credit gst_input in the GL, so
     # the return's ITC must net them or it over-claims (mirror of credit notes reducing

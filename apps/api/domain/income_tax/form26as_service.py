@@ -11,6 +11,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import uuid4
 
 _logger = logging.getLogger("caflow.form26as")
@@ -140,12 +141,23 @@ def _parse_date(s: str) -> str | None:
 
 
 def _parse_amount(s: str) -> int:
-    """Parse amount string to paise (integer). Input is in rupees with commas."""
-    cleaned = re.sub(r"[^\d.]", "", s.strip())
+    """Parse amount string to paise (integer). Input is in rupees with commas.
+
+    Decimal-based (never float, per project rule) -- a raw float() conversion
+    is not guaranteed to round-trip exactly through *100 (IEEE-754 binary
+    imprecision). A leading '-' (a correction/reversal row in 26AS) is
+    preserved rather than being silently stripped by the digit/dot filter.
+    """
+    s = s.strip()
+    negative = s.startswith("-")
+    cleaned = re.sub(r"[^\d.]", "", s)
     if not cleaned:
         return 0
-    rupees = float(cleaned)
-    return round(rupees * 100)  # convert to paise
+    try:
+        paise = int((Decimal(cleaned) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    except InvalidOperation as e:
+        raise ValueError(f"Invalid amount: {s!r}") from e
+    return -paise if negative else paise
 
 
 def save_parsed_records(

@@ -155,6 +155,7 @@ def run_sync_job(
     scope = job.get("scope", list(SNAPSHOT_TYPES))
     snapshots_created = 0
 
+    failed: list[dict] = []
     try:
         for snap_type in scope:
             if snap_type not in SNAPSHOT_TYPES:
@@ -165,12 +166,27 @@ def run_sync_job(
                 snapshots_created += 1
             except Exception as e:
                 _logger.warning("Failed to fetch %s for %s: %s", snap_type, gstin, e)
+                failed.append({"snap_type": snap_type, "error": str(e)})
 
-        sb.table("gst_sync_jobs").update({
-            "status": "completed",
+        # A per-snap_type fetch failure must not be silently swallowed into a
+        # blanket "completed" — the CA needs to know some (or all) of the
+        # requested portal data was not actually refreshed.
+        if not failed:
+            status = "completed"
+        elif snapshots_created == 0:
+            status = "error"
+        else:
+            status = "partial_failure"
+
+        update_payload = {
+            "status": status,
             "snapshots_created": snapshots_created,
             "completed_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", job_id).execute()
+        }
+        if failed:
+            update_payload["error_message"] = "; ".join(
+                f"{f['snap_type']}: {f['error']}" for f in failed)
+        sb.table("gst_sync_jobs").update(update_payload).eq("id", job_id).execute()
 
     except Exception as e:
         sb.table("gst_sync_jobs").update({
@@ -179,7 +195,7 @@ def run_sync_job(
         }).eq("id", job_id).execute()
         raise
 
-    return {"status": "completed", "snapshots_created": snapshots_created}
+    return {"status": status, "snapshots_created": snapshots_created, "failed": failed}
 
 
 def _fetch_snapshot_data(provider: GSTPortalProvider, snap_type: str, gstin: str) -> dict:
