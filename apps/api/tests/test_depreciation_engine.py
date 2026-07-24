@@ -181,25 +181,25 @@ class TestWDV:
         assert annual == math.floor(99_999_00 * 13.91 / 100)
 
     def test_wdv_computer_schedule_ii_rate(self):
-        """Computer: Schedule II WDV rate = 31.67%."""
-        assert _DEFAULT_WDV_RATES["Computer"] == 31.67
-        asset = _wdv_asset(asset_category="Computer", wdv_rate_percent=31.67, purchase_cost_paise=80_000_00)
+        """Computer & IT Equipment: Schedule II WDV rate = 31.67%."""
+        assert _DEFAULT_WDV_RATES["Computer & IT Equipment"] == 31.67
+        asset = _wdv_asset(asset_category="Computer & IT Equipment", wdv_rate_percent=31.67, purchase_cost_paise=80_000_00)
         annual = _compute_annual_depreciation(asset)
         assert annual == math.floor(80_000_00 * 31.67 / 100)
 
     def test_wdv_vehicle_schedule_ii_rate(self):
-        """Vehicle: Schedule II WDV rate = 25.89%."""
-        assert _DEFAULT_WDV_RATES["Vehicle"] == 25.89
-        asset = _wdv_asset(asset_category="Vehicle", wdv_rate_percent=25.89, purchase_cost_paise=800_000_00)
+        """Vehicles: Schedule II WDV rate = 25.89%."""
+        assert _DEFAULT_WDV_RATES["Vehicles"] == 25.89
+        asset = _wdv_asset(asset_category="Vehicles", wdv_rate_percent=25.89, purchase_cost_paise=800_000_00)
         annual = _compute_annual_depreciation(asset)
         assert annual == math.floor(800_000_00 * 25.89 / 100)
 
     def test_wdv_furniture_schedule_ii_rate(self):
-        """Furniture: Schedule II WDV rate = 18.10%."""
-        assert _DEFAULT_WDV_RATES["Furniture"] == 18.10
-        asset = _wdv_asset(asset_category="Furniture", wdv_rate_percent=18.10, purchase_cost_paise=150_000_00)
+        """Furniture & Fixtures: Schedule II WDV rate = 10.00%."""
+        assert _DEFAULT_WDV_RATES["Furniture & Fixtures"] == 10.00
+        asset = _wdv_asset(asset_category="Furniture & Fixtures", wdv_rate_percent=10.00, purchase_cost_paise=150_000_00)
         annual = _compute_annual_depreciation(asset)
-        assert annual == math.floor(150_000_00 * 18.10 / 100)
+        assert annual == math.floor(150_000_00 * 10.00 / 100)
 
     def test_wdv_high_value_asset(self):
         """₹50,00,000 plant at 13.91% WDV → ₹6,95,500/yr."""
@@ -337,8 +337,16 @@ class TestDepreciationJournalIntegrity:
             assert monthly * 12 <= annual
 
     def test_schedule_ii_rates_exist_for_all_categories(self):
-        """All Schedule II asset categories have WDV rates defined."""
-        required = ["Plant & Machinery", "Furniture", "Computer", "Vehicle", "Building", "Intangible", "Other"]
+        """All Schedule II asset categories have WDV rates defined — must match
+        the taxonomy actually used platform-wide (create/edit form's CATEGORIES
+        list, phase2_journal_service's cat_map GL mapping)."""
+        required = [
+            "Plant & Machinery", "Furniture & Fixtures", "Computer & IT Equipment",
+            "Office Equipment", "Vehicles", "Building", "Land", "Intangibles", "Other",
+        ]
         for cat in required:
             assert cat in _DEFAULT_WDV_RATES, f"Missing WDV rate for category: {cat}"
-            assert _DEFAULT_WDV_RATES[cat] > 0
+            if cat == "Land":
+                assert _DEFAULT_WDV_RATES[cat] == 0  # land never depreciates (Schedule II)
+            else:
+                assert _DEFAULT_WDV_RATES[cat] > 0

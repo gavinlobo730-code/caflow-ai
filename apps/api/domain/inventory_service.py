@@ -1282,6 +1282,23 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
 # count surplus. Whether reverse_itc applies is a CA judgment call passed in
 # by the caller, never inferred here (see models/inventory.py's docstring).
 
+def _movement_journal_ref(prefix: str, movement_id) -> str:
+    """System-unique journal reference for a manual inventory movement
+    (adjustment / NRV write-down) — same fix as purchase_bill_journal_ref
+    (services/phase2_journal_service.py). routers/inventory.py defaults its
+    reference_no to just the adjustment/writedown DATE when the CA doesn't
+    supply one, which has no uniqueness guarantee: two same-day adjustments
+    (different items, or the same item twice) produced identical journal
+    reference_no values, and _create_journal's (firm, client, reference_no,
+    entry_date) idempotency guard silently deduped the second journal onto
+    the first — its value never posted to the General Ledger even though the
+    stock ledger recorded it correctly. The ledger row's own DB-generated id
+    is unique per movement, so the journal reference derives from it; the
+    human-facing reference_no stays on the stock ledger row for the CA to
+    read (record_stock_adjustment/record_nrv_writedown, called separately
+    above)."""
+    return f"{prefix}-{str(movement_id)[:8].upper()}"
+
 def record_stock_adjustment(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     quantity, direction: str, reference_no: Optional[str] = None, created_by: Optional[str] = None,
@@ -1417,18 +1434,18 @@ def apply_stock_adjustment(
             reference_no=reference_no, created_by=created_by,
         )
         value_paise = abs(int(movement["value_delta_paise"]))
-        ref = reference_no or service_catalogue_id
+        journal_ref = _movement_journal_ref("ADJ", movement.get("id"))
         if direction == "decrease":
             journal_id = post_stock_writeoff_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
                 item_name=item_name, value_paise=value_paise, gst_rate_bps=int(item.get("gst_rate_bps") or 0),
-                reverse_itc=reverse_itc, reference_no=ref,
+                reverse_itc=reverse_itc, reference_no=journal_ref,
                 source_type="adjustment", source_id=movement.get("id"), created_by=created_by,
             )
         else:
             journal_id = post_stock_surplus_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
-                item_name=item_name, value_paise=value_paise, reference_no=ref,
+                item_name=item_name, value_paise=value_paise, reference_no=journal_ref,
                 source_type="adjustment", source_id=movement.get("id"), created_by=created_by,
             )
         _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
@@ -1546,10 +1563,10 @@ def apply_nrv_writedown(
         if not movement:
             return None
         write_down_paise = abs(int(movement["value_delta_paise"]))
-        ref = reference_no or service_catalogue_id
+        journal_ref = _movement_journal_ref("NRV", movement.get("id"))
         journal_id = post_nrv_writedown_journal_entry(
             db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
-            item_name=item_name, value_paise=write_down_paise, reference_no=ref,
+            item_name=item_name, value_paise=write_down_paise, reference_no=journal_ref,
             source_type="nrv_writedown", source_id=movement.get("id"), created_by=created_by,
         )
         _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)

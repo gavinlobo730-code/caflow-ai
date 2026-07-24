@@ -10,28 +10,45 @@ Companies Act 2013 Schedule II specifies WDV rates for various asset categories.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone, date
+from decimal import Decimal
+import calendar
 import math
+import re
 
 from models.common import api_response
 from models.accounting import FixedAssetIn, DepreciationIn, DisposalIn
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services.phase2_journal_service import Phase2JournalService
+from services.period_validation_service import period_validation_service, get_fy_for_date
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 
 _journal_svc = Phase2JournalService()
 
-# Companies Act 2013 Schedule II — default WDV rates
+# Companies Act 2013 Schedule II — default WDV rates. task #232 audit finding:
+# these keys used to be abbreviated ("Furniture", "Computer", "Vehicle",
+# "Intangible", no "Office Equipment"/"Land" entry at all) and never matched
+# the asset_category taxonomy actually used platform-wide — the create/edit
+# form's CATEGORIES list (apps/web/.../fixed-assets/page.tsx) and the GL
+# account mapping in services/phase2_journal_service.py's cat_map (already
+# fixed for the same mismatch — see test_fixed_asset_gl_mapping.py). Whenever
+# an asset was created without an explicit wdv_rate_percent, 4+ real
+# categories silently fell through to the generic "Other" rate instead of
+# their own. Values mirror the frontend's own WDV_RATES table exactly.
 _DEFAULT_WDV_RATES = {
-    "Plant & Machinery": 13.91,
-    "Furniture":         18.10,
-    "Computer":          31.67,
-    "Vehicle":           25.89,
-    "Building":           5.00,
-    "Intangible":        25.00,
-    "Other":             13.91,
+    "Plant & Machinery":       15.33,
+    "Furniture & Fixtures":    10.00,
+    "Computer & IT Equipment": 31.67,
+    "Office Equipment":        13.91,
+    "Vehicles":                25.89,
+    "Building":                 5.00,
+    "Land":                     0.00,
+    "Intangibles":             25.00,
+    "Other":                   15.33,
 }
+
+_PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 def _db():
@@ -44,9 +61,17 @@ def _db():
 
 def _compute_annual_depreciation(asset: dict) -> int:
     """
-    Compute annual depreciation in paise using integer arithmetic.
+    Compute ONE YEAR's depreciation in paise from the asset's current state,
+    using Decimal (never binary float — CLAUDE.md: every rupee calculation
+    must use integer paise arithmetic).
     SL:  (cost - salvage) / useful_life_years
     WDV: current_wdv × rate / 100
+
+    Callers must only pass an `asset` whose accumulated_depreciation_paise
+    represents the OPENING balance of the year being computed — see
+    _annual_depreciation_for_period, which is what routers/fixed_assets.py's
+    posting/projection endpoints actually call; this pure function has no
+    per-call memory of which year it's being asked about.
     """
     cost    = asset["purchase_cost_paise"]
     salvage = asset.get("salvage_value_paise", 0)
@@ -59,13 +84,75 @@ def _compute_annual_depreciation(asset: dict) -> int:
 
     if method == "SL":
         life = asset.get("useful_life_years") or 5
-        annual = math.floor((cost - salvage) / life)
+        annual = math.floor(Decimal(cost - salvage) / Decimal(life))
     else:  # WDV
-        rate = float(asset.get("wdv_rate_percent") or _DEFAULT_WDV_RATES.get(asset.get("asset_category", "Other"), 13.91))
-        annual = math.floor(wdv_now * rate / 100)
+        rate_value = asset.get("wdv_rate_percent") or _DEFAULT_WDV_RATES.get(asset.get("asset_category", "Other"), _DEFAULT_WDV_RATES["Other"])
+        rate = Decimal(str(rate_value))
+        annual = math.floor(Decimal(wdv_now) * rate / Decimal(100))
 
     # Cannot depreciate below salvage value
     return min(annual, wdv_now - salvage)
+
+
+def _annual_depreciation_for_period(asset: dict, period: str) -> tuple[int, str, int]:
+    """Resolve the FIXED annual depreciation charge this asset's `period`
+    posting (or projection) should divide by 12, plus which financial year
+    it belongs to and the opening-of-year accumulated_depreciation_paise it
+    was computed from — the router persists both back onto the asset row
+    (fixed_assets.depreciation_fy / depreciation_fy_start_accum_paise,
+    migration 239) so the NEXT month's posting in the same FY reuses them.
+
+    task #232 audit finding: WDV depreciation was previously recomputed at
+    EVERY monthly posting from accumulated_depreciation_paise as it stood
+    THAT MONTH — already reduced by every earlier month's charge in the same
+    year — instead of a fixed annual figure computed once from the year's
+    OPENING WDV. Each month's charge then used a smaller and smaller base,
+    systematically under-depreciating (~6.6% understated in year one,
+    compounding in later years) versus Schedule II's fixed-rate-on-opening-
+    balance method. SL is unaffected — cost/salvage/life never change, so
+    recomputing it every time already yields the same figure regardless of
+    when accumulated_depreciation_paise last changed.
+    """
+    fy = get_fy_for_date(f"{period}-01")
+    live_accum = asset.get("accumulated_depreciation_paise", 0)
+
+    if asset.get("depreciation_method", "WDV") != "WDV":
+        return _compute_annual_depreciation(asset), fy, live_accum
+
+    if asset.get("depreciation_fy") == fy and asset.get("depreciation_fy_start_accum_paise") is not None:
+        fy_start_accum = int(asset["depreciation_fy_start_accum_paise"])
+    else:
+        # First posting (or projection) touching this FY for this asset —
+        # the CURRENT accumulated depreciation correctly IS the opening
+        # balance of this FY, since nothing has posted against it yet.
+        fy_start_accum = live_accum
+
+    snapshot = dict(asset, accumulated_depreciation_paise=fy_start_accum)
+    annual = _compute_annual_depreciation(snapshot)
+    return annual, fy, fy_start_accum
+
+
+def _period_end_date(period: str) -> str:
+    """Last calendar day of a 'YYYY-MM' period, as an ISO date string — the
+    canonical posting date for a monthly depreciation entry (period-lock
+    validation and the journal's entry_date both key off this)."""
+    year, month = int(period[:4]), int(period[5:7])
+    last_day = calendar.monthrange(year, month)[1]
+    return f"{period}-{last_day:02d}"
+
+
+def _prorate_purchase_month(monthly_paise: int, purchase_date: str) -> int:
+    """Schedule II Note 3 / IT Act §32: an asset isn't held for the WHOLE of
+    its purchase month — pro-rate that one month's charge by the fraction of
+    days actually held (inclusive of the purchase day itself). Every OTHER
+    month is already correctly pro-rated by omission: the CA only calls
+    /depreciate for periods the asset was actually held, so months before
+    purchase simply never get posted (see post_depreciation's purchase-date
+    guard). Integer floor-division throughout — never float."""
+    year, month, day = int(purchase_date[:4]), int(purchase_date[5:7]), int(purchase_date[8:10])
+    days_in_month = calendar.monthrange(year, month)[1]
+    days_held = days_in_month - day + 1
+    return (monthly_paise * days_held) // days_in_month
 
 
 # ─── Asset Register ───────────────────────────────────────────────────────────
@@ -100,6 +187,12 @@ def create_asset(
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
 
+    # task #232 audit finding: this router never checked the FY lock at all —
+    # an asset could be created (and its acquisition journal posted) inside a
+    # financial year the firm has already closed. Every other posting router
+    # (inventory, sales, purchases, GST...) already enforces this.
+    period_validation_service.validate_posting_date(current_user["firm_id"], data.purchase_date)
+
     # Generate asset code
     client_id = data.client_id
     count_res = db.table("fixed_assets").select("id", count="exact").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).execute()
@@ -118,7 +211,7 @@ def create_asset(
         "salvage_value_paise":         data.salvage_value_paise,
         "useful_life_years":           data.useful_life_years,
         "depreciation_method":         data.depreciation_method.value,
-        "wdv_rate_percent":            data.wdv_rate_percent or _DEFAULT_WDV_RATES.get(cat, 13.91),
+        "wdv_rate_percent":            data.wdv_rate_percent or _DEFAULT_WDV_RATES.get(cat, _DEFAULT_WDV_RATES["Other"]),
         "accumulated_depreciation_paise": 0,
         "location":                    data.location,
         "notes":                       data.notes,
@@ -145,13 +238,15 @@ def post_depreciation(
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """
-    Post depreciation for a given period (month YYYY-MM or year YYYY).
-    Computes depreciation and creates journal entry.
+    Post depreciation for a given period (month YYYY-MM; defaults to the
+    current month). Computes depreciation and creates journal entry.
     Idempotent: checks depreciation_posted_through before posting.
     """
-    db = _db()
     period = data.period or datetime.now(timezone.utc).strftime("%Y-%m")
+    if not _PERIOD_RE.match(period):
+        raise HTTPException(status_code=422, detail="period must be in YYYY-MM format.")
 
+    db = _db()
     if not db:
         return api_response(True, {"asset_id": asset_id, "period": period, "depreciation_paise": 0})
 
@@ -165,12 +260,35 @@ def post_depreciation(
     if asset.get("depreciation_posted_through") and asset["depreciation_posted_through"] >= period:
         raise HTTPException(status_code=409, detail=f"Depreciation already posted through {asset['depreciation_posted_through']}")
 
-    # Compute monthly depreciation = annual / 12
-    annual = _compute_annual_depreciation(asset)
-    monthly = math.floor(annual / 12)
+    # task #232 audit finding: nothing stopped a CA from posting depreciation
+    # for a period before the asset was even purchased.
+    purchase_month = asset["purchase_date"][:7]
+    if period < purchase_month:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot post depreciation for {period} — asset was purchased in {purchase_month}.",
+        )
+
+    # task #232 audit finding: fixed_assets.py never checked the FY lock.
+    entry_date = _period_end_date(period)
+    period_validation_service.validate_posting_date(current_user["firm_id"], entry_date)
+
+    # Fixed annual figure for THIS financial year (see
+    # _annual_depreciation_for_period's docstring for why it must be fixed
+    # per-FY, not recomputed every month) — monthly = annual / 12.
+    annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
+    if annual <= 0:
+        return api_response(True, {"message": "Asset fully depreciated", "depreciation_paise": 0})
+
+    monthly = math.floor(Decimal(annual) / Decimal(12))
+
+    # Schedule II Note 3 / IT Act §32 180-day rule: pro-rate the asset's
+    # purchase month by days actually held.
+    if period == purchase_month:
+        monthly = _prorate_purchase_month(monthly, asset["purchase_date"])
 
     if monthly <= 0:
-        return api_response(True, {"message": "Asset fully depreciated", "depreciation_paise": 0})
+        return api_response(True, {"message": "No depreciation to post for this period.", "depreciation_paise": 0})
 
     # Post journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     journal_id = _journal_svc.journal_for_depreciation(
@@ -183,6 +301,8 @@ def post_depreciation(
         "accumulated_depreciation_paise": new_accum,
         "current_wdv_paise":             asset["purchase_cost_paise"] - new_accum,
         "depreciation_posted_through":   period,
+        "depreciation_fy":               fy,
+        "depreciation_fy_start_accum_paise": fy_start_accum,
     }).eq("id", asset_id).execute()
 
     timeline_service.log(asset["client_id"], "accounting", "Depreciation Posted",
@@ -232,6 +352,10 @@ def dispose_asset(
     sale_proceeds   = data.sale_proceeds_paise
     disposal_date   = data.disposal_date or str(datetime.now(timezone.utc).date())
     disposal_notes  = data.notes if data.notes is not None else asset.get("notes")
+
+    # task #232 audit finding: fixed_assets.py never checked the FY lock —
+    # checked before any mutation, same as the purchase/depreciation paths.
+    period_validation_service.validate_posting_date(current_user["firm_id"], disposal_date)
 
     # Capture pre-disposal values for rollback before any mutation.
     prior_disposal_date  = asset.get("disposal_date")
@@ -298,9 +422,14 @@ def depreciation_schedule(
         return api_response(True, [])
 
     assets = db.table("fixed_assets").select("*").eq("client_id", client_id).eq("is_disposed", False).execute().data or []
+    # Projected as of the CURRENT financial year — reuses each asset's own
+    # cached depreciation_fy/depreciation_fy_start_accum_paise (task #232) so
+    # the figure shown here matches what the next actual posting will charge,
+    # instead of recomputing from the live (already-reduced) WDV every call.
+    today_period = datetime.now(timezone.utc).strftime("%Y-%m")
     schedule = []
     for a in assets:
-        annual = _compute_annual_depreciation(a)
+        annual, _fy, _fy_start = _annual_depreciation_for_period(a, today_period)
         wdv    = a["purchase_cost_paise"] - a.get("accumulated_depreciation_paise", 0)
         schedule.append({
             "asset_id":               a["id"],
@@ -311,7 +440,7 @@ def depreciation_schedule(
             "accumulated_paise":      a.get("accumulated_depreciation_paise", 0),
             "current_wdv_paise":      wdv,
             "annual_depreciation_paise": annual,
-            "monthly_depreciation_paise": math.floor(annual / 12),
+            "monthly_depreciation_paise": math.floor(Decimal(annual) / Decimal(12)),
             "depreciation_method":    a["depreciation_method"],
             "salvage_value_paise":    a.get("salvage_value_paise", 0),
         })
