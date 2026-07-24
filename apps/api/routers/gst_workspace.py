@@ -12,6 +12,7 @@ import os
 import uuid
 import logging
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -443,6 +444,17 @@ def filing_history(
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
+def _txval_to_paise(txval) -> int:
+    """GSTR-2B JSON txval is portal-supplied rupees (a JSON number, often with
+    a fractional part) -- Decimal(str(...)) never float(...) * 100, per
+    project rule (a raw float multiply is not guaranteed to round-trip
+    exactly through IEEE-754 binary imprecision)."""
+    try:
+        return int((Decimal(str(txval or 0)) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    except InvalidOperation:
+        return 0
+
+
 @router.post("/gstr2b/upload")
 def upload_gstr2b(
     body: GSTR2BUploadRequest,
@@ -472,7 +484,7 @@ def upload_gstr2b(
                 b2b_inv = b2b_keys[key]
                 # Compare amounts in integer paise
                 book_taxable = book_inv.get("taxable_paise", 0)
-                b2b_taxable = int(round(b2b_inv.get("txval", 0) * 100))
+                b2b_taxable = _txval_to_paise(b2b_inv.get("txval", 0))
                 if book_taxable == b2b_taxable:
                     matched.append({"key": key, "status": "matched"})
                 else:

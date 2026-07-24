@@ -201,6 +201,14 @@ def _compute_bill_lines_and_totals(
     total_cgst    = 0
     total_sgst    = 0
     total_igst    = 0
+    # CGST Act §17(5): GST on itc_eligible=false lines is BLOCKED input tax
+    # credit — tracked separately so it can be excluded from the GSTR-3B ITC
+    # claim (Table 4(A)) and reported instead under Table 4(D)(1). It still
+    # counts toward the vendor's total_paise/net_payable (the bill amount
+    # owed is unaffected by ITC eligibility, only the ITC claim is).
+    total_ineligible_cgst = 0
+    total_ineligible_sgst = 0
+    total_ineligible_igst = 0
 
     for ln in lines_data:
         qty          = ln.get("quantity", 1)
@@ -210,11 +218,16 @@ def _compute_bill_lines_and_totals(
         gst_rate_bps = int(round(gst_rate_percent * 100))
         taxable      = int(Decimal(str(qty)) * rate_paise)
         cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+        itc_eligible = ln.get("itc_eligible", True)
 
         total_taxable += taxable
         total_cgst    += cgst
         total_sgst    += sgst
         total_igst    += igst
+        if not itc_eligible:
+            total_ineligible_cgst += cgst
+            total_ineligible_sgst += sgst
+            total_ineligible_igst += igst
 
         computed_lines.append({
             "description":          ln.get("description", ""),
@@ -232,6 +245,8 @@ def _compute_bill_lines_and_totals(
             # (CGST Act §9(3)/(4) — see the docstring above).
             "line_total_paise":     taxable if is_reverse_charge else taxable + cgst + sgst + igst,
             "service_catalogue_id": ln.get("service_catalogue_id"),
+            "itc_eligible":         itc_eligible,
+            "blocked_credit_reason": ln.get("blocked_credit_reason"),
         })
 
     # Multi-Currency (Phase 3): the line totals above are in the txn currency's
@@ -248,6 +263,9 @@ def _compute_bill_lines_and_totals(
     total_cgst    = dc.to_base(total_cgst)
     total_sgst    = dc.to_base(total_sgst)
     total_igst    = dc.to_base(total_igst)
+    total_ineligible_cgst = dc.to_base(total_ineligible_cgst)
+    total_ineligible_sgst = dc.to_base(total_ineligible_sgst)
+    total_ineligible_igst = dc.to_base(total_ineligible_igst)
     total_gst_sum = total_cgst + total_sgst + total_igst
     total_paise   = total_taxable if is_reverse_charge else total_taxable + total_gst_sum
 
@@ -325,6 +343,11 @@ def _compute_bill_lines_and_totals(
         "igst_paise":           total_igst,
         "total_paise":          total_paise,
         "total_gst_paise":      total_gst_paise,
+        # CGST Act §17(5) — blocked credit, excluded from the GSTR-3B ITC
+        # claim (see the itc_eligible accumulation above).
+        "ineligible_itc_cgst_paise": total_ineligible_cgst,
+        "ineligible_itc_sgst_paise": total_ineligible_sgst,
+        "ineligible_itc_igst_paise": total_ineligible_igst,
         "tds_paise":            tds_paise,
         "tds_rate_bps":         tds_rate_bps,
         "tds_section":          tds_section,
@@ -444,6 +467,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     if total_paise <= 0:
         raise HTTPException(status_code=422, detail="Purchase bill total must be positive.")
     total_gst_paise   = computed["total_gst_paise"]
+    ineligible_itc_cgst_paise = computed["ineligible_itc_cgst_paise"]
+    ineligible_itc_sgst_paise = computed["ineligible_itc_sgst_paise"]
+    ineligible_itc_igst_paise = computed["ineligible_itc_igst_paise"]
     tds_paise         = computed["tds_paise"]
     tds_rate_bps      = computed["tds_rate_bps"]
     tds_section       = computed["tds_section"]
@@ -492,6 +518,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "igst_paise":            total_igst,
             "total_paise":           total_paise,
             "total_gst_paise":       total_gst_paise,
+            "ineligible_itc_cgst_paise": ineligible_itc_cgst_paise,
+            "ineligible_itc_sgst_paise": ineligible_itc_sgst_paise,
+            "ineligible_itc_igst_paise": ineligible_itc_igst_paise,
             "tds_paise":             tds_paise,
             "tds_rate_bps":          tds_rate_bps,
             "tds_section":           tds_section,
@@ -527,6 +556,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "igst_paise":            total_igst,
         "total_paise":           total_paise,
         "total_gst_paise":       total_gst_paise,
+        "ineligible_itc_cgst_paise": ineligible_itc_cgst_paise,
+        "ineligible_itc_sgst_paise": ineligible_itc_sgst_paise,
+        "ineligible_itc_igst_paise": ineligible_itc_igst_paise,
         "tds_paise":             tds_paise,
         "tds_rate_bps":          tds_rate_bps,
         "tds_section":           tds_section,
@@ -564,6 +596,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             # of this column always saw NULL, silently skipping stock-in for
             # every bill ever created through this path.
             "service_catalogue_id":  ln.get("service_catalogue_id"),
+            # CGST Act §17(5) — see migration 240.
+            "itc_eligible":          ln.get("itc_eligible", True),
+            "blocked_credit_reason": ln.get("blocked_credit_reason"),
         }
         for ln in computed_lines
     ]
@@ -977,6 +1012,9 @@ def update_purchase_bill(
                             "igst_paise":            computed["igst_paise"],
                             "total_paise":           computed["total_paise"],
                             "total_gst_paise":       computed["total_gst_paise"],
+                            "ineligible_itc_cgst_paise": computed["ineligible_itc_cgst_paise"],
+                            "ineligible_itc_sgst_paise": computed["ineligible_itc_sgst_paise"],
+                            "ineligible_itc_igst_paise": computed["ineligible_itc_igst_paise"],
                             "tds_paise":             computed["tds_paise"],
                             "tds_rate_bps":          computed["tds_rate_bps"],
                             "tds_section":           computed["tds_section"],
@@ -1071,6 +1109,8 @@ def update_purchase_bill(
                     "igst_paise":            ln["igst_paise"],
                     "line_total_paise":      ln["line_total_paise"],
                     "service_catalogue_id":  ln.get("service_catalogue_id"),
+                    "itc_eligible":          ln.get("itc_eligible", True),
+                    "blocked_credit_reason": ln.get("blocked_credit_reason"),
                 }
                 for ln in computed["computed_lines"]
             ]
@@ -1082,6 +1122,9 @@ def update_purchase_bill(
                 "igst_paise":            computed["igst_paise"],
                 "total_paise":           computed["total_paise"],
                 "total_gst_paise":       computed["total_gst_paise"],
+                "ineligible_itc_cgst_paise": computed["ineligible_itc_cgst_paise"],
+                "ineligible_itc_sgst_paise": computed["ineligible_itc_sgst_paise"],
+                "ineligible_itc_igst_paise": computed["ineligible_itc_igst_paise"],
                 "tds_paise":             computed["tds_paise"],
                 "tds_rate_bps":          computed["tds_rate_bps"],
                 "tds_section":           computed["tds_section"],

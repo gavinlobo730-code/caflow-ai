@@ -204,6 +204,12 @@ class PurchaseBillLineIn(BaseModel):
     # Pure traceability like InvoiceLineIn's own field: never read by any
     # GST/journal computation, only by the inventory costing engine.
     service_catalogue_id: Optional[str] = None
+    # CGST Act §17(5): blocked input tax credit. CA-set only, never inferred
+    # (HSN/expense_account_id are not a reliable proxy for §17(5) eligibility
+    # — see migration 240). False excludes this line's GST from the GSTR-3B
+    # ITC claim (routers/purchase_bills.py._compute_bill_lines_and_totals).
+    itc_eligible: bool = True
+    blocked_credit_reason: Optional[str] = None
 
     @field_validator("quantity")
     @classmethod
@@ -235,6 +241,12 @@ class PurchaseBillLineIn(BaseModel):
     def require_service_catalogue_id(self) -> "PurchaseBillLineIn":
         if not self.service_catalogue_id or not self.service_catalogue_id.strip():
             raise ValueError("Product/Service is required on every line item.")
+        return self
+
+    @model_validator(mode="after")
+    def require_blocked_credit_reason(self) -> "PurchaseBillLineIn":
+        if not self.itc_eligible and not (self.blocked_credit_reason or "").strip():
+            raise ValueError("blocked_credit_reason is required when itc_eligible is false.")
         return self
 
 

@@ -481,6 +481,7 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
             by_hsn[code]["iamt"] += inv.igst_paise
             by_hsn[code]["camt"] += inv.cgst_paise
             by_hsn[code]["samt"] += inv.sgst_paise
+            by_hsn[code]["csamt"] += inv.cess_paise
 
     return [
         {

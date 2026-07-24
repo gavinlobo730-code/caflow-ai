@@ -40,6 +40,15 @@ class PurchaseTransaction:
     igst_paise: int
     cess_paise: int
     is_reverse_charge: bool
+    # CGST Act §17(5): the portion of cgst/sgst/igst/cess_paise above that is
+    # BLOCKED input tax credit (CA-flagged at the purchase-bill-line level —
+    # see routers/purchase_bills.py._compute_bill_lines_and_totals). Always
+    # <= the corresponding *_paise field. Defaulted so existing call sites
+    # (no §17(5) lines) are unaffected.
+    ineligible_igst_paise: int = 0
+    ineligible_cgst_paise: int = 0
+    ineligible_sgst_paise: int = 0
+    ineligible_cess_paise: int = 0
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,14 @@ class GSTR3BResult:
     itc_cgst: int = 0
     itc_sgst: int = 0
     itc_cess: int = 0
+
+    # Table 4(D)(1): ITC ineligible under CGST Act §17(5) (blocked credit) —
+    # excluded from itc_igst/cgst/sgst/cess above, and from the Rule 36(4) cap
+    # (ineligibility is a hard bar, applied before matching against 2A/2B).
+    itc_ineligible_igst: int = 0
+    itc_ineligible_cgst: int = 0
+    itc_ineligible_sgst: int = 0
+    itc_ineligible_cess: int = 0
 
     # ITC working — raw figures before Rule 36(4) cap
     itc_book_igst: int = 0
@@ -154,7 +171,18 @@ class GSTR3BResult:
                     "samt": r(self.itc_sgst),
                     "csamt": r(self.itc_cess),
                 },
-                "itc_inelg": [],
+                # Table 4(D)(1) — CGST Act §17(5) blocked credit (see
+                # itc_ineligible_* above). "RUL" is the GSTN API type code for
+                # ITC ineligible under Rule 38/42/43 & Section 17(5).
+                "itc_inelg": [
+                    {
+                        "ty": "RUL",
+                        "iamt": r(self.itc_ineligible_igst),
+                        "camt": r(self.itc_ineligible_cgst),
+                        "samt": r(self.itc_ineligible_sgst),
+                        "csamt": r(self.itc_ineligible_cess),
+                    }
+                ],
             },
             "intr_ltfee": {
                 "intr_details": {"iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
@@ -234,10 +262,20 @@ def compute_gstr3b(
     # the sum over all purchases (the recipient books the self-assessed tax as
     # input tax) — CGST Act Section 9(3)/(4) allows ITC on RCM paid, so it must NOT
     # be added a second time (the previous code double-counted every RCM purchase).
-    book_igst = sum(p.igst_paise for p in purchases)
-    book_cgst = sum(p.cgst_paise for p in purchases)
-    book_sgst = sum(p.sgst_paise for p in purchases)
-    book_cess = sum(p.cess_paise for p in purchases)
+    #
+    # CGST Act §17(5): blocked-credit lines are excluded from book ITC HERE —
+    # before the Rule 36(4) 2A/2B cap below — because ineligibility is a hard
+    # statutory bar, not a matching restriction; it must never be "restored"
+    # by capping logic that only compares against supplier-filed records.
+    book_igst = sum(p.igst_paise - p.ineligible_igst_paise for p in purchases)
+    book_cgst = sum(p.cgst_paise - p.ineligible_cgst_paise for p in purchases)
+    book_sgst = sum(p.sgst_paise - p.ineligible_sgst_paise for p in purchases)
+    book_cess = sum(p.cess_paise - p.ineligible_cess_paise for p in purchases)
+
+    result.itc_ineligible_igst = sum(p.ineligible_igst_paise for p in purchases)
+    result.itc_ineligible_cgst = sum(p.ineligible_cgst_paise for p in purchases)
+    result.itc_ineligible_sgst = sum(p.ineligible_sgst_paise for p in purchases)
+    result.itc_ineligible_cess = sum(p.ineligible_cess_paise for p in purchases)
 
     gstr2a_igst = sum(r.igst_paise for r in gstr2a_records)
     gstr2a_cgst = sum(r.cgst_paise for r in gstr2a_records)
