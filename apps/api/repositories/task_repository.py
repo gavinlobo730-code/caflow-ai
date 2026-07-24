@@ -17,10 +17,21 @@ def _get_db():
 
 class TaskRepository(BaseRepository[dict]):
 
-    def find_by_id(self, id: str) -> Optional[dict]:
+    def find_by_id(self, id: str, firm_id: Optional[str] = None) -> Optional[dict]:
+        # firm_id is an optional defense-in-depth scope (same pattern as
+        # client_repository.find_by_id) -- pass it whenever the caller has one,
+        # so a forgotten post-check can't leak another firm's task.
         if _USE_MOCK:
-            return TASK_INDEX.get(id)
-        result = _get_db().table("tasks").select("*").eq("id", id).is_("deleted_at", None).maybe_single().execute()
+            task = TASK_INDEX.get(id)
+            if not task:
+                return None
+            if firm_id and task.get("firm_id") != firm_id:
+                return None
+            return task
+        query = _get_db().table("tasks").select("*").eq("id", id).is_("deleted_at", None)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.maybe_single().execute()
         return result.data
 
     def find_all(

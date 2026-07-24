@@ -25,6 +25,7 @@ import uuid
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from services.audit_service import log_event
 
 _logger = logging.getLogger("caflow.engagement_letters")
@@ -990,6 +991,21 @@ def create_engagement(
     """
     db = _db()
     firm_id = current_user["firm_id"]
+
+    # Tenant isolation: body.client_id/lead_id are otherwise unvalidated --
+    # without this, an engagement letter (and later its /generate output, which
+    # renders client_name/pan/gstin) could be created against another firm's
+    # real client or lead by supplying/guessing its id.
+    assert_client_access(current_user, body.client_id)
+    if body.lead_id and db:
+        lead = (
+            db.table("leads").select("id")
+            .eq("id", body.lead_id).eq("firm_id", firm_id)
+            .limit(1).execute().data
+        )
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+
     now = datetime.now(timezone.utc).isoformat()
     engagement_id = str(uuid.uuid4())
     engagement_number = _next_engagement_no(db, firm_id)
@@ -1291,6 +1307,7 @@ def generate_engagement(
                 db.table("leads")
                 .select("company_name, contact_name")
                 .eq("id", eng["lead_id"])
+                .eq("firm_id", firm_id)
                 .single()
                 .execute()
             )
@@ -1305,6 +1322,7 @@ def generate_engagement(
                 db.table("clients")
                 .select("client_name, pan, gstin")
                 .eq("id", eng["client_id"])
+                .eq("firm_id", firm_id)
                 .single()
                 .execute()
             )

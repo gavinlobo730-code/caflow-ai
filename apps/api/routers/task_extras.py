@@ -17,7 +17,7 @@ class AddTagBody(BaseModel):
 
 @router.get("/{task_id}/tags")
 def get_tags(task_id: str, current_user: dict = Depends(rbac("task", "read"))):
-    task = task_repo.find_by_id(task_id)
+    task = task_repo.find_by_id(task_id, firm_id=current_user.get("firm_id"))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     tags = task_extras_repo.get_tags(task_id)
@@ -27,7 +27,7 @@ def get_tags(task_id: str, current_user: dict = Depends(rbac("task", "read"))):
 @router.post("/{task_id}/tags")
 def add_tag(task_id: str, body: AddTagBody, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
-    task = task_repo.find_by_id(task_id)
+    task = task_repo.find_by_id(task_id, firm_id=firm_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     tag = task_extras_repo.add_tag(firm_id=firm_id, task_id=task_id, tag=body.tag)
@@ -47,6 +47,9 @@ def add_tag(task_id: str, body: AddTagBody, current_user: dict = Depends(rbac("t
 
 @router.delete("/{task_id}/tags/{tag}")
 def remove_tag(task_id: str, tag: str, current_user: dict = Depends(rbac("task", "write"))):
+    task = task_repo.find_by_id(task_id, firm_id=current_user.get("firm_id"))
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
     task_extras_repo.remove_tag(task_id, tag)
     return api_response(True, {"removed": True})
 
@@ -59,7 +62,7 @@ class AddDependencyBody(BaseModel):
 
 @router.get("/{task_id}/dependencies")
 def get_dependencies(task_id: str, current_user: dict = Depends(rbac("task", "read"))):
-    task = task_repo.find_by_id(task_id)
+    task = task_repo.find_by_id(task_id, firm_id=current_user.get("firm_id"))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     deps = task_extras_repo.get_dependencies(task_id)
@@ -68,12 +71,13 @@ def get_dependencies(task_id: str, current_user: dict = Depends(rbac("task", "re
 
 @router.post("/{task_id}/dependencies")
 def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = Depends(rbac("task", "write"))):
+    firm_id = current_user.get("firm_id")
     if task_id == body.depends_on_task_id:
         raise HTTPException(status_code=400, detail="A task cannot depend on itself")
-    task = task_repo.find_by_id(task_id)
+    task = task_repo.find_by_id(task_id, firm_id=firm_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    dep_task = task_repo.find_by_id(body.depends_on_task_id)
+    dep_task = task_repo.find_by_id(body.depends_on_task_id, firm_id=firm_id)
     if not dep_task:
         raise HTTPException(status_code=404, detail="Dependency task not found")
     try:
@@ -96,7 +100,10 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
 
 @router.delete("/{task_id}/dependencies/{dependency_id}")
 def remove_dependency(task_id: str, dependency_id: str, current_user: dict = Depends(rbac("task", "write"))):
-    task_extras_repo.remove_dependency(dependency_id)
+    task = task_repo.find_by_id(task_id, firm_id=current_user.get("firm_id"))
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task_extras_repo.remove_dependency(task_id, dependency_id)
     return api_response(True, {"removed": True})
 
 
@@ -104,7 +111,7 @@ def remove_dependency(task_id: str, dependency_id: str, current_user: dict = Dep
 
 @router.get("/{task_id}/timeline")
 def get_timeline(task_id: str, current_user: dict = Depends(rbac("task", "read"))):
-    task = task_repo.find_by_id(task_id)
+    task = task_repo.find_by_id(task_id, firm_id=current_user.get("firm_id"))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     events = task_extras_repo.get_timeline(task_id)
