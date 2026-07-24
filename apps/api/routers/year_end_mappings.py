@@ -18,6 +18,7 @@ from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.year_end_financial_service import BS_EQUITY_LIABILITY_LINES, BS_ASSET_LINES
+from domain.reporting.schedule_iii import bs_bucket, pl_bucket
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -46,19 +47,76 @@ def _account_name(db, account_id: str) -> Optional[str]:
 # ── Default mapping rules ─────────────────────────────────────────────────────
 # account_type → schedule_line
 # Companies Act 2013, Schedule III
-
+#
+# task #240 fix: this used to be keyed on invented lowercase categories
+# ("bank", "receivable", "fixed_asset", "tax_asset", ...) that never matched
+# chart_of_accounts.account_type's real CHECK-constrained enum (migration
+# 003: 'Asset', 'Liability', 'Equity', 'Revenue', 'Expense' -- see the
+# `accounts` view, migration 016, which is a plain passthrough of
+# chart_of_accounts). Only "equity"/"expense" happened to coincide after
+# lowercasing; every Asset/Liability/Revenue account (i.e. most of a real
+# Chart of Accounts) silently fell through get_default_mappings()'s
+# `.get(acct_type, "other_current_assets")` fallback -- misclassifying
+# receivables, payables, cash, fixed assets and ALL revenue onto a single
+# generic Balance Sheet line, corrupting the auto-initialized Schedule III
+# mapping that services.year_end_financial_service.generate_financial_statements
+# relies on as its single source of truth for account_group_mappings.
+#
+# Fix: classify by the REAL (account_type, account_subtype) pair using the
+# SAME bucket rules as the reporting engine's Schedule III grouping
+# (domain.reporting.schedule_iii.bs_bucket/pl_bucket -- already the single
+# source of truth for this taxonomy elsewhere in the codebase). This map is
+# now only the coarse per-account_type fallback used when a subtype-level
+# bucket can't be determined (e.g. no account_subtype set).
 _DEFAULT_ACCOUNT_TYPE_MAP = {
-    "bank":        "cash_and_bank",
-    "receivable":  "trade_receivables",
-    "payable":     "trade_payables",
-    "fixed_asset": "tangible_assets",
-    "equity":      "share_capital",
-    "income":      "revenue_from_operations",
-    "expense":     "other_expenses",
-    # tax assets → current asset; tax liabilities → current liability
-    "tax_asset":   "short_term_loans_and_advances",
-    "tax_liability":"other_current_liabilities",
+    "asset":     "other_current_assets",
+    "liability": "other_current_liabilities",
+    "equity":    "reserves_and_surplus",
+    "revenue":   "revenue_from_operations",
+    "expense":   "other_expenses",
 }
+
+# Schedule III statutory caption (as returned by domain.reporting.schedule_iii's
+# bs_bucket/pl_bucket) → year-end schedule_line code (the snake_case taxonomy
+# services.year_end_financial_service.BS_EQUITY_LIABILITY_LINES/BS_ASSET_LINES/
+# PL_INCOME_LINES/PL_EXPENSE_LINES actually use).
+_CAPTION_TO_SCHEDULE_LINE = {
+    "Share Capital":               "share_capital",
+    "Reserves & Surplus":          "reserves_and_surplus",
+    "Deferred Tax Liability":      "deferred_tax_liabilities",
+    "Trade Payables":              "trade_payables",
+    "Short Term Borrowings":       "short_term_borrowings",
+    "Long Term Borrowings":        "long_term_borrowings",
+    "Other Current Liabilities":   "other_current_liabilities",
+    "Intangible Fixed Assets":     "intangible_assets",
+    "Tangible Fixed Assets":       "tangible_assets",
+    "Long Term Investments":       "long_term_investments",
+    "Inventories":                 "inventories",
+    "Trade Receivables":           "trade_receivables",
+    "Cash & Cash Equivalents":     "cash_and_bank",
+    "Short Term Loans & Advances": "short_term_loans_and_advances",
+    "Other Current Assets":        "other_current_assets",
+    "Revenue from Operations":     "revenue_from_operations",
+    "Other Income":                "other_income",
+    "Cost of Materials":           "cost_of_materials_consumed",
+    "Employee Benefit Expense":    "employee_benefit_expense",
+    "Finance Costs":               "finance_costs",
+    "Depreciation & Amortisation": "depreciation_and_amortisation",
+    "Tax Expense":                 "other_expenses",
+    "Other Expenses":              "other_expenses",
+}
+
+
+def _schedule_line_for_account(account_type: str, account_subtype: Optional[str]) -> str:
+    """Classify an account into a year-end schedule_line using the SAME
+    Schedule III bucket rules as the reporting engine (single source of
+    truth for the statutory caption taxonomy), keyed on the REAL
+    chart_of_accounts.account_type enum, not an invented one."""
+    typ = (account_type or "").strip()
+    caption = bs_bucket(typ, account_subtype) or pl_bucket(typ, account_subtype)
+    if caption:
+        return _CAPTION_TO_SCHEDULE_LINE.get(caption, "other_current_assets")
+    return _DEFAULT_ACCOUNT_TYPE_MAP.get(typ.lower(), "other_current_assets")
 
 # Normal balance per schedule line (debit or credit)
 _LINE_NORMAL_BALANCE = {
@@ -342,7 +400,7 @@ def get_default_mappings(
         # Auto-initialize mappings from the firm's chart of accounts
         accounts_res = (
             db.table("accounts")
-            .select("id, account_type, account_name")
+            .select("id, account_type, account_subtype, account_name")
             .eq("firm_id", firm_id)
             .execute()
         )
@@ -352,7 +410,7 @@ def get_default_mappings(
         auto_records = []
         for acct in accounts:
             acct_type    = (acct.get("account_type") or "").lower()
-            schedule_line = _DEFAULT_ACCOUNT_TYPE_MAP.get(acct_type, "other_current_assets")
+            schedule_line = _schedule_line_for_account(acct.get("account_type"), acct.get("account_subtype"))
             auto_records.append({
                 "id":             str(uuid.uuid4()),
                 "firm_id":        firm_id,

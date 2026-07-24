@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.period_validation_service import period_validation_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -395,6 +396,12 @@ def post_adjustment(
             raise HTTPException(status_code=404, detail="Adjustment not found")
         if adj["status"] != "approved":
             raise HTTPException(status_code=422, detail="Only approved adjustments can be posted")
+        # task #240 fix: posting was the only GL-affecting action on this
+        # router with no locked-financial-year check — every other posting
+        # endpoint (fixed_assets.py, purchase_bills.py, ...) blocks postings
+        # dated into an already-locked FY; this let a year-end adjustment
+        # slip a journal entry into a locked period.
+        period_validation_service.validate_posting_date(current_user["firm_id"], adj["adjustment_date"])
         mock_journal_id = str(uuid.uuid4())
         adj["status"] = "posted"
         adj["posted_by"] = current_user.get("auth_user_id")
@@ -420,6 +427,10 @@ def post_adjustment(
         raise HTTPException(status_code=404, detail="Adjustment not found")
     if existing["status"] != "approved":
         raise HTTPException(status_code=422, detail="Only approved adjustments can be posted")
+
+    # task #240 fix: block posting into an already-locked financial year —
+    # see the identical check in the mock branch above for context.
+    period_validation_service.validate_posting_date(current_user["firm_id"], existing["adjustment_date"])
 
     # Create journal entry via accounting domain service with source tag
     journal_id = str(uuid.uuid4())
