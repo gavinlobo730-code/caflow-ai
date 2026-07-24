@@ -126,6 +126,9 @@ function GSTDashboard({ clientId }: { clientId: string }) {
 function GSTR1Tab({ clientId }: { clientId: string }) {
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no GSTR-1 returns yet" — a masked
+  // failure previously rendered identically to a genuinely empty register.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [period, setPeriod] = useState("");
   const [gstin, setGstin] = useState("");
@@ -134,7 +137,19 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
-      .then((r) => setReturns(r.success ? (r.data as { gstr1: Record<string, unknown>[] }).gstr1 : []))
+      .then((r) => {
+        if (r.success) {
+          setReturns((r.data as { gstr1: Record<string, unknown>[] }).gstr1);
+          setLoadError(null);
+        } else {
+          setReturns([]);
+          setLoadError(r.error ?? "Couldn't load GSTR-1 returns.");
+        }
+      })
+      .catch(() => {
+        setReturns([]);
+        setLoadError("Couldn't load GSTR-1 returns. Please try again.");
+      })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -225,7 +240,12 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {returns.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={5} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : returns.length === 0 && (
               <tr><td colSpan={5} className="px-3 py-4 text-center text-[#94A3B8]">No GSTR-1 returns yet.</td></tr>
             )}
           </tbody>
@@ -240,6 +260,8 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 function GSTR3BTab({ clientId }: { clientId: string }) {
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no GSTR-3B returns yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [period, setPeriod] = useState("");
   const [gstin, setGstin] = useState("");
@@ -248,7 +270,19 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
-      .then((r) => setReturns(r.success ? (r.data as { gstr3b: Record<string, unknown>[] }).gstr3b : []))
+      .then((r) => {
+        if (r.success) {
+          setReturns((r.data as { gstr3b: Record<string, unknown>[] }).gstr3b);
+          setLoadError(null);
+        } else {
+          setReturns([]);
+          setLoadError(r.error ?? "Couldn't load GSTR-3B returns.");
+        }
+      })
+      .catch(() => {
+        setReturns([]);
+        setLoadError("Couldn't load GSTR-3B returns. Please try again.");
+      })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -341,7 +375,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 </td>
               </tr>
             ))}
-            {returns.length === 0 && (
+            {loadError ? (
+              <tr><td colSpan={6} className="px-3 py-6 text-center">
+                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </td></tr>
+            ) : returns.length === 0 && (
               <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No GSTR-3B returns yet.</td></tr>
             )}
           </tbody>
@@ -442,15 +481,28 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
 function FilingHistoryTab({ clientId }: { clientId: string }) {
   const [data, setData] = useState<{ gstr1_filed: Record<string, unknown>[]; gstr3b_filed: Record<string, unknown>[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     apiFetch(`/api/gst-workspace/filing-history?client_id=${clientId}`)
-      .then((r) => setData(r.success ? r.data : null))
+      .then((r) => {
+        if (r.success) { setData(r.data); setLoadError(null); }
+        else { setData(null); setLoadError(r.error ?? "Failed to load filing history."); }
+      })
+      .catch(() => { setData(null); setLoadError("Failed to load filing history. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
+  useEffect(() => { load(); }, [load]);
+
   if (loading) return <TableSkeleton cols={4} bare />;
-  if (!data) return <p className="text-sm text-red-500">Failed to load filing history.</p>;
+  if (!data) return (
+    <div className="text-center py-6 space-y-2">
+      <p className="text-sm text-red-500">{loadError ?? "Failed to load filing history."}</p>
+      <button onClick={load} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+    </div>
+  );
 
   const all = ([
     ...(data.gstr1_filed ?? []).map((r) => ({ ...r, type: "GSTR-1" })),

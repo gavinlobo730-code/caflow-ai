@@ -142,6 +142,12 @@ export default function CopilotPage() {
   const [tab, setTab] = useState<"chat" | "recommendations">("chat");
   const [actingRec, setActingRec] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Distinguish "fetch failed" from "genuinely none yet" — a masked failure
+  // here used to render as "No conversations yet" / "All insights have been
+  // actioned", the worst version of this bug class (an active false-positive
+  // congratulatory message, not just an empty list).
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -149,14 +155,22 @@ export default function CopilotPage() {
     try {
       const res = (await api.copilotV2.listConversations()) as { data: { conversations: Conversation[] } };
       setConversations(res.data?.conversations || []);
-    } catch {}
+      setConversationsError(null);
+    } catch (e) {
+      setConversations([]);
+      setConversationsError(e instanceof Error ? e.message : "Couldn't load conversations.");
+    }
   }, []);
 
   const loadRecommendations = useCallback(async () => {
     try {
       const res = (await api.copilotV2.listRecommendations({ status: "pending" })) as { data: { recommendations: Recommendation[] } };
       setRecommendations(res.data?.recommendations || []);
-    } catch {}
+      setRecommendationsError(null);
+    } catch (e) {
+      setRecommendations([]);
+      setRecommendationsError(e instanceof Error ? e.message : "Couldn't load recommendations.");
+    }
   }, []);
 
   const loadSuggestions = useCallback(async () => {
@@ -310,7 +324,12 @@ export default function CopilotPage() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {conversations.length === 0 ? (
+            {conversationsError ? (
+              <div className="text-center py-6 space-y-2">
+                <p className="text-xs text-red-600 font-medium px-2">{conversationsError}</p>
+                <button onClick={loadConversations} className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              </div>
+            ) : conversations.length === 0 ? (
               <p className="text-xs text-[#94A3B8] text-center py-6">No conversations yet</p>
             ) : (
               conversations.map((conv: Conversation) => (
@@ -455,7 +474,13 @@ export default function CopilotPage() {
                   </button>
                 </div>
 
-                {recommendations.length === 0 ? (
+                {recommendationsError ? (
+                  <div className="text-center py-16">
+                    <Star size={40} className="mx-auto text-red-300 mb-3" />
+                    <p className="text-sm text-red-600 font-medium">{recommendationsError}</p>
+                    <button onClick={loadRecommendations} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                  </div>
+                ) : recommendations.length === 0 ? (
                   <div className="text-center py-16">
                     <Star size={40} className="mx-auto text-[#CBD5E1] mb-3" />
                     <p className="text-[#64748B]">No pending recommendations</p>

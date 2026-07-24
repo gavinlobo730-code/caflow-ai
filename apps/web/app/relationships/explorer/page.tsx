@@ -58,6 +58,11 @@ export default function RelationshipExplorerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Distinguishes "detail fetch failed" from "genuinely no roles/relationships"
+  // — a masked failure previously fell back to the list row's stale data
+  // (which never has roles/relationships populated) and rendered identically
+  // to a real empty state.
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     loadEntities();
@@ -79,12 +84,14 @@ export default function RelationshipExplorerPage() {
 
   async function handleSelect(entity: Entity) {
     // Load full entity data (includes embedded roles + relationships)
+    setSelected(entity);
+    setDetailError(null);
     try {
       const json: ApiResponse<Entity> = await apiFetch(`/api/relationships/entities/${entity.id}`);
       if (json.success) setSelected(json.data);
-      else setSelected(entity);
-    } catch {
-      setSelected(entity);
+      else setDetailError(json.error ?? "Couldn't load this entity's roles and relationships.");
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : "Couldn't load this entity's roles and relationships.");
     }
   }
 
@@ -243,7 +250,21 @@ export default function RelationshipExplorerPage() {
                 </Card>
               )}
 
-              {(selected.roles ?? []).length === 0 && (selected.relationships ?? []).length === 0 && (
+              {detailError && (
+                <Card className="bg-white border-gray-200 shadow-sm">
+                  <CardContent className="py-10 text-center space-y-2">
+                    <p className="text-sm text-red-600 font-medium">{detailError}</p>
+                    <button
+                      onClick={() => handleSelect(selected)}
+                      className="text-xs px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-700"
+                    >
+                      Retry
+                    </button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!detailError && (selected.roles ?? []).length === 0 && (selected.relationships ?? []).length === 0 && (
                 <Card className="bg-white border-gray-200 shadow-sm">
                   <CardContent className="py-10 text-center">
                     <p className="text-sm text-gray-500">No roles or relationships recorded</p>

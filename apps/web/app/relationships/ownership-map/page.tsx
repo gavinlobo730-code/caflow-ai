@@ -59,6 +59,10 @@ export default function OwnershipMapPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Distinguishes "detail fetch failed" from "no ownership relationships" —
+  // a masked failure previously left a dead panel with no roles/relationship
+  // sections and no error, indistinguishable from a slow/broken load.
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -84,11 +88,13 @@ export default function OwnershipMapPage() {
 
   async function loadDetail(id: string) {
     setDetailLoading(true);
+    setDetailError(null);
     try {
       const res: ApiResponse<Entity> = await apiFetch(`/api/relationships/entities/${id}`);
       if (res.success) setDetail(res.data);
+      else setDetailError(res.error ?? "Failed to load ownership details");
     } catch {
-      // silent
+      setDetailError("Network error — could not reach server");
     } finally {
       setDetailLoading(false);
     }
@@ -97,6 +103,7 @@ export default function OwnershipMapPage() {
   function selectEntity(e: Entity) {
     setSelected(e);
     setDetail(null);
+    setDetailError(null);
     loadDetail(e.id);
   }
 
@@ -203,6 +210,18 @@ export default function OwnershipMapPage() {
                 {detailLoading && (
                   <div className="flex items-center justify-center py-8">
                     <div className="w-5 h-5 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {!detailLoading && detailError && (
+                  <div className="text-center py-8 space-y-2">
+                    <p className="text-sm text-red-600 font-medium">{detailError}</p>
+                    <button
+                      onClick={() => loadDetail(selected.id)}
+                      className="text-xs px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-700"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
 

@@ -87,8 +87,27 @@ export default function EntityDetailPage() {
   const [matches, setMatches] = useState<CrossClientMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Scoped separately from the page-level `error`: a matches-fetch failure
+  // shouldn't hide the whole (successfully-loaded) entity page behind the
+  // "Entity not found" error screen — only the Matches tab needs to know.
+  const [matchesError, setMatchesError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [processingMatchId, setProcessingMatchId] = useState<string | null>(null);
+  const [matchActionError, setMatchActionError] = useState<string | null>(null);
+
+  const loadMatches = useCallback(async () => {
+    try {
+      const matchesJson: ApiResponse<CrossClientMatch[]> = await apiFetch(
+        `/api/relationships/cross-client-matches?entity_id=${entityId}`
+      );
+      if (!matchesJson.success) throw new Error(matchesJson.error ?? "Failed to load cross-client matches");
+      setMatches(matchesJson.data);
+      setMatchesError(null);
+    } catch (e) {
+      setMatches([]);
+      setMatchesError(e instanceof Error ? e.message : "Failed to load cross-client matches");
+    }
+  }, [entityId]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -102,17 +121,15 @@ export default function EntityDetailPage() {
       setRoles(entityJson.data.roles ?? []);
       setRelationships(entityJson.data.relationships ?? []);
 
-      // Cross-client matches filtered for this entity
-      const matchesJson: ApiResponse<CrossClientMatch[]> = await apiFetch(
-        `/api/relationships/cross-client-matches?entity_id=${entityId}`
-      );
-      setMatches(matchesJson.success ? matchesJson.data : []);
+      // Cross-client matches filtered for this entity — a failure here must
+      // not masquerade as "no cross-client matches detected".
+      await loadMatches();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [entityId]);
+  }, [entityId, loadMatches]);
 
   useEffect(() => {
     if (entityId) loadAll();
@@ -120,6 +137,7 @@ export default function EntityDetailPage() {
 
   async function handleMatchAction(matchId: string, action: "confirm" | "dismiss") {
     setProcessingMatchId(matchId);
+    setMatchActionError(null);
     try {
       const json: ApiResponse<CrossClientMatch> = await apiFetch(
         `/api/relationships/cross-client-matches/${matchId}/review`,
@@ -132,8 +150,9 @@ export default function EntityDetailPage() {
       setMatches((prev) =>
         prev.map((m) => (m.id === matchId ? { ...m, status: action === "confirm" ? "confirmed" : "dismissed" } : m))
       );
-    } catch {
-      // silently fail — user can retry
+    } catch (e) {
+      // The buttons must not appear to do nothing on failure.
+      setMatchActionError(e instanceof Error ? e.message : "Action failed. Please retry.");
     } finally {
       setProcessingMatchId(null);
     }
@@ -322,7 +341,20 @@ export default function EntityDetailPage() {
       {activeTab === "matches" && (
         <Card className="bg-gray-800 border-gray-700">
           <CardContent className="p-0">
-            {matches.length === 0 ? (
+            {matchActionError && (
+              <div className="px-5 py-2.5 border-b border-gray-700 text-xs text-red-400">{matchActionError}</div>
+            )}
+            {matchesError ? (
+              <div className="text-center py-12 space-y-2">
+                <p className="text-sm text-red-400 font-medium">{matchesError}</p>
+                <button
+                  onClick={loadMatches}
+                  className="text-xs px-3 py-1 border border-gray-600 rounded hover:bg-gray-700 text-gray-300"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : matches.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-sm text-slate-500">No cross-client matches detected</p>
               </div>

@@ -93,6 +93,7 @@ export default function EmployeePortalPage() {
   const [payslipsError, setPayslipsError] = useState(false);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
+  const [leaveError, setLeaveError] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [downloadingSlipId, setDownloadingSlipId] = useState<string | null>(null);
 
@@ -170,6 +171,7 @@ export default function EmployeePortalPage() {
   const loadLeaveBalances = useCallback(async () => {
     if (!employee) return;
     setLeaveLoading(true);
+    setLeaveError(false);
     try {
       const supabase = getSupabaseClient();
       // Indian FY: April 1 to March 31
@@ -183,7 +185,12 @@ export default function EmployeePortalPage() {
       if (err) throw new Error(err.message);
       setLeaveBalances(data ?? []);
     } catch (e) {
+      // A failed fetch must NOT fall through to the empty "No leave records"
+      // state — flag it so the UI shows a retryable error instead, mirroring
+      // loadPayslips' fix above.
       console.error("loadLeaveBalances:", e);
+      setLeaveBalances([]);
+      setLeaveError(true);
     } finally {
       setLeaveLoading(false);
     }
@@ -341,6 +348,16 @@ export default function EmployeePortalPage() {
             {leaveLoading ? (
               <div className="text-center py-10 text-sm text-[#94A3B8] flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
+              </div>
+            ) : leaveError ? (
+              <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-3">
+                <p className="text-sm text-red-600 font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>
+                <button
+                  onClick={() => loadLeaveBalances()}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                >
+                  Retry
+                </button>
               </div>
             ) : leaveBalances.length === 0 ? (
               <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center">
