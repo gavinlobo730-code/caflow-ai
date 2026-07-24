@@ -1,12 +1,14 @@
 """
 Pydantic request models for payroll endpoints.
-EPF Act: PF = 12% of basic. ESI Act §2(9): employee 0.75%, employer 3.25%.
+EPF Act §6: PF = 12% of (Basic + DA). ESI Act §2(9): employee 0.75%, employer 3.25%.
 IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
 from pydantic import BaseModel, field_validator
 from typing import Optional
 import re
+
+from core.validators import validate_pan
 
 
 def _normalize_gender(v: Optional[str]) -> Optional[str]:
@@ -76,12 +78,40 @@ class EmployeeIn(BaseModel):
             raise ValueError("aadhaar_last4 must be exactly the last 4 digits.")
         return v
 
+    # task #229: payroll_employees.pan had a DB-level CHECK constraint
+    # (migration 112) but no application-level validation — task #223 wired
+    # validate_pan into CustomerIn/VendorIn/mca_workspace/tds_workspace but
+    # missed this model, so a malformed PAN fell through to a raw, unformatted
+    # Postgres constraint-violation error instead of a clean 422.
+    @field_validator("pan")
+    @classmethod
+    def pan_format(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return v
+        v = v.strip().upper()
+        err = validate_pan(v)
+        if err:
+            raise ValueError(err)
+        return v
+
     @field_validator("basic_paise", "other_allowances_paise", "lta_paise",
                      "medical_paise", "special_allowance_paise")
     @classmethod
     def non_negative_paise(cls, v: int) -> int:
         if v < 0:
             raise ValueError("Paise values must be non-negative.")
+        return v
+
+    # task #229: hra_percent/da_percent were the only salary-component fields
+    # NOT covered by non_negative_paise (they're floats, not paise ints) —
+    # a negative value directly subtracts from gross in _compute_slip
+    # (routers/payroll.py), silently understating gross/net/TDS on every
+    # slip for that employee, and posts wrong if the run is finalized.
+    @field_validator("hra_percent", "da_percent")
+    @classmethod
+    def percent_in_range(cls, v: float) -> float:
+        if v < 0 or v > 100:
+            raise ValueError("Percent fields must be between 0 and 100.")
         return v
 
     @field_validator("gender")
@@ -114,6 +144,51 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
+
+    # task #229: EmployeeUpdateIn had NO numeric validation at all — not even
+    # the non-negative check EmployeeIn applies on create. A PATCH with a
+    # negative basic_paise/hra_percent/etc. (typo, bad CSV re-import) would
+    # corrupt every payslip _compute_slip computes off that employee from
+    # then on, same failure mode as the create-time gap this mirrors.
+    @field_validator("basic_paise", "other_allowances_paise", "lta_paise",
+                     "medical_paise", "special_allowance_paise")
+    @classmethod
+    def non_negative_paise(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("Paise values must be non-negative.")
+        return v
+
+    @field_validator("hra_percent", "da_percent")
+    @classmethod
+    def percent_in_range(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError("Percent fields must be between 0 and 100.")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, v: Optional[str]) -> Optional[str]:
+        # task #229: unlike EmployeeIn.name_not_empty (create-time), nothing
+        # stopped PATCH {"name": ""} or {"name": "   "} from silently
+        # blanking an employee's name on every future payslip/GL narration —
+        # exclude_none in update_employee doesn't exclude an empty string.
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("Employee name cannot be blank.")
+        return v
+
+    @field_validator("pan")
+    @classmethod
+    def pan_format(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return v
+        v = v.strip().upper()
+        err = validate_pan(v)
+        if err:
+            raise ValueError(err)
+        return v
 
     @field_validator("gender")
     @classmethod
@@ -165,6 +240,25 @@ class SalaryStructureIn(BaseModel):
         if not v.strip():
             raise ValueError("Structure name cannot be blank.")
         return v.strip()
+
+    # task #229: unlike EmployeeIn's mirrored fields, these had zero numeric
+    # validation — for consistency with the fields they mirror (no live
+    # computation path reads salary_structures today, but a negative/absurd
+    # percent stored here is still bad data quality).
+    @field_validator("basic_percent", "hra_percent", "da_percent",
+                     "lta_percent", "special_percent")
+    @classmethod
+    def percent_in_range(cls, v: float) -> float:
+        if v < 0 or v > 100:
+            raise ValueError("Percent fields must be between 0 and 100.")
+        return v
+
+    @field_validator("medical_paise")
+    @classmethod
+    def non_negative_paise(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Paise values must be non-negative.")
+        return v
 
 
 class PayrollRunIn(BaseModel):
