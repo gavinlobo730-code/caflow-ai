@@ -64,15 +64,24 @@ class BankPostingService:
         if bank_account_id:
             return self._validate_account(db, firm_id, bank_account_id)
         # From the statement's linked bank account → its GL (coa) account.
+        # task #228 audit finding: neither lookup was scoped by firm/client —
+        # an unscoped read-by-id in a money-posting path, the exact "query
+        # returns a row but the code never verifies it belongs to the
+        # caller's tenant" pattern task #227 fixed for AR/AP. Scoped here to
+        # THIS transaction's firm+client, mirroring _validate_account's own
+        # scoping just above.
         stmt_id = txn.get("statement_id")
+        client_id = txn["client_id"]
         if stmt_id:
             try:
                 stmt = (db.table("bank_statements").select("bank_account_id")
-                        .eq("id", stmt_id).single().execute().data) or {}
+                        .eq("id", stmt_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                        .single().execute().data) or {}
                 ba_id = stmt.get("bank_account_id")
                 if ba_id:
                     ba = (db.table("bank_accounts").select("coa_account_id")
-                          .eq("id", ba_id).single().execute().data) or {}
+                          .eq("id", ba_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                          .single().execute().data) or {}
                     if ba.get("coa_account_id"):
                         return ba["coa_account_id"]
             except Exception:

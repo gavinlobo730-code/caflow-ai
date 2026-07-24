@@ -251,7 +251,19 @@ class BankMatchingService:
         if not is_valid_category(category):
             raise HTTPException(status_code=422,
                                 detail=f"Invalid category. Allowed: {', '.join(CATEGORIES)}")
-        self._get_txn(db, firm_id, txn_id)
+        txn = self._get_txn(db, firm_id, txn_id)
+        # task #228 audit finding: bank_posting_service.post() builds a DRAFT
+        # journal from the category/match linkage AS THEY EXIST at that moment,
+        # then leaves match_status alone until a human approves the draft
+        # (settle_on_post re-reads category/matched_entity_* from the LIVE row at
+        # approval time). Recategorizing while a draft is pending silently
+        # changes what settle_on_post will act on without touching the
+        # already-created journal — the two can now disagree about what was
+        # posted. No "reject draft" flow exists yet to get out of this state
+        # once a draft is created; that is a separate, pre-existing gap.
+        if txn.get("posted_journal_id"):
+            raise HTTPException(status_code=409,
+                detail="A journal has already been created for this transaction — it cannot be recategorized until that draft is approved.")
         db.table("bank_transactions").update({
             "category": category, "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
@@ -272,6 +284,14 @@ class BankMatchingService:
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("match_status") == "posted":
             raise HTTPException(status_code=409, detail="Transaction already posted to the ledger.")
+        # task #228 audit finding: a DRAFT journal (posted_journal_id set,
+        # match_status deliberately left alone until approval — see post()'s own
+        # docstring) must block re-matching too, not just an already-posted
+        # transaction — see categorize()'s identical guard for the full
+        # rationale (settle_on_post re-reads this linkage at approval time).
+        if txn.get("posted_journal_id"):
+            raise HTTPException(status_code=409,
+                detail="A journal has already been created for this transaction — it cannot be re-matched until that draft is approved.")
         # Tenant-ownership check: entity_id is caller-supplied and must actually
         # belong to this transaction's firm+client, not just be well-formed
         # (mirrors bank_posting_service.match_and_settle_multi's doc lookup).
@@ -313,6 +333,14 @@ class BankMatchingService:
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("match_status") == "posted":
             raise HTTPException(status_code=409, detail="Cannot unmatch a posted transaction.")
+        # task #228 audit finding: same DRAFT-journal guard as categorize()/
+        # match() — unmatching while a draft is pending clears
+        # matched_entity_type/matched_entity_id out from under settle_on_post,
+        # which will find nothing to settle when the draft is later approved
+        # even though a real Dr/Cr journal already posted for that "settlement".
+        if txn.get("posted_journal_id"):
+            raise HTTPException(status_code=409,
+                detail="A journal has already been created for this transaction — it cannot be unmatched until that draft is approved.")
         db.table("bank_transactions").update({
             "matched_entity_type": None, "matched_entity_id": None,
             "matched_by": None, "matched_at": None,

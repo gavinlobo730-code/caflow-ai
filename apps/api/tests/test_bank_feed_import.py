@@ -35,9 +35,14 @@ class _Query:
         self._op = None
         self._on_conflict = None
         self._ignore_dupes = False
+        self._single = False
 
     def insert(self, payload):
         self._op, self._payload = "insert", payload
+        return self
+
+    def update(self, payload):
+        self._op, self._payload = "update", payload
         return self
 
     def upsert(self, payload, *, on_conflict=None, ignore_duplicates=False, **_k):
@@ -71,6 +76,13 @@ class _Query:
     def order(self, *_a, **_k):
         return self
 
+    def limit(self, _n):
+        return self
+
+    def single(self):
+        self._single = True
+        return self
+
     def execute(self):
         rows = self._store.setdefault(self._table, [])
         if self._op in ("insert", "upsert"):
@@ -89,7 +101,7 @@ class _Query:
                 rows.append(rec)
                 inserted.append(rec)
             return _Resp(inserted)
-        # select
+        # filter (shared by select and update)
         out = rows
         for k, v in self._eq:
             out = [r for r in out if r.get(k) == v]
@@ -101,6 +113,13 @@ class _Query:
             out = [r for r in out if str(r.get(k)) >= str(v)]
         for k, v in self._lte:
             out = [r for r in out if str(r.get(k)) <= str(v)]
+        if self._op == "update":
+            for r in out:
+                r.update(self._payload)
+            return _Resp(list(out))
+        # select
+        if self._single:
+            return _Resp(dict(out[0]) if out else None)
         return _Resp(list(out))
 
 
@@ -358,3 +377,79 @@ def test_empty_rows_rejected():
     db = FakeDB()
     with pytest.raises(Exception):
         banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", [])
+
+
+# ── task #228 audit finding: bank_account_id ownership on import ─────────────
+
+def test_import_rejects_bank_account_from_another_client():
+    """bank_account_id is caller-supplied and was written onto the new
+    bank_statements row with no ownership check — a foreign bank_account_id
+    silently linked another tenant's bank account (and, downstream, its GL
+    account via bank_posting_service._resolve_bank) to this import."""
+    db = FakeDB()
+    db.store.setdefault("bank_accounts", []).append(
+        {"id": "ba-1", "firm_id": FIRM, "client_id": "client-OTHER"})
+    csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
+    with pytest.raises(Exception):
+        banking_service.import_normalized(
+            db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="ba-1")
+    assert db.store.get("bank_statements", []) == []
+    assert db.store.get("bank_transactions", []) == []
+
+
+def test_import_rejects_bank_account_from_another_firm():
+    db = FakeDB()
+    db.store.setdefault("bank_accounts", []).append(
+        {"id": "ba-1", "firm_id": "firm-OTHER", "client_id": CLIENT})
+    csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
+    with pytest.raises(Exception):
+        banking_service.import_normalized(
+            db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="ba-1")
+    assert db.store.get("bank_statements", []) == []
+
+
+def test_import_rejects_nonexistent_bank_account():
+    db = FakeDB()
+    csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
+    with pytest.raises(Exception):
+        banking_service.import_normalized(
+            db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="does-not-exist")
+
+
+def test_import_still_accepts_own_client_bank_account():
+    db = FakeDB()
+    db.store.setdefault("bank_accounts", []).append(
+        {"id": "ba-1", "firm_id": FIRM, "client_id": CLIENT})
+    csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
+    res = banking_service.import_normalized(
+        db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="ba-1")
+    assert res["imported"] == 1
+    assert db.store["bank_statements"][0]["bank_account_id"] == "ba-1"
+
+
+# ── task #228 audit finding: ignore() must block once a draft journal exists ──
+
+def test_ignore_rejects_when_draft_journal_pending():
+    """bank_posting_service.post() creates a DRAFT journal and deliberately
+    leaves match_status alone until a human approves it (settle_on_post checks
+    ONLY match_status == "posted" before settling). Without this guard,
+    ignoring a transaction with a pending draft doesn't stop that draft from
+    later being approved and fully settled — "ignored" would be silently
+    overridden."""
+    db = FakeDB()
+    db.store.setdefault("bank_transactions", []).append({
+        "id": "t1", "firm_id": FIRM, "client_id": CLIENT, "match_status": "matched",
+        "posted_journal_id": "je-draft-1",
+    })
+    with pytest.raises(Exception):
+        banking_service.ignore(db, FIRM, "t1")
+    assert db.store["bank_transactions"][0]["match_status"] == "matched"
+
+
+def test_ignore_still_accepts_transaction_with_no_draft():
+    db = FakeDB()
+    db.store.setdefault("bank_transactions", []).append({
+        "id": "t1", "firm_id": FIRM, "client_id": CLIENT, "match_status": "unmatched",
+    })
+    res = banking_service.ignore(db, FIRM, "t1")
+    assert res["match_status"] == "ignored"

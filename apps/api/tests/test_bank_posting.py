@@ -399,6 +399,42 @@ def test_deleted_transaction_404():
         bank_posting_service.post(db, FIRM, "missing", bank_account_id="acc-bank", actor_id="u1")
 
 
+# ── B.3 account resolution / tenant scoping (task #228 finding #3) ─────────────
+# _resolve_bank's statement→bank_account lookup used to be unscoped by
+# firm/client — a caller-supplied txn whose statement_id happened to match a
+# statement belonging to a DIFFERENT client would silently resolve to that
+# other client's GL bank account. Both lookups are now scoped to the
+# transaction's own firm+client, mirroring _validate_account's scoping.
+
+def test_resolve_bank_ignores_cross_client_statement_link():
+    db = _db_with_accounts()
+    _seed_txn(db, credit=100000, category="Customer Payment", statement_id="stmt-1")
+    # A statement with the same id exists, but belongs to a different client —
+    # must NOT be used to resolve the bank leg's GL account.
+    db.store.setdefault("bank_statements", []).append(
+        {"id": "stmt-1", "firm_id": FIRM, "client_id": "client-2", "bank_account_id": "ba-other"})
+    db.store.setdefault("bank_accounts", []).append(
+        {"id": "ba-other", "firm_id": FIRM, "client_id": "client-2", "coa_account_id": "acc-wrong"})
+    res = bank_posting_service.post(db, FIRM, "t1", actor_id="u1")  # no bank_account_id passed
+    lines = _lines_for(db, res["draft_journal_id"])
+    dr = next(l for l in lines if l["debit_paise"])
+    assert dr["account_id"] != "acc-wrong"
+    assert dr["account_id"] == "acc-bank"   # falls back to the firm's master Bank account
+
+
+def test_resolve_bank_uses_same_client_statement_link():
+    db = _db_with_accounts()
+    _seed_txn(db, credit=100000, category="Customer Payment", statement_id="stmt-1")
+    db.store.setdefault("bank_statements", []).append(
+        {"id": "stmt-1", "firm_id": FIRM, "client_id": CLIENT, "bank_account_id": "ba-1"})
+    db.store.setdefault("bank_accounts", []).append(
+        {"id": "ba-1", "firm_id": FIRM, "client_id": CLIENT, "coa_account_id": "acc-bank2"})
+    res = bank_posting_service.post(db, FIRM, "t1", actor_id="u1")  # no bank_account_id passed
+    lines = _lines_for(db, res["draft_journal_id"])
+    dr = next(l for l in lines if l["debit_paise"])
+    assert dr["account_id"] == "acc-bank2"  # resolved via own-client statement link
+
+
 # ── Integrity ──────────────────────────────────────────────────────────────────
 
 def test_audit_trail_created(monkeypatch):
