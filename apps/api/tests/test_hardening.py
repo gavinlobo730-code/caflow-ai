@@ -58,6 +58,7 @@ def test_gstr9_save():
     resp = client.post("/api/gst-workspace/gstr9", json={
         "client_id": "client-001",
         "financial_year": "2025-26",
+        "gstin": "27AABCU9603R1ZX",
         "total_taxable_paise": 1000000,
         "total_tax_paise": 180000,
     }, headers=HEADERS)

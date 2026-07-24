@@ -125,6 +125,55 @@ def test_save_gstr3b_propagates_locked_period_rejection(client, monkeypatch):
     assert "locked" in resp.json()["detail"].lower()
 
 
+def test_gstr1_approval_requires_manager_role(client):
+    """CGST Act §37: only Manager+ can approve/submit a GSTR-1 return —
+    ca_approved=true alone is a caller-supplied flag, not proof of role
+    (task #226 audit finding). An Executive gets rejected even with the flag
+    set; a Manager succeeds."""
+    exec_headers = {"X-User-Email": "exec@test.com", "X-User-Role": "executive", "X-Firm-ID": "firm-1"}
+    manager_headers = {"X-User-Email": "mgr@test.com", "X-User-Role": "manager", "X-Firm-ID": "firm-1"}
+
+    resp = client.post("/api/gst-workspace/gstr1", json={
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+    }, headers=exec_headers)
+    return_id = resp.json()["data"]["id"]
+
+    r_exec = client.patch(f"/api/gst-workspace/gstr1/{return_id}/status",
+                          json={"status": "ca_approved", "ca_approved": True},
+                          headers=exec_headers)
+    assert r_exec.json()["success"] is False
+    assert "Manager" in r_exec.json()["error"]
+
+    r_mgr = client.patch(f"/api/gst-workspace/gstr1/{return_id}/status",
+                         json={"status": "ca_approved", "ca_approved": True},
+                         headers=manager_headers)
+    assert r_mgr.json()["success"] is True
+    assert r_mgr.json()["data"]["status"] == "ca_approved"
+
+
+def test_gstr3b_approval_requires_manager_role(client):
+    """Same task #226 fix, applied to GSTR-3B (CGST Act §39)."""
+    exec_headers = {"X-User-Email": "exec@test.com", "X-User-Role": "executive", "X-Firm-ID": "firm-1"}
+    manager_headers = {"X-User-Email": "mgr@test.com", "X-User-Role": "manager", "X-Firm-ID": "firm-1"}
+
+    resp = client.post("/api/gst-workspace/gstr3b", json={
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+    }, headers=exec_headers)
+    return_id = resp.json()["data"]["id"]
+
+    r_exec = client.patch(f"/api/gst-workspace/gstr3b/{return_id}/status",
+                          json={"status": "ca_approved", "ca_approved": True},
+                          headers=exec_headers)
+    assert r_exec.json()["success"] is False
+    assert "Manager" in r_exec.json()["error"]
+
+    r_mgr = client.patch(f"/api/gst-workspace/gstr3b/{return_id}/status",
+                         json={"status": "ca_approved", "ca_approved": True},
+                         headers=manager_headers)
+    assert r_mgr.json()["success"] is True
+    assert r_mgr.json()["data"]["status"] == "ca_approved"
+
+
 def test_filing_history_only_submitted(client):
     # Save two returns — one draft, one submitted
     r1 = client.post("/api/gst-workspace/gstr1", json={
@@ -144,6 +193,32 @@ def test_filing_history_only_submitted(client):
     filed_ids = [r["id"] for r in history["gstr1_filed"]]
     assert r2 in filed_ids
     assert r1 not in filed_ids
+
+
+def test_save_gstr9_requires_and_stores_gstin(client):
+    """CGST Act §44 — GSTR-9 annual return draft. gstin is required: the
+    underlying table (gstr1_returns, shared via return_type='gstr9') has
+    gstin as NOT NULL, and the request model previously didn't collect it at
+    all — a save would have violated the NOT NULL constraint on real
+    Postgres (task #226 audit finding)."""
+    resp = client.post("/api/gst-workspace/gstr9", json={
+        "client_id": _CLIENT_ID,
+        "financial_year": "2025-26",
+        "gstin": "27AABCU9603R1ZX",
+        "total_taxable_paise": 500000000,
+        "total_tax_paise": 90000000,
+    }, headers=_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["gstin"] == "27AABCU9603R1ZX"
+    assert data["return_type"] == "gstr9"
+    assert data["financial_year"] == "2025-26"
+
+    # Invalid GSTIN format must be rejected (same validate_gstin as GSTR-1/3B).
+    bad = client.post("/api/gst-workspace/gstr9", json={
+        "client_id": _CLIENT_ID, "financial_year": "2025-26", "gstin": "not-a-gstin",
+    }, headers=_HEADERS)
+    assert bad.status_code == 422
 
 
 def test_gstr2b_reconciliation(client):

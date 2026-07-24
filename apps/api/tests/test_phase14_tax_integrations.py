@@ -346,6 +346,39 @@ PART C
         assert upload["parse_status"] == "pending"
         assert upload["financial_year"] == "2025-26"
 
+    def test_create_upload_real_branch_inserts_valid_columns(self, monkeypatch):
+        """task #226 audit finding: create_upload's real (_USE_MOCK=False)
+        branch used to write document_id/uploaded_by onto form_26as_uploads —
+        neither column exists (migration 052); uploaded_by must map onto the
+        real created_by column instead. Exercises the real insert path
+        directly against a fake db.table("form_26as_uploads").insert(...)
+        capture, since the mock-mode test above never reaches this branch."""
+        import domain.income_tax.form26as_service as mod
+
+        captured = {}
+
+        class _FakeTable:
+            def insert(self, data):
+                captured.update(data)
+                return self
+
+            def execute(self):
+                return type("R", (), {"data": [{**captured, "id": "up-1"}]})()
+
+        class _FakeDB:
+            def table(self, name):
+                assert name == "form_26as_uploads"
+                return _FakeTable()
+
+        monkeypatch.setattr(mod, "_USE_MOCK", False)
+        monkeypatch.setattr(mod, "_supabase", lambda: _FakeDB())
+
+        mod.create_upload("f1", "c1", "2025-26", "u1", document_id="doc-9")
+
+        assert captured["created_by"] == "u1"
+        assert "uploaded_by" not in captured
+        assert captured["document_id"] == "doc-9"
+
     def test_save_parsed_records(self):
         from domain.income_tax.form26as_service import (
             create_upload, parse_26as_text, save_parsed_records

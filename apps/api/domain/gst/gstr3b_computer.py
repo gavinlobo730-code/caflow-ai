@@ -1,7 +1,9 @@
 """GSTR-3B computation engine.
 
 CGST Act Section 39 — furnishing of returns.
-CGST Rule 36(4) — ITC restricted to 105% of eligible GSTR-2A credit.
+CGST Rule 36(4) — ITC restricted to eligible credit reflected in GSTR-2A/2B.
+Notification 40/2021-Central Tax (w.e.f. 1 Jan 2022) removed the prior 105%
+provisional buffer; ITC is now capped strictly at 100% (Section 16(2)(aa)).
 CGST Act Section 49 — payment of tax, interest, penalty and fee.
 
 All amounts are integer paise. Never float.
@@ -161,17 +163,19 @@ class GSTR3BResult:
         }
 
 
-# CGST Rule 36(4): eligible ITC capped at 105% of GSTR-2A credit
-# Multiplied by 105 and divided by 100 using integer arithmetic to avoid float
-_RULE_36_4_NUMERATOR = 105
+# CGST Rule 36(4): eligible ITC capped at 100% of GSTR-2A/2B credit.
+# Notification 40/2021-Central Tax (w.e.f. 1 Jan 2022) withdrew the prior 105%
+# provisional buffer — ITC is now strictly matched, no additional grace.
+_RULE_36_4_NUMERATOR = 100
 _RULE_36_4_DENOMINATOR = 100
 
 
 def _apply_rule_36_4_cap(book: int, gstr2a: int) -> tuple[int, bool]:
     """Return (capped_itc, was_capped) using integer paise arithmetic.
 
-    CGST Rule 36(4): ITC cannot exceed 105% of eligible GSTR-2A credit.
-    If GSTR-2A is zero (no records uploaded), book ITC is used as-is.
+    CGST Rule 36(4) (as amended w.e.f. 1 Jan 2022): ITC cannot exceed 100% of
+    eligible GSTR-2A/2B credit — no provisional buffer. If GSTR-2A is zero
+    (no records uploaded), book ITC is used as-is.
     """
     if gstr2a == 0:
         # No GSTR-2A data — use book ITC; warn CA to upload GSTR-2A
