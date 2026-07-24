@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -214,6 +215,7 @@ def create_challan(
 ):
     """Create TDS challan record. IT Act §200."""
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         # Period validation — prevent posting to locked financial years (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", body.challan_date)
@@ -252,6 +254,8 @@ def create_challan(
             title=f"TDS Challan deposited: ₹{body.amount_paise // 100} under {body.section}",
         )
         return api_response(True, record)
+    except HTTPException:
+        raise
     except Exception as e:
         return api_response(False, None, str(e))
 
@@ -304,6 +308,7 @@ def create_return(
 ):
     """Create/save TDS return (24Q/26Q). IT Act §200."""
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         # Validate that the FY is not locked — use April 1 of the FY start year
         fy_str = body.financial_year or ""
@@ -471,6 +476,7 @@ def create_certificate(
     Draft only — CA must review and sign before issuance.
     """
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         deductee_pan = body.deductee_pan.strip().upper()
         # IT Act §206AA: PAN sentinels ("PANNOTAVBL"/"PANAPPLIED") are valid —
@@ -527,6 +533,7 @@ def upload_form26as(
     Matches by PAN + section + amount.
     """
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         raw = body.raw_data
         # Reconcile 26AS TDS entries against book deductions
@@ -596,6 +603,8 @@ def upload_form26as(
         log_event(firm_id, "form_26as_upload", record["id"], "create",
                   actor_id=current_user.get("id"))
         return api_response(True, record)
+    except HTTPException:
+        raise
     except Exception as e:
         return api_response(False, None, str(e))
 

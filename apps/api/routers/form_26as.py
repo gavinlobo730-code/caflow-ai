@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -37,6 +38,7 @@ def create_upload(
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """Create 26AS upload record."""
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.form26as_service import create_upload
     try:
         upload = create_upload(
@@ -121,6 +123,7 @@ def run_reconciliation(
     Creates AI insight if variance exceeds 1% threshold.
     # CA REVIEW REQUIRED — Review results before acting.
     """
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.form26as_service import list_uploads, run_reconciliation as _run
 
     uploads = list_uploads(current_user["firm_id"], req.client_id, req.financial_year)

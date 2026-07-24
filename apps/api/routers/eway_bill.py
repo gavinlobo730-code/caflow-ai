@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -54,6 +55,7 @@ def create_eway_bill(
     req: CreateEWayBillRequest,
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.eway_service import create_eway_bill as _create
     try:
         rec = _create(

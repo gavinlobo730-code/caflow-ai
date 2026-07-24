@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from core.permissions import rbac
+from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -60,6 +61,7 @@ def create_record(
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """Create e-invoice record in draft state."""
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.einvoice_service import create_einvoice_record
     try:
         rec = create_einvoice_record(

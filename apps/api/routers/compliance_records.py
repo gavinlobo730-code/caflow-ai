@@ -57,6 +57,10 @@ def list_compliance_records(
 @router.post("")
 def create_compliance_record(data: ComplianceRecordIn, current_user: dict = Depends(rbac("compliance_record", "write"))):
     try:
+        # task #238 audit finding: client_id was caller-supplied and never
+        # checked against the caller's firm/assignment — mirrors this file's
+        # own get_compliance_record/get_client_health fixes.
+        assert_client_access(current_user, data.client_id)
         # firm_id always comes from the authenticated user — never from the request body
         record = compliance_record_service.create_record(data.model_dump(), firm_id=current_user["firm_id"])
         return api_response(True, record)
@@ -102,6 +106,13 @@ def get_compliance_record(record_id: str, current_user: dict = Depends(rbac("com
 @router.patch("/{record_id}")
 def update_compliance_record(record_id: str, data: ComplianceRecordUpdateIn, current_user: dict = Depends(rbac("compliance_record", "write"))):
     try:
+        # task #238 audit finding: the service's own firm_id check only blocks
+        # CROSS-FIRM access; it never verified the caller is ASSIGNED to this
+        # record's client (the check get_compliance_record, two endpoints
+        # above, already has). Fetch first to learn the client_id, same as
+        # that sibling GET.
+        existing = compliance_record_service.get_record(record_id, firm_id=current_user.get("firm_id"))
+        assert_client_access(current_user, existing.get("client_id"))
         record = compliance_record_service.update_record(
             record_id, data.model_dump(exclude_none=True), firm_id=current_user.get("firm_id")
         )

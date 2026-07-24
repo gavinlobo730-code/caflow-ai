@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core.permissions import rbac
+from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -105,6 +106,7 @@ def create_snapshot(
     Save immutable versioned tax computation snapshot.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.computation_workspace import save_computation_snapshot
     try:
         snap = save_computation_snapshot(
@@ -121,10 +123,11 @@ def create_snapshot(
         timeline_service.log(
             client_id=req.client_id,
             category="tax",
-            action="tax_computation_generated",
+            title="Tax computation snapshot generated",
             description=f"Tax computation snapshot v{snap.get('version',1)} created for FY {req.financial_year}",
             severity="info",
-            metadata={"snapshot_id": snap.get("id"), "regime": req.regime, "fy": req.financial_year},
+            firm_id=current_user["firm_id"],
+            entity_type="tax_computation_snapshot", entity_id=snap.get("id"),
         )
         return api_response(True, snap)
     except Exception as e:
@@ -157,10 +160,11 @@ def review_snapshot(
         timeline_service.log(
             client_id=result.get("client_id", ""),
             category="tax",
-            action="tax_computation_reviewed",
+            title="Tax computation snapshot reviewed",
             description=f"Tax computation snapshot {snapshot_id} reviewed",
             severity="success",
-            metadata={"snapshot_id": snapshot_id},
+            firm_id=current_user["firm_id"],
+            entity_type="tax_computation_snapshot", entity_id=snapshot_id,
         )
         return api_response(True, result)
     except Exception as e:
@@ -175,6 +179,7 @@ def create_filing(
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """Create ITR filing in draft state."""
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.itr_workflow import create_itr_filing
     try:
         filing = create_itr_filing(
@@ -190,10 +195,11 @@ def create_filing(
         timeline_service.log(
             client_id=req.client_id,
             category="tax",
-            action="itr_prepared",
+            title="ITR filing created",
             description=f"{req.itr_form} filing created for FY {req.financial_year}",
             severity="info",
-            metadata={"filing_id": filing.get("id"), "form": req.itr_form},
+            firm_id=current_user["firm_id"],
+            entity_type="itr_filing", entity_id=filing.get("id"),
         )
         return api_response(True, filing)
     except Exception as e:
@@ -229,18 +235,19 @@ def transition_filing(
             notes=req.notes,
         )
         event_map = {
-            "ready_for_filing": ("itr_ready_for_filing", "ITR ready for filing", "warning"),
-            "filed": ("itr_filed", "ITR filed", "success"),
+            "ready_for_filing": ("ITR ready for filing", "warning"),
+            "filed": ("ITR filed", "success"),
         }
         if req.new_status in event_map:
-            action, desc, sev = event_map[req.new_status]
+            title, sev = event_map[req.new_status]
             timeline_service.log(
                 client_id=result.get("client_id", ""),
                 category="tax",
-                action=action,
-                description=desc,
+                title=title,
+                description=f"Filing {filing_id} status changed to {req.new_status}",
                 severity=sev,
-                metadata={"filing_id": filing_id, "status": req.new_status},
+                firm_id=current_user["firm_id"],
+                entity_type="itr_filing", entity_id=filing_id,
             )
         return api_response(True, result)
     except ValueError as e:
@@ -292,10 +299,11 @@ def record_acknowledgement(
         timeline_service.log(
             client_id=result.get("client_id", ""),
             category="tax",
-            action="itr_filed",
+            title="ITR filed",
             description=f"ITR filed — Ack: {req.acknowledgement_number}",
             severity="success",
-            metadata={"filing_id": filing_id, "ack": req.acknowledgement_number},
+            firm_id=current_user["firm_id"],
+            entity_type="itr_filing", entity_id=filing_id,
         )
         return api_response(True, result)
     except Exception as e:
@@ -313,6 +321,7 @@ def create_disallowance(
     Record tax disallowance (IT Act 40A(3), 43B etc.) with evidence.
     All amounts in paise — never float.
     """
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.computation_workspace import create_disallowance as _create
     try:
         result = _create(
@@ -363,6 +372,7 @@ def auto_detect_40a3(
     Auto-detect Section 40A(3) cash payments >₹10,000 from ledger.
     IT Act Section 40A(3) — Disallowance of cash payments exceeding ₹10,000.
     """
+    assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import auto_detect_40a3 as _detect
     detected = _detect(current_user["firm_id"], client_id, financial_year, current_user["id"])
     return api_response(True, {"detected": len(detected), "items": detected})
@@ -375,6 +385,7 @@ def create_deduction(
     req: DeductionClaimRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.computation_workspace import create_deduction_claim
     try:
         result = create_deduction_claim(
@@ -414,6 +425,7 @@ def create_bf_loss(
     Record brought-forward loss.
     IT Act Section 72 (business loss, 8 years), Section 74 (capital loss, 8 years).
     """
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.computation_workspace import create_bf_loss as _create
     try:
         result = _create(
