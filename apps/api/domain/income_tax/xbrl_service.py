@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 from xml.etree.ElementTree import Element, SubElement, tostring
 import xml.etree.ElementTree as ET
@@ -196,8 +197,40 @@ def validate_xbrl_package(
     return result
 
 
+def _check_balance_equation(data: dict) -> list[str]:
+    """Companies Act 2013, Schedule III, Part I: Total Assets must equal
+    Total Equity and Liabilities. DEFAULT_MAPPINGS carries no explicit
+    "TotalAssets"/"TotalEquityAndLiabilities" tag, so sum the Balance Sheet
+    lines by their section ("...NonCurrentAssets.../...CurrentAssets..." vs
+    "...Equity..."/"...Liabilities...") — the same grouping the section
+    names themselves encode."""
+    total_assets = 0
+    total_equity_liab = 0
+    for schedule_line, _xbrl_tag, _label, _mandatory in DEFAULT_MAPPINGS:
+        val = data.get(schedule_line)
+        if not isinstance(val, (int, float)) or isinstance(val, bool):
+            continue
+        parts = schedule_line.split(".")
+        if len(parts) < 2 or parts[0] != "BalanceSheet":
+            continue
+        section = parts[1]
+        if section == "Equity" or "Liabilities" in section:
+            total_equity_liab += val
+        elif "Assets" in section:
+            total_assets += val
+
+    if total_assets != total_equity_liab:
+        return [
+            f"Balance Sheet does not balance: Total Assets ({total_assets} paise) != "
+            f"Total Equity & Liabilities ({total_equity_liab} paise), "
+            f"difference {total_assets - total_equity_liab} paise"
+        ]
+    return []
+
+
 def _run_validation(data: dict, taxonomy_version: str) -> tuple[list[str], list[str]]:
-    """Check mandatory tags and data type compliance."""
+    """Check mandatory tags, data type compliance, and the Balance Sheet
+    equation (Total Assets == Total Equity and Liabilities)."""
     errors: list[str] = []
     missing: list[str] = []
 
@@ -211,6 +244,7 @@ def _run_validation(data: dict, taxonomy_version: str) -> tuple[list[str], list[
             if isinstance(val, float):
                 errors.append(f"{schedule_line}: use integer paise — never float")
 
+    errors.extend(_check_balance_equation(data))
     return errors, missing
 
 
@@ -267,9 +301,18 @@ def generate_xbrl_xml(
     }
     for schedule_line, xbrl_tag, _, _ in DEFAULT_MAPPINGS:
         if schedule_line in all_data:
-            # Convert paise to rupees for XBRL (store in rupees per MCA requirement)
+            # Convert paise to rupees for XBRL (store in rupees per MCA requirement).
+            # task #240 fix: floor division truncated every non-zero paise
+            # remainder toward zero (e.g. 12,345 paise -> Rs 123, silently
+            # dropping 45 paise) instead of rounding to the nearest rupee —
+            # never float, per CLAUDE.md, so round via Decimal.
             val_paise = all_data[schedule_line]
-            val_rupees = val_paise // 100 if isinstance(val_paise, int) else val_paise
+            if isinstance(val_paise, int) and not isinstance(val_paise, bool):
+                val_rupees = int(
+                    (Decimal(val_paise) / 100).to_integral_value(rounding=ROUND_HALF_UP)
+                )
+            else:
+                val_rupees = val_paise
             elem = SubElement(xbrl, xbrl_tag, {
                 "contextRef": "CurrentPeriod",
                 "unitRef": "INR",

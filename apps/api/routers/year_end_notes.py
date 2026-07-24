@@ -23,9 +23,16 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 router = APIRouter(prefix="/year-end", tags=["year-end-notes"])
 
-# Note types — auto-generated vs manual placeholder
-_AUTO_NOTE_TYPES   = {"fixed_assets", "share_capital", "loans", "gst_tds"}
-_MANUAL_NOTE_TYPES = {"related_party", "contingent_liabilities"}
+# Note types — auto-generated (at least partly computed from real data) vs
+# manual placeholder. task #240 fix: gst_tds moved out of _AUTO_NOTE_TYPES --
+# there is no FY-level GST/TDS payable aggregation function anywhere in the
+# codebase (gst_return_service's GL-movement helpers are period-scoped, one
+# GSTR-3B return at a time, not a financial year), so unlike fixed_assets/
+# share_capital/loans it genuinely cannot be computed here. It now gets the
+# same honest CA-input placeholder as related_party/contingent_liabilities
+# instead of a plausible-looking fabricated number.
+_AUTO_NOTE_TYPES   = {"fixed_assets", "share_capital", "loans"}
+_MANUAL_NOTE_TYPES = {"related_party", "contingent_liabilities", "gst_tds"}
 _ALL_NOTE_TYPES    = _AUTO_NOTE_TYPES | _MANUAL_NOTE_TYPES
 
 # ── Mock store ────────────────────────────────────────────────────────────────
@@ -72,14 +79,81 @@ class NoteUpdateIn(BaseModel):
     note_data: Optional[dict] = None
 
 
+# ── Real-data computation for auto note types ─────────────────────────────────
+# task #240 fix: these figures used to be hardcoded literal constants (e.g.
+# gross_block_paise=80_000_00) regardless of the actual client/FY — a
+# "Generate Notes" click produced numbers with no connection to the client's
+# books at all, which could have ended up in a filed Balance Sheet. Below,
+# each figure is either computed from real data or explicitly left blank
+# with requires_ca_review=True (the same honest-placeholder pattern already
+# used for related_party/contingent_liabilities) — never a plausible-looking
+# fabricated number.
+
+def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Optional[str]) -> dict:
+    """Real Fixed Assets figures for the FY, from the fixed assets register.
+    Depreciation charge uses the SAME fixed-annual-charge-on-opening-WDV
+    logic as routers.fixed_assets (task #232's rounding fix)."""
+    if db is None:
+        return {
+            "gross_block_paise": 0, "accumulated_dep_paise": 0,
+            "net_block_paise": 0, "depreciation_charge_paise": 0,
+            "note_type": "fixed_assets", "is_auto_generated": True,
+            "requires_ca_review": True,
+            "review_note": "Fixed assets register unavailable — figures require manual entry.",
+        }
+    from routers.fixed_assets import _annual_depreciation_for_period
+    rows = (
+        db.table("fixed_assets").select("*")
+        .eq("firm_id", firm_id).eq("client_id", client_id)
+        .eq("is_disposed", False)
+        .execute().data or []
+    )
+    gross_block     = sum(int(a.get("purchase_cost_paise") or 0) for a in rows)
+    accumulated_dep = sum(int(a.get("accumulated_depreciation_paise") or 0) for a in rows)
+    period = (fy_end or "")[:7]  # "YYYY-MM" — March of the FY-end year
+    dep_charge = 0
+    if period:
+        for a in rows:
+            charge, _fy, _opening = _annual_depreciation_for_period(a, period)
+            dep_charge += charge
+    return {
+        "gross_block_paise":        gross_block,
+        "accumulated_dep_paise":    accumulated_dep,
+        "net_block_paise":          gross_block - accumulated_dep,
+        "depreciation_charge_paise": dep_charge,
+        "note_type": "fixed_assets",
+        "is_auto_generated": True,
+    }
+
+
+def _compute_gl_schedule_balances(
+    db, firm_id: str, client_id: str, fy_start: Optional[str], fy_end: Optional[str],
+) -> Optional[dict]:
+    """Share Capital / Borrowings balances straight from the General Ledger,
+    via the SAME account_group_mappings-driven engine the Balance Sheet
+    itself uses (services.year_end_financial_service) — single source of
+    truth, never a fabricated placeholder. Returns None if unavailable (e.g.
+    the books don't balance yet), so callers fall back to an honest
+    CA-review note rather than a wrong number."""
+    if db is None or not fy_start or not fy_end:
+        return None
+    from services.year_end_financial_service import generate_financial_statements
+    try:
+        result = generate_financial_statements(db, client_id, firm_id, fy_start, fy_end)
+    except Exception:
+        return None
+    return result.get("balance_sheet", {}).get("equity_and_liabilities", {})
+
+
 # ── Note content generators ───────────────────────────────────────────────────
 
-def _generate_note_content(note_type: str, eng: dict) -> dict:
+def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
     """
     Generate note content for auto note types.
     All monetary values in integer paise. Never float.
     """
     fy = eng.get("financial_year", "")
+    gl = computed.get("gl_balances")
 
     _note_templates: dict[str, dict] = {
         "fixed_assets": {
@@ -89,14 +163,7 @@ def _generate_note_content(note_type: str, eng: dict) -> dict:
                 f"Depreciation is provided on Written Down Value method as per Companies Act 2013, "
                 f"Schedule II useful lives. Financial year: {fy}."
             ),
-            "note_data": {
-                "gross_block_paise":          80_000_00,   # integer paise
-                "accumulated_dep_paise":       0,
-                "net_block_paise":            80_000_00,   # integer paise
-                "depreciation_charge_paise":   0,
-                "note_type": "fixed_assets",
-                "is_auto_generated": True,
-            },
+            "note_data": computed["fixed_assets"],
         },
         "share_capital": {
             "title":   "Note 2 — Share Capital",
@@ -106,12 +173,20 @@ def _generate_note_content(note_type: str, eng: dict) -> dict:
                 f"[Reference: Companies Act 2013, §64]"
             ),
             "note_data": {
-                "authorised_paise":   100_000_00,  # integer paise
-                "issued_paise":       100_000_00,  # integer paise
-                "subscribed_paise":   100_000_00,  # integer paise
-                "paid_up_paise":      100_000_00,  # integer paise
-                "note_type":          "share_capital",
-                "is_auto_generated":  True,
+                "authorised_paise":  None,   # Memorandum/Articles fact — not a GL balance
+                "issued_paise":      None,   # Memorandum/Articles fact — not a GL balance
+                "subscribed_paise":  None,   # Memorandum/Articles fact — not a GL balance
+                "paid_up_paise":     (gl or {}).get("share_capital", 0) if gl is not None else None,
+                "note_type":         "share_capital",
+                "is_auto_generated": True,
+                "requires_ca_review": True,
+                "review_note": (
+                    "Paid-up capital is computed from the General Ledger (share_capital "
+                    "schedule line). Authorised, issued and subscribed capital are "
+                    "Memorandum/Articles of Association facts, not GL balances — CA must fill these in."
+                    if gl is not None else
+                    "General Ledger balance unavailable — all figures require manual entry."
+                ),
             },
         },
         "loans": {
@@ -121,26 +196,42 @@ def _generate_note_content(note_type: str, eng: dict) -> dict:
                 f"Secured loans are against hypothecation of assets."
             ),
             "note_data": {
-                "long_term_secured_paise":   30_000_00,  # integer paise
-                "long_term_unsecured_paise":  0,
-                "short_term_secured_paise":   0,
-                "short_term_unsecured_paise": 0,
+                "long_term_total_paise":  (gl or {}).get("long_term_borrowings", 0) if gl is not None else None,
+                "short_term_total_paise": (gl or {}).get("short_term_borrowings", 0) if gl is not None else None,
+                "long_term_secured_paise":    None,
+                "long_term_unsecured_paise":  None,
+                "short_term_secured_paise":   None,
+                "short_term_unsecured_paise": None,
                 "note_type": "loans",
                 "is_auto_generated": True,
+                "requires_ca_review": True,
+                "review_note": (
+                    "Totals are computed from the General Ledger (long_term_borrowings / "
+                    "short_term_borrowings schedule lines). The secured/unsecured split is "
+                    "not tracked in the Chart of Accounts — CA must classify each loan."
+                    if gl is not None else
+                    "General Ledger balance unavailable — figures require manual entry."
+                ),
             },
         },
         "gst_tds": {
             "title":   "Note 4 — Statutory Dues (GST & TDS)",
             "content": (
                 f"GST and TDS dues as at 31st March of FY {fy}. "
+                f"PLACEHOLDER — CA to fill in from GSTR-3B and TDS return records for the FY. "
                 f"[CGST Act 2017 §49; IT Act 1961 §194C/194J]"
             ),
             "note_data": {
-                "gst_payable_paise":  3_500_00,   # integer paise
-                "tds_payable_paise":    200_00,   # integer paise
-                "input_itc_paise":      500_00,   # integer paise
+                "gst_payable_paise": None,
+                "tds_payable_paise": None,
+                "input_itc_paise":   None,
                 "note_type": "gst_tds",
-                "is_auto_generated": True,
+                "is_auto_generated": False,
+                "requires_ca_review": True,
+                "review_note": (
+                    "No financial-year-level GST/TDS payable aggregation exists yet — "
+                    "CA must fill this in from GSTR-3B and TDS return records for the FY."
+                ),
             },
         },
         "related_party": {
@@ -218,12 +309,23 @@ def generate_notes(
         eng = _mock_engagement(engagement_id)
         if eng.get("status") == "locked":
             raise HTTPException(status_code=403, detail="Engagement is locked")
+        db = None
     else:
         from core.supabase_client import get_supabase
         db = get_supabase()
         eng = _get_engagement_db(db, engagement_id, current_user["firm_id"])
         if eng["status"] == "locked":
             raise HTTPException(status_code=403, detail="Engagement is locked")
+
+    computed = {
+        "fixed_assets": _compute_fixed_assets_note_data(
+            db, current_user["firm_id"], eng.get("client_id", ""), eng.get("fy_end"),
+        ),
+        "gl_balances": _compute_gl_schedule_balances(
+            db, current_user["firm_id"], eng.get("client_id", ""),
+            eng.get("fy_start"), eng.get("fy_end"),
+        ),
+    }
 
     note_types_ordered = [
         "fixed_assets", "share_capital", "loans", "gst_tds",
@@ -232,7 +334,7 @@ def generate_notes(
 
     generated_notes = []
     for idx, note_type in enumerate(note_types_ordered, start=1):
-        content = _generate_note_content(note_type, eng)
+        content = _generate_note_content(note_type, eng, computed)
         note = {
             "id":            str(uuid.uuid4()),
             "engagement_id": engagement_id,

@@ -277,7 +277,12 @@ class TestXBRLEngine:
             firm_id="f1", client_id="c_xbrl2",
             financial_year="2025-26", created_by="u1",
         )
-        # Provide all mandatory tags
+        # Provide all mandatory tags with a genuinely balanced Balance Sheet —
+        # task #240 made the validator also check Total Assets == Total
+        # Equity & Liabilities, so a same-value-per-line fixture (6 mandatory
+        # equity/liability lines vs 4 mandatory asset lines) no longer
+        # balances on its own; plug the gap onto OtherCurrentLiabilities
+        # (already one of the mandatory tags) like a real trial-balance plug.
         mandatory_bs = {}
         mandatory_pnl = {}
         for sl, _, _, is_mandatory in DEFAULT_MAPPINGS:
@@ -288,10 +293,20 @@ class TestXBRLEngine:
                 else:
                     mandatory_pnl[sl] = val
 
+        total_assets = sum(v for sl, v in mandatory_bs.items() if "Assets" in sl.split(".")[1])
+        total_equity_liab = sum(
+            v for sl, v in mandatory_bs.items()
+            if sl.split(".")[1] == "Equity" or "Liabilities" in sl.split(".")[1]
+        )
+        mandatory_bs["BalanceSheet.CurrentLiabilities.OtherCurrentLiabilities"] += (
+            total_assets - total_equity_liab
+        )
+
         update_xbrl_data("f1", pkg["id"], balance_sheet_json=mandatory_bs, pnl_json=mandatory_pnl)
         result = validate_xbrl_package("f1", pkg["id"])
         assert result["status"] == "validated"
         assert len(result["missing_tags"]) == 0
+        assert result["validation_errors"] == []
 
     def test_validation_rejects_float_amounts(self):
         from domain.income_tax.xbrl_service import _run_validation
