@@ -326,6 +326,41 @@ def test_unmatch_clears_linkage():
     assert db.store["bank_transactions"][0]["matched_entity_id"] is None
 
 
+# ── task #228 audit finding: a DRAFT journal (posted_journal_id set) must
+# block categorize/match/unmatch too, not just an already-POSTED transaction.
+# bank_posting_service.post() creates the draft and deliberately leaves
+# match_status alone until a human approves it (settle_on_post re-reads
+# category/matched_entity_* from the LIVE row at approval time) — without
+# this guard, the linkage the pending draft will settle against can be
+# silently changed or erased out from under it. ────────────────────────────
+
+def test_categorize_rejects_when_draft_journal_pending():
+    db = FakeDB()
+    _seed_txn(db, posted_journal_id="je-draft-1")
+    with pytest.raises(Exception):
+        bank_matching_service.categorize(db, FIRM, "t1", "Sales Receipt")
+    assert db.store["bank_transactions"][0]["category"] is None
+
+
+def test_match_rejects_when_draft_journal_pending():
+    db = FakeDB()
+    _seed_txn(db, posted_journal_id="je-draft-1")
+    _seed_entity(db, "client_sales_invoices", "inv-9")
+    with pytest.raises(Exception):
+        bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
+    assert db.store["bank_transactions"][0]["matched_entity_id"] is None
+
+
+def test_unmatch_rejects_when_draft_journal_pending():
+    db = FakeDB()
+    _seed_txn(db, match_status="matched", matched_entity_type="sales_invoice",
+             matched_entity_id="inv-9", posted_journal_id="je-draft-1")
+    with pytest.raises(Exception):
+        bank_matching_service.unmatch(db, FIRM, "t1")
+    # The pending draft's linkage must survive untouched.
+    assert db.store["bank_transactions"][0]["matched_entity_id"] == "inv-9"
+
+
 # ── B.2.4 queue filters ───────────────────────────────────────────────────────
 
 def test_queue_filters_partition_transactions():

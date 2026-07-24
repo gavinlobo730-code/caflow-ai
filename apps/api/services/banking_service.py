@@ -150,6 +150,20 @@ class BankingService:
         if not norm:
             raise HTTPException(status_code=400, detail="No transactions provided.")
 
+        # task #228 audit finding: bank_account_id is caller-supplied and was
+        # written onto the new bank_statements row with no check that it
+        # belongs to THIS firm+client — a foreign bank_account_id silently
+        # linked another tenant's bank account (and, downstream, its GL
+        # account via bank_posting_service._resolve_bank) to this import.
+        # Mirrors bank_reconciliation_service._validate_bank_account, the
+        # established pattern for this exact lookup elsewhere in this subsystem.
+        if bank_account_id:
+            _owned = (db.table("bank_accounts").select("id")
+                      .eq("id", bank_account_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                      .limit(1).execute().data or [])
+            if not _owned:
+                raise HTTPException(status_code=422, detail="Bank account is not part of this client's books.")
+
         # 1) fingerprint every row; drop within-file duplicates (keep first).
         seen, deduped = set(), []
         for r in norm:
@@ -246,6 +260,17 @@ class BankingService:
         txn = self._get_txn(db, firm_id, txn_id)
         if txn["match_status"] == "posted":
             raise HTTPException(status_code=409, detail="Cannot ignore a posted transaction.")
+        # task #228 audit finding: bank_posting_service.post() creates a DRAFT
+        # journal and deliberately leaves match_status alone until a human
+        # approves it (settle_on_post checks ONLY match_status == "posted"
+        # before settling). Without this guard, ignoring a transaction that
+        # already has a pending draft doesn't stop that draft from later being
+        # approved and fully settled — "ignored" would be silently overridden,
+        # the opposite of what the CA asked for. Mirrors bank_matching_service's
+        # identical categorize/match/unmatch guards.
+        if txn.get("posted_journal_id"):
+            raise HTTPException(status_code=409,
+                detail="A journal has already been created for this transaction — it cannot be ignored until that draft is approved.")
         db.table("bank_transactions").update({
             "match_status": "ignored", "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
