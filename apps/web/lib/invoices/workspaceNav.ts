@@ -31,14 +31,16 @@ export function salesListFlashHref(clientId: string, message: string): string {
   return `${salesListHref(clientId)}?flash=${encodeURIComponent(message)}`;
 }
 
-/** Create a new invoice. */
-export function newInvoiceHref(clientId: string): string {
-  return `/clients/${clientId}/sales/invoices/new`;
-}
-
-/** Edit a draft invoice. */
+/** Edit a draft invoice — or create one, via the "new" id sentinel (the
+ * create and edit routes were merged into one to cut the app's redirect
+ * rule count; see scripts/generate-redirects.js's budget note). */
 export function editInvoiceHref(clientId: string, invoiceId: string): string {
   return `/clients/${clientId}/sales/invoices/${invoiceId}/edit`;
+}
+
+/** Create a new invoice. */
+export function newInvoiceHref(clientId: string): string {
+  return editInvoiceHref(clientId, "new");
 }
 
 /** Read the `?invoice=<id>` deep-link param from a location search string. */

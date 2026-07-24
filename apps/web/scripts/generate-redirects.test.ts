@@ -68,41 +68,75 @@ test("the total dynamic-rule count stays under Cloudflare Pages' 100-dynamic-red
 
 test("a static sibling of a dynamic segment is never shadowed by that segment's splat", () => {
   // Regression pin for a real bug found while fixing the rule-count-cap
-  // incident: a naive `/clients/:id/sales/invoices/:invoiceId/*` splat also
-  // matches /clients/:id/sales/invoices/new/... (":invoiceId" matches the
-  // literal segment "new" just as readily as a real id), so a request for
-  // the static "new" page's trailing-slash/RSC shapes would be silently
-  // rewritten to the WRONG target (as if "new" were an invoice id). Both
-  // known instances of this in the current route tree (new vs :invoiceId
-  // under sales/invoices; xbrl vs :engagementId under year-end) get their
-  // OWN single-member splat group (its trailing-slash/RSC shapes), sorted
-  // to win the depth tie against the colliding deeper group by being more
-  // literal — while their DYNAMIC siblings (edit, checklist, ...) keep
-  // relying on that deeper group's own splat.
+  // incident: a naive `/clients/:id/year-end/:engagementId/*` splat also
+  // matches /clients/:id/year-end/xbrl/... (":engagementId" matches the
+  // literal segment "xbrl" just as readily as a real id), so a request for
+  // the static "xbrl" page's trailing-slash/RSC shapes would be silently
+  // rewritten to the WRONG target (as if "xbrl" were an engagement id).
+  // xbrl gets its OWN single-member splat group (its trailing-slash/RSC
+  // shapes), sorted to win the depth tie against the colliding deeper group
+  // by being more literal — while year-end's DYNAMIC siblings (checklist,
+  // review, ...) keep relying on that deeper group's own splat.
+  //
+  // The former sales/invoices "new" vs ":invoiceId" instance of this same
+  // bug no longer exists — "new" was merged into the :invoiceId route
+  // itself (an id value of "new" means create-mode) specifically to remove
+  // this shadow case AND its route from the rule-count budget entirely; see
+  // "the create/edit route merges are reflected in the rule count" below.
   const generated = buildRedirectsFile(APP_DIR);
   // Shapes 1 & 4 (bare / bare-RSC) still can't be splat-covered — enumerated
   // same as any other dynamic route.
   for (const shape of [
-    "/clients/:id/sales/invoices/new  ",
-    "/clients/:id/sales/invoices/new.txt",
     "/clients/:id/year-end/xbrl ",
     "/clients/:id/year-end/xbrl.txt",
   ]) {
     assert.ok(generated.includes(shape.trimEnd()), `missing rule for ${shape.trim()}`);
   }
-  // Shapes 2 & 3 (trailing slash, RSC /index.txt) are now covered by each
-  // leaf's own splat group, not enumerated literally.
-  assert.ok(generated.includes("/clients/:id/sales/invoices/new/*"));
+  // Shapes 2 & 3 (trailing slash, RSC /index.txt) are covered by xbrl's own
+  // splat group, not enumerated literally.
   assert.ok(generated.includes("/clients/:id/year-end/xbrl/*"));
-  // The colliding deeper splats themselves must still exist — they're safe
-  // for every OTHER route sharing that group (e.g. "edit", "checklist").
-  assert.ok(generated.includes("/clients/:id/sales/invoices/:invoiceId/*"));
+  // The colliding deeper splat itself must still exist — it's safe for
+  // every OTHER route sharing that group (e.g. "checklist", "review").
   assert.ok(generated.includes("/clients/:id/year-end/:engagementId/*"));
-  // Ordering: each shadowed leaf's own (more literal) splat must be tried
-  // BEFORE the colliding deeper group's splat, or it would never win.
+  // Ordering: xbrl's own (more literal) splat must be tried BEFORE the
+  // colliding deeper group's splat, or it would never win.
   const idx = (s: string) => generated.indexOf(s);
-  assert.ok(idx("/clients/:id/sales/invoices/new/*") < idx("/clients/:id/sales/invoices/:invoiceId/*"));
   assert.ok(idx("/clients/:id/year-end/xbrl/*") < idx("/clients/:id/year-end/:engagementId/*"));
+});
+
+test("the create/edit route merges are reflected in the rule count", () => {
+  // Regression pin: sales/invoices/new, sales/credit-notes/new,
+  // sales/debit-notes/new, purchases/bills/new, purchases/credit-notes/new
+  // and purchases/debit-notes/new were each merged into their sibling
+  // [xId]/edit route (an id value of "new" means create-mode inside that
+  // same page) specifically to cut the redirect rule count — each merge
+  // removes one whole route (2 enumerated rules) plus the shadow-splat it
+  // used to need (1 rule), 3 rules saved per pair. None of the six should
+  // appear as their own literal "new" route/group any more.
+  const generated = buildRedirectsFile(APP_DIR);
+  for (const gone of [
+    "/clients/:id/sales/invoices/new ",
+    "/clients/:id/sales/invoices/new/*",
+    "/clients/:id/sales/credit-notes/new",
+    "/clients/:id/sales/debit-notes/new",
+    "/clients/:id/purchases/bills/new",
+    "/clients/:id/purchases/credit-notes/new",
+    "/clients/:id/purchases/debit-notes/new",
+  ]) {
+    assert.ok(!generated.includes(gone), `stale rule for merged-away route: ${gone}`);
+  }
+  // Each pair's single surviving dynamic route/group must still cover both
+  // create ("new") and edit (a real id) via the same rules.
+  for (const group of [
+    "/clients/:id/sales/invoices/:invoiceId",
+    "/clients/:id/sales/credit-notes/:cnId",
+    "/clients/:id/sales/debit-notes/:sdnId",
+    "/clients/:id/purchases/bills/:billId",
+    "/clients/:id/purchases/credit-notes/:pcnId",
+    "/clients/:id/purchases/debit-notes/:dnId",
+  ]) {
+    assert.ok(generated.includes(`${group}/*`), `missing merged splat for ${group}`);
+  }
 });
 
 test("a catch-all route segment is rejected rather than silently mishandled", () => {

@@ -3670,7 +3670,7 @@ function CreditNotes({
   function duplicateCreditNote(cn: SalesCreditNoteDetail) {
     writeSalesCreditNoteDuplicateSeed(cn);
     setDetailId(null);
-    router.push(`/clients/${clientId}/sales/credit-notes/new`);
+    router.push(`/clients/${clientId}/sales/credit-notes/new/edit`);
   }
 
   // Bulk delete — draft-only (backend rejects issued/applied credit notes
@@ -3864,7 +3864,7 @@ function CreditNotes({
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => router.push(`/clients/${clientId}/sales/credit-notes/new`)}
+              onClick={() => router.push(`/clients/${clientId}/sales/credit-notes/new/edit`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> Create Credit Note
@@ -4094,7 +4094,7 @@ function SalesDebitNotes({
   function duplicateSalesDebitNote(dn: SalesDebitNoteDetail) {
     writeSalesDebitNoteDuplicateSeed(dn);
     setDetailId(null);
-    router.push(`/clients/${clientId}/sales/debit-notes/new`);
+    router.push(`/clients/${clientId}/sales/debit-notes/new/edit`);
   }
 
   // Bulk delete — draft-only (backend rejects issued debit notes with a 422,
@@ -4286,7 +4286,7 @@ function SalesDebitNotes({
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => router.push(`/clients/${clientId}/sales/debit-notes/new`)}
+              onClick={() => router.push(`/clients/${clientId}/sales/debit-notes/new/edit`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> Create Debit Note

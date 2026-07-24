@@ -410,7 +410,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   function duplicateBill(bill: PurchaseBillDetail) {
     writePurchaseBillDuplicateSeed(bill);
     setDetailId(null);
-    router.push(`/clients/${clientId}/purchases/bills/new`);
+    router.push(`/clients/${clientId}/purchases/bills/new/edit`);
   }
 
   // Cancel a RECEIVED bill: reverses its posted journal and inventory stock-in
@@ -835,7 +835,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => router.push(`/clients/${clientId}/purchases/bills/new`)}
+              onClick={() => router.push(`/clients/${clientId}/purchases/bills/new/edit`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> New Bill
@@ -2151,7 +2151,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   function duplicateDebitNote(dn: DebitNoteDetail) {
     writeDebitNoteDuplicateSeed(dn);
     setDetailId(null);
-    router.push(`/clients/${clientId}/purchases/debit-notes/new`);
+    router.push(`/clients/${clientId}/purchases/debit-notes/new/edit`);
   }
 
   // Bulk delete over the DataTable's selected rows. DELETE /api/debit-notes/{id}
@@ -2387,7 +2387,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new`)}
+              onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new/edit`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> Create Debit Note
@@ -2587,7 +2587,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
   function duplicatePcn(pcn: PurchaseCreditNoteDetail) {
     writePurchaseCreditNoteDuplicateSeed(pcn);
     setDetailId(null);
-    router.push(`/clients/${clientId}/purchases/credit-notes/new`);
+    router.push(`/clients/${clientId}/purchases/credit-notes/new/edit`);
   }
 
   // Bulk delete over the DataTable's selected rows — draft-only on the
@@ -2818,7 +2818,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new`)}
+              onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new/edit`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> Create Credit Note
