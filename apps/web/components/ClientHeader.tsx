@@ -30,22 +30,33 @@ function getFYOptions(): string[] {
 export function ClientHeader() {
   const { clientId, financialYear, setFinancialYear } = useClientNav();
   const [client, setClient] = useState<ClientData | null>(null);
+  const [clientLoadFailed, setClientLoadFailed] = useState(false);
   const [fyOpen, setFyOpen] = useState(false);
   const [health, setHealth] = useState<{ overall_score: number; trend: "improving" | "stable" | "declining" | null } | null>(null);
 
   useEffect(() => {
+    setClient(null);
+    setClientLoadFailed(false);
     const supabase = getSupabaseClient();
     supabase
       .from("clients")
       .select("id, client_name, entity_type, gstin")
       .eq("id", clientId)
       .single()
-      .then(({ data }) => {
-        if (data) setClient(data as ClientData);
+      .then(({ data, error }) => {
+        // Distinguishes "still loading" from "failed to load" — without
+        // this, a failed fetch left the header showing "Loading…"
+        // permanently, indistinguishable from a slow request in flight.
+        if (data) {
+          setClient(data as ClientData);
+        } else {
+          setClientLoadFailed(true);
+          if (error) console.error("ClientHeader: failed to load client", error);
+        }
       });
     getLatestHealthScore(clientId).then((h) => {
       if (h) setHealth({ overall_score: h.overall_score, trend: h.trend });
-    }).catch(() => undefined);
+    }).catch((e) => console.error("ClientHeader: failed to load health score", e));
   }, [clientId]);
 
   const fyOptions = getFYOptions();
@@ -55,8 +66,8 @@ export function ClientHeader() {
       <Building2 size={15} className="text-gray-400 shrink-0" />
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span className="text-[13px] font-semibold text-[#182350] truncate">
-          {client?.client_name ?? "Loading…"}
+        <span className={cn("text-[13px] font-semibold truncate", clientLoadFailed ? "text-red-600" : "text-[#182350]")}>
+          {client?.client_name ?? (clientLoadFailed ? "Couldn't load client" : "Loading…")}
         </span>
         {client?.entity_type && (
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">

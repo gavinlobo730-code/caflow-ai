@@ -98,6 +98,12 @@ export default function TaxComputationPage() {
   const [disallAmount, setDisallAmount] = useState("");
   const [savingDisall, setSavingDisall] = useState(false);
 
+  // Distinguishes "fetch failed" from "nothing recorded yet" — a masked
+  // failure previously rendered the whole workspace (snapshots,
+  // disallowances, brought-forward losses) as fully empty with no
+  // indication anything went wrong.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     // Plain reads — routed directly to Supabase (RLS: firm_isolation) instead
@@ -106,7 +112,11 @@ export default function TaxComputationPage() {
     // and list_bf_losses in apps/api/domain/income_tax/computation_workspace.py.
     // The actual computation (POST /api/income-tax/compute) stays backend-routed.
     const supabase = getSupabaseClient();
-    const [{ data: snapsData }, { data: disallData }, { data: lossData }] = await Promise.all([
+    const [
+      { data: snapsData, error: snapsErr },
+      { data: disallData, error: disallErr },
+      { data: lossData, error: lossErr },
+    ] = await Promise.all([
       supabase
         .from("tax_computation_snapshots")
         .select("id, version, regime, financial_year, taxable_income_paise, tax_liability_paise, net_payable_paise, is_refund, status, created_at")
@@ -125,9 +135,18 @@ export default function TaxComputationPage() {
         .eq("client_id", clientId)
         .order("assessment_year"),
     ]);
+    const firstError = snapsErr ?? disallErr ?? lossErr;
+    if (firstError) {
+      setSnapshots([]);
+      setDisallowances([]);
+      setBfLosses([]);
+      setLoadError(firstError.message || "Couldn't load the tax computation workspace.");
+      return;
+    }
     setSnapshots((snapsData as Snapshot[]) ?? []);
     setDisallowances((disallData as Disallowance[]) ?? []);
     setBfLosses((lossData as BFLoss[]) ?? []);
+    setLoadError(null);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);
@@ -238,6 +257,13 @@ export default function TaxComputationPage() {
         <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
         <p className="text-xs text-amber-800 font-medium">CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT</p>
       </div>
+
+      {loadError && (
+        <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+          <p className="text-xs text-red-700 font-medium">{loadError}</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-100 text-red-700 shrink-0">Retry</button>
+        </div>
+      )}
 
       {/* Overview Card */}
       {latestSnap && (

@@ -115,12 +115,18 @@ export default function ClientPortalPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no clients yet" — a masked failure
+  // previously rendered the client picker as empty with no indication.
+  const [clientsFailed, setClientsFailed] = useState(false);
   const [activeTab, setActiveTab] = useState<PortalTab>("requests");
   const [copied, setCopied] = useState(false);
 
   // Document requests state
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
+  // Mirrors duesFailed below — distinguishes "fetch failed" from "no
+  // document requests yet."
+  const [requestsFailed, setRequestsFailed] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [newRequest, setNewRequest] = useState<NewRequestForm>({ title: "", description: "", is_urgent: false });
   const [savingRequest, setSavingRequest] = useState(false);
@@ -129,6 +135,8 @@ export default function ClientPortalPage() {
   const [sharedDocs, setSharedDocs] = useState<SharedDocument[]>([]);
   const [sharedReports, setSharedReports] = useState<SharedReport[]>([]);
   const [sharedLoading, setSharedLoading] = useState(false);
+  // Distinguishes "fetch failed" from "nothing shared yet."
+  const [sharedFailed, setSharedFailed] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadLabel, setUploadLabel] = useState("");
   const sharedUploadRef = useRef<HTMLInputElement | null>(null);
@@ -136,6 +144,8 @@ export default function ClientPortalPage() {
   // Portal messages state
   const [portalMessages, setPortalMessages] = useState<PortalMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  // Distinguishes "fetch failed" from "no messages yet."
+  const [messagesFailed, setMessagesFailed] = useState(false);
   const [newMessageText, setNewMessageText] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
 
@@ -151,8 +161,8 @@ export default function ClientPortalPage() {
   // Load clients list on mount
   useEffect(() => {
     getClients()
-      .then(setClients)
-      .catch(() => setClients([]))
+      .then((c) => { setClients(c); setClientsFailed(false); })
+      .catch(() => { setClients([]); setClientsFailed(true); })
       .finally(() => setClientsLoading(false));
   }, []);
 
@@ -193,14 +203,17 @@ export default function ClientPortalPage() {
     setRequestsLoading(true);
     try {
       const sb = getSupabaseClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("document_requests")
         .select("id, title, description, is_urgent, status, fulfilled_at, created_at")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
+      if (error) throw error;
       setDocRequests(data ?? []);
+      setRequestsFailed(false);
     } catch {
       setDocRequests([]);
+      setRequestsFailed(true);
     } finally {
       setRequestsLoading(false);
     }
@@ -210,22 +223,30 @@ export default function ClientPortalPage() {
     setSharedLoading(true);
     try {
       const sb = getSupabaseClient();
-      const { data } = await sb
-        .from("client_documents")
-        .select("id, file_name, label, storage_path, file_size_bytes, created_at")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false });
-      setSharedDocs(data ?? []);
-
-      // Load shared reports
-      const { data: reportData } = await sb
-        .from("shared_reports")
-        .select("id, report_label, report_type, financial_year, storage_path, file_name, file_size_bytes, created_at")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false });
-      setSharedReports(reportData ?? []);
+      // Fetched together and only committed to state together — if either
+      // query fails, an already-successful result from the other must not
+      // be wiped by the failure (the old code's catch cleared sharedDocs
+      // unconditionally, discarding a good fetch whenever shared_reports
+      // alone failed).
+      const [docsRes, reportsRes] = await Promise.all([
+        sb.from("client_documents")
+          .select("id, file_name, label, storage_path, file_size_bytes, created_at")
+          .eq("client_id", clientId)
+          .order("created_at", { ascending: false }),
+        sb.from("shared_reports")
+          .select("id, report_label, report_type, financial_year, storage_path, file_name, file_size_bytes, created_at")
+          .eq("client_id", clientId)
+          .order("created_at", { ascending: false }),
+      ]);
+      if (docsRes.error || reportsRes.error) {
+        setSharedFailed(true);
+      } else {
+        setSharedDocs(docsRes.data ?? []);
+        setSharedReports(reportsRes.data ?? []);
+        setSharedFailed(false);
+      }
     } catch {
-      setSharedDocs([]);
+      setSharedFailed(true);
     } finally {
       setSharedLoading(false);
     }
@@ -236,9 +257,12 @@ export default function ClientPortalPage() {
     try {
       const firmId = await getFirmId();
       const res = await api.portal.getMessages(firmId, clientId) as { success: boolean; data: PortalMessage[] };
+      if (!res.success) throw new Error("Failed to load messages");
       setPortalMessages(res.data ?? []);
+      setMessagesFailed(false);
     } catch {
       setPortalMessages([]);
+      setMessagesFailed(true);
     } finally {
       setMessagesLoading(false);
     }
@@ -433,6 +457,12 @@ export default function ClientPortalPage() {
               </div>
             </div>
           </div>
+          {clientsFailed && (
+            <p className="text-xs text-red-600 mt-2">
+              Couldn&apos;t load your client list.{" "}
+              <button onClick={() => window.location.reload()} className="underline hover:no-underline">Retry</button>
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -524,6 +554,11 @@ export default function ClientPortalPage() {
                   <CardContent>
                     {requestsLoading ? (
                       <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : requestsFailed ? (
+                      <div className="text-center py-10 space-y-2">
+                        <p className="text-sm text-red-600 font-medium">Couldn&apos;t load document requests.</p>
+                        <button onClick={() => loadDocRequests(selectedClientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                      </div>
                     ) : docRequests.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FileText size={32} className="text-gray-200 mx-auto" />
@@ -618,6 +653,11 @@ export default function ClientPortalPage() {
                   <CardContent>
                     {sharedLoading ? (
                       <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : sharedFailed ? (
+                      <div className="text-center py-10 space-y-2">
+                        <p className="text-sm text-red-600 font-medium">Couldn&apos;t load shared documents.</p>
+                        <button onClick={() => loadSharedDocs(selectedClientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                      </div>
                     ) : sharedDocs.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FolderOpen size={32} className="text-gray-200 mx-auto" />
@@ -873,6 +913,11 @@ export default function ClientPortalPage() {
                   <CardContent className="space-y-4">
                     {messagesLoading ? (
                       <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : messagesFailed ? (
+                      <div className="text-center py-10 space-y-2">
+                        <p className="text-sm text-red-600 font-medium">Couldn&apos;t load messages.</p>
+                        <button onClick={() => loadPortalMessages(selectedClientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                      </div>
                     ) : portalMessages.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <MessageSquare size={32} className="text-gray-200 mx-auto" />

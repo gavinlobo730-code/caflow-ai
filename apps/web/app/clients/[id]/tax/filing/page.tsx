@@ -59,6 +59,9 @@ export default function ITRFilingPage() {
 
   const [filings, setFilings] = useState<Filing[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no ITR filings yet" — a masked
+  // failure previously rendered identically to a genuinely empty list.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedFiling, setSelectedFiling] = useState<Filing | null>(null);
 
@@ -88,12 +91,18 @@ export default function ITRFilingPage() {
     // apps/api/domain/income_tax/itr_workflow.py. Create/transition/acknowledge
     // remain backend-routed (workflow state-machine logic).
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("itr_filings")
       .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at")
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
-    setFilings((data as Filing[]) ?? []);
+    if (error) {
+      setFilings([]);
+      setLoadError(error.message || "Couldn't load ITR filings.");
+    } else {
+      setFilings((data as Filing[]) ?? []);
+      setLoadError(null);
+    }
     setLoading(false);
   }, [clientId]);
 
@@ -241,6 +250,11 @@ export default function ITRFilingPage() {
         <div className="space-y-2">{[...Array(3)].map((_, i) => (
           <div key={i} className="h-16 rounded-xl bg-[#F8FAFC] animate-pulse" />
         ))}</div>
+      ) : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 text-center py-16 space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : filings.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
           <FileText size={28} className="text-gray-200 mx-auto" />

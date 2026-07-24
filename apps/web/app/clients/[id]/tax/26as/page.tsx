@@ -62,6 +62,11 @@ export default function Form26ASPage() {
   const [reconciling, setReconciling] = useState(false);
   const [reconError, setReconError] = useState<string | null>(null);
 
+  // Distinguishes "fetch failed" from "nothing uploaded yet" — a masked
+  // failure previously rendered the upload history and reconciliation
+  // summary as fully empty with no indication of the actual failure.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     // Plain reads — routed directly to Supabase (RLS: firm_isolation) instead
@@ -70,7 +75,10 @@ export default function Form26ASPage() {
     // get_reconciliation is just the last stored reconciliation row (no
     // recompute) — the actual POST /reconcile matching logic stays backend-routed.
     const supabase = getSupabaseClient();
-    const [{ data: uploadsData }, { data: reconData }] = await Promise.all([
+    const [
+      { data: uploadsData, error: uploadsErr },
+      { data: reconData, error: reconErr },
+    ] = await Promise.all([
       supabase
         .from("form_26as_uploads")
         .select("id, financial_year, parse_status, total_records, uploaded_at")
@@ -86,8 +94,16 @@ export default function Form26ASPage() {
         .limit(1)
         .maybeSingle(),
     ]);
+    const firstError = uploadsErr ?? reconErr;
+    if (firstError) {
+      setUploads([]);
+      setRecon(null);
+      setLoadError(firstError.message || "Couldn't load Form 26AS data.");
+      return;
+    }
     setUploads((uploadsData as Upload26AS[]) ?? []);
     setRecon((reconData as Reconciliation | null) ?? null);
+    setLoadError(null);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);
@@ -163,6 +179,13 @@ export default function Form26ASPage() {
           CA REVIEW REQUIRED — Review reconciliation results before filing ITR.
         </p>
       </div>
+
+      {loadError && (
+        <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+          <p className="text-xs text-red-700 font-medium">{loadError}</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-100 text-red-700 shrink-0">Retry</button>
+        </div>
+      )}
 
       {/* Reconciliation Summary */}
       {recon && (

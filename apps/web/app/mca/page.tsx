@@ -464,6 +464,12 @@ export default function MCAPage() {
   const [directors, setDirectors] = useState<Director[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState(false);
+  // The real Postgres/RLS error message when a fetch fails, distinct from
+  // tableError's narrower "the mca_filings table itself is missing" case —
+  // without this, a failed mca_companies/mca_directors query silently
+  // emptied the Companies/Directors tabs (and the KYC-due-soon alert count)
+  // with no indication anything went wrong.
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [filedModal, setFiledModal] = useState<{ filing: MCAFiling } | null>(null);
   const [filedForm, setFiledForm] = useState({ srn: "", filed_date: "" });
@@ -474,21 +480,36 @@ export default function MCAPage() {
   useEffect(() => {
     async function load() {
       try {
-        const fid = await getFirmId().catch(() => "");
+        let fid = "";
+        try {
+          fid = await getFirmId();
+        } catch (e) {
+          setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
+        }
         setFirmId(fid);
-        const cls = await getClients().catch(() => [] as Client[]);
-        setClients(cls);
+        try {
+          setClients(await getClients());
+        } catch (e) {
+          setClients([]);
+          setLoadErrorMessage(prev => prev ?? (e instanceof Error ? e.message : "Couldn't load clients."));
+        }
         if (!fid) return;
         const sb = getSupabaseClient();
         const { data, error } = await sb.from("mca_filings").select("*").eq("firm_id", fid).order("due_date");
-        if (error) { setTableError(true); }
-        else {
+        if (error) {
+          setTableError(true);
+          setLoadErrorMessage(prev => prev ?? error.message);
+        } else {
           const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r.due_date, r.filed_date) }));
           setFilings(rows);   // real data only; empty firm shows the empty state
         }
         // Companies + directors from the firm's real data (migration 038). Empty
         // arrays when none exist — never fall back to fictional seed records.
-        const { data: coData } = await sb.from("mca_companies").select("*").eq("firm_id", fid).order("company_name");
+        const { data: coData, error: coErr } = await sb.from("mca_companies").select("*").eq("firm_id", fid).order("company_name");
+        if (coErr) {
+          setTableError(true);
+          setLoadErrorMessage(prev => prev ?? coErr.message);
+        }
         setCompanies((coData ?? []).map((c: Record<string, unknown>) => ({
           id: c.id as string,
           client_name: (c.company_name ?? "") as string,
@@ -498,7 +519,13 @@ export default function MCAPage() {
           paidup_capital_paise: (c.paid_up_capital_paise ?? 0) as number,
           regd_office: (c.registered_office ?? "") as string,
         })));
-        const { data: dirData } = await sb.from("mca_directors").select("*").eq("firm_id", fid).order("director_name");
+        const { data: dirData, error: dirErr } = await sb.from("mca_directors").select("*").eq("firm_id", fid).order("director_name");
+        if (dirErr) {
+          setTableError(true);
+          // KYC-due-soon relies on this list — a silently-empty Directors
+          // tab was a compliance-critical false negative, not just display.
+          setLoadErrorMessage(prev => prev ?? dirErr.message);
+        }
         setDirectors((dirData ?? []).map((d: Record<string, unknown>) => ({
           id: d.id as string,
           name: d.director_name as string,
@@ -729,9 +756,13 @@ export default function MCAPage() {
       </div>
 
       {tableError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex gap-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700">MCA filings table not found — showing sample data. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">mca_filings</code>.</p>
+          <p className="text-sm text-amber-700">
+            {loadErrorMessage ?? "MCA filings table not found — run migration to create "}
+            {!loadErrorMessage && <code className="font-mono bg-amber-100 px-1 rounded">mca_filings</code>}
+            {loadErrorMessage && " — some data below may be incomplete."}
+          </p>
         </div>
       )}
 

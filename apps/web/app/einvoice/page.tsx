@@ -41,6 +41,9 @@ export default function EInvoicePage() {
   const [clientId, setClientId] = useState("");
   const [records, setRecords] = useState<EInvoice[]>([]);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "fetch failed" from "no e-invoice records yet" — a masked
+  // failure previously rendered an empty list with no indication of failure.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showIRN, setShowIRN] = useState<string | null>(null);
 
@@ -48,46 +51,76 @@ export default function EInvoicePage() {
   const [invNo, setInvNo] = useState("");
   const [invDate, setInvDate] = useState("");
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // IRN form
   const [irn, setIrn] = useState("");
   const [ackNo, setAckNo] = useState("");
   const [ackDate, setAckDate] = useState("");
   const [savingIRN, setSavingIRN] = useState(false);
+  const [irnError, setIrnError] = useState<string | null>(null);
 
   async function load(cid: string) {
     setLoading(true);
-    const res = await apiFetch(`/api/einvoice/records?client_id=${cid}`);
-    setRecords(res.data ?? []);
-    setLoading(false);
+    try {
+      const res = await apiFetch(`/api/einvoice/records?client_id=${cid}`);
+      if (res.success) {
+        setRecords(res.data ?? []);
+        setLoadError(null);
+      } else {
+        setRecords([]);
+        setLoadError(res.error ?? "Couldn't load e-invoice records.");
+      }
+    } catch {
+      setRecords([]);
+      setLoadError("Couldn't load e-invoice records. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCreate() {
     setCreating(true);
-    const res = await apiFetch("/api/einvoice/records", {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, invoice_number: invNo, invoice_date: invDate }),
-    });
-    if (res.success) {
-      setShowCreate(false);
-      setInvNo(""); setInvDate("");
-      await load(clientId);
+    setCreateError(null);
+    try {
+      const res = await apiFetch("/api/einvoice/records", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, invoice_number: invNo, invoice_date: invDate }),
+      });
+      if (res.success) {
+        setShowCreate(false);
+        setInvNo(""); setInvDate("");
+        await load(clientId);
+      } else {
+        setCreateError(res.error ?? "Couldn't create the e-invoice record.");
+      }
+    } catch {
+      setCreateError("Couldn't create the e-invoice record. Please try again.");
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   }
 
   async function handleRecordIRN(recordId: string) {
     setSavingIRN(true);
-    const res = await apiFetch(`/api/einvoice/records/${recordId}/irn-generated`, {
-      method: "POST",
-      body: JSON.stringify({ irn, ack_number: ackNo, ack_date: ackDate }),
-    });
-    if (res.success) {
-      setShowIRN(null);
-      setIrn(""); setAckNo(""); setAckDate("");
-      await load(clientId);
+    setIrnError(null);
+    try {
+      const res = await apiFetch(`/api/einvoice/records/${recordId}/irn-generated`, {
+        method: "POST",
+        body: JSON.stringify({ irn, ack_number: ackNo, ack_date: ackDate }),
+      });
+      if (res.success) {
+        setShowIRN(null);
+        setIrn(""); setAckNo(""); setAckDate("");
+        await load(clientId);
+      } else {
+        setIrnError(res.error ?? "Couldn't record the IRN.");
+      }
+    } catch {
+      setIrnError("Couldn't record the IRN. Please try again.");
+    } finally {
+      setSavingIRN(false);
     }
-    setSavingIRN(false);
   }
 
   return (
@@ -139,6 +172,7 @@ export default function EInvoicePage() {
                 className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
             </div>
           </div>
+          {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
             <button onClick={handleCreate} disabled={creating || !invNo || !invDate || !clientId}
@@ -151,6 +185,11 @@ export default function EInvoicePage() {
 
       {loading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-[#F8FAFC] rounded-xl animate-pulse" />)}</div>
+      ) : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 text-center py-10 space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
       ) : (
         <div className="space-y-2">
           {records.map(r => (
@@ -198,6 +237,7 @@ export default function EInvoicePage() {
                 className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
             </div>
           </div>
+          {irnError && <p className="text-xs text-red-600">{irnError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowIRN(null)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
             <button onClick={() => handleRecordIRN(showIRN)} disabled={savingIRN || !irn || !ackNo}

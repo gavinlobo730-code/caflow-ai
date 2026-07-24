@@ -19,6 +19,12 @@ export default function PortalPage() {
   const [inviteSent, setInviteSent] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "fetch failed" from "client genuinely has no invited
+  // portal contacts yet" — without this, both the client record fetch and
+  // the contacts fetch failing silently rendered the page identically to
+  // "not enabled — client cannot log in yet," with no indication anything
+  // went wrong.
+  const [pageLoadError, setPageLoadError] = useState<string | null>(null);
 
   // Direct Supabase read (was api.portal.listContacts → backend select("*")
   // on client_portal_users). EXPLICIT column list only — this table also has
@@ -49,12 +55,20 @@ export default function PortalPage() {
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     async function load() {
+      let clientFailed = false;
       const [c, contactsData] = await Promise.all([
-        getClient(clientId).catch(() => null),
+        getClient(clientId).catch(() => { clientFailed = true; return null; }),
         loadContacts(clientId),
       ]);
       if (c) setClient(c);
-      if (contactsData) setContacts(contactsData);
+      if (contactsData) {
+        setContacts(contactsData);
+      }
+      setPageLoadError(
+        clientFailed || contactsData === null
+          ? "Couldn't load the client portal. Please try again."
+          : null
+      );
     }
     load();
   }, [clientId]);
@@ -134,6 +148,11 @@ export default function PortalPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
+      {pageLoadError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+          <p className="text-xs text-red-700 font-medium">{pageLoadError}</p>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-6">
         <div className="flex items-start gap-3">
           <Globe className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
