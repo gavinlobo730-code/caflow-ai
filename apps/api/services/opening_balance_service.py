@@ -66,7 +66,7 @@ def _sum_opening(rows: list[dict]) -> int:
     return sum(int(r.get("opening_balance_paise") or 0) for r in (rows or []))
 
 
-def _fetch_masters(db, client_id: str):
+def _fetch_masters(db, firm_id: str, client_id: str):
     """Deliberately NOT filtered by is_active: deactivating a customer/vendor/
     bank account only flips is_active — opening_balance_paise is untouched and
     deactivation docstrings promise history stays intact (customers.py /
@@ -75,14 +75,23 @@ def _fetch_masters(db, client_id: str):
     target computation must match it column-for-column — filtering here would
     make an unrelated party's opening-balance edit (which triggers a delta
     sync) silently reverse a deactivated party's opening balance out of Trade
-    Receivables/Payables."""
+    Receivables/Payables.
+
+    task #231 audit finding (defense-in-depth): filtered by firm_id too — the
+    primary fix is customers.py/vendors.py's create endpoints now validating
+    client_id ownership before insert, but this was the amplification path a
+    planted cross-firm row would have reached: unfiltered by firm_id, this
+    used to aggregate EVERY row matching client_id regardless of which firm
+    inserted it, so a firm that got a customer/vendor past that ownership
+    check could pull another firm's real opening balances into its own
+    posted GL journal."""
     customers = (db.table("customers").select("opening_balance_paise, opening_balance_date")
-                 .eq("client_id", client_id).execute().data or [])
+                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
     vendors = (db.table("vendors").select("opening_balance_paise, opening_balance_date")
-               .eq("client_id", client_id).execute().data or [])
+               .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
     banks = (db.table("bank_accounts")
              .select("opening_balance_paise, opening_balance_date, coa_account_id")
-             .eq("client_id", client_id).execute().data or [])
+             .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
     return customers, vendors, banks
 
 
@@ -199,7 +208,7 @@ def post_opening_balances(
         return {"posted": False, "mock": True, "reason": "no DB configured"}
 
     db = _db()
-    customers, vendors, banks = _fetch_masters(db, client_id)
+    customers, vendors, banks = _fetch_masters(db, firm_id, client_id)
     date = opening_date or _default_opening_date(db, client_id, customers, vendors, banks)
 
     # FY-lock: refuse to (re)write opening balances into a locked year. Validate
@@ -237,7 +246,7 @@ def opening_balance_status(firm_id: str, client_id: str) -> dict:
                 "expected_total_paise": 0, "posted_total_paise": 0, "has_opening_journal": False}
 
     db = _db()
-    customers, vendors, banks = _fetch_masters(db, client_id)
+    customers, vendors, banks = _fetch_masters(db, firm_id, client_id)
     lines, figures = _plan_opening(db, firm_id, client_id, customers, vendors, banks)
     current = _current_opening_net(db, firm_id, client_id)
     posted_total = sum(v for v in current.values() if v > 0)   # gross debit currently carried

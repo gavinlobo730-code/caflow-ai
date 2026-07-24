@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
+from core.authz import assert_client_access
 from core.permissions import rbac
 from core.ist_clock import ist_today
 from core.validators import validate_gstin
@@ -162,6 +163,12 @@ def save_gstr1(
     """Save GSTR-1 return as draft. CGST Act §37."""
     try:
         firm_id = current_user["firm_id"]
+        # task #231 audit finding: client_id was never checked against the
+        # caller's firm — unlike save_gstr9's existing "F4 fix" (which only
+        # scoped the update-if-exists lookup by firm_id), this endpoint had
+        # no ownership check at all, letting a caller plant a GSTR-1 draft
+        # cross-referencing another firm's real client_id and tax figures.
+        assert_client_access(current_user, body.client_id)
         gstin = body.gstin.strip().upper()
         err = validate_gstin(gstin)
         if err:
@@ -292,6 +299,8 @@ def save_gstr3b(
     """Save GSTR-3B return as draft. CGST Act §39."""
     try:
         firm_id = current_user["firm_id"]
+        # task #231 audit finding: same client_id ownership gap as save_gstr1.
+        assert_client_access(current_user, body.client_id)
         gstin = body.gstin.strip().upper()
         err = validate_gstin(gstin)
         if err:
@@ -445,6 +454,8 @@ def upload_gstr2b(
     """
     try:
         firm_id = current_user["firm_id"]
+        # task #231 audit finding: same client_id ownership gap as save_gstr1/3b.
+        assert_client_access(current_user, body.client_id)
         raw = body.raw_data
         # Reconcile: extract invoices from GSTR-2B and match against books
         b2b_invoices = raw.get("data", {}).get("docDetails", []) or raw.get("invoices", [])
@@ -511,6 +522,13 @@ def upload_gstr2b(
                 severity="warning",
             )
         return api_response(True, record)
+    except HTTPException:
+        # task #231 audit finding: this endpoint had no `except HTTPException:
+        # raise` (unlike save_gstr1/save_gstr3b right above it), so the
+        # client_id ownership guard's HTTPException(404) — or any other real,
+        # actionable rejection — was being silently swallowed into a generic
+        # "Please try again" (the task #97 anti-pattern).
+        raise
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
@@ -541,6 +559,11 @@ def save_gstr9(
     try:
         firm_id   = current_user.get("firm_id")
         client_id = data.client_id
+        # task #231 audit finding: the existing "F4 fix" below only scoped
+        # the update-if-exists lookup by firm_id — it stopped a cross-firm
+        # OVERWRITE of an existing draft, but a first-time save for another
+        # firm's client_id still inserted unchecked. Close that too.
+        assert_client_access(current_user, client_id)
         fy        = data.financial_year  # e.g. "2025-26"
         gstin     = data.gstin.strip().upper()
         err = validate_gstin(gstin)

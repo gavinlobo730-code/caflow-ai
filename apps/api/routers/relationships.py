@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import uuid
 
 from models.common import api_response
+from core.authz import assert_client_access
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 
@@ -279,6 +280,13 @@ def add_entity_role(
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
+
+    # task #231 audit finding: client_id was caller-supplied and inserted
+    # unchecked — a role could be planted cross-referencing another firm's
+    # real client_id. Checked before the mock branch below (like
+    # customers.py/vendors.py's identical fix) so it applies regardless of
+    # whether this deployment is running against mock data or a real DB.
+    assert_client_access(current_user, data.client_id)
 
     row = {
         "id":                str(uuid.uuid4()),
@@ -636,6 +644,14 @@ def create_entity_to_entity_relationship(
         _MOCK_ENTITY_TO_ENTITY_RELS.append(row)
         return api_response(True, row)
 
+    # task #231 audit finding: unlike create_relationship immediately above
+    # this in the same file, this endpoint inserted from_entity_id/to_entity_id
+    # with NO ownership check at all — mirror that endpoint's exact guard.
+    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).single().execute().data
+    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).single().execute().data
+    if not from_e or not to_e:
+        raise HTTPException(status_code=404, detail="One or both entities not found in firm")
+
     res = db.table("entity_to_entity_relationships").insert(row).execute()
     return api_response(True, (res.data or [row])[0])
 
@@ -678,6 +694,15 @@ def create_loan(
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
+
+    # task #231 audit finding: client_id/entity_id were both caller-supplied
+    # and inserted unchecked — a loan record could be planted cross-referencing
+    # another firm's real client_id/entity_id.
+    assert_client_access(current_user, data.client_id)
+    if db:
+        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).single().execute().data
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found in firm")
 
     # Section 185 Companies Act — loan to director auto-flag
     section_185_flagged = data.loan_type == "to_director"
@@ -809,6 +834,15 @@ def create_property(
 
     if data.cost_paise < 0 or data.annual_rent_paise < 0:
         raise HTTPException(status_code=422, detail="cost_paise and annual_rent_paise must be non-negative integers")
+
+    # task #231 audit finding: client_id/entity_id were both caller-supplied
+    # and inserted unchecked — a property record could be planted
+    # cross-referencing another firm's real client_id/entity_id.
+    assert_client_access(current_user, data.client_id)
+    if db and data.entity_id:
+        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).single().execute().data
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found in firm")
 
     row = {
         "id":                 str(uuid.uuid4()),

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from models.parties import VendorIn, VendorUpdateIn
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -152,6 +153,12 @@ def create_vendor(
 ):
     """Create a vendor. IT Act §194C/194I/194J: TDS section tracked per vendor."""
     try:
+        # task #231 audit finding: same client_id ownership gap as
+        # create_customer — a vendor stamped with the caller's own firm_id
+        # could still point at another firm's client_id, corrupting that
+        # firm's vendor list and (via opening-balance sync) leaking its real
+        # opening balances into a journal the caller's firm can post.
+        assert_client_access(current_user, vendor_in.client_id)
         payload = vendor_in.model_dump()
         payload["firm_id"] = current_user.get("firm_id")
         payload["is_active"] = True
@@ -358,6 +365,12 @@ def create_vendors_bulk(
             continue
         except Exception:
             errors.append({"index": i, "name": name, "error": "Invalid vendor data."})
+            continue
+
+        # task #231 audit finding: same client_id ownership gap as create_vendor
+        # — checked per-item so one bad row is rejected without failing the batch.
+        if not can_access_client(current_user, vendor_in.client_id):
+            errors.append({"index": i, "name": name, "error": "Client not found for this firm."})
             continue
 
         payload = vendor_in.model_dump()
