@@ -236,7 +236,12 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
     run = slip.pop("payroll_runs", None) or {}
 
     # Firm-scope enforcement — slip belongs to a run owned by the caller's firm.
-    if firm_id and run.get("firm_id") and run["firm_id"] != firm_id:
+    # Fail CLOSED (deny unless ownership is explicitly proven), matching the
+    # rest of this codebase's tenant-check convention (e.g. finalize_run's
+    # "F1/F4 fix" comment) -- the previous `firm_id and run.get("firm_id") and
+    # ...` short-circuited to "allow" if either side was ever falsy, instead
+    # of denying.
+    if not firm_id or run.get("firm_id") != firm_id:
         raise PermissionError("Access denied")
 
     firm = _load_firm(run.get("firm_id") or firm_id)

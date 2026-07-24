@@ -10,6 +10,7 @@ PT: State-specific professional tax slab, keyed on the employee's pt_state; an
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone, date
+from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
 from models.common import api_response
@@ -220,19 +221,37 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     days_present  = (attendance or {}).get("days_present", 26)
     lop_days      = (attendance or {}).get("lop_days", 0)
 
-    lop_factor = max(0, (working_days - lop_days)) / max(working_days, 1)
+    # Integer/Decimal-only proration (CLAUDE.md: rupee calculations must never
+    # use floating point — the previous `(working_days - lop_days) / working_days`
+    # float division, then multiplying HRA/DA's fractional percent via
+    # float(hra_percent), produced verified off-by-one-paise mismatches
+    # against exact Decimal arithmetic). working_days is floored at 1 to avoid
+    # a divide-by-zero on malformed attendance data; lop_days is clamped to
+    # [0, working_days] so a negative lop_days (or one exceeding working_days)
+    # can no longer push the proration factor above 1.0 and pay an employee
+    # more than their declared salary, nor below 0.
+    working_days = max(1, int(working_days))
+    lop_days = min(max(0, int(lop_days)), working_days)
+    present_days = working_days - lop_days
 
-    basic     = math.floor(emp.get("basic_paise", 0) * lop_factor)
-    hra       = math.floor(basic * float(emp.get("hra_percent", 0)) / 100)
-    da        = math.floor(basic * float(emp.get("da_percent", 0)) / 100)
-    lta       = math.floor(emp.get("lta_paise", 0) * lop_factor)
-    medical   = math.floor(emp.get("medical_paise", 0) * lop_factor)
-    special   = math.floor(emp.get("special_allowance_paise", 0) * lop_factor)
+    def _prorate(amount_paise) -> int:
+        return (int(amount_paise or 0) * present_days) // working_days
+
+    def _percent_of(base_paise: int, percent) -> int:
+        pct = _Decimal(str(percent or 0))
+        return int((_Decimal(base_paise) * pct / 100).quantize(_Decimal("1"), rounding=_ROUND_HALF_UP))
+
+    basic     = _prorate(emp.get("basic_paise", 0))
+    hra       = _percent_of(basic, emp.get("hra_percent", 0))
+    da        = _percent_of(basic, emp.get("da_percent", 0))
+    lta       = _prorate(emp.get("lta_paise", 0))
+    medical   = _prorate(emp.get("medical_paise", 0))
+    special   = _prorate(emp.get("special_allowance_paise", 0))
     # other_allowances_paise is a real employee-master field (models/payroll.py,
     # captured by the Add-Employee form and the CSV importer) that was
     # previously dropped from gross entirely — understating gross AND net for
     # any employee who had one. LOP-prorated like every other fixed component.
-    other     = math.floor(emp.get("other_allowances_paise", 0) * lop_factor)
+    other     = _prorate(emp.get("other_allowances_paise", 0))
     gross     = basic + hra + da + lta + medical + special + other
 
     # EPF Act §6: PF wages = Basic + DA (task #229 — basic alone under-computed PF).
@@ -616,7 +635,16 @@ def update_run_status(
     data: RunStatusIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
-    """Move run to 'review' or back to 'draft'. Finalization is a separate endpoint."""
+    """Move run to 'review' or back to 'draft'. Finalization is a separate endpoint.
+
+    Immutability guard covers BOTH terminal states, not just "finalized": a
+    "paid" run has already had its accrual AND disbursement journals posted,
+    so reverting it to draft/review would let finalize_run (which only checks
+    for "finalized") re-post a second full accrual journal for the same
+    month — journal_for_payroll's idempotency dedup keys on
+    (firm, client, reference_no=PAY-{month}, entry_date=today), not the
+    payroll period, so re-finalizing on a later calendar day does not match
+    the original entry and silently double-posts."""
     db = _db()
     new_status = data.status
     if not db:
@@ -625,9 +653,10 @@ def update_run_status(
             raise HTTPException(status_code=409, detail="Run already finalized — cannot change status")
         return api_response(True, {"id": run_id, "status": new_status})
     row = (db.table("payroll_runs").update({"status": new_status}).eq("id", run_id)
-           .eq("firm_id", current_user["firm_id"]).neq("status", "finalized").execute())
+           .eq("firm_id", current_user["firm_id"])
+           .not_.in_("status", ["finalized", "paid"]).execute())
     if not row.data:
-        raise HTTPException(status_code=404, detail="Run not found or already finalized")
+        raise HTTPException(status_code=404, detail="Run not found or already finalized/paid")
     return api_response(True, row.data[0])
 
 
@@ -667,8 +696,15 @@ def finalize_run(
            .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if run["status"] == "finalized":
-        raise HTTPException(status_code=409, detail="Run already finalized")
+    # A "paid" run must be just as terminal as a "finalized" one here: it has
+    # already had its accrual journal posted (that's how it reached "paid" in
+    # the first place), so re-finalizing it would post a SECOND accrual
+    # journal for the same month. journal_for_payroll's idempotency dedup
+    # keys on (firm, client, reference_no=PAY-{month}, entry_date=today), not
+    # the payroll period, so it does not catch a re-finalization on a later
+    # calendar day -- this guard is the actual backstop.
+    if run["status"] in ("finalized", "paid"):
+        raise HTTPException(status_code=409, detail=f"Run already {run['status']}")
 
     client_id = run["client_id"]
     firm_id   = run["firm_id"]
@@ -777,6 +813,80 @@ def disburse_run(
 
     return api_response(True, {"id": run_id, "status": "paid",
                               "disbursement_journal_entry_id": journal_id})
+
+
+@router.post("/runs/{run_id}/reverse")
+def reverse_run(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "finalize"))
+):
+    """
+    Reverse a finalized or paid payroll run — Partner only. Reverses the
+    disbursement journal (if the run was paid) and the accrual journal, then
+    reopens the run at 'review' so it can be corrected and re-finalized.
+
+    Payroll needs its own reversal path because the generic
+    POST /api/journal/{id}/reverse explicitly refuses to reverse a
+    "Payment"-typed entry (it redirects the caller to
+    /api/purchase-payments/{id}/reverse, which does not apply to payroll —
+    there is no purchase_payments row for a salary disbursement, a dead
+    end), and even for the accrual journal (entry_type="Journal", which that
+    endpoint DOES allow) it has no awareness of payroll_runs: it never
+    resets status/journal_entry_id, so the run stays stuck 'finalized'/'paid'
+    with a journal_entry_id pointing at a now-reversed entry, and
+    finalize_run's own guard then permanently blocks re-posting a corrected
+    run for that month.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": run_id, "status": "review"})
+
+    firm_id = current_user["firm_id"]
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", firm_id).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run["status"] not in ("finalized", "paid"):
+        raise HTTPException(status_code=400,
+                            detail="Only a finalized or paid payroll run can be reversed.")
+
+    from services.phase2_journal_service import phase2_journal_service
+    from services.period_validation_service import period_validation_service
+    reversal_date = str(datetime.now(timezone.utc).date())
+    # FY-lock: a reversal is a new posting — block it if its date is in a locked year.
+    period_validation_service.validate_posting_date(firm_id, reversal_date)
+
+    # Undo in reverse order: disbursement (if any) depends on the accrual
+    # having been posted first, so it must be reversed before the accrual.
+    if run.get("disbursement_journal_entry_id"):
+        phase2_journal_service.reverse_entry(
+            db, firm_id, run["disbursement_journal_entry_id"], reversal_date,
+            narration=f"Reversal of payroll disbursement for {run['month']}",
+            created_by=current_user.get("id"),
+        )
+    if run.get("journal_entry_id"):
+        phase2_journal_service.reverse_entry(
+            db, firm_id, run["journal_entry_id"], reversal_date,
+            narration=f"Reversal of payroll accrual for {run['month']}",
+            created_by=current_user.get("id"),
+        )
+
+    db.table("payroll_runs").update({
+        "status":                        "review",
+        "journal_entry_id":              None,
+        "disbursement_journal_entry_id": None,
+        "finalized_at":                  None,
+        "paid_at":                       None,
+        "paid_from_account_id":          None,
+        "payment_reference":             None,
+    }).eq("id", run_id).eq("firm_id", firm_id).execute()
+
+    timeline_service.log(run["client_id"], "work", "Payroll Reversed",
+        f"Payroll for {run['month']} reversed and reopened for correction", "warning",
+        firm_id=firm_id, entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"id": run_id, "status": "review"})
 
 
 # ─── Reports ──────────────────────────────────────────────────────────────────
