@@ -218,10 +218,25 @@ class BankReconciliationService:
                                     detail=f"Transaction {tid} is already reconciled in another session.")
         for tid in txn_ids:
             t = by_id[tid]
-            db.table("bank_transactions").update({
+            existing = t.get("reconciliation_id")
+            # Concurrency guard: claim exclusive reconciliation rights on this
+            # transaction via a CAS-guarded update. The pre-check above (raise
+            # 409 if `existing` belongs to another session) reads a snapshot
+            # that can go stale before this write lands -- two overlapping
+            # sessions, or two near-simultaneous reconcile calls on the same
+            # session, could both pass the read-check and the transaction would
+            # silently end up claimed by whichever write lands last, with no
+            # error surfaced to the loser. Guarding the write on the exact
+            # reconciliation_id this call read closes that gap.
+            q = db.table("bank_transactions").update({
                 "reconciliation_id": recon_id, "reconciled": True, "reconciled_at": _now(),
                 "reconciled_journal_id": t.get("posted_journal_id"), "updated_at": _now(),
-            }).eq("id", tid).eq("firm_id", firm_id).execute()
+            }).eq("id", tid).eq("firm_id", firm_id)
+            q = q.eq("reconciliation_id", existing) if existing else q.is_("reconciliation_id", "null")
+            claim = q.execute()
+            if not claim.data:
+                raise HTTPException(status_code=409,
+                                    detail=f"Transaction {tid} was claimed by another reconciliation session.")
         self._advance_to_in_progress(db, firm_id, session)
         self._log(session, actor_id, "Transactions Reconciled", f"{len(txn_ids)} item(s) reconciled")
         return self.get_session(db, firm_id, recon_id)
@@ -236,10 +251,17 @@ class BankReconciliationService:
                 raise HTTPException(status_code=422,
                                     detail=f"Transaction {tid} is not reconciled in this session.")
         for tid in txn_ids:
-            db.table("bank_transactions").update({
+            # Same CAS-guard rationale as reconcile(): guard the write on the
+            # exact reconciliation_id this call read, so a concurrent request
+            # that already moved this transaction (re-reconciled it elsewhere,
+            # or unreconciled it first) can't be silently overwritten.
+            claim = db.table("bank_transactions").update({
                 "reconciliation_id": None, "reconciled": False, "reconciled_at": None,
                 "reconciled_journal_id": None, "updated_at": _now(),
-            }).eq("id", tid).eq("firm_id", firm_id).execute()
+            }).eq("id", tid).eq("firm_id", firm_id).eq("reconciliation_id", recon_id).execute()
+            if not claim.data:
+                raise HTTPException(status_code=409,
+                                    detail=f"Transaction {tid} was already unreconciled by a concurrent request.")
         self._log(session, actor_id, "Transactions Unreconciled", f"{len(txn_ids)} item(s) unreconciled")
         return self.get_session(db, firm_id, recon_id)
 

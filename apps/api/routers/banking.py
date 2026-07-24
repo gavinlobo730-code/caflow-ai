@@ -19,6 +19,7 @@ from fastapi.responses import Response
 from typing import Optional
 
 from models.common import api_response
+from core.authz import assert_client_access, filter_by_client
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -64,6 +65,19 @@ def _db():
     return get_supabase()
 
 
+def _scope_rows(current_user: dict, client_id: Optional[str], rows: list) -> list:
+    """M2 assignment scoping for the "all clients" list endpoints below: when a
+    specific client is requested the caller must actually be allowed to see it
+    (assert_client_access); when no client is specified (firm-wide view), narrow
+    the result set to the caller's assigned clients instead of returning every
+    client in the firm's banking data to an Executive/Reviewer who isn't
+    assigned to all of them."""
+    if client_id:
+        assert_client_access(current_user, client_id)
+        return rows
+    return filter_by_client(current_user, rows)
+
+
 def _guard_foreign_bank_currency(db, firm_id: str, client_id: Optional[str], currency: str) -> None:
     """Allow a non-INR bank account ONLY when multi-currency is active for this client
     (env + firm entitlement + client enablement) and the currency is in the ISO master.
@@ -87,6 +101,7 @@ def list_bank_accounts(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -101,6 +116,7 @@ def create_bank_account(
     data: BankAccountIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -143,6 +159,7 @@ def update_bank_account(
     firm_id = current_user["firm_id"]
     prior = (db.table("bank_accounts").select("*")
              .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
+    assert_client_access(current_user, prior.get("client_id"))
     row = (db.table("bank_accounts").update(update)
            .eq("id", account_id).eq("firm_id", firm_id).execute())
     account = (row.data or [{}])[0]
@@ -167,6 +184,7 @@ def bank_account_balance(
     """Current balance of one bank account (Multi-Currency Phase 5). Always returns the
     authoritative base (INR) balance; for a foreign-currency account it also returns the
     foreign balance, both DERIVED from posted journal lines (no stored balance)."""
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, {"account_id": account_id, "currency": "INR",
@@ -197,6 +215,7 @@ def import_statement(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Store an already-parsed statement and its lines. (File parsing is Phase B.1.)"""
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"statement_id": "mock-id", "imported": len(data.rows)})
@@ -221,6 +240,7 @@ async def upload_statement(
     """Upload a CSV/XLSX bank statement. Parsing + normalization + dedup happen
     SERVER-SIDE (Banking B.1) — the browser sends the raw file only. Returns the
     counts of imported and duplicate-skipped transactions."""
+    assert_client_access(current_user, client_id)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
@@ -256,7 +276,8 @@ def list_statements(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, banking_service.list_statements(db, current_user["firm_id"], client_id))
+    rows = banking_service.list_statements(db, current_user["firm_id"], client_id)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 # ─── Transactions ─────────────────────────────────────────────────────────────
@@ -276,12 +297,13 @@ def list_transactions(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, banking_service.list_transactions(
+    rows = banking_service.list_transactions(
         db, current_user["firm_id"], statement_id=statement_id,
         client_id=client_id, match_status=match_status,
         date_from=date_from, date_to=date_to,
         min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
-    ))
+    )
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 # ─── Matching & Categorization (B.2) ──────────────────────────────────────────
@@ -297,8 +319,8 @@ def matching_queue(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, bank_matching_service.queue(
-        db, current_user["firm_id"], client_id, status))
+    rows = bank_matching_service.queue(db, current_user["firm_id"], client_id, status)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 @router.get("/transactions/{txn_id}/suggestions")
@@ -418,7 +440,8 @@ def ready_to_post_queue(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, bank_posting_service.ready_to_post(db, current_user["firm_id"], client_id))
+    rows = bank_posting_service.ready_to_post(db, current_user["firm_id"], client_id)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 @router.get("/pending")
@@ -431,7 +454,8 @@ def pending_queue(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, bank_posting_service.pending(db, current_user["firm_id"], client_id))
+    rows = bank_posting_service.pending(db, current_user["firm_id"], client_id)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 @router.get("/posted")
@@ -443,7 +467,8 @@ def posted_queue(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, bank_posting_service.posted(db, current_user["firm_id"], client_id))
+    rows = bank_posting_service.posted(db, current_user["firm_id"], client_id)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 @router.post("/transactions/{txn_id}/posting-preview")
@@ -492,6 +517,7 @@ def create_reconciliation(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Open a reconciliation session for a bank account + statement period (B.4.1)."""
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-recon", **data.model_dump()})
@@ -512,8 +538,8 @@ def list_reconciliations(
     db = _db()
     if not db:
         return api_response(True, [])
-    return api_response(True, bank_reconciliation_service.list_sessions(
-        db, current_user["firm_id"], client_id, bank_account_id))
+    rows = bank_reconciliation_service.list_sessions(db, current_user["firm_id"], client_id, bank_account_id)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
 @router.get("/reconciliations/{recon_id}")
@@ -636,6 +662,7 @@ def list_rules(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -650,6 +677,7 @@ def create_rule(
     data: MatchingRuleIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})

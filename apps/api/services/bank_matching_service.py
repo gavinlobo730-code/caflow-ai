@@ -238,12 +238,23 @@ class BankMatchingService:
             return True  # all
         txns = [t for t in txns if keep(t)]
 
+        # Matching rules are always created per-client (MatchingRuleIn.client_id
+        # is required) -- group by client_id and only apply a transaction's
+        # OWN client's rules to it. Previously this fetched every rule for the
+        # firm and applied all of them to every transaction regardless of
+        # which client it belonged to, so one client's configured rule (e.g.
+        # a narration-contains match on that client's own vendor name) could
+        # surface as a suggested category on an unrelated client's transaction.
         rules = (db.table("bank_matching_rules").select("*")
                  .eq("firm_id", firm_id).eq("is_active", True).execute().data or [])
+        rules_by_client: dict = {}
+        for r in rules:
+            rules_by_client.setdefault(r.get("client_id"), []).append(r)
         for t in txns:
             amount, is_credit = _txn_amount(t)
+            client_rules = rules_by_client.get(t.get("client_id"), [])
             t["suggested_category"] = (t.get("category")
-                                       or suggest_category(t.get("description"), amount, not is_credit, rules))
+                                       or suggest_category(t.get("description"), amount, not is_credit, client_rules))
         return txns
 
     # ── B.2.2 — categorize (manual or accepting a rule suggestion) ───────────
