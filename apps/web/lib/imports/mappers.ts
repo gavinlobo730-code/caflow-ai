@@ -598,3 +598,435 @@ export function buildEmployees(
 
   return { records, errors };
 }
+
+// ── Credit & Debit Notes ─────────────────────────────────────────────────────
+// Four entities, one shared row-parsing core per side (sales / purchase) since
+// within a side the party type, linked document and service pricing field are
+// identical — only the note direction (credit vs debit) and target endpoint differ:
+//   Sales Credit Note   → POST /api/credit-notes/            (decrease AR)
+//   Sales Debit Note    → POST /api/sales-debit-notes/       (increase AR)
+//   Purchase Debit Note → POST /api/debit-notes/             (decrease AP)
+//   Purchase Credit Note→ POST /api/purchase-credit-notes/   (increase AP)
+//
+// All four share InvoiceLineIn (apps/api/models/invoices.py), whose
+// model_validator makes service_catalogue_id MANDATORY on every line ("Product/
+// Service is required on every line item") — unlike buildSalesInvoices/
+// buildPurchaseBills above, which still treat product_service as an optional
+// pre-fill even though the same backend model now rejects a line with no
+// catalogue link. product_service is therefore a REQUIRED column here.
+//
+// is_interstate is handled per-endpoint by the backend, and inconsistently:
+// - routers/credit_notes.py IGNORES any client-sent is_interstate and always
+//   re-derives it from the linked sales_invoice_id, forcing False when none is
+//   linked — a standalone (unlinked) Sales Credit Note can never be interstate
+//   via the API today.
+// - routers/debit_notes.py, sales_debit_notes.py and purchase_credit_notes.py
+//   all trust the client-sent is_interstate directly, with NO auto-derivation
+//   from a linked bill/invoice.
+// This mapper derives is_interstate from the linked document whenever an
+// invoice/bill number is given (correct for all four regardless of which
+// behaviour the endpoint has) and falls back to an explicit is_interstate
+// column only for a standalone note with nothing linked.
+
+function toYesNoOptional(v: string | undefined): boolean | undefined {
+  const s = str(v).toLowerCase();
+  if (!s) return undefined;
+  return ["yes", "y", "true", "1", "t"].includes(s);
+}
+
+/** An existing Sales Invoice or Purchase Bill this note may link to. */
+export interface OriginalDocRef {
+  id: string;
+  no: string;           // invoice_no or bill_no
+  partyId: string;       // customer_id or vendor_id
+  isInterstate: boolean;
+}
+
+/** Same shape as ServiceRef (lib/invoices/importMapping.ts) — duplicated
+ * locally (5 fields) rather than importing across modules, matching how
+ * PurchaseServiceRef above already stands alone in this file. */
+export interface SalesServiceRef {
+  id: string;
+  name: string;
+  description?: string | null;
+  hsn_sac?: string | null;
+  gst_rate_bps?: number | null;
+  default_rate_paise?: number | null;
+  unit?: string | null;
+}
+
+export interface BuiltNoteLine {
+  description: string;
+  hsn_sac?: string;
+  quantity: number;
+  rate_paise: number;
+  gst_rate_percent: number;
+  unit?: string;
+  service_catalogue_id: string;
+}
+
+interface NoteGroup {
+  partyId: string;
+  docId?: string;
+  noteDate: string;
+  reason?: string;
+  isInterstate: boolean;
+  isReverseCharge: boolean;
+  lines: BuiltNoteLine[];
+}
+
+/** Shared line/grouping parser for both Sales Credit Notes and Sales Debit
+ * Notes — identical row shape (customer, optional linked sales invoice,
+ * product_service-driven lines), differing only in the date column's label
+ * and which endpoint the caller eventually posts to. */
+function parseSalesNoteRows(
+  rows: Record<string, string>[],
+  dateColumnKey: string,
+  customers: NameRef[],
+  invoices: OriginalDocRef[],
+  services: SalesServiceRef[],
+): { groups: Map<string, NoteGroup>; errors: string[] } {
+  const customersByName = new Map(customers.map((c) => [c.name.trim().toLowerCase(), c.id]));
+  const invoicesByNo = new Map(invoices.map((d) => [d.no.trim().toLowerCase(), d]));
+  const servicesByName = new Map(services.map((s) => [s.name.trim().toLowerCase(), s]));
+  const groups = new Map<string, NoteGroup>();
+  const errors: string[] = [];
+
+  rows.forEach((r, i) => {
+    const rowNo = i + 1;
+    const customerName = str(r.customer);
+    const invoiceNo = str(r.invoice_no);
+    const noteRef = str(r.note_ref);
+    const noteDate = str(r[dateColumnKey]);
+    const explicitInterstate = toYesNoOptional(r.is_interstate);
+    const productName = str(r.product_service);
+    const service = productName ? servicesByName.get(productName.toLowerCase()) : undefined;
+
+    let customerId = customersByName.get(customerName.toLowerCase());
+    let docId: string | undefined;
+    let isInterstate = explicitInterstate ?? false;
+
+    if (invoiceNo) {
+      const doc = invoicesByNo.get(invoiceNo.toLowerCase());
+      if (!doc) { errors.push(`Row ${rowNo}: unknown invoice_no "${invoiceNo}" — it must already exist for this client`); return; }
+      docId = doc.id;
+      isInterstate = doc.isInterstate;
+      if (customerName && customerId && customerId !== doc.partyId) {
+        errors.push(`Row ${rowNo}: customer "${customerName}" does not match the customer on invoice "${invoiceNo}"`); return;
+      }
+      customerId = doc.partyId;
+    }
+
+    if (!customerId) { errors.push(`Row ${rowNo}: unknown customer "${customerName}" — create the customer first, or link a valid invoice_no`); return; }
+    if (!DATE_RE.test(noteDate)) { errors.push(`Row ${rowNo}: ${dateColumnKey} must be YYYY-MM-DD`); return; }
+    if (!productName) { errors.push(`Row ${rowNo}: product_service is required on every line (Product/Service is mandatory on every credit/debit note line)`); return; }
+    if (!service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
+
+    const description = str(r.description) || (service.description?.trim() ?? "");
+    if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
+
+    const qty = num(r.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
+
+    const rateRaw = str(r.rate);
+    const rate = rateRaw ? num(r.rate) : (service.default_rate_paise != null ? service.default_rate_paise / 100 : NaN);
+    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or use a Product/Service with a default price)`); return; }
+
+    const gstRaw = str(r.gst_rate);
+    const gst = gstRaw ? num(r.gst_rate) : (service.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
+    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+
+    const line: BuiltNoteLine = {
+      description,
+      hsn_sac: str(r.hsn_sac) || service.hsn_sac?.trim() || undefined,
+      quantity: qty,
+      rate_paise: Math.round(rate * 100),
+      gst_rate_percent: gst,
+      unit: service.unit?.trim() || undefined,
+      service_catalogue_id: service.id,
+    };
+
+    const key = noteRef || invoiceNo || `${customerName.toLowerCase()}|${noteDate}`;
+    const existing = groups.get(key);
+    if (existing) {
+      if (existing.partyId !== customerId) { errors.push(`Row ${rowNo}: rows grouped under "${key}" reference different customers`); return; }
+      if (existing.noteDate !== noteDate) { errors.push(`Row ${rowNo}: rows grouped under "${key}" have different ${dateColumnKey} values`); return; }
+      existing.lines.push(line);
+    } else {
+      groups.set(key, { partyId: customerId, docId, noteDate, reason: str(r.reason) || undefined, isInterstate, isReverseCharge: false, lines: [line] });
+    }
+  });
+
+  return { groups, errors };
+}
+
+const NOTE_LINE_COLUMNS: ImportColumn[] = [
+  { key: "product_service", label: "Product/Service", required: true, hint: "Existing catalogue item name — REQUIRED on every credit/debit note line" },
+  { key: "description", label: "Description", required: false, hint: "Overrides the Product/Service's own description (optional)" },
+  { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "Overrides the Product/Service's own HSN/SAC (optional)" },
+  { key: "quantity", label: "Quantity", required: true, hint: "e.g. 1" },
+  { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate — required unless the Product/Service has a default price" },
+  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 — required unless the Product/Service has a default rate" },
+];
+
+// ── Sales Credit Notes → POST /api/credit-notes/ ────────────────────────────
+
+export interface BuiltSalesCreditNote {
+  client_id: string;
+  customer_id: string;
+  credit_note_date: string;
+  sales_invoice_id?: string;
+  reason?: string;
+  is_interstate: boolean;
+  lines: BuiltNoteLine[];
+}
+
+export const SALES_CREDIT_NOTE_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: "customer", label: "Customer", required: true, hint: "Existing customer name (must already exist for this client)" },
+  { key: "invoice_no", label: "Invoice No", required: false, hint: "Existing Sales Invoice number to credit against (optional, recommended). Also groups multiple line rows into one note." },
+  { key: "credit_note_date", label: "Credit Note Date", required: true, hint: "YYYY-MM-DD" },
+  { key: "reason", label: "Reason", required: false, hint: "Free text, e.g. Sales return (optional)" },
+  { key: "is_interstate", label: "Interstate", required: false, hint: "yes/no — only used when Invoice No is blank; a note linked to an invoice always inherits that invoice's own treatment" },
+  { key: "note_ref", label: "Note Reference", required: false, hint: "Your own reference to group multiple lines into one note when Invoice No isn't enough (e.g. two separate notes against the same invoice) — not stored, grouping only" },
+  ...NOTE_LINE_COLUMNS,
+];
+
+export function buildSalesCreditNotes(
+  rows: Record<string, string>[],
+  clientId: string,
+  customers: NameRef[],
+  invoices: OriginalDocRef[],
+  services: SalesServiceRef[] = [],
+): { notes: BuiltSalesCreditNote[]; errors: string[] } {
+  const { groups, errors } = parseSalesNoteRows(rows, "credit_note_date", customers, invoices, services);
+  const notes = Array.from(groups.values()).map((g) => ({
+    client_id: clientId,
+    customer_id: g.partyId,
+    credit_note_date: g.noteDate,
+    sales_invoice_id: g.docId,
+    reason: g.reason,
+    is_interstate: g.isInterstate,
+    lines: g.lines,
+  }));
+  return { notes, errors };
+}
+
+// ── Sales Debit Notes → POST /api/sales-debit-notes/ ────────────────────────
+
+export interface BuiltSalesDebitNote {
+  client_id: string;
+  customer_id: string;
+  debit_note_date: string;
+  sales_invoice_id?: string;
+  reason?: string;
+  is_interstate: boolean;
+  lines: BuiltNoteLine[];
+}
+
+export const SALES_DEBIT_NOTE_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: "customer", label: "Customer", required: true, hint: "Existing customer name (must already exist for this client)" },
+  { key: "invoice_no", label: "Invoice No", required: false, hint: "Existing Sales Invoice number to debit against (optional, recommended). Also groups multiple line rows into one note." },
+  { key: "debit_note_date", label: "Debit Note Date", required: true, hint: "YYYY-MM-DD" },
+  { key: "reason", label: "Reason", required: false, hint: "Free text, e.g. Undercharge correction (optional)" },
+  { key: "is_interstate", label: "Interstate", required: false, hint: "yes/no — used when Invoice No is blank; when Invoice No is given, this mapper still derives it from that invoice" },
+  { key: "note_ref", label: "Note Reference", required: false, hint: "Your own reference to group multiple lines into one note when Invoice No isn't enough — not stored, grouping only" },
+  ...NOTE_LINE_COLUMNS,
+];
+
+export function buildSalesDebitNotes(
+  rows: Record<string, string>[],
+  clientId: string,
+  customers: NameRef[],
+  invoices: OriginalDocRef[],
+  services: SalesServiceRef[] = [],
+): { notes: BuiltSalesDebitNote[]; errors: string[] } {
+  const { groups, errors } = parseSalesNoteRows(rows, "debit_note_date", customers, invoices, services);
+  const notes = Array.from(groups.values()).map((g) => ({
+    client_id: clientId,
+    customer_id: g.partyId,
+    debit_note_date: g.noteDate,
+    sales_invoice_id: g.docId,
+    reason: g.reason,
+    is_interstate: g.isInterstate,
+    lines: g.lines,
+  }));
+  return { notes, errors };
+}
+
+/** Shared line/grouping parser for both Purchase Debit Notes and Purchase
+ * Credit Notes — identical row shape (vendor, optional linked purchase bill,
+ * product_service-driven lines, is_reverse_charge), mirroring
+ * parseSalesNoteRows above. */
+function parsePurchaseNoteRows(
+  rows: Record<string, string>[],
+  dateColumnKey: string,
+  vendors: NameRef[],
+  bills: OriginalDocRef[],
+  services: PurchaseServiceRef[],
+): { groups: Map<string, NoteGroup>; errors: string[] } {
+  const vendorsByName = new Map(vendors.map((v) => [v.name.trim().toLowerCase(), v.id]));
+  const billsByNo = new Map(bills.map((d) => [d.no.trim().toLowerCase(), d]));
+  const servicesByName = new Map(services.map((s) => [s.name.trim().toLowerCase(), s]));
+  const groups = new Map<string, NoteGroup>();
+  const errors: string[] = [];
+
+  rows.forEach((r, i) => {
+    const rowNo = i + 1;
+    const vendorName = str(r.vendor);
+    const billNo = str(r.bill_no);
+    const noteRef = str(r.note_ref);
+    const noteDate = str(r[dateColumnKey]);
+    const explicitInterstate = toYesNoOptional(r.is_interstate);
+    const isReverseCharge = toBool(r.is_reverse_charge, false);
+    const productName = str(r.product_service);
+    const service = productName ? servicesByName.get(productName.toLowerCase()) : undefined;
+
+    let vendorId = vendorsByName.get(vendorName.toLowerCase());
+    let docId: string | undefined;
+    let isInterstate = explicitInterstate ?? false;
+
+    if (billNo) {
+      const doc = billsByNo.get(billNo.toLowerCase());
+      if (!doc) { errors.push(`Row ${rowNo}: unknown bill_no "${billNo}" — it must already exist for this client`); return; }
+      docId = doc.id;
+      isInterstate = doc.isInterstate;
+      if (vendorName && vendorId && vendorId !== doc.partyId) {
+        errors.push(`Row ${rowNo}: vendor "${vendorName}" does not match the vendor on bill "${billNo}"`); return;
+      }
+      vendorId = doc.partyId;
+    }
+
+    if (!vendorId) { errors.push(`Row ${rowNo}: unknown vendor "${vendorName}" — create the vendor first, or link a valid bill_no`); return; }
+    if (!DATE_RE.test(noteDate)) { errors.push(`Row ${rowNo}: ${dateColumnKey} must be YYYY-MM-DD`); return; }
+    if (!productName) { errors.push(`Row ${rowNo}: product_service is required on every line (Product/Service is mandatory on every credit/debit note line)`); return; }
+    if (!service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
+
+    const description = str(r.description) || (service.description?.trim() ?? "");
+    if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
+
+    const qty = num(r.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
+
+    const rateRaw = str(r.rate);
+    const rate = rateRaw ? num(r.rate) : (service.purchase_price_paise != null ? service.purchase_price_paise / 100 : NaN);
+    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or use a Product/Service with a purchase price)`); return; }
+
+    const gstRaw = str(r.gst_rate);
+    const gst = gstRaw ? num(r.gst_rate) : (service.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
+    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+
+    const line: BuiltNoteLine = {
+      description,
+      hsn_sac: str(r.hsn_sac) || service.hsn_sac?.trim() || undefined,
+      quantity: qty,
+      rate_paise: Math.round(rate * 100),
+      gst_rate_percent: gst,
+      unit: service.unit?.trim() || undefined,
+      service_catalogue_id: service.id,
+    };
+
+    const key = noteRef || billNo || `${vendorName.toLowerCase()}|${noteDate}`;
+    const existing = groups.get(key);
+    if (existing) {
+      if (existing.partyId !== vendorId) { errors.push(`Row ${rowNo}: rows grouped under "${key}" reference different vendors`); return; }
+      if (existing.noteDate !== noteDate) { errors.push(`Row ${rowNo}: rows grouped under "${key}" have different ${dateColumnKey} values`); return; }
+      existing.lines.push(line);
+    } else {
+      groups.set(key, { partyId: vendorId, docId, noteDate, reason: str(r.reason) || undefined, isInterstate, isReverseCharge, lines: [line] });
+    }
+  });
+
+  return { groups, errors };
+}
+
+const REVERSE_CHARGE_COLUMN: ImportColumn = { key: "is_reverse_charge", label: "Reverse Charge", required: false, hint: "yes/no — CGST Act §9(3)/9(4) (defaults to no)" };
+
+// ── Purchase Debit Notes → POST /api/debit-notes/ ───────────────────────────
+
+export interface BuiltPurchaseDebitNote {
+  client_id: string;
+  vendor_id: string;
+  debit_note_date: string;
+  purchase_bill_id?: string;
+  reason?: string;
+  is_interstate: boolean;
+  is_reverse_charge: boolean;
+  lines: BuiltNoteLine[];
+}
+
+export const PURCHASE_DEBIT_NOTE_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: "vendor", label: "Vendor", required: true, hint: "Existing vendor name (must already exist for this client)" },
+  { key: "bill_no", label: "Bill No", required: false, hint: "Existing Purchase Bill number to debit against (optional, recommended). Also groups multiple line rows into one note." },
+  { key: "debit_note_date", label: "Debit Note Date", required: true, hint: "YYYY-MM-DD" },
+  { key: "reason", label: "Reason", required: false, hint: "Free text, e.g. Purchase return (optional)" },
+  { key: "is_interstate", label: "Interstate", required: false, hint: "yes/no — only used when Bill No is blank; a note linked to a bill always inherits that bill's own treatment" },
+  REVERSE_CHARGE_COLUMN,
+  { key: "note_ref", label: "Note Reference", required: false, hint: "Your own reference to group multiple lines into one note when Bill No isn't enough — not stored, grouping only" },
+  ...NOTE_LINE_COLUMNS,
+];
+
+export function buildPurchaseDebitNotes(
+  rows: Record<string, string>[],
+  clientId: string,
+  vendors: NameRef[],
+  bills: OriginalDocRef[],
+  services: PurchaseServiceRef[] = [],
+): { notes: BuiltPurchaseDebitNote[]; errors: string[] } {
+  const { groups, errors } = parsePurchaseNoteRows(rows, "debit_note_date", vendors, bills, services);
+  const notes = Array.from(groups.values()).map((g) => ({
+    client_id: clientId,
+    vendor_id: g.partyId,
+    debit_note_date: g.noteDate,
+    purchase_bill_id: g.docId,
+    reason: g.reason,
+    is_interstate: g.isInterstate,
+    is_reverse_charge: g.isReverseCharge,
+    lines: g.lines,
+  }));
+  return { notes, errors };
+}
+
+// ── Purchase Credit Notes → POST /api/purchase-credit-notes/ ───────────────
+
+export interface BuiltPurchaseCreditNote {
+  client_id: string;
+  vendor_id: string;
+  credit_note_date: string;
+  purchase_bill_id?: string;
+  reason?: string;
+  is_interstate: boolean;
+  is_reverse_charge: boolean;
+  lines: BuiltNoteLine[];
+}
+
+export const PURCHASE_CREDIT_NOTE_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: "vendor", label: "Vendor", required: true, hint: "Existing vendor name (must already exist for this client)" },
+  { key: "bill_no", label: "Bill No", required: false, hint: "Existing Purchase Bill number to credit against (optional, recommended). Also groups multiple line rows into one note." },
+  { key: "credit_note_date", label: "Credit Note Date", required: true, hint: "YYYY-MM-DD" },
+  { key: "reason", label: "Reason", required: false, hint: "Free text, e.g. Vendor undercharge correction (optional)" },
+  { key: "is_interstate", label: "Interstate", required: false, hint: "yes/no — used when Bill No is blank; when Bill No is given, this mapper still derives it from that bill" },
+  REVERSE_CHARGE_COLUMN,
+  { key: "note_ref", label: "Note Reference", required: false, hint: "Your own reference to group multiple lines into one note when Bill No isn't enough — not stored, grouping only" },
+  ...NOTE_LINE_COLUMNS,
+];
+
+export function buildPurchaseCreditNotes(
+  rows: Record<string, string>[],
+  clientId: string,
+  vendors: NameRef[],
+  bills: OriginalDocRef[],
+  services: PurchaseServiceRef[] = [],
+): { notes: BuiltPurchaseCreditNote[]; errors: string[] } {
+  const { groups, errors } = parsePurchaseNoteRows(rows, "credit_note_date", vendors, bills, services);
+  const notes = Array.from(groups.values()).map((g) => ({
+    client_id: clientId,
+    vendor_id: g.partyId,
+    credit_note_date: g.noteDate,
+    purchase_bill_id: g.docId,
+    reason: g.reason,
+    is_interstate: g.isInterstate,
+    is_reverse_charge: g.isReverseCharge,
+    lines: g.lines,
+  }));
+  return { notes, errors };
+}
