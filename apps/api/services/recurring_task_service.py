@@ -93,7 +93,9 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None) -> list[dict]:
 
             if config.get("template_id"):
                 try:
-                    tpl_result = db.table("task_templates").select("name, description, default_priority").eq("id", config["template_id"]).maybe_single().execute()
+                    tpl_result = db.table("task_templates").select("name, description, default_priority").eq("id", config["template_id"]).or_(
+                        f"firm_id.eq.{config['firm_id']},firm_id.is.null"
+                    ).maybe_single().execute()
                     if tpl_result.data:
                         tpl = tpl_result.data
                         title = title or tpl.get("name")

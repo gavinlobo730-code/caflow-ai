@@ -18,8 +18,15 @@ class TaskTemplateRepository(BaseRepository[dict]):
             result = query.is_("firm_id", None).order("name").execute()
         return result.data or []
 
-    def find_by_id(self, id: str) -> Optional[dict]:
-        result = _get_db().table("task_templates").select("*").eq("id", id).maybe_single().execute()
+    def find_by_id(self, id: str, firm_id: Optional[str] = None) -> Optional[dict]:
+        """Fetch a template by id. When firm_id is given, only the caller's own
+        templates or shared system templates (firm_id IS NULL) are visible —
+        mirrors find_all's scoping so a firm can't read another firm's private
+        template by guessing/enumerating its id."""
+        query = _get_db().table("task_templates").select("*").eq("id", id)
+        if firm_id:
+            query = query.or_(f"firm_id.eq.{firm_id},firm_id.is.null")
+        result = query.maybe_single().execute()
         return result.data
 
     def create(self, data: dict) -> dict:
@@ -30,15 +37,28 @@ class TaskTemplateRepository(BaseRepository[dict]):
         }).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
-        result = _get_db().table("task_templates").update({
+    def update(self, id: str, data: dict, firm_id: Optional[str] = None) -> Optional[dict]:
+        """Update a template. When firm_id is given, the update is scoped to
+        rows owned by that firm (strict — system templates with firm_id IS
+        NULL never match .eq(), so no firm can edit a shared system template
+        through this path)."""
+        query = _get_db().table("task_templates").update({
             **data,
             "updated_at": self.now_iso(),
-        }).eq("id", id).execute()
+        }).eq("id", id)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
         return result.data[0] if result.data else None
 
-    def delete(self, id: str) -> bool:
-        result = _get_db().table("task_templates").delete().eq("id", id).execute()
+    def delete(self, id: str, firm_id: Optional[str] = None) -> bool:
+        """Delete a template. When firm_id is given, the delete is scoped to
+        rows owned by that firm (system templates are never deletable through
+        this path, matching update's semantics)."""
+        query = _get_db().table("task_templates").delete().eq("id", id)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
         return len(result.data) > 0
 
 
