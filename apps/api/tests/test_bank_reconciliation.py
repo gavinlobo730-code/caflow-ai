@@ -59,6 +59,7 @@ class _Q:
     def select(self, *a, **k): self.op = "select"; return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def in_(self, k, vals): self.f.append((k, ("__in__", list(vals)))); return self
+    def is_(self, k, v): self.f.append((k, ("__is__", v))); return self
     def limit(self, _n): return self
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
     def single(self): self.single_ = True; return self
@@ -70,6 +71,16 @@ class _Q:
             for k, v in self.f:
                 if isinstance(v, tuple) and v and v[0] == "__in__":
                     if r.get(k) not in v[1]: ok = False; break
+                elif isinstance(v, tuple) and v and v[0] == "__is__":
+                    want = v[1]
+                    rv = r.get(k)
+                    if want in (None, "null"):
+                        if rv is not None: ok = False; break
+                    elif want is True:
+                        if rv is not True: ok = False; break
+                    elif want is False:
+                        if rv is not False: ok = False; break
+                    elif rv != want: ok = False; break
                 elif r.get(k) != v: ok = False; break
             if ok: out.append(r)
         return out

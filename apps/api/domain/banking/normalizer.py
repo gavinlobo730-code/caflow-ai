@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional
+
+_logger = logging.getLogger("caflow.banking.normalizer")
 
 
 class StatementParseError(ValueError):
@@ -172,16 +175,23 @@ def _to_iso_date(val) -> Optional[str]:
     s = str(val).strip()
     if not s:
         return None
-    m = re.fullmatch(r"(\d{2})[/\-](\d{2})[/\-](\d{4})", s)       # DD/MM/YYYY or DD-MM-YYYY
+    # D/M/YYYY, DD-MM-YYYY, DD.MM.YYYY (single- or double-digit day/month, any
+    # of the three separators a bank export might use) -- widened from a
+    # DD-only/2-separator regex that silently dropped otherwise-valid
+    # transaction rows whose date happened to use a dot separator or an
+    # unpadded single-digit day/month.
+    m = re.fullmatch(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})", s)
     if m:
-        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+        day, mon, year = int(m.group(1)), int(m.group(2)), m.group(3)
+        if 1 <= day <= 31 and 1 <= mon <= 12:
+            return f"{year}-{mon:02d}-{day:02d}"
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):                      # already ISO
         return s
-    m = re.fullmatch(r"(\d{2})[ \-]([A-Za-z]{3})[ \-](\d{4})", s)  # DD MMM YYYY
+    m = re.fullmatch(r"(\d{1,2})[ \-]([A-Za-z]{3})[ \-](\d{4})", s)  # D MMM YYYY
     if m:
-        mon = _MONTHS.get(m.group(2).lower())
-        if mon:
-            return f"{m.group(3)}-{mon}-{m.group(1)}"
+        mon_name = _MONTHS.get(m.group(2).lower())
+        if mon_name:
+            return f"{m.group(3)}-{mon_name}-{int(m.group(1)):02d}"
     return None
 
 
@@ -286,6 +296,17 @@ def _rows_to_txns(rows: list[list], header_idx: int) -> list[NormalizedTxn]:
         iso = _to_iso_date(col("date"))
         desc = (str(col("desc")).strip() if col("desc") is not None else "")
         if not iso or not desc:
+            # A row with a real description but an unparseable date is very
+            # likely a genuine transaction row, not the "totals/blanks/
+            # sub-headers" this skip is meant to filter -- surface it in the
+            # server log so a systematic date-format gap (e.g. a bank export
+            # using a separator/format _to_iso_date doesn't recognise) is
+            # diagnosable instead of silently vanishing transactions.
+            if not iso and desc:
+                _logger.warning(
+                    "bank statement row skipped: description %r present but date %r unrecognised",
+                    desc[:80], col("date"),
+                )
             continue  # skip non-transaction rows (totals, blanks, sub-headers)
         ref = col("ref")
 

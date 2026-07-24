@@ -258,14 +258,25 @@ class BankPostingService:
     # ── Deferred settlement — runs only when the draft journal is posted ───────
     def settle_on_post(self, db, firm_id, txn_id, journal_id, actor_id=None) -> Optional[dict]:
         """Called by journal_posting_service.post_draft once the bank draft is on
-        the books: mark the transaction posted and settle its invoice/bill. Idempotent."""
+        the books: mark the transaction posted and settle its invoice/bill. Idempotent.
+
+        Concurrency guard: two near-simultaneous calls (e.g. a double-click on
+        "approve draft") could both read match_status as not-yet-posted before
+        either write lands, then both proceed to _settle -- double-allocating
+        paid_paise and/or double-granting party credit on an overpayment. The
+        claiming UPDATE below is CAS-guarded on the status this call actually
+        read (same idiom as match_and_settle_multi's task #220 fix); a
+        concurrent loser gets zero rows back and must not run _settle again."""
         txn = self._get_txn(db, firm_id, txn_id)
-        if txn.get("match_status") == "posted":
+        prior_status = txn.get("match_status")
+        if prior_status == "posted":
             return None                                   # already settled (idempotent)
-        db.table("bank_transactions").update({
+        claim = db.table("bank_transactions").update({
             "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
             "posted_journal_id": journal_id, "updated_at": _now(),
-        }).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        }).eq("id", txn_id).eq("firm_id", firm_id).eq("match_status", prior_status).execute()
+        if not claim.data:
+            return None                                   # lost the race to a concurrent caller
 
         amount, _ = _amount(txn)
         settled = self._settle(db, firm_id, txn, amount, actor_id)

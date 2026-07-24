@@ -381,9 +381,31 @@ def test_queue_filters_partition_transactions():
 def test_queue_applies_rule_suggested_category():
     db = FakeDB()
     _seed_txn(db, id="u1", description="UPI RAZORPAY PAYOUT")
+    # A matching rule always belongs to a client (MatchingRuleIn.client_id is
+    # required) -- queue() only applies a client's own rules to its own
+    # transactions (task #235 fix), so this must carry the same client_id.
     db.store.setdefault("bank_matching_rules", []).append({
-        "id": "rule-1", "firm_id": FIRM, "is_active": True,
+        "id": "rule-1", "firm_id": FIRM, "client_id": CLIENT, "is_active": True,
         "description_pattern": "RAZORPAY", "suggested_category": "Sales Receipt",
     })
     q = bank_matching_service.queue(db, FIRM, CLIENT, "unmatched")
     assert q[0]["suggested_category"] == "Sales Receipt"
+
+
+def test_queue_does_not_apply_another_clients_rule():
+    """Task #235 fix: matching rules are per-client. A rule configured for
+    Client B must never surface as a suggested category on Client A's
+    transactions, even though both clients are in the same firm."""
+    db = FakeDB()
+    other_client = "client-2"
+    _seed_txn(db, id="u1", client_id=CLIENT, description="UPI RAZORPAY PAYOUT")
+    db.store.setdefault("bank_matching_rules", []).append({
+        "id": "rule-1", "firm_id": FIRM, "client_id": other_client, "is_active": True,
+        "description_pattern": "RAZORPAY", "suggested_category": "Sales Receipt",
+    })
+    q = bank_matching_service.queue(db, FIRM, CLIENT, "unmatched")
+    assert q[0]["suggested_category"] is None
+
+    # Firm-wide view (client_id=None) must also isolate rules per transaction.
+    q_all = bank_matching_service.queue(db, FIRM, None, "unmatched")
+    assert q_all[0]["suggested_category"] is None
