@@ -422,26 +422,37 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
         # has no natural upper bound (unlike a debit note capped by outstanding).
         prior_bill = None
         if bill_id and pcn_total > 0:
-            b = (db.table("purchase_bills")
-                 .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status")
-                 .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
-            if not b.data:
-                raise HTTPException(status_code=422, detail="Linked bill is not part of this client's books.")
-            bill = b.data[0]
-            if (bill.get("status") or "") in ("draft", "cancelled"):
-                raise HTTPException(status_code=422, detail=f"Cannot credit-note a {bill.get('status')} bill.")
-            net_payable = int(bill.get("net_payable_paise") or 0)
-            paid = int(bill.get("paid_paise") or 0)
-            debited = int(bill.get("debited_paise") or 0)
-            prior_credit_note = int(bill.get("credit_note_paise") or 0)
-            new_credit_note = prior_credit_note + pcn_total
-            effective_payable = net_payable + new_credit_note
-            settled = paid + debited
-            new_status = "paid" if settled >= effective_payable else ("partially_paid" if settled > 0 else bill.get("status"))
-            prior_bill = {"credit_note_paise": prior_credit_note, "status": bill.get("status")}
-            db.table("purchase_bills").update({
-                "credit_note_paise": new_credit_note, "status": new_status,
-            }).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+            # task #227 audit finding: CAS-guarded (mirrors credit_notes.py's
+            # identical fix on the AR side) — a plain read-then-write here raced
+            # with any CONCURRENT purchase credit note issuance against the same
+            # bill, silently losing whichever wrote second.
+            for _attempt in range(6):
+                b = (db.table("purchase_bills")
+                     .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status")
+                     .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+                if not b.data:
+                    raise HTTPException(status_code=422, detail="Linked bill is not part of this client's books.")
+                bill = b.data[0]
+                if (bill.get("status") or "") in ("draft", "cancelled"):
+                    raise HTTPException(status_code=422, detail=f"Cannot credit-note a {bill.get('status')} bill.")
+                net_payable = int(bill.get("net_payable_paise") or 0)
+                paid = int(bill.get("paid_paise") or 0)
+                debited = int(bill.get("debited_paise") or 0)
+                raw_credit_note = bill.get("credit_note_paise")   # CAS guard must match this exact stored value
+                prior_credit_note = int(raw_credit_note or 0)
+                new_credit_note = prior_credit_note + pcn_total
+                effective_payable = net_payable + new_credit_note
+                settled = paid + debited
+                new_status = "paid" if settled >= effective_payable else ("partially_paid" if settled > 0 else bill.get("status"))
+                upd = (db.table("purchase_bills").update({
+                    "credit_note_paise": new_credit_note, "status": new_status,
+                }).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("credit_note_paise", raw_credit_note).execute())
+                if upd.data:
+                    prior_bill = {"credit_note_paise": prior_credit_note, "status": bill.get("status")}
+                    break
+            else:
+                raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
             try:
                 db.table("purchase_credit_note_allocations").insert({
                     "firm_id": firm_id, "credit_note_id": pcn_id,

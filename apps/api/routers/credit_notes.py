@@ -479,35 +479,47 @@ def issue_credit_note(
         # statement reconciled: invoice net outstanding = total − paid − credited.
         prior_inv = None
         if inv_id and cn_total > 0:
-            inv_resp = (db.table("client_sales_invoices")
-                        .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
-                        .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
-            if not inv_resp.data:
-                raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
-            inv = inv_resp.data[0]
-            if (inv.get("status") or "") in ("draft", "cancelled"):
-                raise HTTPException(status_code=422, detail=f"Cannot credit a {inv.get('status')} invoice.")
-            total    = int(inv.get("total_paise") or 0)
-            paid     = int(inv.get("paid_paise") or 0)
-            credited = int(inv.get("credited_paise") or 0)
-            # A sales debit note (CGST Act §34(3)) increases what's receivable
-            # before this credit note's own reduction is applied.
-            debit_noted = int(inv.get("debit_note_paise") or 0)
-            effective_total = total + debit_noted
-            net_outstanding = effective_total - paid - credited
-            if cn_total > net_outstanding:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(f"Credit note (₹{cn_total / 100:,.2f}) exceeds the invoice's outstanding "
-                            f"(₹{net_outstanding / 100:,.2f})."),
-                )
-            prior_inv = {"credited_paise": credited, "status": inv.get("status")}
-            new_credited = credited + cn_total
-            settled = paid + new_credited
-            new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
-            db.table("client_sales_invoices").update({
-                "credited_paise": new_credited, "status": new_status,
-            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+            # task #227 audit finding: CAS-guarded (mirrors receipts._adjust_invoice_paid
+            # and reversal_service's rollback helpers) — a plain read-then-write here
+            # raced with any CONCURRENT credit note issuance against the same invoice,
+            # silently losing whichever wrote second (a lost update to credited_paise,
+            # not merely a stale-ceiling read the outstanding check alone would catch).
+            for _attempt in range(6):
+                inv_resp = (db.table("client_sales_invoices")
+                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
+                            .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+                if not inv_resp.data:
+                    raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
+                inv = inv_resp.data[0]
+                if (inv.get("status") or "") in ("draft", "cancelled"):
+                    raise HTTPException(status_code=422, detail=f"Cannot credit a {inv.get('status')} invoice.")
+                total       = int(inv.get("total_paise") or 0)
+                paid        = int(inv.get("paid_paise") or 0)
+                raw_credited = inv.get("credited_paise")   # CAS guard must match this exact stored value
+                credited    = int(raw_credited or 0)
+                # A sales debit note (CGST Act §34(3)) increases what's receivable
+                # before this credit note's own reduction is applied.
+                debit_noted = int(inv.get("debit_note_paise") or 0)
+                effective_total = total + debit_noted
+                net_outstanding = effective_total - paid - credited
+                if cn_total > net_outstanding:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(f"Credit note (₹{cn_total / 100:,.2f}) exceeds the invoice's outstanding "
+                                f"(₹{net_outstanding / 100:,.2f})."),
+                    )
+                new_credited = credited + cn_total
+                settled = paid + new_credited
+                new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
+                upd = (db.table("client_sales_invoices").update({
+                    "credited_paise": new_credited, "status": new_status,
+                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("credited_paise", raw_credited).execute())
+                if upd.data:
+                    prior_inv = {"credited_paise": credited, "status": inv.get("status")}
+                    break
+            else:
+                raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
             try:
                 db.table("credit_note_allocations").insert({
                     "firm_id": firm_id, "credit_note_id": cn_id,

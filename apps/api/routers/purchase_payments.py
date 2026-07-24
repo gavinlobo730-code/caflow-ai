@@ -375,10 +375,17 @@ def create_purchase_payment(
 
     try:
         db = _get_db()
-        # Business guard: never pay a deactivated vendor.
+        # Ownership + business guard (task #227 audit finding): scope by
+        # firm+client (vendors.client_id is NOT NULL — every vendor belongs to
+        # exactly one client) and reject when the vendor can't be found in
+        # THIS client's books at all, instead of silently proceeding — the old
+        # firm-only lookup let a vendor_id from a DIFFERENT client of the same
+        # firm, or a nonexistent id, pass straight through to a real payment.
         _v = (db.table("vendors").select("is_active")
-              .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute().data)
-        if _v and _v[0].get("is_active") is False:
+              .eq("id", vendor_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+        if not _v:
+            raise HTTPException(status_code=422, detail="This vendor is not part of this client's books.")
+        if _v[0].get("is_active") is False:
             raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
         # ── Multi-Currency (Phase 4): a foreign payment runs a dedicated realized-FX
         # path — the bill is relieved at ITS booked rate, cash at the payment's rate,
@@ -399,6 +406,10 @@ def create_purchase_payment(
             # negative). Outstanding = net_payable − already-paid.
             if (_bill[0].get("status") or "") == "cancelled":
                 raise HTTPException(status_code=409, detail="This bill is cancelled and cannot be paid.")
+            # task #227 audit finding: a draft bill was never received (no AP
+            # journal exists yet) — same class of gap as a draft sales invoice.
+            if (_bill[0].get("status") or "") == "draft":
+                raise HTTPException(status_code=409, detail="This bill is still a draft and has not been received yet.")
             net_payable_paise = int(_bill[0].get("net_payable_paise") or 0)
             # H4: reserve amount_paise of outstanding atomically BEFORE any journal or
             # payment row is created — see _claim_bill_outstanding for why the previous
@@ -575,6 +586,10 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
         raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
     if (bill.get("status") or "") == "cancelled":
         raise HTTPException(status_code=409, detail="This bill is cancelled and cannot be paid.")
+    # task #227 audit finding: a draft bill was never received (no AP journal
+    # exists yet) — same class of gap as a draft sales invoice (finding #1).
+    if (bill.get("status") or "") == "draft":
+        raise HTTPException(status_code=409, detail="This bill is still a draft and has not been received yet.")
     if (bill.get("txn_currency") or "INR").upper() != ccy:
         raise HTTPException(status_code=422, detail=(
             f"Currency mismatch: payment is {ccy} but bill is billed in {bill.get('txn_currency')}."))

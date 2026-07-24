@@ -31,15 +31,25 @@ def _now() -> str:
 
 
 def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, amount_paise: int,
-                           max_retries: int = 5) -> None:
+                           txn_amount: int = 0, max_retries: int = 5) -> None:
     """CAS-decrement a sales invoice's paid_paise by exactly amount_paise (an
     allocation being undone) and recompute status. Mirrors
     purchase_payments._rollback_bill_claim, but raises on CAS exhaustion
     (unlike that compensation-only helper) — a user-initiated reversal must
-    not silently no-op the sub-ledger side."""
+    not silently no-op the sub-ledger side.
+
+    task #227: also decrements paid_txn by txn_amount (default 0 — a no-op for
+    a plain-INR invoice, which never has a nonzero paid_txn to begin with).
+    create_foreign_receipt tracks a foreign invoice's cumulative SETTLED
+    FOREIGN amount on paid_txn separately from the base-currency paid_paise so
+    partial FX settlements never drift; without this, reversing a receipt that
+    touched a foreign invoice left paid_txn permanently inflated, understating
+    that invoice's true outstanding in its billing currency forever after. The
+    CAS guard stays on paid_paise only — every write path updates paid_paise
+    and paid_txn together, so guarding one guards both."""
     for _attempt in range(max_retries):
         rows = (db.table("client_sales_invoices")
-                .select("total_paise, paid_paise, credited_paise, debit_note_paise")
+                .select("total_paise, paid_paise, credited_paise, debit_note_paise, paid_txn")
                 .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .limit(1).execute().data or [])
         if not rows:
@@ -49,9 +59,11 @@ def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, am
         total = int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
         credited = int(inv.get("credited_paise") or 0)
         reverted = max(int(raw_paid or 0) - amount_paise, 0)
+        reverted_txn = max(int(inv.get("paid_txn") or 0) - txn_amount, 0)
         status = ("paid" if (total > 0 and reverted + credited >= total)
                   else "partially_paid" if reverted > 0 else "issued")
-        result = (db.table("client_sales_invoices").update({"paid_paise": reverted, "status": status})
+        result = (db.table("client_sales_invoices")
+                  .update({"paid_paise": reverted, "paid_txn": reverted_txn, "status": status})
                   .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id)
                   .eq("paid_paise", raw_paid).execute())
         if result.data:
@@ -60,13 +72,17 @@ def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, am
 
 
 def _rollback_bill_paid(db, firm_id: str, client_id: str, bill_id: str, amount_paise: int,
-                        max_retries: int = 5) -> None:
+                        txn_amount: int = 0, max_retries: int = 5) -> None:
     """CAS-decrement a purchase bill's paid_paise by exactly amount_paise (the
     payment's true AP relief being undone) and recompute status. Same shape as
-    _rollback_invoice_paid / purchase_payments._rollback_bill_claim."""
+    _rollback_invoice_paid / purchase_payments._rollback_bill_claim.
+
+    task #227: also decrements paid_txn by txn_amount — see
+    _rollback_invoice_paid's docstring for the full rationale (AP mirror of
+    the same gap)."""
     for _attempt in range(max_retries):
         rows = (db.table("purchase_bills")
-                .select("net_payable_paise, paid_paise, credit_note_paise, debited_paise")
+                .select("net_payable_paise, paid_paise, credit_note_paise, debited_paise, paid_txn")
                 .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .limit(1).execute().data or [])
         if not rows:
@@ -76,9 +92,11 @@ def _rollback_bill_paid(db, firm_id: str, client_id: str, bill_id: str, amount_p
         effective_payable = int(bill.get("net_payable_paise") or 0) + int(bill.get("credit_note_paise") or 0)
         debited = int(bill.get("debited_paise") or 0)
         reverted = max(int(raw_paid or 0) - amount_paise, 0)
+        reverted_txn = max(int(bill.get("paid_txn") or 0) - txn_amount, 0)
         status = ("paid" if reverted + debited >= effective_payable
                   else "partially_paid" if reverted > 0 else "received")
-        result = (db.table("purchase_bills").update({"paid_paise": reverted, "status": status})
+        result = (db.table("purchase_bills")
+                  .update({"paid_paise": reverted, "paid_txn": reverted_txn, "status": status})
                   .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                   .eq("paid_paise", raw_paid).execute())
         if result.data:
@@ -135,8 +153,12 @@ def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
     for alloc in allocations:
         inv_id = alloc.get("sales_invoice_id")
         amt = int(alloc.get("allocated_paise") or 0)
-        if inv_id and amt > 0:
-            _rollback_invoice_paid(db, firm_id, client_id, inv_id, amt)
+        # task #227: allocated_txn (migration 236) is only ever set for a
+        # foreign-currency allocation (create_foreign_receipt) — absent/None
+        # for a plain-INR one, which never has a nonzero paid_txn anyway.
+        txn_amt = int(alloc.get("allocated_txn") or 0)
+        if inv_id and (amt > 0 or txn_amt > 0):
+            _rollback_invoice_paid(db, firm_id, client_id, inv_id, amt, txn_amt)
     if allocations:
         db.table("receipt_allocations").update({"is_voided": True}).eq("receipt_id", receipt_id).execute()
 
@@ -191,8 +213,15 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
     bills_adjusted: list = []
     if bill_id:
         ap_relief = _payment_ap_relief(db, firm_id, client_id, payment)
-        if ap_relief > 0:
-            _rollback_bill_paid(db, firm_id, client_id, bill_id, ap_relief)
+        # task #227: for the legacy single-bill FOREIGN payment path
+        # (routers/purchase_payments._create_foreign_payment), the ENTIRE
+        # payment settles this one bill, so the payment row's own txn_amount
+        # (the foreign amount paid) is exactly what was added to the bill's
+        # paid_txn — no allocation table involved for this single-bill shape.
+        # Absent/None for a plain-INR payment, which never set paid_txn.
+        txn_amount = int(payment.get("txn_amount") or 0)
+        if ap_relief > 0 or txn_amount > 0:
+            _rollback_bill_paid(db, firm_id, client_id, bill_id, ap_relief, txn_amount)
         bills_adjusted = [bill_id]
     else:
         # Python-side is_voided filter (not .eq()) — a row lacking the key must
@@ -204,8 +233,12 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
         for alloc in allocations:
             _bill_id = alloc.get("purchase_bill_id")
             amt = int(alloc.get("allocated_paise") or 0)
-            if _bill_id and amt > 0:
-                _rollback_bill_paid(db, firm_id, client_id, _bill_id, amt)
+            # task #227: allocated_txn (migration 236) is only ever set for a
+            # foreign allocation (create_foreign_payment_core) — see
+            # reverse_receipt's identical handling.
+            txn_amt = int(alloc.get("allocated_txn") or 0)
+            if _bill_id and (amt > 0 or txn_amt > 0):
+                _rollback_bill_paid(db, firm_id, client_id, _bill_id, amt, txn_amt)
                 bills_adjusted.append(_bill_id)
         if allocations:
             db.table("purchase_payment_allocations").update({"is_voided": True}).eq("purchase_payment_id", payment_id).execute()

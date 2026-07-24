@@ -353,26 +353,37 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
         # no natural upper bound (unlike a credit note capped by net_outstanding).
         prior_inv = None
         if inv_id and sdn_total > 0:
-            inv_resp = (db.table("client_sales_invoices")
-                        .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
-                        .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
-            if not inv_resp.data:
-                raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
-            inv = inv_resp.data[0]
-            if (inv.get("status") or "") in ("draft", "cancelled"):
-                raise HTTPException(status_code=422, detail=f"Cannot debit-note a {inv.get('status')} invoice.")
-            total = int(inv.get("total_paise") or 0)
-            paid = int(inv.get("paid_paise") or 0)
-            credited = int(inv.get("credited_paise") or 0)
-            prior_debit_note = int(inv.get("debit_note_paise") or 0)
-            new_debit_note = prior_debit_note + sdn_total
-            effective_total = total + new_debit_note
-            settled = paid + credited
-            new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
-            prior_inv = {"debit_note_paise": prior_debit_note, "status": inv.get("status")}
-            db.table("client_sales_invoices").update({
-                "debit_note_paise": new_debit_note, "status": new_status,
-            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+            # task #227 audit finding: CAS-guarded (mirrors credit_notes.py's
+            # identical fix and receipts._adjust_invoice_paid) — a plain
+            # read-then-write here raced with any CONCURRENT debit note issuance
+            # against the same invoice, silently losing whichever wrote second.
+            for _attempt in range(6):
+                inv_resp = (db.table("client_sales_invoices")
+                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
+                            .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+                if not inv_resp.data:
+                    raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
+                inv = inv_resp.data[0]
+                if (inv.get("status") or "") in ("draft", "cancelled"):
+                    raise HTTPException(status_code=422, detail=f"Cannot debit-note a {inv.get('status')} invoice.")
+                total = int(inv.get("total_paise") or 0)
+                paid = int(inv.get("paid_paise") or 0)
+                credited = int(inv.get("credited_paise") or 0)
+                raw_debit_note = inv.get("debit_note_paise")   # CAS guard must match this exact stored value
+                prior_debit_note = int(raw_debit_note or 0)
+                new_debit_note = prior_debit_note + sdn_total
+                effective_total = total + new_debit_note
+                settled = paid + credited
+                new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
+                upd = (db.table("client_sales_invoices").update({
+                    "debit_note_paise": new_debit_note, "status": new_status,
+                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("debit_note_paise", raw_debit_note).execute())
+                if upd.data:
+                    prior_inv = {"debit_note_paise": prior_debit_note, "status": inv.get("status")}
+                    break
+            else:
+                raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
             try:
                 db.table("sales_debit_note_allocations").insert({
                     "firm_id": firm_id, "debit_note_id": sdn_id,

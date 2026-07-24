@@ -121,6 +121,12 @@ class FakeDB:
 
 
 def _seed_bill(db, **overrides):
+    # task #227: create_purchase_payment now rejects a vendor_id that isn't
+    # found in THIS firm+client's books (previously failed open on no
+    # match) — every test here pays VENDOR against CLIENT, so it must exist.
+    db.store.setdefault("vendors", []).append(
+        {"id": VENDOR, "firm_id": FIRM, "client_id": CLIENT, "is_active": True}
+    )
     bill = {
         "id": "bill-1", "firm_id": FIRM, "client_id": CLIENT, "vendor_id": VENDOR,
         "status": "received", "net_payable_paise": 100_000_00, "paid_paise": 0,

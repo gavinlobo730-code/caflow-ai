@@ -60,13 +60,26 @@ class _RaisingReceiptsTable(_EmptyTable):
         raise self._error
 
 
+class _CustomerTable(_EmptyTable):
+    """task #227: create_receipt_core now requires the customer to be found in
+    THIS firm+client's books before it will post anything — this test is
+    about the LATER receipt-insert collision, so the customer lookup must
+    resolve, not the empty-everything default."""
+
+    def execute(self):
+        return SimpleNamespace(data=[{"id": CUSTOMER, "firm_id": FIRM, "client_id": CLIENT, "is_active": True}])
+
+
 def _fake_db(insert_error):
     receipts = _RaisingReceiptsTable(insert_error)
+    customers = _CustomerTable()
 
     class _DB:
         def table(self, name):
             if name == "receipts":
                 return receipts
+            if name == "customers":
+                return customers
             return _EmptyTable()
 
     return _DB()
