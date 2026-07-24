@@ -352,6 +352,10 @@ def create_capital_gains(
     classification, indexed cost, and applicable tax rate are computed here,
     server-side, not trusted from the client.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    # task #238 audit finding: client_id was caller-supplied and never checked
+    # against the caller's firm, unlike this file's own save_advance_tax
+    # (task #230 fix) — the identical gap, missed on this sibling endpoint.
+    assert_client_access(current_user, req.client_id)
     db = _db()
     result = compute_capital_gains(
         req.asset_type, req.purchase_date, req.sale_date,

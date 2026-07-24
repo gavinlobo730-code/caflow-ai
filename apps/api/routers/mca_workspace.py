@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from core.validators import validate_cin, validate_din, validate_pan
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -126,6 +127,7 @@ def create_company(
 ):
     """Create or register company master record."""
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         cin = body.cin.strip().upper()
         err = validate_cin(cin)
@@ -216,6 +218,7 @@ def create_director(
 ):
     """Add director with DIN. Companies Act 2013 §165."""
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         din = body.din.strip()
         err = validate_din(din)
@@ -342,6 +345,7 @@ def create_filing(
     Event: DIR-12 (§165), INC-22, SH-7, CHG-1, CHG-4.
     """
     try:
+        assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         valid_forms = _ANNUAL_FORMS | _EVENT_FORMS
         if body.form_type not in valid_forms:
@@ -381,6 +385,8 @@ def create_filing(
         log_event(firm_id, "mca_filing", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
+    except HTTPException:
+        raise
     except Exception as e:
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
