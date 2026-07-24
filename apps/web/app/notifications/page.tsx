@@ -95,35 +95,38 @@ export default function NotificationsPage() {
 
   const markRead = async (id: string) => {
     try {
-      await apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+      const resp = await apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+      if (!resp.success) throw new Error(resp.error ?? "Failed to mark as read");
       setNotifications(prev =>
         prev.map(n => n.id === id ? { ...n, is_read: true } : n)
       );
       setUnreadCount(c => Math.max(0, c - 1));
-    } catch {
-      /* non-fatal */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to mark as read");
     }
   };
 
   const archiveOne = async (id: string) => {
     try {
-      await apiFetch(`/api/notifications/${id}/archive`, { method: "PATCH" });
+      const resp = await apiFetch(`/api/notifications/${id}/archive`, { method: "PATCH" });
+      if (!resp.success) throw new Error(resp.error ?? "Failed to archive");
       setNotifications(prev => prev.filter(n => n.id !== id));
       const wasUnread = notifications.find(n => n.id === id && !n.is_read);
       if (wasUnread) setUnreadCount(c => Math.max(0, c - 1));
-    } catch {
-      /* non-fatal */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to archive");
     }
   };
 
   const markAllRead = async () => {
     setMarkingAll(true);
     try {
-      await apiFetch("/api/notifications/read-all", { method: "PATCH" });
+      const resp = await apiFetch("/api/notifications/read-all", { method: "PATCH" });
+      if (!resp.success) throw new Error(resp.error ?? "Failed to mark all as read");
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
-    } catch {
-      /* non-fatal */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to mark all as read");
     } finally {
       setMarkingAll(false);
     }

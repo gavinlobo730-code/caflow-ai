@@ -154,18 +154,14 @@ function buildWhatsAppUrl(phone: string, message: string): string {
 // ---------------------------------------------------------------------------
 
 async function fetchClients(): Promise<Client[]> {
-  try {
-    const sb = getSupabaseClient();
-    const { data, error } = await sb
-      .from("clients")
-      .select("*")
-      .is("deleted_at", null)
-      .order("client_name");
-    if (error || !data) return [];
-    return data as Client[];
-  } catch {
-    return [];
-  }
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("clients")
+    .select("*")
+    .is("deleted_at", null)
+    .order("client_name");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Client[];
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +298,7 @@ export default function WhatsAppPage() {
   const [activeTab, setActiveTab] = useState<Tab>("compose");
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [clientsError, setClientsError] = useState<string | null>(null);
 
   // Compose tab state
   const [selectedTemplate, setSelectedTemplate] = useState<Template>(TEMPLATES[0]);
@@ -320,15 +317,25 @@ export default function WhatsAppPage() {
   // History tab state
   const [history, setHistory] = useState<MessageHistoryEntry[]>([]);
 
+  const loadClients = useCallback(() => {
+    setLoadingClients(true);
+    void fetchClients()
+      .then((data) => {
+        setClients(data);
+        setClientsError(null);
+      })
+      .catch((e) => {
+        setClients([]);
+        setClientsError(e instanceof Error ? e.message : "Couldn't load clients.");
+      })
+      .finally(() => setLoadingClients(false));
+  }, []);
+
   // Load clients + history
   useEffect(() => {
-    setLoadingClients(true);
-    void fetchClients().then((data) => {
-      setClients(data);
-      setLoadingClients(false);
-    });
+    loadClients();
     setHistory(loadHistory());
-  }, []);
+  }, [loadClients]);
 
   // Auto-fill client_name when client selected in compose tab
   useEffect(() => {
@@ -563,6 +570,11 @@ export default function WhatsAppPage() {
               </label>
               {loadingClients ? (
                 <div className="text-xs text-[#94A3B8] py-2">Loading clients…</div>
+              ) : clientsError ? (
+                <div className="text-xs text-red-600 py-2">
+                  {clientsError}{" "}
+                  <button onClick={loadClients} className="underline hover:no-underline">Retry</button>
+                </div>
               ) : (
                 <div className="w-full">
                   <ClientLookup
@@ -741,6 +753,11 @@ export default function WhatsAppPage() {
 
               {loadingClients ? (
                 <div className="text-xs text-[#94A3B8]">Loading clients…</div>
+              ) : clientsError ? (
+                <div className="text-xs text-red-600">
+                  {clientsError}{" "}
+                  <button onClick={loadClients} className="underline hover:no-underline">Retry</button>
+                </div>
               ) : clients.length === 0 ? (
                 <div className="text-xs text-[#94A3B8]">No clients found</div>
               ) : (

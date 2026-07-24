@@ -104,6 +104,7 @@ function ConfidenceBar({ value }: { value: number }) {
 function TriggersTab() {
   const [triggers, setTriggers] = useState<MemoryTrigger[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
   const load = async () => {
@@ -111,8 +112,10 @@ function TriggersTab() {
     try {
       const res = await api.memory.listTriggers({ status: "active" }) as { data: { triggers: MemoryTrigger[] } };
       setTriggers(res.data?.triggers ?? []);
-    } catch {
+      setLoadError(null);
+    } catch (e) {
       setTriggers([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load memory triggers.");
     } finally {
       setLoading(false);
     }
@@ -143,6 +146,14 @@ function TriggersTab() {
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <Loader2 size={24} className="animate-spin text-[#182350]" />
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+      <AlertTriangle size={40} className="text-red-400" />
+      <p className="font-medium text-red-600">{loadError}</p>
+      <button onClick={load} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Retry</button>
     </div>
   );
 
@@ -231,25 +242,39 @@ function ProfilesTab() {
   const [profiles, setProfiles] = useState<ClientProfile[]>([]);
   const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     (async () => {
       try {
         const res = await api.memory.listProfiles({ limit: String(PROFILES_FETCH_LIMIT) }) as { data: { profiles: ClientProfile[] } };
         const rows = res.data?.profiles ?? [];
         setProfiles(rows);
         setCapped(rows.length === PROFILES_FETCH_LIMIT);
-      } catch {
+        setLoadError(null);
+      } catch (e) {
         setProfiles([]);
+        setLoadError(e instanceof Error ? e.message : "Couldn't load client profiles.");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <Loader2 size={24} className="animate-spin text-[#182350]" />
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+      <AlertTriangle size={40} className="text-red-400" />
+      <p className="font-medium text-red-600">{loadError}</p>
+      <button onClick={load} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Retry</button>
     </div>
   );
 
@@ -344,6 +369,7 @@ function AnomaliesTab() {
   const [anomalies, setAnomalies] = useState<PatternAnomaly[]>([]);
   const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
   const load = async () => {
@@ -353,8 +379,10 @@ function AnomaliesTab() {
       const rows = res.data?.anomalies ?? [];
       setAnomalies(rows);
       setCapped(rows.length === ANOMALIES_FETCH_LIMIT);
-    } catch {
+      setLoadError(null);
+    } catch (e) {
       setAnomalies([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load anomalies.");
     } finally {
       setLoading(false);
     }
@@ -375,6 +403,14 @@ function AnomaliesTab() {
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <Loader2 size={24} className="animate-spin text-[#182350]" />
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+      <AlertTriangle size={40} className="text-red-400" />
+      <p className="font-medium text-red-600">{loadError}</p>
+      <button onClick={load} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Retry</button>
     </div>
   );
 

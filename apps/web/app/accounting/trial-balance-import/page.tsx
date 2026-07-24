@@ -123,8 +123,8 @@ export default function TrialBalanceImportPage() {
 
       setImportResult({ success, errors });
       setStep(4);
-    } catch {
-      setErr("Error during import. Please try again.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error during import. Please try again.");
     }
     setImporting(false);
   }

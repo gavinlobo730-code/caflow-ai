@@ -87,6 +87,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [pinning, setPinning] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false, resetPage = true) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -101,9 +102,16 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       offset,
     });
 
-    const data = result.data;
-    setHasMore(data.length > PAGE_SIZE);
-    setEvents(data.slice(0, PAGE_SIZE));
+    if (!result.success) {
+      setLoadError(result.error ?? "Couldn't load timeline events.");
+      setEvents([]);
+      setHasMore(false);
+    } else {
+      const data = result.data;
+      setLoadError(null);
+      setHasMore(data.length > PAGE_SIZE);
+      setEvents(data.slice(0, PAGE_SIZE));
+    }
     setLoading(false);
     setRefreshing(false);
   }, [clientId, financialYear, catFilter, page]);
@@ -199,7 +207,22 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         </button>
       </div>
 
-      {filtered.length === 0 && (
+      {loadError && (
+        <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
+          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+            <Shield size={18} className="text-red-400" />
+          </div>
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button
+            onClick={() => load(false, true)}
+            className="text-[11px] text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-blue-300"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loadError && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
           <div className="w-10 h-10 rounded-full bg-[#F1F5F9] flex items-center justify-center">
             <Shield size={18} className="text-[#94A3B8]" />

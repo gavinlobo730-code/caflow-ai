@@ -150,6 +150,7 @@ export default function BrandingPage() {
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
   const firmName = "";
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -165,8 +166,11 @@ export default function BrandingPage() {
       if (res.success && res.data.branding && Object.keys(res.data.branding).length > 0) {
         setBranding({ ...DEFAULT_BRANDING, ...res.data.branding });
       }
-    } catch {
-      showToast("Failed to load branding settings", "error");
+      setLoadError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load branding settings";
+      showToast(msg, "error");
+      setLoadError(msg);
     } finally {
       setLoading(false);
     }
@@ -229,6 +233,17 @@ export default function BrandingPage() {
           <h1 className="text-xl font-semibold text-[#0F172A]">Firm Branding</h1>
           <p className="text-sm text-[#64748B] mt-0.5">Customize your firm&apos;s visual identity across all documents and client communications.</p>
         </div>
+
+        {loadError && !loading && (
+          <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-red-700">
+              Couldn&apos;t load your saved branding — showing defaults. {loadError}
+            </p>
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+              Retry
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* ── Left: Settings ───────────────────────────────────────────── */}

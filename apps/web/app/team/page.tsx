@@ -715,9 +715,14 @@ export default function TeamPage() {
 
   async function handleDeactivate(member: TeamMember) {
     const reactivating = member.is_active === false;
-    if (reactivating) await api.identity.reactivate(member.id);
-    else await api.identity.suspend(member.id);   // also revokes the user's sessions
-    setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: reactivating } : m));
+    try {
+      if (reactivating) await api.identity.reactivate(member.id);
+      else await api.identity.suspend(member.id);   // also revokes the user's sessions
+      setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: reactivating } : m));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Failed to ${reactivating ? "reactivate" : "deactivate"} team member`);
+    }
   }
 
   // Summary counts
