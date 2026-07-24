@@ -528,7 +528,8 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
 
     bulk_cache (bulk import only — see bulk_create_invoices, which pre-fetches
     it once per request instead of once per invoice):
-      "customer": this invoice's customer row (already resolved by the caller)
+      "customer": this invoice's customer row (already resolved by the caller,
+        scoped to BOTH firm_id and this invoice's own client_id)
       "client_rec": the selling client's row (shared across the whole batch)
       "existing_invoice_nos": mutable set of invoice_nos already taken for
         this client — checked and updated here instead of a per-invoice query,
@@ -560,12 +561,17 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             customer = bulk_cache["customer"]
             client_rec = bulk_cache["client_rec"]
         else:
-            # Fetch customer state code (firm-scoped — never read another firm's master)
+            # Fetch customer state code (firm- AND client-scoped -- never read
+            # another firm's master, and never silently pull in a customer
+            # belonging to a DIFFERENT client of the same firm, which would
+            # invoice this client using another client's customer's
+            # state_code/gstin/credit_days).
             cust_resp = (
                 db.table("customers")
                 .select("state_code, gstin, credit_days, is_active")
                 .eq("id", data["customer_id"])
                 .eq("firm_id", firm_id)
+                .eq("client_id", client_id)
                 .limit(1)
                 .execute()
             )
@@ -580,8 +586,10 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
                 .execute()
             )
             client_rec = client_resp.data[0] if client_resp.data else {}
+        if not customer:
+            raise HTTPException(status_code=422, detail="Customer not found for this client.")
         # Business guard: never raise an invoice against a deactivated customer.
-        if customer and customer.get("is_active") is False:
+        if customer.get("is_active") is False:
             raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
         client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
 
@@ -687,6 +695,8 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     total_sgst_paise    = base_sgst
     total_igst_paise    = base_igst
     total_paise         = base_total + round_off_paise
+    if total_paise <= 0:
+        raise HTTPException(status_code=422, detail="Invoice total must be positive.")
 
     # Currency columns written to the invoice (INR identity leaves them inert).
     _ccy_cols = {
@@ -909,10 +919,14 @@ def bulk_create_invoices(
         CHUNK = 200  # stay well under any PostgREST IN-list/URL-length limit
         for i in range(0, len(customer_ids), CHUNK):
             chunk = customer_ids[i:i + CHUNK]
-            resp = (db.table("customers").select("id, state_code, gstin, credit_days, is_active")
-                    .eq("firm_id", firm_id).in_("id", chunk).execute())
+            # Scoped by client_id (not just firm_id) so a batch row can never
+            # resolve a customer belonging to a DIFFERENT client of the same
+            # firm — keyed by (client_id, customer_id), the same compound key
+            # _create_invoice_core now requires for the single-invoice path.
+            resp = (db.table("customers").select("id, client_id, state_code, gstin, credit_days, is_active")
+                    .eq("firm_id", firm_id).in_("id", chunk).in_("client_id", client_ids).execute())
             for r in (resp.data or []):
-                customers_by_id[r["id"]] = r
+                customers_by_id[(r["client_id"], r["id"])] = r
         for i in range(0, len(client_ids), CHUNK):
             chunk = client_ids[i:i + CHUNK]
             resp = db.table("clients").select("id, gstin").eq("firm_id", firm_id).in_("id", chunk).execute()
@@ -939,7 +953,7 @@ def bulk_create_invoices(
     for i, invoice_no, data in parsed:
         try:
             bulk_cache = {
-                "customer": customers_by_id.get(data.customer_id, {}),
+                "customer": customers_by_id.get((data.client_id, data.customer_id), {}),
                 "client_rec": clients_by_id.get(data.client_id, {}),
                 "existing_invoice_nos": existing_invoice_nos_by_client.setdefault(data.client_id, set()),
                 "locked_fy_cache": locked_fy_cache,

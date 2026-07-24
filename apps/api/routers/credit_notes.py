@@ -223,6 +223,7 @@ def create_credit_note(
                     db.table("client_sales_invoices")
                     .select("is_interstate")
                     .eq("id", data["sales_invoice_id"])
+                    .eq("firm_id", firm_id)
                     .limit(1)
                     .execute()
                 )
@@ -232,6 +233,8 @@ def create_credit_note(
         # Compute lines (shared with the PATCH endpoint — see _compute_lines)
         computed_lines, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
+        if total_paise <= 0:
+            raise HTTPException(status_code=422, detail="Credit note total must be positive.")
 
         # Validate posting date is not in a locked financial year (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
