@@ -2,7 +2,7 @@
 Payroll router — Employee master, salary structures, payroll runs, statutory, reports.
 
 IT Act §192: TDS on salary (monthly deduction, annual projected basis).
-PF Act: Employer PF = 12% of basic (up to ₹15,000 basic ceiling → ₹1,800 max employer contribution).
+EPF Act §6: Employer PF = 12% of (Basic + DA), capped at a ₹15,000 wage ceiling → ₹1,800 max employer contribution.
 ESI Act: Employee ESI = 0.75% of gross; Employer ESI = 3.25% of gross (applicable when gross ≤ ₹21,000/month).
 PT: State-specific professional tax slab, keyed on the employee's pt_state; an
     unset/unrecognised state withholds nothing (no silent single-state default).
@@ -171,14 +171,21 @@ def _compute_pt(gross_paise: int, state: Optional[str] = None,
     return _slab_lookup(_PT_SLABS_BY_STATE.get(code, ()), gross_paise)
 
 
-def _compute_pf(basic_paise: int) -> dict:
+def _compute_pf(pf_wages_paise: int) -> dict:
     """
-    PF computation per EPF Act.
-    Employee contribution: 12% of basic (capped at ₹15,000 basic → max ₹1,800).
-    Employer contribution: 12% of basic (same cap).
+    PF computation per EPF Act 1952 Section 6: contribution is 12% of "basic
+    wages, dearness allowance and retaining allowance (if any)" — the ₹15,000
+    statutory wage ceiling applies to that same Basic+DA base, not Basic
+    alone. task #229: the caller previously passed basic_paise only, silently
+    under-computing (and under-posting to the GL) both the employee and
+    employer contribution for any employee with a nonzero da_percent. No
+    retaining allowance is modelled by this payroll module (not a component
+    of the employee master), so pf_wages_paise is Basic + DA here.
+    Employee contribution: 12% of PF wages (capped at ₹15,000 → max ₹1,800).
+    Employer contribution: 12% of PF wages (same cap).
     """
-    # Cap basic at ₹15,000 for PF computation
-    capped = min(basic_paise, 1500000)
+    # Cap PF wages at ₹15,000 for PF computation
+    capped = min(pf_wages_paise, 1500000)
     employee = math.floor(capped * 12 / 100)
     employer = math.floor(capped * 12 / 100)
     return {"employee": employee, "employer": employer}
@@ -228,7 +235,8 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     other     = math.floor(emp.get("other_allowances_paise", 0) * lop_factor)
     gross     = basic + hra + da + lta + medical + special + other
 
-    pf   = _compute_pf(basic) if emp.get("pf_applicable") else {"employee": 0, "employer": 0}
+    # EPF Act §6: PF wages = Basic + DA (task #229 — basic alone under-computed PF).
+    pf   = _compute_pf(basic + da) if emp.get("pf_applicable") else {"employee": 0, "employer": 0}
     esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
     pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender")) if emp.get("pt_applicable") else 0
 
@@ -464,13 +472,25 @@ def create_run(
     if existing.data:
         raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
 
-    # Create run record
-    run_res = db.table("payroll_runs").insert({
-        "firm_id":   current_user["firm_id"],
-        "client_id": client_id,
-        "month":     month,
-        "status":    "draft",
-    }).execute()
+    # task #229 audit finding: the SELECT above is a check-then-act race with
+    # no backing DB constraint until migration 237 — two concurrent requests
+    # for the same (firm, client, month) could both pass it and both insert a
+    # run row. The UNIQUE index (migration 237) is the authoritative backstop
+    # for the race this SELECT can't close; translate a concurrent collision
+    # into the same friendly 409 instead of a raw 500, mirroring
+    # routers/sales_invoices.py's identical duplicate-number guard.
+    from services.numbering import is_unique_violation
+    try:
+        run_res = db.table("payroll_runs").insert({
+            "firm_id":   current_user["firm_id"],
+            "client_id": client_id,
+            "month":     month,
+            "status":    "draft",
+        }).execute()
+    except Exception as e:
+        if is_unique_violation(e):
+            raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
+        raise
     run = (run_res.data or [{}])[0]
     run_id = run["id"]
 

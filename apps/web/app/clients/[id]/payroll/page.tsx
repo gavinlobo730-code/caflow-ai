@@ -224,6 +224,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
   const [aadhaarError, setAadhaarError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // M17: distinguish a failed roster fetch from a client with no employees.
   const [loadFailed, setLoadFailed] = useState(false);
@@ -266,8 +267,9 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
       return;
     }
     setAadhaarError(null);
+    setSaveError(null);
     setSaving(true);
-    await apiFetch("/api/payroll/employees", {
+    const res = await apiFetch("/api/payroll/employees", {
       method: "POST",
       body: JSON.stringify({
         client_id: clientId,
@@ -277,11 +279,19 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
         basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
         hra_percent: parseFloat(form.hra_percent),
       }),
-    }).catch(() => null);
+    }).catch(() => null) as { success?: boolean; error?: string | null } | null;
+    setSaving(false);
+    // task #229: this previously discarded the response and unconditionally
+    // closed the modal + reset the form — a rejected employee (RBAC, bad PAN,
+    // internal-client guardrail) looked identical to a successful add, and
+    // the employee was silently absent from every subsequent payroll run.
+    if (!res || res.success === false) {
+      setSaveError(res?.error ?? "Could not add employee — the request failed.");
+      return;
+    }
     await load();
     setShowAdd(false);
     setForm({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
-    setSaving(false);
   }
 
   if (loading) return <div className="p-6 space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-[#F1F5F9] rounded-lg animate-pulse" />)}</div>;
@@ -345,6 +355,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
               </label>
             ))}
           </div>
+          {saveError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>}
           <div className="flex gap-2">
             <button onClick={addEmployee} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
               {saving ? "Saving…" : "Add Employee"}
@@ -398,6 +409,8 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   // an empty slip table — both look identical to genuinely having no data.
   const [loadFailed, setLoadFailed] = useState(false);
   const [slipsFailed, setSlipsFailed] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -416,16 +429,34 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
 
   async function createRun() {
     setCreating(true);
-    await apiFetch("/api/payroll/runs", { method: "POST", body: JSON.stringify({ client_id: clientId, firm_id: firmId, month }) }).catch(() => null);
-    await load();
+    setCreateError(null);
+    const res = await apiFetch("/api/payroll/runs", { method: "POST", body: JSON.stringify({ client_id: clientId, firm_id: firmId, month }) })
+      .catch(() => null) as { success?: boolean; error?: string | null } | null;
     setCreating(false);
+    // task #229: previously discarded — a duplicate-run 409 or RBAC/guardrail
+    // rejection produced silent no-op with zero explanation of why nothing
+    // happened.
+    if (!res || res.success === false) {
+      setCreateError(res?.error ?? "Could not create the payroll run — the request failed.");
+      return;
+    }
+    await load();
   }
 
   async function finalizeRun(runId: string) {
     setFinalizing(runId);
-    await apiFetch(`/api/payroll/runs/${runId}/finalize`, { method: "POST", body: JSON.stringify({}) }).catch(() => null);
-    await load();
+    setFinalizeError(null);
+    const res = await apiFetch(`/api/payroll/runs/${runId}/finalize`, { method: "POST", body: JSON.stringify({}) })
+      .catch(() => null) as { success?: boolean; error?: string | null } | null;
     setFinalizing(null);
+    // task #229: finalize posts a real, immutable GL journal — a silently
+    // discarded failure (empty run, journal-posting error, already
+    // finalized) left the CA with no idea the run was still a draft.
+    if (!res || res.success === false) {
+      setFinalizeError(res?.error ?? "Could not finalize the payroll run — the request failed.");
+      return;
+    }
+    await load();
   }
 
   async function fetchSlips(runId: string) {
@@ -460,7 +491,10 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
             <Play size={12} /> {creating ? "Computing…" : "Compute & Draft"}
           </button>
         </div>
+        {createError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mt-3">{createError}</p>}
       </div>
+
+      {finalizeError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{finalizeError}</p>}
 
       <div className="space-y-2">
         {loadFailed ? (
@@ -718,6 +752,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", basic_percent: "40", hra_percent: "20", pf_applicable: true, esi_applicable: true });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   // M17: distinguish a failed fetch from a client with no salary structures.
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -734,13 +769,20 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
 
   async function addStructure() {
     setSaving(true);
-    await apiFetch("/api/payroll/salary-structures", {
+    setSaveError(null);
+    const res = await apiFetch("/api/payroll/salary-structures", {
       method: "POST",
       body: JSON.stringify({ client_id: clientId, firm_id: firmId, ...form, basic_percent: parseFloat(form.basic_percent), hra_percent: parseFloat(form.hra_percent) }),
-    }).catch(() => null);
+    }).catch(() => null) as { success?: boolean; error?: string | null } | null;
+    setSaving(false);
+    // task #229: previously discarded — a rejected structure looked identical
+    // to a saved one, and the modal closed as if it had worked.
+    if (!res || res.success === false) {
+      setSaveError(res?.error ?? "Could not save the salary structure — the request failed.");
+      return;
+    }
     await load();
     setShowAdd(false);
-    setSaving(false);
   }
 
   if (loading) return <div className="p-6"><div className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" /></div>;
@@ -777,6 +819,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
               </label>
             ))}
           </div>
+          {saveError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>}
           <div className="flex gap-2">
             <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
             <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-[12px] text-[#64748B] border border-[#E2E8F0] rounded-lg">Cancel</button>
