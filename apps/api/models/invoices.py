@@ -55,6 +55,13 @@ class InvoiceLineIn(BaseModel):
     # line as a stock movement for a specific product (migrations 184/188/189).
     service_catalogue_id: Optional[str] = None
 
+    @field_validator("quantity")
+    @classmethod
+    def quantity_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("quantity must be positive.")
+        return v
+
     @field_validator("rate_paise")
     @classmethod
     def non_negative(cls, v: int) -> int:
@@ -197,6 +204,13 @@ class PurchaseBillLineIn(BaseModel):
     # Pure traceability like InvoiceLineIn's own field: never read by any
     # GST/journal computation, only by the inventory costing engine.
     service_catalogue_id: Optional[str] = None
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("quantity must be positive.")
+        return v
 
     @field_validator("rate_paise")
     @classmethod

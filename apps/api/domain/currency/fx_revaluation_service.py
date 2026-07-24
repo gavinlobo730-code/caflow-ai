@@ -67,7 +67,7 @@ def _next_day(period_end: str) -> str:
 class FXRevaluationService:
     def _open_receivables(self, db, firm_id, client_id, period_end):
         rows = _paginate_all(lambda: db.table("client_sales_invoices")
-                             .select("id, txn_currency, exchange_rate, total_paise, paid_paise, credited_paise, txn_total, paid_txn, status, invoice_date")
+                             .select("id, txn_currency, exchange_rate, total_paise, paid_paise, credited_paise, debit_note_paise, txn_total, paid_txn, status, invoice_date")
                              .eq("firm_id", firm_id).eq("client_id", client_id))
         out = []
         for r in rows:
@@ -77,7 +77,10 @@ class FXRevaluationService:
                 continue
             if str(r.get("invoice_date") or "")[:10] > str(period_end)[:10]:
                 continue
-            base_out = int(r["total_paise"]) - int(r.get("paid_paise") or 0) - int(r.get("credited_paise") or 0)
+            # Net receivable = (total + debit notes) − paid − credit notes (CGST Act
+            # §34), matching sales_invoices.get_outstanding / customer_statement_service.
+            base_out = (int(r["total_paise"]) + int(r.get("debit_note_paise") or 0)
+                        - int(r.get("paid_paise") or 0) - int(r.get("credited_paise") or 0))
             foreign_out = int(r.get("txn_total") or 0) - int(r.get("paid_txn") or 0)
             if foreign_out > 0:
                 out.append(((r.get("txn_currency") or "").upper(), foreign_out, base_out))
@@ -85,7 +88,7 @@ class FXRevaluationService:
 
     def _open_payables(self, db, firm_id, client_id, period_end):
         rows = _paginate_all(lambda: db.table("purchase_bills")
-                             .select("id, txn_currency, exchange_rate, net_payable_paise, paid_paise, debited_paise, txn_net_payable, paid_txn, status, bill_date")
+                             .select("id, txn_currency, exchange_rate, net_payable_paise, paid_paise, debited_paise, credit_note_paise, txn_net_payable, paid_txn, status, bill_date")
                              .eq("firm_id", firm_id).eq("client_id", client_id))
         out = []
         for r in rows:
@@ -95,7 +98,10 @@ class FXRevaluationService:
                 continue
             if str(r.get("bill_date") or "")[:10] > str(period_end)[:10]:
                 continue
-            base_out = int(r.get("net_payable_paise") or 0) - int(r.get("paid_paise") or 0) - int(r.get("debited_paise") or 0)
+            # Net payable = (net_payable + credit notes) − paid − debited (CGST Act
+            # §34), matching purchase_credit_notes.py / vendor_statement_service.ap_aging.
+            base_out = (int(r.get("net_payable_paise") or 0) + int(r.get("credit_note_paise") or 0)
+                        - int(r.get("paid_paise") or 0) - int(r.get("debited_paise") or 0))
             foreign_out = int(r.get("txn_net_payable") or 0) - int(r.get("paid_txn") or 0)
             if foreign_out > 0:
                 out.append(((r.get("txn_currency") or "").upper(), foreign_out, base_out))

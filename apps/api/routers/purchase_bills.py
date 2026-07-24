@@ -382,8 +382,13 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             if not vendor:
                 raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
         else:
-            # Fetch vendor for TDS info and state code (firm-scoped — tenant isolation)
-            v_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
+            # Fetch vendor for TDS info and state code (firm- AND client-scoped
+            # — never resolve a vendor belonging to a DIFFERENT client of the
+            # same firm, which would book this client's bill using another
+            # client's vendor's TDS section/PAN/state_code).
+            v_resp = (db.table("vendors").select("*")
+                      .eq("id", vendor_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                      .limit(1).execute())
             if not v_resp.data:
                 raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
             vendor = v_resp.data[0]
@@ -436,6 +441,8 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     total_sgst        = computed["sgst_paise"]
     total_igst        = computed["igst_paise"]
     total_paise       = computed["total_paise"]
+    if total_paise <= 0:
+        raise HTTPException(status_code=422, detail="Purchase bill total must be positive.")
     total_gst_paise   = computed["total_gst_paise"]
     tds_paise         = computed["tds_paise"]
     tds_rate_bps      = computed["tds_rate_bps"]
@@ -667,9 +674,14 @@ def bulk_create_purchase_bills(
         CHUNK = 200  # stay well under any PostgREST IN-list/URL-length limit
         for i in range(0, len(vendor_ids), CHUNK):
             chunk = vendor_ids[i:i + CHUNK]
-            resp = db.table("vendors").select("*").eq("firm_id", firm_id).in_("id", chunk).execute()
+            # Scoped by client_id (not just firm_id) so a batch row can never
+            # resolve a vendor belonging to a DIFFERENT client of the same
+            # firm — keyed by (client_id, vendor_id), the same compound key
+            # _create_purchase_bill_core now requires for the single-bill path.
+            resp = (db.table("vendors").select("*")
+                    .eq("firm_id", firm_id).in_("id", chunk).in_("client_id", client_ids).execute())
             for r in (resp.data or []):
-                vendors_by_id[r["id"]] = r
+                vendors_by_id[(r["client_id"], r["id"])] = r
         for i in range(0, len(client_ids), CHUNK):
             chunk = client_ids[i:i + CHUNK]
             resp = db.table("clients").select("id, gstin").eq("firm_id", firm_id).in_("id", chunk).execute()
@@ -686,7 +698,7 @@ def bulk_create_purchase_bills(
             bulk_cache = None
             if not _USE_MOCK:
                 bulk_cache = {
-                    "vendor": vendors_by_id.get(data.vendor_id),
+                    "vendor": vendors_by_id.get((data.client_id, data.vendor_id)),
                     "client_gstin": client_gstin_by_id.get(data.client_id),
                     "locked_fy_cache": locked_fy_cache,
                 }
@@ -1028,7 +1040,9 @@ def update_purchase_bill(
             lines_data = data.pop("lines")
             if not lines_data:
                 raise HTTPException(status_code=422, detail="At least one line item is required")
-            v_resp = db.table("vendors").select("*").eq("id", bill_row.get("vendor_id")).eq("firm_id", firm_id).limit(1).execute()
+            v_resp = (db.table("vendors").select("*")
+                      .eq("id", bill_row.get("vendor_id")).eq("firm_id", firm_id)
+                      .eq("client_id", bill_row.get("client_id")).limit(1).execute())
             if not v_resp.data:
                 raise HTTPException(status_code=404, detail="Vendor not found")
             vendor = v_resp.data[0]
@@ -1460,7 +1474,10 @@ def create_bill_from_document(
                     "cgst_paise":           0,
                     "sgst_paise":           0,
                     "igst_paise":           0,
-                    "line_total_paise":     int(ln.get("rate_paise", 0)),
+                    # GST components are 0 above (draft, pending CA review), so the
+                    # line total is the taxable amount — NOT rate_paise alone, which
+                    # ignores quantity (previously understated multi-quantity lines).
+                    "line_total_paise":     int(ln.get("taxable_amount_paise", 0)),
                     # AI extraction has no product-catalogue awareness — the CA
                     # links a Product/Service later via the draft's line editor.
                 }

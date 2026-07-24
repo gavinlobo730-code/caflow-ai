@@ -397,11 +397,13 @@ def create_purchase_payment(
         net_payable_paise = 0
         if purchase_bill_id:
             _bill = (db.table("purchase_bills")
-                     .select("id, status, net_payable_paise")
+                     .select("id, status, net_payable_paise, vendor_id")
                      .eq("id", purchase_bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                      .limit(1).execute().data) or []
             if not _bill:
                 raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
+            if _bill[0].get("vendor_id") != vendor_id:
+                raise HTTPException(status_code=422, detail="This bill does not belong to the specified vendor.")
             # M6: never pay a cancelled bill, and never overpay one (payables can't go
             # negative). Outstanding = net_payable − already-paid.
             if (_bill[0].get("status") or "") == "cancelled":
@@ -580,10 +582,12 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
         raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
 
     bill = (db.table("purchase_bills")
-            .select("id, txn_currency, exchange_rate, net_payable_paise, paid_paise, paid_txn, debited_paise, txn_net_payable, status")
+            .select("id, txn_currency, exchange_rate, net_payable_paise, paid_paise, paid_txn, debited_paise, txn_net_payable, status, vendor_id")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
     if not bill:
         raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
+    if bill.get("vendor_id") != vendor_id:
+        raise HTTPException(status_code=422, detail="This bill does not belong to the specified vendor.")
     if (bill.get("status") or "") == "cancelled":
         raise HTTPException(status_code=409, detail="This bill is cancelled and cannot be paid.")
     # task #227 audit finding: a draft bill was never received (no AP journal

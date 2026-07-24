@@ -440,7 +440,8 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                         detail=f"Debit note (₹{dn_total/100:,.2f}) exceeds the bill's outstanding "
                                f"(₹{outstanding/100:,.2f}).")
                 new_debited = debited + dn_total
-                new_status = "paid" if (paid + new_debited) >= effective_payable else bill.get("status")
+                settled = paid + new_debited
+                new_status = "paid" if settled >= effective_payable else ("partially_paid" if settled > 0 else bill.get("status"))
                 upd = (db.table("purchase_bills").update({"debited_paise": new_debited, "status": new_status})
                        .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                        .eq("debited_paise", raw_debited).execute())
