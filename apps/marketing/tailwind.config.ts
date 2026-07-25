@@ -43,7 +43,10 @@ const config: Config = {
         manrope: ["var(--font-manrope)", "sans-serif"],
       },
       maxWidth: {
-        content: "1200px",
+        // Matches the homepage reference's panel content width exactly
+        // (public/practicesync-homepage.html uses max-width:1100px on every
+        // panel's inner content, dark and light alike — not 1200px).
+        content: "1100px",
       },
     },
   },

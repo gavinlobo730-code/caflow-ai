@@ -41,7 +41,7 @@ export function SiteHeader() {
           <Magnetic max={10}>
             <a
               href={appLinks.signup}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#4f71cc] px-[18px] py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#4463bd]"
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#5876c7] px-[18px] py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#4d68af]"
             >
               Start free trial
               <ArrowRight size={14} />
@@ -85,7 +85,7 @@ export function SiteHeader() {
               </Link>
               <a
                 href={appLinks.signup}
-                className="rounded-lg bg-[#4f71cc] px-4 py-2.5 text-center text-[15px] font-semibold text-white"
+                className="rounded-lg bg-[#5876c7] px-4 py-2.5 text-center text-[15px] font-semibold text-white"
               >
                 Start free trial
               </a>
