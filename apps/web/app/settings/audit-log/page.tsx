@@ -7,6 +7,7 @@ import { api, type AuditEntry } from "@/lib/api";
 import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 // The audit_log table stores backend vocabulary: entity_type is snake_case
@@ -349,7 +350,15 @@ function AuditLogContent() {
         </div>
 
         {loading && (
-          <div className="px-5 py-12 text-center text-sm text-[#94A3B8] animate-pulse">Loading audit log…</div>
+          <div className="divide-y divide-[#F8FAFC]">
+            {Array.from({ length: 6 }).map((_, r) => (
+              <div key={r} className="grid grid-cols-12 gap-2 px-5 py-3 items-center">
+                {Array.from({ length: 6 }).map((_, c) => (
+                  <Skeleton key={c} className="col-span-2 h-3 w-3/4" />
+                ))}
+              </div>
+            ))}
+          </div>
         )}
         {!loading && error && (
           <div className="px-5 py-8 text-center space-y-3">

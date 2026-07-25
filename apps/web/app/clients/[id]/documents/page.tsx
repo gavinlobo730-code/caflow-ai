@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Upload, Download, Trash2, FolderOpen, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -196,7 +197,7 @@ export default function DocumentsPage() {
       </div>
 
       {loading ? (
-        <div className="h-32 animate-pulse bg-[#F8FAFC] rounded-xl" />
+        <TableSkeleton cols={5} rows={5} />
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>

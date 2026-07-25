@@ -14,6 +14,7 @@ import {
   Download,
 } from "lucide-react";
 import { yearEndApi, type YearEndEngagement, type EngagementStatus } from "@/lib/api/yearEnd";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ── Nav config ─────────────────────────────────────────────────────────────
 
@@ -109,7 +110,11 @@ export default function YearEndWorkspaceLayout({ children }: { children: React.R
               )}
             </>
           ) : (
-            <div className="h-4 w-48 animate-pulse rounded bg-slate-100" />
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-3.5 w-16" />
+              <Skeleton className="h-4 w-14 rounded" />
+              <Skeleton className="h-4 w-16 rounded" />
+            </div>
           )}
         </header>
 

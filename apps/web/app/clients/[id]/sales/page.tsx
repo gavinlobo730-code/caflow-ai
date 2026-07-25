@@ -12,6 +12,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
+import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
@@ -160,12 +161,10 @@ function LoadingSkeleton() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 px-6 pt-5 pb-0">
-        <div className="h-8 w-96 bg-[#F8FAFC] rounded-lg animate-pulse" />
+        <Skeleton className="h-8 w-96 rounded-lg" />
       </div>
-      <div className="flex-1 px-6 pb-6 pt-4 space-y-3">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-12 rounded-lg bg-[#F8FAFC] animate-pulse" />
-        ))}
+      <div className="flex-1 px-6 pb-6 pt-4">
+        <TableSkeleton cols={6} rows={5} />
       </div>
     </div>
   );
@@ -440,7 +439,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}</div>
+        <TableSkeleton cols={8} rows={3} />
       ) : templates.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
           <Clock size={32} className="text-gray-200 mx-auto mb-3" />
@@ -804,7 +803,7 @@ function RecurringHistoryDrawer({
         <p className="text-[11px] text-[#94A3B8] mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
 
         {loading ? (
-          <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-9 rounded bg-[#F8FAFC] animate-pulse" />)}</div>
+          <TransactionListSkeleton rows={3} />
         ) : (
           <div className="space-y-5">
             {template.status === "active" && (
@@ -2042,7 +2041,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         {/* Links */}
         <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide mb-2">Payment Links</p>
         {!hist ? (
-          <div className="h-10 rounded bg-[#F8FAFC] animate-pulse" />
+          <TransactionListSkeleton rows={2} />
         ) : hist.links.length === 0 ? (
           <p className="text-xs text-[#94A3B8] mb-4">No payment links yet. Generate one above.</p>
         ) : (

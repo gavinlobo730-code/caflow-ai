@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
@@ -169,10 +170,27 @@ export default function EntityDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-5 bg-white/[0.08] rounded w-24" />
-        <div className="h-32 bg-white/[0.05] rounded-xl" />
-        <div className="h-64 bg-white/[0.05] rounded-xl" />
+      <div className="p-6 space-y-5">
+        <Skeleton className="h-3 w-32 bg-gray-700" />
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-56 bg-gray-700" />
+          <Skeleton className="h-3 w-24 bg-gray-700" />
+        </div>
+        <div className="flex gap-4 border-b border-gray-700 pb-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-3 w-20 bg-gray-700" />
+          ))}
+        </div>
+        <div className="rounded-lg border border-gray-700 bg-gray-800 p-5">
+          <div className="grid grid-cols-2 gap-4">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-2.5 w-16 bg-gray-700" />
+                <Skeleton className="h-3 w-28 bg-gray-700" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

@@ -12,6 +12,7 @@ import {
   type TimelineEvent, type EventCategory,
 } from "@/lib/services/timeline";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { TimelineSkeleton } from "@/components/ui/skeleton";
 
 const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
   accounting:  BookOpen,
@@ -153,9 +154,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
   if (loading) {
     return (
       <div className="space-y-2">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-14 rounded-lg bg-[#F1F5F9] animate-pulse" />
-        ))}
+        <TimelineSkeleton rows={4} />
       </div>
     );
   }

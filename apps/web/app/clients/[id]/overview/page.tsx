@@ -15,6 +15,7 @@ import type { Task } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
 export default function OverviewPage() {
   const { clientId, financialYear } = useClientNav();
@@ -326,14 +327,28 @@ function OverviewSkeleton() {
       <div className="flex-1 p-5 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-[#F8FAFC] animate-pulse" />
+            <MetricCardSkeleton key={i} />
           ))}
         </div>
-        <div className="h-64 rounded-xl bg-[#F8FAFC] animate-pulse" />
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+          <Skeleton className="h-3 w-32 mb-3" />
+          <TimelineSkeleton rows={4} />
+        </div>
       </div>
       <div className="w-[240px] p-4 space-y-4 hidden lg:block">
-        <div className="h-32 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        <div className="h-48 rounded-xl bg-[#F8FAFC] animate-pulse" />
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+          <Skeleton className="h-2.5 w-24" />
+          <Skeleton className="h-5 w-14" />
+          <div className="space-y-1.5 mt-1">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-2 w-full" />
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+          <Skeleton className="h-2.5 w-16" />
+          <SkeletonText lines={4} />
+        </div>
       </div>
     </div>
   );

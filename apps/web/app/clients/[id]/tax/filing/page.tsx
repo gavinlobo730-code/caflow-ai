@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { TransactionListSkeleton } from "@/components/ui/skeleton";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -247,9 +248,7 @@ export default function ITRFilingPage() {
 
       {/* Filing List */}
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => (
-          <div key={i} className="h-16 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        ))}</div>
+        <TransactionListSkeleton rows={3} />
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 text-center py-16 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>

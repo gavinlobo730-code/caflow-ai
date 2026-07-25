@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { FileText, BarChart3, Package, Download, Loader2, AlertTriangle } from "lucide-react";
 import { yearEndApi, type ExportRecord, type EngagementStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { CardGridSkeleton } from "@/components/ui/skeleton";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -140,11 +141,7 @@ export default function ExportsPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-4xl">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-36 rounded-xl bg-[#F8FAFC] animate-pulse" />
-          ))}
-        </div>
+        <CardGridSkeleton count={3} className="grid-cols-1 sm:grid-cols-3" />
       </div>
     );
   }

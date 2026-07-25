@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";
 import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } from "@/lib/api/yearEnd";
+import { Skeleton, FormSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -85,10 +86,23 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-2xl">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-20 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        ))}
+      <div className="p-6 space-y-5 max-w-2xl">
+        {/* Three-step timeline placeholder */}
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">
+          <Skeleton className="h-3 w-32 mb-4" />
+          <div className="flex items-start gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-2.5 w-16" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Action panel placeholder */}
+        <FormSkeleton fields={1} className="bg-white rounded-xl border border-[#F1F5F9] p-5" />
+        {/* Review history placeholder */}
+        <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-[#F1F5F9] p-5" />
       </div>
     );
   }

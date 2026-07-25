@@ -13,6 +13,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { CardGridSkeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/lib/types";
 
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
@@ -319,13 +320,7 @@ export default function ClientDocumentsPage() {
 
       <p className="text-xs text-[#94A3B8]">{CATEGORY_DESC[activeCategory]}</p>
 
-      {loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-[#E2E8F0] p-4 animate-pulse h-32" />
-          ))}
-        </div>
-      )}
+      {loading && <CardGridSkeleton count={3} />}
 
       {!loading && categoryDocs.length === 0 && (
         <div className="text-center py-12 text-[#94A3B8]">
