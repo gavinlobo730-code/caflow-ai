@@ -25,7 +25,13 @@ html {
 }
 
 body {
-  background-color: #ffffff;
+  /* Matches the homepage reference's page canvas — every panel section is a
+     shape drawn on this dark navy, not a fresh background of its own. Dark
+     panels (bg-brand-dark) are the same color as this and read as full-bleed;
+     light panels (bg-ps-bg) are deliberately narrower than the viewport
+     (see Panel in components/cinematic.tsx), so this shows through as the
+     margin on their sides — never plain white. */
+  background-color: #0d1635;
   color: #0d1635;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
