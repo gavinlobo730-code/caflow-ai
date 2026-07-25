@@ -1,0 +1,41 @@
+-- Migration 245: fix a regression migration 194 introduced on fixed_assets
+-- and fee_invoices — found via the widened real-Postgres CI suite (task
+-- #244 follow-up, comparative-reliability review).
+--
+-- Migration 194 (grant_missing_privileges_systematic) swept every table
+-- where an RLS policy names `authenticated` but the base table-level GRANT
+-- for that command was missing -- a real bug class (Postgres checks GRANT
+-- before RLS ever evaluates, so a missing grant makes the policy dead code).
+-- Its methodology was sound for 16 of its 18 tables. Two were mistakes:
+--
+--   * fixed_assets — migration 166 deliberately REVOKEd INSERT/UPDATE/DELETE
+--     from `authenticated` (an orphaned, now-retired page wrote directly to
+--     this table, bypassing the backend's depreciation-schedule/GL-journal-
+--     linkage logic entirely) and narrowed the "firm_client_isolation"
+--     policy to FOR SELECT only. Several OTHER, unrelated policies on this
+--     table (firm_staff_manage_assets, fixed_assets_assignment_scope,
+--     fixed_assets_internal_partner_only, fixed_assets_own_firm — all
+--     FOR ALL, all naming `authenticated`) were never cleaned up after 166's
+--     grant revoke made them moot; 194's information_schema comparison saw
+--     those and restored the very grants 166 had just revoked.
+--
+--   * fee_invoices — migration 172 REVOKEd UPDATE from `authenticated`
+--     specifically to force every payment-status change through
+--     settle_fee_receipt_atomic (a partial payment force-setting the whole
+--     invoice to "Paid" was the exact bug 172 fixed). 194 restored it.
+--
+-- Confirmed live in production (task #244 follow-up audit): both grants are
+-- currently active. Not a cross-tenant leak (RLS still scopes every
+-- remaining policy to firm_id/client assignment) but it does mean any
+-- authenticated user can currently write directly to their own firm's
+-- fixed assets or force a fee invoice's payment status, bypassing the exact
+-- backend logic 166/172 exist to protect.
+--
+-- Re-applies ONLY the two specific revokes 194 undid -- none of 194's other
+-- 16 table fixes (which were correct) are touched. Proven by
+-- tests/test_r3_3_legacy_invoice_fixed_asset_rls_pg.py and
+-- tests/test_r3_9b_fee_receipt_atomic_pg.py, both already existed and were
+-- failing against a fully-migrated database before this fix.
+
+REVOKE INSERT, UPDATE, DELETE ON public.fixed_assets FROM authenticated;
+REVOKE UPDATE ON public.fee_invoices FROM authenticated;
