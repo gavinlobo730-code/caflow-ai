@@ -74,6 +74,13 @@ class CreateReturnRequest(BaseModel):
     quarter: str
     financial_year: str
     deductee_details: list[dict] = Field(default_factory=list)
+    # Populated when saving a "Compute from Books" result (services/
+    # tds_return_service.py) — optional so the existing quick-create form
+    # (which never supplies these) keeps working unchanged.
+    total_deductions_paise: Optional[int] = None
+    total_deposits_paise: Optional[int] = None
+    deductee_count: Optional[int] = None
+    validation_errors: Optional[list[str]] = None
 
 
 class UpdateReturnStatusRequest(BaseModel):
@@ -340,6 +347,17 @@ def create_return(
         # caller actually supplied rows (this quick-create form never does).
         if body.deductee_details:
             record["fvu_json"] = {"deductees": body.deductee_details}
+        # Only ever set by the "Compute from Books" flow (services/
+        # tds_return_service.py) — the quick-create form leaves these columns
+        # at their DB default (0/NULL) since it has no computed figures yet.
+        if body.total_deductions_paise is not None:
+            record["total_deductions_paise"] = body.total_deductions_paise
+        if body.total_deposits_paise is not None:
+            record["total_deposits_paise"] = body.total_deposits_paise
+        if body.deductee_count is not None:
+            record["deductee_count"] = body.deductee_count
+        if body.validation_errors is not None:
+            record["validation_errors"] = body.validation_errors
 
         if _USE_MOCK:
             _MOCK_RETURNS[record["id"]] = record

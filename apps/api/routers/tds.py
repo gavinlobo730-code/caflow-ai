@@ -74,6 +74,16 @@ class Compute24QRequest(BaseModel):
     challans: list[ChallanInput] = []
 
 
+class FromBooksRequest(BaseModel):
+    client_id: str
+    financial_year: str = Field(..., description="e.g. 2025-26")
+    quarter: str = Field(..., description="Q1, Q2, Q3, Q4")
+    tan: str
+    deductor_name: str
+    deductor_pan: str
+    deductor_address: str
+
+
 class TDSAmountRequest(BaseModel):
     section: str
     payment_amount_paise: int = Field(gt=0)
@@ -243,6 +253,50 @@ def compute_24q(req: Compute24QRequest, user: dict = Depends(rbac("tds", "comput
         },
         "error": None,
     }
+
+
+@router.post("/26q/from-books")
+def compute_26q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds", "compute"))):
+    """
+    Build Form 26Q (non-salary TDS) ENTIRELY from posted purchase bills and
+    reconcile the total to the GL "TDS Payable" control account.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
+    """
+    from core.supabase_client import get_supabase
+    from services.tds_return_service import tds_26q_from_books
+    db = get_supabase()
+    firm_id = user["firm_id"]
+    try:
+        data = tds_26q_from_books(
+            db, firm_id, req.client_id, req.financial_year, req.quarter,
+            req.tan, req.deductor_name, req.deductor_pan, req.deductor_address,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    return {"success": True, "data": data, "error": None}
+
+
+@router.post("/24q/from-books")
+def compute_24q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds", "compute"))):
+    """
+    Build Form 24Q (salary TDS) ENTIRELY from finalized payroll runs and
+    reconcile the total to the GL "TDS Payable - Salary" control account.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
+    """
+    from core.supabase_client import get_supabase
+    from services.tds_return_service import tds_24q_from_books
+    db = get_supabase()
+    firm_id = user["firm_id"]
+    try:
+        data = tds_24q_from_books(
+            db, firm_id, req.client_id, req.financial_year, req.quarter,
+            req.tan, req.deductor_name, req.deductor_pan, req.deductor_address,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    return {"success": True, "data": data, "error": None}
 
 
 @router.post("/compute-amount")

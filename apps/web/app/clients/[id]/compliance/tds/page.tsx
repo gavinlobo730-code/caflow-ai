@@ -309,6 +309,16 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ return_type: "26Q", quarter: "Q1", financial_year: "" });
 
+  const [showCompute, setShowCompute] = useState(false);
+  const [computeForm, setComputeForm] = useState({
+    return_type: "26Q", quarter: "Q1", financial_year: "",
+    tan: "", deductor_name: "", deductor_pan: "", deductor_address: "",
+  });
+  const [computing, setComputing] = useState(false);
+  const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
+  const [savingComputed, setSavingComputed] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/tds-workspace/returns?client_id=${clientId}`)
@@ -339,15 +349,158 @@ function ReturnsTab({ clientId }: { clientId: string }) {
     load();
   }
 
+  // IT Act §194 series (26Q) / §192 (24Q) — derived ENTIRELY from posted
+  // purchase bills / finalized payroll runs and reconciled to the GL "TDS
+  // Payable" / "TDS Payable - Salary" control accounts
+  // (services/tds_return_service.py). All computation is server-side; the
+  // frontend only displays the result (CLAUDE.md: zero business logic in
+  // the frontend).
+  async function computeFromBooks() {
+    setComputing(true);
+    setComputeError(null);
+    setComputeResult(null);
+    const path = computeForm.return_type === "24Q" ? "/api/tds/24q/from-books" : "/api/tds/26q/from-books";
+    const r = await apiFetch(path, {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: clientId,
+        financial_year: computeForm.financial_year,
+        quarter: computeForm.quarter,
+        tan: computeForm.tan,
+        deductor_name: computeForm.deductor_name,
+        deductor_pan: computeForm.deductor_pan,
+        deductor_address: computeForm.deductor_address,
+      }),
+    });
+    if (r.success) setComputeResult(r.data as Record<string, unknown>);
+    else setComputeError(r.error ?? `Couldn't compute Form ${computeForm.return_type} from books.`);
+    setComputing(false);
+  }
+
+  async function saveComputed() {
+    if (!computeResult) return;
+    setSavingComputed(true);
+    const d = computeResult;
+    await apiFetch("/api/tds-workspace/returns", {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: clientId,
+        return_type: computeForm.return_type,
+        quarter: d.quarter,
+        financial_year: d.financial_year,
+        deductee_details: d.deductees,
+        total_deductions_paise: d.total_tds_deducted_paise,
+        total_deposits_paise: d.total_tds_deposited_paise,
+        deductee_count: d.deductee_count,
+        validation_errors: d.validation_errors,
+      }),
+    });
+    setSavingComputed(false);
+    setShowCompute(false);
+    setComputeResult(null);
+    setComputeError(null);
+    load();
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Returns</h3>
-        <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-          + New Return
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowCompute(true)}
+            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+            Compute from Books
+          </button>
+          <button onClick={() => setShowNew(true)}
+            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            + New Return
+          </button>
+        </div>
       </div>
+
+      {showCompute && (
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+          <p className="text-sm font-medium">Compute TDS Return from Books</p>
+          <p className="text-xs text-[#64748B]">
+            26Q derives from posted purchase bills; 24Q derives from finalized payroll runs.
+            Both reconcile the total TDS deducted to the General Ledger.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <select value={computeForm.return_type} onChange={(e) => setComputeForm((f) => ({ ...f, return_type: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm">
+              <option value="26Q">26Q — Vendor / Non-Salary</option>
+              <option value="24Q">24Q — Salary</option>
+            </select>
+            <select value={computeForm.quarter} onChange={(e) => setComputeForm((f) => ({ ...f, quarter: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm">
+              {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
+            </select>
+            <input placeholder="FY (e.g. 2025-26)" value={computeForm.financial_year}
+              onChange={(e) => setComputeForm((f) => ({ ...f, financial_year: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm" />
+            <input placeholder="TAN (10 chars)" value={computeForm.tan}
+              onChange={(e) => setComputeForm((f) => ({ ...f, tan: e.target.value.toUpperCase() }))}
+              className="border rounded px-3 py-1.5 text-sm font-mono" />
+            <input placeholder="Deductor Name" value={computeForm.deductor_name}
+              onChange={(e) => setComputeForm((f) => ({ ...f, deductor_name: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm" />
+            <input placeholder="Deductor PAN" value={computeForm.deductor_pan}
+              onChange={(e) => setComputeForm((f) => ({ ...f, deductor_pan: e.target.value.toUpperCase() }))}
+              className="border rounded px-3 py-1.5 text-sm font-mono" />
+            <input placeholder="Deductor Address" value={computeForm.deductor_address}
+              onChange={(e) => setComputeForm((f) => ({ ...f, deductor_address: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm col-span-2" />
+          </div>
+          {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
+          <div className="flex gap-2">
+            <button onClick={computeFromBooks}
+              disabled={computing || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              {computing ? "Computing…" : "Compute"}
+            </button>
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
+              className="px-3 py-1 border rounded text-sm">Cancel</button>
+          </div>
+
+          {computeResult && (() => {
+            const rec = computeResult.reconciliation as Record<string, unknown>;
+            const matched = Boolean(rec?.matched);
+            const accountFound = Boolean(rec?.account_found);
+            return (
+              <div className="border-t pt-3 space-y-2">
+                <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+                  {!accountFound
+                    ? "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped."
+                    : matched ? "✓ Reconciled to the General Ledger"
+                    : "⚠ Does not reconcile to the General Ledger — review before saving"}
+                  {accountFound && !matched && (
+                    <span className="block mt-1 text-xs">
+                      Books: {rupees((rec.books_paise as number) ?? 0)} vs Ledger: {rupees((rec.ledger_paise as number) ?? 0)}
+                      {" "}(diff {rupees((rec.difference_paise as number) ?? 0)})
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><p className="text-xs text-[#64748B]">Deductees</p><p className="font-medium">{computeResult.deductee_count as number}</p></div>
+                  <div><p className="text-xs text-[#64748B]">TDS Deducted</p><p className="font-medium">{rupees(computeResult.total_tds_deducted_paise as number)}</p></div>
+                  <div><p className="text-xs text-[#64748B]">TDS Deposited</p><p className="font-medium">{rupees(computeResult.total_tds_deposited_paise as number)}</p></div>
+                </div>
+                {((computeResult.validation_errors as string[]) ?? []).length > 0 && (
+                  <div className="space-y-1">
+                    {(computeResult.validation_errors as string[]).map((e, i) => (
+                      <p key={i} className="text-xs text-red-600">⚠ {e}</p>
+                    ))}
+                  </div>
+                )}
+                <button onClick={saveComputed} disabled={savingComputed}
+                  className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+                  {savingComputed ? "Saving…" : "Save as Draft"}
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {showNew && (
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
