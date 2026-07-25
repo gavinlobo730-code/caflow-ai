@@ -1,0 +1,39 @@
+-- Migration 246: fix a SECOND regression migration 194 introduced — this one
+-- on public.users, and more severe than 245's two (fixed_assets/fee_invoices)
+-- — found by systematically grepping every migration for the same
+-- REVOKE-then-later-GRANT pattern (task #244 follow-up).
+--
+-- Migration 153 (secure_invite_flows) deliberately REVOKEd INSERT/UPDATE/
+-- DELETE on users from `authenticated`, then granted back ONLY
+-- `GRANT UPDATE (full_name) ON public.users TO authenticated` — a
+-- column-scoped grant. 153's own docstring explains exactly why the RLS
+-- policy alone ("users_own_row_rename", WITH CHECK auth_user_id = auth.uid())
+-- is not sufficient: WITH CHECK only constrains WHICH ROW may be touched,
+-- never which COLUMNS or VALUES — without the column-level GRANT, an
+-- authenticated user could UPDATE their own row's `role` column to
+-- 'Partner' (privilege escalation) or `firm_id` to a different firm
+-- (cross-tenant access), and RLS would not stop either, since both still
+-- satisfy "the row being updated is my own row."
+--
+-- Migration 194's grant-gap sweep restored a WHOLE-TABLE
+-- `GRANT UPDATE ON public.users TO authenticated` (no column list) --
+-- exactly the mistake 153 was written to prevent. A table-level UPDATE
+-- grant permits every column regardless of any earlier column-level grant;
+-- the two are additive, not a "narrower wins" relationship.
+--
+-- CONFIRMED LIVE IN PRODUCTION before this fix (task #244 follow-up audit):
+-- information_schema.column_privileges showed `authenticated` holding
+-- UPDATE on every users column, including role, firm_id, is_active,
+-- sessions_revoked_at, and auth_user_id. This was the most severe of the
+-- three regressions 194 introduced (see also migration 245) — an
+-- unauthenticated-app-logic-bypassing path to full role escalation within
+-- a firm, live and exploitable via a direct Supabase REST call, with
+-- nothing in the RLS layer positioned to catch it.
+--
+-- Re-revokes the whole-table grant only; migration 153's own
+-- `GRANT UPDATE (full_name)` column-scoped grant is untouched and remains
+-- the sole write surface `authenticated` has on this table (plus its
+-- unaffected SELECT-own-row policy).
+
+REVOKE UPDATE ON public.users FROM authenticated;
+GRANT UPDATE (full_name) ON public.users TO authenticated;
