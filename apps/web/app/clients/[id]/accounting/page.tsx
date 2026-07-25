@@ -14,7 +14,7 @@ import { VendorLookup } from "@/components/lookups/VendorLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
-import { api } from "@/lib/api";
+import { api, type ReconciliationRun, type ReconciliationFinding } from "@/lib/api";
 import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
 import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
@@ -46,6 +46,7 @@ type AccountingTab =
   | "post"
   | "approvals"
   | "reconciliation"
+  | "verify-books"
   | "reports"
   | "fx-reports";
 
@@ -62,6 +63,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "post",          label: "Post" },
   { id: "approvals",     label: "Approvals" },
   { id: "reconciliation",label: "Reconciliation" },
+  { id: "verify-books",  label: "Verify Books" },
   { id: "reports",       label: "Reports" },
   { id: "fx-reports",    label: "FX Reports" },
 ];
@@ -307,6 +309,9 @@ export default function AccountingPage() {
         )}
         {tab === "reconciliation" && (
           <BankReconciliation clientId={clientId} />
+        )}
+        {tab === "verify-books" && (
+          <VerifyBooks clientId={clientId} />
         )}
         {tab === "reports" && (
           <FinancialReports clientId={clientId} financialYear={financialYear} />
@@ -3355,6 +3360,231 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
 
       <p className="text-[10px] text-[#94A3B8] text-center">
         Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement). Requires approval permission; locked financial years are blocked.
+      </p>
+    </div>
+  );
+}
+
+// ── Verify Books (task #244) ─────────────────────────────────────────────
+// On-demand books-integrity check, mirroring QuickBooks' Verify/Rebuild:
+// trial balance, missing COGS/inventory-receipt journals, inventory
+// cache-vs-ledger drift, AR/AP sub-ledger vs GL. Same engine
+// (services/reconciliation_service.py) the nightly scheduled sweep already
+// runs — this just triggers it live and shows the result. Report-only:
+// nothing here auto-corrects a finding, matching the same "a human decides
+// the fix" posture this session's own manual corrections used.
+const SEVERITY_STYLE: Record<string, string> = {
+  critical: "bg-red-50 text-red-700 border-red-100",
+  warning: "bg-amber-50 text-amber-700 border-amber-100",
+};
+
+const CHECK_LABEL: Record<string, string> = {
+  trial_balance: "Trial Balance",
+  missing_cogs_journal: "Missing COGS Journal",
+  missing_inventory_receipt_journal: "Missing Inventory Receipt Journal",
+  inventory_cache_drift: "Inventory Cache Drift",
+  ar_subledger_vs_gl: "AR Sub-ledger vs GL",
+  ap_subledger_vs_gl: "AP Sub-ledger vs GL",
+};
+
+function checkLabel(name: string): string {
+  return CHECK_LABEL[name] ?? (name.endsWith(".execution_error") ? `Check failed to run (${name.replace(".execution_error", "")})` : name);
+}
+
+function VerifyBooks({ clientId }: { clientId: string }) {
+  const [runs, setRuns] = useState<ReconciliationRun[]>([]);
+  const [activeRun, setActiveRun] = useState<ReconciliationRun | null>(null);
+  const [findings, setFindings] = useState<ReconciliationFinding[]>([]);
+  const [loadingRuns, setLoadingRuns] = useState(false);
+  const [loadingFindings, setLoadingFindings] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const loadRuns = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoadingRuns(true);
+    try {
+      const res = await api.reconciliation.listRuns(clientId);
+      if (!res.success) throw new Error(res.error ?? "Couldn't load past runs.");
+      const list = res.data?.runs ?? [];
+      setRuns(list);
+      if (list.length > 0) setActiveRun((prev) => prev ?? list[0]);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't load past runs.");
+    } finally {
+      setLoadingRuns(false);
+    }
+  }, [clientId]);
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  const loadFindings = useCallback(async (runId: string) => {
+    setLoadingFindings(true);
+    try {
+      const res = await api.reconciliation.getRun(runId);
+      if (!res.success) throw new Error(res.error ?? "Couldn't load this run's findings.");
+      setFindings(res.data?.findings ?? []);
+      setActiveRun(res.data?.run ?? null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't load this run's findings.");
+    } finally {
+      setLoadingFindings(false);
+    }
+  }, []);
+  // Depends on activeRun?.id, not activeRun itself — loadFindings below calls
+  // setActiveRun with a freshly-fetched object each time, which would re-trigger
+  // this effect every load if the whole object were a dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeRun) loadFindings(activeRun.id); }, [activeRun?.id, loadFindings]);
+
+  async function runVerification() {
+    if (!clientId || clientId === "_placeholder") return;
+    setVerifying(true); setError(null);
+    try {
+      const res = await api.reconciliation.verify(clientId);
+      if (!res.success) throw new Error(res.error ?? "Verification failed to run.");
+      await loadRuns();
+      if (res.data?.run_id) await loadFindings(res.data.run_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Verification failed to run.");
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function resolveFinding(findingId: string) {
+    setResolvingId(findingId);
+    try {
+      const res = await api.reconciliation.resolveFinding(findingId, noteDrafts[findingId] ?? "");
+      if (!res.success) throw new Error(res.error ?? "Couldn't mark this finding resolved.");
+      if (activeRun) await loadFindings(activeRun.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't mark this finding resolved.");
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  const openFindings = findings.filter((f) => !f.resolved_at);
+  const resolvedFindings = findings.filter((f) => f.resolved_at);
+
+  return (
+    <div className="space-y-4 max-w-4xl mx-auto">
+      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Verify Books</h3>
+          <p className="text-xs text-[#64748B] mt-1">
+            Checks trial balance, missing COGS/inventory journals, inventory cache drift, and AR/AP vs the GL — the
+            same checks the nightly sweep runs, on demand.
+          </p>
+        </div>
+        <button
+          onClick={runVerification}
+          disabled={verifying || !clientId || clientId === "_placeholder"}
+          className="flex-shrink-0 text-xs font-medium px-4 py-2 bg-[#0F172A] text-white rounded-lg hover:bg-[#1E293B] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {verifying ? "Verifying…" : "Verify Books"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
+
+      {runs.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-3 flex items-center gap-2 overflow-x-auto">
+          <span className="text-[10px] text-[#94A3B8] flex-shrink-0 pl-1">Past runs:</span>
+          {runs.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setActiveRun(r)}
+              className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-md whitespace-nowrap ${
+                activeRun?.id === r.id ? "bg-[#0F172A] text-white" : "bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]"
+              }`}
+            >
+              {String(r.started_at).slice(0, 16).replace("T", " ")} · {r.trigger === "manual" ? "Manual" : "Scheduled"} ·{" "}
+              {r.status === "failed" ? "Failed" : `${r.findings_count} finding${r.findings_count === 1 ? "" : "s"}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loadingRuns || loadingFindings ? (
+        <TableSkeleton cols={3} rows={4} />
+      ) : !activeRun ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
+          No verification has been run for this client yet. Click &ldquo;Verify Books&rdquo; to check it now.
+        </div>
+      ) : activeRun.status === "failed" ? (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-5 text-sm text-red-700">
+          The verification run itself failed to complete: {activeRun.error}
+        </div>
+      ) : findings.length === 0 ? (
+        <div className="bg-green-50 border border-green-100 rounded-xl p-10 text-center text-sm text-green-700">
+          ✓ No issues found — the books reconcile across every check ({activeRun.checks_run} run).
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {openFindings.map((f) => (
+            <div key={f.id} className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
+                      {f.severity === "critical" ? "Critical" : "Warning"}
+                    </span>
+                    <span className="text-[10px] text-[#94A3B8]">{checkLabel(f.check_name)}</span>
+                  </div>
+                  <p className="text-sm text-[#334155] mt-1.5">{f.summary}</p>
+                  {f.amount_paise != null && (
+                    <p className="text-xs text-[#64748B] mt-1 font-mono">{formatPaise(Math.abs(f.amount_paise))}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="text"
+                  placeholder="Resolution note (what did you find / fix)…"
+                  value={noteDrafts[f.id] ?? ""}
+                  onChange={(e) => setNoteDrafts((d) => ({ ...d, [f.id]: e.target.value }))}
+                  className="flex-1 text-xs border border-[#E2E8F0] rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0F172A]"
+                />
+                <button
+                  onClick={() => resolveFinding(f.id)}
+                  disabled={resolvingId === f.id}
+                  className="flex-shrink-0 text-xs px-3 py-1.5 bg-[#F1F5F9] text-[#334155] rounded-md hover:bg-[#E2E8F0] disabled:opacity-50"
+                >
+                  {resolvingId === f.id ? "Saving…" : "Mark Reviewed"}
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {resolvedFindings.length > 0 && (
+            <details className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+              <summary className="text-xs text-[#64748B] cursor-pointer">
+                {resolvedFindings.length} reviewed finding{resolvedFindings.length === 1 ? "" : "s"}
+              </summary>
+              <div className="mt-3 space-y-2">
+                {resolvedFindings.map((f) => (
+                  <div key={f.id} className="text-xs text-[#94A3B8] border-t border-[#F8FAFC] pt-2">
+                    <span className={`px-1.5 py-0.5 rounded-full border mr-2 ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
+                      {checkLabel(f.check_name)}
+                    </span>
+                    {f.summary}
+                    {f.resolution_note && <div className="text-[#64748B] mt-0.5">Note: {f.resolution_note}</div>}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
+      <p className="text-[10px] text-[#94A3B8] text-center">
+        Report-only — nothing here is auto-corrected. A finding needs a deliberate fix (a correcting journal entry or
+        ledger adjustment), reviewed and made by a CA, the same way any past finding would have been.
       </p>
     </div>
   );

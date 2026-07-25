@@ -1266,7 +1266,11 @@ class Phase2JournalService:
                 if resp.data:
                     return resp.data[0]["id"]
             except Exception as e:
-                _logger.warning("_find_account key lookup failed (%s): %s", system_key, e)
+                from core.observability import capture_posting_failure
+                capture_posting_failure(
+                    e, operation="_find_account.system_key_lookup",
+                    firm_id=firm_id, client_id=client_id, system_key=system_key,
+                )
 
         # Name-pattern fallback — preserves pre-key behaviour for all accounts
         try:
@@ -1283,7 +1287,11 @@ class Phase2JournalService:
             if resp.data:
                 return resp.data[0]["id"]
         except Exception as e:
-            _logger.warning("_find_account lookup failed (%s): %s", name_pattern, e)
+            from core.observability import capture_posting_failure
+            capture_posting_failure(
+                e, operation="_find_account.name_pattern_lookup",
+                firm_id=firm_id, client_id=client_id, name_pattern=name_pattern, system_key=system_key,
+            )
 
         raise ValueError(
             f"Required account not found: {name_pattern}. "
@@ -1420,8 +1428,17 @@ class Phase2JournalService:
                         firm_id, reference_no, entry_date, client_id,
                     )
                     return existing.data[0]["id"]
-            except Exception:
-                pass
+            except Exception as e:
+                # Low severity — the (firm, client, reference_no, entry_date) UNIQUE
+                # index (migration 143) is the authoritative backstop for a real
+                # duplicate, so this pre-check failing just means a possible
+                # duplicate-post attempt below (caught there instead). Still worth
+                # visibility: this was previously a fully silent `except: pass`.
+                from core.observability import capture_posting_failure
+                capture_posting_failure(
+                    e, operation="_create_journal.idempotency_precheck",
+                    firm_id=firm_id, client_id=client_id, reference_no=reference_no, entry_date=entry_date,
+                )
 
         now_iso = datetime.now(timezone.utc).isoformat()
         entry_payload = {

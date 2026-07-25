@@ -50,7 +50,7 @@ from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
 from routers import time_tracking, workload, analytics, engagements, invoices
 from routers import intelligence
-from routers import scheduler_status, audit, onboarding
+from routers import scheduler_status, audit, onboarding, reconciliation
 from routers import search
 from routers import dsc  # H6: DSC (Digital Signature Certificate) backend
 from routers import assignments
@@ -222,6 +222,10 @@ app.include_router(invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(scheduler_status.router)
 app.include_router(audit.router)
+# task #244: "Verify Books" — Partner-only, no _CLIENT_GUARD (client_id lives
+# in the request body/query per endpoint, not a uniform path param — each
+# handler calls assert_client_access itself, same posture as audit.router above).
+app.include_router(reconciliation.router)
 app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
 # H6: DSC tracker — firm-level settings resource (no client_id surface), so NO _CLIENT_GUARD

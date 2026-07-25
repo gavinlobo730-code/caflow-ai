@@ -38,6 +38,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.observability import capture_posting_failure
+
 _logger = logging.getLogger("caflow.inventory")
 
 
@@ -295,7 +297,10 @@ def _set_ledger_journal_entry_id(db, ledger_row_id: Optional[str], journal_entry
             {"journal_entry_id": journal_entry_id}
         ).eq("id", ledger_row_id).execute()
     except Exception as e:
-        _logger.warning("Failed to backfill journal_entry_id on ledger row %s: %s", ledger_row_id, e)
+        capture_posting_failure(
+            e, operation="_set_ledger_journal_entry_id",
+            ledger_row_id=ledger_row_id, journal_entry_id=journal_entry_id,
+        )
 
 
 def seed_opening_balance(
@@ -469,12 +474,18 @@ def seed_opening_balances_batch(
     try:
         db.table("inventory_stock_ledger").insert(ledger_rows).execute()
     except Exception as e:
-        _logger.error("seed_opening_balances_batch: ledger batch insert failed for %d rows: %s", len(ledger_rows), e, exc_info=True)
+        capture_posting_failure(
+            e, operation="seed_opening_balances_batch.ledger_insert",
+            firm_id=firm_id, row_count=len(ledger_rows),
+        )
         return
     try:
         db.table("service_catalogue").upsert(cache_rows, on_conflict="id").execute()
     except Exception as e:
-        _logger.error("seed_opening_balances_batch: cache batch upsert failed for %d rows: %s", len(cache_rows), e, exc_info=True)
+        capture_posting_failure(
+            e, operation="seed_opening_balances_batch.cache_upsert",
+            firm_id=firm_id, row_count=len(cache_rows),
+        )
 
 
 def record_stock_in(
@@ -670,7 +681,11 @@ def post_cogs_journal_entry(
             ],
         )
     except Exception as e:
-        _logger.warning("post_cogs_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_cogs_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, value_paise=value_paise,
+        )
         return None
 
 
@@ -731,7 +746,11 @@ def post_inventory_receipt_journal_entry(
             lines=lines,
         )
     except Exception as e:
-        _logger.warning("post_inventory_receipt_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_inventory_receipt_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, total_value_paise=total_value,
+        )
         return None
 
 
@@ -791,7 +810,11 @@ def post_inventory_trueup_journal_entry(
             lines=lines,
         )
     except Exception as e:
-        _logger.warning("post_inventory_trueup_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_inventory_trueup_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, total_value_paise=total_value,
+        )
         return None
 
 
@@ -874,7 +897,11 @@ def post_opening_stock_journal_entry(
             lines=lines,
         )
     except Exception as e:
-        _logger.warning("post_opening_stock_journal_entry skipped (value=%d, trueup=%d, items=%d): %s", value_paise, trueup_paise, item_count, e)
+        capture_posting_failure(
+            e, operation="post_opening_stock_journal_entry",
+            firm_id=firm_id, client_id=client_id, value_paise=value_paise,
+            trueup_paise=trueup_paise, item_count=item_count,
+        )
         return None
 
 
@@ -935,7 +962,11 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
-        _logger.error("apply_sale_to_inventory failed for invoice %s: %s", invoice.get("id"), e, exc_info=True)
+        capture_posting_failure(
+            e, operation="apply_sale_to_inventory",
+            firm_id=firm_id, client_id=client_id, source_id=invoice.get("id"),
+            reference_no=invoice.get("invoice_no"),
+        )
 
 
 def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict, created_by: Optional[str] = None) -> None:
@@ -1019,7 +1050,11 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
             )
     except Exception as e:
-        _logger.error("apply_purchase_to_inventory failed for bill %s: %s", bill.get("id"), e, exc_info=True)
+        capture_posting_failure(
+            e, operation="apply_purchase_to_inventory",
+            firm_id=firm_id, client_id=client_id, source_id=bill.get("id"),
+            reference_no=bill.get("bill_no"),
+        )
 
 
 # ── Reversal on cancellation ─────────────────────────────────────────────────
@@ -1093,7 +1128,10 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
                 for mid in movement_ids:
                     _set_ledger_journal_entry_id(db, mid, reversal_id)
     except Exception as e:
-        _logger.error("reverse_sale_stock failed for invoice %s: %s", invoice_id, e, exc_info=True)
+        capture_posting_failure(
+            e, operation="reverse_sale_stock",
+            firm_id=firm_id, client_id=client_id, source_id=invoice_id, reference_no=invoice_no,
+        )
 
 
 def post_sale_return_journal_entry(
@@ -1122,7 +1160,11 @@ def post_sale_return_journal_entry(
             ],
         )
     except Exception as e:
-        _logger.warning("post_sale_return_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_sale_return_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, value_paise=value_paise,
+        )
         return None
 
 
@@ -1156,7 +1198,11 @@ def post_purchase_return_journal_entry(
             ],
         )
     except Exception as e:
-        _logger.warning("post_purchase_return_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_purchase_return_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, value_paise=value_paise,
+        )
         return None
 
 
@@ -1236,7 +1282,11 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
-        _logger.error("apply_credit_note_to_inventory failed for CN %s: %s", credit_note.get("id"), e, exc_info=True)
+        capture_posting_failure(
+            e, operation="apply_credit_note_to_inventory",
+            firm_id=firm_id, client_id=client_id, source_id=credit_note.get("id"),
+            reference_no=credit_note.get("credit_note_no"),
+        )
 
 
 def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_note: dict, created_by: Optional[str] = None) -> None:
@@ -1287,7 +1337,11 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
-        _logger.error("apply_debit_note_to_inventory failed for DN %s: %s", debit_note.get("id"), e, exc_info=True)
+        capture_posting_failure(
+            e, operation="apply_debit_note_to_inventory",
+            firm_id=firm_id, client_id=client_id, source_id=debit_note.get("id"),
+            reference_no=debit_note.get("debit_note_no"),
+        )
 
 
 def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bill_reference: str, created_by: Optional[str] = None) -> None:
@@ -1378,7 +1432,10 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
                     created_by=created_by,
                 )
     except Exception as e:
-        _logger.error("reverse_purchase_stock failed for bill %s: %s", bill_id, e, exc_info=True)
+        capture_posting_failure(
+            e, operation="reverse_purchase_stock",
+            firm_id=firm_id, client_id=client_id, source_id=bill_id, reference_no=bill_reference,
+        )
 
 
 # ── Manual stock adjustment ──────────────────────────────────────────────────
@@ -1479,7 +1536,11 @@ def post_stock_writeoff_journal_entry(
             lines=lines,
         )
     except Exception as e:
-        _logger.warning("post_stock_writeoff_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_stock_writeoff_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, value_paise=value_paise,
+        )
         return None
 
 
@@ -1512,7 +1573,11 @@ def post_stock_surplus_journal_entry(
             ],
         )
     except Exception as e:
-        _logger.warning("post_stock_surplus_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_stock_surplus_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, value_paise=value_paise,
+        )
         return None
 
 
@@ -1559,7 +1624,11 @@ def apply_stock_adjustment(
         _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
         return movement
     except Exception as e:
-        _logger.error("apply_stock_adjustment failed for item %s: %s", service_catalogue_id, e, exc_info=True)
+        capture_posting_failure(
+            e, operation="apply_stock_adjustment",
+            firm_id=firm_id, client_id=client_id, source_id=service_catalogue_id,
+            reference_no=reference_no,
+        )
         return None
 
 
@@ -1652,7 +1721,11 @@ def post_nrv_writedown_journal_entry(
             ],
         )
     except Exception as e:
-        _logger.warning("post_nrv_writedown_journal_entry skipped (%s): %s", reference_no, e)
+        capture_posting_failure(
+            e, operation="post_nrv_writedown_journal_entry",
+            firm_id=firm_id, client_id=client_id, reference_no=reference_no,
+            source_type=source_type, source_id=source_id, value_paise=value_paise,
+        )
         return None
 
 
@@ -1687,5 +1760,9 @@ def apply_nrv_writedown(
         _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
         return movement
     except Exception as e:
-        _logger.error("apply_nrv_writedown failed for item %s: %s", service_catalogue_id, e, exc_info=True)
+        capture_posting_failure(
+            e, operation="apply_nrv_writedown",
+            firm_id=firm_id, client_id=client_id, source_id=service_catalogue_id,
+            reference_no=reference_no,
+        )
         return None

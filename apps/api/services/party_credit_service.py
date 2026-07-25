@@ -231,10 +231,15 @@ class PartyCreditService:
                    .eq("id", cur["id"]).eq("balance_paise", raw).execute())
             if upd.data:
                 return
-        _logger.error(
-            "party_credit_service: compensation FAILED restoring %d paise for %s %s (firm=%s client=%s) "
-            "after a rejected application — manual reconciliation required.",
-            amount_paise, party_type, party_id, firm_id, client_id,
+        from core.observability import capture_posting_failure
+        capture_posting_failure(
+            RuntimeError(
+                f"party credit compensation exhausted {max_retries} CAS retries — "
+                f"{amount_paise} paise not restored, manual reconciliation required"
+            ),
+            operation="party_credit_service._restore_balance",
+            firm_id=firm_id, client_id=client_id, party_type=party_type,
+            party_id=party_id, amount_paise=amount_paise,
         )
 
 

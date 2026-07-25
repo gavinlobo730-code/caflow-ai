@@ -373,11 +373,12 @@ def _compensate_failed_settlement(
             "request: %s — verify none were left partially settled without this receipt.",
             journal_id, receipt_id, firm_id, client_id, attempted_invoice_ids,
         )
-    except Exception:
-        _logger.error(
-            "F7 compensation FAILED for receipt=%s journal=%s (firm=%s client=%s) — "
-            "manual reconciliation required, a phantom GL entry may remain.",
-            receipt_id, journal_id, firm_id, client_id, exc_info=True,
+    except Exception as e:
+        from core.observability import capture_posting_failure
+        capture_posting_failure(
+            e, operation="receipt_service._compensate_failed_settlement",
+            firm_id=firm_id, client_id=client_id, receipt_id=receipt_id, journal_id=journal_id,
+            attempted_invoice_ids=attempted_invoice_ids,
         )
 
 

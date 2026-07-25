@@ -84,8 +84,17 @@ class BankPostingService:
                           .single().execute().data) or {}
                     if ba.get("coa_account_id"):
                         return ba["coa_account_id"]
-            except Exception:
-                pass
+            except Exception as e:
+                # Was a fully silent `except: pass` — the caller falls through to
+                # the firm's GENERIC master Bank account below, which posts and
+                # balances fine but potentially to the WRONG bank sub-ledger,
+                # corrupting that specific account's balance/reconciliation with
+                # no trace of why (task #244 comparative-reliability finding).
+                from core.observability import capture_posting_failure
+                capture_posting_failure(
+                    e, operation="bank_posting._resolve_bank",
+                    firm_id=firm_id, client_id=client_id, statement_id=stmt_id,
+                )
         # Fall back to the firm's master Bank account.
         return phase2_journal_service._find_account(db, firm_id, txn["client_id"], "%Bank%", system_key="bank")
 

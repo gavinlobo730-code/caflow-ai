@@ -31,6 +31,17 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
     CREATE ROLE authenticator NOINHERIT LOGIN;
   END IF;
+  -- task #244 comparative-reliability finding: migration 204 GRANTs privileges
+  -- to supabase_storage_admin (the role Supabase Storage's own DB connection
+  -- always executes as, per 204's own docstring) — a role real Supabase
+  -- pre-provisions but this bootstrap never stubbed, so 204 has failed to
+  -- apply to every throwaway/CI/local database since it was added, silently
+  -- widening the migration-apply ratchet's blind spot (and, transitively,
+  -- blocking the migrations job the new deploy-migrations CI gate depends on
+  -- from ever succeeding — see backend-ci.yml).
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_storage_admin') THEN
+    CREATE ROLE supabase_storage_admin NOLOGIN NOINHERIT;
+  END IF;
 END
 $$;
 

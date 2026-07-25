@@ -904,6 +904,27 @@ export const api = {
       >;
     },
   },
+  // "Verify Books" (task #244) — on-demand books-integrity check, mirroring
+  // QuickBooks' Verify/Rebuild. Same engine as the nightly scheduled sweep
+  // (services/reconciliation_service.py); this just triggers it live.
+  reconciliation: {
+    verify: (client_id: string) =>
+      request(`/api/reconciliation/verify`, {
+        method: "POST", body: JSON.stringify({ client_id }),
+      }) as Promise<ApiResp<ReconciliationRunResult>>,
+    listRuns: (client_id: string, limit = 20) =>
+      request(`/api/reconciliation/runs?client_id=${client_id}&limit=${limit}`) as Promise<
+        ApiResp<{ runs: ReconciliationRun[] }>
+      >,
+    getRun: (run_id: string) =>
+      request(`/api/reconciliation/runs/${run_id}`) as Promise<
+        ApiResp<{ run: ReconciliationRun; findings: ReconciliationFinding[] }>
+      >,
+    resolveFinding: (finding_id: string, resolution_note?: string) =>
+      request(`/api/reconciliation/findings/${finding_id}/resolve`, {
+        method: "POST", body: JSON.stringify({ resolution_note }),
+      }) as Promise<ApiResp<{ finding: ReconciliationFinding }>>,
+  },
   // Firm Branding & Document Customization
   branding: {
     get: () => request("/api/settings/branding"),
@@ -989,6 +1010,43 @@ export type AuditEntry = {
   new_data?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
   created_at: string;
+};
+
+export type ReconciliationFinding = {
+  id: string;
+  run_id: string;
+  check_name: string;
+  severity: "critical" | "warning";
+  summary: string;
+  details: Record<string, unknown>;
+  amount_paise: number | null;
+  created_at: string;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+  resolution_note?: string | null;
+};
+
+export type ReconciliationRun = {
+  id: string;
+  firm_id: string;
+  client_id: string;
+  trigger: "scheduled" | "manual";
+  status: "running" | "completed" | "failed";
+  started_at: string;
+  completed_at?: string | null;
+  checks_run: number;
+  findings_count: number;
+  triggered_by?: string | null;
+  error?: string | null;
+};
+
+export type ReconciliationRunResult = {
+  run_id: string;
+  status: "completed" | "failed";
+  checks_run?: number;
+  findings_count?: number;
+  findings?: ReconciliationFinding[];
+  error?: string;
 };
 
 export type LoginEvent = {

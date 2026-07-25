@@ -46,6 +46,7 @@ KNOWN_JOBS = [
     "compliance_generation",
     "compliance_escalations",
     "balance_cache_audit",
+    "reconciliation_audit",
 ]
 
 
@@ -297,6 +298,28 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 _log_run("balance_cache_audit", fid, "failed", {"error": str(e)})
         else:
             firm_result["balance_cache_audit"] = {"skipped": "already ran today"}
+
+        # 10. Books-integrity reconciliation (task #244) — trial balance, missing
+        #     COGS/inventory-receipt journals, inventory cache-vs-ledger drift,
+        #     AR/AP sub-ledger vs GL, for every client. REPORT-ONLY — findings are
+        #     persisted (reconciliation_runs/reconciliation_findings, migration
+        #     244) for a Partner to review, never auto-corrected (unlike #9's pure
+        #     cache heal). This is the standing version of the manual SQL audit
+        #     that found the ₹38.14L inventory drift and the ₹15,036.14 missing-
+        #     COGS gap on 2026-07-25 — it should never again take a human running
+        #     ad hoc queries to notice a books-integrity break.
+        if force or not _already_ran_today("reconciliation_audit", fid):
+            try:
+                from services.reconciliation_service import run_reconciliation_for_firm
+                outcome = run_reconciliation_for_firm(_get_db(), fid)
+                firm_result["reconciliation_audit"] = outcome
+                _log_run("reconciliation_audit", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Reconciliation audit job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["reconciliation_audit"] = {"error": str(e)}
+                _log_run("reconciliation_audit", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
 
         results["firms"][fid] = firm_result
 

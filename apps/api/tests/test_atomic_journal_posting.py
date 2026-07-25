@@ -7,6 +7,13 @@ transaction. This asserts the two guarantees the two-call PostgREST path lacked:
   * the (firm, client, reference_no, entry_date) idempotency key dedupes to the
     winning entry instead of creating a duplicate.
 
+migrations/243 adds a THIRD guarantee, proven below: post_journal_atomic itself
+now refuses an imbalanced or zero-value journal, at the database layer, matching
+the defense-in-depth settle_receipt_atomic already had (migration 235). This is
+the DB-level backstop for the balance check services/phase2_journal_service.py's
+_create_journal already does in Python — the guard here exists for whatever
+future caller reaches this RPC WITHOUT that Python check ever running.
+
 Runs only when HARNESS_PG is set + psql on PATH (same gate as the other DB tests);
 skips in the mock-mode CI job. The `migrations` CI job runs it against its Postgres.
 """
@@ -71,8 +78,24 @@ def _lines(cgst_bad: bool = False) -> str:
     return json.dumps([debit, credit]).replace("'", "''")
 
 
+def _lines_imbalanced() -> str:
+    debit = {"account_id": ACC_BANK, "debit_paise": 100000, "credit_paise": 0}
+    credit = {"account_id": ACC_SALES, "debit_paise": 0, "credit_paise": 90000}
+    return json.dumps([debit, credit]).replace("'", "''")
+
+
+def _lines_zero() -> str:
+    debit = {"account_id": ACC_BANK, "debit_paise": 0, "credit_paise": 0}
+    credit = {"account_id": ACC_SALES, "debit_paise": 0, "credit_paise": 0}
+    return json.dumps([debit, credit]).replace("'", "''")
+
+
 def _call(dsn: str, ref: str, bad: bool = False) -> subprocess.CompletedProcess:
     return _psql(dsn, f"SELECT post_journal_atomic('{_entry(ref)}'::jsonb, '{_lines(bad)}'::jsonb);", tuples=True)
+
+
+def _call_with_lines(dsn: str, ref: str, lines_json: str) -> subprocess.CompletedProcess:
+    return _psql(dsn, f"SELECT post_journal_atomic('{_entry(ref)}'::jsonb, '{lines_json}'::jsonb);", tuples=True)
 
 
 @pytest.fixture()
@@ -126,3 +149,24 @@ def test_duplicate_reference_dedupes_to_same_entry(seeded_db):
     id2 = second.stdout.strip()
     assert id1 == id2, "duplicate idempotency key must return the same entry id"
     assert _count(seeded_db, "REF-DUP") == 1, "must not create a duplicate header"
+
+
+def test_imbalanced_journal_rejected_at_db_level(seeded_db):
+    """Migration 243: the DB-level backstop, independent of the Python check
+    services/phase2_journal_service.py._create_journal already does — this
+    proves the guard holds even for a caller that skips that Python check
+    entirely and calls the RPC directly, exactly as done here."""
+    r = _call_with_lines(seeded_db, "REF-IMBALANCED", _lines_imbalanced())
+    assert r.returncode != 0, "expected an imbalanced journal to be rejected"
+    assert "imbalance" in (r.stderr or "").lower()
+    assert _count(seeded_db, "REF-IMBALANCED") == 0, "no header may be created for a rejected post"
+    assert int(_psql(seeded_db, "SELECT count(*) FROM journal_lines;", tuples=True).stdout.strip()) == 0
+
+
+def test_zero_value_journal_rejected_at_db_level(seeded_db):
+    """Migration 243: a balanced-but-zero journal is meaningless and must never
+    post, at the DB level, mirroring settle_receipt_atomic's own guard."""
+    r = _call_with_lines(seeded_db, "REF-ZERO", _lines_zero())
+    assert r.returncode != 0, "expected a zero-value journal to be rejected"
+    assert "zero-value" in (r.stderr or "").lower()
+    assert _count(seeded_db, "REF-ZERO") == 0
