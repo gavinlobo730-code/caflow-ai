@@ -13,6 +13,7 @@ from typing import Optional
 from core.ist_clock import ist_today
 from .model import Account, JournalEntry, ProjectedLine
 from .resolver import AccountResolver
+from .schedule_iii import pl_bucket
 
 
 def _acc(accounts: dict[str, Account], aid: str) -> Account:
@@ -171,14 +172,24 @@ def profit_loss(lines: list[ProjectedLine], accounts: dict[str, Account],
             if amt == 0:
                 continue
             a = _acc(accounts, aid)
-            # account_type/subtype/code are presentation hints (Schedule III grouping
-            # is done in the UI); all monetary aggregation stays here in the backend.
+            # schedule_iii_caption is the authoritative Schedule III (Companies Act
+            # 2013, Part II) line caption for this account, computed by the SAME
+            # pl_bucket() the /schedule-iii endpoint uses — the single source of
+            # truth for this classification (CLAUDE.md: zero business logic in the
+            # frontend). Previously this comment said the grouping "is done in the
+            # UI" — the UI (apps/web .../accounting/page.tsx) had its OWN copy of
+            # pl_bucket() that independently forgot to look at Cost of Sales lines,
+            # which is exactly how the P&L tab silently dropped Cost of Goods Sold
+            # even after the backend Schedule III endpoint was fixed (task,
+            # 2026-07-25). account_type/subtype/code are still included as raw,
+            # inspectable presentation hints.
             rows.append({
                 "account_id": aid,
                 "account_name": a.name,
                 "account_code": a.code,
                 "account_type": a.type,
                 "account_subtype": a.subtype,
+                "schedule_iii_caption": pl_bucket(a.type, a.subtype),
                 "amount_paise": amt,
             })
         rows.sort(key=lambda x: x["account_name"])

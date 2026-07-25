@@ -144,6 +144,11 @@ interface AccountBalance {
   account_name: string;
   account_type: string;
   account_subtype: string | null;
+  // Authoritative Schedule III caption from the backend (domain/reporting/
+  // builders.py via schedule_iii.pl_bucket), when the caller supplies one.
+  // Optional so non-P&L callers of this type (Trial Balance, Balance Sheet
+  // rows) are unaffected.
+  schedule_iii_caption?: string | null;
   net_paise: number; // positive = normal balance side
 }
 
@@ -1502,6 +1507,12 @@ interface PLApiLine {
   account_name: string;
   account_code?: string;
   account_subtype?: string | null;
+  // Authoritative Schedule III caption computed server-side (domain/
+  // reporting/builders.py, via the same pl_bucket() the /schedule-iii
+  // endpoint uses). Optional only so a not-yet-redeployed backend degrades
+  // gracefully to the local plBucket() fallback below, never a blank/broken
+  // grouping — Cloudflare Pages and Render deploy independently here.
+  schedule_iii_caption?: string | null;
   amount_paise: number;
 }
 interface PLApiData {
@@ -1583,7 +1594,9 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         const toBal = (l: PLApiLine, type: string): AccountBalance => ({
           account_id: l.account_id, account_code: l.account_code ?? "",
           account_name: l.account_name, account_type: type,
-          account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
+          account_subtype: l.account_subtype ?? null,
+          schedule_iii_caption: l.schedule_iii_caption ?? null,
+          net_paise: l.amount_paise,
         });
         const balances = [
           ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
@@ -1623,8 +1636,12 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
 
   const revenue = unionAccounts.filter((b) => b.account_type === "Revenue");
   const expenses = unionAccounts.filter((b) => b.account_type === "Expense");
-  const revBuckets = groupBy(revenue, (b) => plBucket(b.account_type, b.account_subtype));
-  const expBuckets = groupBy(expenses, (b) => plBucket(b.account_type, b.account_subtype));
+  // Prefer the backend's own Schedule III caption (single source of truth —
+  // see PLApiLine above); plBucket() is only a fallback for the brief window
+  // where the frontend has redeployed ahead of the backend.
+  const captionOf = (b: AccountBalance) => b.schedule_iii_caption ?? plBucket(b.account_type, b.account_subtype);
+  const revBuckets = groupBy(revenue, captionOf);
+  const expBuckets = groupBy(expenses, captionOf);
 
   const PL_REV_ORDER = ["Revenue from Operations", "Other Income"];
   const PL_EXP_ORDER = ["Cost of Materials Consumed", "Employee Benefit Expense", "Finance Costs", "Depreciation & Amortisation", "Other Expenses"];
@@ -4265,17 +4282,22 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
         { success: boolean; data: PLApiData | null };
       const d = res.data;
       const rows: Record<string, string | number>[] = [];
+      // Prefer the backend's own Schedule III caption (single source of
+      // truth); plBucket() is only a fallback for the brief window where the
+      // frontend has redeployed ahead of the backend.
+      const captionOf = (l: PLApiLine, type: string) => l.schedule_iii_caption ?? plBucket(type, l.account_subtype ?? null);
       for (const l of d?.revenue.lines ?? [])
-        rows.push({ "Schedule III Category": plBucket("Revenue", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
+        rows.push({ "Schedule III Category": captionOf(l, "Revenue"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d?.revenue.total_paise ?? 0) });
       // Cost of Goods Sold — own section, separate from operating_expenses
       // (see PLApiData above); both bucket into "Cost of Materials Consumed"
-      // via plBucket, so must be exported alongside operating_expenses or the
-      // XLSX undercounts Total Expenses the same way the on-screen P&L did.
+      // via the shared caption, so must be exported alongside
+      // operating_expenses or the XLSX undercounts Total Expenses the same
+      // way the on-screen P&L did.
       for (const l of d?.cost_of_sales.lines ?? [])
-        rows.push({ "Schedule III Category": plBucket("Expense", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
+        rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
       for (const l of d?.operating_expenses.lines ?? [])
-        rows.push({ "Schedule III Category": plBucket("Expense", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
+        rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d?.cost_of_sales.total_paise ?? 0) + (d?.operating_expenses.total_paise ?? 0)) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
       return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31) };
