@@ -84,3 +84,12 @@ export const PL_EXP_ORDER = [
   "Cost of Materials Consumed", "Employee Benefit Expense", "Finance Costs",
   "Depreciation & Amortisation", "Other Expenses",
 ];
+
+export const BS_ASSET_ORDER = [
+  "Tangible Assets", "Intangible Assets", "Non-Current Investments", "Inventories",
+  "Trade Receivables", "Short-term Loans & Advances", "Cash & Cash Equivalents", "Other Current Assets",
+];
+export const BS_LIAB_ORDER = [
+  "Long-term Borrowings", "Short-term Borrowings", "Trade Payables", "Tax Liabilities", "Other Current Liabilities",
+];
+export const BS_EQ_ORDER = ["Share Capital", "Reserves & Surplus"];

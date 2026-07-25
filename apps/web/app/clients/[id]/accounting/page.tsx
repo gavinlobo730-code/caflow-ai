@@ -16,7 +16,9 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
-import { plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER } from "@/lib/accounting/scheduleIiiCaptions";
+import {
+  plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
+} from "@/lib/accounting/scheduleIiiCaptions";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -1898,9 +1900,17 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
   const liabBuckets = groupBy(liabilities, (b) => bsBucket(b.account_type, b.account_subtype));
   const equityBuckets = groupBy(equity, (b) => bsBucket(b.account_type, b.account_subtype));
 
-  const BS_ASSET_ORDER = ["Tangible Assets", "Intangible Assets", "Non-Current Investments", "Inventories", "Trade Receivables", "Short-term Loans & Advances", "Cash & Cash Equivalents", "Other Current Assets"];
-  const BS_LIAB_ORDER = ["Long-term Borrowings", "Short-term Borrowings", "Trade Payables", "Tax Liabilities", "Other Current Liabilities"];
-  const BS_EQ_ORDER = ["Share Capital", "Reserves & Surplus"];
+  // Same defence-in-depth as the P&L tab (see ProfitAndLoss above): the Total
+  // Assets/Liabilities/Equity figures are the backend's own totals, computed
+  // independently of this grouping — if bsBucket() ever produced a caption
+  // not in the lists above, that account's balance would silently vanish
+  // from the visible breakdown while the total stayed (invisibly) correct.
+  // bsBucket()'s current outputs are all covered by the lists above, but
+  // rendering anything uncovered anyway means that can never again go
+  // unnoticed the way Cost of Materials Consumed did.
+  const assetExtraBuckets = Object.keys(assetBuckets).filter((k) => !BS_ASSET_ORDER.includes(k));
+  const liabExtraBuckets = Object.keys(liabBuckets).filter((k) => !BS_LIAB_ORDER.includes(k));
+  const eqExtraBuckets = Object.keys(equityBuckets).filter((k) => !BS_EQ_ORDER.includes(k));
 
   const BasisToggle = () => (
     <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
@@ -1918,15 +1928,15 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
       columns.forEach((c, i) => { row[c.label] = ((values[i] ?? 0) / 100).toFixed(2); });
       rows.push(row);
     };
-    BS_EQ_ORDER.forEach((bucket) => {
+    [...BS_EQ_ORDER, ...eqExtraBuckets].forEach((bucket) => {
       (equityBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
     });
     pushRow("", "Total Equity", totalEquityByCol);
-    BS_LIAB_ORDER.forEach((bucket) => {
+    [...BS_LIAB_ORDER, ...liabExtraBuckets].forEach((bucket) => {
       (liabBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
     });
     pushRow("", "Total Liabilities", totalLiabByCol);
-    BS_ASSET_ORDER.forEach((bucket) => {
+    [...BS_ASSET_ORDER, ...assetExtraBuckets].forEach((bucket) => {
       (assetBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
     });
     pushRow("", "Total Assets", totalAssetsByCol);
@@ -1993,13 +2003,13 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
               </thead>
               <tbody>
                 <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
-                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                {[...BS_EQ_ORDER, ...eqExtraBuckets].map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t border-[#E2E8F0] font-semibold">
                   <td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td>
                   {totalEquityByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
                 </tr>
                 <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
-                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                {[...BS_LIAB_ORDER, ...liabExtraBuckets].map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t border-[#E2E8F0] font-semibold">
                   <td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td>
                   {totalLiabByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
@@ -2023,7 +2033,7 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
                 </tr>
               </thead>
               <tbody>
-                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                {[...BS_ASSET_ORDER, ...assetExtraBuckets].map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]">
                   <td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td>
                   {totalAssetsByCol.map((v, i) => <td key={i} className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(v)}</td>)}

@@ -11,7 +11,9 @@
 // files' known-vocabulary lists in sync by hand when either changes.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plBucket, PL_REV_ORDER, PL_EXP_ORDER } from "./scheduleIiiCaptions.ts";
+import {
+  plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
+} from "./scheduleIiiCaptions.ts";
 
 test("Cost of Goods Sold and Purchases share the Cost of Materials Consumed caption", () => {
   assert.equal(plBucket("Expense", "Cost of Goods Sold"), "Cost of Materials Consumed");
@@ -42,4 +44,16 @@ test("plBucket's known Expense captions — Tax Expense is the one deliberate ex
   for (const s of knownInOrder) assert.ok(PL_EXP_ORDER.includes(plBucket("Expense", s)), `unexpected caption for subtype ${s}`);
   assert.equal(plBucket("Expense", "Income Tax"), "Tax Expense");
   assert.ok(!PL_EXP_ORDER.includes("Tax Expense"));
+});
+
+test("every caption bsBucket can produce for a known Asset/Liability/Equity subtype is in the BS_*_ORDER lists", () => {
+  const assetSubtypes = ["Plant & Machinery", "Goodwill", "Long Term Investment", "Inventory", "Trade Receivables",
+    "Advance to Suppliers", "Bank Account", "Prepaid Expenses", null, "Something New"];
+  for (const s of assetSubtypes) assert.ok(BS_ASSET_ORDER.includes(bsBucket("Asset", s)), `unexpected caption for asset subtype ${s}`);
+
+  const liabSubtypes = ["Term Loan", "Bank Overdraft", "Trade Payables", "GST Payable", null, "Something New"];
+  for (const s of liabSubtypes) assert.ok(BS_LIAB_ORDER.includes(bsBucket("Liability", s)), `unexpected caption for liability subtype ${s}`);
+
+  const eqSubtypes = ["Share Capital", "Retained Earnings", null];
+  for (const s of eqSubtypes) assert.ok(BS_EQ_ORDER.includes(bsBucket("Equity", s)), `unexpected caption for equity subtype ${s}`);
 });
