@@ -237,7 +237,7 @@ export function CineCTA({
       <SerifHeading align="center" lines={titleLines} subtitle={subtitle} />
       <CineReveal delay={120}>
         <div className="mt-10 flex flex-wrap justify-center gap-5">
-          <Button href={primary.href} external={primary.external} variant="light" className="px-7 py-[15px]">
+          <Button href={primary.href} external={primary.external} variant="accent" className="px-7 py-[15px]">
             {primary.label}
             <ArrowRight size={16} />
           </Button>
