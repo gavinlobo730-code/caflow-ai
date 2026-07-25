@@ -401,12 +401,16 @@ function AccountingDashboard({
       let revenue = 0, expenses = 0, cash = 0;
       try {
         const [plRes, cfRes] = await Promise.all([
-          api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; operating_expenses: { total_paise: number } } }>,
+          api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>,
           api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>,
         ]);
         if (plRes.success) {
           revenue = plRes.data.revenue?.total_paise ?? 0;
-          expenses = plRes.data.operating_expenses?.total_paise ?? 0;
+          // Cost of Goods Sold lives in its own section, separate from
+          // operating_expenses (see PLApiData above) — must be added in or the
+          // dashboard's headline "Expenses" stat undercounts the same way the
+          // P&L tab did.
+          expenses = (plRes.data.cost_of_sales?.total_paise ?? 0) + (plRes.data.operating_expenses?.total_paise ?? 0);
         }
         if (cfRes.success) cash = cfRes.data.closing_cash_paise ?? 0;
       } catch { /* transient API error — leave zeros rather than recomputing client-side */ }
@@ -1502,6 +1506,15 @@ interface PLApiLine {
 }
 interface PLApiData {
   revenue: { lines: PLApiLine[]; total_paise: number };
+  // Cost of Goods Sold — kept in its OWN section by the backend (domain/
+  // reporting/builders.py::profit_loss), separate from operating_expenses, so
+  // Gross Profit can be computed there. A Schedule III P&L has one "Cost of
+  // Materials Consumed" caption that this section's lines bucket into
+  // alongside operating_expenses' "Purchases" line (see plBucket below) —
+  // omitting this section here silently dropped COGS from every on-screen
+  // and exported P&L (same defect class as the backend fix in
+  // domain/reporting/schedule_iii.py, task 2026-07-25).
+  cost_of_sales: { lines: PLApiLine[]; total_paise: number };
   operating_expenses: { lines: PLApiLine[]; total_paise: number };
   net_profit_paise: number;
 }
@@ -1574,12 +1587,14 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         });
         const balances = [
           ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
+          ...(d.cost_of_sales?.lines ?? []).map((l) => toBal(l, "Expense")),
           ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
         ];
+        const expensesTotal = (d.cost_of_sales?.total_paise ?? 0) + (d.operating_expenses?.total_paise ?? 0);
         return {
           label: col.label,
           balances,
-          totals: { revenue: d.revenue?.total_paise ?? 0, expenses: d.operating_expenses?.total_paise ?? 0, net: d.net_profit_paise ?? 0 },
+          totals: { revenue: d.revenue?.total_paise ?? 0, expenses: expensesTotal, net: d.net_profit_paise ?? 0 },
         };
       } catch {
         // Backend error/timeout for this column — degrade the COLUMN to empty
@@ -4253,9 +4268,15 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
       for (const l of d?.revenue.lines ?? [])
         rows.push({ "Schedule III Category": plBucket("Revenue", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d?.revenue.total_paise ?? 0) });
+      // Cost of Goods Sold — own section, separate from operating_expenses
+      // (see PLApiData above); both bucket into "Cost of Materials Consumed"
+      // via plBucket, so must be exported alongside operating_expenses or the
+      // XLSX undercounts Total Expenses the same way the on-screen P&L did.
+      for (const l of d?.cost_of_sales.lines ?? [])
+        rows.push({ "Schedule III Category": plBucket("Expense", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
       for (const l of d?.operating_expenses.lines ?? [])
         rows.push({ "Schedule III Category": plBucket("Expense", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
-      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money(d?.operating_expenses.total_paise ?? 0) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d?.cost_of_sales.total_paise ?? 0) + (d?.operating_expenses.total_paise ?? 0)) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
       return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31) };
     }
