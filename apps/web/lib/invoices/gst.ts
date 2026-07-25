@@ -97,6 +97,10 @@ export interface InvoiceDetail {
   supply_state_code: string | null;
   is_interstate: boolean;
   notes: string | null;
+  // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247);
+  // absent/false means the invoice carries its exact calculated amount.
+  round_off_enabled?: boolean | null;
+  round_off_paise?: number | null;
   taxable_amount_paise: number;
   total_gst_paise: number;
   cgst_paise: number;
@@ -242,14 +246,19 @@ export interface PreviewTotals {
 }
 
 /**
- * Compute previewed totals for the summary panel. `applyRoundOff` is true for INR
- * invoices (whole-rupee round-off) and false for foreign-currency invoices, which
- * the backend does not rupee-round.
+ * Compute previewed totals for the summary panel. `applyRoundOff` mirrors what
+ * the backend will actually do, so the preview never disagrees with the saved
+ * invoice. It is true ONLY for an INR invoice whose round_off_enabled flag is
+ * on — round-off became opt-in per invoice in migration 247. Foreign-currency
+ * documents, and sales credit/debit notes, are never rupee-rounded.
+ *
+ * Defaults to FALSE (exact amount) so a caller that omits it gets the safe,
+ * un-rounded total rather than silently re-introducing mandatory rounding.
  */
 export function previewTotals(
   lines: InvoiceLine[],
   isInterstate: boolean,
-  applyRoundOff: boolean = true,
+  applyRoundOff: boolean = false,
 ): PreviewTotals {
   const g = computeGst(lines, isInterstate);
   const gst = g.cgst_paise + g.sgst_paise + g.igst_paise;

@@ -683,11 +683,18 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     base_igst     = dc.to_base(total_igst_paise)
     base_total_gst = base_cgst + base_sgst + base_igst
     base_total     = base_taxable + base_total_gst
-    # Invoice-level round-off (nearest ₹1) — INR invoices only. Absorbs the
-    # sub-rupee GST remainder so the payable total is a clean rupee; the delta
-    # is posted to the 'Round Off' ledger by journal_for_sales_invoice so the
-    # journal stays balanced. Foreign-currency invoices are not rupee-rounded.
-    round_off_paise = _round_off_paise(base_total) if dc.currency == "INR" else 0
+    # Invoice-level round-off (nearest ₹1) — OPT-IN per invoice (migration 247)
+    # and INR only. When enabled it absorbs the sub-rupee GST remainder so the
+    # payable total is a clean rupee, and the delta is posted to the 'Round Off'
+    # ledger by journal_for_sales_invoice so the journal stays balanced. Default
+    # is OFF: the invoice shows its exact calculated amount. Foreign-currency
+    # invoices are never rupee-rounded regardless of the flag.
+    round_off_enabled = bool(data.get("round_off_enabled", False))
+    round_off_paise = (
+        _round_off_paise(base_total)
+        if (round_off_enabled and dc.currency == "INR")
+        else 0
+    )
     # Base is authoritative for the header/GL/reports; the *_paise names below now
     # carry base INR. (For INR these equal the txn values — byte-for-byte.)
     total_taxable_paise = base_taxable
@@ -752,6 +759,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "total_paise":           total_paise,
             "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
             "round_off_paise":       round_off_paise,
+            "round_off_enabled":     round_off_enabled,
             "paid_paise":            0,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
@@ -785,6 +793,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         "total_paise":           total_paise,
         "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
         "round_off_paise":       round_off_paise,
+        "round_off_enabled":     round_off_enabled,
         "paid_paise":            0,
         "status":                "draft",
         "notes":                 data.get("notes", ""),
@@ -1235,9 +1244,18 @@ def update_invoice(
             base_igst      = dc.to_base(total_igst)
             base_total_gst = base_cgst + base_sgst + base_igst
             base_total     = base_taxable + base_total_gst
-            # Invoice-level round-off (nearest ₹1), mirroring the create path. INR
-            # only — a foreign-currency draft (dc.currency != INR) is not rounded.
-            round_off_edit = _round_off_paise(base_total) if dc.currency == "INR" else 0
+            # Invoice-level round-off (nearest ₹1), mirroring the create path:
+            # opt-in per invoice (migration 247) and INR only. Honour a toggle in
+            # this request, else keep whatever the invoice already had — without
+            # this, re-saving an un-rounded invoice would silently re-round it.
+            round_off_on_edit = bool(
+                data.get("round_off_enabled", inv.get("round_off_enabled", False))
+            )
+            round_off_edit = (
+                _round_off_paise(base_total)
+                if (round_off_on_edit and dc.currency == "INR")
+                else 0
+            )
             data["taxable_amount_paise"] = base_taxable
             data["cgst_paise"]           = base_cgst
             data["sgst_paise"]           = base_sgst
@@ -1248,6 +1266,33 @@ def update_invoice(
             data["txn_taxable"]          = txn_taxable
             data["txn_total_gst"]        = txn_total_gst
             data["txn_total"]            = txn_total + round_off_edit
+
+        elif "round_off_enabled" in data:
+            # Rounding toggled on a draft without touching the lines. The tax
+            # heads don't move (CGST Act §15 — round-off never changes the value
+            # of supply or the tax on it), but the payable total does, so it must
+            # be recomputed from the stored components or it would go stale.
+            inv_resp = (db.table("client_sales_invoices").select("*")
+                        .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id"))
+                        .limit(1).execute())
+            inv = inv_resp.data[0]
+            base_total = (
+                int(inv.get("taxable_amount_paise") or 0)
+                + int(inv.get("cgst_paise") or 0)
+                + int(inv.get("sgst_paise") or 0)
+                + int(inv.get("igst_paise") or 0)
+            )
+            is_inr = (inv.get("txn_currency") or "INR") == "INR"
+            round_off_edit = (
+                _round_off_paise(base_total)
+                if (bool(data["round_off_enabled"]) and is_inr) else 0
+            )
+            data["round_off_paise"] = round_off_edit
+            data["total_paise"]     = base_total + round_off_edit
+            if is_inr:
+                # INR: txn mirrors base byte-for-byte. Foreign currency is never
+                # rupee-rounded, so its txn_total is left exactly as stored.
+                data["txn_total"] = base_total + round_off_edit
 
         # Per-line unit correction — independent of the full lines-replace
         # block above (draft-only), safe on any non-cancelled status since

@@ -147,6 +147,11 @@ export function InvoiceEditor({
   );
   const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? duplicateSeed?.supply_state_code ?? "");
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
+  // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247) — an
+  // invoice shows its exact calculated amount unless the CA turns this on.
+  const [roundOffEnabled, setRoundOffEnabled] = useState(
+    existing?.round_off_enabled ?? duplicateSeed?.round_off_enabled ?? false,
+  );
   const [termCustom, setTermCustom] = useState<boolean>(() => {
     if (creditDays === "") return false;
     const n = parseInt(creditDays, 10);
@@ -246,14 +251,18 @@ export function InvoiceEditor({
     creditDays, supplyStateCode: existing?.supply_state_code ?? duplicateSeed?.supply_state_code ?? "",
     isInterstate: existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false,
     notes: existing?.notes ?? duplicateSeed?.notes ?? "",
+    roundOffEnabled: existing?.round_off_enabled ?? duplicateSeed?.round_off_enabled ?? false,
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };
+  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, roundOffEnabled, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null, undefined, confirmDialog);
 
   // ── Live preview totals + validation ────────────────────────────────────────
-  const totals = useMemo(() => previewTotals(lines, isInterstate, !isForeign), [lines, isInterstate, isForeign]);
+  const totals = useMemo(
+    () => previewTotals(lines, isInterstate, !isForeign && roundOffEnabled),
+    [lines, isInterstate, isForeign, roundOffEnabled],
+  );
   const validation = useMemo(
     () => validateInvoiceEditor({ customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate }),
     [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate],
@@ -444,6 +453,7 @@ export function InvoiceEditor({
           supply_state_code: supplyStateCode || undefined,
           notes: notes.trim() || undefined,
           is_inter_state: isInterstate,
+          round_off_enabled: roundOffEnabled,
           lines: linePayload,
         }, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
@@ -459,6 +469,7 @@ export function InvoiceEditor({
           supply_state_code: supplyStateCode || undefined,
           is_inter_state: isInterstate,
           notes: notes.trim() || undefined,
+          round_off_enabled: roundOffEnabled,
           lines: linePayload,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
@@ -575,8 +586,19 @@ export function InvoiceEditor({
           <Row label={uniformRate != null ? `SGST @ ${uniformRate / 2}%` : "SGST"} value={fmtAmt(totals.sgst_paise)} />
         </>
       )}
-      {!isForeign && totals.round_off_paise !== 0 && (
+      {!isForeign && roundOffEnabled && totals.round_off_paise !== 0 && (
         <Row label="Round-off" value={`${totals.round_off_paise < 0 ? "-" : ""}${fmt(Math.abs(totals.round_off_paise))}`} />
+      )}
+      {!isForeign && !isLocked && (
+        <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={roundOffEnabled}
+            onChange={(e) => setRoundOffEnabled(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-[#CBD5E1] accent-[#0F172A]"
+          />
+          <span className="text-[11px] text-[#475569]">Round total to nearest ₹1</span>
+        </label>
       )}
       <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
         <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>

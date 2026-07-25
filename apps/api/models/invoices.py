@@ -127,6 +127,11 @@ class SalesInvoiceIn(BaseModel):
     # exchange_rate is an optional manual override (else resolved via the service).
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
+    # Invoice-level round-off to the nearest ₹1 is OPT-IN (migration 247). The
+    # default is False: an invoice shows its exact calculated amount. Set True
+    # to have the sub-rupee remainder pushed to the 'Round Off' ledger. Ignored
+    # for foreign-currency invoices, which are never rupee-rounded.
+    round_off_enabled: bool = False
 
     @field_validator("invoice_no")
     @classmethod
@@ -169,6 +174,10 @@ class SalesInvoiceUpdateIn(BaseModel):
     # (a full line replace, draft-only). Handled separately in the router,
     # independent of every other field here.
     line_units: Optional[dict[str, str]] = None
+    # Toggle invoice-level round-off (migration 247). Draft-only, like the other
+    # amount-affecting fields — flipping it changes the payable total, which
+    # CGST Rule 46 locks once the invoice is issued.
+    round_off_enabled: Optional[bool] = None
 
     @field_validator("invoice_no")
     @classmethod
