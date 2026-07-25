@@ -155,7 +155,7 @@ export default function ReceivablesAgingPage() {
       BUCKET_LABEL[r.bucket],
     ]);
     const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

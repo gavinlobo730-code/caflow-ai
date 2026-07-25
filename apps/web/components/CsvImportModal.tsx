@@ -126,7 +126,12 @@ function parseCsvLine(line: string): string[] {
 }
 
 function parseCsv(text: string, columns: CsvColumn[]): ParsedRow[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  // Strip a leading UTF-8 BOM: our own downloadCsvTemplate() now prepends one
+  // (so Excel doesn't mangle non-ASCII chars), and Excel's own "CSV UTF-8"
+  // Save As does the same — without stripping it, the first header would
+  // parse as "\ufeffkey" and never match a column.
+  const stripped = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const lines = stripped.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return [];
 
   // First non-comment line is header
@@ -168,7 +173,8 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     const headerRow = columns.map(c => c.key).join(",");
     const hintRow = "# " + columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional")).join(" | ");
     const csv = `${headerRow}\n${hintRow}\n`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    // BOM so Excel opens it as UTF-8 (and so ₹/non-ASCII hints render correctly).
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

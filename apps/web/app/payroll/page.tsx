@@ -343,7 +343,10 @@ function generateTds24QData(slips: PayrollSlip[], quarter: string): string {
 }
 
 function downloadFile(content: string, filename: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
+  // BOM only for CSV: PF ECR is a fixed-format government text upload where
+  // extra bytes would break parsing, so it must stay BOM-free.
+  const body = mimeType.startsWith("text/csv") ? "\uFEFF" + content : content;
+  const blob = new Blob([body], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

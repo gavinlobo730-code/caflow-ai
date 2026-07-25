@@ -46,7 +46,9 @@ function toCSV(rows: CoaRow[]): string {
 }
 
 function downloadFile(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
+  // BOM so Excel opens CSV as UTF-8 instead of mangling non-ASCII chars.
+  const body = mime.startsWith("text/csv") ? "\uFEFF" + content : content;
+  const blob = new Blob([body], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

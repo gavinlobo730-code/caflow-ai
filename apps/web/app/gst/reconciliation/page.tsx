@@ -160,7 +160,11 @@ function parseLine(line: string): string[] {
 }
 
 function parseCsv(text: string): { rows: InvoiceRow[]; error: string | null } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
+  // Strip a leading UTF-8 BOM defensively (downloadTemplate() now prepends
+  // one so Excel opens it as UTF-8; most browsers' FileReader already
+  // strips it on decode, but don't rely on that alone).
+  const stripped = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const lines = stripped.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
   if (lines.length < 2) {
     return { rows: [], error: "CSV must have a header row and at least one data row." };
   }
@@ -356,7 +360,7 @@ function downloadTemplate(filename: string) {
     CSV_TEMPLATE_HEADER,
     CSV_TEMPLATE_SAMPLE,
   ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
