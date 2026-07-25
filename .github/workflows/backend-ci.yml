@@ -85,3 +85,47 @@ jobs:
           # port directly and never stalls on an IPv6 ::1 attempt first.
           HARNESS_PG: "host=127.0.0.1 port=5432 user=postgres password=postgres"
         run: pytest tests/test_migrations_apply.py -v --tb=short
+
+  # task #244: apps/api/migrations/*.sql previously had NO automated path to the
+  # real production database — Render auto-deploys code on every push to main,
+  # but nothing applied the matching migrations. Migrations 233-241 sat
+  # committed and CI-validated (by the `migrations` job above, against a
+  # throwaway Postgres) but unapplied to production for up to 6 days, while
+  # their dependent code was already live and silently failing. This job closes
+  # that gap: on every push to main, once tests + the migration-apply ratchet
+  # both pass, apply any migration not yet recorded in production's own
+  # schema_migrations tracking table (scripts/db/apply_migrations.py — already
+  # idempotent/checksum-tracked, just never wired into a pipeline before now).
+  #
+  # Never runs on pull_request — only a merge to main may touch the real
+  # database. --only-schema skips pure data-seed migrations (see
+  # apply_migrations.py's SEED_MIGRATIONS). No --continue-on-error: a failed
+  # migration stops the run immediately rather than attempting later ones that
+  # may depend on it against a database now in an unknown partial state.
+  deploy-migrations:
+    name: apply pending migrations — production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, migrations]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply pending migrations to production
+        working-directory: apps/api
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — cannot apply migrations to production." \
+                 "Add it under Settings > Secrets and variables > Actions (see docs/deploy-migrations.md)."
+            exit 1
+          fi
+          python scripts/db/apply_migrations.py --dsn "$SUPABASE_DB_URL" --only-schema --json

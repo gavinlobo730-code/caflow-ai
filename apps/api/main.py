@@ -334,6 +334,16 @@ try:
 except Exception:
     _logger.exception("config validation failed")
 
+# task #244 — boot-time schema-drift guard: fails /health (see below) if a
+# migration the deployed code depends on was never applied to this database.
+# See core/schema_guard.py's module docstring for the incident this closes.
+try:
+    from core.schema_guard import run_startup_check
+    _SCHEMA_DRIFT = run_startup_check()
+except Exception:
+    _logger.exception("schema drift check failed")
+    _SCHEMA_DRIFT = {"checked": False, "missing": []}
+
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
 from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
 start_scheduler()
@@ -358,5 +368,21 @@ def root():
 
 @app.get("/health")
 def healthcheck():
+    from fastapi.responses import JSONResponse
     from models.common import api_response
+
+    # task #244: a deploy whose code depends on a migration that was never
+    # applied to this database fails its own health check instead of going
+    # live and silently corrupting data — Render's healthCheckPath will not
+    # cut traffic over to an unhealthy deploy. See core/schema_guard.py.
+    if _SCHEMA_DRIFT.get("missing"):
+        return JSONResponse(
+            status_code=503,
+            content=api_response(
+                False,
+                {"status": "schema_drift", "missing_columns": _SCHEMA_DRIFT["missing"]},
+                "Deployed code depends on database columns that don't exist — a migration "
+                "was committed but never applied. See scripts/db/apply_migrations.py.",
+            ),
+        )
     return api_response(True, {"status": "ok"})
