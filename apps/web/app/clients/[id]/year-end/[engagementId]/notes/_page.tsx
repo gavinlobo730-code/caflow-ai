@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { yearEndApi, type NoteToAccount } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -112,9 +113,14 @@ export default function NotesPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-3 max-w-3xl">
+      <div className="p-6 space-y-2 max-w-3xl">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-[#F8FAFC] animate-pulse" />
+          <div key={i} className="bg-white rounded-xl border border-[#F1F5F9] px-4 py-3 flex items-center gap-3">
+            <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
+            <Skeleton className="h-3 w-16 shrink-0" />
+            <Skeleton className="h-4 w-20 rounded-full shrink-0" />
+            <Skeleton className="h-3 flex-1" />
+          </div>
         ))}
       </div>
     );

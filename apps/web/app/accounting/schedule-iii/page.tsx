@@ -11,6 +11,7 @@ import Link from "next/link";
 import { ChevronLeft, Printer, AlertTriangle, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatementSkeleton } from "@/components/ui/skeleton";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -165,12 +166,12 @@ function SectionTable({ section }: { section: ScheduleSection }) {
 
 function LoadingSpinner() {
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-white/[0.08] rounded w-64" />
-      <div className="h-10 bg-[#F1F5F9] rounded w-64" />
+    <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="h-6 bg-white/[0.08] rounded w-64 animate-pulse" />
+      <div className="h-10 bg-[#F1F5F9] rounded w-64 animate-pulse" />
       <div className="grid grid-cols-2 gap-6">
-        <div className="h-96 bg-[#F1F5F9] rounded-xl" />
-        <div className="h-96 bg-[#F1F5F9] rounded-xl" />
+        <StatementSkeleton sections={2} rowsPerSection={3} />
+        <StatementSkeleton sections={2} rowsPerSection={3} />
       </div>
     </div>
   );

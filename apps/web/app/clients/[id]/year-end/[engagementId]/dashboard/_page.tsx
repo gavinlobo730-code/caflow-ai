@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { EngagementStatus, YearEndEvent } from "@/lib/api/yearEnd";
+import { Skeleton, DashboardSkeleton } from "@/components/ui/skeleton";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -238,10 +239,9 @@ export default function YearEndDashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-4xl">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-24 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        ))}
+      <div className="p-6 space-y-5 max-w-4xl">
+        <Skeleton className="h-16 rounded-xl" />
+        <DashboardSkeleton cards={3} className="grid-cols-1 sm:grid-cols-3" />
       </div>
     );
   }

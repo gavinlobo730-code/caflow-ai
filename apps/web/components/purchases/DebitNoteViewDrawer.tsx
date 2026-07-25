@@ -13,6 +13,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
+import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
 const DN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-[#F1F5F9] text-[#64748B]",
@@ -143,8 +144,19 @@ export function DebitNoteViewDrawer({
   return (
     <Drawer open onClose={onClose} title={dn ? (dn.debit_note_no || "Debit Note") : "Debit Note"} widthClass="sm:max-w-lg">
       {loading ? (
-        <div className="p-6 space-y-3">
-          {[...Array(6)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
+        <div className="p-5 space-y-5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-2.5 w-24" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-2.5 w-24" />
+            </div>
+          </div>
+          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-[#F1F5F9]" />
+          <TimelineSkeleton rows={3} />
         </div>
       ) : error || !dn ? (
         <div className="p-8 text-center">

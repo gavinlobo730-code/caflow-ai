@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { getTasks } from "@/lib/data/tasks";
 import type { Task } from "@/lib/types";
 import { formatDate } from "@/lib/services/formatting";
@@ -43,7 +44,7 @@ export default function TasksPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-32 animate-pulse bg-[#F8FAFC] rounded" />
+            <TransactionListSkeleton rows={4} />
           ) : loadError ? (
             <div className="text-center py-8">
               <p className="text-sm text-red-600 font-medium">{loadError}</p>

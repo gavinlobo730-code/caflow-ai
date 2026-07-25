@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
+import { TableSkeleton } from "@/components/ui/skeleton";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "—";
@@ -149,11 +150,7 @@ export default function SchedulesPage() {
 
           {/* Content */}
           {loading && !currentData ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />
-              ))}
-            </div>
+            <TableSkeleton rows={5} />
           ) : error ? (
             <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
               {error}

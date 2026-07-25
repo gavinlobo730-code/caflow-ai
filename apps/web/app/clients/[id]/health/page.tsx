@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Plus, X, Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
@@ -230,10 +231,38 @@ export default function ClientHealthPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-32 bg-gray-100 rounded-xl" />
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-xl" />)}
+      <div className="p-6 space-y-6">
+        {/* Score hero */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
+          <div className="flex items-center gap-6">
+            <div className="text-center space-y-2">
+              <Skeleton className="h-10 w-16 mx-auto" />
+              <Skeleton className="h-2.5 w-8 mx-auto" />
+            </div>
+            <div className="w-px h-16 bg-gray-200" />
+            <div className="space-y-2">
+              <Skeleton className="h-2.5 w-12" />
+              <Skeleton className="h-6 w-9 rounded" />
+            </div>
+            <div className="w-px h-16 bg-gray-200" />
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-2.5 w-24" />
+            </div>
+          </div>
+        </div>
+
+        {/* Dimension scores */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div key={i} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-2.5 w-20" />
+                <Skeleton className="h-3.5 w-6" />
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          ))}
         </div>
       </div>
     );

@@ -12,6 +12,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 type Role = "Partner" | "Manager" | "Executive" | "Reviewer";
@@ -261,7 +262,21 @@ export default function WorkAllocationPage() {
       {loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-[#E2E8F0] p-4 animate-pulse h-48" />
+            <div key={i} className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="h-2.5 w-36" />
+                </div>
+                <Skeleton className="h-4 w-16 rounded-full" />
+              </div>
+              <div className="flex gap-3">
+                <Skeleton className="h-2.5 w-12" />
+                <Skeleton className="h-2.5 w-14" />
+              </div>
+              <Skeleton className="h-1.5 w-full rounded-full" />
+              <SkeletonText lines={3} />
+            </div>
           ))}
         </div>
       )}

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Bell, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
@@ -82,7 +83,7 @@ export default function HealthAlertsPage() {
       </div>
       {error && <div className="bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>}
       {loading ? (
-        <div className="space-y-2 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-xl" />)}</div>
+        <TransactionListSkeleton rows={3} />
       ) : alerts.length === 0 ? (
         <Card className="bg-white border-gray-200 shadow-sm"><CardContent className="py-12 text-center"><CheckCircle size={32} className="text-green-500 mx-auto mb-2" /><p className="text-sm text-gray-500">No active alerts — all clear</p></CardContent></Card>
       ) : (

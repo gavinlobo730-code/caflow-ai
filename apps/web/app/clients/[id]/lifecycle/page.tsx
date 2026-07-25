@@ -8,6 +8,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { CardGridSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -205,8 +206,11 @@ export default function ClientLifecyclePage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        {[1, 2].map((i) => <div key={i} className="h-32 bg-gray-100 rounded-xl" />)}
+      <div className="p-6 space-y-6">
+        {/* Onboarding Workflows — cards (status + progress + task list) */}
+        <CardGridSkeleton count={2} className="sm:grid-cols-1 lg:grid-cols-1" />
+        {/* Renewals — table (Service, FY, Renewal Date, Value, Status) */}
+        <TableSkeleton cols={5} rows={4} />
       </div>
     );
   }

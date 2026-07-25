@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -609,44 +610,43 @@ export default function BillingPage() {
               <Plus size={15} /> Add Engagement
             </button>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
-            <table className="w-full text-sm min-w-[700px]">
-              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Service</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Fee</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Cycle</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Start Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F1F5F9]">
-                {loading && [...Array(3)].map((_, i) => (
-                  <tr key={i}>{[...Array(6)].map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-[#F1F5F9] rounded animate-pulse" /></td>
-                  ))}</tr>
-                ))}
-                {!loading && engagements.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-[#94A3B8]">No engagements yet</td></tr>
-                )}
-                {!loading && engagements.map(e => (
-                  <tr key={e.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-3 font-medium text-[#0F172A]">{e.client_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-[#475569]">{e.service_type}</td>
-                    <td className="px-4 py-3 text-gray-800 font-mono">{fmtPaise(e.fee_paise)}</td>
-                    <td className="px-4 py-3 text-[#475569]">{e.billing_cycle}</td>
-                    <td className="px-4 py-3 text-[#64748B]">{fmtDate(e.start_date)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.status === "Active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#475569]"}`}>
-                        {e.status}
-                      </span>
-                    </td>
+          {loading ? (
+            <TableSkeleton cols={6} rows={3} />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
+              <table className="w-full text-sm min-w-[700px]">
+                <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Service</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Fee</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Cycle</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Start Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {engagements.length === 0 && (
+                    <tr><td colSpan={6} className="text-center py-8 text-[#94A3B8]">No engagements yet</td></tr>
+                  )}
+                  {engagements.map(e => (
+                    <tr key={e.id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-4 py-3 font-medium text-[#0F172A]">{e.client_name ?? "—"}</td>
+                      <td className="px-4 py-3 text-[#475569]">{e.service_type}</td>
+                      <td className="px-4 py-3 text-gray-800 font-mono">{fmtPaise(e.fee_paise)}</td>
+                      <td className="px-4 py-3 text-[#475569]">{e.billing_cycle}</td>
+                      <td className="px-4 py-3 text-[#64748B]">{fmtDate(e.start_date)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.status === "Active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#475569]"}`}>
+                          {e.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -666,54 +666,53 @@ export default function BillingPage() {
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
-            <table className="w-full text-sm min-w-[800px]">
-              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Invoice No.</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
-                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Amount</th>
-                  <th className="text-right px-4 py-3 font-medium text-[#475569]">GST 18%</th>
-                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Total</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Status</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F1F5F9]">
-                {loading && [...Array(3)].map((_, i) => (
-                  <tr key={i}>{[...Array(8)].map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-[#F1F5F9] rounded animate-pulse" /></td>
-                  ))}</tr>
-                ))}
-                {!loading && invoices.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-8 text-[#94A3B8]">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
-                )}
-                {!loading && invoices.map(inv => (
-                  <tr key={inv.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-3 font-mono text-[#334155]">{inv.invoice_no}</td>
-                    <td className="px-4 py-3 text-[#64748B]">{fmtDate(inv.invoice_date)}</td>
-                    <td className="px-4 py-3 font-medium text-[#0F172A]">{inv.client_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-[#334155]">{fmtPaise(inv.amount_paise)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-[#64748B]">{fmtPaise(inv.gst_paise)}</td>
-                    <td className="px-4 py-3 text-right font-mono font-semibold text-[#0F172A]">{fmtPaise(inv.total_paise)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[inv.status]}`}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => handleDownloadPdf(inv.id)} disabled={downloadingId === inv.id}
-                        title="Download PDF"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50">
-                        <Download size={13} /> {downloadingId === inv.id ? "Downloading…" : "PDF"}
-                      </button>
-                    </td>
+          {loading ? (
+            <TableSkeleton cols={8} rows={3} />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
+              <table className="w-full text-sm min-w-[800px]">
+                <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Invoice No.</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
+                    <th className="text-right px-4 py-3 font-medium text-[#475569]">Amount</th>
+                    <th className="text-right px-4 py-3 font-medium text-[#475569]">GST 18%</th>
+                    <th className="text-right px-4 py-3 font-medium text-[#475569]">Total</th>
+                    <th className="text-left px-4 py-3 font-medium text-[#475569]">Status</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {invoices.length === 0 && (
+                    <tr><td colSpan={8} className="text-center py-8 text-[#94A3B8]">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
+                  )}
+                  {invoices.map(inv => (
+                    <tr key={inv.id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-4 py-3 font-mono text-[#334155]">{inv.invoice_no}</td>
+                      <td className="px-4 py-3 text-[#64748B]">{fmtDate(inv.invoice_date)}</td>
+                      <td className="px-4 py-3 font-medium text-[#0F172A]">{inv.client_name ?? "—"}</td>
+                      <td className="px-4 py-3 text-right font-mono text-[#334155]">{fmtPaise(inv.amount_paise)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-[#64748B]">{fmtPaise(inv.gst_paise)}</td>
+                      <td className="px-4 py-3 text-right font-mono font-semibold text-[#0F172A]">{fmtPaise(inv.total_paise)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[inv.status]}`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => handleDownloadPdf(inv.id)} disabled={downloadingId === inv.id}
+                          title="Download PDF"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50">
+                          <Download size={13} /> {downloadingId === inv.id ? "Downloading…" : "PDF"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

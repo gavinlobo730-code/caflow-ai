@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { yearEndApi, type Adjustment, type AdjustmentType, type AdjustmentStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -120,9 +121,7 @@ export default function AdjustmentsPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-4xl">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-[#F8FAFC] animate-pulse" />
-        ))}
+        <TableSkeleton cols={8} rows={4} />
       </div>
     );
   }
