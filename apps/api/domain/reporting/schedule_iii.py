@@ -92,8 +92,15 @@ def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
             return "Other Income"
         return "Revenue from Operations"
     if typ == "expense":
+        # Full statutory name, not a shorthand key — apps/web's Accounting >
+        # P&L tab now consumes this string DIRECTLY as a display caption (via
+        # builders.profit_loss()'s schedule_iii_caption field), not just as an
+        # internal lookup key the way build_schedule_iii() below uses it. A
+        # mismatched shorthand ("Cost of Materials") silently dropped this
+        # entire line from that tab even though the grand total (computed
+        # independently of bucketing) was correct — caught 2026-07-25.
         if "material" in sub or "cost of goods" in sub or "purchase" in sub or "raw material" in sub:
-            return "Cost of Materials"
+            return "Cost of Materials Consumed"
         if "employee" in sub or "salary" in sub or "wages" in sub or "staff" in sub:
             return "Employee Benefit Expense"
         if "finance" in sub or "interest expense" in sub or "bank charge" in sub:
@@ -203,7 +210,7 @@ def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
     rev_ops, other_income = gp("Revenue from Operations"), gp("Other Income")
     total_revenue = rev_ops + other_income
 
-    materials = gp("Cost of Materials")
+    materials = gp("Cost of Materials Consumed")
     emp = gp("Employee Benefit Expense")
     finance = gp("Finance Costs")
     depr = gp("Depreciation & Amortisation")

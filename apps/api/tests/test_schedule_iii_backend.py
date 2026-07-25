@@ -46,7 +46,7 @@ def test_bs_bucket_non_bs_returns_none():
 def test_pl_bucket_revenue_and_expense():
     assert pl_bucket("Revenue", "Sales of Services") == "Revenue from Operations"
     assert pl_bucket("Revenue", "Interest Income") == "Other Income"
-    assert pl_bucket("Expense", "Raw Material Purchase") == "Cost of Materials"
+    assert pl_bucket("Expense", "Raw Material Purchase") == "Cost of Materials Consumed"
     assert pl_bucket("Expense", "Employee Salaries") == "Employee Benefit Expense"
     assert pl_bucket("Expense", "Bank Charges") == "Finance Costs"
     assert pl_bucket("Expense", "Depreciation") == "Depreciation & Amortisation"

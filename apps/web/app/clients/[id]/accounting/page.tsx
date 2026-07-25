@@ -16,6 +16,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
+import { plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER } from "@/lib/accounting/scheduleIiiCaptions";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -177,62 +178,11 @@ function isDrillableAccount(id?: string): boolean {
   return !!id && !id.startsWith("__");
 }
 
-// Schedule III P&L bucket — Companies Act 2013, Schedule III, Part II
-function plBucket(type: string, subtype: string | null): string {
-  const s = (subtype ?? "").toLowerCase();
-  if (type === "Revenue") {
-    if (s.includes("other income") || s.includes("non-operating")) return "Other Income";
-    return "Revenue from Operations";
-  }
-  if (type === "Expense") {
-    if (s.includes("cost") || s.includes("cogs") || s.includes("purchase") || s.includes("material"))
-      return "Cost of Materials Consumed";
-    if (s.includes("employee") || s.includes("salary") || s.includes("payroll") || s.includes("wages") || s.includes("staff"))
-      return "Employee Benefit Expense";
-    if (s.includes("depreciation") || s.includes("amortisation") || s.includes("amortization"))
-      return "Depreciation & Amortisation";
-    if (s.includes("finance") || s.includes("interest") || s.includes("bank charge") || s.includes("borrowing cost"))
-      return "Finance Costs";
-    return "Other Expenses";
-  }
-  return "Other";
-}
-
-// Schedule III Balance Sheet bucket — Companies Act 2013, Schedule III, Part I
-function bsBucket(type: string, subtype: string | null): string {
-  const s = (subtype ?? "").toLowerCase();
-  if (type === "Asset") {
-    if (s.includes("intangible") || s.includes("goodwill") || s.includes("patent") || s.includes("trademark"))
-      return "Intangible Assets";
-    if (s.includes("fixed") || s.includes("plant") || s.includes("machinery") || s.includes("building") ||
-        s.includes("furniture") || s.includes("vehicle") || s.includes("tangible") || s.includes("equipment"))
-      return "Tangible Assets";
-    if (s.includes("investment")) return "Non-Current Investments";
-    if (s.includes("receivable") || s.includes("debtor")) return "Trade Receivables";
-    if (s.includes("cash") || s.includes("bank")) return "Cash & Cash Equivalents";
-    if (s.includes("inventor") || s.includes("stock")) return "Inventories";
-    if (s.includes("prepaid") || s.includes("advance")) return "Short-term Loans & Advances";
-    return "Other Current Assets";
-  }
-  if (type === "Liability") {
-    if (s.includes("payable") || s.includes("creditor")) return "Trade Payables";
-    // Short-term FIRST: the seeded subtype "Short Term Loan" contains "term
-    // loan", so testing long-term first presented every working-capital loan
-    // as a non-current borrowing (same fix as domain/reporting/schedule_iii.py).
-    if (s.includes("short term") || s.includes("overdraft") || s.includes("cc limit") || s.includes("cash credit"))
-      return "Short-term Borrowings";
-    if (s.includes("long term") || s.includes("term loan") || s.includes("debenture") || s.includes("mortgage"))
-      return "Long-term Borrowings";
-    if (s.includes("tax") || s.includes("gst") || s.includes("tds") || s.includes("duty"))
-      return "Tax Liabilities";
-    return "Other Current Liabilities";
-  }
-  if (type === "Equity") {
-    if (s.includes("capital") || s.includes("share")) return "Share Capital";
-    return "Reserves & Surplus";
-  }
-  return "Other";
-}
+// Schedule III caption classification (plBucket/bsBucket/PL_REV_ORDER/
+// PL_EXP_ORDER) now lives in lib/accounting/scheduleIiiCaptions.ts, imported
+// above — pulled out of this file so it's covered by an automated test
+// (a page.tsx with JSX can't be imported by the project's plain Node test
+// runner).
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
@@ -1643,8 +1593,18 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
   const revBuckets = groupBy(revenue, captionOf);
   const expBuckets = groupBy(expenses, captionOf);
 
-  const PL_REV_ORDER = ["Revenue from Operations", "Other Income"];
-  const PL_EXP_ORDER = ["Cost of Materials Consumed", "Employee Benefit Expense", "Finance Costs", "Depreciation & Amortisation", "Other Expenses"];
+  // Defence-in-depth against the exact 2026-07-25 incident: a caption
+  // captionOf() produces that ISN'T one of the names above (a mismatch
+  // between this file's vocabulary and the backend's pl_bucket(), or a
+  // legitimate new category like "Tax Expense" this simpler tab doesn't have
+  // a dedicated row for) used to make that whole bucket silently vanish from
+  // the statement — the grand total stayed right (summed independently,
+  // below) while the line itself just disappeared. Rendering every bucket
+  // groupBy() actually produced, not just the ones this list anticipated,
+  // means a naming mismatch can no longer hide money from the CA — worst
+  // case it shows up out of statutory order under its own heading.
+  const revExtraBuckets = Object.keys(revBuckets).filter((k) => !PL_REV_ORDER.includes(k));
+  const expExtraBuckets = Object.keys(expBuckets).filter((k) => !PL_EXP_ORDER.includes(k));
 
   // Grand totals per column are the backend's own authoritative figures —
   // never re-derived from the union above.
@@ -1669,11 +1629,11 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
       columns.forEach((c, i) => { row[c.label] = ((values[i] ?? 0) / 100).toFixed(2); });
       rows.push(row);
     };
-    PL_REV_ORDER.forEach((bucket) => {
+    [...PL_REV_ORDER, ...revExtraBuckets].forEach((bucket) => {
       (revBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
     });
     pushRow("", "Total Revenue", totalRevenueByCol);
-    PL_EXP_ORDER.forEach((bucket) => {
+    [...PL_EXP_ORDER, ...expExtraBuckets].forEach((bucket) => {
       (expBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
     });
     pushRow("", "Total Expenses", totalExpensesByCol);
@@ -1738,7 +1698,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
             </thead>
             <tbody>
               <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
-              {PL_REV_ORDER.map((bucket) => {
+              {[...PL_REV_ORDER, ...revExtraBuckets].map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />;
@@ -1748,7 +1708,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
                 {totalRevenueByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
               </tr>
               <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
-              {PL_EXP_ORDER.map((bucket) => {
+              {[...PL_EXP_ORDER, ...expExtraBuckets].map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />;
