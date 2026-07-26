@@ -12,6 +12,8 @@
  * is 5 paise (2 CGST + 3 SGST), the old method computed 4 (2 + 2).
  */
 
+import { computeLineGst } from "../money/gstLine.ts";
+
 export interface DebitNoteLineInput {
   quantity: number;
   rate: number; // rupees
@@ -27,14 +29,19 @@ export interface DebitNoteLineGst {
 }
 
 export function dnLineGst(line: DebitNoteLineInput, isInterstate: boolean): DebitNoteLineGst {
-  const taxable = Math.round(line.quantity * line.rate * 100); // paise
-  let cgst = 0, sgst = 0, igst = 0;
-  if (isInterstate) {
-    igst = Math.floor((taxable * line.gst_rate_bps) / 10000);
-  } else {
-    const fullGst = Math.floor((taxable * line.gst_rate_bps) / 10000);
-    cgst = Math.floor(fullGst / 2);
-    sgst = fullGst - cgst;
-  }
-  return { taxable_paise: taxable, cgst_paise: cgst, sgst_paise: sgst, igst_paise: igst, line_total: taxable + cgst + sgst + igst };
+  // Delegates to the one canonical mirror of the backend's per-line math so
+  // purchase notes cannot drift from sales invoices, or from the server. The
+  // taxable base in particular is exact-decimal + truncated here, where this
+  // used to do Math.round(qty * rate * 100) in binary floating point.
+  const g = computeLineGst(
+    { qty: line.quantity, rate: line.rate, gst_rate: line.gst_rate_bps / 100 },
+    isInterstate,
+  );
+  return {
+    taxable_paise: g.taxable_paise,
+    cgst_paise: g.cgst_paise,
+    sgst_paise: g.sgst_paise,
+    igst_paise: g.igst_paise,
+    line_total: g.line_total_paise,
+  };
 }

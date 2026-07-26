@@ -24,6 +24,7 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
 import { estimateBaseMinor } from "@/lib/services/currencyPreview";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
+import { computeLineGst } from "@/lib/money/gstLine";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
 } from "@/lib/sales/paymentTerms";
@@ -775,8 +776,10 @@ export function InvoiceEditor({
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 {lines.map((line, idx) => {
-                  const lineTaxable = Math.round((parseFloat(line.qty) || 0) * (parseFloat(line.rate) || 0) * 100);
-                  const lineTotal = lineTaxable + Math.round((lineTaxable * line.gst_rate) / 100);
+                  // Same canonical mirror the summary uses, so the per-line
+                  // column and the invoice total can never disagree with the
+                  // server (or with each other).
+                  const lineTotal = computeLineGst(line, isInterstate).line_total_paise;
                   const invalid = !isLocked && attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>

@@ -10,6 +10,8 @@
  * to be right once.
  */
 
+import { ratePaiseFromRupees } from "../money/gstLine.ts";
+
 export interface InvoiceLineInput {
   description: string;
   hsn_sac: string;
@@ -41,7 +43,9 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     description: line.description.trim(),
     hsn_sac: line.hsn_sac.trim() || undefined,
     quantity: parseFloat(line.qty),
-    rate_paise: Math.round(parseFloat(line.rate) * 100),
+    // Shared with the preview math (lib/money/gstLine.ts) so the paise the
+    // summary reasons about is byte-identical to the paise actually sent.
+    rate_paise: ratePaiseFromRupees(line.rate),
     gst_rate_percent: line.gst_rate,
     unit: line.unit?.trim() || undefined,
     service_catalogue_id: line.serviceCatalogueId ?? undefined,
