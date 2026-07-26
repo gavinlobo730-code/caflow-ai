@@ -1,48 +1,24 @@
 import { getFirmId } from "./getFirmId";
 /**
- * Transaction data layer — Sales Invoices, Expenses, Journal Auto-creation
+ * Transaction data layer — READ-ONLY access to the legacy `transactions` table.
+ *
  * All amounts in paise (integer). Never float.
- * CGST Act Section 31: Tax Invoice requirements
- * IT Act Section 194: TDS deduction thresholds
+ *
+ * Scope note: this module reads only. The invoice-WRITE path that used to live
+ * here (`createInvoice` + `computeInvoiceTotals`, plus the `TransactionLine` /
+ * `CreateInvoiceInput` / `SupplyType` / `InvoiceType` types that existed solely
+ * to feed it) was deleted — it had zero callers, wrote straight to Supabase
+ * from the browser instead of going through the API, and duplicated GST logic
+ * that had drifted into being wrong (it halved the tax with Math.round on BOTH
+ * legs, so an odd tax amount overstated CGST+SGST by a paise and left the
+ * header total disagreeing with the sum of its own lines).
+ *
+ * Sales invoices are created through POST /api/sales-invoices/ only; the GST
+ * arithmetic has exactly one client-side mirror, lib/money/gstLine.ts, which is
+ * pinned to the backend by shared/gst-parity-vectors.json. Do not reintroduce a
+ * second implementation here.
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
-
-export interface TransactionLine {
-  description: string;
-  hsn_sac_code?: string;
-  quantity: number;
-  unit: string;
-  rate_paise: number;
-  taxable_paise: number;
-  gst_rate: number;
-  cgst_paise: number;
-  sgst_paise: number;
-  igst_paise: number;
-  total_paise: number;
-}
-
-export type SupplyType = "taxable" | "nil_rated" | "exempt" | "zero_rated" | "non_gst";
-export type InvoiceType = "Regular" | "SEZ_with_payment" | "SEZ_without_payment" | "Deemed_export";
-
-export interface CreateInvoiceInput {
-  client_id: string;
-  transaction_type: "sales_invoice" | "purchase_invoice" | "credit_note" | "debit_note";
-  transaction_date: string;
-  reference_no?: string;
-  party_name: string;
-  party_gstin?: string;
-  party_pan?: string;
-  place_of_supply: string;
-  is_interstate: boolean;
-  supply_type: SupplyType;
-  invoice_type: InvoiceType;
-  is_reverse_charge: boolean;
-  original_invoice_id?: string;
-  lines: TransactionLine[];
-  tds_section?: string;
-  tds_rate?: number;
-  notes?: string;
-}
 
 export interface Transaction {
   id: string;
@@ -68,30 +44,6 @@ export interface Transaction {
   created_at: string;
 }
 
-
-/** Compute totals from lines — all in paise */
-export function computeInvoiceTotals(lines: TransactionLine[], isInterstate: boolean) {
-  let taxable = 0, cgst = 0, sgst = 0, igst = 0;
-  for (const l of lines) {
-    // Paise arithmetic — IT Act Section 145A
-    const taxableP = Math.round(l.quantity * l.rate_paise);
-    const gstAmt = Math.round(taxableP * l.gst_rate / 100);
-    taxable += taxableP;
-    if (isInterstate) {
-      igst += gstAmt;
-    } else {
-      cgst += Math.round(gstAmt / 2);
-      sgst += Math.round(gstAmt / 2);
-    }
-    l.taxable_paise = taxableP;
-    l.cgst_paise = isInterstate ? 0 : Math.round(gstAmt / 2);
-    l.sgst_paise = isInterstate ? 0 : Math.round(gstAmt / 2);
-    l.igst_paise = isInterstate ? gstAmt : 0;
-    l.total_paise = taxableP + gstAmt;
-  }
-  return { taxable, cgst, sgst, igst, total: taxable + cgst + sgst + igst };
-}
-
 export async function getTransactions(clientId?: string, type?: string): Promise<Transaction[]> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
@@ -101,70 +53,6 @@ export async function getTransactions(clientId?: string, type?: string): Promise
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []) as Transaction[];
-}
-
-export async function createInvoice(input: CreateInvoiceInput): Promise<Transaction> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-
-  const { taxable, cgst, sgst, igst, total } = computeInvoiceTotals(input.lines, input.is_interstate);
-
-  // TDS computation — IT Act Section 194
-  let tdsPaise = 0;
-  if (input.tds_rate && input.transaction_type === "purchase_invoice") {
-    tdsPaise = Math.round(taxable * input.tds_rate / 100);
-  }
-
-  // Insert transaction — CGST Act Section 31 (tax invoice requirements)
-  const { data: txn, error: txnErr } = await sb.from("transactions").insert({
-    firm_id: firmId,
-    client_id: input.client_id,
-    transaction_type: input.transaction_type,
-    transaction_date: input.transaction_date,
-    reference_no: input.reference_no,
-    party_name: input.party_name,
-    party_gstin: input.party_gstin,
-    party_pan: input.party_pan,
-    place_of_supply: input.place_of_supply,
-    is_interstate: input.is_interstate,
-    supply_type: input.supply_type,
-    invoice_type: input.invoice_type,
-    is_reverse_charge: input.is_reverse_charge,
-    original_invoice_id: input.original_invoice_id ?? null,
-    taxable_amount_paise: taxable,
-    cgst_paise: cgst,
-    sgst_paise: sgst,
-    igst_paise: igst,
-    tds_paise: tdsPaise,
-    total_paise: total,
-    tds_section: input.tds_section,
-    tds_rate: input.tds_rate,
-    notes: input.notes,
-    status: "posted",
-  }).select().single();
-
-  if (txnErr || !txn) throw new Error(txnErr?.message ?? "Failed to create transaction");
-
-  // Insert line items
-  if (input.lines.length > 0) {
-    const lineRows = input.lines.map(l => ({
-      transaction_id: txn.id,
-      description: l.description,
-      hsn_sac_code: l.hsn_sac_code,
-      quantity: l.quantity,
-      unit: l.unit,
-      rate_paise: l.rate_paise,
-      taxable_paise: l.taxable_paise,
-      gst_rate: l.gst_rate,
-      cgst_paise: l.cgst_paise,
-      sgst_paise: l.sgst_paise,
-      igst_paise: l.igst_paise,
-      total_paise: l.total_paise,
-    }));
-    await sb.from("transaction_lines").insert(lineRows);
-  }
-
-  return txn as Transaction;
 }
 
 export async function getGSTSummary(clientId: string, month: string) {
