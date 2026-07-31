@@ -43,7 +43,7 @@ export function SiteFooter() {
   return (
     <footer className="relative overflow-hidden bg-brand-dark text-slate-400">
       <div className="bg-grid absolute inset-0 opacity-60" />
-      <div className="container-ps relative py-14">
+      <div className="relative mx-auto max-w-content px-[clamp(20px,6vw,72px)] py-14">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div className="max-w-xs">
             <Logo theme="dark" />

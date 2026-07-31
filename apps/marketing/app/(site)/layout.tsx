@@ -1,6 +1,7 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ScrollJackProvider } from "@/components/ScrollJack";
+import { instrumentSerif, manrope } from "@/lib/fonts";
 
 // Shared chrome for the public marketing pages. The login gateway (/access)
 // lives OUTSIDE this group so it renders as a clean, standalone chooser without
@@ -31,9 +32,19 @@ export default function SiteLayout({
 }) {
   return (
     <ScrollJackProvider>
-      <SiteHeader />
-      <main>{children}</main>
-      <SiteFooter />
+      {/* Manrope is applied HERE, around the chrome — not only inside each
+          page's own wrapper. SiteHeader/SiteFooter render outside `children`,
+          so when the font variables lived only on the page wrappers the nav
+          and footer silently fell back to the root layout's Inter while the
+          content between them was Manrope — the whole top bar and footer in a
+          different typeface from the homepage's. Plain class names (no
+          transform/filter/will-change) so SiteHeader's `position: fixed`
+          still resolves against the viewport. */}
+      <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
+        <SiteHeader />
+        <main>{children}</main>
+        <SiteFooter />
+      </div>
     </ScrollJackProvider>
   );
 }

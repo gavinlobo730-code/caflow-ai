@@ -9,7 +9,16 @@
 <script defer src="/vendor/three.min.js"></script>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; font-family: 'Manrope', sans-serif; }
+  /* Native browser scrolling. This page used to run its own scroll-jack
+     (html/body overflow:hidden + touch-action:none, with #scroll-content
+     translated by a JS loop easing toward a wheel-driven target at 9% per
+     frame). That made the homepage glide with heavy momentum — ~1.5s to
+     settle a single wheel tick — while every other page scrolled instantly,
+     the biggest difference in how the site felt. These rules now mirror
+     app/globals.css, which the React pages use. */
+  html { scroll-behavior: smooth; }
+  html, body { margin: 0; font-family: 'Manrope', sans-serif; }
+  body { overflow-x: hidden; }
   a { color: inherit; text-decoration: none; }
   @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
 
@@ -50,14 +59,15 @@
 </head>
 <body>
 
-<div style="background:oklch(21% 0.05 267); color:oklch(20% 0.01 267); overflow:hidden; height:100vh; position:relative;">
+<div style="background:oklch(21% 0.05 267); color:oklch(20% 0.01 267); overflow-x:clip; position:relative;">
 
   <div id="grain" style="position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:0.05;mix-blend-mode:overlay;"></div>
 
-  <nav style="position:fixed; top:0; left:0; right:0; z-index:50; display:flex; align-items:center; justify-content:space-between; padding:22px clamp(20px,4vw,56px); background:oklch(97% 0.004 260 / 0.7); backdrop-filter:blur(10px); color:oklch(20% 0.01 267);">
-    <div style="display:flex; align-items:center; gap:9px;">
-      <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke-width="3" style="stroke:oklch(20% 0.01 267 / 0.16)"></circle><circle cx="32" cy="32" r="24" stroke-width="5" stroke-linecap="round" class="logo-arc" style="stroke:oklch(58% 0.13 267)" stroke-dasharray="29.3 121.5"></circle><path d="M20,33 L28,41 L45,22" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:oklch(20% 0.01 267)"></path></svg>
-      <div style="font:600 15px/1 'Manrope',sans-serif; letter-spacing:0.02em;">PracticeSync</div>
+  <nav style="position:fixed; top:0; left:0; right:0; z-index:50; height:68px; background:oklch(97% 0.004 260 / 0.7); backdrop-filter:blur(10px); color:oklch(20% 0.01 267);">
+   <div style="max-width:1200px; height:100%; margin:0 auto; padding:0 24px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <svg width="26" height="26" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke-width="3" style="stroke:oklch(20% 0.01 267 / 0.16)"></circle><circle cx="32" cy="32" r="24" stroke-width="5" stroke-linecap="round" class="logo-arc" style="stroke:oklch(58% 0.13 267)" stroke-dasharray="29.3 121.5"></circle><path d="M20,33 L28,41 L45,22" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:oklch(20% 0.01 267)"></path></svg>
+      <div style="font:700 17px/1 'Manrope',sans-serif; letter-spacing:-0.025em;">PracticeSync</div>
     </div>
     <div style="display:flex; align-items:center; gap:clamp(14px,2.5vw,34px); font:500 13px/1 'Manrope',sans-serif;">
       <a href="#story" class="anchor-link" style="opacity:0.75;">Our Story</a>
@@ -68,9 +78,10 @@
       <a href="/access/" style="opacity:0.75;">Login</a>
       <a href="https://caflow-ai.pages.dev/signup" class="magnetic" style="background:oklch(58% 0.13 267); color:oklch(98% 0.004 260); padding:10px 18px; border-radius:6px; font-weight:600; display:inline-block;">Start free trial</a>
     </div>
+   </div>
   </nav>
 
-  <div id="scroll-content" style="position:relative; will-change:transform;">
+  <div id="scroll-content" style="position:relative;">
 
     <section style="min-height:100vh; background:oklch(21% 0.05 267); color:oklch(97% 0.004 267); display:flex; flex-direction:column; justify-content:center; position:relative; overflow:hidden; padding:clamp(100px,14vh,160px) clamp(20px,6vw,72px) 80px; box-shadow:inset 0 0 180px oklch(0% 0 0 / 0.4);">
       <div style="position:absolute; top:-60px; right:-20px; font-family:'Instrument Serif',serif; font-size:clamp(220px,32vw,460px); line-height:1; color:oklch(97% 0.004 267 / 0.045); z-index:0; pointer-events:none; user-select:none;">01</div>
@@ -217,9 +228,9 @@
     <footer style="position:relative; margin-top:-64px; clip-path:polygon(0 64px, 100% 0, 100% 100%, 0 100%); background:oklch(14% 0.04 267); color:oklch(90% 0.01 267 / 0.8); padding:calc(70px + 64px) clamp(20px,6vw,72px) 34px; box-shadow:inset 0 0 140px oklch(0% 0 0 / 0.5);">
       <div style="max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:36px;">
         <div>
-          <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px;">
-            <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke-width="3" style="stroke:oklch(97% 0.004 267 / 0.25)"></circle><circle cx="32" cy="32" r="24" stroke-width="5" stroke-linecap="round" class="logo-arc" style="stroke:oklch(58% 0.13 267)" stroke-dasharray="29.3 121.5"></circle><path d="M20,33 L28,41 L45,22" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:oklch(97% 0.004 267)"></path></svg>
-            <div style="font:600 15px/1 'Manrope',sans-serif; color:oklch(97% 0.004 267);">PracticeSync</div>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <svg width="26" height="26" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke-width="3" style="stroke:oklch(97% 0.004 267 / 0.25)"></circle><circle cx="32" cy="32" r="24" stroke-width="5" stroke-linecap="round" class="logo-arc" style="stroke:oklch(58% 0.13 267)" stroke-dasharray="29.3 121.5"></circle><path d="M20,33 L28,41 L45,22" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:oklch(97% 0.004 267)"></path></svg>
+            <div style="font:700 17px/1 'Manrope',sans-serif; letter-spacing:-0.025em; color:oklch(97% 0.004 267);">PracticeSync</div>
           </div>
           <p style="font:400 13px/1.6 'Manrope',sans-serif; opacity:0.6; max-width:32ch;">The AI-first operating system for Indian CA practices — compliance, accounting, payroll and clients in one place.</p>
         </div>
@@ -257,12 +268,10 @@
   // that hook's behavior 1:1 since this page can't share the React hook itself.
   var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var scrollTarget = 0, scrollCurrent = 0, maxScroll = 0;
   var mouseClientX = 0, mouseClientY = 0;
   var marqueeOffset = 0, marqueeHalfWidth = 0, lastMarqueeScroll = 0;
-  var touchY = 0;
 
-  var scrollEl, heroWordEl, marqueeEl, canvasEl, grainEl;
+  var heroWordEl, marqueeEl, canvasEl, grainEl;
   var parallaxEls = [], focusEls = [], revealEls = [], heroFadeEls = [], glowEls = [];
   var wordTimer;
   var renderer, scene, camera, group, rings = [], particles, particleCount = 150, threeRaf;
@@ -273,8 +282,6 @@
   // everywhere" and "only smooth on a high-end machine".
   var RENDER_DPR = Math.min(window.devicePixelRatio || 1, 1.25);
 
-  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-  function computeMaxScroll() { if (scrollEl) maxScroll = Math.max(0, scrollEl.scrollHeight - window.innerHeight); }
 
   // Recomputes on the actual mousemove event, not every animation frame —
   // matches components/Cursor.tsx's useCursorGlow on the React pages, which
@@ -288,44 +295,26 @@
     mouseClientY = e.clientY;
     applyGlow();
   }
-  function onResize() { computeMaxScroll(); }
-
-  function onWheel(e) {
-    e.preventDefault();
-    computeMaxScroll();
-    scrollTarget = clamp(scrollTarget + e.deltaY, 0, maxScroll);
-  }
-  function onTouchStart(e) { touchY = e.touches[0].clientY; }
-  function onTouchMove(e) {
-    e.preventDefault();
-    var y = e.touches[0].clientY;
-    var dy = touchY - y;
-    touchY = y;
-    computeMaxScroll();
-    scrollTarget = clamp(scrollTarget + dy * 1.6, 0, maxScroll);
-  }
-  function onKeyDown(e) {
-    computeMaxScroll();
-    var vh = window.innerHeight;
-    if (e.key === 'ArrowDown') { e.preventDefault(); scrollTarget = clamp(scrollTarget + 90, 0, maxScroll); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); scrollTarget = clamp(scrollTarget - 90, 0, maxScroll); }
-    else if (e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); scrollTarget = clamp(scrollTarget + vh * 0.85, 0, maxScroll); }
-    else if (e.key === 'PageUp') { e.preventDefault(); scrollTarget = clamp(scrollTarget - vh * 0.85, 0, maxScroll); }
-    else if (e.key === 'Home') { e.preventDefault(); scrollTarget = 0; }
-    else if (e.key === 'End') { e.preventDefault(); scrollTarget = maxScroll; }
+  // Wheel / touch / keyboard scrolling is now the browser's own — the
+  // handlers that used to intercept all three (preventDefault + drive a JS
+  // scroll target) are gone, along with the arrow/Page/Home/End key mapping
+  // they had to reimplement. Native scroll restores all of that for free,
+  // plus the scrollbar, mobile fling and find-in-page scrolling.
+  function onResize() {
+    // Let the marquee re-measure its own half-width at the new viewport.
+    marqueeHalfWidth = 0;
   }
 
   function bindAnchorLink(el) {
     el.addEventListener('click', function (e) {
-      e.preventDefault();
       var href = el.getAttribute('href') || '';
       if (href.length < 2) return;
       var target = document.querySelector(href);
       if (!target) return;
-      computeMaxScroll();
-      var rect = target.getBoundingClientRect();
-      var dest = scrollCurrent + rect.top - 90;
-      scrollTarget = clamp(dest, 0, maxScroll);
+      e.preventDefault();
+      // Same 90px allowance the scroll-jack used, clearing the 68px fixed nav.
+      var dest = window.scrollY + target.getBoundingClientRect().top - 90;
+      window.scrollTo({ top: Math.max(0, dest), behavior: 'smooth' });
     });
   }
 
@@ -457,19 +446,20 @@
       if (first) marqueeHalfWidth = first.getBoundingClientRect().width;
       if (!marqueeHalfWidth) return;
     }
-    var delta = scrollCurrent - lastMarqueeScroll;
-    lastMarqueeScroll = scrollCurrent;
+    var y = window.scrollY;
+    var delta = y - lastMarqueeScroll;
+    lastMarqueeScroll = y;
     marqueeOffset += 0.6 + delta * 0.7;
     var hw = marqueeHalfWidth;
     marqueeOffset = ((marqueeOffset % hw) + hw) % hw;
     marqueeEl.style.transform = 'translate3d(' + (-marqueeOffset).toFixed(1) + 'px,0,0)';
   }
 
+  // No scroll position to integrate any more — the browser owns that. This
+  // loop stays only for the two things that genuinely need a frame tick: the
+  // scroll-triggered reveals (each fires once, cheaply) and the marquee's
+  // continuous drift.
   function tick() {
-    computeMaxScroll();
-    scrollCurrent += (scrollTarget - scrollCurrent) * 0.09;
-    if (Math.abs(scrollTarget - scrollCurrent) < 0.05) scrollCurrent = scrollTarget;
-    if (scrollEl) scrollEl.style.transform = 'translate3d(0,' + (-scrollCurrent).toFixed(2) + 'px,0)';
     applyScrollEffects();
     updateMarquee();
     requestAnimationFrame(tick);
@@ -610,7 +600,6 @@
   }
 
   function init() {
-    scrollEl = document.getElementById('scroll-content');
     heroWordEl = document.getElementById('hero-word');
     marqueeEl = document.getElementById('marquee-track');
     canvasEl = document.getElementById('hero-canvas');
@@ -665,12 +654,7 @@
     document.querySelectorAll('.anchor-link').forEach(bindAnchorLink);
 
     setupGrain();
-    computeMaxScroll();
 
-    window.addEventListener('wheel', onWheel, { passive: false });
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    window.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
     window.addEventListener('mousemove', onMouseMove);
 

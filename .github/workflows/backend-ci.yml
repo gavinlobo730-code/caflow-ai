@@ -66,12 +66,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: apps/api/requirements.txt
 
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
 
-      - name: Install pytest
-        run: pip install "pytest>=8.0.0"
+      # Full requirements, not just pytest. The glob below collects every
+      # tests/test_*_pg.py, and such a test may legitimately import application
+      # code — test_r3_14_health_scores_schema_pg.py imports routers.health to
+      # check the Python scoring against the DB schema it asserts on. A
+      # module-level import like that runs at COLLECTION time, so a
+      # pytest.mark.skipif on the module cannot protect it: with only pytest
+      # installed, collection died on ModuleNotFoundError: fastapi and pytest
+      # exited 2, failing the whole job before a single migration was applied.
+      # Installing the real dependency set is what makes the glob's
+      # "picks up future ones automatically" promise actually hold.
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt
 
       # Applies the full migration set (with the Supabase-compat bootstrap) to a
       # throwaway database and asserts the set of migrations that fail to apply

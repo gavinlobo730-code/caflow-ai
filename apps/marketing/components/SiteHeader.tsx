@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Logo } from "./Logo";
 import { Magnetic } from "./Cursor";
-import { Menu, X, ArrowRight } from "./icons";
+import { Menu, X } from "./icons";
 import { NAV, appLinks } from "@/lib/site";
 
 // Fixed frosted-light nav, styled to match the homepage's own nav bar exactly
@@ -16,35 +16,40 @@ import { NAV, appLinks } from "@/lib/site";
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
 
+  // No bottom border: the homepage's nav has none, and a `border-transparent`
+  // one still added a 69th pixel of height against its 68. The background tint
+  // and link colour/opacity below are the homepage's exact values, not
+  // near-misses.
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-transparent bg-[#f3f4f6]/70 backdrop-blur-[10px]">
+    <header className="fixed inset-x-0 top-0 z-50 bg-[#f3f5f8]/70 backdrop-blur-[10px]">
       <div className="container-ps flex h-[68px] items-center justify-between gap-4">
         <Logo />
 
         {/* Desktop nav */}
-        <nav className="hidden items-center gap-[clamp(14px,2vw,30px)] lg:flex">
+        <nav className="hidden items-center gap-[clamp(14px,2.5vw,34px)] lg:flex">
           {NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-[13px] font-medium text-brand-dark/70 transition-colors hover:text-brand-dark"
+              className="text-[13px] font-medium text-brand-dark/75 transition-colors hover:text-brand-dark"
             >
               {item.label}
             </Link>
           ))}
           <Link
             href="/access"
-            className="text-[13px] font-medium text-brand-dark/70 transition-colors hover:text-brand-dark"
+            className="text-[13px] font-medium text-brand-dark/75 transition-colors hover:text-brand-dark"
           >
             Login
           </Link>
           <Magnetic max={10}>
+            {/* No trailing arrow — the homepage's nav CTA is text-only, and the
+                icon made this button 20px wider and 7px taller than its twin. */}
             <a
               href={appLinks.signup}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#4f71cc] px-[18px] py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#4463bd]"
+              className="inline-flex items-center rounded-md bg-[#5876c7] px-[18px] py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#4d68af]"
             >
               Start free trial
-              <ArrowRight size={14} />
             </a>
           </Magnetic>
         </nav>
@@ -85,7 +90,7 @@ export function SiteHeader() {
               </Link>
               <a
                 href={appLinks.signup}
-                className="rounded-lg bg-[#4f71cc] px-4 py-2.5 text-center text-[15px] font-semibold text-white"
+                className="rounded-lg bg-[#5876c7] px-4 py-2.5 text-center text-[15px] font-semibold text-white"
               >
                 Start free trial
               </a>

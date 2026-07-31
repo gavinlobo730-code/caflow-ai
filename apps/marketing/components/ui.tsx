@@ -93,7 +93,7 @@ export function SectionHeading({
 type ButtonProps = {
   href: string;
   external?: boolean;
-  variant?: "primary" | "secondary" | "light" | "ghost-light";
+  variant?: "primary" | "secondary" | "light" | "ghost-light" | "accent";
   className?: string;
   children: ReactNode;
 };
@@ -110,6 +110,10 @@ export function Button({
     secondary: "bg-white text-brand border border-ps-border hover:bg-ps-muted",
     light: "btn-shine bg-white text-brand hover:bg-ps-muted shadow-sm",
     "ghost-light": "text-white border border-white/25 hover:bg-white/10",
+    // The homepage's own "Start free trial" treatment (oklch(58% 0.13 267),
+    // its one accent color) — for the CTAs that are meant to read as the exact
+    // same button as the homepage's, not the white/glass buttons elsewhere.
+    accent: "btn-shine bg-[#5876c7] text-white hover:bg-[#4d68af] shadow-sm",
   };
   const cls = `inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-[14px] font-semibold transition-all duration-300 ${styles[variant]} ${className}`;
   const inner = external ? (
@@ -121,10 +125,10 @@ export function Button({
       {children}
     </Link>
   );
-  // Magnetic pull only on the two solid, high-emphasis variants — the actual
+  // Magnetic pull only on the solid, high-emphasis variants — the actual
   // primary CTAs. Applying it to every button/link everywhere would compete
   // with itself; this keeps the effect meaning something.
-  if (variant === "primary" || variant === "light") {
+  if (variant === "primary" || variant === "light" || variant === "accent") {
     return <Magnetic>{inner}</Magnetic>;
   }
   return inner;

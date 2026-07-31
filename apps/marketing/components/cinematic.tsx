@@ -46,6 +46,11 @@ export function Panel({
 }) {
   const clip = SEAM_CLIP[seam];
   const base = theme === "dark" ? "bg-brand-dark text-white" : "bg-ps-bg text-brand-dark";
+  // Matches the homepage exactly: a dark panel is full-bleed (it's the same
+  // color as the page canvas behind it), but a light panel is a narrower
+  // inset "card" — capped at the same width as its own content instead of
+  // spanning the viewport — so the dark canvas shows through on its sides.
+  const inset = theme === "light" ? "mx-auto max-w-content" : "";
   const style: CSSProperties = {
     ...(theme === "dark" ? VIGNETTE : {}),
     ...(clip ? { clipPath: clip, marginTop: "-64px" } : {}),
@@ -60,7 +65,7 @@ export function Panel({
     numeralCorner === "top-right" ? "-top-[60px] -right-5" : "-bottom-10 -left-6";
 
   return (
-    <section id={id} className={`relative overflow-hidden ${base} ${className}`} style={style}>
+    <section id={id} className={`relative overflow-hidden ${base} ${inset} ${className}`} style={style}>
       {numeral ? (
         <div
           aria-hidden="true"
@@ -237,7 +242,7 @@ export function CineCTA({
       <SerifHeading align="center" lines={titleLines} subtitle={subtitle} />
       <CineReveal delay={120}>
         <div className="mt-10 flex flex-wrap justify-center gap-5">
-          <Button href={primary.href} external={primary.external} variant="light" className="px-7 py-[15px]">
+          <Button href={primary.href} external={primary.external} variant="accent" className="px-7 py-[15px]">
             {primary.label}
             <ArrowRight size={16} />
           </Button>
