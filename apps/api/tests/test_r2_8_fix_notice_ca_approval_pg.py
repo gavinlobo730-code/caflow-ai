@@ -67,21 +67,17 @@ def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProce
 
 
 @pytest.fixture()
-def migrated_db():
+def migrated_db(pg_template):
     admin = _ADMIN.strip()
     dbname = f"r28fix_{uuid.uuid4().hex[:12]}"
     admin_dsn = f"{admin} dbname=postgres"
-    if _psql(admin_dsn, f'CREATE DATABASE "{dbname}";').returncode != 0:
+    if _psql(admin_dsn, f'CREATE DATABASE "{dbname}" TEMPLATE "{pg_template.name}";').returncode != 0:
         pytest.skip("could not create throwaway db")
     dsn = f"{admin} dbname={dbname}"
     try:
-        proc = subprocess.run(
-            [sys.executable, str(RUNNER), "--dsn", dsn,
-             "--with-compat", "--only-schema", "--continue-on-error", "--json"],
-            capture_output=True, text=True, cwd=str(API_ROOT),
-        )
-        report = json.loads(proc.stdout)
-        failed = {f["file"] for f in report["failed"]}
+        # Schema comes from the session-scoped template (conftest.pg_template),
+        # applied once instead of once per test. `failed` is that run's report.
+        failed = pg_template.failed
         # 052 (creates the table) and 158 (adds the columns) must both apply
         # cleanly — that's the only thing this proof depends on.
         assert "052_phase3_compliance.sql" not in failed
