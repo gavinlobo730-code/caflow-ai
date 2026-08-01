@@ -3,9 +3,14 @@
  * state master, and status/delivery label maps. NO framework or browser imports, so
  * this module is unit-testable under `node --test` and safe to import anywhere.
  *
- * computeGst() is a rough CLIENT-SIDE PREVIEW only; the backend is authoritative for
- * stored amounts (it floors + splits each GST head and applies round-off in paise).
+ * computeGst() delegates every per-line amount to lib/money/gstLine.ts, which
+ * mirrors the backend's arithmetic exactly (integer paise, floor-then-split,
+ * exact-decimal taxable). The preview therefore shows the same figures the
+ * server will store — it is not an approximation. The backend remains the
+ * authority; this just stops the two from ever disagreeing.
  */
+
+import { computeLineGst } from "../money/gstLine.ts";
 
 /** GST rate slabs (%) offered in the invoice/credit-note line editors. */
 export const GST_RATES = [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28];
@@ -97,6 +102,10 @@ export interface InvoiceDetail {
   supply_state_code: string | null;
   is_interstate: boolean;
   notes: string | null;
+  // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247);
+  // absent/false means the invoice carries its exact calculated amount.
+  round_off_enabled?: boolean | null;
+  round_off_paise?: number | null;
   taxable_amount_paise: number;
   total_gst_paise: number;
   cgst_paise: number;
@@ -157,6 +166,13 @@ export const DELIVERY_STATUS_LABEL: Record<string, string> = {
   queued: "Queued", sending: "Sending", sent: "Sent", failed: "Failed", bounced: "Bounced",
 };
 
+/**
+ * Sum a document's lines into stored-shape paise.
+ *
+ * The per-line arithmetic lives in lib/money/gstLine.ts, which mirrors the
+ * backend operation for operation — so this is an exact projection of what the
+ * server will persist, not an approximation of it. Do not inline GST math here.
+ */
 export function computeGst(
   lines: InvoiceLine[],
   isInterstate: boolean
@@ -173,27 +189,11 @@ export function computeGst(
   let igst_paise = 0;
 
   for (const line of lines) {
-    const qty = parseFloat(line.qty) || 0;
-    const rate = parseFloat(line.rate) || 0;
-    // Use integer paise arithmetic — multiply rupees × 100 first
-    const lineTaxablePaise = Math.round(qty * rate * 100);
-    taxable_paise += lineTaxablePaise;
-
-    if (isInterstate) {
-      // IGST = full rate applied to taxable value (CGST Act §5)
-      igst_paise += Math.round((lineTaxablePaise * line.gst_rate) / 100);
-    } else {
-      // CGST = SGST = half the full tax (CGST Act §9 + SGST Act §9). Compute
-      // the FULL tax first, then split — splitting the rate first and
-      // rounding each half independently (the previous approach) could lose
-      // up to 1 paise vs. the backend's actual split, understating GST in
-      // the preview. SGST carries any odd paise, matching routers/
-      // sales_invoices.py's _compute_line_gst.
-      const lineFullGst = Math.round((lineTaxablePaise * line.gst_rate) / 100);
-      const lineCgst = Math.floor(lineFullGst / 2);
-      cgst_paise += lineCgst;
-      sgst_paise += lineFullGst - lineCgst;
-    }
+    const g = computeLineGst(line, isInterstate);
+    taxable_paise += g.taxable_paise;
+    cgst_paise    += g.cgst_paise;
+    sgst_paise    += g.sgst_paise;
+    igst_paise    += g.igst_paise;
   }
 
   const gst_paise = igst_paise + cgst_paise + sgst_paise;
@@ -242,14 +242,19 @@ export interface PreviewTotals {
 }
 
 /**
- * Compute previewed totals for the summary panel. `applyRoundOff` is true for INR
- * invoices (whole-rupee round-off) and false for foreign-currency invoices, which
- * the backend does not rupee-round.
+ * Compute previewed totals for the summary panel. `applyRoundOff` mirrors what
+ * the backend will actually do, so the preview never disagrees with the saved
+ * invoice. It is true ONLY for an INR invoice whose round_off_enabled flag is
+ * on — round-off became opt-in per invoice in migration 247. Foreign-currency
+ * documents, and sales credit/debit notes, are never rupee-rounded.
+ *
+ * Defaults to FALSE (exact amount) so a caller that omits it gets the safe,
+ * un-rounded total rather than silently re-introducing mandatory rounding.
  */
 export function previewTotals(
   lines: InvoiceLine[],
   isInterstate: boolean,
-  applyRoundOff: boolean = true,
+  applyRoundOff: boolean = false,
 ): PreviewTotals {
   const g = computeGst(lines, isInterstate);
   const gst = g.cgst_paise + g.sgst_paise + g.igst_paise;

@@ -16,6 +16,7 @@ CGST Act §8 (place-of-supply split) · §15 (round-off does not change the valu
 of supply or the GST thereon).
 """
 import os
+from decimal import Decimal
 import pytest
 
 from routers.sales_invoices import _compute_line_gst, _round_off_paise
@@ -224,3 +225,210 @@ class TestPostingReraise:
             pjs.phase2_journal_service.journal_for_sales_invoice(
                 invoice, "firm-1", "client-1"
             )
+
+
+# ---------------------------------------------------------------------------
+# 6. Round-off is OPT-IN (migrations 247/248)
+# ---------------------------------------------------------------------------
+#
+# Product Owner reversed the original "always round to the nearest ₹1" decision:
+# an invoice must show its EXACT calculated amount unless the CA explicitly
+# turns rounding on for that invoice. These tests drive the real create/edit
+# path (not a mirror of its arithmetic) so they fail if the gate regresses.
+#
+# CGST Act §15 / §170: rounding is permitted on the tax payable, never required
+# on the invoice's grand total — so presenting the exact total is compliant, and
+# no tax head moves in either mode.
+
+from models.invoices import InvoiceLineIn, SalesInvoiceIn, SalesInvoiceUpdateIn  # noqa: E402
+from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e             # noqa: E402
+
+_FIRM = "FIRM-RO"
+_CALLER = {"firm_id": _FIRM, "auth_user_id": "u1", "email": "ca@firm.test", "role": "Partner"}
+
+# ₹105.55 @ 18% → taxable 10555 + GST 1899 = 12454 paise. Not a whole rupee, so
+# the two modes are visibly different: exact 12454 vs rounded 12500 (+46).
+_TAXABLE = 10_555
+_EXACT_TOTAL = 12_454
+_ROUNDED_TOTAL = 12_500
+_ROUND_OFF = 46
+
+
+def _ro_setup(monkeypatch):
+    import routers.sales_invoices as si
+    db = FakeDB()
+    wire_e2e(monkeypatch, db, [si])
+    db.seed("clients", {"id": "CLI", "firm_id": _FIRM, "gstin": "27ABCDE1234F1Z5"})
+    db.seed("customers", {"id": "CUST", "firm_id": _FIRM, "client_id": "CLI",
+                          "name": "Acme Buyer", "state_code": "27",
+                          "gstin": "27XYZAB5678C1Z2", "is_active": True})
+    seed_standard_coa(db, _FIRM, "CLI")
+    # Not in STANDARD_COA — only needed when rounding is opted IN.
+    db.seed("chart_of_accounts", {
+        "firm_id": _FIRM, "client_id": "CLI", "system_account_key": "round_off",
+        "account_name": "Round Off", "is_active": True,
+    })
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": _FIRM, "client_id": "CLI",
+                                  "name": "Consulting", "kind": "service"})
+    return si, db
+
+
+def _ro_invoice(invoice_no, **kw):
+    line = InvoiceLineIn(service_catalogue_id="SVC-1", description="Consulting",
+                         hsn_sac="9982", quantity=1, rate_paise=_TAXABLE,
+                         gst_rate_percent=18.0)
+    return SalesInvoiceIn(
+        client_id="CLI", customer_id="CUST", invoice_date="2026-04-10",
+        due_date="2026-05-10", invoice_no=invoice_no, lines=[line], **kw
+    ).model_dump()
+
+
+class TestRoundOffIsOptIn:
+    def test_default_creates_exact_total_with_no_round_off(self, monkeypatch):
+        """The default (flag omitted) must preserve the exact calculated amount."""
+        si, _ = _ro_setup(monkeypatch)
+        inv = si._create_invoice_core(_ro_invoice("RO-001"), _CALLER)
+
+        assert inv["round_off_paise"] == 0
+        assert inv["total_paise"] == _EXACT_TOTAL
+        assert inv["total_paise"] % 100 != 0          # genuinely un-rounded
+        # Header still reconciles to its components.
+        assert inv["total_paise"] == (inv["taxable_amount_paise"] + inv["cgst_paise"]
+                                      + inv["sgst_paise"] + inv["igst_paise"])
+
+    def test_opt_in_still_rounds(self, monkeypatch):
+        """Opting in reproduces the historical behaviour exactly."""
+        si, _ = _ro_setup(monkeypatch)
+        inv = si._create_invoice_core(_ro_invoice("RO-002", round_off_enabled=True), _CALLER)
+
+        assert inv["round_off_paise"] == _ROUND_OFF
+        assert inv["total_paise"] == _ROUNDED_TOTAL
+        assert inv["total_paise"] % 100 == 0
+
+    def test_tax_heads_identical_in_both_modes(self, monkeypatch):
+        """CGST Act §15 — round-off must never move the value of supply or the
+        GST on it, so GSTR-1/3B figures are the same either way."""
+        si, _ = _ro_setup(monkeypatch)
+        off = si._create_invoice_core(_ro_invoice("RO-003"), _CALLER)
+        on  = si._create_invoice_core(_ro_invoice("RO-004", round_off_enabled=True), _CALLER)
+
+        for head in ("taxable_amount_paise", "cgst_paise", "sgst_paise", "igst_paise"):
+            assert off[head] == on[head], f"{head} moved between modes"
+        # The ONLY difference is the round-off delta on the payable total.
+        assert on["total_paise"] - off["total_paise"] == _ROUND_OFF
+
+    def test_foreign_currency_never_rounds_even_when_opted_in(self, monkeypatch):
+        """Rupee round-off is meaningless for a foreign-currency invoice."""
+        si, db = _ro_setup(monkeypatch)
+        # Open the 3-level multi-currency gate (platform env + firm entitlement
+        # + client setting) — see resolve_currency_policy — and put USD in the
+        # ISO 4217 master.
+        monkeypatch.setenv("MULTI_CURRENCY_ENABLED", "true")
+        for row in db.rows("clients"):
+            if row["id"] == "CLI":
+                row["multi_currency_enabled"] = True
+                row["functional_currency"] = "INR"
+        db.seed("firms", {"id": _FIRM, "multi_currency_entitled": True})
+        db.seed("currencies", {"code": "USD", "symbol": "$", "display_name": "US Dollar",
+                               "minor_unit": 2, "is_active": True})
+        db.seed("currencies", {"code": "INR", "symbol": "\u20b9", "display_name": "Indian Rupee",
+                               "minor_unit": 2, "is_active": True})
+
+        inv = si._create_invoice_core(
+            _ro_invoice("RO-005", round_off_enabled=True,
+                        currency="USD", exchange_rate=Decimal("83.50")),
+            _CALLER,
+        )
+        assert inv["round_off_paise"] == 0
+
+    def test_editing_an_exact_invoice_does_not_re_round_it(self, monkeypatch):
+        """Regression guard for migration 248: the edit path must inherit the
+        invoice's stored flag. Before the fix it re-applied rounding on every
+        lines-replace, which would have silently undone the data migration for
+        any corrected invoice a CA happened to re-save."""
+        si, db = _ro_setup(monkeypatch)
+        inv = si._create_invoice_core(_ro_invoice("RO-006"), _CALLER)
+        assert inv["round_off_paise"] == 0
+
+        # Re-save the draft with the SAME lines and no flag in the payload.
+        body = SalesInvoiceUpdateIn(lines=[InvoiceLineIn(
+            service_catalogue_id="SVC-1", description="Consulting", hsn_sac="9982",
+            quantity=1, rate_paise=_TAXABLE, gst_rate_percent=18.0)])
+        resp = si.update_invoice(inv["id"], body, _CALLER)
+
+        assert resp["success"] is True
+        row = next(r for r in db.rows("client_sales_invoices") if r["id"] == inv["id"])
+        assert row["round_off_paise"] == 0
+        assert row["total_paise"] == _EXACT_TOTAL
+
+    def test_editing_a_rounded_invoice_keeps_its_rounding(self, monkeypatch):
+        """The inverse: an invoice that opted IN keeps rounding across an edit."""
+        si, db = _ro_setup(monkeypatch)
+        inv = si._create_invoice_core(_ro_invoice("RO-007", round_off_enabled=True), _CALLER)
+        assert inv["round_off_paise"] == _ROUND_OFF
+
+        body = SalesInvoiceUpdateIn(lines=[InvoiceLineIn(
+            service_catalogue_id="SVC-1", description="Consulting", hsn_sac="9982",
+            quantity=1, rate_paise=_TAXABLE, gst_rate_percent=18.0)])
+        si.update_invoice(inv["id"], body, _CALLER)
+
+        row = next(r for r in db.rows("client_sales_invoices") if r["id"] == inv["id"])
+        assert row["round_off_paise"] == _ROUND_OFF
+        assert row["total_paise"] == _ROUNDED_TOTAL
+
+    def test_toggling_flag_alone_recomputes_the_total(self, monkeypatch):
+        """Flipping the toggle without touching lines must move the payable
+        total — otherwise the header would go stale against its own flag."""
+        si, db = _ro_setup(monkeypatch)
+        inv = si._create_invoice_core(_ro_invoice("RO-008"), _CALLER)
+        assert inv["total_paise"] == _EXACT_TOTAL
+
+        si.update_invoice(inv["id"], SalesInvoiceUpdateIn(round_off_enabled=True), _CALLER)
+        row = next(r for r in db.rows("client_sales_invoices") if r["id"] == inv["id"])
+        assert row["round_off_paise"] == _ROUND_OFF
+        assert row["total_paise"] == _ROUNDED_TOTAL
+
+        si.update_invoice(inv["id"], SalesInvoiceUpdateIn(round_off_enabled=False), _CALLER)
+        row = next(r for r in db.rows("client_sales_invoices") if r["id"] == inv["id"])
+        assert row["round_off_paise"] == 0
+        assert row["total_paise"] == _EXACT_TOTAL
+
+    def test_journal_balances_in_both_modes(self, monkeypatch):
+        """Dr == Cr either way. Without round-off there is simply no Round Off
+        leg; AR carries the exact total instead."""
+        si, db = _ro_setup(monkeypatch)
+        from tests.e2e_harness import trial_balance
+
+        # A draft posts nothing — the journal is written on ISSUE.
+        a = si._create_invoice_core(_ro_invoice("RO-009"), _CALLER)
+        b = si._create_invoice_core(_ro_invoice("RO-010", round_off_enabled=True), _CALLER)
+        si.issue_invoice(a["id"], _CALLER)
+        si.issue_invoice(b["id"], _CALLER)
+
+        tb = trial_balance(db, _FIRM, "CLI")
+        assert tb["total_debit_paise"] == tb["total_credit_paise"]
+        assert tb["total_debit_paise"] > 0          # guard against a vacuous pass
+
+        # Ledger SHAPE, not just the balance: the un-rounded invoice must debit
+        # Trade Receivables the exact total and post no Round Off leg at all.
+        ro_acct = next(r["id"] for r in db.rows("chart_of_accounts")
+                       if r.get("system_account_key") == "round_off")
+        ar_acct = next(r["id"] for r in db.rows("chart_of_accounts")
+                       if r.get("system_account_key") == "ar")
+
+        def _lines_for(invoice_no):
+            je = next(e for e in db.rows("journal_entries")
+                      if e.get("reference_no") == invoice_no)
+            return [l for l in db.rows("journal_lines")
+                    if l.get("journal_entry_id") == je["id"]]
+
+        off_lines = _lines_for("RO-009")
+        assert not [l for l in off_lines if l["account_id"] == ro_acct]
+        assert sum(int(l["debit_paise"]) for l in off_lines
+                   if l["account_id"] == ar_acct) == _EXACT_TOTAL
+
+        on_lines = _lines_for("RO-010")
+        assert sum(int(l["credit_paise"]) for l in on_lines
+                   if l["account_id"] == ro_acct) == _ROUND_OFF
+        assert sum(int(l["debit_paise"]) for l in on_lines
+                   if l["account_id"] == ar_acct) == _ROUNDED_TOTAL

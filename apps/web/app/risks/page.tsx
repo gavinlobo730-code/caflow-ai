@@ -150,7 +150,7 @@ function riskRowColor(level: string) {
 function exportCsv(rows: RiskRegisterRow[]) {
   const header = ["Client", "Risk Type", "Description", "Severity", "Recommended Action"];
   const lines = [header.join(","), ...rows.map((r) => [r.clientName, r.riskType, `"${r.description}"`, r.severity, `"${r.action}"`].join(","))];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

@@ -149,6 +149,73 @@ def test_writedown_records_value_only_movement_and_posts_balanced_journal(monkey
     assert total_debit == 3_000_00  # Rs 1000 -> Rs 700, 10 units -> Rs 3,000 write-down
 
 
+# ── GET /api/inventory/items — the stock register total (task: Ticket A,
+# "Eliminate Inventory Valuation Rounding Difference") ─────────────────────
+
+def test_list_stock_items_reads_ledger_running_value_not_a_recompute(monkeypatch):
+    """The item's stock_value_paise must be the ledger's own stored
+    running_value_paise, not round(qty * avg_cost_paise) — the two are NOT
+    guaranteed equal, since avg_cost_paise is itself a rounded per-unit
+    figure while running_value_paise accumulates exact per-transaction paise.
+    Deliberately seeds a case where they'd disagree by 1 paise if recomputed,
+    to prove the endpoint reads the stored value rather than re-deriving it."""
+    db = _setup(monkeypatch)
+    db.seed("inventory_stock_ledger", {
+        "firm_id": FIRM, "client_id": "CLI", "service_catalogue_id": "PROD-1",
+        "movement_date": "2026-04-01", "movement_type": "opening",
+        "quantity_delta": "3", "unit_cost_paise": 333333, "value_delta_paise": 1000000,
+        "running_qty_units": "3", "running_avg_cost_paise": 333333,
+        "running_value_paise": 1000000,  # 3 * 333333 = 999999, NOT 1000000
+    })
+
+    resp = inv.list_stock_items(client_id="CLI", current_user=CALLER)
+
+    assert resp["success"] is True
+    item = next(r for r in resp["data"] if r["id"] == "PROD-1")
+    assert item["stock_qty_units"] == 3.0
+    assert item["avg_cost_paise"] == 333333
+    assert item["stock_value_paise"] == 1000000  # the ledger's exact value, not the 999999 recompute
+
+
+def test_list_stock_items_item_with_no_ledger_history_shows_zero(monkeypatch):
+    db = _setup(monkeypatch)
+    resp = inv.list_stock_items(client_id="CLI", current_user=CALLER)
+    assert resp["success"] is True
+    item = next(r for r in resp["data"] if r["id"] == "PROD-1")
+    assert item["stock_qty_units"] == 0.0
+    assert item["avg_cost_paise"] == 0
+    assert item["stock_value_paise"] == 0
+
+
+def test_list_stock_items_uses_last_inserted_ledger_row(monkeypatch):
+    """Multiple ledger rows for the same item — must use the one inserted
+    LAST (created_at), matching domain/inventory_service.py::_last_ledger_row,
+    not the first or an arbitrary one."""
+    db = _setup(monkeypatch)
+    db.seed("inventory_stock_ledger", {
+        "firm_id": FIRM, "client_id": "CLI", "service_catalogue_id": "PROD-1",
+        "movement_date": "2026-04-01", "movement_type": "opening",
+        "quantity_delta": "10", "unit_cost_paise": 100000, "value_delta_paise": 1000000,
+        "running_qty_units": "10", "running_avg_cost_paise": 100000,
+        "running_value_paise": 1000000,
+        "created_at": "2026-04-01T00:00:00+00:00",
+    })
+    db.seed("inventory_stock_ledger", {
+        "firm_id": FIRM, "client_id": "CLI", "service_catalogue_id": "PROD-1",
+        "movement_date": "2026-04-10", "movement_type": "purchase",
+        "quantity_delta": "5", "unit_cost_paise": 120000, "value_delta_paise": 600000,
+        "running_qty_units": "15", "running_avg_cost_paise": 106667,
+        "running_value_paise": 1600000,
+        "created_at": "2026-04-10T00:00:00+00:00",
+    })
+
+    resp = inv.list_stock_items(client_id="CLI", current_user=CALLER)
+
+    item = next(r for r in resp["data"] if r["id"] == "PROD-1")
+    assert item["stock_qty_units"] == 15.0
+    assert item["stock_value_paise"] == 1600000
+
+
 def test_writedown_is_noop_when_nrv_not_below_cost(monkeypatch):
     db = _setup(monkeypatch)
     _seed_opening_stock(db, qty="10", avg_cost_paise=100000)

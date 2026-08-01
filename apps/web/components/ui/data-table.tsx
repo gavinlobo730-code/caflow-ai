@@ -55,7 +55,10 @@ export interface DataTableProps<T> {
 }
 
 export function downloadCsv(filename: string, csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  // Prepend a UTF-8 BOM: without it, Excel sniffs the file as Windows-1252
+  // and mangles multi-byte chars (e.g. ₹ U+20B9 → "â‚¹"). The BOM makes
+  // Excel auto-detect UTF-8 with no manual fix-up needed on the user's end.
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

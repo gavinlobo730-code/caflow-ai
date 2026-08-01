@@ -93,7 +93,8 @@ function fmtPaise(paise: number): string {
 }
 
 function downloadCsv(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/csv" });
+  // BOM so Excel opens as UTF-8 instead of mangling ₹ into "â‚¹".
+  const blob = new Blob(["\uFEFF" + content], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

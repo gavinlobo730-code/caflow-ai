@@ -26,15 +26,56 @@ _logger = logging.getLogger("caflow.inventory")
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
 
+def _last_ledger_rows(db, firm_id: str, client_id: str, item_ids: set[str]) -> dict[str, dict]:
+    """Each item's current (most-recently-inserted) ledger row — the same
+    running_qty_units/running_avg_cost_paise/running_value_paise every new
+    movement chains from (domain/inventory_service.py::_last_ledger_row) —
+    fetched in bulk for the whole stock register instead of one row per
+    item. Pages newest-first (created_at desc, matching _last_ledger_row's
+    own ordering exactly) and stops as soon as every item has been seen,
+    rather than scanning the client's entire movement history."""
+    found: dict[str, dict] = {}
+    remaining = set(item_ids)
+    page_size = 1000
+    offset = 0
+    while remaining:
+        resp = (
+            db.table("inventory_stock_ledger")
+            .select("service_catalogue_id, running_qty_units, running_avg_cost_paise, running_value_paise")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .order("created_at", desc=True)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        page = resp.data or []
+        if not page:
+            break
+        for row in page:
+            sid = row["service_catalogue_id"]
+            if sid in remaining:
+                found[sid] = row
+                remaining.discard(sid)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return found
+
+
 @router.get("/items")
 def list_stock_items(
     client_id: str = Query(..., description="CA client ID — stock is client-owned, same as the catalogue"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Stock register: every kind='good' catalogue item for this client, with
-    its current on-hand quantity, moving-average cost, and stock value
-    (qty * avg cost — a display figure, never persisted; the authoritative
-    value lives in inventory_stock_ledger.running_value_paise)."""
+    its current on-hand quantity, moving-average cost, and stock value —
+    read from inventory_stock_ledger's running totals (the authoritative
+    figures every posting chains from), not recomputed from
+    service_catalogue's cache. qty * avg_cost re-rounds an already-rounded
+    average cost at display time, which can drift a few paise per item from
+    the ledger's exact cumulative value and, summed across the whole
+    register, no longer ties to the Balance Sheet Inventory account. Items
+    with no ledger history yet (never received a stock-in movement) show 0,
+    same as before."""
     try:
         if _USE_MOCK:
             return api_response(True, [])
@@ -44,15 +85,20 @@ def list_stock_items(
         db = get_supabase()
         rows = (
             db.table("service_catalogue")
-            .select("id, name, description, hsn_sac, unit, kind, is_active, stock_qty_units, avg_cost_paise")
+            .select("id, name, description, hsn_sac, unit, kind, is_active")
             .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good")
-            .order("name")
+            .order("name").order("id")
             .execute().data
         ) or []
+        last_rows = _last_ledger_rows(db, firm_id, client_id, {r["id"] for r in rows})
         for r in rows:
-            qty = float(r.get("stock_qty_units") or 0)
-            avg = int(r.get("avg_cost_paise") or 0)
-            r["stock_value_paise"] = round(qty * avg)
+            last = last_rows.get(r["id"])
+            qty = float(last["running_qty_units"]) if last else 0.0
+            avg = int(last["running_avg_cost_paise"]) if last else 0
+            value = int(last["running_value_paise"]) if last else 0
+            r["stock_qty_units"] = qty
+            r["avg_cost_paise"] = avg
+            r["stock_value_paise"] = value
         return api_response(True, rows)
     except Exception as e:
         _logger.error("list_stock_items: %s", e)

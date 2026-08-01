@@ -17,8 +17,8 @@ test("previewRoundOffPaise mirrors the backend nearest-rupee rule", () => {
   assert.equal(previewRoundOffPaise(10_049), -49);
 });
 
-test("intra-state totals split CGST+SGST and round to a whole rupee", () => {
-  const t = previewTotals([line("105.55", 18)], false);
+test("intra-state totals split CGST+SGST and round to a whole rupee when opted in", () => {
+  const t = previewTotals([line("105.55", 18)], false, true);
   assert.equal(t.taxable_paise, 10_555);
   assert.equal(t.cgst_paise + t.sgst_paise, t.gst_paise);
   assert.equal(t.igst_paise, 0);
@@ -39,7 +39,7 @@ test("full tax is computed first, then split — SGST carries any odd paise (mat
 });
 
 test("inter-state uses IGST only", () => {
-  const t = previewTotals([line("1000", 18)], true);
+  const t = previewTotals([line("1000", 18)], true, true);
   assert.equal(t.cgst_paise, 0);
   assert.equal(t.sgst_paise, 0);
   assert.equal(t.igst_paise, t.gst_paise);
@@ -49,4 +49,15 @@ test("foreign invoices are not rupee-rounded (applyRoundOff=false)", () => {
   const t = previewTotals([line("105.55", 18)], false, false);
   assert.equal(t.round_off_paise, 0);
   assert.equal(t.grand_total_paise, t.taxable_paise + t.gst_paise);
+});
+
+test("round-off is OPT-IN: the default leaves the exact amount (migration 247)", () => {
+  // Same figures as the opted-in case above, but with applyRoundOff omitted —
+  // the total must NOT be pushed to a whole rupee. (This preview's GST uses
+  // Math.round while the backend floors, so assert the round-off gate itself
+  // rather than a hard-coded total.)
+  const t = previewTotals([line("105.55", 18)], false);
+  assert.equal(t.round_off_paise, 0);
+  assert.equal(t.grand_total_paise, t.taxable_paise + t.gst_paise);
+  assert.notEqual(t.grand_total_paise % 100, 0, "must stay un-rounded by default");
 });
