@@ -109,21 +109,17 @@ def _settle_sql(
 
 
 @pytest.fixture()
-def migrated_db():
+def migrated_db(pg_template):
     admin = _ADMIN.strip()
     dbname = f"r212_{uuid.uuid4().hex[:12]}"
     admin_dsn = f"{admin} dbname=postgres"
-    if _psql(admin_dsn, f'CREATE DATABASE "{dbname}";').returncode != 0:
+    if _psql(admin_dsn, f'CREATE DATABASE "{dbname}" TEMPLATE "{pg_template.name}";').returncode != 0:
         pytest.skip("could not create throwaway db")
     dsn = f"{admin} dbname={dbname}"
     try:
-        proc = subprocess.run(
-            [sys.executable, str(RUNNER), "--dsn", dsn,
-             "--with-compat", "--only-schema", "--continue-on-error", "--json"],
-            capture_output=True, text=True, cwd=str(API_ROOT),
-        )
-        report = json.loads(proc.stdout)
-        failed = {f["file"] for f in report["failed"]}
+        # Schema comes from the session-scoped template (conftest.pg_template),
+        # applied once instead of once per test. `failed` is that run's report.
+        failed = pg_template.failed
         assert "160_atomic_receipt_settlement.sql" not in failed
         assert "161_widen_payment_mode_check.sql" not in failed
         assert "162_atomic_receipt_settlement_hardening.sql" not in failed
