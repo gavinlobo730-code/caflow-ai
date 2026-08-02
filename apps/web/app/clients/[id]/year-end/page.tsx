@@ -91,7 +91,7 @@ export default function YearEndPage() {
       });
       if (!res.success) throw new Error(res.error ?? "Failed to create");
       setShowCreate(false);
-      router.push(`/clients/${clientId}/year-end/${res.data.id}/dashboard`);
+      router.push(`/clients/${clientId}/year-end/${res.data.id}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create");
     } finally {
@@ -171,7 +171,7 @@ export default function YearEndPage() {
           {engagements.map((eng) => (
             <button
               key={eng.id}
-              onClick={() => router.push(`/clients/${clientId}/year-end/${eng.id}/dashboard`)}
+              onClick={() => router.push(`/clients/${clientId}/year-end/${eng.id}`)}
               className="w-full bg-white rounded-xl border border-[#F1F5F9] px-4 py-3 flex items-center gap-3 hover:bg-[#F8FAFC] text-left"
             >
               <Calendar size={16} className="text-blue-500 flex-shrink-0" />
