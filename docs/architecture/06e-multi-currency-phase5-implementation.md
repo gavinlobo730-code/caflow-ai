@@ -70,12 +70,13 @@ reports reconcile with the General Ledger.
 
 ## Dashboard & UX (Task 4)
 
-`apps/web` — an **FX Reports** tab in the client accounting workspace
-(`app/clients/[id]/accounting/page.tsx`) with five views (Exposure, Realized, Unrealized, Open
-Balances, Rate Audit), a currency filter, currency badges, exchange-rate display, coloured
-gain/loss (FX adjustment) indicators, foreign balance indicators and revaluation history. The
-tab is shown **only when `GET /api/currencies/policy` reports active**, so an INR-only client sees
-no added complexity. New helper `formatMoney(minor, currency, minorUnits)` in
+`apps/web` — an **FX Reports** card in the client accounting workspace's Reports hub
+(`app/clients/[id]/accounting/page.tsx`, Reports tab → Foreign Currency) with five views
+(Exposure, Realized, Unrealized, Open Balances, Rate Audit), a currency filter, currency badges,
+exchange-rate display, coloured gain/loss (FX adjustment) indicators, foreign balance indicators
+and revaluation history. The card is shown **only when `GET /api/currencies/policy` reports
+active**, so an INR-only client sees no added complexity. (It was a top-level Accounting tab
+until the Reports hub landed; the views themselves are unchanged.) New helper `formatMoney(minor, currency, minorUnits)` in
 `lib/services/formatting.ts`; new API methods under `api.accounting.fxReports.*`,
 `api.currencies.*`, `api.banking.accountBalance`. Zero business logic in the frontend — it only
 presents the backend's figures.
@@ -110,7 +111,7 @@ bank revaluation) + a supporting index. No existing column removed/altered. Appl
   `routers/` `fx_reports.py` (new), `customers.py` (+`/ar-aging`), `banking.py` (currency guard +
   balance endpoint), `main.py` (register); `models/banking.py` (+currency);
   `domain/currency/fx_revaluation_service.py` (bank revaluation); `migrations/150_*.sql` (new).
-- Frontend: `app/clients/[id]/accounting/page.tsx` (FX Reports tab + policy gate), `lib/api/index.ts`
+- Frontend: `app/clients/[id]/accounting/page.tsx` (FX Reports card in the Reports hub + policy gate), `lib/api/index.ts`
   (fxReports/currencies/accountBalance), `lib/services/formatting.ts` (`formatMoney`).
 - Tests: `tests/test_multi_currency_phase5.py` (27 tests across Tasks 1–6).
 
@@ -119,7 +120,7 @@ bank revaluation) + a supporting index. No existing column removed/altered. Appl
 - **Admin (enable MC):** set env `MULTI_CURRENCY_ENABLED`; mark the firm entitled; enable the client
   (functional currency INR). Seed the required `currencies` and `fx_rates`.
 - **User (transact & report):** create foreign documents (Phase 3), settle them (Phase 4 realized
-  FX), run period-end revaluation (Phase 4/5). View the FX Reports tab for exposure, realized /
+  FX), run period-end revaluation (Phase 4/5). Open Accounting → Reports → FX Reports for exposure, realized /
   unrealized FX, rate audit and open foreign balances; statements and aging show foreign + base
   outstanding. Foreign bank accounts are created from Banks with a currency and revalue at period end.
 

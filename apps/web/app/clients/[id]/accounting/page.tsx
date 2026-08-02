@@ -35,8 +35,7 @@ type AccountingTab =
   | "cashflow"
   | "approvals"
   | "verify-books"
-  | "reports"
-  | "fx-reports";
+  | "reports";
 
 const TABS: { id: AccountingTab; label: string }[] = [
   { id: "dashboard",     label: "Dashboard" },
@@ -49,7 +48,6 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "approvals",     label: "Approvals" },
   { id: "verify-books",  label: "Verify Books" },
   { id: "reports",       label: "Reports" },
-  { id: "fx-reports",    label: "FX Reports" },
 ];
 
 // ── Shared types ───────────────────────────────────────────────────────────
@@ -181,8 +179,9 @@ export default function AccountingPage() {
   // bank posting) treats as authoritative.
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  // Multi-Currency Phase 5 — the FX Reports tab is shown ONLY when multi-currency is
-  // active for this client, so an INR-only client sees no added complexity (CLAUDE.md).
+  // Multi-Currency Phase 5 — the FX Reports card (Reports tab) is shown ONLY when
+  // multi-currency is active for this client, so an INR-only client sees no added
+  // complexity (CLAUDE.md). Passed down to FinancialReports as `mcActive`.
   const [mcActive, setMcActive] = useState(false);
   // QuickBooks-style drill-down: set by clicking an amount on Trial Balance,
   // P&L, or the Balance Sheet. Lives outside `tab`/basis/FY state entirely, so
@@ -227,14 +226,14 @@ export default function AccountingPage() {
     return () => { cancelled = true; };
   }, [clientId]);
 
-  const visibleTabs = TABS.filter((t) => t.id !== "fx-reports" || mcActive);
+
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
         <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
-          {visibleTabs.map((t) => (
+          {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -282,10 +281,7 @@ export default function AccountingPage() {
           <VerifyBooks clientId={clientId} />
         )}
         {tab === "reports" && (
-          <FinancialReports clientId={clientId} financialYear={financialYear} />
-        )}
-        {tab === "fx-reports" && (
-          <FXReports clientId={clientId} financialYear={financialYear} />
+          <FinancialReports clientId={clientId} financialYear={financialYear} mcActive={mcActive} />
         )}
       </div>
 
@@ -2765,7 +2761,21 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
 
 // ── Financial Reports ──────────────────────────────────────────────────────
 
-function FinancialReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+/**
+ * Reports hub.
+ *
+ * Reports used to grow by adding a TAB — which is how Accounting reached 15 of
+ * them, and how FX ended up a top-level sibling of the financial statements
+ * despite being one more report. Here the unit of growth is a CARD inside a
+ * group, so the tab bar stays fixed no matter how many reports land.
+ *
+ * Groups drill in rather than stacking: the index lists what is available, and
+ * opening one replaces the index (with a way back). FX is the first such
+ * drill-in; the next report follows the same shape.
+ */
+function FinancialReports({ clientId, financialYear, mcActive }: { clientId: string; financialYear: string; mcActive: boolean }) {
+  // Which grouped report is open; null = the hub index.
+  const [openReport, setOpenReport] = useState<null | "fx">(null);
   // Exports follow the same basis the user is viewing (URL-persisted).
   const searchParams = useSearchParams();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -2927,12 +2937,26 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
     { id: "trial", label: "Trial Balance",  description: "Unadjusted trial balance for FY", icon: "📋" },
   ];
 
+  if (openReport === "fx") {
+    return (
+      <div className="space-y-3">
+        <button
+          onClick={() => setOpenReport(null)}
+          className="text-xs text-[#64748B] hover:text-[#334155] flex items-center gap-1"
+        >
+          ← All reports
+        </button>
+        <FXReports clientId={clientId} financialYear={financialYear} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 max-w-3xl mx-auto">
-      {/* Generate / export reports */}
+      {/* ── Financial statements ── */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <p className="text-xs font-semibold text-[#334155]">Generate Reports — FY {financialYear}</p>
+          <p className="text-xs font-semibold text-[#334155]">Financial Statements — FY {financialYear}</p>
           <p className="text-[10px] text-[#94A3B8] mt-0.5">Export to XLSX or share directly to the client portal.</p>
         </div>
         <div className="divide-y divide-[#F8FAFC]">
@@ -2977,7 +3001,31 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
         </div>
       </div>
 
-      {/* Year-End Close */}
+      {/* ── Foreign currency ──
+          Only when multi-currency is actually active for this client, so an
+          INR-only client sees no added complexity (CLAUDE.md). Previously this
+          gated a whole top-level tab; now it gates one card. */}
+      {mcActive && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <p className="text-xs font-semibold text-[#334155]">Foreign Currency</p>
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">Exposure, realized and unrealized gain/loss, open items, and the rate audit trail.</p>
+          </div>
+          <button
+            onClick={() => setOpenReport("fx")}
+            className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-[#F8FAFC] transition-colors"
+          >
+            <span className="text-2xl">🌐</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-[#1E293B]">FX Reports</p>
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">Five views across your foreign-currency documents</p>
+            </div>
+            <span className="text-xs text-[#94A3B8]">Open →</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Year-End ── */}
       <YearEndClose financialYear={financialYear} />
 
       {/* Schedule III note */}
