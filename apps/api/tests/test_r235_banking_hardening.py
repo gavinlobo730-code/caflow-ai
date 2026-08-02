@@ -90,14 +90,16 @@ def test_list_rules_rejects_another_firms_client(enforced):
 
 
 def test_create_rule_rejects_another_firms_client(enforced):
-    body = MatchingRuleIn(client_id="C-OTHER", rule_name="Sneaky Rule")
+    body = MatchingRuleIn(client_id="C-OTHER", rule_name="Sneaky Rule",
+                          description_pattern="NEFT", suggested_category="Expense")
     with pytest.raises(HTTPException) as ei:
         banking_router.create_rule(body, current_user=PARTNER_F1)
     assert ei.value.status_code == 404
 
 
 def test_create_rule_accepts_own_firms_client(enforced):
-    body = MatchingRuleIn(client_id="C1", rule_name="Legit Rule")
+    body = MatchingRuleIn(client_id="C1", rule_name="Legit Rule",
+                          description_pattern="NEFT", suggested_category="Expense")
     result = banking_router.create_rule(body, current_user=PARTNER_F1)
     assert result["success"] is True
 

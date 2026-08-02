@@ -23,6 +23,13 @@
  *
  *   Approvals deliberately did NOT move: it is a general journal approval queue
  *   (api.accounting.journalsQueue / postDraftJournal), not a banking step.
+ *
+ * RULES
+ *   A fifth tab, after the pipeline rather than inside it: rules are SETUP for
+ *   the Categorize step, not a step you work through. The engine behind it had
+ *   shipped years earlier with no screen to create a rule, so the table could
+ *   only ever be empty — see
+ *   docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md.
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -45,13 +52,16 @@ import {
 
 // ── Tabs, in pipeline order ────────────────────────────────────────────────
 
-type BankTab = "accounts" | "categorize" | "post" | "reconcile";
+type BankTab = "accounts" | "categorize" | "post" | "reconcile" | "rules";
 
 const TABS: { id: BankTab; label: string }[] = [
   { id: "accounts",   label: "Accounts" },
   { id: "categorize", label: "Categorize" },
   { id: "post",       label: "Post to Books" },
   { id: "reconcile",  label: "Reconcile" },
+  // Setup for the Categorize step rather than a step of its own, so it sits
+  // after the pipeline — the same place QuickBooks puts its Rules tab.
+  { id: "rules",      label: "Rules" },
 ];
 
 // ── Shared types & helpers ─────────────────────────────────────────────────
@@ -90,10 +100,22 @@ interface QueueTxn {
   debit_paise: number; credit_paise: number; balance_paise: number; match_status: string;
   category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
   suggested_category: string | null; needs_review: boolean;
+  // What a matching rule proposes for this row (Rules tab). The account and
+  // narration are new: the rule engine used to return only a category.
+  suggested_account_id: string | null;
+  suggested_narration: string | null;
+  suggested_by_rule: string | null;
 }
 interface MatchSuggestion {
   matched_entity_type: string; matched_entity_id: string; label: string;
   amount_paise: number; confidence: number; confidence_label: string; reasons: string[];
+  // >0 when the bank line is SHORT of the document — a customer withholding TDS,
+  // or bank charges. Accepting such a match settles only what actually arrived,
+  // so the UI routes it to the settlement modal instead of a plain Accept.
+  difference_paise: number;
+  tds_rate_bps: number | null;
+  party_id: string | null;
+  outstanding_paise: number | null;
 }
 
 const QUEUE_FILTERS: { id: string; label: string }[] = [
@@ -101,6 +123,9 @@ const QUEUE_FILTERS: { id: string; label: string }[] = [
   { id: "categorized", label: "Categorized" },
   { id: "needs_review", label: "Needs Review" },
   { id: "matched", label: "Matched" },
+  // Ignoring used to be one-way — no endpoint to undo it and no view that
+  // listed ignored rows, so a mis-click permanently hid a statement line.
+  { id: "ignored", label: "Excluded" },
 ];
 
 function BankMatchQueue({ clientId }: { clientId: string }) {
@@ -116,9 +141,21 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
   // Distinguishes "fetch failed" from "queue genuinely empty" (a masked
   // failure here reads as a fully-reconciled bank, which it may not be).
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Multi-invoice bank allocation — split ONE transaction across several
-  // invoices/bills for one party, in a single settlement.
+  // Settlement modal — allocate ONE transaction across one or more invoices/
+  // bills for a party, with any TDS the customer withheld. `prefill` is set when
+  // the modal is opened from a short suggestion, so the CA lands on the right
+  // party and document instead of re-finding what we just showed them.
   const [splitTxn, setSplitTxn] = useState<QueueTxn | null>(null);
+  const [prefill, setPrefill] = useState<SettlePrefill | null>(null);
+
+  function openSettle(t: QueueTxn, from?: MatchSuggestion) {
+    setPrefill(from && from.party_id ? {
+      partyId: from.party_id,
+      docId: from.matched_entity_id,
+      tdsPaise: from.difference_paise,
+    } : null);
+    setSplitTxn(t);
+  }
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -203,6 +240,28 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
   async function reject(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
     try { await api.banking.unmatch(id); setSugg((s) => ({ ...s, [id]: [] })); await load(); }
+    finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+  // Take everything the firing rule proposed: the category and, when it named
+  // one, the counter GL account. Category first — set_account flips the row to
+  // "matched", and categorize refuses to run once a draft journal exists, so
+  // doing it the other way round would work today and break the moment posting
+  // gets involved.
+  async function applyRule(t: QueueTxn) {
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    try {
+      if (t.suggested_category) await api.banking.categorize(t.id, { category: t.suggested_category });
+      if (t.suggested_account_id) await api.banking.setTransactionAccount(t.id, { account_id: t.suggested_account_id });
+      await load();
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+  async function setIgnored(id: string, ignored: boolean) {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      await (ignored ? api.banking.ignoreTransaction(id) : api.banking.unignoreTransaction(id));
+      await load();
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [id]: false })); }
   }
 
@@ -301,7 +360,11 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
                 {t.category && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span>}
 
                 {/* Match (B.2.1 / B.2.5) */}
-                {t.matched_entity_id ? (
+                {t.match_status === "ignored" ? (
+                  <button onClick={() => setIgnored(t.id, false)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                    Restore to queue
+                  </button>
+                ) : t.matched_entity_id ? (
                   <>
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">Matched · {t.matched_entity_type}</span>
                     <button onClick={() => reject(t.id)} disabled={busy[t.id]} className="text-[10px] text-red-600 hover:underline">Unmatch</button>
@@ -311,12 +374,36 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
                     <button onClick={() => loadSugg(t.id)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
                       Suggest matches
                     </button>
-                    <button onClick={() => setSplitTxn(t)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                      Split across multiple {t.credit_paise > 0 ? "invoices" : "bills"}
+                    {/* Renamed from "Split across multiple invoices/bills": this
+                        is also how you settle ONE invoice paid net of TDS, and
+                        nobody looks under "split" for that. */}
+                    <button onClick={() => openSettle(t)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                      Settle {t.credit_paise > 0 ? "invoices" : "bills"} / TDS
+                    </button>
+                    <button onClick={() => setIgnored(t.id, true)} disabled={busy[t.id]} className="text-[10px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto">
+                      Exclude
                     </button>
                   </>
                 )}
               </div>
+
+              {/* What a matching rule proposes for this row, with one click to
+                  take it. Displaying the suggestion without a way to apply it
+                  would repeat the original defect one layer up. */}
+              {t.suggested_by_rule && !t.category && t.match_status !== "ignored" && (
+                <div className="flex items-center gap-2 ml-1">
+                  <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                    Rule <span className="font-medium text-[#64748B]">{t.suggested_by_rule}</span>
+                    {t.suggested_category ? ` → ${t.suggested_category}` : ""}
+                    {t.suggested_account_id ? " + account" : ""}
+                    {t.suggested_narration ? ` · ${t.suggested_narration}` : ""}
+                  </p>
+                  <button onClick={() => applyRule(t)} disabled={busy[t.id]}
+                    className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
+                    Apply rule
+                  </button>
+                </div>
+              )}
 
               {/* Suggestion list */}
               {sugg[t.id] && sugg[t.id].length > 0 && (
@@ -329,7 +416,20 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${confColor(s.confidence_label)}`}>{s.confidence}%</span>
-                        <button onClick={() => accept(t.id, s)} disabled={busy[t.id]} className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Accept</button>
+                        {/* A SHORT match settles only what arrived, leaving the
+                            document partly open — which is wrong when the
+                            shortfall is withheld TDS. Send it to the settlement
+                            modal (party + document + TDS prefilled) rather than
+                            let one click quietly under-settle. */}
+                        {s.difference_paise > 0 ? (
+                          <button onClick={() => openSettle(t, s)} disabled={busy[t.id]}
+                            className="text-[10px] px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
+                            title={`Bank line is ${fmt(s.difference_paise)} short of this document`}>
+                            {s.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
+                          </button>
+                        ) : (
+                          <button onClick={() => accept(t.id, s)} disabled={busy[t.id]} className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Accept</button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -350,27 +450,45 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
         <MultiInvoiceMatchModal
           txn={splitTxn}
           clientId={clientId}
-          onClose={() => setSplitTxn(null)}
-          onDone={() => { setSplitTxn(null); load(); }}
+          prefill={prefill}
+          onClose={() => { setSplitTxn(null); setPrefill(null); }}
+          onDone={() => { setSplitTxn(null); setPrefill(null); load(); }}
         />
       )}
     </div>
   );
 }
 
-// ── Multi-invoice bank allocation modal ─────────────────────────────────────
-// Splits ONE bank transaction across SEVERAL sales invoices (a credit
-// transaction) or purchase bills (a debit transaction) for one customer/
-// vendor, in a single settlement — reached from "Split across multiple
-// invoices/bills" in the Bank Match Queue.
+// ── Bank settlement modal ───────────────────────────────────────────────────
+// Allocates ONE bank transaction across one or more sales invoices (a credit
+// transaction) or purchase bills (a debit transaction) for a single customer/
+// vendor — reached from "Settle invoices / TDS" in the Bank Match Queue.
+//
+// TDS
+//   The everyday Indian receipt: a customer settles a ₹1,00,000 invoice,
+//   withholds 10% under s.194J of the Income-tax Act 1961, and remits ₹90,000.
+//   The invoice is settled IN FULL; only the cash is short. The backend has
+//   always supported this (match_and_settle_multi's `tds_paise` raises the
+//   allocation cap accordingly) but the modal never collected the figure, so it
+//   was always zero and the case had no route through the UI at all.
+//
+//   TDS is entered by the CA, never inferred. When the modal is opened from a
+//   short match suggestion the field is PRE-FILLED with the shortfall the
+//   backend measured — a starting figure to confirm or correct, not a decision.
 
 interface SplitDoc {
   id: string; no: string; date: string; outstanding_paise: number; currency: string;
 }
 interface SplitParty { id: string; name: string; gstin?: string | null }
+interface SettlePrefill {
+  partyId: string;
+  docId: string | null;
+  tdsPaise: number;
+}
 
-function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
-  txn: QueueTxn; clientId: string; onClose: () => void; onDone: () => void;
+function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone }: {
+  txn: QueueTxn; clientId: string; prefill?: SettlePrefill | null;
+  onClose: () => void; onDone: () => void;
 }) {
   const isCredit = txn.credit_paise > 0;
   const txnAmount = isCredit ? txn.credit_paise : txn.debit_paise;
@@ -378,12 +496,18 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
   const docLabel = isCredit ? "invoice" : "bill";
 
   const [parties, setParties] = useState<SplitParty[]>([]);
-  const [partyId, setPartyId] = useState("");
+  const [partyId, setPartyId] = useState(prefill?.partyId ?? "");
   const [docs, setDocs] = useState<SplitDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, string>>({});   // rupees, per doc id
   const [exchangeRate, setExchangeRate] = useState("");
+  // TDS withheld by the customer, in rupees as typed. Only meaningful on a
+  // credit (a receipt): TDS the client itself withholds on a vendor payment is
+  // already carried in the bill's net_payable_paise, so it must not be added a
+  // second time here — the backend applies tds_paise to sales invoices only.
+  const [tds, setTds] = useState(
+    prefill?.tdsPaise ? (prefill.tdsPaise / 100).toFixed(2) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -445,8 +569,31 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
     })();
   }, [partyId, clientId, isCredit]);
 
+  // Opened from a short match suggestion: tick the document the backend
+  // matched and allocate its FULL outstanding — the point of the TDS field is
+  // that the document clears even though less cash arrived. Runs once the docs
+  // for the prefilled party have loaded, and only while nothing is ticked, so
+  // it never fights the CA's own selection.
+  const prefillDocId = prefill?.docId ?? null;
+  useEffect(() => {
+    if (!prefillDocId || docs.length === 0 || checked.size > 0) return;
+    const doc = docs.find((d) => d.id === prefillDocId);
+    if (!doc) return;
+    setChecked(new Set([doc.id]));
+    setAmounts({ [doc.id]: (doc.outstanding_paise / 100).toFixed(2) });
+    // `checked` is deliberately excluded: this must fire when the docs arrive,
+    // not re-run every time the selection changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillDocId, docs]);
+
   const totalAllocatedPaise = Array.from(checked).reduce((sum, id) => sum + rsToP(parseFloat(amounts[id] || "0") || 0), 0);
-  const remaining = txnAmount - totalAllocatedPaise;
+  // Mirror of bank_posting_service.match_and_settle_multi's settlement_cap: the
+  // documents that can be settled total the cash received PLUS any TDS the
+  // customer withheld, because the withheld amount discharges the receivable
+  // just as cash does (it lands in TDS receivable instead of the bank).
+  const tdsPaise = isCredit ? Math.max(rsToP(parseFloat(tds || "0") || 0), 0) : 0;
+  const settlementCap = txnAmount + tdsPaise;
+  const remaining = settlementCap - totalAllocatedPaise;
   const checkedCurrencies = new Set(Array.from(checked).map((id) => docs.find((d) => d.id === id)?.currency ?? "INR"));
   const currency = checkedCurrencies.size === 1 ? Array.from(checkedCurrencies)[0] : null;
   const isForeign = currency != null && currency !== "INR";
@@ -461,7 +608,7 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
         next.add(doc.id);
         const alreadyAllocated = Array.from(next).filter((id) => id !== doc.id)
           .reduce((sum, id) => sum + rsToP(parseFloat(amounts[id] || "0") || 0), 0);
-        const remainingBefore = Math.max(txnAmount - alreadyAllocated, 0);
+        const remainingBefore = Math.max(settlementCap - alreadyAllocated, 0);
         const fill = Math.min(doc.outstanding_paise, remainingBefore);
         setAmounts((a) => ({ ...a, [doc.id]: (fill / 100).toFixed(2) }));
       }
@@ -473,12 +620,18 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
     if (checked.size === 0) { setError(`Select at least one ${docLabel}.`); return; }
     if (checkedCurrencies.size > 1) { setError(`Select ${docLabel}s in a single currency.`); return; }
     if (isForeign && !exchangeRate) { setError("Enter the exchange rate for this foreign-currency settlement."); return; }
-    if (totalAllocatedPaise > txnAmount) { setError("Total allocated exceeds the transaction amount."); return; }
+    if (totalAllocatedPaise > settlementCap) {
+      setError(tdsPaise > 0
+        ? "Total allocated exceeds the amount received plus TDS."
+        : "Total allocated exceeds the transaction amount.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const res = await api.banking.matchMulti(txn.id, {
         entity_type: entityType,
         allocations: Array.from(checked).map((id) => ({ entity_id: id, allocated_paise: rsToP(parseFloat(amounts[id] || "0") || 0) })),
+        tds_paise: tdsPaise > 0 ? tdsPaise : undefined,
         currency: isForeign ? currency! : undefined,
         exchange_rate: isForeign ? exchangeRate : undefined,
       }) as { success: boolean; error?: string | null };
@@ -495,7 +648,7 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
           <div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">Split across multiple {docLabel}s</h3>
+            <h3 className="text-sm font-semibold text-[#0F172A]">Settle {docLabel}s</h3>
             <p className="text-xs text-[#64748B] mt-0.5">{txn.description} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</p>
           </div>
           <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
@@ -538,6 +691,25 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
             )
           )}
 
+          {/* TDS — receipts only. On a vendor payment the withholding is already
+              inside the bill's net payable, so adding it here would double it. */}
+          {isCredit && (
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">
+                TDS withheld by the customer (₹)
+              </label>
+              <input
+                type="number" min="0" step="0.01" value={tds}
+                onChange={(e) => setTds(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="0.00" />
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                {tdsPaise > 0
+                  ? `Invoices totalling ${fmt(settlementCap)} can be settled from this ${fmt(txnAmount)} receipt — the ${fmt(tdsPaise)} withheld clears the receivable too.`
+                  : "Leave blank unless the customer deducted tax at source. Enter the amount deducted, not the rate."}
+              </p>
+            </div>
+          )}
+
           {isForeign && (
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Exchange rate ({currency} → INR) *</label>
@@ -548,9 +720,10 @@ function MultiInvoiceMatchModal({ txn, clientId, onClose, onDone }: {
 
           {checked.size > 0 && (
             <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-red-50 text-red-700" : "bg-[#F8FAFC] text-[#475569]"}`}>
-              Allocated {fmt(totalAllocatedPaise)} of {fmt(txnAmount)}
+              Allocated {fmt(totalAllocatedPaise)} of {fmt(settlementCap)}
+              {tdsPaise > 0 && ` (${fmt(txnAmount)} received + ${fmt(tdsPaise)} TDS)`}
               {remaining > 0 && ` — ${fmt(remaining)} will remain unallocated on the ${isCredit ? "receipt" : "payment"}.`}
-              {remaining < 0 && " — exceeds the transaction amount."}
+              {remaining < 0 && (tdsPaise > 0 ? " — exceeds the receipt plus TDS." : " — exceeds the transaction amount.")}
             </div>
           )}
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
@@ -1704,6 +1877,306 @@ function Row({ label, paise, strong }: { label: string; paise: number; strong?: 
   );
 }
 
+// ── Bank rules (B.2.3) ─────────────────────────────────────────────────────
+//
+// A rule annotates the Categorize queue with a suggested category, counter GL
+// account and narration. It NEVER posts and never writes to a transaction on
+// its own — the CA accepts the suggestion. Precedence is creation order: the
+// first rule that fires wins, so put the specific ones first.
+//
+// The engine and its endpoints shipped long before this screen; without a way
+// to create a rule, bank_matching_rules could only ever be empty and the whole
+// engine was dead code. See
+// docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md §2.1.
+
+interface BankRule {
+  id: string;
+  rule_name: string;
+  description_pattern: string | null;
+  amount_min_paise: number | null;
+  amount_max_paise: number | null;
+  txn_type: "debit" | "credit" | "any";
+  suggested_category: string | null;
+  suggested_account_id: string | null;
+  suggested_narration: string | null;
+  is_active: boolean;
+}
+
+const BLANK_RULE = {
+  rule_name: "",
+  description_pattern: "",
+  amount_min: "",
+  amount_max: "",
+  txn_type: "any" as "debit" | "credit" | "any",
+  suggested_category: "",
+  suggested_account_id: "",
+  suggested_narration: "",
+};
+
+function BankRules({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
+  const [rules, setRules] = useState<BankRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | "new" | null>(null);
+  const [form, setForm] = useState({ ...BLANK_RULE });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoading(true);
+    try {
+      const res = (await api.banking.rules.list(clientId)) as { success: boolean; data: BankRule[] };
+      if (!res.success) throw new Error("Couldn't load matching rules.");
+      setRules(res.data ?? []);
+      setLoadError(null);
+    } catch (e) {
+      setRules([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load matching rules.");
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
+  useEffect(() => { load(); }, [load]);
+
+  const accountName = (id: string | null) => {
+    if (!id) return null;
+    const a = accounts.find((x) => x.id === id);
+    return a ? `${a.account_code} · ${a.account_name}` : "Unknown account";
+  };
+
+  function startNew() {
+    setForm({ ...BLANK_RULE });
+    setFormError(null);
+    setEditing("new");
+  }
+  function startEdit(r: BankRule) {
+    setForm({
+      rule_name: r.rule_name,
+      description_pattern: r.description_pattern ?? "",
+      amount_min: r.amount_min_paise != null ? (r.amount_min_paise / 100).toFixed(2) : "",
+      amount_max: r.amount_max_paise != null ? (r.amount_max_paise / 100).toFixed(2) : "",
+      txn_type: r.txn_type ?? "any",
+      suggested_category: r.suggested_category ?? "",
+      suggested_account_id: r.suggested_account_id ?? "",
+      suggested_narration: r.suggested_narration ?? "",
+    });
+    setFormError(null);
+    setEditing(r.id);
+  }
+
+  // Empty string means "no bound", which is not the same as zero.
+  const boundToPaise = (v: string) => (v.trim() === "" ? null : rsToP(parseFloat(v) || 0));
+
+  async function save() {
+    const payload = {
+      rule_name: form.rule_name.trim(),
+      description_pattern: form.description_pattern.trim() || null,
+      amount_min_paise: boundToPaise(form.amount_min),
+      amount_max_paise: boundToPaise(form.amount_max),
+      txn_type: form.txn_type,
+      suggested_category: form.suggested_category || null,
+      suggested_account_id: form.suggested_account_id || null,
+      suggested_narration: form.suggested_narration.trim() || null,
+    };
+    // The backend re-validates all of this; these checks just avoid a round trip
+    // to say what the form already knows.
+    if (!payload.rule_name) { setFormError("Give the rule a name."); return; }
+    const hasCondition = payload.description_pattern || payload.amount_min_paise != null
+      || payload.amount_max_paise != null || payload.txn_type !== "any";
+    if (!hasCondition) {
+      setFormError("Add at least one condition — a description pattern, an amount range, or money-in/money-out. A rule with no conditions would match every transaction.");
+      return;
+    }
+    if (!payload.suggested_category && !payload.suggested_account_id && !payload.suggested_narration) {
+      setFormError("Add at least one suggestion — a category, an account, or a narration.");
+      return;
+    }
+    setSaving(true); setFormError(null);
+    try {
+      if (editing === "new") await api.banking.rules.create({ client_id: clientId, ...payload });
+      else if (editing) await api.banking.rules.update(editing, payload);
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't save the rule.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggle(r: BankRule) {
+    setBusy((b) => ({ ...b, [r.id]: true }));
+    try { await api.banking.rules.update(r.id, { is_active: !r.is_active }); await load(); }
+    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [r.id]: false })); }
+  }
+  async function remove(r: BankRule) {
+    if (!confirm(`Delete the rule “${r.rule_name}”? Transactions it has already been applied to are unaffected.`)) return;
+    setBusy((b) => ({ ...b, [r.id]: true }));
+    try { await api.banking.rules.remove(r.id); await load(); }
+    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [r.id]: false })); }
+  }
+
+  function conditionSummary(r: BankRule) {
+    const bits: string[] = [];
+    if (r.description_pattern) bits.push(`narration contains “${r.description_pattern}”`);
+    if (r.amount_min_paise != null && r.amount_max_paise != null) bits.push(`${fmt(r.amount_min_paise)}–${fmt(r.amount_max_paise)}`);
+    else if (r.amount_min_paise != null) bits.push(`≥ ${fmt(r.amount_min_paise)}`);
+    else if (r.amount_max_paise != null) bits.push(`≤ ${fmt(r.amount_max_paise)}`);
+    if (r.txn_type === "debit") bits.push("money out");
+    if (r.txn_type === "credit") bits.push("money in");
+    return bits.join(" · ") || "every transaction";
+  }
+
+  return (
+    <div className="space-y-4 max-w-3xl mx-auto">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+        <p className="text-xs font-semibold text-blue-800">How rules work</p>
+        <p className="text-[11px] text-blue-600 mt-1">
+          A rule watches for transactions that match its conditions and suggests how to
+          code them in <strong>Categorize</strong>. It never posts anything and never
+          changes a transaction on its own — you still accept each suggestion. When two
+          rules match, the <strong>older one wins</strong>, so create your specific rules
+          before the broad ones.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-[#64748B]">
+          {loading ? "Loading…" : `${rules.length} rule${rules.length === 1 ? "" : "s"}`}
+        </p>
+        <button onClick={startNew} className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5">
+          <Plus size={12} /> New rule
+        </button>
+      </div>
+
+      {editing && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+          <p className="text-xs font-semibold text-[#334155]">{editing === "new" ? "New rule" : "Edit rule"}</p>
+
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Rule name *</label>
+            <input value={form.rule_name} onChange={(e) => setForm((f) => ({ ...f, rule_name: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. HDFC bank charges" />
+          </div>
+
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8] pt-1">When</p>
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Narration contains</label>
+            <input value={form.description_pattern} onChange={(e) => setForm((f) => ({ ...f, description_pattern: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. BANK CHARGES" />
+            <p className="text-[10px] text-[#94A3B8] mt-1">Plain text, not case-sensitive. No wildcards.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Min amount (₹)</label>
+              <input type="number" min="0" step="0.01" value={form.amount_min}
+                onChange={(e) => setForm((f) => ({ ...f, amount_min: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="any" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Max amount (₹)</label>
+              <input type="number" min="0" step="0.01" value={form.amount_max}
+                onChange={(e) => setForm((f) => ({ ...f, amount_max: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="any" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Direction</label>
+              <select value={form.txn_type} onChange={(e) => setForm((f) => ({ ...f, txn_type: e.target.value as "debit" | "credit" | "any" }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="any">Either</option>
+                <option value="credit">Money in</option>
+                <option value="debit">Money out</option>
+              </select>
+            </div>
+          </div>
+
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8] pt-1">Suggest</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Category</label>
+              <select value={form.suggested_category} onChange={(e) => setForm((f) => ({ ...f, suggested_category: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="">— None —</option>
+                {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Counter account</label>
+              <AccountLookup accounts={accounts} value={form.suggested_account_id}
+                onChange={(v) => setForm((f) => ({ ...f, suggested_account_id: v }))}
+                ariaLabel="Suggested counter account" placeholder="— None —" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Narration</label>
+            <input value={form.suggested_narration} onChange={(e) => setForm((f) => ({ ...f, suggested_narration: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank charges" />
+          </div>
+
+          {formError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{formError}</p>}
+
+          <div className="flex gap-2 justify-end pt-1">
+            <button onClick={() => setEditing(null)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+              {saving ? "Saving…" : editing === "new" ? "Create rule" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <TableSkeleton cols={3} rows={3} /> : loadError ? (
+        <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      ) : rules.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center">
+          <p className="text-sm text-[#94A3B8]">No rules yet.</p>
+          <p className="text-[11px] text-[#94A3B8] mt-1">
+            Rules save you re-coding the same transaction every month — bank charges, salary
+            transfers, a recurring vendor.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+          {rules.map((r, i) => (
+            <div key={r.id} className={`px-4 py-3 flex items-start gap-3 ${r.is_active ? "" : "bg-[#FCFCFD]"}`}>
+              <span className="text-[10px] text-[#CBD5E1] font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className={`text-xs font-medium truncate ${r.is_active ? "text-[#1E293B]" : "text-[#94A3B8]"}`}>{r.rule_name}</p>
+                  {!r.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8]">Off</span>}
+                </div>
+                <p className="text-[10px] text-[#94A3B8] mt-0.5">When {conditionSummary(r)}</p>
+                <p className="text-[10px] text-[#64748B] mt-0.5">
+                  Suggest{" "}
+                  {[r.suggested_category, accountName(r.suggested_account_id), r.suggested_narration]
+                    .filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => toggle(r)} disabled={busy[r.id]} className="text-[10px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                  {r.is_active ? "Turn off" : "Turn on"}
+                </button>
+                <button onClick={() => startEdit(r)} disabled={busy[r.id]} className="text-[#94A3B8] hover:text-[#475569]" aria-label={`Edit ${r.rule_name}`}>
+                  <Pencil size={13} />
+                </button>
+                <button onClick={() => remove(r)} disabled={busy[r.id]} className="text-[#94A3B8] hover:text-red-600" aria-label={`Delete ${r.rule_name}`}>
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page shell ─────────────────────────────────────────────────────────────
 
 export default function BankPage() {
@@ -1758,6 +2231,7 @@ export default function BankPage() {
         {tab === "categorize" && <BankMatchQueue clientId={clientId} />}
         {tab === "post"       && <BankPostingQueue clientId={clientId} accounts={accounts} />}
         {tab === "reconcile"  && <BankReconciliation clientId={clientId} />}
+        {tab === "rules"      && <BankRules clientId={clientId} accounts={accounts} />}
       </div>
     </div>
   );

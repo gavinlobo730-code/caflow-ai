@@ -276,6 +276,26 @@ class BankingService:
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
         return {"id": txn_id, "match_status": "ignored"}
 
+    def unignore(self, db, firm_id: str, txn_id: str) -> dict:
+        """Bring an ignored transaction back into the work queue.
+
+        Ignoring was previously one-way: there was no endpoint to undo it and no
+        view that listed ignored rows, so a mis-click permanently hid a real
+        statement line from the queue — and from reconciliation, which only ever
+        sees what got posted.
+
+        Restores the status the row would have had: 'matched' if a link survived
+        the ignore, otherwise 'unmatched'. Never touches a posted row.
+        """
+        txn = self._get_txn(db, firm_id, txn_id)
+        if txn["match_status"] != "ignored":
+            raise HTTPException(status_code=409, detail="Transaction is not ignored.")
+        restored = "matched" if txn.get("matched_entity_id") else "unmatched"
+        db.table("bank_transactions").update({
+            "match_status": restored, "updated_at": _now(),
+        }).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        return {"id": txn_id, "match_status": restored}
+
     # ── Posting to the ledger ─────────────────────────────────────────────────
     def post_transaction(
         self, db, firm_id: str, txn_id: str, account_id: str,

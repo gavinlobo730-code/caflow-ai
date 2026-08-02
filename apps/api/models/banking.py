@@ -240,3 +240,100 @@ class MatchingRuleIn(BaseModel):
         if not v.strip():
             raise ValueError("Rule name cannot be blank.")
         return v.strip()
+
+    @field_validator("suggested_category")
+    @classmethod
+    def known_category(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_category(v)
+
+    @field_validator("txn_type")
+    @classmethod
+    def known_txn_type(cls, v: str) -> str:
+        return _validate_txn_type(v)
+
+    @model_validator(mode="after")
+    def coherent(self):
+        return _validate_rule_shape(self)
+
+
+class MatchingRuleUpdateIn(BaseModel):
+    """Partial edit of an existing rule. Every field is optional; only the ones
+    supplied are written. `client_id` is deliberately absent — see the router."""
+    rule_name: Optional[str] = None
+    description_pattern: Optional[str] = None
+    amount_min_paise: Optional[int] = None
+    amount_max_paise: Optional[int] = None
+    txn_type: Optional[str] = None
+    suggested_account_id: Optional[str] = None
+    suggested_category: Optional[str] = None
+    suggested_narration: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("rule_name")
+    @classmethod
+    def not_empty(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.strip():
+            raise ValueError("Rule name cannot be blank.")
+        return v.strip() if v is not None else None
+
+    @field_validator("suggested_category")
+    @classmethod
+    def known_category(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_category(v)
+
+    @field_validator("txn_type")
+    @classmethod
+    def known_txn_type(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_txn_type(v) if v is not None else None
+
+    @model_validator(mode="after")
+    def coherent(self):
+        # Only checks the fields actually supplied; a partial edit that omits one
+        # side of the amount range is legitimate (the stored value stands).
+        if (self.amount_min_paise is not None and self.amount_max_paise is not None
+                and self.amount_min_paise > self.amount_max_paise):
+            raise ValueError("Minimum amount cannot exceed the maximum amount.")
+        return self
+
+
+# ── Shared matching-rule validation ─────────────────────────────────────────
+# A rule's suggested_category lands on bank_transactions.category, which carries
+# a DB CHECK against the controlled vocabulary (domain.banking.categories). An
+# unvalidated rule therefore stored fine and then failed at the moment the CA
+# tried to accept it — validate at the point the rule is written instead.
+
+_RULE_TXN_TYPES = frozenset({"debit", "credit", "any"})
+
+
+def _validate_category(v: Optional[str]) -> Optional[str]:
+    if v is None or not str(v).strip():
+        return None
+    from domain.banking import CATEGORIES, is_valid_category
+    value = str(v).strip()
+    if not is_valid_category(value):
+        raise ValueError(f"Invalid category. Allowed: {', '.join(CATEGORIES)}")
+    return value
+
+
+def _validate_txn_type(v: str) -> str:
+    value = (v or "any").strip().lower()
+    if value not in _RULE_TXN_TYPES:
+        raise ValueError("txn_type must be one of: debit, credit, any.")
+    return value
+
+
+def _validate_rule_shape(rule) -> object:
+    lo, hi = rule.amount_min_paise, rule.amount_max_paise
+    if lo is not None and hi is not None and lo > hi:
+        raise ValueError("Minimum amount cannot exceed the maximum amount.")
+    if not any([rule.description_pattern, lo is not None, hi is not None,
+                (rule.txn_type or "any") != "any"]):
+        # A rule with no conditions fires on EVERY transaction, which is never
+        # what anyone means and would mask every rule created after it.
+        raise ValueError(
+            "A rule needs at least one condition — a description pattern, an "
+            "amount range, or a debit/credit restriction.")
+    if not any([rule.suggested_category, rule.suggested_account_id, rule.suggested_narration]):
+        raise ValueError(
+            "A rule needs at least one suggestion — a category, an account, or a narration.")
+    return rule

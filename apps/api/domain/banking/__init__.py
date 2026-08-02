@@ -13,13 +13,20 @@ from .normalizer import (
 )
 from .dedup import transaction_hash, file_hash
 from .categories import CATEGORIES, CATEGORY_SET, is_valid_category
-from .rules import suggest_category, rule_matches
-from .matcher import Candidate, Suggestion, rank_suggestions
+from .rules import suggest_category, match_rule, rule_matches, RuleSuggestion
+from .matcher import (
+    Candidate, Suggestion, rank_suggestions,
+    NEAR_MATCH_BAND_BPS, NEAR_MATCH_CONFIDENCE_CAP, TDS_RATES_BPS, TDS_TOLERANCE_PAISE,
+    near_match_floor_paise, detect_tds_rate_bps,
+)
 
 __all__ = [
     "NormalizedTxn", "parse_statement", "parse_csv", "parse_xlsx",
     "detect_format", "StatementParseError", "transaction_hash", "file_hash",
     "CATEGORIES", "CATEGORY_SET", "is_valid_category",
-    "suggest_category", "rule_matches",
+    "suggest_category", "match_rule", "rule_matches", "RuleSuggestion",
     "Candidate", "Suggestion", "rank_suggestions",
+    "NEAR_MATCH_BAND_BPS", "NEAR_MATCH_CONFIDENCE_CAP",
+    "TDS_RATES_BPS", "TDS_TOLERANCE_PAISE",
+    "near_match_floor_paise", "detect_tds_rate_bps",
 ]

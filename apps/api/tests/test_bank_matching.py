@@ -24,10 +24,12 @@ def _cand(**kw):
     return Candidate(**base)
 
 
-def test_exact_amount_match_only():
+def test_bank_line_larger_than_document_is_excluded():
+    """A receipt BIGGER than the invoice is not settling that invoice. Short
+    lines are ranked (see the TDS tests below); over-payments are not."""
     cands = [_cand(amount_paise=118000), _cand(entity_id="i2", amount_paise=100000)]
     out = rank_suggestions(118000, "2026-04-10", "NEFT", cands)
-    assert [s.entity_id for s in out] == ["i1"]  # non-exact excluded
+    assert [s.entity_id for s in out] == ["i1"]
 
 
 def test_near_date_scores_below_same_day():
@@ -115,8 +117,10 @@ class _Q:
         self._op = "select"
         self._payload = None
         self._eq = []
+        self._pred = []          # gte / lte / neq / is_ predicates
         self._single = False
         self._order = None
+        self._limit = None
 
     def insert(self, p):
         self._op, self._payload = "insert", p
@@ -134,11 +138,35 @@ class _Q:
         self._eq.append((k, v))
         return self
 
+    # Range + null predicates. Without these the candidate-fetch path raised
+    # AttributeError, was swallowed by _candidates()'s best-effort except, and
+    # every suggestion test silently exercised an empty candidate list.
+    def gte(self, k, v):
+        self._pred.append(lambda r, k=k, v=v: r.get(k) is not None and r[k] >= v)
+        return self
+
+    def lte(self, k, v):
+        self._pred.append(lambda r, k=k, v=v: r.get(k) is not None and r[k] <= v)
+        return self
+
+    def neq(self, k, v):
+        self._pred.append(lambda r, k=k, v=v: r.get(k) != v)
+        return self
+
+    def is_(self, k, _null):
+        self._pred.append(lambda r, k=k: r.get(k) is None)
+        return self
+
+    def delete(self):
+        self._op = "delete"
+        return self
+
     def order(self, col, **_k):
         self._order = col
         return self
 
-    def limit(self, _n):
+    def limit(self, n):
+        self._limit = n
         return self
 
     def single(self):
@@ -147,7 +175,9 @@ class _Q:
 
     def _matches(self):
         rows = self.store.setdefault(self.table, [])
-        return [r for r in rows if all(r.get(k) == v for k, v in self._eq)]
+        return [r for r in rows
+                if all(r.get(k) == v for k, v in self._eq)
+                and all(p(r) for p in self._pred)]
 
     def execute(self):
         rows = self.store.setdefault(self.table, [])
@@ -164,8 +194,14 @@ class _Q:
             for r in matched:
                 r.update(self._payload)
             return _Resp(matched)
+        if self._op == "delete":
+            for r in matched:
+                rows.remove(r)
+            return _Resp(matched)
         if self._order:
             matched = sorted(matched, key=lambda r: str(r.get(self._order)))
+        if self._limit is not None:
+            matched = matched[: self._limit]
         if self._single:
             return _Resp(matched[0] if matched else None)
         return _Resp(matched)
