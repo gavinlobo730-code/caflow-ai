@@ -275,6 +275,11 @@
   var parallaxEls = [], focusEls = [], revealEls = [], heroFadeEls = [], glowEls = [];
   var wordTimer;
   var renderer, scene, camera, group, rings = [], particles, particleCount = 150, threeRaf;
+  // Globe throttling — see renderThree(). GLOBE_FRAME_MS caps the scene to
+  // ~30fps; scrollIdleUntil holds a timestamp until which the scene skips its
+  // WebGL work entirely because a scroll gesture is in flight.
+  var GLOBE_FRAME_MS = 33, SCROLL_QUIET_MS = 150;
+  var lastGlobeDraw = 0, scrollIdleUntil = 0;
   // Cap the WebGL render resolution well below native device pixels. The scene
   // is a soft, glowy, decorative globe, so a lower internal resolution is
   // visually near-identical but dramatically cheaper on the fill-rate-bound
@@ -542,7 +547,7 @@
     } catch (e) {}
   }
 
-  function renderThree() {
+  function renderThree(ts) {
     if (!renderer) return;
     try {
       var parent = canvasEl.parentElement;
@@ -563,6 +568,37 @@
         camera.updateProjectionMatrix();
         renderer.setSize(pw, ph);
       }
+
+      // The scroll-driven fade is plain CSS opacity, so it costs nothing and
+      // MUST keep updating every frame — otherwise the globe wouldn't dissolve
+      // smoothly while you scroll past it, which is exactly when the WebGL work
+      // below is being skipped. Camera distance is applied here too; it simply
+      // takes effect on the next actual draw.
+      var p = Math.min(1, Math.max(0, -heroRect.top / (heroRect.height * 0.9)));
+      camera.position.z = 7 - p * 2.6;
+      canvasEl.style.opacity = (1 - Math.max(0, (p - 0.55) / 0.45)).toFixed(2);
+
+      // Give the whole frame budget to the browser while a scroll gesture is in
+      // flight. The globe is a slow ambient drift, so pausing its rotation for
+      // the ~150ms of an actual scroll is imperceptible — but those are the very
+      // frames scrolling needs, and this is the one page on the site that has a
+      // WebGL scene competing for them. (The hero is on screen for the first
+      // screenful, i.e. precisely where scrolling starts, so the pre-existing
+      // "skip when the hero is off-screen" check above never covers this case.)
+      if (scrollIdleUntil && (ts || 0) < scrollIdleUntil) {
+        threeRaf = requestAnimationFrame(renderThree);
+        return;
+      }
+
+      // Cap the scene to ~30fps. It's a continuous slow drift — at this speed
+      // 30 and 60 are indistinguishable — and it halves the per-second GPU and
+      // particle-simulation cost on the integrated GPUs where this page was
+      // measurably heavier than every other page on the site.
+      if (ts && ts - lastGlobeDraw < GLOBE_FRAME_MS) {
+        threeRaf = requestAnimationFrame(renderThree);
+        return;
+      }
+      lastGlobeDraw = ts || 0;
 
       // Constant, autonomous spin only. The scene deliberately does NOT track
       // the cursor: letting the pointer tug the globe's rotation made the
@@ -588,10 +624,6 @@
         }
         posAttr.needsUpdate = true;
       }
-
-      var p = Math.min(1, Math.max(0, -heroRect.top / (heroRect.height * 0.9)));
-      camera.position.z = 7 - p * 2.6;
-      canvasEl.style.opacity = (1 - Math.max(0, (p - 0.55) / 0.45)).toFixed(2);
 
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
@@ -657,6 +689,11 @@
 
     window.addEventListener('resize', onResize);
     window.addEventListener('mousemove', onMouseMove);
+    // Marks the globe "quiet" for a moment after every scroll event, so its
+    // WebGL work yields to the scroll itself. Passive: never blocks scrolling.
+    window.addEventListener('scroll', function () {
+      scrollIdleUntil = performance.now() + SCROLL_QUIET_MS;
+    }, { passive: true });
 
     wordTimer = setInterval(function () {
       wordIdx = (wordIdx + 1) % words.length;
