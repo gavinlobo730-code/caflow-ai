@@ -105,6 +105,13 @@ interface QueueTxn {
   suggested_account_id: string | null;
   suggested_narration: string | null;
   suggested_by_rule: string | null;
+  /** What the bank already wrote down, parsed server-side. An Indian narration
+   *  is a delimited record — channel, UTR, counterparty and VPA are all in
+   *  there. The raw text stays in `description` as the record of what arrived. */
+  parsed?: {
+    channel: string | null; utr: string | null; vpa: string | null;
+    counterparty: string | null; ifsc: string | null; summary: string;
+  } | null;
 }
 interface MatchSuggestion {
   matched_entity_type: string; matched_entity_id: string; label: string;
@@ -338,8 +345,32 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
                     className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0"
                   />
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
-                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{t.transaction_date} · {t.reference_no ?? ""}</p>
+                    {/* Lead with the parsed counterparty when the bank gave us
+                        one — "RAMESH KUMAR" is the thing a CA is scanning for,
+                        not "TO TRANSFER-UPI/DR/412345678901/...". The raw
+                        narration stays underneath, in full, as the record. */}
+                    {t.parsed?.counterparty ? (
+                      <>
+                        <p className="text-xs font-medium text-[#1E293B] truncate">
+                          {t.parsed.counterparty}
+                          {t.parsed.channel && (
+                            <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] align-middle">
+                              {t.parsed.channel}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-[#94A3B8] mt-0.5 truncate" title={t.description}>
+                          {t.description}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
+                    )}
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                      {t.transaction_date}
+                      {t.parsed?.utr ? ` · UTR ${t.parsed.utr}` : (t.reference_no ? ` · ${t.reference_no}` : "")}
+                      {t.parsed?.vpa ? ` · ${t.parsed.vpa}` : ""}
+                    </p>
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
