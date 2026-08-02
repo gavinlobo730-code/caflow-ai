@@ -39,7 +39,11 @@ export function Logo({
   const inner = (
     <span className="inline-flex items-center gap-2.5">
       <LogoMark theme={theme} />
-      <span className={`text-[17px] font-bold tracking-tight ${word}`}>
+      {/* leading-none matches the homepage's `font:700 17px/1` exactly. Tailwind's
+          `text-[17px]` sets font-size only and leaves line-height at `normal`
+          (~1.5); because the bar centres the LINE BOX, the taller box landed the
+          glyphs ~1px off the homepage's on the same 68px bar. */}
+      <span className={`text-[17px] font-bold leading-none tracking-tight ${word}`}>
         PracticeSync
       </span>
     </span>
