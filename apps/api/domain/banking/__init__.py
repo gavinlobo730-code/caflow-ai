@@ -23,6 +23,10 @@ from .matcher import (
     NEAR_MATCH_BAND_BPS, NEAR_MATCH_CONFIDENCE_CAP, TDS_RATES_BPS, TDS_TOLERANCE_PAISE,
     near_match_floor_paise, detect_tds_rate_bps,
 )
+from .charge_gst import (
+    ChargeSplit, split_inclusive_charge, build_charge_lines,
+    ALLOWED_RATES_BPS as CHARGE_GST_RATES_BPS,
+)
 
 __all__ = [
     "NormalizedTxn", "parse_statement", "parse_csv", "parse_xlsx",
@@ -35,4 +39,6 @@ __all__ = [
     "NEAR_MATCH_BAND_BPS", "NEAR_MATCH_CONFIDENCE_CAP",
     "TDS_RATES_BPS", "TDS_TOLERANCE_PAISE",
     "near_match_floor_paise", "detect_tds_rate_bps",
+    "ChargeSplit", "split_inclusive_charge", "build_charge_lines",
+    "CHARGE_GST_RATES_BPS",
 ]

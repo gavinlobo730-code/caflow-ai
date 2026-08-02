@@ -112,6 +112,19 @@ class PostBankTxnIn(BaseModel):
     bank_account_id: Optional[str] = None      # bank's GL account (else derived from the statement)
     account_id: Optional[str] = None           # explicitly-selected counter GL account
     to_bank_account_id: Optional[str] = None   # Transfer destination bank/cash account
+    # A bank charge's amount is tax-INCLUSIVE. Supplying a rate splits it into
+    # taxable value + input GST (CGST Act s.16); omitting it posts the gross, as
+    # before. 0 is a real answer ("this charge carries no GST"), so the default
+    # has to be None rather than 0.
+    gst_rate_bps: Optional[int] = None
+    # IGST Act s.12(12) — place of supply for banking services is the recipient's
+    # location. Stated by the CA (a rule can prefill it); never inferred.
+    is_interstate: bool = False
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def known_gst_rate(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_gst_rate_bps(v)
 
 
 class ReconcileMatchIn(BaseModel):
@@ -256,6 +269,10 @@ class MatchingRuleIn(BaseModel):
     suggested_account_id: Optional[str] = None
     suggested_category: Optional[str] = None
     suggested_narration: Optional[str] = None
+    # Migration 254 — the GST treatment of a charge from this bank. Constant per
+    # bank, not derivable from the statement, so it is stated once here.
+    suggested_gst_rate_bps: Optional[int] = None
+    suggested_is_interstate: bool = False
     is_active: bool = True
 
     @field_validator("rule_name")
@@ -269,6 +286,11 @@ class MatchingRuleIn(BaseModel):
     @classmethod
     def known_category(cls, v: Optional[str]) -> Optional[str]:
         return _validate_category(v)
+
+    @field_validator("suggested_gst_rate_bps")
+    @classmethod
+    def known_gst_rate(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_gst_rate_bps(v)
 
     @field_validator("txn_type")
     @classmethod
@@ -291,6 +313,8 @@ class MatchingRuleUpdateIn(BaseModel):
     suggested_account_id: Optional[str] = None
     suggested_category: Optional[str] = None
     suggested_narration: Optional[str] = None
+    suggested_gst_rate_bps: Optional[int] = None
+    suggested_is_interstate: Optional[bool] = None
     is_active: Optional[bool] = None
 
     @field_validator("rule_name")
@@ -304,6 +328,11 @@ class MatchingRuleUpdateIn(BaseModel):
     @classmethod
     def known_category(cls, v: Optional[str]) -> Optional[str]:
         return _validate_category(v)
+
+    @field_validator("suggested_gst_rate_bps")
+    @classmethod
+    def known_gst_rate(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_gst_rate_bps(v)
 
     @field_validator("txn_type")
     @classmethod
@@ -346,6 +375,22 @@ def _validate_txn_type(v: str) -> str:
     return value
 
 
+def _validate_gst_rate_bps(v: Optional[int]) -> Optional[int]:
+    """A closed vocabulary, matching migration 254's CHECK and charge_gst's
+    ALLOWED_RATES_BPS. None means "no GST split"; 0 means "this charge carries no
+    GST", which is a different statement and stays distinguishable. A typo in a
+    tax head becomes a wrong GSTR-3B, so an arbitrary integer is not accepted."""
+    if v is None:
+        return None
+    from domain.banking import CHARGE_GST_RATES_BPS
+    value = int(v)
+    if value not in CHARGE_GST_RATES_BPS:
+        raise ValueError(
+            "Invalid GST rate. Allowed (basis points): "
+            + ", ".join(str(r) for r in CHARGE_GST_RATES_BPS))
+    return value
+
+
 def _validate_rule_shape(rule) -> object:
     lo, hi = rule.amount_min_paise, rule.amount_max_paise
     if lo is not None and hi is not None and lo > hi:
@@ -360,4 +405,18 @@ def _validate_rule_shape(rule) -> object:
     if not any([rule.suggested_category, rule.suggested_account_id, rule.suggested_narration]):
         raise ValueError(
             "A rule needs at least one suggestion — a category, an account, or a narration.")
+    if rule.suggested_gst_rate_bps is not None and not rule.suggested_account_id:
+        # The GST split books the EX-TAX amount to the counter account, so
+        # without one there is nowhere for it to go and the post would fail at
+        # the last step. Migration 254 carries the same CHECK; catching it here
+        # gives the CA the error while they still have the rule form open.
+        raise ValueError(
+            "A GST rate needs an expense account to code the charge to — "
+            "the split books the ex-tax amount there.")
+    if rule.suggested_gst_rate_bps is not None and (rule.txn_type or "any") == "credit":
+        # Money ARRIVING is not a bank charge. A credit-only rule carrying a GST
+        # rate can never fire on anything the posting engine would split.
+        raise ValueError(
+            "A GST rate applies to bank charges — money leaving the account. "
+            "Set the rule to debit (or any), not credit.")
     return rule

@@ -19,6 +19,8 @@ from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from domain.banking import posting_map as pmap
+from domain.banking.charge_gst import split_inclusive_charge, build_charge_lines
+from domain.banking.rules import match_rule
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -120,32 +122,111 @@ class BankPostingService:
         raise HTTPException(status_code=422,
                             detail="Categorize the transaction (or map an account) before posting.")
 
-    def _plan(self, db, firm_id, txn, bank_account_id, account_id, to_bank_account_id):
-        """Resolve accounts and build balanced lines. Returns (entry_type, lines, bank_id)."""
+    def _gst_input_account(self, db, firm_id, client_id, head: str) -> str:
+        """The GST Input Credit account for one tax head.
+
+        The seeded chart carries three (CGST / SGST / IGST, migration 011) and
+        migration 092 stamps system_account_key='gst_input' on ALL THREE, so the
+        key alone cannot tell them apart — the head has to come from the name.
+        The GST return nets all three into one ITC figure either way
+        (gst_return_service), so keeping the heads separate in the ledger costs
+        nothing and preserves the detail GSTR-3B table 4 wants.
+        """
+        rows = (db.table("chart_of_accounts").select("id, account_name")
+                .eq("firm_id", firm_id)
+                .or_(f"client_id.eq.{client_id},client_id.is.null")
+                .ilike("account_name", f"%GST Input%{head}%")
+                .eq("is_active", True).limit(1).execute().data or [])
+        if not rows:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"No active 'GST Input Credit - {head}' account in this client's chart. "
+                        "Add one, or post the charge without a GST split."))
+        return rows[0]["id"]
+
+    def _charge_lines(self, db, firm_id, txn, amount, bank_id, counter_id,
+                      gst_rate_bps: int, is_interstate: bool) -> list[dict]:
+        """A bank charge with its GST separated out (CGST Act s.16 — input service).
+
+        The charge on the statement is tax-INCLUSIVE, so the taxable value is
+        backed out of it rather than computed on it — see domain/banking/charge_gst
+        for why that distinction matters and why the split is exact.
+
+        Only ever for money LEAVING the bank: a charge is by definition a debit.
+        A refund of charges is a credit and takes the ordinary two-line path.
+        """
+        client_id = txn["client_id"]
+        try:
+            split = split_inclusive_charge(amount, gst_rate_bps, is_interstate)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+        cgst_id = sgst_id = igst_id = None
+        if split.has_gst:
+            if is_interstate:
+                igst_id = self._gst_input_account(db, firm_id, client_id, "IGST")
+            else:
+                cgst_id = self._gst_input_account(db, firm_id, client_id, "CGST")
+                sgst_id = self._gst_input_account(db, firm_id, client_id, "SGST")
+        try:
+            return build_charge_lines(
+                split, bank_account_id=bank_id, expense_account_id=counter_id,
+                cgst_account_id=cgst_id, sgst_account_id=sgst_id, igst_account_id=igst_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+    def _plan(self, db, firm_id, txn, bank_account_id, account_id, to_bank_account_id,
+              gst_rate_bps: Optional[int] = None, is_interstate: bool = False):
+        """Resolve accounts and build balanced lines. Returns (entry_type, lines, bank_id).
+
+        `gst_rate_bps` is None for the ordinary two-line post. Supplying it splits
+        the tax-inclusive charge into taxable value + input GST. It is passed by
+        the caller (ultimately a CA confirming the posting drawer), never inferred
+        — see charge_gst's PLACE OF SUPPLY note.
+        """
         amount, is_credit = _amount(txn)
         if amount <= 0:
             raise HTTPException(status_code=422, detail="Transaction has zero amount.")
         cat = txn.get("category")
         bank_id = self._resolve_bank(db, firm_id, txn, bank_account_id)
         if cat == pmap.TRANSFER:
+            if gst_rate_bps is not None:
+                raise HTTPException(status_code=422,
+                                    detail="A transfer between own accounts is not a supply — no GST split.")
             if not to_bank_account_id:
                 raise HTTPException(status_code=422, detail="Transfer requires a destination bank/cash account.")
             to_id = self._validate_account(db, firm_id, to_bank_account_id)
             lines = pmap.build_transfer_lines(amount, is_credit, bank_id, to_id)
         else:
             counter_id = self._resolve_counter(db, firm_id, txn, account_id)
-            lines = pmap.build_lines(amount, is_credit, bank_id, counter_id)
+            # A GST split applies ONLY to money going out against an explicitly
+            # chosen expense account. Splitting a receipt would book negative input
+            # credit; splitting a control-account category (Customer Payment →
+            # Trade Receivables) would put tax on a balance-sheet control account.
+            # Refuse rather than silently ignore: a caller that asked for a split
+            # and got a gross post would never find out.
+            if gst_rate_bps is not None:
+                if is_credit or cat not in pmap.EXPLICIT_COUNTER:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=("A GST split applies only to money leaving the bank against an "
+                                "explicitly chosen expense account."))
+                lines = self._charge_lines(db, firm_id, txn, amount, bank_id, counter_id,
+                                           gst_rate_bps, is_interstate)
+            else:
+                lines = pmap.build_lines(amount, is_credit, bank_id, counter_id)
         return pmap.entry_type_for(cat, is_credit), lines, bank_id
 
     # ── B.3 review preview (no writes) ───────────────────────────────────────
     def preview(self, db, firm_id, txn_id, bank_account_id=None, account_id=None,
-                to_bank_account_id=None) -> dict:
+                to_bank_account_id=None, gst_rate_bps=None, is_interstate=False) -> dict:
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("posted_journal_id"):
             raise HTTPException(status_code=409, detail="Transaction already posted.")
-        entry_type, lines, _ = self._plan(db, firm_id, txn, bank_account_id, account_id, to_bank_account_id)
+        entry_type, lines, _ = self._plan(db, firm_id, txn, bank_account_id, account_id,
+                                          to_bank_account_id, gst_rate_bps, is_interstate)
         amount, _ = _amount(txn)
-        return {
+        out = {
             "transaction_id": txn_id,
             "category": txn.get("category"),
             "entry_type": entry_type,
@@ -159,6 +240,18 @@ class BankPostingService:
             "total_credit_paise": sum(l["credit_paise"] for l in lines),
             "settlement": self._settlement_preview(db, firm_id, txn, amount),
         }
+        if gst_rate_bps is not None:
+            # Show the CA the arithmetic, not just the resulting lines: the whole
+            # point of an inclusive split is that ₹590 becomes ₹500 + ₹90, and a
+            # figure they cannot check is a figure they cannot certify.
+            split = split_inclusive_charge(amount, int(gst_rate_bps), bool(is_interstate))
+            out["gst"] = {
+                "rate_bps": split.rate_bps, "is_interstate": split.is_interstate,
+                "gross_paise": split.gross_paise, "taxable_paise": split.taxable_paise,
+                "cgst_paise": split.cgst_paise, "sgst_paise": split.sgst_paise,
+                "igst_paise": split.igst_paise, "tax_paise": split.tax_paise,
+            }
+        return out
 
     def _settlement_preview(self, db, firm_id, txn, amount) -> Optional[dict]:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
@@ -214,7 +307,8 @@ class BankPostingService:
 
     # ── B.3.2 post → Phase 3.5: create a DRAFT journal (no books impact yet) ───
     def post(self, db, firm_id, txn_id, bank_account_id=None, account_id=None,
-             to_bank_account_id=None, actor_id=None) -> dict:
+             to_bank_account_id=None, actor_id=None, gst_rate_bps=None,
+             is_interstate=False) -> dict:
         """Create a DRAFT journal for the bank transaction. The transaction is NOT
         settled, NOT marked posted, and NOT reconciled — those happen only when a
         human approves the draft (journal_posting_service.post_draft →
@@ -230,7 +324,8 @@ class BankPostingService:
         period_validation_service.validate_posting_date(firm_id or "", entry_date)
 
         entry_type, lines, _bank_id = self._plan(
-            db, firm_id, txn, bank_account_id, account_id, to_bank_account_id)
+            db, firm_id, txn, bank_account_id, account_id, to_bank_account_id,
+            gst_rate_bps, is_interstate)
 
         journal_entry_id = phase2_journal_service._create_journal(
             db, firm_id=firm_id, client_id=client_id, entry_date=entry_date,
@@ -249,8 +344,14 @@ class BankPostingService:
 
         try:
             from services.audit_service import log_event
+            new_data = {"draft_journal_id": journal_entry_id, "category": txn.get("category")}
+            if gst_rate_bps is not None:
+                # Who decided this charge carried 18% IGST, and when. An input
+                # credit claimed under s.16 has to be defensible years later.
+                new_data["gst_rate_bps"] = int(gst_rate_bps)
+                new_data["gst_is_interstate"] = bool(is_interstate)
             log_event(firm_id, "bank_transaction", txn_id, "status_change", actor_id=actor_id,
-                      new_data={"draft_journal_id": journal_entry_id, "category": txn.get("category")},
+                      new_data=new_data,
                       metadata={"source": "bank_draft", "stage": "draft_created"})
         except Exception:  # pragma: no cover - audit must never block
             pass
@@ -528,9 +629,43 @@ class BankPostingService:
         if client_id:
             q = q.eq("client_id", client_id)
         rows = q.order("transaction_date").execute().data or []
-        return [t for t in rows
-                if t.get("category") and not t.get("posted_journal_id")
-                and t.get("match_status") not in ("posted", "ignored")]
+        out = [t for t in rows
+               if t.get("category") and not t.get("posted_journal_id")
+               and t.get("match_status") not in ("posted", "ignored")]
+        self._annotate_rule_suggestions(db, firm_id, out)
+        return out
+
+    def _annotate_rule_suggestions(self, db, firm_id, txns: list[dict]) -> None:
+        """Prefill hints for the posting drawer, from the client's own rules.
+
+        The categorize queue has read rules since B.2.3, but this queue — the one
+        that actually feeds the posting drawer — never did, so a rule that knew
+        "HDFC charges go to Bank Charges at 18%" still made the CA re-enter both
+        on every single charge. Suggestions only: the drawer prefills them and
+        the person clicking Post is the one asserting them.
+        """
+        if not txns:
+            return
+        try:
+            rules = (db.table("bank_matching_rules").select("*")
+                     .eq("firm_id", firm_id).eq("is_active", True)
+                     .order("created_at").execute().data or [])
+        except Exception:  # pragma: no cover - a hint must never break the queue
+            return
+        by_client: dict = {}
+        for r in rules:
+            by_client.setdefault(r.get("client_id"), []).append(r)
+        for t in txns:
+            # Only the transaction's OWN client's rules — same scoping as
+            # bank_matching_service.queue, for the same reason.
+            client_rules = by_client.get(t.get("client_id"), [])
+            amount, is_credit = _amount(t)
+            hit = match_rule(t.get("description"), amount, not is_credit, client_rules)
+            t["suggested_account_id"] = (hit.account_id if hit else None) if not t.get("account_id") else None
+            # A GST split is only ever offered on money LEAVING the bank; a rate
+            # on a receipt would prefill a split the posting engine then refuses.
+            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit and not is_credit else None)
+            t["suggested_is_interstate"] = bool(hit.is_interstate) if hit else False
 
     def pending(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
         """Draft journal created, awaiting approval (linked journal but not yet posted)."""

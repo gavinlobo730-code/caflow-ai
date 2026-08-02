@@ -785,6 +785,12 @@ interface ReadyTxn {
   id: string; transaction_date: string; description: string; reference_no: string | null;
   debit_paise: number; credit_paise: number; match_status: string;
   category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
+  // What a matching rule proposes for this transaction (bank_posting_service.
+  // _annotate_rule_suggestions). Prefills the drawer; nothing is applied until
+  // the CA clicks Post.
+  suggested_account_id?: string | null;
+  suggested_gst_rate_bps?: number | null;
+  suggested_is_interstate?: boolean;
 }
 interface PostedTxn extends ReadyTxn {
   posted_journal_id: string; posted_at: string | null; posted_by: string | null;
@@ -795,11 +801,29 @@ interface SettlementPreview {
   new_paid_paise: number; total_paise: number;
   credited_to_party_paise?: number;
 }
+interface ChargeGstPreview {
+  rate_bps: number; is_interstate: boolean; gross_paise: number; taxable_paise: number;
+  cgst_paise: number; sgst_paise: number; igst_paise: number; tax_paise: number;
+}
 interface PostingPreview {
   transaction_id: string; category: string | null; entry_type: string; narration: string;
   lines: PreviewLine[]; total_debit_paise: number; total_credit_paise: number;
   settlement: SettlementPreview | null;
+  /** Present only when a GST split was requested — the server's arithmetic, so
+   *  the CA can check ₹590 → ₹500 + ₹90 rather than take the lines on trust. */
+  gst?: ChargeGstPreview;
 }
+
+// Label only — the split itself is computed server-side (CLAUDE.md: no business
+// logic in the frontend). "No GST" is 0 and is a real, deliberate answer;
+// "Don't split" is the absence of a rate, which posts the gross as before.
+const GST_RATE_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: "No GST on this charge" },
+  { value: 500, label: "5%" },
+  { value: 1200, label: "12%" },
+  { value: 1800, label: "18% — standard for banking services" },
+  { value: 2800, label: "28%" },
+];
 
 const isBankish = (a: Account) =>
   a.account_type === "Asset" && /bank|cash/i.test(`${a.account_subtype ?? ""} ${a.account_name}`);
@@ -996,8 +1020,17 @@ function PostingReviewDrawer({
   txn: ReadyTxn; accounts: Account[]; onClose: () => void; onPosted: () => void;
 }) {
   const [bankAccountId, setBankAccountId] = useState("");      // "" = auto (from statement)
-  const [accountId, setAccountId] = useState("");             // counter GL (explicit categories)
+  // The counter GL and the GST treatment start from whatever the client's
+  // matching rule proposed, so a recurring bank charge is one click rather than
+  // three fields re-typed every month. All still overridable here.
+  const [accountId, setAccountId] = useState(txn.suggested_account_id ?? "");
   const [toBankAccountId, setToBankAccountId] = useState(""); // transfer destination
+  // "" = don't split (post the gross, as before). "0" is a DIFFERENT answer —
+  // "this charge carries no GST" — so the two must not share a representation.
+  const [gstRate, setGstRate] = useState<string>(
+    txn.suggested_gst_rate_bps === null || txn.suggested_gst_rate_bps === undefined
+      ? "" : String(txn.suggested_gst_rate_bps));
+  const [isInterstate, setIsInterstate] = useState(!!txn.suggested_is_interstate);
   const [preview, setPreview] = useState<PostingPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -1008,6 +1041,10 @@ function PostingReviewDrawer({
   const needsCounter = EXPLICIT_COUNTER_CATEGORIES.has(category);
   const isTransfer = category === TRANSFER_CATEGORY;
   const bankAccounts = accounts.filter(isBankish);
+  // A GST split only applies to money LEAVING the bank against an explicitly
+  // chosen expense account — the server refuses anything else, so don't offer it.
+  const canSplitGst = needsCounter && !isTransfer && txn.debit_paise > 0;
+  const gstRateBps = canSplitGst && gstRate !== "" ? Number(gstRate) : undefined;
 
   // Can we even attempt a preview yet? (the API enforces this too)
   const ready = (!needsCounter || !!accountId) && (!isTransfer || !!toBankAccountId);
@@ -1020,6 +1057,8 @@ function PostingReviewDrawer({
         bank_account_id: bankAccountId || undefined,
         account_id: accountId || undefined,
         to_bank_account_id: toBankAccountId || undefined,
+        gst_rate_bps: gstRateBps,
+        is_interstate: isInterstate,
       })) as { success: boolean; data: PostingPreview; error: string | null };
       if (res.success) { setPreview(res.data); setPreviewError(null); }
       else { setPreview(null); setPreviewError(res.error ?? "Could not build the journal."); }
@@ -1027,7 +1066,7 @@ function PostingReviewDrawer({
       setPreview(null);
       setPreviewError(e instanceof Error ? e.message : "Could not build the journal.");
     } finally { setLoadingPreview(false); }
-  }, [txn.id, bankAccountId, accountId, toBankAccountId, ready]);
+  }, [txn.id, bankAccountId, accountId, toBankAccountId, gstRateBps, isInterstate, ready]);
   useEffect(() => { loadPreview(); }, [loadPreview]);
 
   const balanced = !!preview && preview.total_debit_paise === preview.total_credit_paise && preview.lines.length > 0;
@@ -1039,6 +1078,8 @@ function PostingReviewDrawer({
         bank_account_id: bankAccountId || undefined,
         account_id: accountId || undefined,
         to_bank_account_id: toBankAccountId || undefined,
+        gst_rate_bps: gstRateBps,
+        is_interstate: isInterstate,
       })) as { success: boolean; error: string | null };
       if (res.success) onPosted();
       else setPostError(res.error ?? "Posting failed.");
@@ -1098,6 +1139,39 @@ function PostingReviewDrawer({
               </label>
             )}
 
+            {canSplitGst && (
+              <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
+                <label className="block">
+                  <span className="text-[11px] font-medium text-[#475569]">GST inside this charge</span>
+                  <select value={gstRate} onChange={(e) => setGstRate(e.target.value)}
+                    className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Don&apos;t split — post the full amount</option>
+                    {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <span className="text-[10px] text-[#94A3B8]">
+                    Bank charges are quoted inclusive of GST. Splitting them claims the
+                    input tax credit (CGST Act s.16) instead of expensing it.
+                  </span>
+                </label>
+
+                {gstRate !== "" && gstRate !== "0" && (
+                  <label className="flex items-start gap-2">
+                    <input type="checkbox" checked={isInterstate}
+                      onChange={(e) => setIsInterstate(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] text-blue-600 focus:ring-blue-500" />
+                    <span className="text-[11px] text-[#475569]">
+                      Inter-state supply (IGST)
+                      <span className="block text-[10px] text-[#94A3B8]">
+                        Tick when the bank is registered outside the client&apos;s state.
+                        Place of supply for banking services is the client&apos;s location
+                        (IGST Act s.12(12)) — it can&apos;t be read off the IFSC.
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
+
             {isTransfer && (
               <label className="block">
                 <span className="text-[11px] font-medium text-[#475569]">Transfer to (bank / cash) <span className="text-red-500">*</span></span>
@@ -1109,6 +1183,40 @@ function PostingReviewDrawer({
               </label>
             )}
           </div>
+
+          {/* The inclusive split, shown as arithmetic. A figure the CA cannot
+              check is a figure they cannot certify — and backing tax OUT of an
+              inclusive amount is exactly the step people get wrong. */}
+          {preview?.gst && preview.gst.tax_paise > 0 && (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-900">
+              <p className="font-medium">GST split at {(preview.gst.rate_bps / 100).toFixed(0)}%</p>
+              <dl className="mt-1 space-y-0.5">
+                <div className="flex justify-between">
+                  <dt>Charge (ex-GST)</dt><dd className="font-mono">{fmt(preview.gst.taxable_paise)}</dd>
+                </div>
+                {preview.gst.is_interstate ? (
+                  <div className="flex justify-between">
+                    <dt>Input IGST</dt><dd className="font-mono">{fmt(preview.gst.igst_paise)}</dd>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <dt>Input CGST</dt><dd className="font-mono">{fmt(preview.gst.cgst_paise)}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>Input SGST</dt><dd className="font-mono">{fmt(preview.gst.sgst_paise)}</dd>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between pt-0.5 border-t border-blue-200 font-medium">
+                  <dt>Debited by the bank</dt><dd className="font-mono">{fmt(preview.gst.gross_paise)}</dd>
+                </div>
+              </dl>
+              <p className="mt-1 text-[10px] text-blue-700">
+                {fmt(preview.gst.tax_paise)} is claimable input tax credit, not an expense.
+              </p>
+            </div>
+          )}
 
           {/* Proposed journal (preview — no writes) */}
           <div>
@@ -2282,6 +2390,8 @@ interface BankRule {
   suggested_category: string | null;
   suggested_account_id: string | null;
   suggested_narration: string | null;
+  suggested_gst_rate_bps: number | null;
+  suggested_is_interstate: boolean | null;
   is_active: boolean;
 }
 
@@ -2294,6 +2404,10 @@ const BLANK_RULE = {
   suggested_category: "",
   suggested_account_id: "",
   suggested_narration: "",
+  // "" = the rule says nothing about GST. "0" = it says the charge carries none.
+  // Two different answers, so they never share a value.
+  suggested_gst_rate_bps: "",
+  suggested_is_interstate: false,
 };
 
 function BankRules({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
@@ -2344,6 +2458,8 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
       suggested_category: r.suggested_category ?? "",
       suggested_account_id: r.suggested_account_id ?? "",
       suggested_narration: r.suggested_narration ?? "",
+      suggested_gst_rate_bps: r.suggested_gst_rate_bps == null ? "" : String(r.suggested_gst_rate_bps),
+      suggested_is_interstate: !!r.suggested_is_interstate,
     });
     setFormError(null);
     setEditing(r.id);
@@ -2362,6 +2478,11 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
       suggested_category: form.suggested_category || null,
       suggested_account_id: form.suggested_account_id || null,
       suggested_narration: form.suggested_narration.trim() || null,
+      // Explicit null (not omitted) so clearing a wrongly-stamped rate actually
+      // sticks — the PATCH endpoint treats a sent null as "clear this".
+      suggested_gst_rate_bps:
+        form.suggested_gst_rate_bps === "" ? null : Number(form.suggested_gst_rate_bps),
+      suggested_is_interstate: form.suggested_is_interstate,
     };
     // The backend re-validates all of this; these checks just avoid a round trip
     // to say what the form already knows.
@@ -2374,6 +2495,14 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
     }
     if (!payload.suggested_category && !payload.suggested_account_id && !payload.suggested_narration) {
       setFormError("Add at least one suggestion — a category, an account, or a narration.");
+      return;
+    }
+    if (payload.suggested_gst_rate_bps !== null && !payload.suggested_account_id) {
+      setFormError("A GST rate needs a counter account — the split books the ex-GST amount there.");
+      return;
+    }
+    if (payload.suggested_gst_rate_bps !== null && payload.txn_type === "credit") {
+      setFormError("A GST rate applies to bank charges — money out. Set this rule to money out, or either.");
       return;
     }
     setSaving(true); setFormError(null);
@@ -2401,6 +2530,12 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
     try { await api.banking.rules.remove(r.id); await load(); }
     catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [r.id]: false })); }
+  }
+
+  function gstSummary(r: BankRule) {
+    if (r.suggested_gst_rate_bps == null) return null;
+    if (r.suggested_gst_rate_bps === 0) return "no GST";
+    return `${r.suggested_gst_rate_bps / 100}% ${r.suggested_is_interstate ? "IGST" : "CGST+SGST"}`;
   }
 
   function conditionSummary(r: BankRule) {
@@ -2500,6 +2635,39 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank charges" />
           </div>
 
+          {/* GST on bank charges. Constant per bank, so it belongs on the rule
+              rather than being re-entered on every ₹590 debit. */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">GST inside the charge</label>
+              <select value={form.suggested_gst_rate_bps}
+                onChange={(e) => setForm((f) => ({ ...f, suggested_gst_rate_bps: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="">— Don&apos;t split —</option>
+                {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                Bank charges are quoted inclusive of GST. Splitting them claims the input
+                tax credit (CGST Act s.16) instead of expensing it.
+              </p>
+            </div>
+            {form.suggested_gst_rate_bps !== "" && form.suggested_gst_rate_bps !== "0" && (
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">Place of supply</label>
+                <label className="flex items-start gap-2 pt-1.5">
+                  <input type="checkbox" checked={form.suggested_is_interstate}
+                    onChange={(e) => setForm((f) => ({ ...f, suggested_is_interstate: e.target.checked }))}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] text-blue-600 focus:ring-blue-500" />
+                  <span className="text-xs text-[#475569]">Inter-state (IGST)</span>
+                </label>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  Tick when this bank is registered outside the client&apos;s state. The place
+                  of supply is the client&apos;s location (IGST Act s.12(12)).
+                </p>
+              </div>
+            )}
+          </div>
+
           {formError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{formError}</p>}
 
           <div className="flex gap-2 justify-end pt-1">
@@ -2537,8 +2705,8 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
                 <p className="text-[10px] text-[#94A3B8] mt-0.5">When {conditionSummary(r)}</p>
                 <p className="text-[10px] text-[#64748B] mt-0.5">
                   Suggest{" "}
-                  {[r.suggested_category, accountName(r.suggested_account_id), r.suggested_narration]
-                    .filter(Boolean).join(" · ")}
+                  {[r.suggested_category, accountName(r.suggested_account_id), r.suggested_narration,
+                    gstSummary(r)].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
