@@ -38,6 +38,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
+from .narration import parse_narration, party_matches
+
 # How far below a candidate's amount a bank line may fall and still be offered.
 # 25% comfortably covers the highest routine withholding (20% under s.206AA)
 # plus bank charges, without pulling in unrelated documents.
@@ -159,7 +161,7 @@ def rank_suggestions(
     candidates: list[Candidate],
     max_results: int = 5,
 ) -> list[Suggestion]:
-    narr = (narration or "").lower()
+    parsed = parse_narration(narration)
     out: list[Suggestion] = []
     for c in candidates:
         difference = int(c.amount_paise) - int(txn_amount_paise)
@@ -190,8 +192,16 @@ def rank_suggestions(
             elif days <= 30:
                 score += 5; reasons.append(f"within {days}d")
 
-        if c.party_name and c.party_name.strip() and c.party_name.lower() in narr:
-            score += 15; reasons.append("party in narration")
+        # Party recognition now goes through the narration parser, which
+        # normalises entity suffixes and compares the counterparty the bank
+        # actually printed. The old test was `party_name.lower() in narration`,
+        # so "Acme Pvt Ltd" never matched a narration reading "ACME PRIVATE
+        # LIMITED" — a perfectly good match that simply never surfaced.
+        # party_matches keeps that substring test as its first branch, so
+        # nothing that matched before stops matching.
+        if c.party_name and c.party_name.strip() and party_matches(c.party_name, parsed):
+            score += 15
+            reasons.append("party in narration")
 
         if c.outstanding_paise is not None and c.outstanding_paise == txn_amount_paise:
             score += 15; reasons.append("matches outstanding balance")

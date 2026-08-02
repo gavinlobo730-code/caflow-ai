@@ -17,7 +17,7 @@ from fastapi import HTTPException
 
 from domain.banking import (
     Candidate, rank_suggestions, match_rule, is_valid_category, CATEGORIES,
-    NEAR_MATCH_BAND_BPS,
+    NEAR_MATCH_BAND_BPS, parse_narration, describe_narration,
 )
 from services.timeline_service import timeline_service
 
@@ -320,6 +320,17 @@ class BankMatchingService:
             t["suggested_account_id"] = (hit.account_id if hit else None) if not t.get("account_id") else None
             t["suggested_narration"] = hit.narration if hit else None
             t["suggested_by_rule"] = hit.rule_name if hit else None
+            # What the bank already wrote down (channel, UTR, counterparty, VPA).
+            # The raw narration stays untouched as the record of what arrived;
+            # this is a parsed view alongside it, so the queue can show
+            # "UPI · RAMESH KUMAR · UTR 412345678901" instead of a wall of
+            # slashes. Pure regex over a string already in hand — no extra query.
+            n = parse_narration(t.get("description"))
+            t["parsed"] = {
+                "channel": n.channel, "utr": n.utr, "vpa": n.vpa,
+                "counterparty": n.counterparty, "ifsc": n.ifsc,
+                "summary": describe_narration(n),
+            }
         return txns
 
     # ── B.2.2 — categorize (manual or accepting a rule suggestion) ───────────

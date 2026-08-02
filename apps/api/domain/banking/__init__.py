@@ -14,6 +14,10 @@ from .normalizer import (
 from .dedup import transaction_hash, file_hash
 from .categories import CATEGORIES, CATEGORY_SET, is_valid_category
 from .rules import suggest_category, match_rule, rule_matches, RuleSuggestion
+from .narration import (
+    ParsedNarration, parse_narration, party_matches, normalise_party_name,
+    describe as describe_narration,
+)
 from .matcher import (
     Candidate, Suggestion, rank_suggestions,
     NEAR_MATCH_BAND_BPS, NEAR_MATCH_CONFIDENCE_CAP, TDS_RATES_BPS, TDS_TOLERANCE_PAISE,
@@ -25,6 +29,8 @@ __all__ = [
     "detect_format", "StatementParseError", "transaction_hash", "file_hash",
     "CATEGORIES", "CATEGORY_SET", "is_valid_category",
     "suggest_category", "match_rule", "rule_matches", "RuleSuggestion",
+    "ParsedNarration", "parse_narration", "party_matches", "normalise_party_name",
+    "describe_narration",
     "Candidate", "Suggestion", "rank_suggestions",
     "NEAR_MATCH_BAND_BPS", "NEAR_MATCH_CONFIDENCE_CAP",
     "TDS_RATES_BPS", "TDS_TOLERANCE_PAISE",

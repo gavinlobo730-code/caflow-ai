@@ -313,7 +313,7 @@ several are cheap because the data is already in the narration.
    bank data in India — no credential sharing, no scraping. QBO India never built this.
    It is the honest answer to the bank-feed gap and a genuine moat. *(Tier 4.1)*
 
-2. **UPI / NEFT / RTGS / IMPS narration parsing.** Indian narrations are structured:
+2. ~~**UPI / NEFT / RTGS / IMPS narration parsing.**~~ ✅ **Shipped 2026-08-02.** Indian narrations are structured:
    `UPI/DR/412345678901/RAMESH K/HDFC/paym`. Extracting UTR, counterparty name, and
    payer VPA would raise match rates sharply. **Pure parsing work in a module we already
    own** (`normalizer.py`) — probably the best effort-to-value ratio on this entire
@@ -345,7 +345,7 @@ several are cheap because the data is already in the narration.
 
 1. ~~**Tier 0 in full.**~~ ✅ Done 2026-08-02.
 2. ~~**Then 2.1 + 2.2.**~~ ✅ Done 2026-08-02.
-3. **Next: 6.2 — UPI/NEFT narration parsing (~M).** Best differentiated win available,
+3. ~~**6.2 — UPI/NEFT narration parsing.**~~ ✅ Done 2026-08-02. Best differentiated win available,
    and it lands in a module we already control.
 4. **Then Tier 1**, starting with the bank register (1.1) and split-across-accounts (1.2).
 5. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
