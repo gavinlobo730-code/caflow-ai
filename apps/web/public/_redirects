@@ -18,6 +18,8 @@
 /clients/:id/accounting.txt                                   /clients/_placeholder/accounting/index.txt  200
 /clients/:id/ai-insights                                      /clients/_placeholder/ai-insights/  200
 /clients/:id/ai-insights.txt                                  /clients/_placeholder/ai-insights/index.txt  200
+/clients/:id/bank                                             /clients/_placeholder/bank/  200
+/clients/:id/bank.txt                                         /clients/_placeholder/bank/index.txt  200
 /clients/:id/compliance                                       /clients/_placeholder/compliance/  200
 /clients/:id/compliance.txt                                   /clients/_placeholder/compliance/index.txt  200
 /clients/:id/compliance/gst                                   /clients/_placeholder/compliance/gst/  200
@@ -56,8 +58,6 @@
 /clients/:id/purchases/debit-notes/:dnId/edit.txt             /clients/_placeholder/purchases/debit-notes/_placeholder/edit/index.txt  200
 /clients/:id/relationships                                    /clients/_placeholder/relationships/  200
 /clients/:id/relationships.txt                                /clients/_placeholder/relationships/index.txt  200
-/clients/:id/reports                                          /clients/_placeholder/reports/  200
-/clients/:id/reports.txt                                      /clients/_placeholder/reports/index.txt  200
 /clients/:id/sales                                            /clients/_placeholder/sales/  200
 /clients/:id/sales.txt                                        /clients/_placeholder/sales/index.txt  200
 /clients/:id/sales/credit-notes/:cnId/edit                    /clients/_placeholder/sales/credit-notes/_placeholder/edit/  200
