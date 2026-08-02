@@ -183,7 +183,7 @@ def get_engagement(
 
     # Checklist completion %
     checklist_rows = (
-        db.table("year_end_checklists")
+        db.table("year_end_checklist_items")
         .select("id, status")
         .eq("engagement_id", engagement_id)
         .execute()

@@ -105,7 +105,7 @@ def list_checklist(
     eng = _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
 
     existing = (
-        db.table("year_end_checklists")
+        db.table("year_end_checklist_items")
         .select("*")
         .eq("engagement_id", engagement_id)
         .order("sequence_no")
@@ -133,7 +133,7 @@ def list_checklist(
                 "created_at": now,
                 "updated_at": now,
             })
-        existing = db.table("year_end_checklists").insert(rows_to_insert).execute().data
+        existing = db.table("year_end_checklist_items").insert(rows_to_insert).execute().data
 
     return api_response(True, existing)
 
@@ -170,7 +170,7 @@ def update_checklist_item(
     _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
 
     existing = (
-        db.table("year_end_checklists")
+        db.table("year_end_checklist_items")
         .select("*")
         .eq("id", item_id)
         .eq("engagement_id", engagement_id)
@@ -191,7 +191,7 @@ def update_checklist_item(
         updates["notes"] = data.notes
 
     updated = (
-        db.table("year_end_checklists")
+        db.table("year_end_checklist_items")
         .update(updates)
         .eq("id", item_id)
         .execute()

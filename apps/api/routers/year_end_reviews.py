@@ -76,19 +76,30 @@ def _get_db_engagement(db, engagement_id: str, firm_id: str) -> dict:
 
 def _record_review_event(db, engagement_id: str, firm_id: str, event_type: str,
                           actor_id: str, comment: Optional[str]) -> None:
-    """Record review event in audit history table (year_end_reviews, migration
-    067 — event_type/actor_id are additive columns, migration 155, since 067's
-    own review_type/action vocabulary doesn't cover this router's event names)."""
+    """Record a review event in the audit history table.
+
+    Writes to `year_end_review_events`, which is what production actually has.
+    This used to target `year_end_reviews` from migration 067 — a table that was
+    never created, because a divergent Studio migration created the
+    `year_end_*` set instead and 067 never ran. Every insert here has therefore
+    been failing silently since the feature shipped: the except below swallows
+    it, so the review trail was quietly empty rather than loudly broken.
+    See docs/audits/2026-08-02-migration-ledger-drift-audit.md.
+
+    `reviewed_by` is not sent: year_end_review_events has no such column, and
+    `actor_id` already carries who did it. The four event_type values this
+    router emits match the table's CHECK constraint exactly.
+    """
     import uuid
     try:
-        db.table("year_end_reviews").insert({
+        db.table("year_end_review_events").insert({
             "id":            str(uuid.uuid4()),
             "engagement_id": engagement_id,
             "firm_id":       firm_id,
             "event_type":    event_type,
             "comment":       comment,
             "actor_id":      actor_id,
-            "reviewed_by":   actor_id,
+            # `reviewed_by` deliberately omitted — see the docstring above.
             "created_at":    datetime.now(timezone.utc).isoformat(),
         }).execute()
     except Exception:
@@ -454,7 +465,7 @@ def get_review_state(
 
     actor_ids = {eng.get(f) for _, f, _ in _STEP_FIELDS if eng.get(f)}
     history_rows = (
-        db.table("year_end_reviews").select("*")
+        db.table("year_end_review_events").select("*")
         .eq("engagement_id", engagement_id)
         .order("created_at", desc=True)
         .execute().data or []
