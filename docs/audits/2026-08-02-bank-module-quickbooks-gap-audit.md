@@ -271,15 +271,15 @@ found while doing the work:
 | 1.7 | **Batch accept / batch exclude** alongside the existing bulk categorize | **S** | |
 | 1.8 | **Attachments on bank transactions** | **S** | Storage + RLS already exist for documents. |
 
-### Tier 2 — Reconciliation, to accountant standard  ·  2.1 + 2.2 shipped 2026-08-02
+### Tier 2 — Reconciliation, to accountant standard  ·  2.1 2.2 2.3 2.5 shipped 2026-08-02
 
 | # | Item | Size | Notes |
 |---|---|---|---|
 | ✅ 2.1 | **Auto-populate opening balance** from the previous completed reconciliation's frozen snapshot | **S** | Snapshot already stored (`bank_reconciliation_service.py:301`) — just read it. Removes a whole class of silent error. |
 | ✅ 2.2 | **Beginning-balance mismatch detection** — compare typed opening against derived book balance, warn before starting | **S** | |
-| 2.3 | **Reconciliation Discrepancy Report** — reconciled lines whose journal was later reversed or whose amount no longer agrees with the frozen snapshot | **M** | Fits naturally as a new check inside `reconciliation_service.py` / Verify Books rather than a new subsystem. |
+| ✅ 2.3 | **Reconciliation Discrepancy Report** — reconciled lines whose journal was later reversed or whose amount no longer agrees with the frozen snapshot | **M** | Fits naturally as a new check inside `reconciliation_service.py` / Verify Books rather than a new subsystem. |
 | 2.4 | **Live difference indicator** + filter/sort/search in the reconcile screen | **S** | |
-| 2.5 | **Undo completed reconciliation** — permission-gated, reason required, fully audit-logged, snapshot retained | **M** | Deliberate escape hatch. Must not weaken `_require_mutable` for anyone else. |
+| ✅ 2.5 | **Undo completed reconciliation** — permission-gated, reason required, fully audit-logged, snapshot retained | **M** | Deliberate escape hatch. Must not weaken `_require_mutable` for anyone else. |
 | 2.6 | **PDF reconciliation report** (CSV exists) | **S** | |
 | 2.7 | **Reconciliation history view** with access to every prior frozen report | **S** | |
 

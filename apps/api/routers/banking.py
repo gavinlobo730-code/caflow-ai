@@ -41,6 +41,7 @@ from models.banking import (
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
     CategorizeIn, MatchIn, BankMatchMultiIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
+    ReconciliationReopenIn,
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
@@ -664,6 +665,28 @@ def complete_reconciliation(
         return api_response(True, {"id": recon_id, "status": "completed"})
     return api_response(True, bank_reconciliation_service.complete(
         db, current_user["firm_id"], recon_id, actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/reconciliations/{recon_id}/reopen")
+def reopen_reconciliation(
+    recon_id: str,
+    data: ReconciliationReopenIn,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Undo a completion so a certified period can be corrected.
+
+    PARTNER ONLY — rbac("accounting", "approve") is the same gate as posting a
+    journal and setting a year lock, which is the right company for undoing a
+    signed-off reconciliation. A substantive reason is required, the action is
+    audit-logged and put on the client timeline, and the frozen snapshot is
+    preserved in reopen_history rather than overwritten.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id, "status": "in_progress"})
+    return api_response(True, bank_reconciliation_service.reopen(
+        db, current_user["firm_id"], recon_id, data.reason,
+        actor_id=current_user.get("auth_user_id")))
 
 
 @router.get("/reconciliations/{recon_id}/report")

@@ -315,6 +315,10 @@ export const api = {
       reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       complete: (id: string) => request(`/api/banking/reconciliations/${id}/complete`, { method: "POST" }),
+      /** Undo a completion so a certified period can be corrected. Partner-only;
+       *  a substantive reason is required and the frozen snapshot is preserved. */
+      reopen: (id: string, reason: string) =>
+        request(`/api/banking/reconciliations/${id}/reopen`, { method: "POST", body: JSON.stringify({ reason }) }),
       exportCsv: (id: string) => downloadFile(`/api/banking/reconciliations/${id}/report.csv`, `reconciliation-${id}.csv`),
     },
   },

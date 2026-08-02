@@ -121,6 +121,13 @@ class BankReconciliationService:
             "completed_at": session.get("completed_at"),
             "completed_by": session.get("completed_by"),
             "created_at": session.get("created_at"),
+            # Reopen provenance (migration 253). A period that has been reopened
+            # is a fact about the books, so it travels with the session rather
+            # than living only in the audit log.
+            "reopen_count": int(session.get("reopen_count") or 0),
+            "reopened_at": session.get("reopened_at"),
+            "reopened_by": session.get("reopened_by"),
+            "reopen_reason": session.get("reopen_reason"),
         }
 
     # ── opening balance: suggestion + mismatch detection ───────────────────────
@@ -406,6 +413,93 @@ class BankReconciliationService:
             log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,
                       new_data={"status": "completed", **summary},
                       metadata={"source": "bank_reconciliation"})
+        except Exception:  # pragma: no cover
+            pass
+        return self.get_session(db, firm_id, recon_id)
+
+    # ── reopen a completed reconciliation (Tier 2.5) ────────────────────────────
+    _MIN_REOPEN_REASON = 10
+
+    def reopen(self, db, firm_id, recon_id, reason: str, actor_id=None) -> dict:
+        """Undo a completion so the period can be corrected.
+
+        WHY THIS IS ALLOWED AT ALL
+            A completed reconciliation is immutable, and that is right — it is a
+            period a CA has certified. But immutability with no escape hatch is
+            its own failure mode: a period completed against a mistake (a
+            transaction reconciled into the wrong month, a closing balance typed
+            off the wrong statement page) was previously permanent, and the only
+            remedy was to leave the books wrong.
+
+            The discipline is not in forbidding the action. It is in making it
+            visible and expensive: Partner-only (the router gates on
+            rbac("accounting", "approve"), the same gate as posting a journal),
+            a substantive reason required, audit-logged and on the client
+            timeline, and the certified snapshot preserved rather than
+            overwritten.
+
+        WHAT IS AND IS NOT TOUCHED
+            The session returns to 'in_progress' — work has been done, so 'open'
+            would misdescribe it. Reconciled transactions KEEP their
+            reconciliation_id: reopening is not un-reconciling, it restores the
+            ability to change things. The CA then unreconciles whatever was
+            wrong and completes again, which re-runs both completion guards
+            (ties out AND every in-period line reviewed) from scratch.
+
+            `snapshot` is pushed onto `reopen_history` first, so the report the
+            CA signed off remains retrievable even after the period is redone.
+            _require_mutable is NOT relaxed — every other edit path still
+            refuses a completed session.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        if session.get("status") != "completed":
+            raise HTTPException(
+                status_code=409,
+                detail="Only a completed reconciliation can be reopened.")
+
+        clean = (reason or "").strip()
+        if len(clean) < self._MIN_REOPEN_REASON:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"A reason of at least {self._MIN_REOPEN_REASON} characters is "
+                        "required to reopen a completed reconciliation."))
+
+        now = _now()
+        history = session.get("reopen_history") or []
+        if isinstance(history, str):  # jsonb may arrive as text from some drivers
+            import json
+            try:
+                history = json.loads(history)
+            except Exception:
+                history = []
+        history = list(history) + [{
+            "reopened_at": now,
+            "reopened_by": actor_id,
+            "reason": clean,
+            "completed_at": session.get("completed_at"),
+            "completed_by": session.get("completed_by"),
+            # The certification as it stood. Preserved here because completing
+            # again overwrites `snapshot`.
+            "snapshot": session.get("snapshot"),
+        }]
+
+        db.table("bank_reconciliations").update({
+            "status": "in_progress",
+            "completed_at": None, "completed_by": None,
+            "reopened_at": now, "reopened_by": actor_id, "reopen_reason": clean,
+            "reopen_count": len(history),
+            "reopen_history": history,
+            "updated_at": now,
+        }).eq("id", recon_id).eq("firm_id", firm_id).execute()
+
+        self._log(session, actor_id, "Reconciliation Reopened", clean, severity="warning")
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,
+                      old_data={"status": "completed", "completed_at": session.get("completed_at")},
+                      new_data={"status": "in_progress", "reason": clean,
+                                "reopen_count": len(history)},
+                      metadata={"source": "bank_reconciliation_reopen"})
         except Exception:  # pragma: no cover
             pass
         return self.get_session(db, firm_id, recon_id)

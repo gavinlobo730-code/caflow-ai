@@ -1630,6 +1630,10 @@ interface ReconSession {
   statement_start_date: string; statement_end_date: string;
   opening_balance_paise: number; closing_balance_paise: number; adjustments_paise: number;
   status: "open" | "in_progress" | "completed"; completed_at: string | null;
+  /** Reopen provenance (Tier 2.5). A reopened period is a fact about the books. */
+  reopen_count?: number;
+  reopened_at?: string | null;
+  reopen_reason?: string | null;
 }
 /** Beginning-balance suggestion + mismatch check (backend computes all of it). */
 interface OpeningSuggestion {
@@ -1682,6 +1686,8 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   // typo produced a reconciliation that tied out perfectly to the wrong number.
   const [opening, setOpening] = useState<OpeningSuggestion | null>(null);
   const [openingLoading, setOpeningLoading] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
   const [adj, setAdj] = useState("");
 
   const loadSessions = useCallback(async () => {
@@ -1767,6 +1773,20 @@ function BankReconciliation({ clientId }: { clientId: string }) {
       else setError(res.error ?? "Could not open reconciliation.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open reconciliation."); }
     finally { setBusy(false); }
+  }
+
+  async function doReopen() {
+    setBusy(true); setError(null);
+    try {
+      const res = (await api.banking.reconciliations.reopen(selectedId, reopenReason.trim())) as
+        { success: boolean; error?: string | null };
+      if (!res.success) { setError(res.error ?? "Could not reopen this reconciliation."); return; }
+      setReopening(false); setReopenReason("");
+      await refresh();
+    } catch (e) {
+      // A non-Partner gets a 403 here — surface it rather than failing silently.
+      setError(e instanceof Error ? e.message : "Could not reopen this reconciliation.");
+    } finally { setBusy(false); }
   }
 
   async function act(fn: () => Promise<unknown>) {
@@ -1902,9 +1922,67 @@ function BankReconciliation({ clientId }: { clientId: string }) {
               {!completed && (
                 <button onClick={() => act(() => api.banking.reconciliations.complete(selectedId))} disabled={busy || !report.ties_out} title={report.ties_out ? "" : "Reconcile until the statement ties out"} className="text-xs px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed ml-auto">Complete Reconciliation</button>
               )}
-              {completed && <span className="text-[11px] text-green-700 ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? String(report.reconciliation.completed_at).slice(0, 10) : ""} · locked</span>}
+              {completed && (
+                <>
+                  <span className="text-[11px] text-green-700 ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? String(report.reconciliation.completed_at).slice(0, 10) : ""} · locked</span>
+                  {/* The deliberate escape hatch. Partner-only server-side; a
+                      non-Partner gets a 403 and the message says so. */}
+                  <button onClick={() => setReopening(true)} disabled={busy}
+                    className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#64748B]">
+                    Reopen…
+                  </button>
+                </>
+              )}
             </div>
+
+            {/* A period that has been reopened is a fact about the books, so it
+                stays visible on the session rather than only in the audit log. */}
+            {(report.reconciliation.reopen_count ?? 0) > 0 && (
+              <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                Reopened {report.reconciliation.reopen_count}
+                {report.reconciliation.reopen_count === 1 ? " time" : " times"}
+                {report.reconciliation.reopened_at ? ` · last on ${String(report.reconciliation.reopened_at).slice(0, 10)}` : ""}
+                {report.reconciliation.reopen_reason ? ` — “${report.reconciliation.reopen_reason}”` : ""}
+              </p>
+            )}
           </div>
+
+          {reopening && (
+            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+                <div className="px-5 py-4 border-b border-[#F1F5F9]">
+                  <h3 className="text-sm font-semibold text-[#0F172A]">Reopen this reconciliation</h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    {report.reconciliation.statement_start_date} → {report.reconciliation.statement_end_date}
+                  </p>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  <p className="text-[11px] text-[#475569]">
+                    This undoes a completed period so it can be corrected. The report as it was
+                    certified is kept, the change is recorded against your name, and the period must
+                    tie out again before it can be completed. Reconciled transactions stay reconciled
+                    — untick whatever was wrong after reopening.
+                  </p>
+                  <label className="block">
+                    <span className="text-[11px] font-medium text-[#475569]">Reason *</span>
+                    <textarea value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} rows={3}
+                      placeholder="e.g. April rent was reconciled into March by mistake"
+                      className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <span className="text-[10px] text-[#94A3B8]">At least 10 characters — this goes into the audit trail.</span>
+                  </label>
+                  {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+                </div>
+                <div className="flex gap-2 justify-end px-5 py-4 border-t border-[#F1F5F9]">
+                  <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
+                    className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+                  <button onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
+                    className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+                    {busy ? "Reopening…" : "Reopen"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Item buckets */}
           <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
