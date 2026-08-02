@@ -41,6 +41,7 @@ from models.banking import (
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
     CategorizeIn, MatchIn, BankMatchMultiIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
+    ReconciliationReopenIn,
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
@@ -552,6 +553,34 @@ def list_reconciliations(
     return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
+# NOTE: must be declared BEFORE /reconciliations/{recon_id} — FastAPI matches in
+# declaration order, and the parameterised route would otherwise swallow this
+# path and try to look up a session called "opening-suggestion".
+@router.get("/reconciliations/opening-suggestion")
+def reconciliation_opening_suggestion(
+    client_id: str = Query(...),
+    bank_account_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Where a new reconciliation for this account should start (B.4.1).
+
+    Returns the closing balance the last completed reconciliation tied out to,
+    plus whether the books still agree with it — the beginning-balance mismatch
+    check. Read-only; opens nothing.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "bank_account_id": bank_account_id, "source": "bank_account_opening",
+            "previous_reconciliation": None, "completed_count": 0,
+            "suggested_opening_paise": 0, "reconciled_book_balance_paise": 0,
+            "mismatch_paise": 0, "matches": True,
+        })
+    return api_response(True, bank_reconciliation_service.opening_suggestion(
+        db, current_user["firm_id"], client_id, bank_account_id))
+
+
 @router.get("/reconciliations/{recon_id}")
 def get_reconciliation(
     recon_id: str,
@@ -636,6 +665,85 @@ def complete_reconciliation(
         return api_response(True, {"id": recon_id, "status": "completed"})
     return api_response(True, bank_reconciliation_service.complete(
         db, current_user["firm_id"], recon_id, actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/reconciliations/{recon_id}/preview")
+def preview_reconciliation(
+    recon_id: str,
+    data: ReconcileItemsIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The tie-out as if these transactions were also reconciled (B.4 / 2.4).
+
+    READ-ONLY — nothing is reconciled. Computed by the same tie-out the real
+    reconcile uses, so the preview can never disagree with the result.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciliation_id": recon_id, "selected_count": 0})
+    return api_response(True, bank_reconciliation_service.preview(
+        db, current_user["firm_id"], recon_id, data.transaction_ids))
+
+
+@router.get("/reconciliations/{recon_id}/history")
+def reconciliation_history(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Every certification this session has carried, newest first (B.4 / 2.7).
+
+    A session completed, reopened and completed again froze a snapshot each
+    time; only the current one lives on `snapshot`, the rest in reopen_history.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciliation_id": recon_id,
+                                   "current": None, "superseded": [], "reopen_count": 0})
+    return api_response(True, bank_reconciliation_service.history(
+        db, current_user["firm_id"], recon_id))
+
+
+@router.get("/reconciliations/{recon_id}/report.pdf")
+def reconciliation_report_pdf(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The reconciliation statement as a PDF (B.4 / 2.6).
+
+    For a COMPLETED session this serves the FROZEN snapshot — the figures the CA
+    certified. A PDF that recomputed live would be a different document from the
+    one that was signed off.
+    """
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable.")
+    from services.bank_reconciliation_pdf_service import get_reconciliation_pdf
+    pdf_bytes, filename = get_reconciliation_pdf(db, current_user["firm_id"], recon_id)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/reconciliations/{recon_id}/reopen")
+def reopen_reconciliation(
+    recon_id: str,
+    data: ReconciliationReopenIn,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Undo a completion so a certified period can be corrected.
+
+    PARTNER ONLY — rbac("accounting", "approve") is the same gate as posting a
+    journal and setting a year lock, which is the right company for undoing a
+    signed-off reconciliation. A substantive reason is required, the action is
+    audit-logged and put on the client timeline, and the frozen snapshot is
+    preserved in reopen_history rather than overwritten.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id, "status": "in_progress"})
+    return api_response(True, bank_reconciliation_service.reopen(
+        db, current_user["firm_id"], recon_id, data.reason,
+        actor_id=current_user.get("auth_user_id")))
 
 
 @router.get("/reconciliations/{recon_id}/report")

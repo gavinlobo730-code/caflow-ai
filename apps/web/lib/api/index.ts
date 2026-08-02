@@ -305,13 +305,29 @@ export const api = {
     reconciliations: {
       list: (params?: Record<string, string>) => request(`/api/banking/reconciliations${params ? "?" + new URLSearchParams(params) : ""}`),
       create: (data: { client_id: string; bank_account_id: string; statement_start_date: string; statement_end_date: string; opening_balance_paise: number; closing_balance_paise: number }) => request("/api/banking/reconciliations", { method: "POST", body: JSON.stringify(data) }),
+      /** Where a new reconciliation should start, plus the beginning-balance
+       *  mismatch check. Read-only — opens nothing. */
+      openingSuggestion: (params: { client_id: string; bank_account_id: string }) =>
+        request(`/api/banking/reconciliations/opening-suggestion?${new URLSearchParams(params)}`),
       get: (id: string) => request(`/api/banking/reconciliations/${id}`),
       update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number; adjustments_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
       report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),
       reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       complete: (id: string) => request(`/api/banking/reconciliations/${id}/complete`, { method: "POST" }),
+      /** Undo a completion so a certified period can be corrected. Partner-only;
+       *  a substantive reason is required and the frozen snapshot is preserved. */
+      reopen: (id: string, reason: string) =>
+        request(`/api/banking/reconciliations/${id}/reopen`, { method: "POST", body: JSON.stringify({ reason }) }),
       exportCsv: (id: string) => downloadFile(`/api/banking/reconciliations/${id}/report.csv`, `reconciliation-${id}.csv`),
+      exportPdf: (id: string) => downloadFile(`/api/banking/reconciliations/${id}/report.pdf`, `reconciliation-${id}.pdf`),
+      /** Tie-out AS IF these transactions were also reconciled. Read-only —
+       *  computed by the same tie-out the real reconcile uses, so the preview
+       *  can never disagree with the result. */
+      preview: (id: string, transaction_ids: string[]) =>
+        request(`/api/banking/reconciliations/${id}/preview`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
+      /** Every certification this session has carried, newest first. */
+      history: (id: string) => request(`/api/banking/reconciliations/${id}/history`),
     },
   },
   complianceRecords: {

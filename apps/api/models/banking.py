@@ -184,6 +184,26 @@ class BankMatchMultiIn(BaseModel):
         return v
 
 
+class ReconciliationReopenIn(BaseModel):
+    """Undo a completed reconciliation (Tier 2.5). Partner-gated in the router.
+
+    The reason is mandatory and substantive — this reverses a certification, and
+    an unexplained reversal in the audit trail is barely better than no trail.
+    The same minimum is enforced by a DB CHECK (migration 253), so no code path
+    can reopen anonymously."""
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def substantive(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if len(cleaned) < 10:
+            raise ValueError(
+                "Give a reason of at least 10 characters for reopening a completed "
+                "reconciliation.")
+        return cleaned
+
+
 class ReconciliationCreateIn(BaseModel):
     """Open a reconciliation session (B.4) for one bank account + statement period.
     Balances are integer paise; the period reuses the statement's start/end dates."""
@@ -191,7 +211,11 @@ class ReconciliationCreateIn(BaseModel):
     bank_account_id: str
     statement_start_date: str
     statement_end_date: str
-    opening_balance_paise: int = 0
+    # None (omitted) means "carry forward" — the service fills it from the last
+    # completed reconciliation's closing balance. It used to default to 0, which
+    # is only correct for a brand-new account and silently wrong for every other
+    # period. An explicit 0 is still honoured.
+    opening_balance_paise: Optional[int] = None
     closing_balance_paise: int = 0
 
     @model_validator(mode="after")

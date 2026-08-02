@@ -25,6 +25,7 @@ here than what the CA is already looking at on screen.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -339,6 +340,107 @@ def check_ap_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
     return []
 
 
+def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """A COMPLETED bank reconciliation must still be true.
+
+    Completing a reconciliation freezes a snapshot of exactly which transactions
+    were reconciled and for how much (bank_reconciliation_service._compute_report,
+    stored on completion). That snapshot is a certification: the CA asserted this
+    period ties out.
+
+    Nothing stopped the underlying data moving afterwards. A reconciled
+    transaction's journal can be reversed, or the transaction can be detached
+    from the session — and the completed reconciliation goes on claiming a
+    tie-out that is no longer true, silently, because the frozen report is
+    exactly what makes it immune to noticing.
+
+    This is the check QuickBooks calls the Reconciliation Discrepancy Report.
+    It compares each completed session's snapshot against live data and reports
+    what has moved since. It reads only; the CA decides what to do (which, now
+    that Tier 2.5 exists, may be to reopen the period and redo it).
+
+    Deliberately NOT flagged: a session that has been reopened and is back in
+    progress. Its snapshot is preserved in reopen_history precisely because it
+    no longer describes a current certification, so comparing against it would
+    manufacture findings for a period someone is already fixing.
+    """
+    sessions = _paginate_all(lambda: (
+        db.table("bank_reconciliations")
+        .select("id, account_no, period_start, period_end, status, snapshot, completed_at")
+        .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "completed")
+    ))
+    if not sessions:
+        return []
+
+    # Every transaction still attached to any of these sessions, keyed by id.
+    session_ids = [s["id"] for s in sessions]
+    live_txns = _paginate_all(lambda: (
+        db.table("bank_transactions")
+        .select("id, reconciliation_id, debit_paise, credit_paise, posted_journal_id")
+        .eq("firm_id", firm_id).in_("reconciliation_id", session_ids)
+    ))
+    live_by_id = {t["id"]: t for t in live_txns}
+
+    findings: list[dict] = []
+    for s in sessions:
+        snap = s.get("snapshot")
+        if isinstance(snap, str):
+            try:
+                snap = json.loads(snap)
+            except Exception:
+                snap = None
+        if not isinstance(snap, dict):
+            continue  # completed before snapshots existed — nothing to compare
+        period = f"{str(s.get('period_start'))[:10]} → {str(s.get('period_end'))[:10]}"
+        label = f"{s.get('account_no') or 'bank account'} {period}"
+
+        for line in snap.get("reconciled") or []:
+            txn_id = line.get("id")
+            live = live_by_id.get(txn_id)
+
+            if live is None or live.get("reconciliation_id") != s["id"]:
+                findings.append(_finding(
+                    "bank_reconciliation_discrepancy", "critical",
+                    f"A transaction reconciled in the completed reconciliation for {label} "
+                    "is no longer attached to it — that period's tie-out is no longer true.",
+                    reconciliation_id=s["id"], transaction_id=txn_id,
+                    reason="detached", description=line.get("description"),
+                ))
+                continue
+
+            snap_debit = int(line.get("debit_paise") or 0)
+            snap_credit = int(line.get("credit_paise") or 0)
+            if (int(live.get("debit_paise") or 0) != snap_debit
+                    or int(live.get("credit_paise") or 0) != snap_credit):
+                delta = ((int(live.get("debit_paise") or 0) - snap_debit)
+                         - (int(live.get("credit_paise") or 0) - snap_credit))
+                findings.append(_finding(
+                    "bank_reconciliation_discrepancy", "critical",
+                    f"A transaction reconciled in the completed reconciliation for {label} "
+                    "has changed amount since it was certified.",
+                    amount_paise=delta,
+                    reconciliation_id=s["id"], transaction_id=txn_id, reason="amount_changed",
+                    snapshot_debit_paise=snap_debit, snapshot_credit_paise=snap_credit,
+                    live_debit_paise=int(live.get("debit_paise") or 0),
+                    live_credit_paise=int(live.get("credit_paise") or 0),
+                ))
+
+            # The posting behind the line: reversed after the fact means the cash
+            # movement the reconciliation certified has been undone in the books.
+            je_id = live.get("posted_journal_id") or line.get("posted_journal_id")
+            if je_id and je_id not in entries:
+                findings.append(_finding(
+                    "bank_reconciliation_discrepancy", "critical",
+                    f"The journal behind a transaction reconciled in the completed "
+                    f"reconciliation for {label} is no longer posted — it was reversed or "
+                    "deleted after the period was certified.",
+                    reconciliation_id=s["id"], transaction_id=txn_id,
+                    journal_entry_id=je_id, reason="journal_not_posted",
+                ))
+
+    return findings
+
+
 _CHECKS = [
     check_trial_balance,
     check_missing_cogs_journals,
@@ -346,6 +448,7 @@ _CHECKS = [
     check_inventory_cache_drift,
     check_ar_subledger_vs_gl,
     check_ap_subledger_vs_gl,
+    check_bank_reconciliation_discrepancies,
 ]
 
 

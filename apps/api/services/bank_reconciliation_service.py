@@ -121,13 +121,106 @@ class BankReconciliationService:
             "completed_at": session.get("completed_at"),
             "completed_by": session.get("completed_by"),
             "created_at": session.get("created_at"),
+            # Reopen provenance (migration 253). A period that has been reopened
+            # is a fact about the books, so it travels with the session rather
+            # than living only in the audit log.
+            "reopen_count": int(session.get("reopen_count") or 0),
+            "reopened_at": session.get("reopened_at"),
+            "reopened_by": session.get("reopened_by"),
+            "reopen_reason": session.get("reopen_reason"),
+        }
+
+    # ── opening balance: suggestion + mismatch detection ───────────────────────
+    def opening_suggestion(self, db, firm_id, client_id, bank_account_id) -> dict:
+        """Where a new reconciliation for this account should start, and whether
+        the books still agree with it.
+
+        The opening balance used to be typed in by hand every time, with nothing
+        to check it against. A typo produced a reconciliation that tied out
+        perfectly to the wrong number — the arithmetic is exact either way, so
+        nothing downstream could notice. The figure is not a matter of opinion:
+        it is the closing balance the last completed reconciliation tied out to,
+        and it is already stored in that session's frozen snapshot.
+
+        Returns the suggestion, its provenance, and the
+        `domain.banking.reconciliation.opening_balance_check` comparison against
+        the books' own record of everything reconciled so far.
+        """
+        ba = self._validate_bank_account(db, firm_id, client_id, bank_account_id)
+        account_opening = int(ba.get("opening_balance_paise") or 0)
+
+        sessions = (db.table("bank_reconciliations").select("*")
+                    .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id)
+                    .eq("status", "completed").execute().data or [])
+        # Chronological, so "the last one" is unambiguous and the accumulation
+        # below runs in period order.
+        sessions.sort(key=lambda s: (_d(s.get("period_end")), str(s.get("completed_at") or "")))
+
+        txns = self._posted_account_txns(db, firm_id, bank_account_id)
+        by_session: dict = {}
+        for t in txns:
+            rid = t.get("reconciliation_id")
+            if rid:
+                by_session.setdefault(rid, []).append(t)
+
+        movements = []
+        for s in sessions:
+            deposits, withdrawals = recon.split_amounts(by_session.get(s["id"], []))
+            movements.append({
+                "deposits_paise": deposits,
+                "withdrawals_paise": withdrawals,
+                "adjustments_paise": int(s.get("adjustments_paise") or 0),
+            })
+
+        book_balance = recon.reconciled_book_balance(
+            account_opening_paise=account_opening, completed_sessions=movements)
+
+        previous = sessions[-1] if sessions else None
+        if previous is not None:
+            # Prefer the frozen snapshot — it is the figure the session actually
+            # tied out to, and cannot drift if the row is later touched.
+            snap = self._frozen_snapshot(previous) or {}
+            snap_summary = (snap.get("summary") or {}) if isinstance(snap, dict) else {}
+            suggested = int(
+                snap_summary.get("statement_closing_balance_paise")
+                if snap_summary.get("statement_closing_balance_paise") is not None
+                else (previous.get("closing_balance_paise") or 0)
+            )
+            source = "previous_reconciliation"
+            prev_view = {
+                "reconciliation_id": previous["id"],
+                "period_end": _d(previous.get("period_end")),
+                "closing_balance_paise": suggested,
+                "completed_at": previous.get("completed_at"),
+            }
+        else:
+            suggested = account_opening
+            source = "bank_account_opening"
+            prev_view = None
+
+        check = recon.opening_balance_check(
+            suggested_opening_paise=suggested,
+            reconciled_book_balance_paise=book_balance,
+        )
+        return {
+            "bank_account_id": bank_account_id,
+            "source": source,
+            "previous_reconciliation": prev_view,
+            "completed_count": len(sessions),
+            **check,
         }
 
     # ── B.4.1 session lifecycle ─────────────────────────────────────────────────
     def create_session(self, db, firm_id, client_id, bank_account_id,
                         statement_start_date, statement_end_date,
-                        opening_balance_paise=0, closing_balance_paise=0, actor_id=None) -> dict:
+                        opening_balance_paise=None, closing_balance_paise=0, actor_id=None) -> dict:
         ba = self._validate_bank_account(db, firm_id, client_id, bank_account_id)
+        # Opening balance defaults to where the last completed reconciliation
+        # left off rather than to zero. An omitted opening used to silently mean
+        # "zero", which is right only for a brand-new account.
+        suggestion = self.opening_suggestion(db, firm_id, client_id, bank_account_id)
+        if opening_balance_paise is None:
+            opening_balance_paise = suggestion["suggested_opening_paise"]
         row = (db.table("bank_reconciliations").insert({
             "firm_id": firm_id, "client_id": client_id, "bank_account_id": bank_account_id,
             "account_no": ba.get("account_no"),
@@ -143,7 +236,16 @@ class BankReconciliationService:
                                  entity_id=row.get("id"), actor_id=actor_id)
         except Exception:  # pragma: no cover - timeline must never block
             pass
-        return self._session_view(row)
+        view = self._session_view(row)
+        # Carried on the create response so the CA is told at the moment they
+        # open a period — not after they have ticked fifty lines against a
+        # foundation that has moved. Warning only; opening is never blocked.
+        view["opening_balance_check"] = {
+            **suggestion,
+            "typed_opening_paise": int(opening_balance_paise),
+            "used_suggestion": int(opening_balance_paise) == suggestion["suggested_opening_paise"],
+        }
+        return view
 
     def list_sessions(self, db, firm_id, client_id: Optional[str],
                       bank_account_id: Optional[str] = None) -> list[dict]:
@@ -311,6 +413,181 @@ class BankReconciliationService:
             log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,
                       new_data={"status": "completed", **summary},
                       metadata={"source": "bank_reconciliation"})
+        except Exception:  # pragma: no cover
+            pass
+        return self.get_session(db, firm_id, recon_id)
+
+    # ── live tie-out preview (Tier 2.4) ─────────────────────────────────────────
+    def preview(self, db, firm_id, recon_id, transaction_ids: list[str]) -> dict:
+        """The tie-out AS IF `transaction_ids` were also reconciled.
+
+        Ticking boxes and only learning the effect after pressing Reconcile makes
+        the last few items of a period a guessing game — you reconcile, look at
+        the difference, unreconcile, try others. This answers the question before
+        the commit.
+
+        Computed by the SAME `_summary` -> `domain.banking.reconciliation.tie_out`
+        the real thing uses, so the preview can never disagree with the result.
+        Deliberately NOT reimplemented in the browser: a second copy of the
+        tie-out formula is exactly the drift this codebase has paid for before
+        (see the frontend/backend GST parity work). Mirrors the existing
+        posting-preview precedent — preview on the server, confirm explicitly.
+
+        Read-only. Nothing is written; nothing is reconciled.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        buckets = self._classify(session, txns)
+
+        candidates = set(transaction_ids or [])
+        eligible = [t for t in buckets["unreconciled"] if t["id"] in candidates]
+        projected = buckets["reconciled"] + eligible
+
+        current = self._summary(session, buckets["reconciled"])
+        after = self._summary(session, projected)
+        return {
+            "reconciliation_id": recon_id,
+            "selected_count": len(eligible),
+            # Ids that were asked for but cannot be reconciled here (already
+            # reconciled, out of period, or claimed by another session) — better
+            # to say so than to silently drop them from the projection.
+            "ineligible_ids": sorted(candidates - {t["id"] for t in eligible}),
+            "current": current,
+            "projected": after,
+            "would_tie_out": after["reconciles"],
+        }
+
+    # ── prior certifications (Tier 2.7) ─────────────────────────────────────────
+    def history(self, db, firm_id, recon_id) -> dict:
+        """Every certification this session has ever carried, newest first.
+
+        A reconciliation can be completed, reopened and completed again (Tier
+        2.5). Each completion froze a snapshot; `snapshot` holds only the CURRENT
+        one because completing overwrites it, and every superseded one is kept in
+        `reopen_history`. This exposes them, so "what did we sign off in April,
+        before the correction?" is answerable rather than merely promised.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        raw = session.get("reopen_history") or []
+        if isinstance(raw, str):
+            import json
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = []
+
+        superseded = []
+        for entry in raw:
+            snap = entry.get("snapshot") or {}
+            summary = snap.get("summary") if isinstance(snap, dict) else None
+            superseded.append({
+                "completed_at": entry.get("completed_at"),
+                "completed_by": entry.get("completed_by"),
+                "superseded_at": entry.get("reopened_at"),
+                "superseded_by": entry.get("reopened_by"),
+                "reason": entry.get("reason"),
+                "summary": summary,
+                "ties_out": bool((summary or {}).get("reconciles")),
+            })
+        superseded.reverse()   # newest first
+
+        current_snap = self._frozen_snapshot(session)
+        return {
+            "reconciliation_id": recon_id,
+            "status": session.get("status"),
+            "current": {
+                "completed_at": session.get("completed_at"),
+                "completed_by": session.get("completed_by"),
+                "summary": (current_snap or {}).get("summary"),
+                "ties_out": bool(((current_snap or {}).get("summary") or {}).get("reconciles")),
+            } if current_snap else None,
+            "superseded": superseded,
+            "reopen_count": int(session.get("reopen_count") or 0),
+        }
+
+    # ── reopen a completed reconciliation (Tier 2.5) ────────────────────────────
+    _MIN_REOPEN_REASON = 10
+
+    def reopen(self, db, firm_id, recon_id, reason: str, actor_id=None) -> dict:
+        """Undo a completion so the period can be corrected.
+
+        WHY THIS IS ALLOWED AT ALL
+            A completed reconciliation is immutable, and that is right — it is a
+            period a CA has certified. But immutability with no escape hatch is
+            its own failure mode: a period completed against a mistake (a
+            transaction reconciled into the wrong month, a closing balance typed
+            off the wrong statement page) was previously permanent, and the only
+            remedy was to leave the books wrong.
+
+            The discipline is not in forbidding the action. It is in making it
+            visible and expensive: Partner-only (the router gates on
+            rbac("accounting", "approve"), the same gate as posting a journal),
+            a substantive reason required, audit-logged and on the client
+            timeline, and the certified snapshot preserved rather than
+            overwritten.
+
+        WHAT IS AND IS NOT TOUCHED
+            The session returns to 'in_progress' — work has been done, so 'open'
+            would misdescribe it. Reconciled transactions KEEP their
+            reconciliation_id: reopening is not un-reconciling, it restores the
+            ability to change things. The CA then unreconciles whatever was
+            wrong and completes again, which re-runs both completion guards
+            (ties out AND every in-period line reviewed) from scratch.
+
+            `snapshot` is pushed onto `reopen_history` first, so the report the
+            CA signed off remains retrievable even after the period is redone.
+            _require_mutable is NOT relaxed — every other edit path still
+            refuses a completed session.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        if session.get("status") != "completed":
+            raise HTTPException(
+                status_code=409,
+                detail="Only a completed reconciliation can be reopened.")
+
+        clean = (reason or "").strip()
+        if len(clean) < self._MIN_REOPEN_REASON:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"A reason of at least {self._MIN_REOPEN_REASON} characters is "
+                        "required to reopen a completed reconciliation."))
+
+        now = _now()
+        history = session.get("reopen_history") or []
+        if isinstance(history, str):  # jsonb may arrive as text from some drivers
+            import json
+            try:
+                history = json.loads(history)
+            except Exception:
+                history = []
+        history = list(history) + [{
+            "reopened_at": now,
+            "reopened_by": actor_id,
+            "reason": clean,
+            "completed_at": session.get("completed_at"),
+            "completed_by": session.get("completed_by"),
+            # The certification as it stood. Preserved here because completing
+            # again overwrites `snapshot`.
+            "snapshot": session.get("snapshot"),
+        }]
+
+        db.table("bank_reconciliations").update({
+            "status": "in_progress",
+            "completed_at": None, "completed_by": None,
+            "reopened_at": now, "reopened_by": actor_id, "reopen_reason": clean,
+            "reopen_count": len(history),
+            "reopen_history": history,
+            "updated_at": now,
+        }).eq("id", recon_id).eq("firm_id", firm_id).execute()
+
+        self._log(session, actor_id, "Reconciliation Reopened", clean, severity="warning")
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,
+                      old_data={"status": "completed", "completed_at": session.get("completed_at")},
+                      new_data={"status": "in_progress", "reason": clean,
+                                "reopen_count": len(history)},
+                      metadata={"source": "bank_reconciliation_reopen"})
         except Exception:  # pragma: no cover
             pass
         return self.get_session(db, firm_id, recon_id)
