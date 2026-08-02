@@ -31,14 +31,14 @@ export function SiteHeader() {
             <Link
               key={item.href}
               href={item.href}
-              className="text-[13px] font-medium text-brand-dark/75 transition-colors hover:text-brand-dark"
+              className="text-[13px] font-medium leading-none text-brand-dark/75 transition-colors hover:text-brand-dark"
             >
               {item.label}
             </Link>
           ))}
           <Link
             href="/access"
-            className="text-[13px] font-medium text-brand-dark/75 transition-colors hover:text-brand-dark"
+            className="text-[13px] font-medium leading-none text-brand-dark/75 transition-colors hover:text-brand-dark"
           >
             Login
           </Link>
@@ -47,7 +47,7 @@ export function SiteHeader() {
                 icon made this button 20px wider and 7px taller than its twin. */}
             <a
               href={appLinks.signup}
-              className="inline-flex items-center rounded-md bg-[#5876c7] px-[18px] py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#4d68af]"
+              className="inline-flex items-center rounded-md bg-[#5876c7] px-[18px] py-2.5 text-[13px] font-semibold leading-none text-white transition-colors hover:bg-[#4d68af]"
             >
               Start free trial
             </a>
