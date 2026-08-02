@@ -118,6 +118,27 @@ async function downloadFile(path: string, fallbackFilename: string, extraHeaders
   URL.revokeObjectURL(url);
 }
 
+/**
+ * A bank matching rule (Banking B.2.3). Mirrors models/banking.MatchingRuleIn.
+ *
+ * The backend requires at least one CONDITION (pattern, amount bound, or a
+ * debit/credit restriction) and at least one SUGGESTION — a rule with neither
+ * would fire on every transaction and propose nothing, masking every rule
+ * created after it. Amounts are integer paise.
+ */
+export interface BankRuleInput {
+  client_id: string;
+  rule_name: string;
+  description_pattern?: string | null;
+  amount_min_paise?: number | null;
+  amount_max_paise?: number | null;
+  txn_type?: "debit" | "credit" | "any";
+  suggested_account_id?: string | null;
+  suggested_category?: string | null;
+  suggested_narration?: string | null;
+  is_active?: boolean;
+}
+
 export const api = {
   clients: {
     list: () => request("/api/clients"),
@@ -243,6 +264,8 @@ export const api = {
     listTransactions: (params?: Record<string, string>) => request(`/api/banking/transactions${params ? "?" + new URLSearchParams(params) : ""}`),
     setTransactionAccount: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}`, { method: "PATCH", body: JSON.stringify(data) }),
     ignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/ignore`, { method: "POST" }),
+    /** Undo an ignore — the transaction returns to the work queue. */
+    unignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/unignore`, { method: "POST" }),
     postTransaction: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}/post`, { method: "POST", body: JSON.stringify(data) }),
     // B.2 — matching & categorization (suggestions only; no posting)
     queue: (params?: Record<string, string>) => request(`/api/banking/queue${params ? "?" + new URLSearchParams(params) : ""}`),
@@ -260,6 +283,19 @@ export const api = {
       currency?: string; exchange_rate?: string;
     }) => request(`/api/banking/transactions/${txnId}/match-multi`, { method: "POST", body: JSON.stringify(data) }),
     unmatch: (txnId: string) => request(`/api/banking/transactions/${txnId}/unmatch`, { method: "POST" }),
+    // B.2.3 — matching rules. A rule annotates the work queue with a suggested
+    // category / counter account / narration; it never posts and never writes to
+    // a transaction on its own. Precedence is creation order. (These endpoints
+    // existed server-side from the start but had no client method, so
+    // bank_matching_rules could only ever be empty and the rule engine never
+    // fired — see docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md.)
+    rules: {
+      list: (clientId: string) => request(`/api/banking/rules?client_id=${encodeURIComponent(clientId)}`),
+      create: (data: BankRuleInput) => request("/api/banking/rules", { method: "POST", body: JSON.stringify(data) }),
+      update: (ruleId: string, data: Partial<Omit<BankRuleInput, "client_id">>) =>
+        request(`/api/banking/rules/${ruleId}`, { method: "PATCH", body: JSON.stringify(data) }),
+      remove: (ruleId: string) => request(`/api/banking/rules/${ruleId}`, { method: "DELETE" }),
+    },
     // B.3 — posting engine (explicit, human-initiated; never auto-posts)
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
     pending: (params?: Record<string, string>) => request(`/api/banking/pending${params ? "?" + new URLSearchParams(params) : ""}`),

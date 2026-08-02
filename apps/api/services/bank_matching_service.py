@@ -16,11 +16,29 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.banking import (
-    Candidate, rank_suggestions, suggest_category, is_valid_category, CATEGORIES,
+    Candidate, rank_suggestions, match_rule, is_valid_category, CATEGORIES,
+    NEAR_MATCH_BAND_BPS,
 )
 from services.timeline_service import timeline_service
 
 _logger = logging.getLogger("caflow.bank_matching")
+
+# Cap on rows pulled per candidate type. The amount band (below) is wider than
+# the old equality filter, so this bounds the worst case; the ranker keeps only
+# `max_results` anyway.
+_CANDIDATE_FETCH_LIMIT = 50
+
+
+def _near_match_ceiling(amount_paise: int) -> int:
+    """Largest document amount a bank line of `amount_paise` may be offered
+    against. Mirrors matcher.near_match_floor_paise from the other side: a line
+    short by up to NEAR_MATCH_BAND_BPS of the DOCUMENT is in band, so the ceiling
+    is amount / (1 - band). Integer paise, computed in basis points."""
+    amount = int(amount_paise)
+    if amount <= 0:
+        return 0
+    # ceil division keeps the boundary document inside the band.
+    return -(-amount * 10000 // (10000 - NEAR_MATCH_BAND_BPS))
 
 _MATCH_ENTITY_TYPES = frozenset({
     "sales_invoice", "purchase_bill", "receipt", "purchase_payment", "journal_entry", "manual",
@@ -90,6 +108,13 @@ class BankMatchingService:
                 "label": s.label, "amount_paise": s.amount_paise,
                 "confidence": s.confidence, "confidence_label": s.confidence_label,
                 "reasons": s.reasons,
+                # >0 when the bank line is SHORT of the document (TDS withheld,
+                # bank charges). The UI must show this rather than let a partial
+                # settlement look like a full one.
+                "difference_paise": s.difference_paise,
+                "tds_rate_bps": s.tds_rate_bps,
+                "party_id": s.party_id,
+                "outstanding_paise": s.outstanding_paise,
             } for s in ranked],
         }
 
@@ -120,11 +145,19 @@ class BankMatchingService:
     def _invoice_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
         # deleted_at filter: a soft-deleted invoice is not a live receivable and
         # must never be suggested as the counterparty for a bank credit.
+        #
+        # Amount band, not equality: the bank line may be SHORT of the invoice
+        # (customer withheld TDS, or the bank took charges). rank_suggestions
+        # scores those below exact matches and labels the shortfall; fetching
+        # only exact-amount rows here would leave it nothing to score. Upper
+        # bound only — a receipt LARGER than the invoice isn't settling it.
         rows = (db.table("client_sales_invoices")
                 .select("id, invoice_no, invoice_date, total_paise, paid_paise, customer_id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null")
-                .eq("total_paise", amount).execute().data or [])
+                .gte("total_paise", amount)
+                .lte("total_paise", _near_match_ceiling(amount))
+                .limit(_CANDIDATE_FETCH_LIMIT).execute().data or [])
         customers = self._party_names(db, "customers", firm_id, client_id)
         out = []
         for r in rows:
@@ -142,7 +175,8 @@ class BankMatchingService:
                 entity_type="sales_invoice", entity_id=r["id"],
                 label=f"{r.get('invoice_no', '')} · {party or 'Customer'}",
                 amount_paise=total, entity_date=str(r.get("invoice_date") or "")[:10],
-                party_name=party, outstanding_paise=total - paid,
+                party_name=party, party_id=r.get("customer_id"),
+                outstanding_paise=total - paid,
             ))
         return out
 
@@ -153,11 +187,17 @@ class BankMatchingService:
         # exactly what settlement relieves. Gating on total_paise meant any bill
         # with TDS never surfaced as a candidate for its own outgoing payment.
         # deleted_at filter: a soft-deleted bill is not a live payable.
+        # Amount band rather than equality — same reasoning as
+        # _invoice_candidates: a payment can fall short of the payable (bank
+        # charges on a remittance, a small withheld amount). rank_suggestions
+        # ranks and labels the difference.
         rows = (db.table("purchase_bills")
                 .select("id, bill_no, bill_date, total_paise, net_payable_paise, vendor_id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null")
-                .eq("net_payable_paise", amount).execute().data or [])
+                .gte("net_payable_paise", amount)
+                .lte("net_payable_paise", _near_match_ceiling(amount))
+                .limit(_CANDIDATE_FETCH_LIMIT).execute().data or [])
         vendors = self._party_names(db, "vendors", firm_id, client_id)
         out = []
         for r in rows:
@@ -173,7 +213,8 @@ class BankMatchingService:
                 entity_type="purchase_bill", entity_id=r["id"],
                 label=f"{r.get('bill_no', '')} · {party or 'Vendor'}",
                 amount_paise=net_payable, entity_date=str(r.get("bill_date") or "")[:10],
-                party_name=party, outstanding_paise=net_payable,
+                party_name=party, party_id=r.get("vendor_id"),
+                outstanding_paise=net_payable,
             ))
         return out
 
@@ -215,7 +256,10 @@ class BankMatchingService:
         return out
 
     # ── B.2.4 — unmatched work queue ─────────────────────────────────────────
-    _QUEUE_STATUSES = frozenset({"unmatched", "categorized", "matched", "needs_review", "all"})
+    # "ignored" is a first-class view, not a hole: a row can only leave the queue
+    # by being posted or ignored, and an ignored row that nobody can see again is
+    # a statement line silently dropped from the books.
+    _QUEUE_STATUSES = frozenset({"unmatched", "categorized", "matched", "needs_review", "ignored", "all"})
 
     def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched") -> list[dict]:
         if status not in self._QUEUE_STATUSES:
@@ -227,6 +271,12 @@ class BankMatchingService:
 
         # View filter (Python-side — avoids NULL-filter quirks; bounded per client).
         def keep(t: dict) -> bool:
+            # An ignored row is out of the working views by definition — it only
+            # shows in its own view and in "all". Without this, an ignored row
+            # that still carried a category or a link reappeared under
+            # "Categorized"/"Matched" as if it were live work.
+            if status not in ("ignored", "all") and t.get("match_status") == "ignored":
+                return False
             if status == "unmatched":
                 return t.get("match_status") == "unmatched" and not t.get("matched_entity_id")
             if status == "categorized":
@@ -235,6 +285,8 @@ class BankMatchingService:
                 return bool(t.get("matched_entity_id"))
             if status == "needs_review":
                 return bool(t.get("needs_review"))
+            if status == "ignored":
+                return t.get("match_status") == "ignored"
             return True  # all
         txns = [t for t in txns if keep(t)]
 
@@ -245,16 +297,29 @@ class BankMatchingService:
         # which client it belonged to, so one client's configured rule (e.g.
         # a narration-contains match on that client's own vendor name) could
         # surface as a suggested category on an unrelated client's transaction.
+        #
+        # Ordered by created_at so precedence is deterministic: match_rule takes
+        # the FIRST firing rule, and an unordered fetch made "first" depend on
+        # whatever order Postgres happened to return.
         rules = (db.table("bank_matching_rules").select("*")
-                 .eq("firm_id", firm_id).eq("is_active", True).execute().data or [])
+                 .eq("firm_id", firm_id).eq("is_active", True)
+                 .order("created_at").execute().data or [])
         rules_by_client: dict = {}
         for r in rules:
             rules_by_client.setdefault(r.get("client_id"), []).append(r)
         for t in txns:
             amount, is_credit = _txn_amount(t)
             client_rules = rules_by_client.get(t.get("client_id"), [])
-            t["suggested_category"] = (t.get("category")
-                                       or suggest_category(t.get("description"), amount, not is_credit, client_rules))
+            hit = match_rule(t.get("description"), amount, not is_credit, client_rules)
+            # An existing category always wins over a rule's suggestion — the
+            # rule proposes, the CA disposes.
+            t["suggested_category"] = t.get("category") or (hit.category if hit else None)
+            # The counter GL account and narration a rule proposes. Previously
+            # these two columns were stored and read by nothing, so a rule could
+            # only ever say "Expense", never "code it to Bank Charges".
+            t["suggested_account_id"] = (hit.account_id if hit else None) if not t.get("account_id") else None
+            t["suggested_narration"] = hit.narration if hit else None
+            t["suggested_by_rule"] = hit.rule_name if hit else None
         return txns
 
     # ── B.2.2 — categorize (manual or accepting a rule suggestion) ───────────

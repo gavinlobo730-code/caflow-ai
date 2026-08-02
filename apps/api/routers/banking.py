@@ -6,9 +6,7 @@ Phase B.0: a THIN HTTP layer over the banking domain service. All mutations
 services.banking_service — the single source of banking business logic. The
 frontend calls these endpoints instead of writing to Supabase directly.
 
-Columns use the canonical model (transaction_date, match_status). Matching-rule
-and suggestion endpoints are foundation-only scaffolding for Phases B.2/B.4 and
-are intentionally NOT wired to the UI yet.
+Columns use the canonical model (transaction_date, match_status).
 
 IMPORTANT: posting is explicit and human-initiated — never auto-post.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -40,7 +38,7 @@ def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
         return False
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
-    TransactionAccountIn, PostBankTxnIn, MatchingRuleIn,
+    TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
     CategorizeIn, MatchIn, BankMatchMultiIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
 )
@@ -311,7 +309,7 @@ def list_transactions(
 @router.get("/queue")
 def matching_queue(
     client_id: Optional[str] = Query(None),
-    status: str = Query("unmatched", pattern="^(unmatched|categorized|matched|needs_review|all)$"),
+    status: str = Query("unmatched", pattern="^(unmatched|categorized|matched|needs_review|ignored|all)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Work queue (B.2.4) with rule-based suggested categories inline. status ∈
@@ -427,6 +425,18 @@ def ignore_transaction(
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "ignored"})
     return api_response(True, banking_service.ignore(db, current_user["firm_id"], txn_id))
+
+
+@router.post("/transactions/{txn_id}/unignore")
+def unignore_transaction(
+    txn_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Undo an ignore — the transaction returns to the work queue."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, "match_status": "unmatched"})
+    return api_response(True, banking_service.unignore(db, current_user["firm_id"], txn_id))
 
 
 # ─── Posting Engine (B.3) ─────────────────────────────────────────────────────
@@ -655,20 +665,41 @@ def reconciliation_report_csv(
         headers={"Content-Disposition": f'attachment; filename="reconciliation-{recon_id}.csv"'})
 
 
-# ─── Matching rules (foundation only — Phase B.2; not wired to UI) ────────────
+# ─── Matching rules (Phase B.2.3) ─────────────────────────────────────────────
+#
+# A rule annotates the work queue with a suggested category / counter account /
+# narration. It NEVER posts and never writes to a transaction on its own — the
+# CA accepts the suggestion. Precedence is creation order (bank_matching_service
+# orders by created_at), so the first rule that fires wins.
+
+
+def _rule_or_404(db, firm_id: str, rule_id: str) -> dict:
+    """Fetch a rule scoped to the caller's firm. 404 rather than 403 for a rule
+    belonging to another firm — the caller learns nothing about its existence."""
+    res = (db.table("bank_matching_rules").select("*")
+           .eq("id", rule_id).eq("firm_id", firm_id).execute())
+    rows = res.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Matching rule not found.")
+    return rows[0]
+
 
 @router.get("/rules")
 def list_rules(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    """Every rule for the client — INACTIVE ONES INCLUDED. The rules screen has
+    to show a deactivated rule to let anyone reactivate it; the queue applies its
+    own is_active filter (bank_matching_service.queue), so nothing is applied
+    that shouldn't be. Ordered by created_at, which is also the precedence."""
     assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
     res = (db.table("bank_matching_rules").select("*")
            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
-           .eq("is_active", True).execute())
+           .order("created_at").execute())
     return api_response(True, res.data or [])
 
 
@@ -685,3 +716,43 @@ def create_rule(
         {"firm_id": current_user["firm_id"], **data.model_dump()}
     ).execute()
     return api_response(True, (row.data or [{}])[0])
+
+
+@router.patch("/rules/{rule_id}")
+def update_rule(
+    rule_id: str,
+    data: MatchingRuleUpdateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Edit a rule, or toggle it with {"is_active": false}. Only the supplied
+    fields change. client_id is NOT editable — moving a rule between clients
+    would silently re-target every suggestion it has ever made."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": rule_id, **data.model_dump(exclude_none=True)})
+    rule = _rule_or_404(db, current_user["firm_id"], rule_id)
+    assert_client_access(current_user, rule["client_id"])
+    fields = data.model_dump(exclude_none=True)
+    if not fields:
+        return api_response(True, rule)
+    row = (db.table("bank_matching_rules").update(fields)
+           .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
+    return api_response(True, (row.data or [{}])[0])
+
+
+@router.delete("/rules/{rule_id}")
+def delete_rule(
+    rule_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Remove a rule outright. A rule is configuration, not a financial record —
+    it has never written anything to the ledger, so there is nothing to preserve.
+    To keep one for later, deactivate it instead (PATCH is_active=false)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": rule_id, "deleted": True})
+    rule = _rule_or_404(db, current_user["firm_id"], rule_id)
+    assert_client_access(current_user, rule["client_id"])
+    (db.table("bank_matching_rules").delete()
+     .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
+    return api_response(True, {"id": rule_id, "deleted": True})

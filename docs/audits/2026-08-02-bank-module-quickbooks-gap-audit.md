@@ -228,17 +228,35 @@ Worth stating plainly, because the TODO below should not trade any of it away:
 Sizes are rough engineering bands: **S** ≈ 1–2 days, **M** ≈ 3–5 days, **L** ≈ 1–2 weeks,
 **XL** ≈ a month or more.
 
-### Tier 0 — Unlock what we already built (do first)
+### Tier 0 — Unlock what we already built (do first) — ✅ SHIPPED 2026-08-02
+
+All five items are implemented and merged. Additions beyond the original scope,
+found while doing the work:
+
+- The exact-amount gate existed **twice** — in `rank_suggestions` *and* in the
+  candidate SQL (`.eq("total_paise", amount)`), so relaxing the ranker alone
+  would have changed nothing. Both were widened.
+- Rules had no ordering at all, so "first matching rule wins" depended on
+  whatever order Postgres returned. Fetch is now ordered by `created_at`.
+- `suggested_category` on a rule was never validated against the controlled
+  vocabulary, so an invalid rule stored fine and failed only when the CA tried
+  to accept it. Validated at write time.
+- An ignored row that still carried a category or a link reappeared under
+  Categorized/Matched as live work. Ignored rows now show only in their own
+  view and in "all".
+- A short match is routed to the settlement modal (party, document and TDS
+  prefilled) rather than a plain Accept, which would have quietly under-settled
+  the invoice — the new ranking would otherwise have created a fresh footgun.
 
 | # | Item | Size | Why first |
 |---|---|---|---|
-| 0.1 | **Bank Rules screen** — list, create, edit, delete, activate/deactivate; plus `api.banking.rules` client methods | **M** | Turns a fully-built, fully-tested engine from dead code into the headline feature. Cheapest value on the whole list. |
-| 0.2 | **Honour `suggested_account_id` + `suggested_narration`** in `suggest_category()`; return a small rule-result object instead of a bare string | **S** | Two columns already exist and are read by nothing. Without this, rules can only suggest 1 of 11 coarse categories. |
-| 0.3 | **TDS field in the settlement modal**, and rename the entry point from *"Split across multiple invoices"* to something like *"Match with allocation / TDS"* | **S** | The most common Indian receipt pattern currently has no discoverable path. |
-| 0.4 | **Relax the exact-amount gate** — surface near-amount candidates as lower-confidence with an explicit `difference_paise` and a reason ("₹10,000 short — TDS?") | **S** | `matcher.py:70` currently hides the correct answer for every short-paid invoice. Keep the gate for *high* confidence; stop using it to filter. |
-| 0.5 | **Un-ignore endpoint + Excluded view** | **S** | An accidental Ignore is currently unrecoverable. |
+| ✅ 0.1 | **Bank Rules screen** — list, create, edit, delete, activate/deactivate; plus `api.banking.rules` client methods | **M** | Turns a fully-built, fully-tested engine from dead code into the headline feature. Cheapest value on the whole list. |
+| ✅ 0.2 | **Honour `suggested_account_id` + `suggested_narration`** in `suggest_category()`; return a small rule-result object instead of a bare string | **S** | Two columns already exist and are read by nothing. Without this, rules can only suggest 1 of 11 coarse categories. |
+| ✅ 0.3 | **TDS field in the settlement modal**, and rename the entry point from *"Split across multiple invoices"* to something like *"Match with allocation / TDS"* | **S** | The most common Indian receipt pattern currently has no discoverable path. |
+| ✅ 0.4 | **Relax the exact-amount gate** — surface near-amount candidates as lower-confidence with an explicit `difference_paise` and a reason ("₹10,000 short — TDS?") | **S** | `matcher.py:70` currently hides the correct answer for every short-paid invoice. Keep the gate for *high* confidence; stop using it to filter. |
+| ✅ 0.5 | **Un-ignore endpoint + Excluded view** | **S** | An accidental Ignore is currently unrecoverable. |
 
-**Tier 0 total ≈ 2 weeks and it closes most of the day-to-day gap.**
+**Tier 0 is done.** Next up is Tier 1 (see below), starting with the bank register.
 
 ### Tier 1 — The screens a bookkeeper lives in
 
@@ -325,8 +343,7 @@ several are cheap because the data is already in the narration.
 
 ## Recommended sequence
 
-1. **Tier 0 in full (~2 weeks).** Highest value per day of work by a wide margin, and it
-   is mostly finishing things rather than starting them.
+1. ~~**Tier 0 in full.**~~ ✅ Done 2026-08-02.
 2. **Then 2.1 + 2.2 (~2 days).** Auto-populating the opening balance removes a silent
    correctness risk, not just a convenience gap.
 3. **Then 6.2 — UPI/NEFT narration parsing (~M).** Best differentiated win available,
