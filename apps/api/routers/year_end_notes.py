@@ -282,7 +282,7 @@ def list_notes(
     from core.supabase_client import get_supabase
     db = get_supabase()
     rows = (
-        db.table("notes_to_accounts")
+        db.table("year_end_notes")
         .select("*")
         .eq("engagement_id", engagement_id)
         .eq("firm_id", current_user["firm_id"])
@@ -340,7 +340,10 @@ def generate_notes(
             "engagement_id": engagement_id,
             "firm_id":       current_user["firm_id"],
             "note_type":     note_type,
-            "note_number":   idx,
+            # `note_number` deliberately omitted: it belongs to the never-applied
+            # notes_to_accounts schema (migration 067). The table this actually
+            # writes to, year_end_notes, orders by sequence_no and has no
+            # note_number column — sending it makes PostgREST reject the insert.
             "sequence_no":   idx,
             "title":         content["title"],
             "content":       content["content"],
@@ -358,8 +361,8 @@ def generate_notes(
         return api_response(True, generated_notes)
 
     # Delete existing notes and regenerate
-    db.table("notes_to_accounts").delete().eq("engagement_id", engagement_id).execute()
-    result = db.table("notes_to_accounts").insert(generated_notes).execute()
+    db.table("year_end_notes").delete().eq("engagement_id", engagement_id).execute()
+    result = db.table("year_end_notes").insert(generated_notes).execute()
 
     log_event(
         current_user["firm_id"], "year_end_notes", engagement_id, "generate",
@@ -386,7 +389,7 @@ def get_note(
     from core.supabase_client import get_supabase
     db = get_supabase()
     row = (
-        db.table("notes_to_accounts")
+        db.table("year_end_notes")
         .select("*")
         .eq("id", note_id)
         .eq("engagement_id", engagement_id)
@@ -431,7 +434,7 @@ def update_note(
         raise HTTPException(status_code=403, detail="Engagement is locked")
 
     existing = (
-        db.table("notes_to_accounts")
+        db.table("year_end_notes")
         .select("*")
         .eq("id", note_id)
         .eq("engagement_id", engagement_id)
@@ -448,7 +451,7 @@ def update_note(
     updates["updated_at"] = now
 
     updated = (
-        db.table("notes_to_accounts")
+        db.table("year_end_notes")
         .update(updates)
         .eq("id", note_id)
         .execute()
@@ -483,7 +486,7 @@ def lock_note(
     db = get_supabase()
 
     existing = (
-        db.table("notes_to_accounts")
+        db.table("year_end_notes")
         .select("*")
         .eq("id", note_id)
         .eq("engagement_id", engagement_id)
@@ -498,7 +501,7 @@ def lock_note(
         raise HTTPException(status_code=409, detail="Note is already locked")
 
     updated = (
-        db.table("notes_to_accounts")
+        db.table("year_end_notes")
         .update({
             "is_locked":  True,
             "locked_by":  current_user.get("auth_user_id"),
