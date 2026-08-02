@@ -417,6 +417,94 @@ class BankReconciliationService:
             pass
         return self.get_session(db, firm_id, recon_id)
 
+    # ── live tie-out preview (Tier 2.4) ─────────────────────────────────────────
+    def preview(self, db, firm_id, recon_id, transaction_ids: list[str]) -> dict:
+        """The tie-out AS IF `transaction_ids` were also reconciled.
+
+        Ticking boxes and only learning the effect after pressing Reconcile makes
+        the last few items of a period a guessing game — you reconcile, look at
+        the difference, unreconcile, try others. This answers the question before
+        the commit.
+
+        Computed by the SAME `_summary` -> `domain.banking.reconciliation.tie_out`
+        the real thing uses, so the preview can never disagree with the result.
+        Deliberately NOT reimplemented in the browser: a second copy of the
+        tie-out formula is exactly the drift this codebase has paid for before
+        (see the frontend/backend GST parity work). Mirrors the existing
+        posting-preview precedent — preview on the server, confirm explicitly.
+
+        Read-only. Nothing is written; nothing is reconciled.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        buckets = self._classify(session, txns)
+
+        candidates = set(transaction_ids or [])
+        eligible = [t for t in buckets["unreconciled"] if t["id"] in candidates]
+        projected = buckets["reconciled"] + eligible
+
+        current = self._summary(session, buckets["reconciled"])
+        after = self._summary(session, projected)
+        return {
+            "reconciliation_id": recon_id,
+            "selected_count": len(eligible),
+            # Ids that were asked for but cannot be reconciled here (already
+            # reconciled, out of period, or claimed by another session) — better
+            # to say so than to silently drop them from the projection.
+            "ineligible_ids": sorted(candidates - {t["id"] for t in eligible}),
+            "current": current,
+            "projected": after,
+            "would_tie_out": after["reconciles"],
+        }
+
+    # ── prior certifications (Tier 2.7) ─────────────────────────────────────────
+    def history(self, db, firm_id, recon_id) -> dict:
+        """Every certification this session has ever carried, newest first.
+
+        A reconciliation can be completed, reopened and completed again (Tier
+        2.5). Each completion froze a snapshot; `snapshot` holds only the CURRENT
+        one because completing overwrites it, and every superseded one is kept in
+        `reopen_history`. This exposes them, so "what did we sign off in April,
+        before the correction?" is answerable rather than merely promised.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        raw = session.get("reopen_history") or []
+        if isinstance(raw, str):
+            import json
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = []
+
+        superseded = []
+        for entry in raw:
+            snap = entry.get("snapshot") or {}
+            summary = snap.get("summary") if isinstance(snap, dict) else None
+            superseded.append({
+                "completed_at": entry.get("completed_at"),
+                "completed_by": entry.get("completed_by"),
+                "superseded_at": entry.get("reopened_at"),
+                "superseded_by": entry.get("reopened_by"),
+                "reason": entry.get("reason"),
+                "summary": summary,
+                "ties_out": bool((summary or {}).get("reconciles")),
+            })
+        superseded.reverse()   # newest first
+
+        current_snap = self._frozen_snapshot(session)
+        return {
+            "reconciliation_id": recon_id,
+            "status": session.get("status"),
+            "current": {
+                "completed_at": session.get("completed_at"),
+                "completed_by": session.get("completed_by"),
+                "summary": (current_snap or {}).get("summary"),
+                "ties_out": bool(((current_snap or {}).get("summary") or {}).get("reconciles")),
+            } if current_snap else None,
+            "superseded": superseded,
+            "reopen_count": int(session.get("reopen_count") or 0),
+        }
+
     # ── reopen a completed reconciliation (Tier 2.5) ────────────────────────────
     _MIN_REOPEN_REASON = 10
 

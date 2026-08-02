@@ -1653,6 +1653,27 @@ interface OpeningSuggestion {
   mismatch_paise: number;
   matches: boolean;
 }
+interface ReconSummary {
+  opening_balance_paise: number; deposits_paise: number; withdrawals_paise: number;
+  adjustments_paise: number; reconciled_book_balance_paise: number;
+  statement_closing_balance_paise: number; difference_paise: number; reconciles: boolean;
+}
+/** Tie-out as if the selected transactions were also reconciled (Tier 2.4). */
+interface ReconPreview {
+  reconciliation_id: string; selected_count: number; ineligible_ids: string[];
+  current: ReconSummary; projected: ReconSummary; would_tie_out: boolean;
+}
+/** Prior certifications of one session (Tier 2.7). */
+interface ReconHistory {
+  reconciliation_id: string; status: string; reopen_count: number;
+  current: { completed_at: string | null; completed_by: string | null;
+             summary: ReconSummary | null; ties_out: boolean } | null;
+  superseded: {
+    completed_at: string | null; completed_by: string | null;
+    superseded_at: string | null; superseded_by: string | null;
+    reason: string | null; summary: ReconSummary | null; ties_out: boolean;
+  }[];
+}
 interface ReconLine {
   id: string; transaction_date: string; description: string; reference_no: string | null;
   debit_paise: number; credit_paise: number; posted_journal_id: string | null;
@@ -1688,6 +1709,15 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   const [openingLoading, setOpeningLoading] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
+  const [lineSearch, setLineSearch] = useState("");
+  const [lineSort, setLineSort] = useState<"date" | "-date" | "amount" | "-amount">("date");
+  // The tie-out AS IF the current selection were reconciled. Computed on the
+  // server by the same tie-out the real reconcile uses — a second copy of that
+  // formula in the browser is exactly the drift this codebase has paid for
+  // before, so the round trip is the point rather than a compromise.
+  const [projection, setProjection] = useState<ReconPreview | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<ReconHistory | null>(null);
   const [adj, setAdj] = useState("");
 
   const loadSessions = useCallback(async () => {
@@ -1775,6 +1805,41 @@ function BankReconciliation({ clientId }: { clientId: string }) {
     finally { setBusy(false); }
   }
 
+  // Debounced so ticking through a list is one request at the end of a burst,
+  // not one per checkbox.
+  // Derived here rather than from the `completed` / `selectedIds` consts below,
+  // which are declared after the hooks.
+  const selectionKey = Object.keys(sel).filter((k) => sel[k]).sort().join(",");
+  const isCompleted = report?.reconciliation.status === "completed";
+  useEffect(() => {
+    if (!selectedId || isCompleted || view !== "unreconciled" || selectionKey === "") {
+      setProjection(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = (await api.banking.reconciliations.preview(selectedId, selectionKey.split(","))) as
+          { success: boolean; data: ReconPreview };
+        if (!cancelled && res.success) setProjection(res.data);
+      } catch {
+        if (!cancelled) setProjection(null);   // non-blocking: the indicator just hides
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [selectedId, isCompleted, view, selectionKey]);
+
+  const loadHistory = useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      const res = (await api.banking.reconciliations.history(selectedId)) as
+        { success: boolean; data: ReconHistory };
+      if (res.success) setHistory(res.data);
+    } catch { setHistory(null); }
+  }, [selectedId]);
+  useEffect(() => { if (showHistory) loadHistory(); }, [showHistory, loadHistory]);
+  useEffect(() => { setShowHistory(false); setHistory(null); setLineSearch(""); }, [selectedId]);
+
   async function doReopen() {
     setBusy(true); setError(null);
     try {
@@ -1805,8 +1870,31 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   }
 
   const completed = report?.reconciliation.status === "completed";
-  const lines = report ? report[view] : [];
   const selectedIds = Object.keys(sel).filter((k) => sel[k]);
+
+  // Filter / sort over the loaded lines. Pure presentation — matching text and
+  // ordering rows is not accounting, so it stays in the browser. Every figure
+  // shown still comes from the backend.
+  const lines = (() => {
+    const rows = report ? [...report[view]] : [];
+    const q = lineSearch.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((t) =>
+          (t.description || "").toLowerCase().includes(q) ||
+          (t.reference_no || "").toLowerCase().includes(q) ||
+          String(t.transaction_date).includes(q))
+      : rows;
+    const dir = lineSort.startsWith("-") ? -1 : 1;
+    const key = lineSort.replace(/^-/, "");
+    return filtered.sort((a, b) => {
+      if (key === "amount") {
+        const av = (a.credit_paise || 0) - (a.debit_paise || 0);
+        const bv = (b.credit_paise || 0) - (b.debit_paise || 0);
+        return (av - bv) * dir;
+      }
+      return String(a.transaction_date).localeCompare(String(b.transaction_date)) * dir;
+    });
+  })();
   const statusBadge = (s: string) => s === "completed" ? "bg-green-100 text-green-700" : s === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-[#F1F5F9] text-[#64748B]";
 
   return (
@@ -1918,7 +2006,13 @@ function BankReconciliation({ clientId }: { clientId: string }) {
               </div>
             )}
             <div className="flex items-center gap-2 pt-1 border-t border-[#F8FAFC]">
-              <button onClick={() => api.banking.reconciliations.exportCsv(selectedId)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={12} /> Export CSV</button>
+              <button onClick={() => api.banking.reconciliations.exportCsv(selectedId)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={12} /> CSV</button>
+              {/* The document a CA actually hands to a client or an auditor.
+                  For a completed session it renders the FROZEN snapshot. */}
+              <button onClick={() => api.banking.reconciliations.exportPdf(selectedId)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><FileText size={12} /> PDF</button>
+              <button onClick={() => setShowHistory((v) => !v)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                {showHistory ? "Hide history" : "History"}
+              </button>
               {!completed && (
                 <button onClick={() => act(() => api.banking.reconciliations.complete(selectedId))} disabled={busy || !report.ties_out} title={report.ties_out ? "" : "Reconcile until the statement ties out"} className="text-xs px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed ml-auto">Complete Reconciliation</button>
               )}
@@ -1984,18 +2078,113 @@ function BankReconciliation({ clientId }: { clientId: string }) {
             </div>
           )}
 
-          {/* Item buckets */}
-          <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
-            {([["unreconciled", "Unreconciled", report.counts.unreconciled], ["reconciled", "Reconciled", report.counts.reconciled], ["exceptions", "Exceptions", report.counts.exceptions]] as const).map(([id, label, n]) => (
-              <button key={id} onClick={() => { setView(id); setSel({}); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>{label} ({n})</button>
-            ))}
+          {/* Prior certifications (Tier 2.7). A session can be completed,
+              reopened and completed again; only the newest snapshot lives on the
+              session, the rest are preserved in reopen_history. */}
+          {showHistory && (
+            <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2">
+              <p className="text-xs font-semibold text-[#334155]">Certification history</p>
+              {!history ? (
+                <p className="text-[11px] text-[#94A3B8]">Loading…</p>
+              ) : !history.current && history.superseded.length === 0 ? (
+                <p className="text-[11px] text-[#94A3B8]">
+                  This reconciliation has never been completed, so there is nothing certified yet.
+                </p>
+              ) : (
+                <div className="divide-y divide-[#F8FAFC]">
+                  {history.current && (
+                    <div className="py-2 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-[#1E293B]">
+                          Current certification
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">in force</span>
+                        </p>
+                        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                          Completed {String(history.current.completed_at ?? "").slice(0, 10)}
+                        </p>
+                      </div>
+                      <span className="text-[11px] font-mono shrink-0">
+                        {history.current.summary ? fmt(history.current.summary.statement_closing_balance_paise) : "—"}
+                      </span>
+                    </div>
+                  )}
+                  {history.superseded.map((h, i) => (
+                    <div key={i} className="py-2 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-[#64748B]">
+                          Superseded certification
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8]">replaced</span>
+                        </p>
+                        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                          Completed {String(h.completed_at ?? "").slice(0, 10)} · reopened{" "}
+                          {String(h.superseded_at ?? "").slice(0, 10)}
+                          {h.reason ? ` — “${h.reason}”` : ""}
+                        </p>
+                      </div>
+                      <span className="text-[11px] font-mono text-[#64748B] shrink-0">
+                        {h.summary ? fmt(h.summary.statement_closing_balance_paise) : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Item buckets + find/sort. A long statement is unusable without
+              them — hunting one ₹4,500 line in 300 rows is the actual work. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
+              {([["unreconciled", "Unreconciled", report.counts.unreconciled], ["reconciled", "Reconciled", report.counts.reconciled], ["exceptions", "Exceptions", report.counts.exceptions]] as const).map(([id, label, n]) => (
+                <button key={id} onClick={() => { setView(id); setSel({}); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>{label} ({n})</button>
+              ))}
+            </div>
+            <input
+              value={lineSearch} onChange={(e) => setLineSearch(e.target.value)}
+              placeholder="Find description, reference or date…"
+              aria-label="Filter reconciliation lines"
+              className="flex-1 min-w-[180px] px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            <select value={lineSort} onChange={(e) => setLineSort(e.target.value as typeof lineSort)}
+              aria-label="Sort reconciliation lines"
+              className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="date">Date ↑</option>
+              <option value="-date">Date ↓</option>
+              <option value="amount">Amount ↑</option>
+              <option value="-amount">Amount ↓</option>
+            </select>
           </div>
+          {lineSearch.trim() && (
+            <p className="text-[10px] text-[#94A3B8]">
+              Showing {lines.length} of {report[view].length} — filtering hides rows, it does not
+              exclude them from the tie-out.
+            </p>
+          )}
 
           {!completed && view !== "exceptions" && selectedIds.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {view === "unreconciled"
                 ? <button onClick={() => act(() => api.banking.reconciliations.reconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Reconcile {selectedIds.length} selected</button>
                 : <button onClick={() => act(() => api.banking.reconciliations.unreconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">Unreconcile {selectedIds.length} selected</button>}
+
+              {/* Live difference: what the tie-out becomes if you commit this
+                  selection. Answers "am I nearly there?" before the commit,
+                  instead of reconcile → look → unreconcile → try again. */}
+              {projection && (
+                <span className={`text-[11px] px-2.5 py-1 rounded-lg border font-mono ${
+                  projection.would_tie_out
+                    ? "bg-green-50 border-green-200 text-green-800"
+                    : "bg-[#F8FAFC] border-[#E2E8F0] text-[#475569]"}`}>
+                  {projection.would_tie_out
+                    ? "Ties out if reconciled ✓"
+                    : <>Difference would be {fmt(Math.abs(projection.projected.difference_paise))}
+                        <span className="text-[#94A3B8]"> (now {fmt(Math.abs(projection.current.difference_paise))})</span></>}
+                </span>
+              )}
+              {projection && projection.ineligible_ids.length > 0 && (
+                <span className="text-[10px] text-amber-700">
+                  {projection.ineligible_ids.length} selected line(s) can&apos;t be reconciled here.
+                </span>
+              )}
             </div>
           )}
 

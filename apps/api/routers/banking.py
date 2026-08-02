@@ -667,6 +667,63 @@ def complete_reconciliation(
         db, current_user["firm_id"], recon_id, actor_id=current_user.get("auth_user_id")))
 
 
+@router.post("/reconciliations/{recon_id}/preview")
+def preview_reconciliation(
+    recon_id: str,
+    data: ReconcileItemsIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The tie-out as if these transactions were also reconciled (B.4 / 2.4).
+
+    READ-ONLY — nothing is reconciled. Computed by the same tie-out the real
+    reconcile uses, so the preview can never disagree with the result.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciliation_id": recon_id, "selected_count": 0})
+    return api_response(True, bank_reconciliation_service.preview(
+        db, current_user["firm_id"], recon_id, data.transaction_ids))
+
+
+@router.get("/reconciliations/{recon_id}/history")
+def reconciliation_history(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Every certification this session has carried, newest first (B.4 / 2.7).
+
+    A session completed, reopened and completed again froze a snapshot each
+    time; only the current one lives on `snapshot`, the rest in reopen_history.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciliation_id": recon_id,
+                                   "current": None, "superseded": [], "reopen_count": 0})
+    return api_response(True, bank_reconciliation_service.history(
+        db, current_user["firm_id"], recon_id))
+
+
+@router.get("/reconciliations/{recon_id}/report.pdf")
+def reconciliation_report_pdf(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The reconciliation statement as a PDF (B.4 / 2.6).
+
+    For a COMPLETED session this serves the FROZEN snapshot — the figures the CA
+    certified. A PDF that recomputed live would be a different document from the
+    one that was signed off.
+    """
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable.")
+    from services.bank_reconciliation_pdf_service import get_reconciliation_pdf
+    pdf_bytes, filename = get_reconciliation_pdf(db, current_user["firm_id"], recon_id)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 @router.post("/reconciliations/{recon_id}/reopen")
 def reopen_reconciliation(
     recon_id: str,
