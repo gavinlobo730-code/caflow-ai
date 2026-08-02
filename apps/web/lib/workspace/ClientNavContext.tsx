@@ -15,6 +15,7 @@ export type ClientSection =
   | "accounting"
   | "sales"
   | "purchases"
+  | "bank"
   | "inventory"
   | "compliance"
   | "payroll"
@@ -37,13 +38,16 @@ export interface ClientSectionConfig {
   href: (clientId: string) => string;
 }
 
-// "reports" is intentionally omitted for Closed Beta (Beta-readiness Part
-// 1): app/clients/[id]/reports/page.tsx is a static "Coming in Phase 1"
-// placeholder with no data behind it — every client saw a permanent dead
-// nav link. The page itself is untouched (reachable by direct URL, not
-// deleted) so it can be re-added here once it has real reports; the
-// firm-wide /reports/ page is a separate, fully working feature and is
-// unaffected.
+// "reports" is omitted, and its route no longer exists. It was a static
+// "Coming in Phase 1" placeholder with no data behind it, already pulled from
+// this list for Closed Beta (Beta-readiness Part 1) because every client saw a
+// permanent dead nav link. The page was kept around for a future revival, but
+// it was costing 2 of Cloudflare Pages' 100 dynamic _redirects rules to serve a
+// card nobody could navigate to — and that budget is the binding constraint on
+// adding real routes (see scripts/generate-redirects.js). Deleted when the Bank
+// section needed a slot. Per-client reporting lands in the Accounting Reports
+// hub, not here; the firm-wide /reports/ page is a separate, fully working
+// feature and is unaffected.
 //
 // "products-services" is likewise omitted: Products & Services management
 // lives entirely inside ServiceCataloguePicker's "+ Add Product/Service"
@@ -54,6 +58,10 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
   { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
+  // Banking is its own section rather than an Accounting tab: it is a
+  // sequential pipeline (import -> categorize -> post -> reconcile) done in
+  // order, where the financial statements next door are jumped to directly.
+  { id: "bank",         label: "Bank",          href: (id) => `/clients/${id}/bank/` },
   { id: "inventory",    label: "Inventory",     href: (id) => `/clients/${id}/inventory/` },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
   { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
