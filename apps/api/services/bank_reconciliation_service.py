@@ -123,11 +123,97 @@ class BankReconciliationService:
             "created_at": session.get("created_at"),
         }
 
+    # ── opening balance: suggestion + mismatch detection ───────────────────────
+    def opening_suggestion(self, db, firm_id, client_id, bank_account_id) -> dict:
+        """Where a new reconciliation for this account should start, and whether
+        the books still agree with it.
+
+        The opening balance used to be typed in by hand every time, with nothing
+        to check it against. A typo produced a reconciliation that tied out
+        perfectly to the wrong number — the arithmetic is exact either way, so
+        nothing downstream could notice. The figure is not a matter of opinion:
+        it is the closing balance the last completed reconciliation tied out to,
+        and it is already stored in that session's frozen snapshot.
+
+        Returns the suggestion, its provenance, and the
+        `domain.banking.reconciliation.opening_balance_check` comparison against
+        the books' own record of everything reconciled so far.
+        """
+        ba = self._validate_bank_account(db, firm_id, client_id, bank_account_id)
+        account_opening = int(ba.get("opening_balance_paise") or 0)
+
+        sessions = (db.table("bank_reconciliations").select("*")
+                    .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id)
+                    .eq("status", "completed").execute().data or [])
+        # Chronological, so "the last one" is unambiguous and the accumulation
+        # below runs in period order.
+        sessions.sort(key=lambda s: (_d(s.get("period_end")), str(s.get("completed_at") or "")))
+
+        txns = self._posted_account_txns(db, firm_id, bank_account_id)
+        by_session: dict = {}
+        for t in txns:
+            rid = t.get("reconciliation_id")
+            if rid:
+                by_session.setdefault(rid, []).append(t)
+
+        movements = []
+        for s in sessions:
+            deposits, withdrawals = recon.split_amounts(by_session.get(s["id"], []))
+            movements.append({
+                "deposits_paise": deposits,
+                "withdrawals_paise": withdrawals,
+                "adjustments_paise": int(s.get("adjustments_paise") or 0),
+            })
+
+        book_balance = recon.reconciled_book_balance(
+            account_opening_paise=account_opening, completed_sessions=movements)
+
+        previous = sessions[-1] if sessions else None
+        if previous is not None:
+            # Prefer the frozen snapshot — it is the figure the session actually
+            # tied out to, and cannot drift if the row is later touched.
+            snap = self._frozen_snapshot(previous) or {}
+            snap_summary = (snap.get("summary") or {}) if isinstance(snap, dict) else {}
+            suggested = int(
+                snap_summary.get("statement_closing_balance_paise")
+                if snap_summary.get("statement_closing_balance_paise") is not None
+                else (previous.get("closing_balance_paise") or 0)
+            )
+            source = "previous_reconciliation"
+            prev_view = {
+                "reconciliation_id": previous["id"],
+                "period_end": _d(previous.get("period_end")),
+                "closing_balance_paise": suggested,
+                "completed_at": previous.get("completed_at"),
+            }
+        else:
+            suggested = account_opening
+            source = "bank_account_opening"
+            prev_view = None
+
+        check = recon.opening_balance_check(
+            suggested_opening_paise=suggested,
+            reconciled_book_balance_paise=book_balance,
+        )
+        return {
+            "bank_account_id": bank_account_id,
+            "source": source,
+            "previous_reconciliation": prev_view,
+            "completed_count": len(sessions),
+            **check,
+        }
+
     # ── B.4.1 session lifecycle ─────────────────────────────────────────────────
     def create_session(self, db, firm_id, client_id, bank_account_id,
                         statement_start_date, statement_end_date,
-                        opening_balance_paise=0, closing_balance_paise=0, actor_id=None) -> dict:
+                        opening_balance_paise=None, closing_balance_paise=0, actor_id=None) -> dict:
         ba = self._validate_bank_account(db, firm_id, client_id, bank_account_id)
+        # Opening balance defaults to where the last completed reconciliation
+        # left off rather than to zero. An omitted opening used to silently mean
+        # "zero", which is right only for a brand-new account.
+        suggestion = self.opening_suggestion(db, firm_id, client_id, bank_account_id)
+        if opening_balance_paise is None:
+            opening_balance_paise = suggestion["suggested_opening_paise"]
         row = (db.table("bank_reconciliations").insert({
             "firm_id": firm_id, "client_id": client_id, "bank_account_id": bank_account_id,
             "account_no": ba.get("account_no"),
@@ -143,7 +229,16 @@ class BankReconciliationService:
                                  entity_id=row.get("id"), actor_id=actor_id)
         except Exception:  # pragma: no cover - timeline must never block
             pass
-        return self._session_view(row)
+        view = self._session_view(row)
+        # Carried on the create response so the CA is told at the moment they
+        # open a period — not after they have ticked fifty lines against a
+        # foundation that has moved. Warning only; opening is never blocked.
+        view["opening_balance_check"] = {
+            **suggestion,
+            "typed_opening_paise": int(opening_balance_paise),
+            "used_suggestion": int(opening_balance_paise) == suggestion["suggested_opening_paise"],
+        }
+        return view
 
     def list_sessions(self, db, firm_id, client_id: Optional[str],
                       bank_account_id: Optional[str] = None) -> list[dict]:

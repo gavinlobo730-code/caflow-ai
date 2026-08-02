@@ -271,12 +271,12 @@ found while doing the work:
 | 1.7 | **Batch accept / batch exclude** alongside the existing bulk categorize | **S** | |
 | 1.8 | **Attachments on bank transactions** | **S** | Storage + RLS already exist for documents. |
 
-### Tier 2 — Reconciliation, to accountant standard
+### Tier 2 — Reconciliation, to accountant standard  ·  2.1 + 2.2 shipped 2026-08-02
 
 | # | Item | Size | Notes |
 |---|---|---|---|
-| 2.1 | **Auto-populate opening balance** from the previous completed reconciliation's frozen snapshot | **S** | Snapshot already stored (`bank_reconciliation_service.py:301`) — just read it. Removes a whole class of silent error. |
-| 2.2 | **Beginning-balance mismatch detection** — compare typed opening against derived book balance, warn before starting | **S** | |
+| ✅ 2.1 | **Auto-populate opening balance** from the previous completed reconciliation's frozen snapshot | **S** | Snapshot already stored (`bank_reconciliation_service.py:301`) — just read it. Removes a whole class of silent error. |
+| ✅ 2.2 | **Beginning-balance mismatch detection** — compare typed opening against derived book balance, warn before starting | **S** | |
 | 2.3 | **Reconciliation Discrepancy Report** — reconciled lines whose journal was later reversed or whose amount no longer agrees with the frozen snapshot | **M** | Fits naturally as a new check inside `reconciliation_service.py` / Verify Books rather than a new subsystem. |
 | 2.4 | **Live difference indicator** + filter/sort/search in the reconcile screen | **S** | |
 | 2.5 | **Undo completed reconciliation** — permission-gated, reason required, fully audit-logged, snapshot retained | **M** | Deliberate escape hatch. Must not weaken `_require_mutable` for anyone else. |
@@ -344,8 +344,7 @@ several are cheap because the data is already in the narration.
 ## Recommended sequence
 
 1. ~~**Tier 0 in full.**~~ ✅ Done 2026-08-02.
-2. **Then 2.1 + 2.2 (~2 days).** Auto-populating the opening balance removes a silent
-   correctness risk, not just a convenience gap.
+2. ~~**Then 2.1 + 2.2.**~~ ✅ Done 2026-08-02.
 3. **Then 6.2 — UPI/NEFT narration parsing (~M).** Best differentiated win available,
    and it lands in a module we already control.
 4. **Then Tier 1**, starting with the bank register (1.1) and split-across-accounts (1.2).

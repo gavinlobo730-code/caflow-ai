@@ -1631,6 +1631,24 @@ interface ReconSession {
   opening_balance_paise: number; closing_balance_paise: number; adjustments_paise: number;
   status: "open" | "in_progress" | "completed"; completed_at: string | null;
 }
+/** Beginning-balance suggestion + mismatch check (backend computes all of it). */
+interface OpeningSuggestion {
+  bank_account_id: string;
+  /** Where it came from: the last completed reconciliation, or — if there has
+   *  never been one — the bank account's own opening balance. */
+  source: "previous_reconciliation" | "bank_account_opening";
+  previous_reconciliation: {
+    reconciliation_id: string; period_end: string;
+    closing_balance_paise: number; completed_at: string | null;
+  } | null;
+  completed_count: number;
+  suggested_opening_paise: number;
+  /** The books' own record of everything reconciled so far. Equal to the
+   *  suggestion unless something changed after a session was completed. */
+  reconciled_book_balance_paise: number;
+  mismatch_paise: number;
+  matches: boolean;
+}
 interface ReconLine {
   id: string; transaction_date: string; description: string; reference_no: string | null;
   debit_paise: number; credit_paise: number; posted_journal_id: string | null;
@@ -1657,6 +1675,13 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
   const [form, setForm] = useState({ bank_account_id: "", start: "", end: "", opening: "", closing: "" });
+  // Where this account's next reconciliation should start, fetched as soon as an
+  // account is picked. The opening balance is not a matter of opinion — it is
+  // the closing balance the last completed reconciliation tied out to, and it is
+  // already stored in that session's frozen snapshot. Typing it by hand meant a
+  // typo produced a reconciliation that tied out perfectly to the wrong number.
+  const [opening, setOpening] = useState<OpeningSuggestion | null>(null);
+  const [openingLoading, setOpeningLoading] = useState(false);
   const [adj, setAdj] = useState("");
 
   const loadSessions = useCallback(async () => {
@@ -1701,6 +1726,32 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   useEffect(() => { if (selectedId) loadReport(selectedId); else setReport(null); }, [selectedId, loadReport]);
 
   async function refresh() { await loadReport(selectedId); await loadSessions(); }
+
+  // Fetch the suggestion when the account changes, and prefill the field with
+  // it. The CA can still overwrite it — this is a default, not a lock.
+  useEffect(() => {
+    if (!showNew || !form.bank_account_id || !clientId || clientId === "_placeholder") {
+      setOpening(null);
+      return;
+    }
+    let cancelled = false;
+    setOpeningLoading(true);
+    (async () => {
+      try {
+        const res = (await api.banking.reconciliations.openingSuggestion({
+          client_id: clientId, bank_account_id: form.bank_account_id,
+        })) as { success: boolean; data: OpeningSuggestion };
+        if (cancelled || !res.success) return;
+        setOpening(res.data);
+        setForm((f) => ({ ...f, opening: (res.data.suggested_opening_paise / 100).toFixed(2) }));
+      } catch {
+        if (!cancelled) setOpening(null);   // non-blocking: the field stays manual
+      } finally {
+        if (!cancelled) setOpeningLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showNew, form.bank_account_id, clientId]);
 
   async function createSession() {
     setError(null);
@@ -1779,6 +1830,40 @@ function BankReconciliation({ clientId }: { clientId: string }) {
             <label className="block"><span className="text-[11px] font-medium text-[#475569]">Closing balance (₹)</span>
               <input type="number" step="0.01" value={form.closing} onChange={(e) => setForm((f) => ({ ...f, closing: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
           </div>
+
+          {/* Where the opening balance came from, and whether the books agree. */}
+          {openingLoading && <p className="text-[10px] text-[#94A3B8]">Looking up the previous reconciliation…</p>}
+          {opening && !openingLoading && (
+            <>
+              <p className="text-[10px] text-[#94A3B8]">
+                {opening.source === "previous_reconciliation" && opening.previous_reconciliation ? (
+                  <>Carried forward from the reconciliation completed to {opening.previous_reconciliation.period_end} — closing {fmt(opening.suggested_opening_paise)}.</>
+                ) : (
+                  <>First reconciliation for this account — starting from its opening balance of {fmt(opening.suggested_opening_paise)}.</>
+                )}
+              </p>
+              {!opening.matches && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-amber-800">
+                    Beginning balance doesn&apos;t match the books
+                  </p>
+                  <p className="text-[10px] text-amber-700 mt-1">
+                    The last completed reconciliation closed at {fmt(opening.suggested_opening_paise)}, but the
+                    books&apos; own record of everything reconciled so far comes to{" "}
+                    {fmt(opening.reconciled_book_balance_paise)} — a difference of{" "}
+                    <strong>{fmt(Math.abs(opening.mismatch_paise))}</strong>. Something changed after that
+                    reconciliation was completed: a transaction un-reconciled, an adjustment altered, or a
+                    posted journal reversed.
+                  </p>
+                  <p className="text-[10px] text-amber-700 mt-1">
+                    You can still open this period — but the difference will follow you into it, so it is
+                    worth finding first.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
           <button onClick={createSession} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Open Reconciliation</button>
         </div>
       )}

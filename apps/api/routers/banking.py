@@ -552,6 +552,34 @@ def list_reconciliations(
     return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
+# NOTE: must be declared BEFORE /reconciliations/{recon_id} — FastAPI matches in
+# declaration order, and the parameterised route would otherwise swallow this
+# path and try to look up a session called "opening-suggestion".
+@router.get("/reconciliations/opening-suggestion")
+def reconciliation_opening_suggestion(
+    client_id: str = Query(...),
+    bank_account_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Where a new reconciliation for this account should start (B.4.1).
+
+    Returns the closing balance the last completed reconciliation tied out to,
+    plus whether the books still agree with it — the beginning-balance mismatch
+    check. Read-only; opens nothing.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "bank_account_id": bank_account_id, "source": "bank_account_opening",
+            "previous_reconciliation": None, "completed_count": 0,
+            "suggested_opening_paise": 0, "reconciled_book_balance_paise": 0,
+            "mismatch_paise": 0, "matches": True,
+        })
+    return api_response(True, bank_reconciliation_service.opening_suggestion(
+        db, current_user["firm_id"], client_id, bank_account_id))
+
+
 @router.get("/reconciliations/{recon_id}")
 def get_reconciliation(
     recon_id: str,

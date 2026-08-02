@@ -305,6 +305,10 @@ export const api = {
     reconciliations: {
       list: (params?: Record<string, string>) => request(`/api/banking/reconciliations${params ? "?" + new URLSearchParams(params) : ""}`),
       create: (data: { client_id: string; bank_account_id: string; statement_start_date: string; statement_end_date: string; opening_balance_paise: number; closing_balance_paise: number }) => request("/api/banking/reconciliations", { method: "POST", body: JSON.stringify(data) }),
+      /** Where a new reconciliation should start, plus the beginning-balance
+       *  mismatch check. Read-only — opens nothing. */
+      openingSuggestion: (params: { client_id: string; bank_account_id: string }) =>
+        request(`/api/banking/reconciliations/opening-suggestion?${new URLSearchParams(params)}`),
       get: (id: string) => request(`/api/banking/reconciliations/${id}`),
       update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number; adjustments_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
       report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),

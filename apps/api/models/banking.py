@@ -191,7 +191,11 @@ class ReconciliationCreateIn(BaseModel):
     bank_account_id: str
     statement_start_date: str
     statement_end_date: str
-    opening_balance_paise: int = 0
+    # None (omitted) means "carry forward" — the service fills it from the last
+    # completed reconciliation's closing balance. It used to default to 0, which
+    # is only correct for a brand-new account and silently wrong for every other
+    # period. An explicit 0 is still honoured.
+    opening_balance_paise: Optional[int] = None
     closing_balance_paise: int = 0
 
     @model_validator(mode="after")
