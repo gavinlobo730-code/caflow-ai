@@ -323,6 +323,16 @@ export const api = {
       q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
       desc?: string; limit?: string; offset?: string;
     }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Tier 1.2 — allocate ONE bank line across several GL accounts. The splits
+     *  must sum exactly to what the bank moved; the server refuses anything else
+     *  (there is no rounding plug). PUT with an empty list clears the split. */
+    splits: {
+      get: (txnId: string) => request(`/api/banking/transactions/${txnId}/splits`),
+      replace: (txnId: string, splits: { account_id: string; amount_paise: number; narration?: string | null }[]) =>
+        request(`/api/banking/transactions/${txnId}/splits`, {
+          method: "PUT", body: JSON.stringify({ splits }),
+        }),
+    },
     // B.3 — posting engine (explicit, human-initiated; never auto-posts)
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
     pending: (params?: Record<string, string>) => request(`/api/banking/pending${params ? "?" + new URLSearchParams(params) : ""}`),

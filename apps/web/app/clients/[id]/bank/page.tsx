@@ -784,6 +784,11 @@ const EXPLICIT_COUNTER_CATEGORIES = new Set([
   "Expense", "Salary", "Loan", "Capital", "Interest", "Sales Receipt", "Other",
 ]);
 const TRANSFER_CATEGORY = "Transfer";
+// Categories that settle a business document when matched (posting_map.
+// SETTLES_SALES_INVOICE). Such a transaction pays that document in full, so it
+// cannot also be split across accounts — the server refuses it, and the drawer
+// should not offer it.
+const SETTLING_CATEGORIES = new Set(["Customer Payment", "Sales Receipt"]);
 
 interface ReadyTxn {
   id: string; transaction_date: string; description: string; reference_no: string | null;
@@ -1041,17 +1046,124 @@ function PostingReviewDrawer({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
+  // Tier 1.2 — split state. `splitRows` holds rupee STRINGS while editing (a
+  // half-typed "40." is not a number); paise conversion happens once, at the
+  // edge, and every comparison below is on integer paise.
+  const [splitRows, setSplitRows] = useState<{ account_id: string; amount: string }[]>([]);
+  const [isSplit, setIsSplit] = useState(false);
+  const [splitSaved, setSplitSaved] = useState(false);
+  const [savingSplit, setSavingSplit] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
+
   const category = txn.category ?? "";
   const needsCounter = EXPLICIT_COUNTER_CATEGORIES.has(category);
   const isTransfer = category === TRANSFER_CATEGORY;
   const bankAccounts = accounts.filter(isBankish);
+
+  const txnAmountPaise = txn.credit_paise > 0 ? txn.credit_paise : txn.debit_paise;
+  // A transfer moves money between two of the client's own accounts, and a
+  // matched settling transaction settles that document in full — the server
+  // refuses a split on either, so don't offer one.
+  const settlesADocument = !!txn.matched_entity_id
+    && ((SETTLING_CATEGORIES.has(category) && txn.matched_entity_type === "sales_invoice")
+      || (category === "Vendor Payment" && txn.matched_entity_type === "purchase_bill"));
+  const canSplit = !isTransfer && !settlesADocument;
+  const allocatedPaise = splitRows.reduce(
+    (sum, r) => sum + rsToP(parseFloat(r.amount || "0") || 0), 0);
+  const unallocatedPaise = txnAmountPaise - allocatedPaise;
+
+  // Load any split already saved for this transaction.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = (await api.banking.splits.get(txn.id)) as {
+          success: boolean; data: { splits: { account_id: string; amount_paise: number }[] };
+        };
+        if (cancelled || !res.success || !res.data?.splits?.length) return;
+        setSplitRows(res.data.splits.map((s) => ({
+          account_id: s.account_id, amount: (s.amount_paise / 100).toFixed(2),
+        })));
+        setIsSplit(true);
+        setSplitSaved(true);
+      } catch {
+        // No split, or the read failed — either way the drawer works without one.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [txn.id]);
+
+  function startSplit() {
+    // Seed with the whole amount on the first row, so the gap starts at zero and
+    // the CA subtracts rather than building up from nothing.
+    setSplitRows([
+      { account_id: accountId || "", amount: (txnAmountPaise / 100).toFixed(2) },
+      { account_id: "", amount: "" },
+    ]);
+    setIsSplit(true); setSplitSaved(false); setSplitError(null);
+  }
+
+  async function cancelSplit() {
+    setSplitError(null);
+    if (splitSaved) {
+      // Clear it server-side too, or the transaction stays split in the database
+      // while the drawer says otherwise.
+      setSavingSplit(true);
+      try {
+        await api.banking.splits.replace(txn.id, []);
+      } catch (e) {
+        setSplitError(e instanceof Error ? e.message : "Couldn't remove the split.");
+        setSavingSplit(false);
+        return;
+      }
+      setSavingSplit(false);
+    }
+    setSplitRows([]); setIsSplit(false); setSplitSaved(false);
+    loadPreview();
+  }
+
+  function updateSplit(i: number, patch: Partial<{ account_id: string; amount: string }>) {
+    setSplitRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    setSplitSaved(false);
+  }
+  function addSplit() {
+    setSplitRows((rows) => [...rows, { account_id: "", amount: "" }]);
+    setSplitSaved(false);
+  }
+  function removeSplit(i: number) {
+    setSplitRows((rows) => rows.filter((_, idx) => idx !== i));
+    setSplitSaved(false);
+  }
+
+  async function saveSplit() {
+    setSavingSplit(true); setSplitError(null);
+    try {
+      const res = (await api.banking.splits.replace(txn.id, splitRows.map((r) => ({
+        account_id: r.account_id,
+        amount_paise: rsToP(parseFloat(r.amount || "0") || 0),
+      })))) as { success: boolean; error: string | null };
+      if (!res.success) throw new Error(res.error ?? "Couldn't save the split.");
+      setSplitSaved(true);
+      loadPreview();                       // the journal changes shape once split
+    } catch (e) {
+      setSplitError(e instanceof Error ? e.message : "Couldn't save the split.");
+    } finally {
+      setSavingSplit(false);
+    }
+  }
   // A GST split only applies to money LEAVING the bank against an explicitly
   // chosen expense account — the server refuses anything else, so don't offer it.
   const canSplitGst = needsCounter && !isTransfer && txn.debit_paise > 0;
   const gstRateBps = canSplitGst && gstRate !== "" ? Number(gstRate) : undefined;
 
   // Can we even attempt a preview yet? (the API enforces this too)
-  const ready = (!needsCounter || !!accountId) && (!isTransfer || !!toBankAccountId);
+  // A SAVED split supplies the counter accounts itself, so the single-account
+  // requirement no longer applies. An unsaved one does not: the server builds
+  // the preview from what is stored, so previewing mid-edit would show the
+  // journal for the previous state and read as though the edit had taken.
+  const ready = (!needsCounter || !!accountId || splitSaved)
+    && (!isTransfer || !!toBankAccountId)
+    && (!isSplit || splitSaved);
 
   const loadPreview = useCallback(async () => {
     if (!ready) { setPreview(null); setPreviewError(null); return; }
@@ -1126,7 +1238,7 @@ function PostingReviewDrawer({
               </select>
             </label>
 
-            {needsCounter && (
+            {needsCounter && !isSplit && (
               <label className="block">
                 <span className="text-[11px] font-medium text-[#475569]">Counter account (GL) <span className="text-red-500">*</span></span>
                 <div className="mt-1">
@@ -1141,6 +1253,97 @@ function PostingReviewDrawer({
                 </div>
                 <span className="text-[10px] text-[#94A3B8]">Required — the ledger account is never guessed.</span>
               </label>
+            )}
+
+            {/* Tier 1.2 — one bank line across several GL accounts. Hidden for
+                transfers (a transfer moves money between two accounts) and for
+                a matched settling transaction (it settles that document in
+                full — the server refuses both). */}
+            {canSplit && (
+              <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-[#475569]">
+                    Split across accounts
+                  </span>
+                  {!isSplit ? (
+                    <button onClick={startSplit}
+                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                      Split this line
+                    </button>
+                  ) : (
+                    <button onClick={cancelSplit}
+                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                      Remove split
+                    </button>
+                  )}
+                </div>
+
+                {!isSplit ? (
+                  <p className="text-[10px] text-[#94A3B8]">
+                    One payment covering several things — rent plus maintenance, two cost
+                    centres — posts as one journal with a line per account.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {splitRows.map((row, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        <div className="flex-1 min-w-0">
+                          <AccountLookup
+                            accounts={accounts}
+                            value={row.account_id}
+                            onChange={(v) => updateSplit(i, { account_id: v })}
+                            size="sm"
+                            placeholder="— Account —"
+                            ariaLabel={`Split ${i + 1} account`}
+                          />
+                        </div>
+                        <input
+                          value={row.amount}
+                          onChange={(e) => updateSplit(i, { amount: e.target.value })}
+                          inputMode="decimal" placeholder="0.00"
+                          aria-label={`Split ${i + 1} amount`}
+                          className="w-24 shrink-0 px-2 py-1.5 text-xs text-right font-mono border border-[#E2E8F0] rounded" />
+                        <button onClick={() => removeSplit(i)} disabled={splitRows.length <= 2}
+                          aria-label={`Remove split ${i + 1}`}
+                          className="text-[#CBD5E1] hover:text-red-600 disabled:opacity-30 disabled:hover:text-[#CBD5E1] mt-1.5">
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button onClick={addSplit} disabled={splitRows.length >= 50}
+                        className="text-[11px] text-blue-600 hover:text-blue-700 disabled:opacity-40">
+                        + Add a line
+                      </button>
+                      {/* The live gap. Shown as it closes rather than discovered
+                          at post time — the server refuses anything but zero. */}
+                      <span className={`text-[11px] font-mono ${
+                        unallocatedPaise === 0 ? "text-green-700"
+                          : unallocatedPaise > 0 ? "text-amber-700" : "text-red-700"}`}>
+                        {unallocatedPaise === 0 ? "Fully allocated"
+                          : unallocatedPaise > 0 ? `${fmt(unallocatedPaise)} left`
+                          : `${fmt(-unallocatedPaise)} over`}
+                      </span>
+                    </div>
+
+                    {splitError && (
+                      <p className="text-[11px] text-red-700 bg-red-50 border border-red-100 rounded p-2">{splitError}</p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <button onClick={saveSplit} disabled={savingSplit || unallocatedPaise !== 0}
+                        className="text-[11px] px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                        {savingSplit ? "Saving…" : splitSaved ? "Saved — update" : "Save split"}
+                      </button>
+                    </div>
+                    {!splitSaved && (
+                      <p className="text-[10px] text-[#94A3B8]">
+                        Save the split to preview the journal it will produce.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {canSplitGst && (
