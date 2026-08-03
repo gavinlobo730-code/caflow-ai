@@ -263,7 +263,7 @@ found while doing the work:
 | # | Item | Size | Notes |
 |---|---|---|---|
 | ✅ 1.1 | ~~**Bank register** per account — running balance, sort, filter, cleared status~~ **Shipped 2026-08-03** | **L** | Read-only, as planned — a posted journal is immutable, so an edit box would promise what the ledger refuses. Balance is computed server-side over the WHOLE account before filtering, so a filtered view still shows true balances (`view_opening_balance_paise` is what makes it add up on screen). Cleared is three-state: blank / **C** (claimed by an open reconciliation) / **R** (part of a *completed* one) — collapsing those two would report a sign-off that never happened. Goes beyond QBO on one point: Indian statements carry a balance column and the importer keeps it, so the register **self-checks** against the bank's own figure and reports the first divergence — the signature of a missing, duplicated or misdated line. |
-| 1.2 | **Split a line across multiple GL accounts** (not just invoices) | **M** | Needs a `bank_transaction_splits` table; posting builds an n-line balanced journal. `build_lines` currently assumes exactly 2 legs. |
+| ✅ 1.2 | ~~**Split a line across multiple GL accounts** (not just invoices)~~ **Shipped 2026-08-03** | **M** | `bank_transaction_splits` (migration 256) + an n-leg journal. The two-leg assumption in `build_lines` is now bypassed rather than removed — it is still the right builder for an ordinary posting. **The splits must sum EXACTLY to what the bank moved**: no rounding plug, no auto-balance. That is a cross-row rule, so it lives in an RPC (`replace_bank_transaction_splits`) that deletes, inserts and verifies in one transaction — a deferred constraint trigger would not work, because PostgREST commits each statement separately. Refused where it would produce a wrong ledger: on a transfer, on a **matched settling transaction** (it settles the document in full — splitting would leave the control account and the sub-ledger disagreeing), and combined with a GST rate (that needs a rate *per* split — see below). |
 | 1.3 | **Payee on `bank_transactions`** + customer/vendor lookup + auto-fill from history | **M** | Unlocks 1.4 and much better matching. |
 | 1.4 | **Learn-from-history suggestions** — "last time this narration was coded to X" | **M** | Depends on 1.3. Cheap once payee + history exist. |
 | 1.5 | **Transfer auto-detection** — pair opposite-sign, same-amount lines within N days across two of the client's own accounts | **M** | Prevents double-counted cash. Pure logic over data we already store. |
@@ -356,12 +356,17 @@ several are cheap because the data is already in the narration.
    and it lands in a module we already control.
 4. ~~**6.4 — GST on bank charges.**~~ ✅ Done 2026-08-02.
 5. ~~**Tier 1.1 — the bank register.**~~ ✅ Done 2026-08-03.
-6. **Then the rest of Tier 1.** 1.2 (split across GL accounts) is the one with a
-   structural cost: it needs a `bank_transaction_splits` table and `build_lines` currently
-   hard-assumes exactly two legs, so doing it before more code depends on that assumption
-   is cheaper than after. 1.3 (payee) and 1.4 (learn-from-history) are a pair — 1.4 is
-   cheap only once payee and history exist.
-7. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
+6. ~~**Tier 1.2 — split across GL accounts.**~~ ✅ Done 2026-08-03.
+7. **Then the rest of Tier 1.** 1.3 (payee) and 1.4 (learn-from-history) are a pair —
+   1.4 is cheap only once payee and history exist. 1.7 and 1.8 are both **S** and
+   independent of everything else.
+
+   **Known follow-up from 1.2:** a split and a GST rate cannot currently be combined —
+   both decide the non-bank legs, and doing them together needs a rate *per split*. The
+   combination is refused with a clear message rather than silently applying one and
+   dropping the other. Worth doing when a real case turns up; the pieces
+   (`charge_gst.split_inclusive_charge`, `splits.build_split_lines`) already compose.
+8. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
 ---

@@ -21,6 +21,8 @@ from services.timeline_service import timeline_service
 from domain.banking import posting_map as pmap
 from domain.banking.charge_gst import split_inclusive_charge, build_charge_lines
 from domain.banking.rules import match_rule
+from domain.banking.splits import build_split_lines, SplitError
+from services.bank_split_service import bank_split_service
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -175,6 +177,20 @@ class BankPostingService:
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
+    @staticmethod
+    def _settles_a_document(txn: dict) -> bool:
+        """True when posting this transaction will also settle an invoice/bill.
+
+        The same condition _settle uses, kept in one place so the split guard and
+        the settlement cannot drift apart.
+        """
+        cat = txn.get("category")
+        mt, mid = txn.get("matched_entity_type"), txn.get("matched_entity_id")
+        if not mid:
+            return False
+        return ((cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice")
+                or (cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill"))
+
     def _plan(self, db, firm_id, txn, bank_account_id, account_id, to_bank_account_id,
               gst_rate_bps: Optional[int] = None, is_interstate: bool = False):
         """Resolve accounts and build balanced lines. Returns (entry_type, lines, bank_id).
@@ -189,6 +205,44 @@ class BankPostingService:
             raise HTTPException(status_code=422, detail="Transaction has zero amount.")
         cat = txn.get("category")
         bank_id = self._resolve_bank(db, firm_id, txn, bank_account_id)
+
+        # Tier 1.2: a transaction the CA has split across several GL accounts
+        # posts as an n-leg journal. Checked BEFORE anything else builds lines —
+        # falling through to the two-leg builder would silently code the whole
+        # amount to one account and throw the split away, which is the bug this
+        # feature exists to prevent.
+        splits = bank_split_service.splits_for_posting(db, firm_id, txn["id"], amount)
+        if splits:
+            if cat == pmap.TRANSFER:
+                raise HTTPException(
+                    status_code=422,
+                    detail="A transfer moves money between two accounts — it cannot be split.")
+            if gst_rate_bps is not None:
+                # Both want to decide the non-bank legs. Doing them together
+                # needs a rate PER split, which is a bigger design than 1.2 —
+                # refuse clearly rather than silently applying one and dropping
+                # the other.
+                raise HTTPException(
+                    status_code=422,
+                    detail=("A GST split and a multi-account split cannot be combined yet. "
+                            "Post the GST separately, or split without a GST rate."))
+            if self._settles_a_document(txn):
+                # The journal would credit the split accounts instead of Trade
+                # Receivables/Payables, but settle_on_post would still mark the
+                # invoice paid — leaving the control account and the sub-ledger
+                # describing different worlds, with nothing to say which is right.
+                raise HTTPException(
+                    status_code=422,
+                    detail=("This transaction is matched to an invoice or bill, so it settles "
+                            "that document in full. Unmatch it before splitting it across "
+                            "accounts."))
+            try:
+                lines = build_split_lines(splits, is_credit=is_credit,
+                                          bank_account_id=bank_id, amount_paise=amount)
+            except SplitError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            return pmap.entry_type_for(cat, is_credit), lines, bank_id
+
         if cat == pmap.TRANSFER:
             if gst_rate_bps is not None:
                 raise HTTPException(status_code=422,

@@ -39,7 +39,7 @@ def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
-    CategorizeIn, MatchIn, BankMatchMultiIn,
+    CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
     ReconciliationReopenIn,
 )
@@ -49,6 +49,7 @@ from services.bank_matching_service import bank_matching_service
 from services.bank_posting_service import bank_posting_service
 from services.bank_reconciliation_service import bank_reconciliation_service
 from services.bank_register_service import bank_register_service
+from services.bank_split_service import bank_split_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -528,6 +529,45 @@ def posted_queue(
         return api_response(True, [])
     rows = bank_posting_service.posted(db, current_user["firm_id"], client_id)
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.get("/transactions/{txn_id}/splits")
+def get_transaction_splits(
+    txn_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """A transaction's split allocation, plus what is still unallocated (Tier 1.2)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "splits": [], "is_split": False})
+    return api_response(True, bank_split_service.get(db, current_user["firm_id"], txn_id))
+
+
+@router.put("/transactions/{txn_id}/splits")
+def replace_transaction_splits(
+    txn_id: str,
+    data: BankSplitsIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Allocate one bank line across several GL accounts (Tier 1.2).
+
+    The splits must sum EXACTLY to what the bank moved — there is no rounding
+    plug and no auto-balancing. An empty list clears the split and returns the
+    transaction to an ordinary single-account posting.
+
+    Refused once a journal exists: that journal is immutable (migration 251), so
+    editing the splits under it would leave the ledger and its explanation
+    disagreeing. Reverse the journal first.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id,
+                                   "splits": [s.model_dump() for s in data.splits]})
+    return api_response(True, bank_split_service.replace(
+        db, current_user["firm_id"], txn_id,
+        [s.model_dump() for s in data.splits],
+        actor_id=current_user.get("auth_user_id"),
+    ))
 
 
 @router.post("/transactions/{txn_id}/posting-preview")

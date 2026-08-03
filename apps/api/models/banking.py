@@ -127,6 +127,41 @@ class PostBankTxnIn(BaseModel):
         return _validate_gst_rate_bps(v)
 
 
+class BankSplitLineIn(BaseModel):
+    """One leg of a split bank line (Tier 1.2). Always a POSITIVE amount —
+    direction comes from the bank transaction, not the split."""
+    account_id: str
+    amount_paise: int
+    narration: Optional[str] = None
+
+    @field_validator("account_id")
+    @classmethod
+    def account_required(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("Each split needs a GL account.")
+        return v.strip()
+
+    @field_validator("amount_paise")
+    @classmethod
+    def positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "Each split must be a positive amount — they all move in the same "
+                "direction as the bank line.")
+        return v
+
+
+class BankSplitsIn(BaseModel):
+    """Replace a transaction's splits. An EMPTY list clears them and returns the
+    transaction to an ordinary single-account posting — that is a legitimate
+    operation, so it is not rejected here.
+
+    The sum-to-the-amount rule is NOT checked here: this model does not know the
+    transaction. domain/banking/splits validates it (with a message naming the
+    shortfall) and the replace RPC enforces it atomically."""
+    splits: list[BankSplitLineIn]
+
+
 class ReconcileMatchIn(BaseModel):
     bank_transaction_id: str
     journal_entry_id: str
