@@ -116,6 +116,26 @@ interface QueueTxn {
     channel: string | null; utr: string | null; vpa: string | null;
     counterparty: string | null; ifsc: string | null; summary: string;
   } | null;
+  /** Tier 1.3 — who the money went to or came from, once a human confirms it. */
+  payee_name?: string | null;
+  payee_type?: "customer" | "vendor" | "other" | null;
+  payee_id?: string | null;
+  /** What the narration looks like it was with. A proposal — never written
+   *  without the CA accepting it, and never offered over an answer they gave. */
+  suggested_payee?: {
+    payee_name: string; payee_type: "customer" | "vendor" | "other";
+    payee_id: string | null; source: "matched_party" | "narration";
+  } | null;
+  /** Tier 1.4 — what was done with this payee before, WITH the evidence.
+   *  `summary` is the sentence to show; a CA cannot audit a bare score, but can
+   *  judge "coded this way 8 of the last 9 times" on sight. */
+  history?: {
+    account_id: string | null; category: string | null;
+    times_seen: number; total_seen: number; share_bps: number;
+    is_unanimous: boolean; last_seen: string | null; summary: string;
+    matched_on: string;
+    alternatives: { account_id: string | null; category: string | null; times: number }[];
+  } | null;
 }
 interface MatchSuggestion {
   matched_entity_type: string; matched_entity_id: string; label: string;
@@ -139,7 +159,7 @@ const QUEUE_FILTERS: { id: string; label: string }[] = [
   { id: "ignored", label: "Excluded" },
 ];
 
-function BankMatchQueue({ clientId }: { clientId: string }) {
+function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
   const [status, setStatus] = useState("unmatched");
   const [rows, setRows] = useState<QueueTxn[]>([]);
   const [loading, setLoading] = useState(false);
@@ -267,6 +287,46 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
+  // Tier 1.3 — confirm the payee the parser proposed. A separate click from
+  // coding it: naming who you paid and deciding which account it belongs to are
+  // two different judgements, and one should not silently carry the other.
+  async function acceptPayee(t: QueueTxn) {
+    if (!t.suggested_payee) return;
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    try {
+      await api.banking.setPayee(t.id, {
+        payee_name: t.suggested_payee.payee_name,
+        payee_type: t.suggested_payee.payee_type,
+        payee_id: t.suggested_payee.payee_id ?? undefined,
+      });
+      await load();
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+  async function clearPayee(t: QueueTxn) {
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    try {
+      await api.banking.setPayee(t.id, { payee_name: "" });
+      await load();
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+
+  // Tier 1.4 — take the coding this payee got last time. Explicit, like every
+  // other suggestion in this module: history proposes, the CA disposes.
+  async function applyHistory(t: QueueTxn) {
+    if (!t.history) return;
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    try {
+      if (t.history.category) await api.banking.categorize(t.id, { category: t.history.category });
+      if (t.history.account_id) {
+        await api.banking.setTransactionAccount(t.id, { account_id: t.history.account_id });
+      }
+      await load();
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+
   async function setIgnored(id: string, ignored: boolean) {
     setBusy((b) => ({ ...b, [id]: true }));
     try {
@@ -275,6 +335,15 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [id]: false })); }
   }
+
+  // Names a learned account. History returns ids; a CA reading "coded to
+  // 3f2a-…" learns nothing, so fall back to the id only when the account is
+  // genuinely not in this client's chart.
+  const accountLabel = (id: string | null) => {
+    if (!id) return "";
+    const a = accounts.find((x) => x.id === id);
+    return a ? a.account_name : id.slice(0, 8);
+  };
 
   const confColor = (l: string) => l === "high" ? "text-green-700 bg-green-50" : l === "medium" ? "text-amber-700 bg-amber-50" : "text-[#64748B] bg-[#F1F5F9]";
 
@@ -436,6 +505,62 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
                   <button onClick={() => applyRule(t)} disabled={busy[t.id]}
                     className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
                     Apply rule
+                  </button>
+                </div>
+              )}
+
+              {/* Tier 1.3 — the payee. Shown when confirmed; offered when the
+                  narration parser found one and nobody has answered yet. */}
+              {t.match_status !== "ignored" && (t.payee_name || t.suggested_payee) && (
+                <div className="flex items-center gap-2 ml-1">
+                  {t.payee_name ? (
+                    <p className="text-[10px] text-[#64748B] min-w-0 truncate">
+                      Payee <span className="font-medium text-[#334155]">{t.payee_name}</span>
+                      {t.payee_type && t.payee_type !== "other" && (
+                        <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">
+                          {t.payee_type}
+                        </span>
+                      )}
+                      <button onClick={() => clearPayee(t)} disabled={busy[t.id]}
+                        className="ml-1.5 text-[#CBD5E1] hover:text-red-600">×</button>
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                        Payee looks like{" "}
+                        <span className="font-medium text-[#64748B]">{t.suggested_payee!.payee_name}</span>
+                        {t.suggested_payee!.source === "matched_party"
+                          && ` (${t.suggested_payee!.payee_type} on file)`}
+                      </p>
+                      <button onClick={() => acceptPayee(t)} disabled={busy[t.id]}
+                        className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] shrink-0">
+                        Confirm payee
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Tier 1.4 — what was done with this payee before. Stated as
+                  evidence rather than a score, and applied only on a click. */}
+              {t.history && !t.category && t.match_status !== "ignored" && (
+                <div className="flex items-center gap-2 ml-1">
+                  <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                    <span className={t.history.is_unanimous ? "text-emerald-700" : "text-amber-700"}>
+                      {t.history.summary}
+                    </span>
+                    {t.history.category ? ` → ${t.history.category}` : ""}
+                    {t.history.account_id ? ` · ${accountLabel(t.history.account_id)}` : ""}
+                    {t.history.alternatives.length > 0 && (
+                      <span className="text-[#CBD5E1]">
+                        {" "}(also {t.history.alternatives
+                          .map((a) => `${accountLabel(a.account_id)} ×${a.times}`).join(", ")})
+                      </span>
+                    )}
+                  </p>
+                  <button onClick={() => applyHistory(t)} disabled={busy[t.id]}
+                    className="text-[10px] px-2 py-0.5 border border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] rounded hover:bg-[#DCFCE7] shrink-0">
+                    Use last time&apos;s
                   </button>
                 </div>
               )}
@@ -3400,7 +3525,7 @@ export default function BankPage() {
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "accounts"   && <BankAccounts clientId={clientId} />}
         {tab === "register"   && <BankRegister clientId={clientId} />}
-        {tab === "categorize" && <BankMatchQueue clientId={clientId} />}
+        {tab === "categorize" && <BankMatchQueue clientId={clientId} accounts={accounts} />}
         {tab === "post"       && <BankPostingQueue clientId={clientId} accounts={accounts} />}
         {tab === "reconcile"  && <BankReconciliation clientId={clientId} />}
         {tab === "rules"      && <BankRules clientId={clientId} accounts={accounts} />}

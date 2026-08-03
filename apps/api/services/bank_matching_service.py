@@ -307,6 +307,20 @@ class BankMatchingService:
         rules_by_client: dict = {}
         for r in rules:
             rules_by_client.setdefault(r.get("client_id"), []).append(r)
+
+        # Tier 1.3/1.4 — the payee and what was done with it before. Both are
+        # built ONCE for the whole queue rather than per row: a hundred
+        # transactions must not mean a hundred round trips. A posted row on
+        # screen still teaches the unposted ones beside it; only a transaction's
+        # OWN row is kept out of its evidence (suggest_for).
+        from services.bank_payee_service import bank_payee_service
+        history_clients = {t.get("client_id") for t in txns if t.get("client_id")}
+        history_by_client: dict = {}
+        parties_by_client: dict = {}
+        for cid in history_clients:
+            history_by_client[cid] = bank_payee_service.history_index(db, firm_id, cid)
+            parties_by_client[cid] = bank_payee_service.parties(db, firm_id, cid)
+
         for t in txns:
             amount, is_credit = _txn_amount(t)
             client_rules = rules_by_client.get(t.get("client_id"), [])
@@ -337,6 +351,14 @@ class BankMatchingService:
                 "counterparty": n.counterparty, "ifsc": n.ifsc,
                 "summary": describe_narration(n),
             }
+            # Tier 1.3 — who this looks like it was with. Only proposed when the
+            # CA has not already named one; a human's answer is never overwritten.
+            cid = t.get("client_id")
+            t["suggested_payee"] = bank_payee_service.suggest_payee(
+                db, firm_id, cid, t, parties=parties_by_client.get(cid, []))
+            # Tier 1.4 — what was done with this payee before, WITH the evidence.
+            t["history"] = bank_payee_service.as_dict(
+                bank_payee_service.suggest_for(t, history_by_client.get(cid, {})))
         return txns
 
     # ── B.2.2 — categorize (manual or accepting a rule suggestion) ───────────

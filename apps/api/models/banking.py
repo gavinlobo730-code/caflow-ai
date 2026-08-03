@@ -127,6 +127,26 @@ class PostBankTxnIn(BaseModel):
         return _validate_gst_rate_bps(v)
 
 
+class BankPayeeIn(BaseModel):
+    """Name the other side of a bank line (Tier 1.3).
+
+    An EMPTY name clears the payee entirely, link included — a wrong association
+    must not be able to survive as a dangling id with no name beside it."""
+    payee_name: Optional[str] = None
+    payee_type: Optional[str] = None      # customer | vendor | other
+    payee_id: Optional[str] = None
+
+    @field_validator("payee_type")
+    @classmethod
+    def known_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
+        value = str(v).strip().lower()
+        if value not in ("customer", "vendor", "other"):
+            raise ValueError("payee_type must be one of: customer, vendor, other.")
+        return value
+
+
 class BankSplitLineIn(BaseModel):
     """One leg of a split bank line (Tier 1.2). Always a POSITIVE amount —
     direction comes from the bank transaction, not the split."""

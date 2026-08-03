@@ -39,7 +39,7 @@ def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
-    CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn,
+    CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn, BankPayeeIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
     ReconciliationReopenIn,
 )
@@ -50,6 +50,7 @@ from services.bank_posting_service import bank_posting_service
 from services.bank_reconciliation_service import bank_reconciliation_service
 from services.bank_register_service import bank_register_service
 from services.bank_split_service import bank_split_service
+from services.bank_payee_service import bank_payee_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -529,6 +530,28 @@ def posted_queue(
         return api_response(True, [])
     rows = bank_posting_service.posted(db, current_user["firm_id"], client_id)
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.put("/transactions/{txn_id}/payee")
+def set_transaction_payee(
+    txn_id: str,
+    data: BankPayeeIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Name who the money went to or came from (Tier 1.3).
+
+    Optionally links a customer or vendor, which makes the Tier 1.4 history
+    lookup exact rather than name-based. Sending an empty name clears the payee
+    and any link together.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, **data.model_dump()})
+    return api_response(True, bank_payee_service.set_payee(
+        db, current_user["firm_id"], txn_id,
+        payee_name=data.payee_name, payee_type=data.payee_type, payee_id=data.payee_id,
+        actor_id=current_user.get("auth_user_id"),
+    ))
 
 
 @router.get("/transactions/{txn_id}/splits")

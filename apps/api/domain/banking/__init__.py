@@ -27,6 +27,10 @@ from .charge_gst import (
     ChargeSplit, split_inclusive_charge, build_charge_lines,
     ALLOWED_RATES_BPS as CHARGE_GST_RATES_BPS,
 )
+from .history import (
+    HistorySuggestion, CodingOption, learning_key, summarise as summarise_history,
+    describe as describe_history, same_payee,
+)
 from .register import (
     RegisterLine, build_register, first_divergence, summarise as summarise_register,
     derive_cleared, CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
@@ -47,4 +51,6 @@ __all__ = [
     "CHARGE_GST_RATES_BPS",
     "RegisterLine", "build_register", "first_divergence", "summarise_register",
     "derive_cleared", "CLEARED_NONE", "CLEARED_PENDING", "CLEARED_RECONCILED",
+    "HistorySuggestion", "CodingOption", "learning_key", "summarise_history",
+    "describe_history", "same_payee",
 ]
