@@ -323,10 +323,17 @@ several are cheap because the data is already in the narration.
    "invoice settled in full, cash short by the TDS" without a manual journal. We already
    have the settlement primitive — we just have not exposed it.
 
-4. **GST on bank charges.** Bank charges carry GST, and it is input credit. A rule that
-   codes the charge and books the GST split correctly (CGST/SGST vs IGST by the bank's
-   place of supply, CGST Act §16) is a small, high-frequency win. *(Size: **S**, depends
-   on 0.2)*
+4. ~~**GST on bank charges.**~~ ✅ Done 2026-08-02. Bank charges carry GST, and it is
+   input credit. A rule now codes the charge and books the GST split correctly
+   (CGST/SGST vs IGST by the bank's place of supply, CGST Act §16) — a small,
+   high-frequency win. *(Size: **S**, depended on 0.2)*
+
+   The charge on a statement is tax-**inclusive**, so the taxable value is backed OUT of
+   it (`domain/banking/charge_gst.split_inclusive_charge`): ₹590 at 18% is ₹500 + ₹90,
+   not ₹590 + ₹106.20. The tax is taken as the *remainder*, which makes the split exact
+   by construction — the journal balances with no rounding plug on a tax head. Place of
+   supply (IGST Act §12(12)) is **stated, never inferred**: an IFSC does not encode a
+   state, so the rule carries it (migration 254) and the CA confirms it in the drawer.
 
 5. **Cheque return / bounce handling.** A returned cheque needs the original receipt
    reversed and bank charges booked. Today that is a manual journal. *(Size: **M**)*
@@ -347,8 +354,9 @@ several are cheap because the data is already in the narration.
 2. ~~**Then 2.1 + 2.2.**~~ ✅ Done 2026-08-02.
 3. ~~**6.2 — UPI/NEFT narration parsing.**~~ ✅ Done 2026-08-02. Best differentiated win available,
    and it lands in a module we already control.
-4. **Then Tier 1**, starting with the bank register (1.1) and split-across-accounts (1.2).
-5. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
+4. ~~**6.4 — GST on bank charges.**~~ ✅ Done 2026-08-02.
+5. **Then Tier 1**, starting with the bank register (1.1) and split-across-accounts (1.2).
+6. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
 ---

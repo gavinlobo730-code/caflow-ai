@@ -320,6 +320,12 @@ class BankMatchingService:
             t["suggested_account_id"] = (hit.account_id if hit else None) if not t.get("account_id") else None
             t["suggested_narration"] = hit.narration if hit else None
             t["suggested_by_rule"] = hit.rule_name if hit else None
+            # The GST treatment of a bank charge (migration 254). Prefills the
+            # posting drawer; the CA still confirms it before anything is booked.
+            # Only offered on a DEBIT — money arriving is not a charge, and a
+            # rate on a receipt would book negative input credit.
+            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit and not is_credit else None)
+            t["suggested_is_interstate"] = bool(hit.is_interstate) if hit else False
             # What the bank already wrote down (channel, UTR, counterparty, VPA).
             # The raw narration stays untouched as the record of what arrived;
             # this is a parsed view alongside it, so the queue can show

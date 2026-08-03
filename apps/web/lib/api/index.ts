@@ -136,8 +136,24 @@ export interface BankRuleInput {
   suggested_account_id?: string | null;
   suggested_category?: string | null;
   suggested_narration?: string | null;
+  /**
+   * The GST hiding INSIDE a bank charge, in basis points (1800 = 18%). Charges
+   * from a given bank always carry the same treatment, so it is stated once on
+   * the rule instead of on every ₹590 debit. null means the rule says nothing
+   * about GST; 0 means it says the charge carries none — a different answer, so
+   * do not collapse the two. Requires suggested_account_id (the split books the
+   * ex-tax amount there) and a rule that is not credit-only.
+   */
+  suggested_gst_rate_bps?: number | null;
+  /** true when this bank's supply is inter-state for the client (IGST rather
+   *  than CGST + SGST). Never inferred — an IFSC does not encode a state. */
+  suggested_is_interstate?: boolean;
   is_active?: boolean;
 }
+
+/** GST rates a bank charge can carry, in basis points. Mirrors the backend's
+ *  domain/banking/charge_gst.ALLOWED_RATES_BPS and migration 254's CHECK. */
+export const BANK_CHARGE_GST_RATES_BPS = [0, 500, 1200, 1800, 2800] as const;
 
 export const api = {
   clients: {
@@ -300,7 +316,7 @@ export const api = {
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
     pending: (params?: Record<string, string>) => request(`/api/banking/pending${params ? "?" + new URLSearchParams(params) : ""}`),
     posted: (params?: Record<string, string>) => request(`/api/banking/posted${params ? "?" + new URLSearchParams(params) : ""}`),
-    postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
+    postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string; gst_rate_bps?: number; is_interstate?: boolean }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
     // B.4 — reconciliation engine (sessions, manual reconcile, tie-out, report)
     reconciliations: {
       list: (params?: Record<string, string>) => request(`/api/banking/reconciliations${params ? "?" + new URLSearchParams(params) : ""}`),

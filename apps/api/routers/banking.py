@@ -494,7 +494,8 @@ def posting_preview(
         return api_response(True, {"transaction_id": txn_id, "lines": []})
     return api_response(True, bank_posting_service.preview(
         db, current_user["firm_id"], txn_id, bank_account_id=data.bank_account_id,
-        account_id=data.account_id, to_bank_account_id=data.to_bank_account_id))
+        account_id=data.account_id, to_bank_account_id=data.to_bank_account_id,
+        gst_rate_bps=data.gst_rate_bps, is_interstate=data.is_interstate))
 
 
 @router.post("/transactions/{txn_id}/post")
@@ -507,6 +508,11 @@ def post_transaction(
     Explicitly post a bank transaction to the ledger (B.3.2): category → balanced
     journal (shared engine) → settlement. Idempotent (one journal per transaction).
     Human-initiated only; refuses a locked financial year.
+
+    Supplying gst_rate_bps splits a tax-INCLUSIVE bank charge into its taxable
+    value and input GST (CGST Act s.16). The rate and the inter-state flag come
+    from this request — a matching rule may prefill them in the drawer, but the
+    person clicking Post is the one asserting them.
     CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     db = _db()
@@ -517,6 +523,7 @@ def post_transaction(
         bank_account_id=data.bank_account_id, account_id=data.account_id,
         to_bank_account_id=data.to_bank_account_id,
         actor_id=current_user.get("auth_user_id"),
+        gst_rate_bps=data.gst_rate_bps, is_interstate=data.is_interstate,
     ))
 
 
@@ -841,8 +848,31 @@ def update_rule(
     rule = _rule_or_404(db, current_user["firm_id"], rule_id)
     assert_client_access(current_user, rule["client_id"])
     fields = data.model_dump(exclude_none=True)
+    # exclude_none means a null normally reads as "field omitted", so no field on
+    # this endpoint can be cleared. For the GST rate that is not survivable: a
+    # rule stamped 18% by mistake would keep proposing an input credit forever,
+    # and 0 is NOT the escape hatch (0 positively means "this charge carries no
+    # GST"). An EXPLICIT null clears it; an omitted one still means "leave it".
+    if "suggested_gst_rate_bps" in data.model_fields_set and data.suggested_gst_rate_bps is None:
+        fields["suggested_gst_rate_bps"] = None
     if not fields:
         return api_response(True, rule)
+    # The GST-rate/account pairing can only be judged against the MERGED rule —
+    # the model sees the patch alone, and "rate supplied, account already stored"
+    # is perfectly valid. Same rule as MatchingRuleIn and migration 254's CHECK:
+    # a rate with no account to code the ex-tax amount to cannot be posted.
+    merged = {**rule, **fields}
+    if merged.get("suggested_gst_rate_bps") is not None and not merged.get("suggested_account_id"):
+        raise HTTPException(
+            status_code=422,
+            detail=("A GST rate needs an expense account to code the charge to — "
+                    "the split books the ex-tax amount there."))
+    if (merged.get("suggested_gst_rate_bps") is not None
+            and (merged.get("txn_type") or "any") == "credit"):
+        raise HTTPException(
+            status_code=422,
+            detail=("A GST rate applies to bank charges — money leaving the account. "
+                    "Set the rule to debit (or any), not credit."))
     row = (db.table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     return api_response(True, (row.data or [{}])[0])

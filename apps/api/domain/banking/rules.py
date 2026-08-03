@@ -14,6 +14,12 @@ WHAT A RULE CAN SUGGEST
     meant a rule could say "this is an Expense" but never "code it to Bank
     Charges", which is most of what a rule is for.
 
+    Since migration 254 a rule also carries the GST treatment of a bank charge:
+    the rate hiding inside the inclusive amount, and whether the supply is
+    inter-state. Both are constant per bank and neither is inferable from the
+    statement (see domain/banking/charge_gst), so the rule is where a CA states
+    them once instead of re-typing them on every ₹590 charge.
+
 Pure and side-effect free (unit-testable without a DB).
 """
 from __future__ import annotations
@@ -31,8 +37,15 @@ class RuleSuggestion:
     category: Optional[str]
     account_id: Optional[str]
     narration: Optional[str]
+    gst_rate_bps: Optional[int] = None
+    is_interstate: bool = False
 
     def is_empty(self) -> bool:
+        # gst_rate_bps is deliberately NOT counted. It is a modifier on how the
+        # counter account is booked, not a standalone proposal — a rule offering
+        # a rate and nothing else has no account to code the taxable value to,
+        # so it would only block a later rule that does. Migration 254 enforces
+        # the same pairing with a CHECK.
         return not (self.category or self.account_id or self.narration)
 
 
@@ -68,12 +81,17 @@ def match_rule(narration: str, amount_paise: int, is_debit: bool,
     for rule in rules:
         if not rule_matches(rule, narration, amount_paise, is_debit):
             continue
+        rate = rule.get("suggested_gst_rate_bps")
         suggestion = RuleSuggestion(
             rule_id=rule.get("id"),
             rule_name=rule.get("rule_name"),
             category=rule.get("suggested_category") or None,
             account_id=rule.get("suggested_account_id") or None,
             narration=rule.get("suggested_narration") or None,
+            # `or None` would turn a deliberate 0 — "this charge carries NO GST" —
+            # back into "the rule says nothing", which is a different answer.
+            gst_rate_bps=int(rate) if rate is not None else None,
+            is_interstate=bool(rule.get("suggested_is_interstate")),
         )
         if not suggestion.is_empty():
             return suggestion
