@@ -262,7 +262,7 @@ found while doing the work:
 
 | # | Item | Size | Notes |
 |---|---|---|---|
-| 1.1 | **Bank register** per account — running balance, date/amount/payee sort, filter, cleared status | **L** | The most-missed QBO screen. Read-only first; inline edit is a separate decision given journal immutability. |
+| ✅ 1.1 | ~~**Bank register** per account — running balance, sort, filter, cleared status~~ **Shipped 2026-08-03** | **L** | Read-only, as planned — a posted journal is immutable, so an edit box would promise what the ledger refuses. Balance is computed server-side over the WHOLE account before filtering, so a filtered view still shows true balances (`view_opening_balance_paise` is what makes it add up on screen). Cleared is three-state: blank / **C** (claimed by an open reconciliation) / **R** (part of a *completed* one) — collapsing those two would report a sign-off that never happened. Goes beyond QBO on one point: Indian statements carry a balance column and the importer keeps it, so the register **self-checks** against the bank's own figure and reports the first divergence — the signature of a missing, duplicated or misdated line. |
 | 1.2 | **Split a line across multiple GL accounts** (not just invoices) | **M** | Needs a `bank_transaction_splits` table; posting builds an n-line balanced journal. `build_lines` currently assumes exactly 2 legs. |
 | 1.3 | **Payee on `bank_transactions`** + customer/vendor lookup + auto-fill from history | **M** | Unlocks 1.4 and much better matching. |
 | 1.4 | **Learn-from-history suggestions** — "last time this narration was coded to X" | **M** | Depends on 1.3. Cheap once payee + history exist. |
@@ -355,8 +355,13 @@ several are cheap because the data is already in the narration.
 3. ~~**6.2 — UPI/NEFT narration parsing.**~~ ✅ Done 2026-08-02. Best differentiated win available,
    and it lands in a module we already control.
 4. ~~**6.4 — GST on bank charges.**~~ ✅ Done 2026-08-02.
-5. **Then Tier 1**, starting with the bank register (1.1) and split-across-accounts (1.2).
-6. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
+5. ~~**Tier 1.1 — the bank register.**~~ ✅ Done 2026-08-03.
+6. **Then the rest of Tier 1.** 1.2 (split across GL accounts) is the one with a
+   structural cost: it needs a `bank_transaction_splits` table and `build_lines` currently
+   hard-assumes exactly two legs, so doing it before more code depends on that assumption
+   is cheaper than after. 1.3 (payee) and 1.4 (learn-from-history) are a pair — 1.4 is
+   cheap only once payee and history exist.
+7. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
 ---

@@ -27,6 +27,10 @@ from .charge_gst import (
     ChargeSplit, split_inclusive_charge, build_charge_lines,
     ALLOWED_RATES_BPS as CHARGE_GST_RATES_BPS,
 )
+from .register import (
+    RegisterLine, build_register, first_divergence, summarise as summarise_register,
+    derive_cleared, CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
+)
 
 __all__ = [
     "NormalizedTxn", "parse_statement", "parse_csv", "parse_xlsx",
@@ -41,4 +45,6 @@ __all__ = [
     "near_match_floor_paise", "detect_tds_rate_bps",
     "ChargeSplit", "split_inclusive_charge", "build_charge_lines",
     "CHARGE_GST_RATES_BPS",
+    "RegisterLine", "build_register", "first_divergence", "summarise_register",
+    "derive_cleared", "CLEARED_NONE", "CLEARED_PENDING", "CLEARED_RECONCILED",
 ]

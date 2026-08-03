@@ -312,6 +312,17 @@ export const api = {
         request(`/api/banking/rules/${ruleId}`, { method: "PATCH", body: JSON.stringify(data) }),
       remove: (ruleId: string) => request(`/api/banking/rules/${ruleId}`, { method: "DELETE" }),
     },
+    /** Tier 1.1 — the ledger view of ONE bank account: every line the bank
+     *  sent, in bank order, with the running balance after each and its
+     *  cleared status. Read-only; the running balance is computed server-side
+     *  over the whole account, so a filtered view still shows true balances. */
+    register: (params: {
+      bank_account_id: string; client_id?: string;
+      date_from?: string; date_to?: string;
+      status?: "all" | "uncleared" | "pending" | "reconciled" | "unposted" | "needs_review";
+      q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
+      desc?: string; limit?: string; offset?: string;
+    }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),
     // B.3 — posting engine (explicit, human-initiated; never auto-posts)
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
     pending: (params?: Record<string, string>) => request(`/api/banking/pending${params ? "?" + new URLSearchParams(params) : ""}`),

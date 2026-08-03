@@ -48,6 +48,7 @@ from services.banking_service import banking_service
 from services.bank_matching_service import bank_matching_service
 from services.bank_posting_service import bank_posting_service
 from services.bank_reconciliation_service import bank_reconciliation_service
+from services.bank_register_service import bank_register_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -303,6 +304,53 @@ def list_transactions(
         min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
     )
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+# ─── Bank register (Tier 1.1) ────────────────────────────────────────────────
+# Declared before /transactions/{txn_id} — FastAPI matches in declaration order,
+# and a parameterised route above this would swallow the static path.
+
+@router.get("/register")
+def bank_register(
+    bank_account_id: str = Query(..., description="The bank account to show the register for"),
+    client_id: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    status: str = Query("all", pattern="^(all|uncleared|pending|reconciled|unposted|needs_review)$"),
+    q: Optional[str] = Query(None, description="Search narration, reference or category"),
+    sort: str = Query("date", pattern="^(date|amount|description|balance|cleared)$"),
+    desc: bool = Query(False),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The ledger view of ONE bank account: every line the bank sent, in bank
+    order, with the running balance after each and its cleared status.
+
+    Read-only. Posted journals are immutable in this system, so corrections are
+    reversals made in the journal — a register that offered an edit box would be
+    promising something the ledger refuses.
+
+    The running balance is computed over the whole account before filtering, so
+    a filtered view still shows each line's TRUE balance rather than one
+    restarted from the filter boundary. `view_opening_balance_paise` is the
+    balance immediately before the first row returned, which is what makes a
+    filtered register add up on screen.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "account": None, "lines": [], "summary": {}, "divergence": None,
+            "view_opening_balance_paise": 0, "filtered_count": 0, "total_count": 0,
+            "limit": limit, "offset": offset, "sort": sort, "desc": desc,
+        })
+    return api_response(True, bank_register_service.register(
+        db, current_user["firm_id"], bank_account_id, client_id=client_id,
+        date_from=date_from, date_to=date_to, status=status, q=q,
+        sort=sort, desc=desc, limit=limit, offset=offset,
+    ))
 
 
 # ─── Matching & Categorization (B.2) ──────────────────────────────────────────
