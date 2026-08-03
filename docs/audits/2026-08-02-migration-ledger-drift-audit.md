@@ -179,3 +179,42 @@ repository-to-database comparison is the disease. Cheapest effective fix, in ord
 **Deliberately not done here:** I have not created the repair migration. Six of the seven
 items are straightforward, but the year-end trio needs the code-or-schema decision above,
 and I would rather that be a choice than an assumption.
+
+---
+
+## Resolution — 2026-08-03
+
+The design call went the way this audit recommended: the routers were repointed at the
+`year_end_*` tables production already has, and migration 252 defines them here so a
+replayed database matches. Migrations **251–255** are now applied to production and
+verified against the live catalog:
+
+| | Applied | Verified behaviourally |
+|---|---|---|
+| 251 posted-line immutability + `apb_*` repair tools | ✅ | trigger present; an `UPDATE` of a real posted line raises and rolls back; `apb_drifted_clients()` returns **0** |
+| 252 the seven missing objects | ✅ | all 3 tables + `reminders.firm_id` + `clients.is_test` present; **0** policies missing `USING`/`WITH CHECK` |
+| 253 reconciliation reopen | ✅ | all 5 columns; both CHECKs present |
+| 254 bank-rule GST treatment | ✅ | both columns + both CHECKs; an out-of-vocabulary rate and a rate-without-account are each refused; the valid shape is accepted |
+| 255 drop superseded year-end policies | ✅ | `yen_firm`/`yeci_firm`/`yere_firm` gone, one `*_isolation` policy per table |
+
+### The delivery gap this exposed — still open
+
+They were applied **by hand**, through the Supabase MCP connection, because the
+`apply pending migrations — production` CI job **cannot run**: the `SUPABASE_DB_URL`
+secret is unset, so that job has failed on every push to `main` since it was added.
+That is the mechanical reason 251–254 sat unapplied, and it is recommendation 2 above
+("adopt one application channel") failing in practice rather than in principle.
+
+**Setting `SUPABASE_DB_URL` under Settings → Secrets and variables → Actions is still
+outstanding.** Until it is set, every future migration needs the same manual step, and
+the red `Backend CI` on `main` is this job and only this job — the pytest and
+real-Postgres jobs both pass.
+
+### One correction to migration 252
+
+252's header claimed a policy with `USING` but no `WITH CHECK` leaves an insert hole.
+**That is wrong about Postgres**, which reuses the `USING` expression as the `WITH CHECK`
+when none is supplied — tenant isolation held on the legacy year-end policies throughout.
+The real defect was redundancy: RLS OR-s permissive policies, so a leftover `TO PUBLIC`
+policy alongside a stricter `TO authenticated` one means the stricter never binds.
+The comment is corrected and migration 255 removes the redundant pair.

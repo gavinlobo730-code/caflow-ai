@@ -32,11 +32,14 @@
 --
 -- That has two problems this migration does NOT reproduce:
 --
---   1. No WITH CHECK. A USING clause governs the rows a statement may SEE
---      (SELECT/UPDATE/DELETE); INSERT is governed by WITH CHECK alone. With
---      none, any authenticated user could insert a row carrying ANY firm_id —
---      a straight tenant-isolation hole in a table holding other firms' tax
---      notices.
+--   1. No explicit WITH CHECK. This is NOT a tenant-isolation hole — Postgres
+--      reuses the USING expression as the WITH CHECK when none is given, so
+--      firm_id = get_my_firm_id() is still enforced on INSERT. (An earlier
+--      version of this comment claimed otherwise; it was wrong about Postgres
+--      semantics.) Writing it explicitly is still worth doing: it states the
+--      write rule at the point someone reads the policy, rather than leaving it
+--      to a fallback, and it stops a later `FOR SELECT`-style narrowing from
+--      silently changing what INSERT allows.
 --   2. No TO clause, so the policy binds to PUBLIC rather than `authenticated`.
 --
 -- Both are fixed here, matching the convention migrations 093 and 181 settled
