@@ -323,6 +323,10 @@ export const api = {
       q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
       desc?: string; limit?: string; offset?: string;
     }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Tier 1.3 — name who the money went to or came from, optionally linking
+     *  a customer or vendor. An empty payee_name clears the payee AND its link. */
+    setPayee: (txnId: string, data: { payee_name: string; payee_type?: string; payee_id?: string }) =>
+      request(`/api/banking/transactions/${txnId}/payee`, { method: "PUT", body: JSON.stringify(data) }),
     /** Tier 1.2 — allocate ONE bank line across several GL accounts. The splits
      *  must sum exactly to what the bank moved; the server refuses anything else
      *  (there is no rounding plug). PUT with an empty list clears the split. */
