@@ -435,7 +435,7 @@ several are cheap because the data is already in the narration.
    it has been looked at, and the test then walks the registered routes and fails
    for any endpoint — including a new one — that never consults the caller's
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
-   `engagement_letters`, `workflow_builder`.
+   `engagement_letters`, `workflow_builder`, `knowledge`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -503,9 +503,48 @@ several are cheap because the data is already in the narration.
    "can a row of it be traced to one" — and if so, guard through whatever traces
    it.
 
+   **Also fixed 2026-08-07 — `knowledge` (12 endpoints).** The first router in
+   the sweep that was already *mostly* right: it has its own client-scope model
+   in `services/knowledge_service.py`, richer than `core.authz`'s — internal
+   practice client (G1) separate from assignment, read separate from write. The
+   guards live in the **service**, not the router, which is a shape the sweep
+   had to learn to follow rather than a defect.
+
+   Two things were wrong underneath it.
+
+   * **`?scope=client` returned every client's articles.** `search_articles`
+     checked the caller only on the `client_id` branch — `if client_id: assert …
+     / elif scope: filter by scope / else: firm+department`. The middle branch
+     had no check at all, so `GET /api/knowledge/articles?scope=client` handed
+     any firm member with `knowledge.read` the client-scoped articles of every
+     client in the firm. The function's own docstring claimed the opposite
+     ("excludes client-scoped … unless a specific assigned client_id is
+     requested"), so the intent was never in doubt — the branch simply escaped
+     it. Now filtered per row, so the claim holds for every path in rather than
+     for the two that were remembered.
+   * **The mutating article paths checked the READ predicate.** edit / restore /
+     archive called `_load_article_or_404(..., write=False)`.
+     `can_view_client_content` admits Reviewer and Viewer;
+     `can_write_instruction` deliberately does not. **Not reachable today** —
+     RBAC gates `knowledge.write` to Partner and Manager, who pass both — so
+     this is the two layers agreeing rather than a live hole, but it is one RBAC
+     grant away from handing a read-only role an edit button.
+
+   **Two flaws in the ratchet itself, found while adding this router.** Both
+   made it pass on code with every check removed:
+
+   * `_load_article_or_404` was listed as a name that counts as a check. It is a
+     *loader* — it exists whether or not it checks anything. Only names that
+     cannot exist without the check belong in `AUDITED`.
+   * The sweep matched raw source, so a **docstring** mentioning
+     `can_view_client_content` counted as calling it. It now strips comments and
+     string literals before matching (`_code_only`), because prose is not
+     enforcement. Verified by stripping all four checks from the service and
+     confirming eight endpoints fail.
+
    **Still open — the same pattern in the remaining routers.** The sweep still finds
-   roughly 275 id-addressed routes with no client-scope check, worst first:
-   `knowledge` (10), `lifecycle` / `payroll` / `recurring_invoices` (8 each),
+   roughly 265 id-addressed routes with no client-scope check, worst first:
+   `lifecycle` / `payroll` / `recurring_invoices` (8 each),
    `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each),
    `invoices` / `itr_workspace` / `platform` (6 each). That count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
