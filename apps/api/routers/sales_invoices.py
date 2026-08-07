@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
+from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -32,6 +33,79 @@ router = APIRouter(prefix="/api/sales-invoices", tags=["sales_invoices"])
 # ---------------------------------------------------------------------------
 MOCK_SALES_INVOICES: list[dict] = []
 MOCK_SALES_INVOICE_LINES: list[dict] = []
+
+
+# ---------------------------------------------------------------------------
+# Client-assignment scope (M2)
+# ---------------------------------------------------------------------------
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. This router enforced none of it — it did not import
+# core.authz at all — so every endpoint here was firm-scoped and nothing more:
+#
+#   * `GET /?client_id=…` and `/outstanding` listed ANY client's invoices in the
+#     firm to any authenticated member of it. No id-guessing needed.
+#   * `POST /` created an invoice in any client's books.
+#   * The `/{invoice_id}` endpoints accepted an id from any client, including
+#     `/issue` and `/cancel`, which post and reverse real journals.
+#
+# Two entry points, because there are two ways an endpoint names its client:
+# directly (a parameter, checked before anything else runs) or indirectly (an
+# invoice id, which must be resolved to its client first).
+
+def _invoice_owner(current_user: dict, invoice_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this invoice, firm-scoped.
+
+    Returns a pair rather than just the id because "no such invoice" and "an
+    invoice whose client_id came back empty" are different answers and must not
+    collapse into one. `client_sales_invoices.client_id` is NOT NULL (migration
+    050), so the second case means a projection that did not select the column,
+    not a real orphan — and `assert_client_access(user, None)` treats it as a
+    firm-level resource, which is the right reading of "no client to scope to".
+
+    Deliberately does NOT filter `deleted_at` — resolving the owner of a
+    soft-deleted invoice is still the right answer to "may this caller act on
+    it"; whether the row is actionable stays each handler's own decision.
+    """
+    if _USE_MOCK:
+        inv = next((i for i in MOCK_SALES_INVOICES if i.get("id") == invoice_id), None)
+        return (inv is not None, inv.get("client_id") if inv else None)
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("client_sales_invoices").select("client_id")
+            .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id"))
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_invoice_scope(current_user: dict, invoice_id: str) -> Optional[str]:
+    """404 unless the caller may act on this invoice's client.
+
+    404 rather than 403, and the same 404 as "no such invoice" — otherwise the
+    status code becomes an oracle for which invoice ids are real.
+    """
+    found, client_id = _invoice_owner(current_user, invoice_id)
+    if not found:
+        # Mock mode has no invoice store worth speaking of — several handlers
+        # answer from a stub without touching MOCK_SALES_INVOICES at all — so a
+        # missing row means "nothing to scope", not "denied". Each handler still
+        # raises its own 404. Real enforcement runs when SUPABASE_URL is set,
+        # which is the only mode with clients to be assigned to.
+        if _USE_MOCK:
+            return None
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+    assert_client_access(current_user, client_id)
+    return client_id
+
+
+def _assert_batch_scope(current_user: dict, client_ids) -> None:
+    """Every DISTINCT client in a bulk payload, checked before ANY row is written.
+
+    Per-row checking would let the rows before the first refusal land, so a
+    mixed batch would be half-applied — and a bulk endpoint is exactly where
+    someone would slip one foreign client_id in among fifty of their own.
+    """
+    for client_id in sorted({c for c in client_ids if c}):
+        assert_client_access(current_user, client_id)
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +316,7 @@ def get_outstanding(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Sum of outstanding (unpaid) invoices for a client, in integer paise."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             total = sum(
@@ -291,6 +366,7 @@ def hsn_suggestions(
     CGST Rule 46(g): HSN/SAC is a mandatory tax-invoice field. This endpoint only
     reduces manual entry — it is never used in any GST or journal computation.
     """
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user.get("firm_id", "")
         key = _normalize_desc(query)
@@ -351,6 +427,7 @@ def list_invoices(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List sales invoices with optional filters. Soft-deleted drafts are excluded."""
+    assert_client_access(current_user, client_id)
     try:
         # Support both date_from/date_to and from_date/to_date aliases
         effective_from = date_from or from_date
@@ -507,6 +584,7 @@ def create_invoice(
     CGST Rule 46: Mandatory fields — invoice_no, date, GSTIN, HSN, tax amounts.
     All monetary values in integer paise.
     """
+    assert_client_access(current_user, data.client_id)
     try:
         invoice = _create_invoice_core(data.model_dump(), current_user)
         return api_response(True, invoice)
@@ -897,6 +975,7 @@ def bulk_create_invoices(
     rest of the batch — matches the existing CSV-import UX (partial success
     with a per-row error list).
     """
+    _assert_batch_scope(current_user, [r.get("client_id") if isinstance(r, dict) else None for r in payload.invoices])
     items = payload.invoices
     created: list[dict] = []
     errors: list[dict] = []
@@ -1008,6 +1087,7 @@ def get_invoice(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Get a single invoice with its line items."""
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         if _USE_MOCK:
             inv = next((i for i in MOCK_SALES_INVOICES if i["id"] == invoice_id), None)
@@ -1085,6 +1165,7 @@ def update_invoice(
     ISSUED/PARTIALLY_PAID/PAID: only reference_no, notes, due_date/
     credit_days and per-line unit (line_units) may change — see
     _reject_locked_invoice_fields. CANCELLED: cannot be updated at all."""
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         data = data.model_dump(exclude_none=True)
         # The request model field is is_inter_state; the DB column is is_interstate.
@@ -1333,6 +1414,7 @@ def issue_invoice(
     issued-but-unposted state.
     CGST Act §31: Invoice must be issued before GST reporting. §9: GST on supply.
     """
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
 
@@ -1451,6 +1533,7 @@ def cancel_invoice(
     current_user: dict = Depends(rbac("accounting", "approve")),
 ):
     """Cancel a sales invoice. Requires accounting.approve (Partner only)."""
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
@@ -1579,6 +1662,7 @@ def delete_invoice(
     audit_log events already capture the full document and a status summary
     respectively, independent of whether the row itself still exists.
     """
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
@@ -1647,6 +1731,11 @@ def list_unposted(
     """List issued-but-unposted invoices (status='issued' AND journal_entry_id IS NULL).
     These are legacy/edge invoices that need a journal reposted. The internal
     practice client's invoices are visible only to Partners (G1)."""
+    # Optional client_id, so it needs both halves: check the one that was asked
+    # for, or — for the firm-wide view — narrow the result to the caller's own
+    # book rather than handing an Executive every client's unposted invoices.
+    if client_id:
+        assert_client_access(current_user, client_id)
     try:
         firm_id = current_user.get("firm_id", "")
         partner = is_partner(current_user)
@@ -1662,6 +1751,8 @@ def list_unposted(
             if client_id:
                 q = q.eq("client_id", client_id)
             rows = q.execute().data or []
+        if not client_id:
+            rows = filter_by_client(current_user, rows)
         # G1: hide the internal client's invoices from non-Partners.
         if not partner:
             rows = [r for r in rows if not is_internal_client(r.get("client_id"), firm_id)]
@@ -1679,6 +1770,7 @@ def repost_journal(
     """Remediate an issued-but-unposted invoice by posting its journal.
     Idempotent: if a journal already exists it is reused (_create_journal de-dups
     by reference_no+date+client) and the link is set. Returns the journal id."""
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
         firm_id = current_user.get("firm_id", "")
@@ -1746,6 +1838,7 @@ def download_sales_invoice_pdf(
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
     """Download a GST tax invoice PDF for a client_sales_invoice."""
+    _assert_invoice_scope(current_user, invoice_id)
     from fastapi.responses import Response
     from services.invoice_pdf_service import get_sales_invoice_pdf
     if _USE_MOCK:
@@ -1897,6 +1990,7 @@ def send_invoice(
     current_user: dict = Depends(rbac("invoice", "write")),
 ):
     """Send an issued sales invoice PDF to the customer by email. Creates a delivery record."""
+    _assert_invoice_scope(current_user, invoice_id)
     if _USE_MOCK:
         return api_response(True, {"status": "sent", "sent_to": body.to_email or "customer@example.com"})
     try:
@@ -1915,6 +2009,7 @@ def resend_invoice(
     current_user: dict = Depends(rbac("invoice", "write")),
 ):
     """Re-send an invoice PDF — identical to /send but semantically a resend. Always appends a new delivery record."""
+    _assert_invoice_scope(current_user, invoice_id)
     if _USE_MOCK:
         return api_response(True, {"status": "sent", "sent_to": body.to_email or "customer@example.com"})
     try:
@@ -1932,6 +2027,7 @@ def list_invoice_deliveries(
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
     """List all delivery attempts for an invoice, newest first."""
+    _assert_invoice_scope(current_user, invoice_id)
     if _USE_MOCK:
         return api_response(True, [])
     try:
@@ -1977,6 +2073,7 @@ def remind_invoice(
     """Manually send an overdue-payment reminder (with the invoice PDF) to the
     customer. Allowed for any overdue invoice; bypasses the automatic cadence but
     never sends before the invoice is due. Records the send in invoice_deliveries."""
+    _assert_invoice_scope(current_user, invoice_id)
     if _USE_MOCK:
         return api_response(True, {"sent": True, "to": "customer@example.com", "reminder_number": 1})
     from services import collections_service
@@ -1998,6 +2095,7 @@ def list_invoice_reminders(
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
     """List all reminder sends for an invoice, newest first (kind='reminder')."""
+    _assert_invoice_scope(current_user, invoice_id)
     if _USE_MOCK:
         return api_response(True, [])
     from services import collections_service

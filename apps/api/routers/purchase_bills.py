@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
+from core.authz import assert_client_access
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
@@ -34,6 +35,71 @@ _TDS_DEFAULT_BPS: dict[str, int] = {
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_bills")
+
+
+# ── Client-assignment scope (M2) ───────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. This router enforced none of it — it did not import
+# core.authz at all — so `GET /?client_id=…` listed any client's payables to any
+# member of the firm, `POST /` created a bill in any client's books, and the
+# `/{bill_id}` endpoints accepted an id from any client, `/receive` included,
+# which posts the bill's journal and its input GST credit.
+#
+# Same two entry points as sales_invoices: a client named directly by a
+# parameter, or named indirectly by a bill id that must be resolved first.
+
+def _bill_owner(current_user: dict, bill_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this bill, firm-scoped.
+
+    A pair rather than just the id because "no such bill" and "a bill whose
+    client_id came back empty" are different answers and must not collapse into
+    one. `purchase_bills.client_id` is NOT NULL (migration 050), so the second
+    case means a projection that did not select the column, not a real orphan —
+    and `assert_client_access(user, None)` reads that as a firm-level resource.
+
+    Deliberately does NOT filter `deleted_at` — who owns a soft-deleted bill is
+    still the right answer to "may this caller act on it"; whether the row is
+    actionable stays each handler's own decision.
+    """
+    if _USE_MOCK:
+        bill = next((b for b in MOCK_PURCHASE_BILLS if b.get("id") == bill_id), None)
+        return (bill is not None, bill.get("client_id") if bill else None)
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("purchase_bills").select("client_id")
+            .eq("id", bill_id).eq("firm_id", current_user.get("firm_id"))
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_bill_scope(current_user: dict, bill_id: str) -> Optional[str]:
+    """404 unless the caller may act on this bill's client.
+
+    404 rather than 403, and the same 404 as "no such bill" — otherwise the
+    status code becomes an oracle for which bill ids are real.
+    """
+    found, client_id = _bill_owner(current_user, bill_id)
+    if not found:
+        # Mock mode: several handlers answer from a stub without touching
+        # MOCK_PURCHASE_BILLS, so a missing row means "nothing to scope", not
+        # "denied" — each handler still raises its own 404. Real enforcement
+        # runs when SUPABASE_URL is set, the only mode with assignments.
+        if _USE_MOCK:
+            return None
+        raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
+    assert_client_access(current_user, client_id)
+    return client_id
+
+
+def _assert_batch_scope(current_user: dict, client_ids) -> None:
+    """Every DISTINCT client in a bulk payload, checked before ANY row is written.
+
+    Per-row checking would let the rows before the first refusal land, leaving a
+    mixed batch half-applied — and a bulk endpoint is exactly where one foreign
+    client_id would be slipped in among fifty legitimate ones.
+    """
+    for client_id in sorted({c for c in client_ids if c}):
+        assert_client_access(current_user, client_id)
 
 
 def _current_fy_long() -> str:
@@ -112,6 +178,7 @@ def list_purchase_bills(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List purchase bills with optional filters."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             result = [b for b in MOCK_PURCHASE_BILLS if b["client_id"] == client_id and not b.get("deleted_at")]
@@ -154,6 +221,7 @@ def create_purchase_bill(
     IT Act §194C/194I/194J: TDS rates sourced from vendor master.
     All monetary values in integer paise. Status: 'draft'.
     """
+    assert_client_access(current_user, data.client_id)
     try:
         bill = _create_purchase_bill_core(data.model_dump(), current_user)
         return api_response(True, bill)
@@ -649,6 +717,7 @@ def bulk_create_purchase_bills(
     matches the existing CSV-import UX (partial success with a per-row
     error list).
     """
+    _assert_batch_scope(current_user, [r.get("client_id") if isinstance(r, dict) else None for r in payload.bills])
     items = payload.bills
     created: list[dict] = []
     errors: list[dict] = []
@@ -778,6 +847,7 @@ def get_purchase_bill(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Get a purchase bill with line items."""
+    _assert_bill_scope(current_user, bill_id)
     try:
         if _USE_MOCK:
             bill = next((b for b in MOCK_PURCHASE_BILLS if b["id"] == bill_id and not b.get("deleted_at")), None)
@@ -812,6 +882,7 @@ def get_purchase_bill_document_url(
     browser-openable URL — signed URLs expire, so one is generated on
     demand here rather than stored (mirrors routers/documents.py's
     get_download_url). 404 when no document is attached."""
+    _assert_bill_scope(current_user, bill_id)
     try:
         if _USE_MOCK:
             bill = next((b for b in MOCK_PURCHASE_BILLS if b["id"] == bill_id), None)
@@ -867,6 +938,7 @@ def delete_purchase_bill(
     audit_log events already capture the full document and a status summary
     respectively, independent of whether the row itself still exists.
     """
+    _assert_bill_scope(current_user, bill_id)
     try:
         if _USE_MOCK:
             for i, b in enumerate(MOCK_PURCHASE_BILLS):
@@ -955,6 +1027,7 @@ def update_purchase_bill(
     """Update a purchase bill. DRAFT: full edit. RECEIVED/PARTIALLY_PAID/
     PAID: only our_reference, notes, due_date and line_units may change —
     see _reject_locked_bill_fields. CANCELLED: cannot be updated at all."""
+    _assert_bill_scope(current_user, bill_id)
     try:
         data = data.model_dump(exclude_none=True)
         # The request model field is is_inter_state; the DB column is
@@ -1161,6 +1234,7 @@ def receive_purchase_bill(
     Auto-creates journal entry via Phase2JournalService.
     IT Act §194C/194I/194J: Journal records TDS payable.
     """
+    _assert_bill_scope(current_user, bill_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
 
@@ -1290,6 +1364,7 @@ def cancel_purchase_bill(
     current_user: dict = Depends(rbac("accounting", "approve")),
 ):
     """Cancel a purchase bill. Requires accounting.approve (Partner only)."""
+    _assert_bill_scope(current_user, bill_id)
     try:
         if _USE_MOCK:
             for i, b in enumerate(MOCK_PURCHASE_BILLS):
@@ -1416,6 +1491,7 @@ def create_bill_from_document(
     Human must call /receive to post the bill — never auto-posted.
     Status is always 'draft' regardless of extraction confidence.
     """
+    assert_client_access(current_user, data.client_id)
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     try:
         client_id      = data.client_id
