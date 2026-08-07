@@ -51,7 +51,8 @@ def _is_already_generated_today(config: dict) -> bool:
         return False
 
 
-def generate_due_recurring_tasks(firm_id: Optional[str] = None) -> list[dict]:
+def generate_due_recurring_tasks(firm_id: Optional[str] = None,
+                                 allowed_client_ids: Optional[set] = None) -> list[dict]:
     """
     Generate tasks for all active recurring configs where next_due_date <= today.
     Uses assignment rules to determine assignee. Falls back to config.assignee_id if no rules match.
@@ -60,6 +61,10 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None) -> list[dict]:
 
     Args:
         firm_id: Optional firm ID to limit generation to a specific firm.
+        allowed_client_ids: Optional set of client ids to confine generation
+            to. None means every client in the firm (a firm-wide role, or
+            the nightly cron), which is the single-pass behaviour this
+            always had.
 
     Returns:
         list[dict] - List of created task objects.
@@ -78,6 +83,17 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None) -> list[dict]:
         query = query.eq("firm_id", firm_id)
     result = query.execute()
     configs = result.data or []
+
+    if allowed_client_ids is not None:
+        # A config with no client is a FIRM-level recurring task -- it sits in
+        # nobody's book in particular, so a narrowed run must still generate it
+        # rather than quietly stop producing it. Same rule as
+        # core.authz.filter_by_client, which keeps rows with no client_id.
+        # Filtered here rather than in the query because PostgREST's `in_`
+        # cannot match NULL, so pushing it down would drop exactly those rows.
+        configs = [c for c in configs
+                   if not c.get("client_id")
+                   or str(c["client_id"]) in allowed_client_ids]
 
     for config in configs:
         try:

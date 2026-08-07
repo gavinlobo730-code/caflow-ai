@@ -93,6 +93,12 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_task_scope", "_assert_firmwide_job",
     ),
+    # A SEPARATE router on its own prefix — /api/tasks does not cover it, which
+    # is exactly the trap: the two read as one feature and are two registrations.
+    "/api/task-recurring": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+        "_assert_config_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -177,7 +183,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
               "/api/memory": 14,
-              "/api/tasks": 15}
+              "/api/tasks": 15, "/api/task-recurring": 9}
 
 
 def _code_only(src: str) -> str:
@@ -327,7 +333,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.workflow_builder", "routers.lifecycle",
                    "routers.payroll", "routers.recurring_invoices",
                    "routers.memory_intelligence", "routers.tasks",
-                   "routers.task_extras"):
+                   "routers.task_extras", "routers.task_recurring"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
