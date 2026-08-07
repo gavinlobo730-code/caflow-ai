@@ -49,6 +49,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/engagement-letters": (
         "assert_client_access", "filter_by_client", "_assert_engagement_scope",
     ),
+    "/api/workflows": (
+        "assert_client_access", "filter_by_client",
+        "_assert_instance_scope", "_scope_by_instance",
+    ),
 }
 
 # Endpoints whose RESOURCE has no client to scope to, with the reason. An
@@ -62,13 +66,33 @@ EXEMPT: dict[str, str] = {
         "here would have to invent a client to check.",
     "/api/engagement-letters/templates/{template_id}":
         "same table, addressed by id.",
+    "/api/workflows/templates":
+        "workflow_templates has firm_id and nothing else (migration 068) — a "
+        "template is the DEFINITION of a workflow, firm property. The RUNS "
+        "(workflow_instances) carry the client, and those are guarded.",
+    "/api/workflows/templates/{template_id}":
+        "same table, addressed by id.",
+    "/api/workflows/templates/{template_id}/toggle":
+        "same table: enabling or disabling a firm-level definition.",
+    "/api/workflows/schedules":
+        "workflow_schedules has firm_id and nothing else (migration 068) — when "
+        "a firm-level definition runs, not who it runs for.",
+    "/api/workflows/schedules/{schedule_id}":
+        "same table, addressed by id.",
+    "/api/workflows/schedules/{schedule_id}/toggle":
+        "same table, addressed by id.",
+    "/api/workflows/analytics":
+        "firm-wide operational aggregates — counts, success rates and template "
+        "names. No client identifier is returned, and the per-template "
+        "breakdown is over firm-level definitions.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
 # this a prefix typo would silently make the sweep vacuous — it would enumerate
 # nothing and pass.
 MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
-              "/api/purchase-bills": 10, "/api/engagement-letters": 19}
+              "/api/purchase-bills": 10, "/api/engagement-letters": 19,
+              "/api/workflows": 20}
 
 
 def _routes():
@@ -140,13 +164,13 @@ def test_a_row_addressed_endpoint_is_not_satisfied_by_a_bare_client_check():
     guard, not the bare check."""
     resolvers = ("_assert_txn_scope", "_assert_recon_scope",
                  "_assert_invoice_scope", "_assert_bill_scope",
-                 "_assert_engagement_scope")
+                 "_assert_engagement_scope", "_assert_instance_scope")
     checked = 0
     for prefix, path, method, endpoint in ROUTES:
         # Keyed by a row id, and nothing else in the request names a client.
         if path in EXEMPT:
             continue
-        if not re.search(r"\{(txn|recon|invoice|bill|engagement)_id\}", path):
+        if not re.search(r"\{(txn|recon|invoice|bill|engagement|instance|approval|failure)_id\}", path):
             continue
         src = inspect.getsource(endpoint)
         assert any(r in src for r in resolvers), (
@@ -161,7 +185,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
     no authz at all. An import is cheap to check and impossible to fake."""
     import importlib
     for module in ("routers.banking", "routers.sales_invoices",
-                   "routers.purchase_bills", "routers.engagement_letters"):
+                   "routers.purchase_bills", "routers.engagement_letters",
+                   "routers.workflow_builder"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

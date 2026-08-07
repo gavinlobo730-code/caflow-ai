@@ -320,6 +320,30 @@ class WorkflowRepository(BaseRepository):
         )
         return result.data
 
+    def client_ids_for_instances(self, firm_id: str, instance_ids) -> dict:
+        """`{instance_id: client_id}` for the given instances, firm-scoped.
+
+        Exists for client-assignment scoping (M2). `workflow_executions`,
+        `workflow_failures` and `workflow_approvals` carry a `firm_id` and no
+        `client_id` of their own — but each hangs off an instance that may have
+        one, so they are client data with no client column. Narrowing those lists
+        means resolving the parent, and doing it one row at a time would be a
+        query per row on a page of 200.
+
+        A missing instance is simply absent from the map; the caller decides what
+        that means (it is a 404 for a single row, and a dropped row in a list).
+        """
+        ids = sorted({i for i in (instance_ids or []) if i})
+        if not ids:
+            return {}
+        if _USE_MOCK:
+            return {i["id"]: i.get("client_id") for i in MOCK_INSTANCES
+                    if i["id"] in ids and i["firm_id"] == firm_id}
+        db = _get_db()
+        rows = (db.table("workflow_instances").select("id, client_id")
+                .in_("id", ids).eq("firm_id", firm_id).execute().data) or []
+        return {r["id"]: r.get("client_id") for r in rows}
+
     def create_instance(
         self,
         firm_id: str,
@@ -659,6 +683,18 @@ class WorkflowRepository(BaseRepository):
         query = query.order("created_at", desc=True).limit(limit)
         result = query.execute()
         return result.data or []
+
+    def get_failure(self, firm_id: str, failure_id: str) -> Optional[dict]:
+        """One failure, firm-scoped. Exists so the router can resolve its parent
+        instance — and therefore its client — BEFORE resolve_failure() writes."""
+        if _USE_MOCK:
+            return next((f for f in MOCK_FAILURES
+                         if f["id"] == failure_id and f["firm_id"] == firm_id), None)
+        db = _get_db()
+        rows = (db.table("workflow_failures").select("*")
+                .eq("id", failure_id).eq("firm_id", firm_id)
+                .limit(1).execute().data) or []
+        return rows[0] if rows else None
 
     def resolve_failure(self, firm_id: str, failure_id: str, resolved_by: str) -> Optional[dict]:
         if _USE_MOCK:

@@ -9,6 +9,7 @@ from models.workflow import (
     WorkflowTemplateIn, WorkflowTemplateUpdate,
     WorkflowScheduleIn, ApprovalResponseIn,
 )
+from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 
 router = APIRouter(prefix="/api/workflows", tags=["Workflows Phase 10"])
@@ -22,6 +23,55 @@ def _repo():
 def _engine():
     from domain.workflow_engine_v2 import workflow_engine
     return workflow_engine
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. This router did not import core.authz at all.
+#
+# WHICH OF THESE RESOURCES IS CLIENT DATA — the interesting part of this router
+#   * `workflow_instances` has a `client_id` (nullable: a workflow can be a
+#     firm-level sweep with no client). Guarded directly.
+#   * `workflow_executions`, `workflow_failures` and `workflow_approvals` have a
+#     `firm_id` and **no client_id of their own** — but each has a NOT NULL
+#     `instance_id`, and that instance may name a client. They are client data
+#     stored in a table with no client column, so scoping by "does this table
+#     have a client_id" would have declared all three firm-level and moved on.
+#     They are scoped THROUGH the parent instance instead.
+#   * `workflow_templates` and `workflow_schedules` have a `firm_id` and nothing
+#     else — they are firm property, the definitions rather than the runs. Not
+#     guarded, and listed in EXEMPT in tests/test_router_client_scope.py with
+#     that reason.
+
+def _assert_instance_scope(current_user: dict, instance_id: str) -> Optional[str]:
+    """404 unless the caller may act on this workflow instance's client.
+
+    404 rather than 403, and the same 404 as "no such instance" — otherwise the
+    status code becomes an oracle for which instance ids are real.
+    """
+    instance = _repo().get_instance(current_user["firm_id"], instance_id)
+    if not instance:
+        raise HTTPException(404, "Workflow instance not found")
+    # A NULL client_id is a firm-level run, which assert_client_access(user,
+    # None) correctly lets through — not something to 404.
+    assert_client_access(current_user, instance.get("client_id"))
+    return instance.get("client_id")
+
+
+def _scope_by_instance(current_user: dict, rows: list, key: str = "instance_id") -> list:
+    """Narrow child rows (executions / failures / approvals) by their parent's
+    client, in ONE lookup for the whole page rather than one per row.
+
+    A row whose parent has vanished is dropped: it cannot be shown to belong to
+    a client the caller may see, and keeping it would be the permissive reading
+    of an unanswerable question.
+    """
+    owners = _repo().client_ids_for_instances(
+        current_user["firm_id"], [r.get(key) for r in rows])
+    stamped = [dict(r, client_id=owners.get(r.get(key))) for r in rows
+               if r.get(key) in owners]
+    return filter_by_client(current_user, stamped)
 
 
 # ── Templates ──────────────────────────────────────────────────────────────────
@@ -118,6 +168,9 @@ def manually_trigger(
     template = _repo().get_template(firm_id, template_id)
     if not template:
         raise HTTPException(404, "Workflow template not found")
+    # The template is firm property, but firing it CREATES an instance against
+    # the client named in the payload — that is the client-scoped act here.
+    assert_client_access(current_user, payload.get("client_id"))
     results = _engine().fire_trigger(
         firm_id=firm_id,
         trigger_type=template["trigger_type"],
@@ -138,9 +191,16 @@ def list_instances(
     offset: int = 0,
     current_user: dict = Depends(rbac("task", "read")),
 ):
+    # Optional client_id: check the one asked for, or narrow the firm-wide view.
+    if client_id:
+        assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
     instances = _repo().list_instances(firm_id, template_id=template_id, client_id=client_id,
                                         status=status, limit=limit, offset=offset)
+    if not client_id:
+        # filter_by_client keeps rows with no client_id, so firm-level runs
+        # survive the narrowing instead of disappearing from the list.
+        instances = filter_by_client(current_user, instances)
     return api_response(True, {"instances": instances, "total": len(instances)})
 
 
@@ -149,6 +209,7 @@ def get_instance(
     instance_id: str,
     current_user: dict = Depends(rbac("task", "read")),
 ):
+    _assert_instance_scope(current_user, instance_id)
     firm_id = current_user["firm_id"]
     instance = _repo().get_instance(firm_id, instance_id)
     if not instance:
@@ -163,6 +224,7 @@ def cancel_instance(
     instance_id: str,
     current_user: dict = Depends(rbac("task", "write")),
 ):
+    _assert_instance_scope(current_user, instance_id)
     firm_id = current_user["firm_id"]
     instance = _repo().get_instance(firm_id, instance_id)
     if not instance:
@@ -195,6 +257,9 @@ def list_approvals(
             template = _repo().get_template(firm_id, instance["template_id"])
             a["template_name"] = template["name"] if template else None
             a["client_id"] = instance.get("client_id")
+    # An approval has no client_id column — the enrichment above borrowed it
+    # from the parent instance, and that is what the narrowing acts on.
+    approvals = _scope_by_instance(current_user, approvals)
     return api_response(True, {"approvals": approvals, "total": len(approvals)})
 
 
@@ -206,6 +271,13 @@ def respond_to_approval(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "unknown")
+    # Resolve the approval to its instance, and the instance to its client,
+    # BEFORE responding — respond_approval() writes, and resuming the workflow
+    # after it runs real steps against that client's data.
+    existing = _repo().get_approval(firm_id, approval_id)
+    if not existing:
+        raise HTTPException(404, "Approval not found or already responded")
+    _assert_instance_scope(current_user, existing["instance_id"])
     # Signature is (firm_id, approval_id, decision, response_notes,
     # responder_id) — the old call swapped the last two, persisting the
     # responder's id as the notes and the notes as the responder.
@@ -379,6 +451,7 @@ def list_failures(
 ):
     firm_id = current_user["firm_id"]
     failures = _repo().list_failures(firm_id, resolved=resolved, limit=limit)
+    failures = _scope_by_instance(current_user, failures)
     return api_response(True, {"failures": failures})
 
 
@@ -389,6 +462,12 @@ def resolve_failure(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "unknown")
+    # Before the write: a failure has no client_id of its own, so its parent
+    # instance is what says whose client this is.
+    existing = _repo().get_failure(firm_id, failure_id)
+    if not existing:
+        raise HTTPException(404, "Failure not found")
+    _assert_instance_scope(current_user, existing["instance_id"])
     resolved = _repo().resolve_failure(firm_id, failure_id, user_id)
     if not resolved:
         raise HTTPException(404, "Failure not found")
@@ -403,6 +482,13 @@ def list_executions(
     limit: int = Query(100, le=500),
     current_user: dict = Depends(rbac("task", "read")),
 ):
+    # Asking for one instance's trail is a named request — refuse it outright
+    # rather than answer with a silently empty list, which reads as "nothing
+    # happened" instead of "not yours".
+    if instance_id:
+        _assert_instance_scope(current_user, instance_id)
     firm_id = current_user["firm_id"]
     executions = _repo().list_executions(firm_id, instance_id=instance_id, limit=limit)
+    if not instance_id:
+        executions = _scope_by_instance(current_user, executions)
     return api_response(True, {"executions": executions})
