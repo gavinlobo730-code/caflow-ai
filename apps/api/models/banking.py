@@ -127,6 +127,19 @@ class PostBankTxnIn(BaseModel):
         return _validate_gst_rate_bps(v)
 
 
+class BankTransferPairIn(BaseModel):
+    """Confirm two bank lines are one transfer (Tier 1.5). The path transaction
+    is the PRIMARY (outflow) side; this names the counterpart."""
+    counterpart_id: str
+
+    @field_validator("counterpart_id")
+    @classmethod
+    def required(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("The counterpart transaction is required.")
+        return v.strip()
+
+
 class BankPayeeIn(BaseModel):
     """Name the other side of a bank line (Tier 1.3).
 

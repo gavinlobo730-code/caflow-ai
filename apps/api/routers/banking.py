@@ -40,6 +40,7 @@ from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
     CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn, BankPayeeIn,
+    BankTransferPairIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
     ReconciliationReopenIn,
 )
@@ -51,6 +52,7 @@ from services.bank_reconciliation_service import bank_reconciliation_service
 from services.bank_register_service import bank_register_service
 from services.bank_split_service import bank_split_service
 from services.bank_payee_service import bank_payee_service
+from services.bank_transfer_service import bank_transfer_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -530,6 +532,63 @@ def posted_queue(
         return api_response(True, [])
     rows = bank_posting_service.posted(db, current_user["firm_id"], client_id)
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.get("/transfer-suggestions")
+def transfer_suggestions(
+    client_id: str = Query(...),
+    window_days: int = Query(4, ge=0, le=30),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Bank lines that look like the two halves of ONE movement between the
+    client's own accounts (Tier 1.5).
+
+    Read-only. Pairing happens only when a human confirms — and once paired,
+    exactly one side produces a journal, because build_transfer_lines already
+    writes both legs and posting both sides would count the same cash twice.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    pairs = bank_transfer_service.detect_pairs(
+        db, current_user["firm_id"], client_id, window_days=window_days)
+    return api_response(True, [bank_transfer_service.as_dict(p) for p in pairs])
+
+
+@router.post("/transactions/{txn_id}/transfer-pair")
+def pair_transfer(
+    txn_id: str,
+    data: BankTransferPairIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Confirm that two bank lines are one transfer (Tier 1.5).
+
+    `txn_id` is the PRIMARY side — the outflow, which will carry the journal.
+    The counterpart is recorded as part of the same movement and never produces
+    a journal of its own.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "is_paired": True})
+    return api_response(True, bank_transfer_service.pair(
+        db, current_user["firm_id"], txn_id, data.counterpart_id,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.delete("/transactions/{txn_id}/transfer-pair")
+def unpair_transfer(
+    txn_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Undo a transfer pairing. Refused once the transfer has been posted —
+    reverse the journal first. Idempotent when nothing is paired."""
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "is_paired": False})
+    return api_response(True, bank_transfer_service.unpair(
+        db, current_user["firm_id"], txn_id,
+        actor_id=current_user.get("auth_user_id")))
 
 
 @router.put("/transactions/{txn_id}/payee")

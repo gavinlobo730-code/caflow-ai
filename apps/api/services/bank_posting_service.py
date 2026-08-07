@@ -23,6 +23,7 @@ from domain.banking.charge_gst import split_inclusive_charge, build_charge_lines
 from domain.banking.rules import match_rule
 from domain.banking.splits import build_split_lines, SplitError
 from services.bank_split_service import bank_split_service
+from services.bank_transfer_service import bank_transfer_service
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -247,6 +248,23 @@ class BankPostingService:
             if gst_rate_bps is not None:
                 raise HTTPException(status_code=422,
                                     detail="A transfer between own accounts is not a supply — no GST split.")
+            # Tier 1.5 — THE double-count guard. build_transfer_lines writes the
+            # COMPLETE double entry (Dr destination, Cr source), so a paired
+            # transfer must produce exactly ONE journal. The counterpart is the
+            # same cash seen from the other statement; letting it post its own
+            # entry is precisely the overstatement transfer detection exists to
+            # prevent, just arrived at more tidily.
+            if txn.get("transfer_pair_id") and txn.get("transfer_is_primary") is False:
+                raise HTTPException(
+                    status_code=422,
+                    detail=("This is the receiving side of a transfer that is already posted "
+                            "from the paying account. Posting it again would count the same "
+                            "money twice."))
+            if not to_bank_account_id and txn.get("transfer_pair_id"):
+                # The CA already identified the destination by confirming the
+                # pair; making them pick it again invites a different answer.
+                to_bank_account_id = bank_transfer_service.counterpart_bank_account(
+                    db, firm_id, txn)
             if not to_bank_account_id:
                 raise HTTPException(status_code=422, detail="Transfer requires a destination bank/cash account.")
             to_id = self._validate_account(db, firm_id, to_bank_account_id)
@@ -685,7 +703,11 @@ class BankPostingService:
         rows = q.order("transaction_date").execute().data or []
         out = [t for t in rows
                if t.get("category") and not t.get("posted_journal_id")
-               and t.get("match_status") not in ("posted", "ignored")]
+               and t.get("match_status") not in ("posted", "ignored")
+               # Tier 1.5: the receiving side of a paired transfer is the same
+               # cash as the paying side and never posts on its own. Offering it
+               # here would invite exactly the double-count the pairing prevents.
+               and t.get("transfer_is_primary") is not False]
         self._annotate_rule_suggestions(db, firm_id, out)
         return out
 

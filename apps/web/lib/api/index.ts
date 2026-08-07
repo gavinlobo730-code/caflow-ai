@@ -323,6 +323,18 @@ export const api = {
       q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
       desc?: string; limit?: string; offset?: string;
     }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Tier 1.5 — bank lines that look like the two halves of ONE movement
+     *  between the client's own accounts. Read-only; pairing needs a click. */
+    transferSuggestions: (params: { client_id: string; window_days?: string }) =>
+      request(`/api/banking/transfer-suggestions?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Confirm a transfer. `txnId` is the PRIMARY (outflow) side — the one that
+     *  will carry the journal. The counterpart never posts one of its own. */
+    pairTransfer: (txnId: string, counterpartId: string) =>
+      request(`/api/banking/transactions/${txnId}/transfer-pair`, {
+        method: "POST", body: JSON.stringify({ counterpart_id: counterpartId }),
+      }),
+    unpairTransfer: (txnId: string) =>
+      request(`/api/banking/transactions/${txnId}/transfer-pair`, { method: "DELETE" }),
     /** Tier 1.3 — name who the money went to or came from, optionally linking
      *  a customer or vendor. An empty payee_name clears the payee AND its link. */
     setPayee: (txnId: string, data: { payee_name: string; payee_type?: string; payee_id?: string }) =>
