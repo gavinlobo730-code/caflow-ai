@@ -435,7 +435,7 @@ several are cheap because the data is already in the narration.
    it has been looked at, and the test then walks the registered routes and fails
    for any endpoint — including a new one — that never consults the caller's
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
-   `engagement_letters`, `workflow_builder`, `knowledge`.
+   `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -542,9 +542,50 @@ several are cheap because the data is already in the narration.
      enforcement. Verified by stripping all four checks from the service and
      confirming eight endpoints fail.
 
+   **Also fixed 2026-08-07 — TWO CROSS-TENANT LEAKS, the most serious thing this
+   sweep has found.** Two endpoints accepted a `firm_id` from the CALLER and
+   preferred it over the one in the token (`firm_id or current_user["firm_id"]`):
+
+   > `GET /api/lifecycle/onboarding/checklist/active?firm_id=<any firm>`
+   > `GET /api/ai-insights/cross-client?firm_id=<any firm>`
+
+   Any authenticated user of any firm could read another **firm's** data by
+   supplying its id — client names in the first, and in the second an endpoint
+   whose entire purpose is to aggregate across a firm's client base. That is a
+   **tenant** boundary, not a client-assignment one: different firms are
+   different customers, and every other control in this document sits inside a
+   firm.
+
+   Both parameters are **gone rather than validated**. There is no legitimate
+   caller: a firm's own users get their firm from the token, and cross-firm
+   access belongs to the platform-admin surface (`routers/platform.py`, gated by
+   `require_platform_admin` — which is why its `/firms/{firm_id}` endpoints are
+   correct and were left alone). A parameter only an attacker has a use for
+   should not exist. An exhaustive check of every registered route confirms
+   these were the only two; `models/ai_copilot.py` declares a `firm_id` on
+   several request bodies, but no router reads it.
+
+   **Also fixed 2026-08-07 — `lifecycle` (19 endpoints).** The lifecycle runs
+   from before a client exists to after they renew, so what counts as client
+   data differs per table: `onboarding_workflows` / `onboarding_checklists` /
+   `renewals` carry a NOT NULL `client_id`; `proposals` a nullable one (a
+   proposal can be made to a lead); `onboarding_tasks` and
+   `onboarding_checklist_steps` carry a `workflow_id` and no client at all, so
+   they are scoped through the parent — the same shape as workflow_builder's
+   children. `leads` and the dashboard are exempt with reasons.
+
+   **The exemption-honesty test caught a bad exemption of mine.** I had written
+   off `POST /leads/{lead_id}/convert` as "converts a lead, so there is no client
+   yet". True of one of its two paths: `LeadConvertIn.client_id` is optional, and
+   when supplied it attaches the lead to an **existing** client — spawning
+   onboarding workflows and lifecycle events against it. The test objected that
+   an endpoint exempted for having no client was reading `client_id`, which was
+   exactly right. It is now guarded; `assert_client_access(user, None)` is a
+   no-op on the create-a-new-client path, which is the correct reading.
+
    **Still open — the same pattern in the remaining routers.** The sweep still finds
-   roughly 265 id-addressed routes with no client-scope check, worst first:
-   `lifecycle` / `payroll` / `recurring_invoices` (8 each),
+   roughly 257 id-addressed routes with no client-scope check, worst first:
+   `payroll` / `recurring_invoices` (8 each),
    `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each),
    `invoices` / `itr_workspace` / `platform` (6 each). That count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,

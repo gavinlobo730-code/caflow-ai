@@ -27,17 +27,23 @@ def list_insights(
 
 @router.get("/cross-client")
 def cross_client_patterns(
-    firm_id: str = None,
     current_user: dict = Depends(rbac("report", "read")),
 ):
     """
-    GET /api/ai-insights/cross-client?firm_id=
+    GET /api/ai-insights/cross-client
     Returns cross-client intelligence patterns: shared directors with compliance risk,
     same issue appearing across multiple clients, group-wide cash flow signals, etc.
     Chapter 17 Product Bible — cross-client AI intelligence.
+
+    TENANT ISOLATION. This used to accept `?firm_id=` and prefer it over the
+    caller's own, so any authenticated user could read another **firm's**
+    cross-client intelligence by supplying its id — an endpoint whose whole
+    purpose is to aggregate across a firm's client base. That is a tenant
+    boundary, not a client-assignment one: different firms are different
+    customers. The parameter is gone rather than validated; cross-firm access
+    belongs to the platform-admin surface (routers/platform.py), not here.
     """
-    resolved_firm_id = firm_id or current_user.get("firm_id")
-    patterns = get_cross_client_patterns(firm_id=resolved_firm_id)
+    patterns = get_cross_client_patterns(firm_id=current_user.get("firm_id"))
     return api_response(True, {"patterns": patterns})
 
 

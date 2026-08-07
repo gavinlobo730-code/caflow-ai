@@ -69,6 +69,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/clients/{client_id}/knowledge": (
         "_assert_client_access", "can_view_client_content",
     ),
+    "/api/lifecycle": (
+        "assert_client_access", "filter_by_client",
+        "_assert_row_scope", "_assert_via_parent",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -115,6 +119,19 @@ EXEMPT: dict[str, str] = {
         "firm-wide operational aggregates — counts, success rates and template "
         "names. No client identifier is returned, and the per-template "
         "breakdown is over firm-level definitions.",
+    "/api/lifecycle/leads":
+        "leads has a firm_id and no client_id (migration 059) — a lead is not "
+        "yet a client, so there is no assignment to check against. Whether "
+        "leads should carry a scope of their own is an open product question, "
+        "recorded in the audit doc.",
+    "/api/lifecycle/leads/{lead_id}":
+        "same table, addressed by id.",
+    "/api/lifecycle/dashboard":
+        "aggregate counts only: lead stage tallies, a proposal count, an "
+        "overdue-renewal count. No client is named and no per-client figure is "
+        "returned. The renewal count IS a cardinality signal derived from "
+        "client rows — that is the line being drawn, stated rather than "
+        "pretending the endpoint touches nothing client-shaped.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -124,7 +141,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-bills": 10, "/api/engagement-letters": 19,
               "/api/workflows": 20, "/api/knowledge": 7,
               "/api/clients/{client_id}/instructions": 4,
-              "/api/clients/{client_id}/knowledge": 1}
+              "/api/clients/{client_id}/knowledge": 1,
+              "/api/lifecycle": 19}
 
 
 def _code_only(src: str) -> str:
@@ -271,7 +289,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
     import importlib
     for module in ("routers.banking", "routers.sales_invoices",
                    "routers.purchase_bills", "routers.engagement_letters",
-                   "routers.workflow_builder"):
+                   "routers.workflow_builder", "routers.lifecycle"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
