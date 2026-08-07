@@ -437,7 +437,7 @@ several are cheap because the data is already in the narration.
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
-   `task_extras`, `task_recurring`.
+   `task_extras`, `task_recurring`, `tds_workspace` + `tds`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -761,11 +761,64 @@ several are cheap because the data is already in the narration.
    guards each), then `ai_copilot_v2`, `billing`, `compliance_records`,
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
-   defeats a reviewer rather than merely failing to help one.
+   defeats a reviewer rather than merely failing to help one. **`tds_workspace` was the
+   first of the twelve taken, immediately below.**
+
+   **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
+   `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
+   one feature and two registrations. This is the "guards the body, not the
+   record" shape named above, and it was the top of that list for a reason.
+
+   `tds_workspace` imported `core.authz` and called `assert_client_access` four
+   times — on the four POST bodies. Every endpoint that took its client from a
+   **query parameter**, and every one addressed by a **row id**, was unguarded:
+   any member of the firm could read any client's challans, filed returns, Form
+   16/16A certificates and Form 26AS reconciliation, and could mark any client's
+   statutory return **filed**, writing a PRN of their choosing onto the
+   government proof-of-filing record (IT Act §200/§203). `tds.py` imported no
+   authz at all; `/returns/{client_id}` and `/deductions/{client_id}` name a
+   client directly in the path, and the two `/from-books` endpoints read a
+   client's posted purchase bills or finalized payroll runs out of the ledger.
+
+   **Two refusal shapes, because this router reports "not found" two ways.**
+   Endpoints that NAME a client get the 404 every other audited router gives.
+   Endpoints addressed by a row id report a missing row as a **200** carrying
+   `{"success": false, "error": "Not found"}` — so a 404 refusal there would
+   make the *status code* the oracle: 404 means the id is real and belongs to
+   somebody else, 200 means it does not exist. Those go through
+   `_visible_or_none`, which returns None and sends the refusal back down the
+   router's own not-found path byte for byte. A test asserts the forbidden and
+   the nonexistent responses are equal, rather than merely both unsuccessful.
+
+   **The swallowing `try`.** Every handler in `tds_workspace` ends in a bare
+   `except Exception: return api_response(False, None, str(e))`. A guard placed
+   inside that block has its 404 caught and returned as a 200 — the guard
+   silently downgraded to a log line. The query-param guards therefore sit
+   **before** the `try`, and a test fails if one moves back inside; it is a
+   distinct mutant from dropping the guard entirely, and both are killed.
+
+   **The two `/compute` endpoints are guarded even though they do not need it
+   today.** They are pure functions over caller-supplied rows and never read
+   `req.client_id`. An exemption would be true right now and silently false the
+   first time somebody uses the field the request model already requires — and
+   the sweep's honesty tests check that an exempted ROUTE still exists, not that
+   its REASON still holds. One line is cheaper than that trap.
+   `/compute-amount` (no client_id in the model at all) and `/sections` (the
+   statutory rate table from the IT Act) are exempt, and a test asserts
+   `/sections` is *not* client-scoped, because over-guarding is a real failure
+   mode.
+
+   **A latent bug in the ratchet itself, found by this pair.** `/api/tds` is a
+   string prefix of `/api/tds-workspace`, and `_routes()` attributed each route
+   to the **first** matching `AUDITED` prefix — so declaration order decided
+   which router's guard names a workspace route was checked against. It now
+   takes the **longest** match, which makes the registry order-independent.
+   Third flaw found in the sweep by using it; reverting it to first-match is a
+   mutant the suite kills.
 
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **231** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **226** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That

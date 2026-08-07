@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac
+from core.authz import assert_client_access
 from domain.tds import TDSComputer, TDSDeducteeRecord
 from domain.tds.section_rates import tds_rates_for
 from domain.tds.tds_computer import is_company_pan, has_pan as pan_on_file
@@ -17,6 +18,24 @@ from repositories.tds_repository import tds_repo
 
 router = APIRouter(prefix="/api/tds", tags=["tds"])
 computer = TDSComputer()
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# This router imported no authz at all. `/returns/{client_id}` and
+# `/deductions/{client_id}` name a client in the PATH and returned that client's
+# filed returns and every TDS deduction on their books to any member of the
+# firm; the two `/from-books` endpoints read a client's posted purchase bills or
+# finalized payroll runs out of the ledger.
+#
+# The two `/compute` endpoints are guarded too even though they are, today, pure
+# functions over caller-supplied rows that never read `req.client_id`. An
+# exemption would be true right now and silently false the first time somebody
+# uses the field the request model already requires — and the sweep's honesty
+# tests check that an exempted ROUTE still exists, not that its REASON still
+# holds. One line is cheaper than that trap.
+#
+# `/compute-amount` and `/sections` are exempt and stay that way: neither has a
+# client_id to check. `/sections` returns the statutory rate table itself.
 
 
 # ── Request / Response Models ─────────────────────────────────────────────────
@@ -112,6 +131,7 @@ def compute_26q(req: Compute26QRequest, user: dict = Depends(rbac("tds", "comput
     IT Act Section 194 series.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
+    assert_client_access(user, req.client_id)
     records = [
         TDSDeducteeRecord(
             deductee_name=d.deductee_name,
@@ -191,6 +211,7 @@ def compute_24q(req: Compute24QRequest, user: dict = Depends(rbac("tds", "comput
     IT Act Section 192.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
+    assert_client_access(user, req.client_id)
     records = [
         TDSDeducteeRecord(
             deductee_name=d.deductee_name,
@@ -265,6 +286,7 @@ def compute_26q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
     """
     from core.supabase_client import get_supabase
     from services.tds_return_service import tds_26q_from_books
+    assert_client_access(user, req.client_id)
     db = get_supabase()
     firm_id = user["firm_id"]
     try:
@@ -287,6 +309,7 @@ def compute_24q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
     """
     from core.supabase_client import get_supabase
     from services.tds_return_service import tds_24q_from_books
+    assert_client_access(user, req.client_id)
     db = get_supabase()
     firm_id = user["firm_id"]
     try:
@@ -360,6 +383,7 @@ def list_tds_sections(fy: Optional[str] = None, user: dict = Depends(rbac("tds",
 @router.get("/returns/{client_id}")
 def get_tds_returns(client_id: str, user: dict = Depends(rbac("tds", "read"))):
     """Fetch all TDS returns for a client."""
+    assert_client_access(user, client_id)
     firm_id = user["firm_id"]
     data = tds_repo.get_returns(client_id=client_id, firm_id=firm_id)
     return {"success": True, "data": data, "error": None}
@@ -373,6 +397,7 @@ def get_tds_deductions(
     user: dict = Depends(rbac("tds", "read")),
 ):
     """Fetch TDS deductions for a client, optionally filtered by FY/quarter."""
+    assert_client_access(user, client_id)
     firm_id = user["firm_id"]
     data = tds_repo.get_deductions(
         client_id=client_id,

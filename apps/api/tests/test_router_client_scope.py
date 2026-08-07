@@ -99,6 +99,15 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_config_scope",
     ),
+    # `_visible_or_none` is the row-addressed half: this router reports a
+    # missing row as a 200 with {"success": false}, so a 404 refusal would
+    # make the status code an oracle. See the note in the router.
+    "/api/tds-workspace": (
+        "assert_client_access", "_visible_or_none", "can_access_client",
+    ),
+    # A SECOND TDS router. "/api/tds" is a string PREFIX of "/api/tds-workspace",
+    # which is why _routes() takes the longest match rather than the first.
+    "/api/tds": ("assert_client_access",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -164,6 +173,14 @@ EXEMPT: dict[str, str] = {
         "high-risk-client TALLY. No client is named and no per-client figure is "
         "returned. Same line as the lifecycle dashboard: the counts are derived "
         "from client rows, and that is stated rather than glossed over.",
+    "/api/tds/compute-amount":
+        "a calculator: section + amount in, rate + TDS in paise out. The "
+        "request model has no client_id at all — there is nothing to check "
+        "and no client data touched.",
+    "/api/tds/sections":
+        "the statutory TDS rate table for a financial year (domain/tds/"
+        "section_rates.py). Reference data from the IT Act, identical for "
+        "every firm and every client.",
     "/api/lifecycle/dashboard":
         "aggregate counts only: lead stage tallies, a proposal count, an "
         "overdue-renewal count. No client is named and no per-client figure is "
@@ -183,7 +200,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
               "/api/memory": 14,
-              "/api/tasks": 15, "/api/task-recurring": 9}
+              "/api/tasks": 15, "/api/task-recurring": 9,
+              "/api/tds-workspace": 12,
+              "/api/tds": 8}
 
 
 def _code_only(src: str) -> str:
@@ -239,12 +258,25 @@ def _reachable_source(prefix: str, endpoint, depth: int = 2) -> str:
     return src
 
 
+def _prefix_for(path: str, registry=None):
+    """The AUDITED prefix a route belongs to — the LONGEST match, not the first.
+
+    `/api/tds` is a string prefix of `/api/tds-workspace`. Under first-match,
+    which of the two claimed a workspace route depended on their declaration
+    order in AUDITED — so the route would be checked against the wrong router's
+    guard names, and nobody maintains that ordering deliberately. `registry` is
+    a seam for the test that pins this with the shadowing prefix declared first.
+    """
+    reg = AUDITED if registry is None else registry
+    return max((p for p in reg if path.startswith(p)), key=len, default=None)
+
+
 def _routes():
     from main import app
     out = []
     for r in app.routes:
         path = getattr(r, "path", "")
-        prefix = next((p for p in AUDITED if path.startswith(p)), None)
+        prefix = _prefix_for(path)
         if prefix is None:
             continue
         for m in sorted(getattr(r, "methods", set()) - {"HEAD", "OPTIONS"}):
@@ -279,6 +311,14 @@ def test_every_endpoint_in_an_audited_router_consults_client_scope(
         f"Firm scoping alone lets any member of the firm reach every client in "
         f"it. Expected one of: {', '.join(AUDITED[prefix])}. If this resource "
         f"genuinely has no client_id, add it to EXEMPT with the reason.")
+
+
+def test_a_shadowing_prefix_does_not_capture_a_longer_ones_routes():
+    """Declared worst-first on purpose: this is the order that breaks under
+    first-match, and dict order is not something anyone maintains on purpose."""
+    shadowed = {"/api/tds": (), "/api/tds-workspace": ()}
+    assert _prefix_for("/api/tds-workspace/challans", shadowed) == "/api/tds-workspace"
+    assert _prefix_for("/api/tds/sections", shadowed) == "/api/tds"
 
 
 def test_every_exemption_names_a_route_that_exists():
@@ -333,7 +373,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.workflow_builder", "routers.lifecycle",
                    "routers.payroll", "routers.recurring_invoices",
                    "routers.memory_intelligence", "routers.tasks",
-                   "routers.task_extras", "routers.task_recurring"):
+                   "routers.task_extras", "routers.task_recurring",
+                   "routers.tds_workspace", "routers.tds"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
