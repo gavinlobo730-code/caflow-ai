@@ -127,6 +127,37 @@ class PostBankTxnIn(BaseModel):
         return _validate_gst_rate_bps(v)
 
 
+class BankBatchIn(BaseModel):
+    """Apply one action to several bank transactions (Tier 1.7).
+
+    NOT atomic across rows, deliberately: eight good rows should not be rolled
+    back because the ninth was already posted. Each row comes back with its own
+    outcome — a partial success reported as a success is how a transaction
+    quietly stays uncoded until year end."""
+    transaction_ids: list[str]
+
+    @field_validator("transaction_ids")
+    @classmethod
+    def at_least_one(cls, v: list) -> list:
+        if not v:
+            raise ValueError("Select at least one transaction.")
+        return v
+
+
+class BankAttachmentIn(BaseModel):
+    """A supporting document on a bank transaction (Tier 1.8).
+
+    The link's scheme is validated in domain/banking/attachments — a stored
+    javascript:/data: URL rendered as a link is stored XSS, so the vocabulary is
+    closed to http/https rather than sanitised."""
+    name: str
+    url: str
+
+
+class BankAttachmentRemoveIn(BaseModel):
+    url: str
+
+
 class BankTransferPairIn(BaseModel):
     """Confirm two bank lines are one transfer (Tier 1.5). The path transaction
     is the PRIMARY (outflow) side; this names the counterpart."""

@@ -141,6 +141,14 @@ interface QueueTxn {
     alternatives: { account_id: string | null; category: string | null; times: number }[];
   } | null;
 }
+/** Tier 1.7 — what happened to ONE row of a batch. Every row comes back with
+ *  an outcome; a partial success shown as a success hides uncoded lines. */
+interface BatchResult {
+  transaction_id: string; status: "applied" | "skipped" | "failed"; reason: string;
+}
+interface BatchOutcome {
+  results: BatchResult[]; applied: number; skipped: number; failed: number; total: number;
+}
 /** Tier 1.5 — two bank lines that look like one movement between the client's
  *  own accounts. `primary_id` is the outflow: the side that will carry the
  *  journal. Confirming does NOT post anything. */
@@ -178,6 +186,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const [loading, setLoading] = useState(false);
   const [sugg, setSugg] = useState<Record<string, MatchSuggestion[]>>({});
   const [transfers, setTransfers] = useState<TransferSuggestion[]>([]);
+  const [batchOutcome, setBatchOutcome] = useState<BatchOutcome | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
@@ -301,6 +310,26 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
+  // Tier 1.7 — one action over the checked rows. The outcome panel below shows
+  // what happened to EACH row rather than a count, because some legitimately
+  // fail and a silent partial success leaves transactions uncoded.
+  async function runBatch(kind: "accept" | "exclude" | "include") {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true); setBulkError(null); setBatchOutcome(null);
+    try {
+      const fn = kind === "accept" ? api.banking.batchAccept
+        : kind === "exclude" ? api.banking.batchExclude : api.banking.batchInclude;
+      const res = (await fn(ids)) as { success: boolean; data: BatchOutcome; error: string | null };
+      if (!res.success) throw new Error(res.error ?? "The batch action failed.");
+      setBatchOutcome(res.data);
+      setSelected(new Set());
+      await load();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "The batch action failed.");
+    } finally { setBulkBusy(false); }
+  }
+
   // Tier 1.5 — detected transfer pairs for this client.
   const loadTransfers = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -487,6 +516,23 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
                   {bulkBusy ? "Applying…" : "Apply"}
                 </button>
+                <span className="text-[#C7D2FE]">|</span>
+                {/* Tier 1.7 — accept each row's OWN suggestion. One request, an
+                    outcome per row, because some will legitimately not apply. */}
+                <button onClick={() => runBatch("accept")} disabled={bulkBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
+                  Accept suggestions
+                </button>
+                <button onClick={() => runBatch("exclude")} disabled={bulkBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5 font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50">
+                  Exclude
+                </button>
+                {status === "ignored" && (
+                  <button onClick={() => runBatch("include")} disabled={bulkBusy}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5 font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50">
+                    Include again
+                  </button>
+                )}
                 <button onClick={clearSelection} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
                   <X size={14} />
                 </button>
@@ -494,6 +540,37 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             </div>
           )}
           {bulkError && <p className="text-[11px] text-red-600 px-1">{bulkError}</p>}
+
+          {/* Tier 1.7 — what happened to EACH row. A count alone would hide the
+              two that did not apply, and those are the ones needing attention. */}
+          {batchOutcome && (
+            <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+              <div className="px-4 py-2 bg-[#F8FAFC] border-b border-[#F1F5F9] flex items-center justify-between">
+                <p className="text-[11px] text-[#334155]">
+                  <span className="font-semibold">{batchOutcome.applied}</span> applied
+                  {batchOutcome.skipped > 0 && <> · {batchOutcome.skipped} skipped</>}
+                  {batchOutcome.failed > 0 && <> · <span className="text-red-700">{batchOutcome.failed} failed</span></>}
+                  {" "}of {batchOutcome.total}
+                </p>
+                <button onClick={() => setBatchOutcome(null)}
+                  className="text-[#94A3B8] hover:text-[#475569]" aria-label="Dismiss batch result">
+                  <X size={13} />
+                </button>
+              </div>
+              {batchOutcome.results.some((r) => r.status !== "applied") && (
+                <div className="divide-y divide-[#F8FAFC] max-h-48 overflow-y-auto">
+                  {batchOutcome.results.filter((r) => r.status !== "applied").map((r) => (
+                    <p key={r.transaction_id} className="px-4 py-1.5 text-[10px] text-[#64748B]">
+                      <span className={`font-medium ${r.status === "failed" ? "text-red-700" : "text-amber-700"}`}>
+                        {r.status}
+                      </span>
+                      {" — "}{r.reason}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
             {rows.map((t) => (

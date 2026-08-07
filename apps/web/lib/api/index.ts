@@ -323,6 +323,34 @@ export const api = {
       q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
       desc?: string; limit?: string; offset?: string;
     }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Tier 1.7 — one action over many rows. Returns an outcome for EVERY row:
+     *  rows legitimately fail (already posted, already excluded, nothing to
+     *  accept) and a partial success shown as a success hides uncoded lines. */
+    batchAccept: (transactionIds: string[]) =>
+      request("/api/banking/transactions/batch-accept", {
+        method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
+      }),
+    batchExclude: (transactionIds: string[]) =>
+      request("/api/banking/transactions/batch-exclude", {
+        method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
+      }),
+    batchInclude: (transactionIds: string[]) =>
+      request("/api/banking/transactions/batch-include", {
+        method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
+      }),
+    /** Tier 1.8 — supporting documents. The link must be http or https; the
+     *  server refuses anything that could run code. */
+    attachments: {
+      list: (txnId: string) => request(`/api/banking/transactions/${txnId}/attachments`),
+      add: (txnId: string, name: string, url: string) =>
+        request(`/api/banking/transactions/${txnId}/attachments`, {
+          method: "POST", body: JSON.stringify({ name, url }),
+        }),
+      remove: (txnId: string, url: string) =>
+        request(`/api/banking/transactions/${txnId}/attachments/remove`, {
+          method: "POST", body: JSON.stringify({ url }),
+        }),
+    },
     /** Tier 1.5 — bank lines that look like the two halves of ONE movement
      *  between the client's own accounts. Read-only; pairing needs a click. */
     transferSuggestions: (params: { client_id: string; window_days?: string }) =>

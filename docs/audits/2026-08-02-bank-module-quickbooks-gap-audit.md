@@ -268,8 +268,8 @@ found while doing the work:
 | ✅ 1.4 | ~~**Learn-from-history suggestions** — "last time this payee was coded to X"~~ **Shipped 2026-08-03** | **M** | The key is the hard part, and it is **not** the narration: an Indian UPI line carries a UTR, so every one is unique and a raw-string key never learns anything. The key is `payee_id` when a party is linked, else the **normalised** counterparty (6.2), so 'Acme Pvt. Ltd.' and 'ACME PRIVATE LIMITED' learn as one payee. Only **posted** decisions teach — a draft is a proposal, and learning from unposted rows would let one mistaken suggestion, accepted once, become the evidence for suggesting itself. Returns **evidence, not a score**: "coded this way 8 of the last 9 times" plus the alternatives that lost, because a CA cannot audit '92% confident'. |
 | ✅ 1.5 | ~~**Transfer auto-detection** — pair opposite-sign, same-amount lines across two of the client's own accounts~~ **Shipped 2026-08-03** | **M** | Migration 258. **Detection was only half the feature.** `build_transfer_lines` already writes the COMPLETE double entry, so a detected pair whose sides both post double-counts the cash anyway — the exact overstatement this prevents, just arrived at more tidily. Hence `transfer_is_primary`: exactly one side (the outflow) carries the journal, the counterpart is excluded from the ready-to-post queue AND refused in `_plan`. Pairing goes through an atomic RPC because a half-paired row — one side pointing at a partner that doesn't point back — would be free to post its own journal. Exact paise, opposite directions, different accounts, within a few days; **ambiguity is reported, not resolved** (three ₹50,000 movements on one day have no single correct pairing, and each line is used in at most one pair).
 | 1.6 | **"Find other matches"** — searchable candidate picker with date/amount/party filters, not a fixed top-5 | **M** | |
-| 1.7 | **Batch accept / batch exclude** alongside the existing bulk categorize | **S** | |
-| 1.8 | **Attachments on bank transactions** | **S** | Storage + RLS already exist for documents. |
+| ✅ 1.7 | ~~**Batch accept / batch exclude** alongside the existing bulk categorize~~ **Shipped 2026-08-03** | **S** | One request for the whole selection, returning an outcome for **every** row. The existing bulk categorize fires one request per row and reports a count — fine when all succeed, misleading when two do not. Rows legitimately fail (already posted, already excluded, nothing to accept) and a partial success reported as a success is how a transaction quietly stays uncoded until year end. Deliberately **not atomic across rows**: eight good rows should not roll back because the ninth was posted. "Accept" applies a matching rule first (a human wrote it), then learned history (a human did it before) — never an invented account. |
+| ✅ 1.8 | ~~**Attachments on bank transactions**~~ **Shipped 2026-08-03** | **S** | Migration 259, reusing migration 138's JSONB `{name,url}` convention rather than a table — there is no join, lifecycle or separate permission to express. **The link's scheme is an allow-list, not a sanitiser**: an attachment URL is rendered as a link a CA clicks, so a stored `javascript:` or `data:` URL is stored XSS delivered by whoever uploaded the "receipt". Only http/https are accepted. Names cannot contain path separators (the name is also what a download would be called). |
 
 ### Tier 2 — Reconciliation, to accountant standard  ·  ✅ COMPLETE, shipped 2026-08-02
 
@@ -359,15 +359,15 @@ several are cheap because the data is already in the narration.
 6. ~~**Tier 1.2 — split across GL accounts.**~~ ✅ Done 2026-08-03.
 7. ~~**Tier 1.3 + 1.4 — payee and learn-from-history.**~~ ✅ Done 2026-08-03.
 8. ~~**Tier 1.5 — transfer auto-detection.**~~ ✅ Done 2026-08-03.
-9. **Then the rest of Tier 1** — 1.6 (candidate picker), and 1.7 / 1.8, which are both
-   **S** and independent of everything else.
+9. ~~**Tier 1.7 + 1.8 — batch actions and attachments.**~~ ✅ Done 2026-08-03.
+10. **1.6 ("find other matches" candidate picker, M) is the last Tier 1 item.**
 
    **Known follow-up from 1.2:** a split and a GST rate cannot currently be combined —
    both decide the non-bank legs, and doing them together needs a rate *per split*. The
    combination is refused with a clear message rather than silently applying one and
    dropping the other. Worth doing when a real case turns up; the pieces
    (`charge_gst.split_inclusive_charge`, `splits.build_split_lines`) already compose.
-10. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
+11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
 ---
