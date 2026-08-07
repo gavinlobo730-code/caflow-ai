@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -36,6 +36,45 @@ _MOCK_RETURNS: dict[str, dict] = {}
 _MOCK_CERTIFICATES: dict[str, dict] = {}
 _MOCK_FORM26AS: dict[str, dict] = {}
 _MOCK_DEDUCTIONS: dict[str, dict] = {}
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`.
+#
+# This router already imported core.authz and already called
+# assert_client_access -- on the four POST bodies. Every endpoint that took its
+# client from a QUERY PARAMETER, and every one addressed by a row id, was
+# unguarded. A guard on the input and none on the record reads as handled.
+#
+# TWO SHAPES, BECAUSE THIS ROUTER REPORTS "NOT FOUND" TWO DIFFERENT WAYS.
+#
+#   * Endpoints that NAME a client (`client_id` query param) get
+#     `assert_client_access`, which raises 404 -- the same answer every other
+#     audited router gives. It goes BEFORE the `try`, because every handler
+#     here ends in a bare `except Exception: return api_response(False, ...)`
+#     that would otherwise swallow the refusal into a 200.
+#
+#   * Endpoints addressed by a ROW id report a missing row as a 200 carrying
+#     `{"success": false, "error": "Not found"}`, not a 404. Raising a 404 for
+#     the refusal would make the STATUS CODE the oracle: 404 = the id is real
+#     and belongs to someone else, 200 = it does not exist. So those go through
+#     `_visible_or_none`, which sends the refusal down the router's own
+#     not-found path byte for byte.
+
+def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
+    """`rec` if the caller may see its client, otherwise None.
+
+    Deliberately the boolean check rather than the raising one: the caller's
+    existing not-found branch is the response we want, and re-implementing it
+    at each call site is how the two answers drift apart.
+    """
+    if rec is None:
+        return None
+    if not can_access_client(current_user, rec.get("client_id")):
+        return None
+    return rec
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,6 +159,7 @@ def tds_dashboard(
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """TDS filing dashboard — summary of deductions, challans, returns."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -161,6 +201,7 @@ def list_deductions(
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS deductions for client. IT Act §192-194Q."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -191,6 +232,7 @@ def list_challans(
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS challans for client."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -274,14 +316,13 @@ def get_challan(challan_id: str, current_user: dict = Depends(rbac("tds", "read"
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rec = _MOCK_CHALLANS.get(challan_id)
-            if not rec:
-                return api_response(False, None, "Not found")
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("tds_challans").select("*").eq("id", challan_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Not found")
+        rec = _visible_or_none(current_user, rec)
+        if not rec:
+            return api_response(False, None, "Not found")
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, str(e))
@@ -295,6 +336,7 @@ def list_returns(
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS returns for client."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -410,18 +452,21 @@ def update_return_status(
 
         if _USE_MOCK:
             current = _MOCK_RETURNS.get(return_id)
-            if current is None:
-                return api_response(False, None, "Not found")
-            current_status = current.get("status")
         else:
             from core.supabase_client import get_supabase
             existing = (
-                get_supabase().table("tds_returns").select("status")
+                # client_id is selected purely so the scope check below has
+                # something to check -- the status is what this handler reads.
+                get_supabase().table("tds_returns").select("status, client_id")
                 .eq("id", return_id).eq("firm_id", firm_id).limit(1).execute().data
             )
-            if not existing:
-                return api_response(False, None, "Not found")
-            current_status = existing[0].get("status")
+            current = existing[0] if existing else None
+        # Before the update, not after: this endpoint writes the PRN that marks a
+        # statutory return FILED. A refusal that arrives afterwards is not one.
+        current = _visible_or_none(current_user, current)
+        if current is None:
+            return api_response(False, None, "Not found")
+        current_status = current.get("status")
 
         # A return can only be filed once — a repeated/duplicate "mark filed"
         # request (double-click, retry) must not silently overwrite the
@@ -470,6 +515,7 @@ def list_certificates(
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS certificates (Form 16/16A) for client. IT Act §203."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -634,14 +680,13 @@ def get_form26as(upload_id: str, current_user: dict = Depends(rbac("tds", "read"
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rec = _MOCK_FORM26AS.get(upload_id)
-            if not rec:
-                return api_response(False, None, "Not found")
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("form_26as_uploads").select("*").eq("id", upload_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Not found")
+        rec = _visible_or_none(current_user, rec)
+        if not rec:
+            return api_response(False, None, "Not found")
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, str(e))
