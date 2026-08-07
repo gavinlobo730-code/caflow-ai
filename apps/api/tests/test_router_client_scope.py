@@ -108,6 +108,15 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # A SECOND TDS router. "/api/tds" is a string PREFIX of "/api/tds-workspace",
     # which is why _routes() takes the longest match rather than the first.
     "/api/tds": ("assert_client_access",),
+    # GST is THREE registrations of one feature: /api/gst, /api/gst-workspace
+    # and /api/gst-portal. As with TDS, /api/gst is a string prefix of the
+    # other two — _prefix_for takes the longest match.
+    "/api/gst-workspace": (
+        "assert_client_access", "_visible_or_none", "can_access_client",
+        "_load_return_or_none",
+    ),
+    "/api/gst-portal": ("assert_client_access", "_assert_job_scope"),
+    "/api/gst": ("assert_client_access",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -173,6 +182,21 @@ EXEMPT: dict[str, str] = {
         "high-risk-client TALLY. No client is named and no per-client figure is "
         "returned. Same line as the lifecycle dashboard: the counts are derived "
         "from client rows, and that is stated rather than glossed over.",
+    "/api/gst/classify":
+        "classifies transaction rows the CALLER supplied into GST buckets. "
+        "TransactionClassifyRequest has no client_id — nothing to check.",
+    "/api/gst/gstr1/build":
+        "builds the GSTR-1 JSON payload from classified rows in the request "
+        "body. GSTR1Request has no client_id. The FROM-BOOKS variant, which "
+        "reads a client's ledger, is guarded.",
+    "/api/gst/gstr3b/compute":
+        "computes GSTR-3B from figures in the request body. GSTR3BRequest "
+        "has no client_id; the from-books variant is guarded.",
+    "/api/gst/validate/gstr1":
+        "runs the CGST §37 validators over a payload in the request body. "
+        "No client_id, no stored data read.",
+    "/api/gst/validate/gstr3b":
+        "same, for CGST §39.",
     "/api/tds/compute-amount":
         "a calculator: section + amount in, rate + TDS in paise out. The "
         "request model has no client_id at all — there is nothing to check "
@@ -202,7 +226,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/memory": 14,
               "/api/tasks": 15, "/api/task-recurring": 9,
               "/api/tds-workspace": 12,
-              "/api/tds": 8}
+              "/api/tds": 8,
+              "/api/gst-workspace": 13, "/api/gst-portal": 5,
+              "/api/gst": 7}
 
 
 def _code_only(src: str) -> str:
@@ -374,7 +400,9 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.payroll", "routers.recurring_invoices",
                    "routers.memory_intelligence", "routers.tasks",
                    "routers.task_extras", "routers.task_recurring",
-                   "routers.tds_workspace", "routers.tds"):
+                   "routers.tds_workspace", "routers.tds",
+                   "routers.gst_workspace", "routers.gst_portal",
+                   "routers.gst"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

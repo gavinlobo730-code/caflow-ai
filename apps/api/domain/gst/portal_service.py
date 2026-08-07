@@ -297,6 +297,27 @@ def list_snapshots(
     return res.data or []
 
 
+def get_sync_job(firm_id: str, job_id: str) -> dict | None:
+    """One sync job, scoped to the firm — or None.
+
+    Added so the router can resolve a job's CLIENT before running it.
+    `run_sync_job` reads job["client_id"] itself, but only after it has already
+    flipped the job to "running" and started writing snapshots, which is too
+    late to refuse. The firm filter is on the query, not applied afterwards, so
+    another firm's job is never in hand at all.
+    """
+    if _USE_MOCK:
+        job = _MOCK_SYNC_JOBS.get(job_id)
+        return job if job and job.get("firm_id") == firm_id else None
+
+    res = (
+        _supabase().table("gst_sync_jobs").select("*")
+        .eq("id", job_id).eq("firm_id", firm_id).limit(1).execute()
+    )
+    rows = res.data or []
+    return rows[0] if rows else None
+
+
 def list_sync_jobs(firm_id: str, client_id: str) -> list[dict]:
     if _USE_MOCK:
         return [j for j in _MOCK_SYNC_JOBS.values()

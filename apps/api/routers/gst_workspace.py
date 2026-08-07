@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from core.ist_clock import ist_today
 from core.validators import validate_gstin
@@ -94,6 +94,51 @@ class GSTR2BUploadRequest(BaseModel):
     raw_data: dict = Field(default_factory=dict, description="GSTR-2B JSON from portal")
 
 
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# Same shape as tds_workspace, and the same two answers. This router already
+# called assert_client_access on its four POST bodies (task #231); every
+# endpoint taking its client from a QUERY PARAMETER and every one addressed by
+# a ROW id was unguarded.
+#
+#   * Endpoints that NAME a client get `assert_client_access` (404), placed
+#     BEFORE the `try` — every handler here ends in a bare `except Exception:
+#     return api_response(False, ...)` that would otherwise swallow the refusal
+#     into a 200 and downgrade the guard to a log line.
+#
+#   * Endpoints addressed by a ROW id report a missing row as a 200 carrying
+#     {"success": false, "error": "Not found"}. A 404 refusal there would make
+#     the STATUS CODE the oracle, so they go through `_visible_or_none` and come
+#     back down the router's own not-found path.
+
+def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
+    """`rec` if the caller may see its client, otherwise None."""
+    if rec is None:
+        return None
+    if not can_access_client(current_user, rec.get("client_id")):
+        return None
+    return rec
+
+
+def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
+                         return_id: str) -> Optional[dict]:
+    """Read a GST return the caller may see, or None.
+
+    The two status endpoints had NO read at all — they fired the UPDATE and used
+    whatever came back. There is no way to check a client that way: by the time
+    the row is in hand the return has already been moved to "submitted". So the
+    read is added, and the refusal happens before the write.
+    """
+    if _USE_MOCK:
+        rec = mock_store.get(return_id)
+    else:
+        from core.supabase_client import get_supabase
+        rows = (get_supabase().table(table).select("*")
+                .eq("id", return_id).eq("firm_id", current_user.get("firm_id"))
+                .execute().data)
+        rec = rows[0] if rows else None
+    return _visible_or_none(current_user, rec)
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/")
@@ -102,6 +147,7 @@ def gst_dashboard(
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """GST filing dashboard with upcoming due dates."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         today = ist_today()
@@ -138,6 +184,7 @@ def list_returns(
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """List all GST returns (GSTR-1 + GSTR-3B) for a client."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -225,14 +272,13 @@ def get_gstr1(return_id: str, current_user: dict = Depends(rbac("gst", "read")))
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rec = _MOCK_GSTR1.get(return_id)
-            if not rec:
-                return api_response(False, None, "Not found")
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("gstr1_returns").select("*").eq("id", return_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Not found")
+        rec = _visible_or_none(current_user, rec)
+        if not rec:
+            return api_response(False, None, "Not found")
 
         return api_response(True, rec)
     except Exception as e:
@@ -269,9 +315,13 @@ def update_gstr1_status(
                 return api_response(False, None,
                     "Only Manager or above can approve or submit a GST return.")
 
+        # Read first. Moving a return to "submitted" is the write this router
+        # exists to gate (CGST §37/§39) — a check that happens after it has
+        # already moved is not a check.
+        if _load_return_or_none(current_user, "gstr1_returns", _MOCK_GSTR1, return_id) is None:
+            return api_response(False, None, "Not found")
+
         if _USE_MOCK:
-            if return_id not in _MOCK_GSTR1:
-                return api_response(False, None, "Not found")
             _MOCK_GSTR1[return_id]["status"] = body.status
             rec = _MOCK_GSTR1[return_id]
         else:
@@ -349,14 +399,13 @@ def get_gstr3b(return_id: str, current_user: dict = Depends(rbac("gst", "read"))
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rec = _MOCK_GSTR3B.get(return_id)
-            if not rec:
-                return api_response(False, None, "Not found")
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("gstr3b_returns").select("*").eq("id", return_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Not found")
+        rec = _visible_or_none(current_user, rec)
+        if not rec:
+            return api_response(False, None, "Not found")
 
         return api_response(True, rec)
     except Exception as e:
@@ -393,9 +442,13 @@ def update_gstr3b_status(
                 return api_response(False, None,
                     "Only Manager or above can approve or submit a GST return.")
 
+        # Read first. Moving a return to "submitted" is the write this router
+        # exists to gate (CGST §37/§39) — a check that happens after it has
+        # already moved is not a check.
+        if _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id) is None:
+            return api_response(False, None, "Not found")
+
         if _USE_MOCK:
-            if return_id not in _MOCK_GSTR3B:
-                return api_response(False, None, "Not found")
             _MOCK_GSTR3B[return_id]["status"] = body.status
             rec = _MOCK_GSTR3B[return_id]
         else:
@@ -424,6 +477,7 @@ def filing_history(
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """List filed returns (status=submitted) with ARN and filing date."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -656,6 +710,7 @@ def get_gstr9(
     Retrieve saved GSTR-9 draft for a client and financial year.
     CGST Act §44: Annual return filed by 31st December following FY end.
     """
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             rec = next(
@@ -696,14 +751,13 @@ def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rec = _MOCK_GSTR2B.get(upload_id)
-            if not rec:
-                return api_response(False, None, "Not found")
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("gstr2b_uploads").select("*").eq("id", upload_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Not found")
+        rec = _visible_or_none(current_user, rec)
+        if not rec:
+            return api_response(False, None, "Not found")
 
         return api_response(True, rec)
     except Exception as e:
