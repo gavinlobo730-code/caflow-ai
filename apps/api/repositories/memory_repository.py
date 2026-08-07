@@ -405,6 +405,27 @@ class MemoryRepository(BaseRepository):
         result = query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
 
+    def get_trigger(self, firm_id: str, trigger_id: str) -> Optional[dict]:
+        """One trigger, firm-scoped. Exists so the router can resolve its client
+        BEFORE acknowledge/dismiss writes."""
+        if _USE_MOCK:
+            return next((t for t in MOCK_TRIGGERS
+                         if t["id"] == trigger_id and t["firm_id"] == firm_id), None)
+        rows = (_get_db().table("ai_memory_triggers").select("*")
+                .eq("id", trigger_id).eq("firm_id", firm_id)
+                .limit(1).execute().data) or []
+        return rows[0] if rows else None
+
+    def get_anomaly(self, firm_id: str, anomaly_id: str) -> Optional[dict]:
+        """One anomaly, firm-scoped. Same reason as get_trigger."""
+        if _USE_MOCK:
+            return next((a for a in MOCK_ANOMALIES
+                         if a["id"] == anomaly_id and a["firm_id"] == firm_id), None)
+        rows = (_get_db().table("pattern_anomalies").select("*")
+                .eq("id", anomaly_id).eq("firm_id", firm_id)
+                .limit(1).execute().data) or []
+        return rows[0] if rows else None
+
     def acknowledge_trigger(
         self, firm_id: str, trigger_id: str, user_id: str
     ) -> Optional[dict]:
