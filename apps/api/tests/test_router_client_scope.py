@@ -26,7 +26,9 @@ WHAT COUNTS AS CONSULTING THE SCOPE
     helper that means something else.
 """
 import inspect
+import io
 import re
+import tokenize
 
 import pytest
 
@@ -53,6 +55,38 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client",
         "_assert_instance_scope", "_scope_by_instance",
     ),
+    # knowledge's guards live in the SERVICE, not the router — see FOLLOW below.
+    # `_load_article_or_404` is deliberately NOT listed: it is a loader that
+    # exists whether or not it checks anything, so naming it let the sweep pass
+    # on a service with every check stripped out. Only names that cannot exist
+    # without the check belong here.
+    "/api/knowledge": (
+        "_assert_client_access", "can_view_client_content",
+    ),
+    "/api/clients/{client_id}/instructions": (
+        "_assert_client_access", "can_view_client_content",
+    ),
+    "/api/clients/{client_id}/knowledge": (
+        "_assert_client_access", "can_view_client_content",
+    ),
+    "/api/lifecycle": (
+        "assert_client_access", "filter_by_client",
+        "_assert_row_scope", "_assert_via_parent",
+    ),
+}
+
+# Routers whose endpoints are one-line delegations, with the client-scope check
+# living in the service they call. Following the call is the only way to tell a
+# thin-but-guarded router from an unguarded one — refusing to follow would force
+# a pointless second check into the router just to satisfy a test.
+#
+# Bounded to the named module and two levels, so this stays a check rather than
+# a whole-program analysis: endpoint → service function → the helper it calls
+# (knowledge's `_load_article_or_404` is exactly that second level).
+FOLLOW: dict[str, str] = {
+    "/api/knowledge": "services.knowledge_service",
+    "/api/clients/{client_id}/instructions": "services.knowledge_service",
+    "/api/clients/{client_id}/knowledge": "services.knowledge_service",
 }
 
 # Endpoints whose RESOURCE has no client to scope to, with the reason. An
@@ -85,6 +119,19 @@ EXEMPT: dict[str, str] = {
         "firm-wide operational aggregates — counts, success rates and template "
         "names. No client identifier is returned, and the per-template "
         "breakdown is over firm-level definitions.",
+    "/api/lifecycle/leads":
+        "leads has a firm_id and no client_id (migration 059) — a lead is not "
+        "yet a client, so there is no assignment to check against. Whether "
+        "leads should carry a scope of their own is an open product question, "
+        "recorded in the audit doc.",
+    "/api/lifecycle/leads/{lead_id}":
+        "same table, addressed by id.",
+    "/api/lifecycle/dashboard":
+        "aggregate counts only: lead stage tallies, a proposal count, an "
+        "overdue-renewal count. No client is named and no per-client figure is "
+        "returned. The renewal count IS a cardinality signal derived from "
+        "client rows — that is the line being drawn, stated rather than "
+        "pretending the endpoint touches nothing client-shaped.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -92,7 +139,63 @@ EXEMPT: dict[str, str] = {
 # nothing and pass.
 MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-bills": 10, "/api/engagement-letters": 19,
-              "/api/workflows": 20}
+              "/api/workflows": 20, "/api/knowledge": 7,
+              "/api/clients/{client_id}/instructions": 4,
+              "/api/clients/{client_id}/knowledge": 1,
+              "/api/lifecycle": 19}
+
+
+def _code_only(src: str) -> str:
+    """`src` with comments and string literals removed.
+
+    Without this the sweep can be satisfied by PROSE: a docstring that merely
+    explains `can_view_client_content` counts as calling it, so a service with
+    every check stripped out still passed on the strength of its own commentary.
+    Matching has to be on code.
+    """
+    out = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type in (tokenize.COMMENT, tokenize.STRING):
+                continue
+            out.append(tok.string)
+    except (tokenize.TokenError, IndentationError):
+        # A fragment that will not tokenise on its own (an indented def pulled
+        # out of a class): fall back to the raw text rather than skipping it,
+        # which would be the permissive direction.
+        return src
+    return " ".join(out)
+
+
+def _reachable_source(prefix: str, endpoint, depth: int = 2) -> str:
+    """The endpoint's source, plus that of the service functions it delegates to.
+
+    Only for prefixes in FOLLOW, only into the one module named there, and only
+    `depth` levels deep — enough for endpoint → service → helper, and no more.
+    """
+    src = inspect.getsource(endpoint)
+    module_name = FOLLOW.get(prefix)
+    if not module_name:
+        return src
+    import importlib
+    mod = importlib.import_module(module_name)
+    seen, frontier = set(), [src]
+    for _ in range(depth):
+        nxt = []
+        for text in frontier:
+            for name in re.findall(r"\b([a-z_][a-z0-9_]*)\s*\(", text):
+                fn = getattr(mod, name, None)
+                if fn is None or name in seen or not callable(fn):
+                    continue
+                seen.add(name)
+                try:
+                    body = inspect.getsource(fn)
+                except (OSError, TypeError):      # builtins, C functions
+                    continue
+                src += "\n" + body
+                nxt.append(body)
+        frontier = nxt
+    return src
 
 
 def _routes():
@@ -127,7 +230,7 @@ def test_every_endpoint_in_an_audited_router_consults_client_scope(
     written a runtime test for yet — that is the whole point of it."""
     if path in EXEMPT:
         return
-    src = inspect.getsource(endpoint)
+    src = _code_only(_reachable_source(prefix, endpoint))
     if any(name in src for name in AUDITED[prefix]):
         return
     pytest.fail(
@@ -186,7 +289,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
     import importlib
     for module in ("routers.banking", "routers.sales_invoices",
                    "routers.purchase_bills", "routers.engagement_letters",
-                   "routers.workflow_builder"):
+                   "routers.workflow_builder", "routers.lifecycle"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

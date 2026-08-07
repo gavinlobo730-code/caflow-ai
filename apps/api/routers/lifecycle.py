@@ -14,6 +14,7 @@ import logging
 import uuid
 
 from models.common import api_response
+from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
@@ -39,6 +40,63 @@ def _db():
         return None
     from core.supabase_client import get_supabase
     return get_supabase()
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. This router did not import core.authz at all.
+#
+# WHAT IS CLIENT DATA HERE — the lifecycle runs from before a client exists to
+# after they renew, so the answer differs per table:
+#   * `onboarding_workflows`, `onboarding_checklists`, `renewals` — client_id
+#     NOT NULL. Guarded directly.
+#   * `proposals` — client_id NULLABLE, because a proposal can be made to a
+#     LEAD before conversion. A NULL is a firm-level row, not a 404.
+#   * `onboarding_tasks` and `onboarding_checklist_steps` — a `firm_id` and a
+#     `workflow_id`, no client_id of their own. Scoped THROUGH the parent, the
+#     same shape as workflow_builder's executions/failures/approvals.
+#   * `leads` — a `firm_id` and nothing else. A lead is not yet a client, so
+#     there is no assignment to check; the /leads endpoints are listed in EXEMPT
+#     with that reason. (Whether leads SHOULD have their own scope is an open
+#     product question, recorded in the audit doc.)
+
+def _row_owner(db, current_user: dict, table: str, row_id: str,
+               mock_rows: Optional[list] = None) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for one row, firm-scoped.
+
+    A pair, not just the id: several of these tables have a nullable client_id
+    (a proposal to a lead), and collapsing "no client" into "not found" would
+    404 every pre-client row in the firm.
+    """
+    firm_id = current_user["firm_id"]
+    if not db:
+        row = next((r for r in (mock_rows or [])
+                    if r.get("id") == row_id and r.get("firm_id") == firm_id), None)
+        return (row is not None, row.get("client_id") if row else None)
+    rows = (db.table(table).select("client_id")
+            .eq("id", row_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_row_scope(db, current_user: dict, table: str, row_id: str, label: str,
+                      mock_rows: Optional[list] = None) -> Optional[str]:
+    """404 unless the caller may act on this row's client.
+
+    404 rather than 403, and the same 404 as "no such row" — otherwise the
+    status code becomes an oracle for which ids are real.
+    """
+    found, client_id = _row_owner(db, current_user, table, row_id, mock_rows)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    assert_client_access(current_user, client_id)
+    return client_id
+
+
+def _assert_via_parent(db, current_user: dict, parent_table: str, parent_id: str,
+                       label: str, mock_rows: Optional[list] = None) -> Optional[str]:
+    """For the child tables that carry a workflow_id and no client_id."""
+    return _assert_row_scope(db, current_user, parent_table, parent_id, label, mock_rows)
 
 
 def _next_lead_no(db, firm_id: str) -> str:
@@ -807,6 +865,13 @@ def convert_lead(
     data: LeadConvertIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    # LeadConvertIn.client_id is OPTIONAL: absent means "create a new client",
+    # present means "attach this lead to an EXISTING one". The second case is a
+    # client-scoped act — it spawns onboarding workflows and writes lifecycle
+    # events against that client — and was unchecked. assert_client_access is a
+    # no-op on None, which is exactly right for the create-a-new-client path:
+    # there is nothing to authorise until the client exists.
+    assert_client_access(current_user, data.client_id)
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1118,6 +1183,11 @@ def list_proposals(
     offset: int = Query(0),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    # Optional client_id: check the one asked for, or narrow the firm-wide view.
+    # filter_by_client keeps rows with no client_id, so a proposal made to a LEAD
+    # survives the narrowing instead of vanishing from the pipeline.
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = list(_MOCK_PROPOSALS)
@@ -1127,6 +1197,8 @@ def list_proposals(
             result = [p for p in result if p.get("client_id") == client_id]
         if status:
             result = [p for p in result if p.get("status") == status]
+        if not client_id:
+            result = filter_by_client(current_user, result)
         return api_response(True, result[offset: offset + limit])
 
     q = db.table("proposals").select("*").eq("firm_id", current_user["firm_id"])
@@ -1137,7 +1209,10 @@ def list_proposals(
     if status:
         q = q.eq("status", status)
     res = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-    return api_response(True, res.data or [])
+    rows = res.data or []
+    if not client_id:
+        rows = filter_by_client(current_user, rows)
+    return api_response(True, rows)
 
 
 @router.post("/proposals")
@@ -1145,6 +1220,7 @@ def create_proposal(
     data: ProposalIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     proposal_no = _next_proposal_no(db, current_user["firm_id"])
     now = datetime.now(timezone.utc).isoformat()
@@ -1195,6 +1271,7 @@ def update_proposal_status(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
+    _assert_row_scope(db, current_user, "proposals", proposal_id, "Proposal", _MOCK_PROPOSALS)
     now = datetime.now(timezone.utc).isoformat()
     update = {"status": data.status, "updated_at": now}
     if data.notes:
@@ -1239,6 +1316,7 @@ def list_onboarding(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         workflows = [w for w in _MOCK_ONBOARDING_WORKFLOWS if w.get("client_id") == client_id]
@@ -1255,6 +1333,7 @@ def create_onboarding(
     data: OnboardingIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
     workflow_id = str(uuid.uuid4())
@@ -1315,6 +1394,7 @@ def update_onboarding_task(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
+    _assert_via_parent(db, current_user, "onboarding_workflows", workflow_id, "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
     now = datetime.now(timezone.utc).isoformat()
     # Normalise status to DB-valid lowercase value
     db_status = _TASK_STATUS_MAP.get(data.status, data.status.lower().replace(" ", "_"))
@@ -1469,6 +1549,7 @@ def start_onboarding_checklist(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     """Start a 10-step onboarding checklist for a client (Product Bible Ch. 7)."""
+    assert_client_access(current_user, data.client_id)
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
     workflow_id = str(uuid.uuid4())
@@ -1505,12 +1586,23 @@ def start_onboarding_checklist(
 
 @router.get("/onboarding/checklist/active")
 def list_active_onboardings(
-    firm_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("client", "read")),
 ):
-    """List all active (non-completed) onboarding checklists for the firm."""
+    """List all active (non-completed) onboarding checklists for the firm.
+
+    TENANT ISOLATION. This used to accept `?firm_id=` and prefer it over the
+    caller's own (`firm_id or current_user["firm_id"]`), so any authenticated
+    user of any firm could read another **firm's** onboarding checklists —
+    client names and all — by supplying its id. That is a tenant boundary, not a
+    client-assignment one: different firms are different customers.
+
+    The parameter is gone rather than validated. There is no legitimate caller
+    for it: a firm's own users already get their own firm from the token, and
+    cross-firm access belongs to the platform-admin surface (routers/platform.py,
+    gated by require_platform_admin), not here.
+    """
     db = _db()
-    effective_firm_id = firm_id or current_user["firm_id"]
+    effective_firm_id = current_user["firm_id"]
 
     if not db:
         workflows = [
@@ -1520,6 +1612,7 @@ def list_active_onboardings(
             # Only return checklist workflows (have entity_type field)
             and "entity_type" in w
         ]
+        workflows = filter_by_client(current_user, workflows)
         result = []
         for wf in workflows:
             wf_steps = [s for s in _MOCK_ONBOARDING_TASKS if s.get("workflow_id") == wf["id"] and "step_number" in s]
@@ -1527,7 +1620,9 @@ def list_active_onboardings(
         return api_response(True, result)
 
     wf_res = db.table("onboarding_checklists").select("*").eq("firm_id", effective_firm_id).neq("status", "completed").order("started_at", desc=True).execute()
-    workflows = wf_res.data or []
+    # onboarding_checklists.client_id is NOT NULL — narrowing drops every
+    # checklist outside the caller's book, which is the point of the view.
+    workflows = filter_by_client(current_user, wf_res.data or [])
     result = []
     for wf in workflows:
         steps_res = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", wf["id"]).order("step_number").execute()
@@ -1542,6 +1637,7 @@ def get_onboarding_checklist(
 ):
     """Get full onboarding progress for a specific checklist workflow."""
     db = _db()
+    _assert_row_scope(db, current_user, "onboarding_checklists", workflow_id, "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
 
     if not db:
         wf = next((w for w in _MOCK_ONBOARDING_WORKFLOWS if w["id"] == workflow_id), None)
@@ -1566,6 +1662,7 @@ def update_checklist_step(
 ):
     """Update a single step's status in an onboarding checklist."""
     db = _db()
+    _assert_via_parent(db, current_user, "onboarding_checklists", workflow_id, "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
     now = datetime.now(timezone.utc).isoformat()
     db_status = _CHECKLIST_STATUS_MAP.get(data.status, data.status.lower().replace(" ", "_"))
 
@@ -1625,6 +1722,7 @@ def complete_onboarding_checklist(
     9 (Portal Invitation), 10 (Go-Live Verification).
     """
     db = _db()
+    _assert_row_scope(db, current_user, "onboarding_checklists", workflow_id, "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
     now = datetime.now(timezone.utc).isoformat()
 
     if not db:
@@ -1712,6 +1810,7 @@ def list_renewals(
             result = [r for r in result if r.get("status") == status]
         if financial_year:
             result = [r for r in result if r.get("financial_year") == financial_year]
+        result = filter_by_client(current_user, result)
         return api_response(True, result[offset: offset + limit])
 
     q = db.table("renewals").select("*").eq("firm_id", current_user["firm_id"])
@@ -1720,7 +1819,9 @@ def list_renewals(
     if financial_year:
         q = q.eq("financial_year", financial_year)
     res = q.order("renewal_date").range(offset, offset + limit - 1).execute()
-    return api_response(True, res.data or [])
+    # renewals.client_id is NOT NULL, so this drops every renewal outside the
+    # caller's book rather than merely reordering the page.
+    return api_response(True, filter_by_client(current_user, res.data or []))
 
 
 @router.post("/renewals")
@@ -1728,6 +1829,7 @@ def create_renewal(
     data: RenewalIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
     # renewals.renewal_date is NOT NULL — default to 1 year from today if not provided
@@ -1778,6 +1880,7 @@ def update_renewal_status(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
+    _assert_row_scope(db, current_user, "renewals", renewal_id, "Renewal", _MOCK_RENEWALS)
     now = datetime.now(timezone.utc).isoformat()
     db_status = _RENEWAL_STATUS_MAP.get(data.status, data.status.lower())
     update: dict = {"status": db_status, "updated_at": now}

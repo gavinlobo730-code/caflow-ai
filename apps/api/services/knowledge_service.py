@@ -126,7 +126,7 @@ def edit_article(current_user: dict, article_id: str, content: str) -> dict:
     if _USE_MOCK:
         return {"id": article_id, "current_version": 2}
     db = _db()
-    art = _load_article_or_404(db, current_user, article_id)
+    art = _load_article_or_404(db, current_user, article_id, write=True)
     v = next_version(art.get("current_version", 1))
     db.table("knowledge_article_versions").insert({
         "firm_id": art["firm_id"], "article_id": article_id, "version": v,
@@ -143,7 +143,7 @@ def restore_version(current_user: dict, article_id: str, version: int) -> dict:
     if _USE_MOCK:
         return {"id": article_id, "restored_from": version}
     db = _db()
-    art = _load_article_or_404(db, current_user, article_id)
+    art = _load_article_or_404(db, current_user, article_id, write=True)
     old = (db.table("knowledge_article_versions").select("content")
            .eq("article_id", article_id).eq("version", version).limit(1).execute().data)
     if not old:
@@ -155,20 +155,36 @@ def archive_article(current_user: dict, article_id: str) -> dict:
     if _USE_MOCK:
         return {"id": article_id, "is_archived": True}
     db = _db()
-    art = _load_article_or_404(db, current_user, article_id)
+    art = _load_article_or_404(db, current_user, article_id, write=True)
     upd = db.table("knowledge_articles").update({"is_archived": True, "updated_at": _now()}).eq("id", article_id).execute().data[0]
     _emit_article_event(current_user, upd, "kb_article_archived", "Knowledge article archived")
     return upd
 
 
-def _load_article_or_404(db, current_user: dict, article_id: str) -> dict:
+def _load_article_or_404(db, current_user: dict, article_id: str,
+                         *, write: bool = False) -> dict:
+    """Fetch an article, firm-scoped, and enforce client visibility on it.
+
+    `write=True` on the paths that MODIFY the article (edit / restore / archive)
+    so the client-scope layer asks the same question the operation does.
+    can_view_client_content admits Reviewer and Viewer; can_write_instruction
+    deliberately does not ("Reviewer/Viewer/Client: read-only"). Today RBAC
+    reaches those endpoints only for Partner and Manager, who pass both — so
+    this is the two layers agreeing rather than a hole being closed, and it stops
+    a future `knowledge.write` grant from quietly handing a read-only role an
+    edit button.
+
+    A `client_id` with a non-client scope is not reachable (migration 073 CHECKs
+    scope, and client_id is only set for scope='client'), but the condition is on
+    client_id alone so a stray row cannot slip past on its scope label.
+    """
     firm_id = current_user.get("firm_id")
     res = db.table("knowledge_articles").select("*").eq("id", article_id).eq("firm_id", firm_id).limit(1).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Article not found")
     art = res.data[0]
-    if art.get("scope") == "client" and art.get("client_id"):
-        _assert_client_access(current_user, art["client_id"], write=False)
+    if art.get("client_id"):
+        _assert_client_access(current_user, art["client_id"], write=write)
     return art
 
 
@@ -212,9 +228,32 @@ def search_articles(current_user: dict, query: Optional[str] = None, scope: Opti
     if query:
         q = q.ilike("title", f"%{query}%")           # title search; FTS handled by GIN at scale
     rows = q.order("updated_at", desc=True).execute().data or []
-    # Defense-in-depth: drop internal-client rows for non-partners (service-role bypasses RLS).
-    return [r for r in rows if not (is_internal_client(r.get("client_id"), current_user.get("firm_id"))
-                                    and _role(current_user) not in _PARTNER_ROLES)]
+    firm_id = current_user.get("firm_id")
+    out = []
+    for r in rows:
+        row_client = r.get("client_id")
+        internal = is_internal_client(row_client, firm_id)
+        # G1 (internal practice client is Partner-only) is NOT a separate filter
+        # here: can_view_client_content applies it first thing, and
+        # is_internal_client(None, …) is False, so a firm-scoped row can never be
+        # internal. A second copy would be one more thing to keep in step, and
+        # no test could tell the two apart.
+        #
+        # M2 client-assignment scope. This used to be skipped entirely whenever
+        # no client_id was supplied, and the `elif scope:` branch above made that
+        # reachable: `?scope=client` with no client_id returned EVERY client's
+        # articles in the firm to anyone with knowledge.read. The docstring said
+        # the opposite ("excludes client-scoped ... unless a specific assigned
+        # client_id is requested"), so the intent was never in doubt — the branch
+        # simply escaped it. Filtering per row is what makes the claim true for
+        # every path into this function rather than for the two that were
+        # remembered.
+        if row_client and not can_view_client_content(
+                current_user, row_client, internal,
+                is_assigned(firm_id, current_user.get("id"), row_client)):
+            continue
+        out.append(r)
+    return out
 
 
 # ── Client instructions (DB CRUD; thin) ──────────────────────────────────────
