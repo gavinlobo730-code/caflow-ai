@@ -81,6 +81,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_template_scope",
     ),
+    "/api/memory": (
+        "assert_client_access", "filter_by_client",
+        "_assert_trigger_scope", "_assert_anomaly_scope", "_assert_firmwide",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -134,6 +138,13 @@ EXEMPT: dict[str, str] = {
         "recorded in the audit doc.",
     "/api/lifecycle/leads/{lead_id}":
         "same table, addressed by id.",
+    "/api/memory/firm/profile":
+        "firm_profiles has firm_id and nothing else (migration 070) — the "
+        "firm's own intelligence profile, not any client's. It IS derived by "
+        "aggregating across the firm's clients, which is why the COMPUTE that "
+        "writes it is limited to firm-wide roles; the resulting figures are "
+        "firm-level and are what every member of the firm already sees on the "
+        "dashboards.",
     "/api/lifecycle/dashboard":
         "aggregate counts only: lead stage tallies, a proposal count, an "
         "overdue-renewal count. No client is named and no per-client figure is "
@@ -151,7 +162,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/clients/{client_id}/instructions": 4,
               "/api/clients/{client_id}/knowledge": 1,
               "/api/lifecycle": 19, "/api/payroll": 16,
-              "/api/recurring-invoices": 11}
+              "/api/recurring-invoices": 11,
+              "/api/memory": 14}
 
 
 def _code_only(src: str) -> str:
@@ -299,7 +311,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
     for module in ("routers.banking", "routers.sales_invoices",
                    "routers.purchase_bills", "routers.engagement_letters",
                    "routers.workflow_builder", "routers.lifecycle",
-                   "routers.payroll", "routers.recurring_invoices"):
+                   "routers.payroll", "routers.recurring_invoices",
+                   "routers.memory_intelligence"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

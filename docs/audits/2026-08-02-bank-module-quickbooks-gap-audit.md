@@ -436,7 +436,7 @@ several are cheap because the data is already in the narration.
    for any endpoint — including a new one — that never consults the caller's
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
-   `payroll`, `recurring_invoices`.
+   `payroll`, `recurring_invoices`, `memory_intelligence`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -619,9 +619,37 @@ several are cheap because the data is already in the narration.
    stating because the unguarded `client_id=None` it replaces meant *all* of
    them.
 
+   **Also fixed 2026-08-07 — `memory_intelligence` (14 endpoints), plus a
+   whole-router break found while testing it.**
+
+   **The router was dead.** All 14 endpoints called `api_response(data=...)`
+   without the REQUIRED first argument `success`, so every one raised
+   `TypeError` at runtime. `memory_intelligence` was the only file in the
+   codebase doing it, and nothing exercised these handlers, so it had gone
+   unnoticed. Fixed, with a test that drives every registered memory endpoint
+   and asserts the `{success, data, error}` envelope other routers keep.
+
+   On scope: an AI profile of any client — the firm's accumulated knowledge of
+   how that client behaves and what they repeatedly get wrong — was readable by
+   anyone in the firm, along with every trigger, anomaly and year-end readiness
+   report. `client_profiles` and `year_end_reports` carry a NOT NULL client_id;
+   `ai_memory_triggers` and `pattern_anomalies` a NULLABLE one, because a
+   trigger can be firm-level ("three clients missed the same deadline") and must
+   survive a narrowed list rather than vanish from it.
+
+   **The first 403 in the sweep.** `POST /pipeline/run` and
+   `POST /firm/profile/compute` are firm-WIDE computations — the pipeline loops
+   every client in the firm and writes a profile, triggers, anomalies and a
+   year-end report for each. There is no honest partial version: running it for
+   a subset and reporting it as "the firm pipeline" would be worse than
+   refusing. So they are limited to firm-wide roles with a **403, not the 404
+   used everywhere else** — nothing is being hidden, a capability is being
+   refused, and pretending the endpoint did not exist would be the misleading
+   answer. The message names the per-client endpoint the caller can use instead.
+
    **Still open — the same pattern in the remaining routers.** The sweep still finds
-   roughly 241 id-addressed routes with no client-scope check, worst first:
-   `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each),
+   roughly 234 id-addressed routes with no client-scope check, worst first:
+   `task_extras` / `year_end_adjustments` (7 each),
    `invoices` / `itr_workspace` / `platform` (6 each). That count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
