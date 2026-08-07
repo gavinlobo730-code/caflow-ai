@@ -434,14 +434,80 @@ several are cheap because the data is already in the narration.
    registry of router prefixes. A router goes in only once every endpoint under
    it has been looked at, and the test then walks the registered routes and fails
    for any endpoint — including a new one — that never consults the caller's
-   client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`.
+   client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
+   `engagement_letters`, `workflow_builder`.
 
-   **Still open — the same pattern in the remaining routers.** After the three
-   above, the sweep still finds roughly 300 id-addressed routes with no
-   client-scope check, worst first: `engagement_letters` (15),
-   `workflow_builder` (11), `knowledge` (10), `lifecycle` / `payroll` /
-   `recurring_invoices` (8 each), `memory_intelligence` / `task_extras` /
-   `year_end_adjustments` (7 each). That count is an upper bound — it includes
+   **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
+   imported `core.authz` for years and used it in exactly one place
+   (`create_engagement`), so every other endpoint took an engagement id from any
+   client in the firm — including `/send` and `/resend` (email the letter to the
+   client's own signatory), `/recipient` (**changes the address the signing link
+   goes to**), `/signing-link`, `/pdf`, `/sign`, `/reject` and `/delete`.
+
+   Two things here are deliberately NOT guarded, and both are pinned by tests
+   rather than left as a comment:
+
+   * **The five `/templates` endpoints.** `engagement_templates` has a `firm_id`
+     and no `client_id` (migration 115) — a template is firm property, reused
+     across every client. A client guard would have to invent a client to check.
+     Over-guarding is a real failure mode, not a safe default.
+   * **An engagement whose `client_id` is NULL.** That column is nullable because
+     an engagement can be raised against a **lead**, before they are a client at
+     all. `leads` carries only a `firm_id`, so there is no assignment to check
+     against, and `assert_client_access(user, None)` reads it correctly as a
+     firm-level resource. `filter_by_client` keeps rows with no client_id, which
+     is what stops the firm-wide list narrowing from deleting the entire
+     pre-client pipeline.
+
+   **Follow-up this surfaced: leads have no assignment scope of their own.** Any
+   member of a firm can see any lead and any lead-stage engagement. That may well
+   be intended for a sales pipeline, but it is currently an accident of `leads`
+   having no owner column rather than a decision. Worth deciding explicitly.
+
+   The exemptions live in `EXEMPT` in `tests/test_router_client_scope.py`, each
+   with its reason, and two tests keep them honest: one fails if an exemption
+   names a route that no longer exists (a rename would otherwise move an endpoint
+   quietly out of the sweep), and one fails if an exempt handler ever starts
+   reading a `client_id` — at which point the stated reason has stopped being
+   true.
+
+   **Also fixed 2026-08-07 — `workflow_builder` (20 endpoints).** This is where
+   *"does the table have a `client_id`?"* stops being a good enough question, and
+   it is the most important lesson of the sweep so far.
+
+   * `workflow_instances` has a `client_id` (nullable — a workflow can be a
+     firm-level sweep belonging to no client). Guarded directly.
+   * `workflow_executions`, `workflow_failures` and `workflow_approvals` have a
+     `firm_id` and **no `client_id` at all** — but each has a NOT NULL
+     `instance_id`, and that instance may name a client. They are **client data
+     living in a table with no client column.** Scoping by column presence would
+     have declared all three firm-level and left the audit trail, the failure
+     list and the approval queue readable across every client in the firm. They
+     are scoped THROUGH the parent instance, in one batch lookup per page rather
+     than a query per row (`workflow_repo.client_ids_for_instances`).
+   * `workflow_templates` and `workflow_schedules` genuinely are firm property —
+     the DEFINITIONS, not the runs. Exempt, with the reason recorded.
+   * `POST /templates/{id}/trigger` is under `/templates` but is **not** exempt:
+     the template is firm property, and firing it CREATES an instance against the
+     client named in the payload. That is the client-scoped act.
+
+   Both mutating child endpoints (`/approvals/{id}/respond`,
+   `/failures/{id}/resolve`) resolve their parent BEFORE the write —
+   `respond_approval` writes and then resumes the workflow, which runs real steps
+   against that client's data. `workflow_repo.get_failure` was added for exactly
+   that ordering.
+
+   **Method note for the routers still to come:** the column-presence heuristic
+   used to pick guards in the first four routers would have MISSED three tables
+   here. The question to ask of each table is not "does it have a client_id" but
+   "can a row of it be traced to one" — and if so, guard through whatever traces
+   it.
+
+   **Still open — the same pattern in the remaining routers.** The sweep still finds
+   roughly 275 id-addressed routes with no client-scope check, worst first:
+   `knowledge` (10), `lifecycle` / `payroll` / `recurring_invoices` (8 each),
+   `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each),
+   `invoices` / `itr_workspace` / `platform` (6 each). That count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
    which of its resources carry a `client_id`, then guard those and add the
