@@ -338,6 +338,11 @@ def test_list_invoice_reminders_propagates_http_exception(monkeypatch):
     must propagate with its real status+detail, not the generic "Unable to
     fetch reminder history. Please try again."."""
     monkeypatch.setattr(si, "_USE_MOCK", False)
+    # With _USE_MOCK off, the endpoint's client-assignment guard resolves the
+    # invoice's owner against Supabase before anything else runs, and there is no
+    # Supabase here. Stub the OWNER LOOKUP, not the guard — the guard failing
+    # open when the database is unreachable is precisely what it must never do.
+    monkeypatch.setattr(si, "_invoice_owner", lambda *_a, **_k: (True, "CLI"))
 
     from services import collections_service
     def _boom(*a, **k):

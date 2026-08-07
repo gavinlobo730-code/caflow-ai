@@ -122,6 +122,29 @@ def _assert_recon_scope(db, current_user: dict, recon_id: str) -> str:
     return _assert_row_scope(db, current_user, "bank_reconciliations", recon_id, "Reconciliation")
 
 
+def _assert_txn_batch_scope(db, current_user: dict, txn_ids: list) -> None:
+    """Same rule for the batch endpoints, which name their rows in the BODY.
+
+    These were missed by the first sweep because it looked for `{…_id}` in the
+    path, and a list of ids in a JSON body matches nothing in a path. Found by
+    tests/test_router_client_scope.py, which walks the registered routes rather
+    than pattern-matching their URLs.
+
+    Every DISTINCT client in the batch is checked BEFORE any row is touched.
+    Per-row checking would let the rows before the first refusal land — and a
+    batch endpoint is exactly where one foreign id would be slipped in among
+    fifty legitimate ones. One read for the whole batch, not one per row.
+    """
+    ids = [i for i in (txn_ids or []) if i]
+    if not ids:
+        return
+    rows = (db.table("bank_transactions").select("client_id")
+            .in_("id", ids).eq("firm_id", current_user["firm_id"])
+            .execute().data) or []
+    for client_id in sorted({r.get("client_id") for r in rows if r.get("client_id")}):
+        assert_client_access(current_user, client_id)
+
+
 def _guard_foreign_bank_currency(db, firm_id: str, client_id: Optional[str], currency: str) -> None:
     """Allow a non-INR bank account ONLY when multi-currency is active for this client
     (env + firm entitlement + client enablement) and the currency is in the ISO master.
@@ -631,6 +654,7 @@ def batch_accept(
     if not db:
         return api_response(True, {"results": [], "applied": 0, "skipped": 0,
                                    "failed": 0, "total": 0})
+    _assert_txn_batch_scope(db, current_user, data.transaction_ids)
     return api_response(True, bank_batch_service.accept(
         db, current_user["firm_id"], data.transaction_ids,
         actor_id=current_user.get("auth_user_id")))
@@ -648,6 +672,7 @@ def batch_exclude(
     if not db:
         return api_response(True, {"results": [], "applied": 0, "skipped": 0,
                                    "failed": 0, "total": 0})
+    _assert_txn_batch_scope(db, current_user, data.transaction_ids)
     return api_response(True, bank_batch_service.set_excluded(
         db, current_user["firm_id"], data.transaction_ids, True,
         actor_id=current_user.get("auth_user_id")))
@@ -663,6 +688,7 @@ def batch_include(
     if not db:
         return api_response(True, {"results": [], "applied": 0, "skipped": 0,
                                    "failed": 0, "total": 0})
+    _assert_txn_batch_scope(db, current_user, data.transaction_ids)
     return api_response(True, bank_batch_service.set_excluded(
         db, current_user["firm_id"], data.transaction_ids, False,
         actor_id=current_user.get("auth_user_id")))

@@ -403,16 +403,52 @@ several are cheap because the data is already in the narration.
    empty on no-row when it actually raises. The guard now answers 404 first, so
    the error contract matches the intent (`test_e2e_banking.py` asserts it).
 
-   **Still open — the same pattern outside banking.** A sweep of all routers finds
-   **345 id-addressed routes with no client-scope check**, worst first:
-   `engagement_letters` (15), `sales_invoices` (12), `workflow_builder` (11),
-   `knowledge` (10), `lifecycle` / `payroll` / `recurring_invoices` (8 each),
-   `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each). That
-   count is an upper bound — it includes genuinely firm-level resources
-   (`/rules/{rule_id}`, branding, identity, platform) that have no client to
-   scope to. Each router needs the same judgement banking just had: which of its
-   id-addressed resources carry a `client_id`, and a guard on those. Worth doing
-   router by router, not as one sweep.
+   **Also fixed 2026-08-07 — the three banking BATCH endpoints.** `batch-accept`,
+   `batch-exclude` and `batch-include` name their rows in the request BODY, not
+   the path, so the `{…_id}` sweep that found the other 31 matched none of them.
+   They were caught by `tests/test_router_client_scope.py`, which walks the
+   registered routes instead of pattern-matching URLs — the first thing that test
+   did on being written was find three endpoints the manual sweep had missed.
+   `_assert_txn_batch_scope` checks every distinct client in the batch in one
+   read, before any row is touched.
+
+   **Also fixed 2026-08-07 — `sales_invoices` (18 endpoints) and `purchase_bills`
+   (10).** Worse than banking: neither router imported `core.authz` **at all**, so
+   the client_id-parameterised endpoints were unguarded too and no id-guessing
+   was needed. `GET /api/sales-invoices/?client_id=…` listed any client's
+   invoices to any member of the firm; `POST /` created records in any client's
+   books; `/{invoice_id}/issue`, `/cancel` and `/{bill_id}/receive` posted and
+   reversed real journals (the last one also claiming input GST credit under
+   CGST Act §16). All 28 now guarded: `assert_client_access` where the client is
+   named directly, `_assert_invoice_scope` / `_assert_bill_scope` where it must be
+   resolved from a row id, `filter_by_client` on the one firm-wide list view.
+
+   Bulk create is refused **as a whole** if any row names a client the caller is
+   not on. Not-atomic-across-rows is right for a VALIDATION failure (eight good
+   invoices should not be lost to a ninth with a bad date) and wrong for an
+   authorization one: checking per row lets every row before the foreign one
+   land, and a bulk endpoint is exactly where one foreign client_id would be
+   slipped in among fifty legitimate ones.
+
+   **The ratchet.** `tests/test_router_client_scope.py` holds an `AUDITED`
+   registry of router prefixes. A router goes in only once every endpoint under
+   it has been looked at, and the test then walks the registered routes and fails
+   for any endpoint — including a new one — that never consults the caller's
+   client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`.
+
+   **Still open — the same pattern in the remaining routers.** After the three
+   above, the sweep still finds roughly 300 id-addressed routes with no
+   client-scope check, worst first: `engagement_letters` (15),
+   `workflow_builder` (11), `knowledge` (10), `lifecycle` / `payroll` /
+   `recurring_invoices` (8 each), `memory_intelligence` / `task_extras` /
+   `year_end_adjustments` (7 each). That count is an upper bound — it includes
+   genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
+   platform) with no client to scope to. Each router needs the same judgement:
+   which of its resources carry a `client_id`, then guard those and add the
+   prefix to `AUDITED`. One router at a time — a blanket sweep would either
+   over-guard firm-level endpoints or under-guard the ones whose client is named
+   in a body rather than a path, which is precisely how the batch endpoints were
+   missed the first time.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
