@@ -40,7 +40,7 @@ from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
     CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn, BankPayeeIn,
-    BankTransferPairIn,
+    BankTransferPairIn, BankBatchIn, BankAttachmentIn, BankAttachmentRemoveIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
     ReconciliationReopenIn,
 )
@@ -53,6 +53,7 @@ from services.bank_register_service import bank_register_service
 from services.bank_split_service import bank_split_service
 from services.bank_payee_service import bank_payee_service
 from services.bank_transfer_service import bank_transfer_service
+from services.bank_batch_service import bank_batch_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -532,6 +533,112 @@ def posted_queue(
         return api_response(True, [])
     rows = bank_posting_service.posted(db, current_user["firm_id"], client_id)
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.post("/transactions/batch-accept")
+def batch_accept(
+    data: BankBatchIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Apply each selected row's own strongest suggestion — a matching rule
+    first, then how the payee was coded before (Tier 1.7).
+
+    Returns an outcome for EVERY row. Rows legitimately fail (already posted,
+    already excluded, nothing to accept) and a partial success reported as a
+    success is how a transaction quietly stays uncoded until year end. Nothing
+    is invented: a row with no rule and no history is skipped, not guessed at.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"results": [], "applied": 0, "skipped": 0,
+                                   "failed": 0, "total": 0})
+    return api_response(True, bank_batch_service.accept(
+        db, current_user["firm_id"], data.transaction_ids,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/transactions/batch-exclude")
+def batch_exclude(
+    data: BankBatchIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Exclude several transactions at once (Tier 1.7). Per-row outcomes.
+    A posted transaction cannot be excluded — hiding a line that is on the books
+    is the opposite of what exclusion means."""
+    db = _db()
+    if not db:
+        return api_response(True, {"results": [], "applied": 0, "skipped": 0,
+                                   "failed": 0, "total": 0})
+    return api_response(True, bank_batch_service.set_excluded(
+        db, current_user["firm_id"], data.transaction_ids, True,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/transactions/batch-include")
+def batch_include(
+    data: BankBatchIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bring several excluded transactions back into the queue (Tier 1.7)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"results": [], "applied": 0, "skipped": 0,
+                                   "failed": 0, "total": 0})
+    return api_response(True, bank_batch_service.set_excluded(
+        db, current_user["firm_id"], data.transaction_ids, False,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.get("/transactions/{txn_id}/attachments")
+def list_transaction_attachments(
+    txn_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Supporting documents on a bank transaction (Tier 1.8)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "attachments": []})
+    return api_response(True, bank_batch_service.list_attachments(
+        db, current_user["firm_id"], txn_id))
+
+
+@router.post("/transactions/{txn_id}/attachments")
+def add_transaction_attachment(
+    txn_id: str,
+    data: BankAttachmentIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Attach a receipt, invoice or cheque image to a bank line (Tier 1.8).
+
+    The link must be http or https. A javascript: or data: URL stored here and
+    rendered as a link is stored XSS, so the scheme vocabulary is closed rather
+    than sanitised.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "attachments": []})
+    return api_response(True, bank_batch_service.add_attachment(
+        db, current_user["firm_id"], txn_id, data.name, data.url,
+        actor_id=current_user.get("auth_user_id")))
+
+
+# POST rather than DELETE: the URL to remove is a body, and DELETE-with-a-body
+# is unevenly supported by proxies and clients. A distinct path says the same
+# thing without relying on that.
+@router.post("/transactions/{txn_id}/attachments/remove")
+def remove_transaction_attachment(
+    txn_id: str,
+    data: BankAttachmentRemoveIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Detach a document. Removing one already gone is not an error — the list
+    ends up in the state the caller asked for."""
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "attachments": []})
+    return api_response(True, bank_batch_service.remove_attachment(
+        db, current_user["firm_id"], txn_id, data.url,
+        actor_id=current_user.get("auth_user_id")))
 
 
 @router.get("/transfer-suggestions")

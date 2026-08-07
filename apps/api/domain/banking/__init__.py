@@ -27,6 +27,15 @@ from .charge_gst import (
     ChargeSplit, split_inclusive_charge, build_charge_lines,
     ALLOWED_RATES_BPS as CHARGE_GST_RATES_BPS,
 )
+from .attachments import (
+    Attachment, AttachmentError, parse_attachments,
+    add as add_attachment, remove as remove_attachment,
+    ALLOWED_SCHEMES as ATTACHMENT_SCHEMES, MAX_ATTACHMENTS,
+)
+from .transfers import (
+    TransferPair, detect as detect_transfers, describe as describe_transfer,
+    DEFAULT_WINDOW_DAYS as TRANSFER_WINDOW_DAYS,
+)
 from .history import (
     HistorySuggestion, CodingOption, learning_key, summarise as summarise_history,
     describe as describe_history, same_payee,
@@ -53,4 +62,7 @@ __all__ = [
     "derive_cleared", "CLEARED_NONE", "CLEARED_PENDING", "CLEARED_RECONCILED",
     "HistorySuggestion", "CodingOption", "learning_key", "summarise_history",
     "describe_history", "same_payee",
+    "Attachment", "AttachmentError", "parse_attachments", "add_attachment",
+    "remove_attachment", "ATTACHMENT_SCHEMES", "MAX_ATTACHMENTS",
+    "TransferPair", "detect_transfers", "describe_transfer", "TRANSFER_WINDOW_DAYS",
 ]
