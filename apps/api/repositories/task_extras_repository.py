@@ -31,9 +31,32 @@ class TaskExtrasRepository(BaseRepository[dict]):
         result = query.execute()
         return len(result.data) > 0
 
-    def get_firm_tags(self, firm_id: str) -> list[str]:
-        result = _get_db().table("task_tags").select("tag").eq("firm_id", firm_id).execute()
-        tags = list({row["tag"] for row in (result.data or [])})
+    def get_firm_tags(self, firm_id: str,
+                      allowed_client_ids: Optional[set] = None) -> list[str]:
+        """The firm's tag vocabulary, optionally narrowed to a set of clients.
+
+        `allowed_client_ids=None` means "every client in the firm" (a Partner or
+        Manager), and takes the single-query path this always had.
+
+        Otherwise the tags are resolved through their tasks. A tag is free text
+        somebody typed on a client's task — "acme-gst-migration" names a client
+        as surely as a client_id does — so an autocomplete list is not a reason
+        to hand out labels from books the caller cannot open. Two queries, not
+        one per tag: `task_tags` has no foreign key to `tasks` (migration 063),
+        so PostgREST cannot embed the join.
+        """
+        q = _get_db().table("task_tags").select("tag, task_id").eq("firm_id", firm_id)
+        rows = q.execute().data or []
+        if allowed_client_ids is not None:
+            task_ids = sorted({r["task_id"] for r in rows if r.get("task_id")})
+            visible = set()
+            if task_ids:
+                owners = (_get_db().table("tasks").select("id, client_id")
+                          .in_("id", task_ids).execute().data) or []
+                visible = {t["id"] for t in owners
+                           if t.get("client_id") in allowed_client_ids}
+            rows = [r for r in rows if r.get("task_id") in visible]
+        tags = list({row["tag"] for row in rows})
         tags.sort()
         return tags
 
@@ -42,39 +65,35 @@ class TaskExtrasRepository(BaseRepository[dict]):
     def _detect_cycle(self, task_id: str, depends_on_task_id: str) -> bool:
         """
         Detect if adding a dependency from task_id -> depends_on_task_id would create a cycle.
-        Uses depth-first search starting from depends_on_task_id to see if it can reach task_id.
+        Walks outward from depends_on_task_id to see if it can reach task_id.
         Returns True if a cycle would be created, False otherwise.
+
+        Reads only the edges actually reachable from the starting task, one
+        breadth-first level at a time. It used to `SELECT` the whole
+        `task_dependencies` table — every firm's rows — to answer a question
+        about two tasks in one firm. The table carries no `firm_id` of its own
+        (migration 063: it is scoped through `tasks`), so there is no filter to
+        add; bounding the traversal is the filter. Every edge it does read is
+        one an ancestor of these two tasks already points at.
         """
-        # Get all dependencies from the database
-        result = _get_db().table("task_dependencies").select("task_id, depends_on_task_id").execute()
-        all_deps = result.data or []
-
-        # Build adjacency list: task_id -> [tasks that task_id depends on]
-        adjacency = {}
-        for dep in all_deps:
-            t_id = dep["task_id"]
-            dep_id = dep["depends_on_task_id"]
-            if t_id not in adjacency:
-                adjacency[t_id] = []
-            adjacency[t_id].append(dep_id)
-
-        # DFS from depends_on_task_id to see if we can reach task_id
+        db = _get_db()
         visited = set()
-        stack = [depends_on_task_id]
+        frontier = [depends_on_task_id]
 
-        while stack:
-            current = stack.pop()
-            if current == task_id:
+        while frontier:
+            if task_id in frontier:
                 return True  # Cycle detected
-            if current in visited:
-                continue
-            visited.add(current)
-
-            # Add all tasks that depend on current to the stack
-            if current in adjacency:
-                for next_task in adjacency[current]:
-                    if next_task not in visited:
-                        stack.append(next_task)
+            visited.update(frontier)
+            rows = (
+                db.table("task_dependencies")
+                .select("task_id, depends_on_task_id")
+                .in_("task_id", frontier)
+                .execute()
+            ).data or []
+            frontier = sorted({
+                r["depends_on_task_id"] for r in rows
+                if r.get("depends_on_task_id") and r["depends_on_task_id"] not in visited
+            })
 
         return False  # No cycle detected
 

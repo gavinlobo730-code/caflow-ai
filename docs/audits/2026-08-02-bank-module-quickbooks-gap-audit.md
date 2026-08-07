@@ -436,7 +436,8 @@ several are cheap because the data is already in the narration.
    for any endpoint — including a new one — that never consults the caller's
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
-   `payroll`, `recurring_invoices`, `memory_intelligence`.
+   `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
+   `task_extras`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -647,10 +648,77 @@ several are cheap because the data is already in the narration.
    refused, and pretending the endpoint did not exist would be the misleading
    answer. The message names the per-client endpoint the caller can use instead.
 
-   **Still open — the same pattern in the remaining routers.** The sweep still finds
-   roughly 234 id-addressed routes with no client-scope check, worst first:
-   `task_extras` / `year_end_adjustments` (7 each),
-   `invoices` / `itr_workspace` / `platform` (6 each). That count is an upper bound — it includes
+   **Also fixed 2026-08-07 — the task routers (15 endpoints across TWO files).**
+   `/api/tasks` is served by both `tasks.py` and `task_extras.py`. `tasks.py` had
+   a guard on the list and on create; `task_extras.py` imported no authz at all,
+   so the tags, dependencies and full timeline of **any** client's task were
+   readable and writable by anyone in the firm. `tasks.client_id` is NOT NULL and
+   every handler already loads its task firm-scoped, so the guard takes the row
+   that is already on the desk and costs no extra query. `task_tags`,
+   `task_dependencies` and `task_timeline_events` carry no client of their own —
+   they are all reached through that task.
+
+   Three of the fifteen needed a different answer:
+
+   * **`POST /{task_id}/dependencies` names a SECOND task, in the body.** The
+     response and the timeline event both echo `dep_task["title"]`, so checking
+     only the task in the path hands over another client's task by name. Both
+     ends are checked.
+   * **`GET /tags/all` is autocomplete, not a record** — but a tag is free text
+     somebody typed on a client's task, and "acme-gst-migration" names a client
+     as surely as a client_id does. The vocabulary is resolved through its tasks
+     and narrowed. `task_tags` has no foreign key to `tasks` (migration 063), so
+     PostgREST cannot embed the join; it is two queries, not one per tag, and a
+     firm-wide role keeps the single-query path it always had.
+   * **The three `trigger-*` endpoints** (escalations, the daily automation
+     batch, recurring generation) are firm-**wide** jobs, not rows. Same
+     reasoning as the memory pipeline above: **403, not 404** — no id is
+     involved and nothing is being hidden, so a "not found" would be a lie.
+
+   `/api/tasks/summary/dashboard` is exempt: aggregate counts only — open tasks
+   by status, overdue counts, a high-risk-client tally. No client is named and no
+   per-client figure is returned.
+
+   **Two things this phase turned up that were not scope bugs:**
+
+   * **`_detect_cycle` read the entire `task_dependencies` table** — every firm's
+     rows — to answer a question about two tasks in one firm, then did the graph
+     walk in Python. The table has no `firm_id` of its own (migration 063 scopes
+     it through `tasks`), so there is no filter to add; the fix is to bound the
+     traversal, walking outward from the starting task one breadth-first level
+     at a time so every edge read is one an ancestor already points at. It had
+     no tests at all before this; it has six now, including one that fails on
+     any unfiltered read.
+   * **A refusal message had already drifted from the rule it describes.** Both
+     `memory_intelligence` and the new task guard told a refused caller the
+     endpoint was limited to "Partners and Managers" — but the M3 decision left
+     only the **Partner** firm-wide (`_FIRMWIDE_ROLES`), so a Manager was reading
+     a 403 saying they should have got in. `core.authz.firmwide_roles_label()`
+     now derives the wording from `_FIRMWIDE_ROLES`, both call sites use it, and
+     a test pins it. Checked the rest of the codebase for the same shape: the
+     only other role sentence in a refusal is `year_end_reviews.py:333` ("Only
+     Partner can lock an engagement"), which matches its literal
+     `role != "Partner"` check and is correct post-migration 081.
+
+   **Recorded, not fixed — the dashboard counts are firm-wide for everyone.**
+   `/summary/dashboard` is exempt because it names no client, but an Executive
+   assigned to two clients still sees the firm's total open-task and overdue
+   counts. That is a cardinality signal, and arguably just wrong as a product
+   behaviour rather than only as a scope one. Narrowing it touches
+   `domain/task_service.py`, `client_repo` and `compliance_record_service`
+   together, so it is stated here as a decision to take rather than folded into
+   an authz commit. The lifecycle dashboard sits on exactly the same line.
+
+   **Still open — the same pattern in the remaining routers.** Counted rather
+   than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
+   parameter, drop everything under an `AUDITED` prefix): **237** id-addressed
+   routes have no client-scope check. Worst first: `health` (8, and almost
+   certainly all firm-level), `year_end_adjustments` (7), then
+   `task_recurring` / `invoices` / `itr_workspace` / `vendors` / `ai_copilot_v2`
+   / `platform` at 6 each. `task_recurring` is a separate router on
+   `/api/task-recurring` and is NOT covered by the `/api/tasks` prefix registered
+   above — worth doing next while the task tables are fresh. That count is an
+   upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
    which of its resources carry a `client_id`, then guard those and add the

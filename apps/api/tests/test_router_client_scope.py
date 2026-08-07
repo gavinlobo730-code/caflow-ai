@@ -85,6 +85,14 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client",
         "_assert_trigger_scope", "_assert_anomaly_scope", "_assert_firmwide",
     ),
+    # /api/tasks is shared by TWO routers — tasks.py and task_extras.py. The
+    # sweep keys on the path prefix, so registering it is a claim about both,
+    # which is the honest reading: guarding the tags on a task while leaving
+    # PATCH on the same task open would be absurd.
+    "/api/tasks": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+        "_assert_task_scope", "_assert_firmwide_job",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -145,6 +153,11 @@ EXEMPT: dict[str, str] = {
         "writes it is limited to firm-wide roles; the resulting figures are "
         "firm-level and are what every member of the firm already sees on the "
         "dashboards.",
+    "/api/tasks/summary/dashboard":
+        "aggregate counts only — open tasks by status, overdue counts, a "
+        "high-risk-client TALLY. No client is named and no per-client figure is "
+        "returned. Same line as the lifecycle dashboard: the counts are derived "
+        "from client rows, and that is stated rather than glossed over.",
     "/api/lifecycle/dashboard":
         "aggregate counts only: lead stage tallies, a proposal count, an "
         "overdue-renewal count. No client is named and no per-client figure is "
@@ -163,7 +176,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/clients/{client_id}/knowledge": 1,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
-              "/api/memory": 14}
+              "/api/memory": 14,
+              "/api/tasks": 15}
 
 
 def _code_only(src: str) -> str:
@@ -312,7 +326,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.purchase_bills", "routers.engagement_letters",
                    "routers.workflow_builder", "routers.lifecycle",
                    "routers.payroll", "routers.recurring_invoices",
-                   "routers.memory_intelligence"):
+                   "routers.memory_intelligence", "routers.tasks",
+                   "routers.task_extras"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
