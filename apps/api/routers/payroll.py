@@ -15,6 +15,7 @@ import math
 
 from models.common import api_response
 from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn, PayrollDisburseIn
+from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services.internal_client_service import assert_not_internal_for_payroll
@@ -37,6 +38,74 @@ def _db():
         return None
     from core.supabase_client import get_supabase
     return get_supabase()
+
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. This router did not import core.authz at all, and
+# it is the most sensitive surface the sweep has reached: individual salaries,
+# PAN, PF/ESI numbers, employee bank details, and endpoints that finalize,
+# DISBURSE and reverse a payroll run.
+#
+#   * `payroll_employees`, `payroll_runs`, `salary_structures` — client_id
+#     NOT NULL. Guarded directly.
+#   * `payroll_slips` — a `run_id` and an `employee_id` and NOTHING else: no
+#     client_id, and no firm_id either. One person's payslip is stored in a
+#     table with no tenant column at all, so it is scoped through its run.
+#     (Tenant scoping for the PDF already lived in payslip_pdf_service; what
+#     was missing is the client check on top of it.)
+
+def _run_client_id(db, current_user: dict, run_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for a payroll run, firm-scoped."""
+    rows = (db.table("payroll_runs").select("client_id")
+            .eq("id", run_id).eq("firm_id", current_user["firm_id"])
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_run_scope(db, current_user: dict, run_id: str) -> Optional[str]:
+    """404 unless the caller may act on this payroll run's client.
+
+    404 rather than 403, and the same 404 as "no such run" — otherwise the
+    status code becomes an oracle for which run ids are real.
+    """
+    if not db:
+        return None                      # mock mode: no assignments table
+    found, client_id = _run_client_id(db, current_user, run_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+    assert_client_access(current_user, client_id)
+    return client_id
+
+
+def _assert_employee_scope(db, current_user: dict, employee_id: str) -> Optional[str]:
+    if not db:
+        return None
+    rows = (db.table("payroll_employees").select("client_id")
+            .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+            .limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    assert_client_access(current_user, rows[0].get("client_id"))
+    return rows[0].get("client_id")
+
+
+def _assert_slip_scope(db, current_user: dict, slip_id: str) -> Optional[str]:
+    """A payslip has no tenant column of its own — resolve its run first.
+
+    Two hops, and the FIRST one cannot be firm-scoped because payroll_slips has
+    no firm_id: the run lookup is what establishes both the firm and the client,
+    which is why it must not be skipped when the slip row is found.
+    """
+    if not db:
+        return None
+    rows = (db.table("payroll_slips").select("run_id")
+            .eq("id", slip_id).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Salary slip not found")
+    return _assert_run_scope(db, current_user, rows[0]["run_id"])
 
 
 # ─── PT Slabs by state ─────────────────────────────────────────────────────────
@@ -338,7 +407,13 @@ def list_employees(
 
     include_inactive=True also returns resigned/terminated employees (for the
     Employees roster's "show inactive" toggle); default keeps the historical
-    active-only behaviour so existing dashboard/run callers are unaffected."""
+    active-only behaviour so existing dashboard/run callers are unaffected.
+
+    The firm-wide branch is exactly why this needs narrowing rather than a bare
+    check: an Executive assigned to two clients would otherwise get every
+    employee in the firm, salary and PAN included, in one call."""
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -348,7 +423,10 @@ def list_employees(
     if client_id:
         q = q.eq("client_id", client_id)
     res = q.order("name").execute()
-    return api_response(True, res.data or [])
+    rows = res.data or []
+    if not client_id:
+        rows = filter_by_client(current_user, rows)
+    return api_response(True, rows)
 
 
 @router.post("/employees")
@@ -356,6 +434,7 @@ def create_employee(
     data: EmployeeIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -377,6 +456,7 @@ def update_employee(
     data: EmployeeUpdateIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
+    _assert_employee_scope(_db(), current_user, employee_id)
     db = _db()
     update = data.model_dump(exclude_none=True)
     if not db:
@@ -395,6 +475,7 @@ def delete_employee(
     16, 24Q, PF/ESI returns) and must be preserved: the caller should deactivate
     (PATCH status=resigned/terminated) instead, so history stays intact. Mirrors
     the customer/vendor "delete-if-unused, else deactivate" guard."""
+    _assert_employee_scope(_db(), current_user, employee_id)
     db = _db()
     if not db:
         return api_response(True, {"id": employee_id, "deleted": True})
@@ -426,6 +507,7 @@ def list_salary_structures(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -438,6 +520,7 @@ def create_salary_structure(
     data: SalaryStructureIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -457,6 +540,8 @@ def list_runs(
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """client_id is optional — see list_employees above for why."""
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -464,7 +549,10 @@ def list_runs(
     if client_id:
         q = q.eq("client_id", client_id)
     res = q.order("month", desc=True).execute()
-    return api_response(True, res.data or [])
+    rows = res.data or []
+    if not client_id:
+        rows = filter_by_client(current_user, rows)
+    return api_response(True, rows)
 
 
 @router.post("/runs")
@@ -476,6 +564,7 @@ def create_run(
     Create a draft payroll run and compute slips for all active employees.
     Computation is deterministic from employee master + attendance.
     """
+    assert_client_access(current_user, data.client_id)
     db = _db()
     client_id = data.client_id
     month     = data.month  # e.g. "2026-06"
@@ -586,6 +675,7 @@ def get_run_slips(
     could never return data in production. Fixed to verify the run belongs
     to the caller's firm first (like salary_register below), then query
     slips by run_id alone."""
+    _assert_run_scope(_db(), current_user, run_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -609,6 +699,7 @@ def download_salary_slip_pdf(
     All rupee amounts are formatted from integer paise — no float arithmetic.
     Firm-scoped: the slip's payroll run must belong to the caller's firm.
     """
+    _assert_slip_scope(_db(), current_user, slip_id)
     from fastapi.responses import Response
     from services.payslip_pdf_service import get_payslip_pdf
 
@@ -645,6 +736,7 @@ def update_run_status(
     (firm, client, reference_no=PAY-{month}, entry_date=today), not the
     payroll period, so re-finalizing on a later calendar day does not match
     the original entry and silently double-posts."""
+    _assert_run_scope(_db(), current_user, run_id)
     db = _db()
     new_status = data.status
     if not db:
@@ -680,6 +772,7 @@ def finalize_run(
     the journal actually posts, so a posting failure leaves the run re-runnable
     rather than immutably finalized with no GL entry.
     """
+    _assert_run_scope(_db(), current_user, run_id)
     db = _db()
     if not db:
         if run_id in _MOCK_FINALIZED_RUNS:
@@ -758,6 +851,7 @@ def disburse_run(
     The run is marked paid ONLY if the journal actually posts, so a posting
     failure leaves it re-runnable rather than 'paid' with no GL entry.
     """
+    _assert_run_scope(_db(), current_user, run_id)
     db = _db()
     if not db:
         return api_response(True, {"id": run_id, "status": "paid"})
@@ -837,6 +931,7 @@ def reverse_run(
     finalize_run's own guard then permanently blocks re-posting a corrected
     run for that month.
     """
+    _assert_run_scope(_db(), current_user, run_id)
     db = _db()
     if not db:
         return api_response(True, {"id": run_id, "status": "review"})
@@ -897,6 +992,7 @@ def salary_register(
     month: str = Query(...),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, {"month": month, "slips": []})
@@ -914,6 +1010,7 @@ def statutory_summary(
     month: str = Query(...),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, {})

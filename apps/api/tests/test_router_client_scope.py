@@ -73,6 +73,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client",
         "_assert_row_scope", "_assert_via_parent",
     ),
+    "/api/payroll": (
+        "assert_client_access", "filter_by_client", "_assert_run_scope",
+        "_assert_employee_scope", "_assert_slip_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -142,7 +146,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/workflows": 20, "/api/knowledge": 7,
               "/api/clients/{client_id}/instructions": 4,
               "/api/clients/{client_id}/knowledge": 1,
-              "/api/lifecycle": 19}
+              "/api/lifecycle": 19, "/api/payroll": 16}
 
 
 def _code_only(src: str) -> str:
@@ -289,7 +293,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
     import importlib
     for module in ("routers.banking", "routers.sales_invoices",
                    "routers.purchase_bills", "routers.engagement_letters",
-                   "routers.workflow_builder", "routers.lifecycle"):
+                   "routers.workflow_builder", "routers.lifecycle",
+                   "routers.payroll"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
