@@ -25,7 +25,7 @@ import uuid
 
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
 
 _logger = logging.getLogger("caflow.engagement_letters")
@@ -46,6 +46,58 @@ def _db():
         return None
     from core.supabase_client import get_supabase
     return get_supabase()
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. `create_engagement` already checked this; nothing
+# else did, so an engagement id from another manager's client was accepted by
+# every other endpoint — including `/send` (emails the letter to the client's
+# own signatory), `/pdf`, `/sign`, `/reject` and `/recipient`, which changes the
+# address the signing link goes to.
+#
+# TWO THINGS DELIBERATELY NOT GUARDED
+#   * The `/templates` endpoints. `engagement_templates` has a `firm_id` and no
+#     `client_id` (migration 115) — a template is firm property, reused across
+#     every client. A client guard there would be theatre, and worse, it would
+#     have to invent a client to check.
+#   * An engagement whose `client_id` is NULL. That column is nullable because
+#     an engagement can be raised against a **lead**, before they are a client
+#     at all (`engagements.lead_id`). `leads` carries only a `firm_id` — there
+#     is no assignment to check against — and `assert_client_access(user, None)`
+#     reads that correctly as a firm-level resource. See the audit doc: giving
+#     leads their own assignment scope is a separate piece of work.
+
+def _engagement_owner(db, current_user: dict, engagement_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this engagement, firm-scoped.
+
+    A pair, not just the id, because `client_id` is legitimately NULL here (a
+    lead-stage engagement) and collapsing that into "not found" would 404 every
+    pre-client engagement in the firm.
+    """
+    firm_id = current_user["firm_id"]
+    if not db:
+        eng = next((e for e in _MOCK_ENGAGEMENTS
+                    if e.get("id") == engagement_id and e.get("firm_id") == firm_id), None)
+        return (eng is not None, eng.get("client_id") if eng else None)
+    rows = (db.table("engagements").select("client_id")
+            .eq("id", engagement_id).eq("firm_id", firm_id)
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_engagement_scope(db, current_user: dict, engagement_id: str) -> Optional[str]:
+    """404 unless the caller may act on this engagement's client.
+
+    404 rather than 403, and the same 404 as "no such engagement" — otherwise
+    the status code becomes an oracle for which engagement ids are real.
+    """
+    found, client_id = _engagement_owner(db, current_user, engagement_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    assert_client_access(current_user, client_id)
+    return client_id
 
 
 def _advance_lead(lead_id, firm_id, target_stage, current_user) -> None:
@@ -941,6 +993,12 @@ def list_engagements(
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """List engagement letters with optional filters by status, lead_id, or client_id."""
+    # Optional client_id: check the one that was asked for, or — for the
+    # firm-wide view — narrow to the caller's own book. filter_by_client keeps
+    # rows with no client_id, which is what makes lead-stage engagements survive
+    # the narrowing instead of vanishing from the list.
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _db()
     firm_id = current_user["firm_id"]
 
@@ -955,6 +1013,8 @@ def list_engagements(
             result = [e for e in result if e.get("lead_id") == lead_id]
         if client_id:
             result = [e for e in result if e.get("client_id") == client_id]
+        else:
+            result = filter_by_client(current_user, result)
         return api_response(True, {"engagements": result, "total": len(result)})
 
     try:
@@ -972,6 +1032,8 @@ def list_engagements(
             q = q.eq("client_id", client_id)
         res = q.order("created_at", desc=True).execute()
         engagements = res.data or []
+        if not client_id:
+            engagements = filter_by_client(current_user, engagements)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -1107,6 +1169,7 @@ def get_engagement(
 ):
     """Get a single engagement letter with its audit event history."""
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
 
     if not db:
@@ -1159,6 +1222,7 @@ def update_engagement(
 ):
     """Update an engagement letter. Only allowed when status is Draft. Manager+."""
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1245,6 +1309,7 @@ def generate_engagement(
     Returns the rendered content. Manager+.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
     today = date.today().isoformat()
@@ -1389,6 +1454,7 @@ def send_engagement(
     portal, and is triggered by this explicit CA action.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
     override = body.to_email if body else None
@@ -1500,6 +1566,7 @@ def resend_engagement(
     force=true. Manager+.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
     override = body.to_email if body else None
@@ -1554,6 +1621,7 @@ def get_signing_link(
     the letter is awaiting signature and has a token. Read access.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     if not db:
         eng = next((e for e in _MOCK_ENGAGEMENTS
@@ -1587,6 +1655,7 @@ def change_recipient(
     Optionally resend immediately (resend=true). Manager+.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1667,6 +1736,7 @@ def regenerate_link(
     Manager+.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
     do_resend = bool(body.resend) if body else False
@@ -1747,6 +1817,7 @@ def download_engagement_pdf(
     from services.engagement_pdf_service import render_engagement_pdf
 
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     if not db:
         eng = next((e for e in _MOCK_ENGAGEMENTS
@@ -1780,6 +1851,7 @@ def sign_engagement(
     Manager+. CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1869,6 +1941,7 @@ def reject_engagement(
     Manager+.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1962,6 +2035,7 @@ def delete_engagement(
     lead to an active pipeline stage so it is never orphaned.
     """
     db = _db()
+    _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
 
