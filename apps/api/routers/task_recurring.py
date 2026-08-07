@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import (
+    assert_client_access, filter_by_client, effective_client_ids,
+)
 from repositories.assignment_rule_repository import assignment_rule_repo
 
 router = APIRouter(prefix="/api/task-recurring", tags=["task-recurring"])
@@ -60,12 +62,49 @@ VALID_FREQUENCIES = {"daily", "weekly", "monthly", "quarterly", "annual"}
 VALID_RULE_TYPES = {"fixed_user", "by_role", "by_team", "fallback"}
 
 
+# ── Client-assignment scope (M2) ────────────────────────────────────────
+# This router already checked the client on the way IN — create_recurring and
+# update_recurring both call assert_client_access on a caller-supplied
+# body.client_id. Nothing checked the client of a config the caller names by
+# ID, so every stored config was open: edit it, delete it, or rewrite the
+# assignment rules that decide who in the firm ends up doing the work.
+#
+# `task_recurring_configs.client_id` is NULLABLE (migration 063) — a config with
+# no client is a firm-level recurring task, not a hidden one. assert_client_access
+# reads None as "firm-level resource" and filter_by_client keeps client-less
+# rows, so both paths treat it as visible rather than making it vanish.
+#
+# `assignment_rules` (migration 045) carries a firm_id and a recurring_config_id
+# and no client of its own; it is reached through its config.
+
+def _assert_config_scope(current_user: dict, config_id: str) -> dict:
+    """Load a recurring config within the firm, then check its client.
+
+    Returns the row so a caller that needs the client_id does not fetch it
+    twice. The firm check and the client check give the SAME 404, so the
+    status code never becomes an oracle for which config ids are real.
+    """
+    res = (
+        _get_db().table("task_recurring_configs").select("id, client_id")
+        .eq("id", config_id).eq("firm_id", current_user.get("firm_id"))
+        .maybe_single().execute()
+    )
+    config = getattr(res, "data", None)
+    if not config:
+        raise HTTPException(status_code=404, detail="Recurring config not found")
+    assert_client_access(current_user, config.get("client_id"))
+    return config
+
+
 @router.get("")
 def list_recurring(current_user: dict = Depends(rbac("task", "read"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
     result = db.table("task_recurring_configs").select("*").eq("firm_id", firm_id).order("next_due_date").execute()
     configs = result.data or []
+    # Narrow before enriching: an unassigned client's config is not worth
+    # looking up a client_name for, and the name is the disclosure.
+    configs = filter_by_client(current_user, configs)
 
     # Enrich with template names — scoped to this firm's own templates or
     # shared system templates (firm_id IS NULL), never another firm's private
@@ -137,10 +176,12 @@ def create_recurring(body: RecurringCreate, current_user: dict = Depends(rbac("t
 def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
-    existing = db.table("task_recurring_configs").select("id").eq("id", config_id).eq("firm_id", firm_id).maybe_single().execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Recurring config not found")
+    _assert_config_scope(current_user, config_id)
 
+    # Both ends: the config you are editing, and the client you are moving it
+    # to. Checking only the destination would let a config be lifted out of
+    # another client's book; checking only the source would let it be pushed
+    # into one.
     if body.client_id:
         assert_client_access(current_user, body.client_id)
 
@@ -156,6 +197,7 @@ def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict =
 def delete_recurring(config_id: str, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
+    _assert_config_scope(current_user, config_id)
     db.table("task_recurring_configs").delete().eq("id", config_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"deleted": True})
 
@@ -164,19 +206,21 @@ def delete_recurring(config_id: str, current_user: dict = Depends(rbac("task", "
 def generate_tasks(current_user: dict = Depends(rbac("task", "write"))):
     from services.recurring_task_service import generate_due_recurring_tasks
     firm_id = current_user.get("firm_id")
-    created = generate_due_recurring_tasks(firm_id=firm_id)
+    # A WRITE across the firm, not a list — narrowing the response afterwards
+    # would be the wrong shape entirely, because the tasks would already exist
+    # in every client's book by then. So the RUN is confined instead.
+    # effective_client_ids returns None for a firm-wide role, which keeps the
+    # single firm-wide pass this always had.
+    created = generate_due_recurring_tasks(
+        firm_id=firm_id,
+        allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, {"generated": len(created), "tasks": created})
 
 
 @router.get("/{config_id}/rules")
 def list_assignment_rules(config_id: str, current_user: dict = Depends(rbac("task", "read"))):
     firm_id = current_user.get("firm_id")
-    db = _get_db()
-
-    # Verify config exists and belongs to firm
-    config_result = db.table("task_recurring_configs").select("id").eq("id", config_id).eq("firm_id", firm_id).maybe_single().execute()
-    if not config_result.data:
-        raise HTTPException(status_code=404, detail="Recurring config not found")
+    _assert_config_scope(current_user, config_id)
 
     rules = assignment_rule_repo.find_all(firm_id=firm_id, recurring_config_id=config_id)
     return api_response(True, {"rules": rules, "total": len(rules)})
@@ -191,10 +235,7 @@ def create_assignment_rule(config_id: str, body: AssignmentRuleCreate, current_u
     if body.rule_type not in VALID_RULE_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid rule_type. Must be one of: {', '.join(VALID_RULE_TYPES)}")
 
-    # Verify config exists and belongs to firm
-    config_result = db.table("task_recurring_configs").select("id").eq("id", config_id).eq("firm_id", firm_id).maybe_single().execute()
-    if not config_result.data:
-        raise HTTPException(status_code=404, detail="Recurring config not found")
+    _assert_config_scope(current_user, config_id)
 
     # For fixed_user type, verify the user exists and belongs to firm
     if body.rule_type == "fixed_user" and body.target_value:
@@ -217,6 +258,10 @@ def create_assignment_rule(config_id: str, body: AssignmentRuleCreate, current_u
 def update_assignment_rule(config_id: str, rule_id: str, body: AssignmentRuleUpdate, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
+
+    # The config first — that is where the client lives. The rule row itself
+    # carries only a firm_id, so it can only be scoped through its config.
+    _assert_config_scope(current_user, config_id)
 
     # Verify rule exists and belongs to firm
     rule_result = db.table("assignment_rules").select("id").eq("id", rule_id).eq("firm_id", firm_id).eq("recurring_config_id", config_id).maybe_single().execute()
@@ -242,6 +287,10 @@ def update_assignment_rule(config_id: str, rule_id: str, body: AssignmentRuleUpd
 def delete_assignment_rule(config_id: str, rule_id: str, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
+
+    # The config first — that is where the client lives. The rule row itself
+    # carries only a firm_id, so it can only be scoped through its config.
+    _assert_config_scope(current_user, config_id)
 
     # Verify rule exists and belongs to firm
     rule_result = db.table("assignment_rules").select("id").eq("id", rule_id).eq("firm_id", firm_id).eq("recurring_config_id", config_id).maybe_single().execute()

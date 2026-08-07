@@ -437,7 +437,7 @@ several are cheap because the data is already in the narration.
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
-   `task_extras`.
+   `task_extras`, `task_recurring`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -709,16 +709,67 @@ several are cheap because the data is already in the narration.
    together, so it is stated here as a decision to take rather than folded into
    an authz commit. The lifecycle dashboard sits on exactly the same line.
 
+   **Also fixed 2026-08-07 — `task_recurring` (9 endpoints).** A separate router
+   on `/api/task-recurring`, so the `/api/tasks` prefix registered above does
+   **not** cover it — the two read as one feature and are two registrations.
+
+   This one is a different shape from the rest of the sweep, and a more
+   misleading one. It *did* import `core.authz` and it *did* call
+   `assert_client_access` — twice — on a caller-supplied `body.client_id` in
+   `create_recurring` and `update_recurring`. Nothing checked the client of a
+   config the caller named **by id**, so every stored config was open: edit it,
+   delete it (which had no existence check at all), or rewrite the assignment
+   rules that decide who in the firm ends up doing the work. A guard on the
+   input and none on the record reads as "already handled" to anyone skimming.
+
+   `_assert_config_scope` resolves the config within the firm and checks its
+   client, returning the row so nothing is fetched twice. `update_recurring`
+   now checks **both ends** — the config being edited and the client it is being
+   moved to — because a destination-only check lets a config be lifted out of
+   another client's book, and a source-only check lets it be pushed into one.
+   `assignment_rules` (migration 045) carries a `firm_id` and a
+   `recurring_config_id` and no client of its own, so all four rule endpoints
+   are scoped through the config.
+
+   `task_recurring_configs.client_id` is **nullable** (migration 063): a config
+   with no client is a firm-level recurring task, not a hidden one. Both paths
+   have to agree — `assert_client_access(user, None)` passes it and
+   `filter_by_client` keeps it — and the tests drive the real `filter_by_client`
+   rather than a stub, because a hand-written stub would encode one reading of
+   the rule and then agree with itself.
+
+   `POST /generate` is the same shape as the recurring-**invoice** run: a write
+   across the firm, so the run is confined rather than the output narrowed. The
+   service gained an `allowed_client_ids` parameter, filtered in Python rather
+   than pushed into the query, because PostgREST's `in_` cannot match NULL and
+   pushing it down would drop exactly the firm-level configs that must survive.
+   A caller assigned to nothing still generates the firm's own recurring tasks
+   and nothing else. The nightly cron passes nothing and keeps its single pass.
+
+   **Recorded — this router has no frontend caller at all.** Nothing under
+   `apps/web` references `/api/task-recurring`. Nine working endpoints, an
+   assignment-rule engine and a generation service with no UI to reach them; the
+   nightly job is the only thing that runs the generation. Second instance after
+   `memory_intelligence` of a whole router the product cannot reach, which is
+   why the coverage sweep below keeps being worth doing.
+
+   **The pattern, swept.** "Guards the body, not the record" is checkable:
+   routers that call `assert_client_access` on a `body.*` client_id while also
+   exposing id-addressed routes. Twelve unaudited routers have that exact shape
+   and are therefore *more* likely to look handled than an unguarded one —
+   `tds_workspace`, `gst_workspace`, `mca_workspace`, `relationships` (3 body
+   guards each), then `ai_copilot_v2`, `billing`, `compliance_records`,
+   `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
+   Worth taking before the routers with no guard at all, because the shape
+   defeats a reviewer rather than merely failing to help one.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **237** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **231** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
-   certainly all firm-level), `year_end_adjustments` (7), then
-   `task_recurring` / `invoices` / `itr_workspace` / `vendors` / `ai_copilot_v2`
-   / `platform` at 6 each. `task_recurring` is a separate router on
-   `/api/task-recurring` and is NOT covered by the `/api/tasks` prefix registered
-   above — worth doing next while the task tables are fresh. That count is an
-   upper bound — it includes
+   certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
+   `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
+   count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
    which of its resources carry a `client_id`, then guard those and add the
