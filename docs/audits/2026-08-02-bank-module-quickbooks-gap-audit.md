@@ -435,7 +435,8 @@ several are cheap because the data is already in the narration.
    it has been looked at, and the test then walks the registered routes and fails
    for any endpoint — including a new one — that never consults the caller's
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
-   `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`.
+   `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
+   `payroll`, `recurring_invoices`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -583,9 +584,43 @@ several are cheap because the data is already in the narration.
    exactly right. It is now guarded; `assert_client_access(user, None)` is a
    no-op on the create-a-new-client path, which is the correct reading.
 
+   **Also fixed 2026-08-07 — `payroll` (16 endpoints), the most sensitive
+   surface reached so far.** It imported no authz at all, so any authenticated
+   member of a firm could reach any client's individual salaries, PAN, PF/ESI
+   numbers and employee bank details; a named person's payslip PDF; the salary
+   register and statutory summary; and the endpoints that finalize, **disburse**
+   and reverse a payroll run.
+
+   `payroll_employees`, `payroll_runs` and `salary_structures` carry a NOT NULL
+   `client_id` and are guarded directly. **`payroll_slips` carries a `run_id`
+   and an `employee_id` and nothing else — no `client_id`, and no `firm_id`
+   either.** One person's payslip lives in a table with no tenant column at all,
+   so it is scoped through its run, which makes that hop load-bearing for BOTH
+   boundaries. (Tenant scoping for the PDF already existed in
+   `payslip_pdf_service`; what was missing was the client check on top.) A test
+   asserts the two-hop shape explicitly, because a guard that stopped at the
+   slip row would have had neither boundary.
+
+   **Also fixed 2026-08-07 — `recurring_invoices` (11 endpoints).** Nine are the
+   usual shape (resolve the template, check its client; narrow the firm-wide
+   list). The tenth needed a different answer.
+
+   `POST /api/recurring-invoices/run` is **not a list — it is a write across
+   every client in the firm**, generating draft invoices. Narrowing its output
+   would be the wrong shape entirely: the drafts would already exist by the time
+   anything was filtered. So the RUN is confined instead. A Partner or Manager
+   is firm-wide (`effective_client_ids` returns None) and gets the single
+   firm-wide call exactly as before — the fix must not turn one query into N for
+   the people who legitimately see everyone — while an Executive generates only
+   for the clients they are assigned to. Results are merged so the response shape
+   is identical for both, and no caller has to know which branch ran.
+
+   An empty assignment set means **no** books to write into, which is worth
+   stating because the unguarded `client_id=None` it replaces meant *all* of
+   them.
+
    **Still open — the same pattern in the remaining routers.** The sweep still finds
-   roughly 257 id-addressed routes with no client-scope check, worst first:
-   `payroll` / `recurring_invoices` (8 each),
+   roughly 241 id-addressed routes with no client-scope check, worst first:
    `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each),
    `invoices` / `itr_workspace` / `platform` (6 each). That count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
