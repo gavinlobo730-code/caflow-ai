@@ -4,7 +4,9 @@ Phase 13 — AI Memory & Intelligence API Router
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from fastapi import HTTPException
-from core.authz import assert_client_access, filter_by_client, is_firmwide
+from core.authz import (
+    assert_client_access, filter_by_client, is_firmwide, firmwide_roles_label,
+)
 from core.permissions import rbac
 from models.common import api_response
 
@@ -69,7 +71,7 @@ def _assert_firmwide(current_user: dict, what: str, instead: str) -> None:
         raise HTTPException(
             status_code=403,
             detail=f"{what} runs across every client in the firm and is limited "
-                   f"to Partners and Managers. Use {instead} for a client you "
+                   f"to {firmwide_roles_label()}. Use {instead} for a client you "
                    f"are assigned to.")
 
 

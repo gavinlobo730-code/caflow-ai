@@ -55,8 +55,22 @@ def _role(user: dict) -> Optional[Role]:
 
 
 def is_firmwide(user: dict) -> bool:
-    """True for roles that may see every client in the firm (Partner, Manager)."""
+    """True for roles that may see every client in the firm."""
     return _role(user) in _FIRMWIDE_ROLES
+
+
+def firmwide_roles_label() -> str:
+    """The firm-wide roles, named, for a refusal message a human has to read.
+
+    Derived from `_FIRMWIDE_ROLES` rather than written out, because it had
+    already drifted: two routers told a refused caller the endpoint was open to
+    "Partners and Managers" when the M3 decision above left only the Partner
+    firm-wide. A Manager was reading a 403 saying they should have got in.
+    """
+    names = sorted(role.value + "s" for role in _FIRMWIDE_ROLES)
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
 
 
 def assigned_client_ids(user: dict) -> set[str]:

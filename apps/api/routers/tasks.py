@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import filter_by_client, assert_client_access
+from core.authz import (
+    filter_by_client, assert_client_access, is_firmwide, firmwide_roles_label,
+)
 from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
 from services.task_service import is_valid_transition, group_tasks_by_status
@@ -161,6 +163,10 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
         raise HTTPException(status_code=404, detail="Task not found")
     if task.get("firm_id") and task["firm_id"] != firm_id:
         raise HTTPException(status_code=404, detail="Task not found")
+    # tasks.client_id is NOT NULL and the row is already in hand, so this costs
+    # no extra query. 404, not 403, matching the firm check just above — the
+    # status code must not become an oracle for which task ids are real.
+    assert_client_access(current_user, task.get("client_id"))
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
 
@@ -282,8 +288,26 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
     return api_response(True, {"task": updated})
 
 
+
+def _assert_firmwide_job(current_user: dict, what: str) -> None:
+    """Refuse a firm-WIDE job to a caller who is not firm-wide.
+
+    403, not the 404 used for a row: nothing is being hidden, and there is no id
+    to hide. These run across every client in the firm — escalations, recurring
+    generation, the whole daily batch — and there is no honest partial version,
+    so running a subset and calling it "the firm's daily jobs" would be worse
+    than refusing.
+    """
+    if not is_firmwide(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"{what} runs across every client in the firm and is limited "
+                   f"to {firmwide_roles_label()}.")
+
+
 @router.post("/trigger-escalations")
 def trigger_escalations(current_user: dict = Depends(rbac("task", "write"))):
+    _assert_firmwide_job(current_user, "Escalation processing")
     from services.escalation_service import escalation_service
     firm_id = current_user.get("firm_id")
     result = escalation_service.run_all_escalations(firm_id)
@@ -297,6 +321,7 @@ def trigger_scheduler_run(force: bool = False, current_user: dict = Depends(rbac
     escalations, and invoice overdue transitions. Idempotent per day unless
     force=true. Intended for external cron services and manual catch-up.
     """
+    _assert_firmwide_job(current_user, "The daily automation batch")
     from jobs.scheduler import run_daily_jobs
     firm_id = current_user.get("firm_id")
     result = run_daily_jobs(firm_id=firm_id, force=force)
@@ -305,6 +330,7 @@ def trigger_scheduler_run(force: bool = False, current_user: dict = Depends(rbac
 
 @router.post("/trigger-recurring-generation")
 def trigger_recurring_generation(current_user: dict = Depends(rbac("task", "write"))):
+    _assert_firmwide_job(current_user, "Recurring task generation")
     from jobs.recurring_task_job import run_recurring_generation_job
     firm_id = current_user.get("firm_id")
     result = run_recurring_generation_job(firm_id=firm_id)
