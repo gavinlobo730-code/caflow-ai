@@ -286,6 +286,12 @@ export const api = {
     // B.2 — matching & categorization (suggestions only; no posting)
     queue: (params?: Record<string, string>) => request(`/api/banking/queue${params ? "?" + new URLSearchParams(params) : ""}`),
     suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),
+    // B.1.6 — "Find other matches". suggestions() ranks the best five WITHIN an
+    // amount band; this searches everything the direction permits, so a CA who
+    // knows which invoice it is can simply find it. Read only — picking a result
+    // still goes through matchEntity.
+    candidateSearch: (txnId: string, params?: Record<string, string>) =>
+      request(`/api/banking/transactions/${txnId}/candidate-search${params ? "?" + new URLSearchParams(params) : ""}`),
     categorize: (txnId: string, data: { category: string }) => request(`/api/banking/transactions/${txnId}/categorize`, { method: "POST", body: JSON.stringify(data) }),
     matchEntity: (txnId: string, data: { matched_entity_type: string; matched_entity_id: string; category?: string }) => request(`/api/banking/transactions/${txnId}/match`, { method: "POST", body: JSON.stringify(data) }),
     // Multi-invoice bank allocation — match ONE transaction to MULTIPLE sales

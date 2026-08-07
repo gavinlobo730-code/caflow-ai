@@ -44,6 +44,12 @@ from .register import (
     RegisterLine, build_register, first_divergence, summarise as summarise_register,
     derive_cleared, CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
 )
+from .candidate_search import (
+    CandidateHit, search as search_candidates, describe as describe_candidate,
+    allowed_types as candidate_types_for_direction,
+    CREDIT_TYPES as CANDIDATE_CREDIT_TYPES, DEBIT_TYPES as CANDIDATE_DEBIT_TYPES,
+    MAX_RESULTS as CANDIDATE_MAX_RESULTS,
+)
 
 __all__ = [
     "NormalizedTxn", "parse_statement", "parse_csv", "parse_xlsx",
@@ -65,4 +71,7 @@ __all__ = [
     "Attachment", "AttachmentError", "parse_attachments", "add_attachment",
     "remove_attachment", "ATTACHMENT_SCHEMES", "MAX_ATTACHMENTS",
     "TransferPair", "detect_transfers", "describe_transfer", "TRANSFER_WINDOW_DAYS",
+    "CandidateHit", "search_candidates", "describe_candidate",
+    "candidate_types_for_direction", "CANDIDATE_CREDIT_TYPES",
+    "CANDIDATE_DEBIT_TYPES", "CANDIDATE_MAX_RESULTS",
 ]
