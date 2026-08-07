@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
 
 from models.common import api_response
+from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.permissions import rbac
 from services import recurring_invoice_service as recurring
 
@@ -89,6 +90,30 @@ class RecurringTemplateUpdateIn(BaseModel):
         return v
 
 
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+# Manager, Executive or Reviewer sees only the clients in
+# `user_client_assignments`. This router did not import core.authz at all, so
+# every template — and every generation run — was firm-scoped and nothing more.
+#
+# `recurring_invoice_templates` carries a NOT NULL client_id, and the service
+# already exposes a firm-scoped `get_template`, so the resolve-then-assert guard
+# is a thin wrapper over what is there rather than a second query path.
+
+def _assert_template_scope(current_user: dict, template_id: str) -> Optional[str]:
+    """404 unless the caller may act on this template's client.
+
+    404 rather than 403, and the same 404 as "no such template" — otherwise the
+    status code becomes an oracle for which template ids are real. The message
+    matches the handlers' own so nothing downstream reads differently.
+    """
+    t = recurring.get_template(current_user["firm_id"], template_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Recurring template not found.")
+    assert_client_access(current_user, t.get("client_id"))
+    return t.get("client_id")
+
+
 def _dump_lines(lines) -> list[dict]:
     return [ln.model_dump() for ln in lines] if lines is not None else None
 
@@ -98,14 +123,20 @@ def list_recurring(client_id: Optional[str] = Query(None),
                    status: Optional[str] = Query(None),
                    current_user: dict = Depends(rbac("accounting", "read"))):
     """List recurring templates for the firm (optionally scoped to one client)."""
-    return api_response(True, recurring.list_templates(
-        current_user["firm_id"], client_id=client_id, status=status))
+    if client_id:
+        assert_client_access(current_user, client_id)
+    rows = recurring.list_templates(
+        current_user["firm_id"], client_id=client_id, status=status)
+    if not client_id:
+        rows = filter_by_client(current_user, rows)
+    return api_response(True, rows)
 
 
 @router.post("")
 def create_recurring(body: RecurringTemplateIn,
                      current_user: dict = Depends(rbac("accounting", "write"))):
     """Create a recurring invoice template (drafts only; never auto-sends)."""
+    assert_client_access(current_user, body.client_id)
     data = body.model_dump()
     data["lines"] = _dump_lines(body.lines)
     return api_response(True, recurring.create_template(
@@ -115,6 +146,7 @@ def create_recurring(body: RecurringTemplateIn,
 @router.get("/{template_id}")
 def get_recurring(template_id: str = Path(...),
                   current_user: dict = Depends(rbac("accounting", "read"))):
+    _assert_template_scope(current_user, template_id)
     t = recurring.get_template(current_user["firm_id"], template_id)
     if not t:
         raise HTTPException(status_code=404, detail="Recurring template not found.")
@@ -124,6 +156,7 @@ def get_recurring(template_id: str = Path(...),
 @router.put("/{template_id}")
 def update_recurring(template_id: str, body: RecurringTemplateUpdateIn,
                      current_user: dict = Depends(rbac("accounting", "write"))):
+    _assert_template_scope(current_user, template_id)
     data = body.model_dump(exclude_unset=True)
     if "lines" in data:
         data["lines"] = _dump_lines(body.lines)
@@ -133,18 +166,21 @@ def update_recurring(template_id: str, body: RecurringTemplateUpdateIn,
 @router.post("/{template_id}/pause")
 def pause_recurring(template_id: str,
                     current_user: dict = Depends(rbac("accounting", "write"))):
+    _assert_template_scope(current_user, template_id)
     return api_response(True, recurring.set_status(current_user["firm_id"], template_id, "paused"))
 
 
 @router.post("/{template_id}/resume")
 def resume_recurring(template_id: str,
                      current_user: dict = Depends(rbac("accounting", "write"))):
+    _assert_template_scope(current_user, template_id)
     return api_response(True, recurring.set_status(current_user["firm_id"], template_id, "active"))
 
 
 @router.post("/{template_id}/archive")
 def archive_recurring(template_id: str,
                       current_user: dict = Depends(rbac("accounting", "write"))):
+    _assert_template_scope(current_user, template_id)
     return api_response(True, recurring.set_status(current_user["firm_id"], template_id, "archived"))
 
 
@@ -152,6 +188,7 @@ def archive_recurring(template_id: str,
 def history_recurring(template_id: str,
                       current_user: dict = Depends(rbac("accounting", "read"))):
     """Generation history (occurrence -> generated draft invoice + status)."""
+    _assert_template_scope(current_user, template_id)
     return api_response(True, recurring.template_history(current_user["firm_id"], template_id))
 
 
@@ -159,6 +196,7 @@ def history_recurring(template_id: str,
 def preview_recurring(template_id: str, count: int = Query(5, ge=1, le=24),
                       current_user: dict = Depends(rbac("accounting", "read"))):
     """The next N occurrence dates for a template (read-only)."""
+    _assert_template_scope(current_user, template_id)
     t = recurring.get_template(current_user["firm_id"], template_id)
     if not t:
         raise HTTPException(status_code=404, detail="Recurring template not found.")
@@ -169,6 +207,7 @@ def preview_recurring(template_id: str, count: int = Query(5, ge=1, le=24),
 def run_one_recurring(template_id: str, as_of: Optional[str] = Query(None),
                       current_user: dict = Depends(rbac("accounting", "write"))):
     """Generate due DRAFT invoices for a single template now (CA-initiated)."""
+    _assert_template_scope(current_user, template_id)
     return api_response(True, recurring.run_for_template(
         current_user["firm_id"], template_id, as_of=as_of, actor=current_user))
 
@@ -177,6 +216,31 @@ def run_one_recurring(template_id: str, as_of: Optional[str] = Query(None),
 def run_due_recurring(client_id: Optional[str] = Query(None), as_of: Optional[str] = Query(None),
                       current_user: dict = Depends(rbac("accounting", "write"))):
     """Manually run recurring generation for the firm (optionally one client).
-    Same job the daily scheduler runs — works whether the scheduler is on or off."""
-    return api_response(True, recurring.generate_due_recurring_invoices(
-        current_user["firm_id"], client_id=client_id, as_of=as_of, actor=current_user))
+    Same job the daily scheduler runs — works whether the scheduler is on or off.
+
+    This one is a WRITE across every client, not a list, so narrowing the output
+    would be the wrong shape: the drafts would already exist. Instead the run
+    itself is confined to the caller's book — a Partner or Manager is firm-wide
+    and the loop is a single firm-wide call as before, while an Executive
+    generates only for the clients they are assigned to. Without this, anyone in
+    the firm could create draft invoices in every client's books.
+
+    Results are merged rather than returned per client, so the response shape is
+    unchanged for every caller."""
+    if client_id:
+        assert_client_access(current_user, client_id)
+        targets = [client_id]
+    else:
+        eff = effective_client_ids(current_user)
+        # None means firm-wide (Partner/Manager, or mock mode with no
+        # assignments table) — one call with client_id=None, exactly as before.
+        targets = [None] if eff is None else sorted(eff)
+
+    merged = {"generated": [], "skipped": [], "failed": []}
+    for target in targets:
+        res = recurring.generate_due_recurring_invoices(
+            current_user["firm_id"], client_id=target, as_of=as_of, actor=current_user)
+        for key in merged:
+            merged[key].extend(res.get(key) or [])
+    merged.update({f"{k}_count": len(v) for k, v in list(merged.items())})
+    return api_response(True, merged)
