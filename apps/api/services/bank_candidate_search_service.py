@@ -32,7 +32,6 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from core.authz import assert_client_access
 from domain.banking.matcher import Candidate
 from domain.banking.candidate_search import (
     search as search_candidates, describe, allowed_types, CandidateHit, MAX_RESULTS,
@@ -187,7 +186,7 @@ class BankCandidateSearchService:
         return out
 
     # ── the search ──────────────────────────────────────────────────────────
-    def search(self, db, firm_id: str, txn_id: str, current_user: dict, *,
+    def search(self, db, firm_id: str, txn_id: str, *,
                q: Optional[str] = None,
                date_from: Optional[str] = None, date_to: Optional[str] = None,
                min_amount_paise: Optional[int] = None,
@@ -207,15 +206,12 @@ class BankCandidateSearchService:
             raise HTTPException(status_code=422,
                                 detail="The minimum amount cannot exceed the maximum.")
 
+        # Client-assignment scope is asserted by the router (_assert_txn_scope),
+        # which is where every other client-scope check in this module lives —
+        # one seam, and a test that walks the registered routes can prove none
+        # was missed. A second copy here would only be a second thing to keep
+        # in step.
         txn = self._get_txn(db, firm_id, txn_id)
-        # Only a Partner is firm-wide (core.authz._FIRMWIDE_ROLES); a Manager or
-        # Executive sees only their assigned book. Firm scoping alone is not
-        # enough here: this endpoint is addressed by transaction id and answers
-        # with a list of that client's open invoices, bills and party names, so
-        # without this line a transaction id from another manager's client reads
-        # out their receivables. 404, not 403 — existence is not disclosed.
-        assert_client_access(current_user, txn.get("client_id"))
-
         debit = int(txn.get("debit_paise") or 0)
         credit = int(txn.get("credit_paise") or 0)
         amount, is_credit = max(debit, credit), credit > 0

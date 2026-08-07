@@ -122,12 +122,15 @@ def test_banking_foreign_firm_cannot_set_account(monkeypatch):
     bk, db = _setup(monkeypatch)
     _import_two(bk)
     txn_id = db.rows("bank_transactions")[0]["id"]
-    # Isolation invariant: a foreign-firm caller cannot mutate the txn. The guard
-    # read is firm-scoped (.eq("firm_id", ...).single()), so no row matches and the
-    # write never lands. NOTE (coverage-report finding): _get_txn assumes .single()
-    # returns empty on no-row, but PostgREST .single() RAISES on 0 rows — so this
-    # surfaces as a 500-class error rather than the intended 404 (cosmetic
-    # error-contract bug; isolation is unaffected — nothing is mutated).
-    with pytest.raises(Exception):
+    # Isolation invariant: a foreign-firm caller cannot mutate the txn.
+    #
+    # This used to surface as a 500-class error rather than a 404: the guard read
+    # in _get_txn assumed .single() returns empty on no-row, but PostgREST
+    # .single() RAISES on 0 rows. The client-scope guard (_assert_txn_scope) now
+    # runs first and does its own firm-scoped .limit(1) lookup, so the intended
+    # 404 is what actually comes back. Isolation was never the problem; the error
+    # contract was.
+    with pytest.raises(HTTPException) as e:
         bk.set_transaction_account(txn_id, TransactionAccountIn(account_id="X"), OTHER)
+    assert e.value.status_code == 404
     assert db.rows("bank_transactions")[0].get("account_id") is None   # untouched

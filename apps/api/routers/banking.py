@@ -84,6 +84,44 @@ def _scope_rows(current_user: dict, client_id: Optional[str], rows: list) -> lis
     return filter_by_client(current_user, rows)
 
 
+def _assert_row_scope(db, current_user: dict, table: str, row_id: str, label: str) -> str:
+    """M2 assignment scoping for the endpoints below that are addressed by ROW ID.
+
+    `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
+    Manager, Executive or Reviewer sees only the clients in
+    `user_client_assignments`. Endpoints that take a `client_id` parameter
+    enforce that with `assert_client_access` / `_scope_rows`. Endpoints addressed
+    by a row id have no `client_id` in the request, so they used to check
+    `firm_id` and stop — which let a transaction or reconciliation id belonging
+    to another manager's client straight through, on reads AND on writes
+    (`/post` writes a journal into that client's books).
+
+    The row id is the only thing standing between the two, and ids leak: they
+    appear in URLs, in exports, in support threads. Firm scoping is not the same
+    control as assignment scoping and cannot substitute for it.
+
+    404 for both "no such row" and "not your client" — existence is not
+    disclosed, matching `assert_client_access`'s own choice.
+
+    Returns the row's client_id so a caller that needs it does not re-read.
+    """
+    rows = (db.table(table).select("client_id")
+            .eq("id", row_id).eq("firm_id", current_user["firm_id"])
+            .limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"{label} not found.")
+    assert_client_access(current_user, rows[0].get("client_id"))
+    return rows[0].get("client_id")
+
+
+def _assert_txn_scope(db, current_user: dict, txn_id: str) -> str:
+    return _assert_row_scope(db, current_user, "bank_transactions", txn_id, "Bank transaction")
+
+
+def _assert_recon_scope(db, current_user: dict, recon_id: str) -> str:
+    return _assert_row_scope(db, current_user, "bank_reconciliations", recon_id, "Reconciliation")
+
+
 def _guard_foreign_bank_currency(db, firm_id: str, client_id: Optional[str], currency: str) -> None:
     """Allow a non-INR bank account ONLY when multi-currency is active for this client
     (env + firm entitlement + client enablement) and the currency is in the ISO master.
@@ -385,6 +423,7 @@ def transaction_suggestions(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "suggestions": []})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_matching_service.suggestions(db, current_user["firm_id"], txn_id))
 
 
@@ -408,14 +447,13 @@ def transaction_candidate_search(
     direction permits, so a CA who knows the invoice number can reach it. Read
     only — choosing a result still goes through /match.
 
-    Client-assignment scope is asserted inside the service, once the transaction
-    has told us which client it belongs to (there is no client_id to check here).
     """
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "results": [], "total": 0})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_candidate_search_service.search(
-        db, current_user["firm_id"], txn_id, current_user,
+        db, current_user["firm_id"], txn_id,
         q=q, date_from=date_from, date_to=date_to,
         min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
         entity_type=entity_type, party_id=party_id, limit=limit, offset=offset))
@@ -431,6 +469,7 @@ def categorize_transaction(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "category": data.category})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_matching_service.categorize(
         db, current_user["firm_id"], txn_id, data.category))
 
@@ -446,6 +485,7 @@ def match_transaction(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "matched"})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_matching_service.match(
         db, current_user["firm_id"], txn_id, data.matched_entity_type,
         data.matched_entity_id, category=data.category,
@@ -461,6 +501,7 @@ def unmatch_transaction(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "unmatched"})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_matching_service.unmatch(db, current_user["firm_id"], txn_id))
 
 
@@ -480,6 +521,7 @@ def match_transaction_multi(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "posted"})
+    _assert_txn_scope(db, current_user, txn_id)
     result = bank_posting_service.match_and_settle_multi(
         db, current_user["firm_id"], txn_id, data.entity_type,
         [a.model_dump() for a in data.allocations],
@@ -500,6 +542,7 @@ def set_transaction_account(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "matched", "account_id": data.account_id})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, banking_service.set_account(
         db, current_user["firm_id"], txn_id, data.account_id))
 
@@ -512,6 +555,7 @@ def ignore_transaction(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "ignored"})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, banking_service.ignore(db, current_user["firm_id"], txn_id))
 
 
@@ -524,6 +568,7 @@ def unignore_transaction(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "unmatched"})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, banking_service.unignore(db, current_user["firm_id"], txn_id))
 
 
@@ -632,6 +677,7 @@ def list_transaction_attachments(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "attachments": []})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_batch_service.list_attachments(
         db, current_user["firm_id"], txn_id))
 
@@ -651,6 +697,7 @@ def add_transaction_attachment(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "attachments": []})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_batch_service.add_attachment(
         db, current_user["firm_id"], txn_id, data.name, data.url,
         actor_id=current_user.get("auth_user_id")))
@@ -670,6 +717,7 @@ def remove_transaction_attachment(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "attachments": []})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_batch_service.remove_attachment(
         db, current_user["firm_id"], txn_id, data.url,
         actor_id=current_user.get("auth_user_id")))
@@ -712,6 +760,7 @@ def pair_transfer(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "is_paired": True})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_transfer_service.pair(
         db, current_user["firm_id"], txn_id, data.counterpart_id,
         actor_id=current_user.get("auth_user_id")))
@@ -727,6 +776,7 @@ def unpair_transfer(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "is_paired": False})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_transfer_service.unpair(
         db, current_user["firm_id"], txn_id,
         actor_id=current_user.get("auth_user_id")))
@@ -747,6 +797,7 @@ def set_transaction_payee(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, **data.model_dump()})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_payee_service.set_payee(
         db, current_user["firm_id"], txn_id,
         payee_name=data.payee_name, payee_type=data.payee_type, payee_id=data.payee_id,
@@ -763,6 +814,7 @@ def get_transaction_splits(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "splits": [], "is_split": False})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_split_service.get(db, current_user["firm_id"], txn_id))
 
 
@@ -786,6 +838,7 @@ def replace_transaction_splits(
     if not db:
         return api_response(True, {"transaction_id": txn_id,
                                    "splits": [s.model_dump() for s in data.splits]})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_split_service.replace(
         db, current_user["firm_id"], txn_id,
         [s.model_dump() for s in data.splits],
@@ -803,6 +856,7 @@ def posting_preview(
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "lines": []})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_posting_service.preview(
         db, current_user["firm_id"], txn_id, bank_account_id=data.bank_account_id,
         account_id=data.account_id, to_bank_account_id=data.to_bank_account_id,
@@ -829,6 +883,7 @@ def post_transaction(
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "posted", "posted_journal_id": "mock-je"})
+    _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_posting_service.post(
         db, current_user["firm_id"], txn_id,
         bank_account_id=data.bank_account_id, account_id=data.account_id,
@@ -908,6 +963,7 @@ def get_reconciliation(
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.get_session(
         db, current_user["firm_id"], recon_id))
 
@@ -922,6 +978,7 @@ def update_reconciliation(
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id, **data.model_dump(exclude_none=True)})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.update_session(
         db, current_user["firm_id"], recon_id, data.model_dump(exclude_none=True),
         actor_id=current_user.get("auth_user_id")))
@@ -936,6 +993,7 @@ def reconciliation_items(
     db = _db()
     if not db:
         return api_response(True, {"reconciled": [], "unreconciled": [], "exceptions": []})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.report(
         db, current_user["firm_id"], recon_id))
 
@@ -951,6 +1009,7 @@ def reconcile_items(
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id, "reconciled": data.transaction_ids})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.reconcile(
         db, current_user["firm_id"], recon_id, data.transaction_ids,
         actor_id=current_user.get("auth_user_id")))
@@ -966,6 +1025,7 @@ def unreconcile_items(
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id, "unreconciled": data.transaction_ids})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.unreconcile(
         db, current_user["firm_id"], recon_id, data.transaction_ids,
         actor_id=current_user.get("auth_user_id")))
@@ -981,6 +1041,7 @@ def complete_reconciliation(
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id, "status": "completed"})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.complete(
         db, current_user["firm_id"], recon_id, actor_id=current_user.get("auth_user_id")))
 
@@ -999,6 +1060,7 @@ def preview_reconciliation(
     db = _db()
     if not db:
         return api_response(True, {"reconciliation_id": recon_id, "selected_count": 0})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.preview(
         db, current_user["firm_id"], recon_id, data.transaction_ids))
 
@@ -1017,6 +1079,7 @@ def reconciliation_history(
     if not db:
         return api_response(True, {"reconciliation_id": recon_id,
                                    "current": None, "superseded": [], "reopen_count": 0})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.history(
         db, current_user["firm_id"], recon_id))
 
@@ -1035,6 +1098,7 @@ def reconciliation_report_pdf(
     db = _db()
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable.")
+    _assert_recon_scope(db, current_user, recon_id)
     from services.bank_reconciliation_pdf_service import get_reconciliation_pdf
     pdf_bytes, filename = get_reconciliation_pdf(db, current_user["firm_id"], recon_id)
     return Response(
@@ -1059,6 +1123,7 @@ def reopen_reconciliation(
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id, "status": "in_progress"})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.reopen(
         db, current_user["firm_id"], recon_id, data.reason,
         actor_id=current_user.get("auth_user_id")))
@@ -1073,6 +1138,7 @@ def reconciliation_report(
     db = _db()
     if not db:
         return api_response(True, {"reconciliation": {"id": recon_id}})
+    _assert_recon_scope(db, current_user, recon_id)
     return api_response(True, bank_reconciliation_service.report(
         db, current_user["firm_id"], recon_id))
 
@@ -1084,8 +1150,11 @@ def reconciliation_report_csv(
 ):
     """CSV export of the reconciliation report (B.4.4). Returns a file download."""
     db = _db()
-    csv_text = "" if not db else bank_reconciliation_service.report_csv(
-        db, current_user["firm_id"], recon_id)
+    csv_text = ""
+    if db:
+        _assert_recon_scope(db, current_user, recon_id)
+        csv_text = bank_reconciliation_service.report_csv(
+            db, current_user["firm_id"], recon_id)
     return Response(
         content=csv_text, media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="reconciliation-{recon_id}.csv"'})
