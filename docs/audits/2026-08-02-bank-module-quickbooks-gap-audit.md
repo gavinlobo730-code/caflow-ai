@@ -373,29 +373,46 @@ several are cheap because the data is already in the narration.
    dropping the other. Worth doing when a real case turns up; the pieces
    (`charge_gst.split_inclusive_charge`, `splits.build_split_lines`) already compose.
 
-   **Found while building 1.6 — client-assignment scope is missing on every
-   id-addressed banking endpoint.** `core.authz` makes only the **Partner**
+   **Found while building 1.6, fixed 2026-08-07 — client-assignment scope on the
+   id-addressed banking endpoints.** `core.authz` makes only the **Partner**
    firm-wide (`_FIRMWIDE_ROLES`); Managers, Executives and Reviewers see only the
-   clients in `user_client_assignments`. Endpoints that take a `client_id`
-   parameter enforce that with `assert_client_access` / `_scope_rows`. Endpoints
-   addressed by `{txn_id}` **do not** — they check `firm_id` and stop, so a
-   transaction id from another manager's client is accepted. 18 endpoints are
-   affected, including writes:
+   clients in `user_client_assignments`. Endpoints taking a `client_id` parameter
+   enforced that with `assert_client_access` / `_scope_rows`. Endpoints addressed
+   by a row id did not — they checked `firm_id` and stopped, so a row id from
+   another manager's client was accepted on reads **and on writes**: `POST …/post`
+   wrote a journal into that client's books, and `…/suggestions` read out their
+   open invoices and party names.
 
-   > `GET …/suggestions`, `POST …/categorize`, `POST …/match`, `POST …/unmatch`,
-   > `POST …/match-multi`, `PATCH /transactions/{txn_id}`, `POST …/ignore`,
-   > `POST …/unignore`, `GET|POST …/attachments`, `POST …/attachments/remove`,
-   > `POST|DELETE …/transfer-pair`, `PUT …/payee`, `GET|PUT …/splits`,
-   > `POST …/posting-preview`, **`POST …/post`**
+   The first count was 18 (`{txn_id}` only). The real number is **31** — the 19
+   `{txn_id}` endpoints plus 12 on `{recon_id}`, which is just as client-scoped
+   and had the identical hole. Fixing only the ones first noticed would have left
+   the same defect in the same file.
 
-   `POST …/post` writes a journal into another manager's client's books, and
-   `…/suggestions` reads out their open invoices and party names. The new
-   `…/candidate-search` **does** assert the scope (in the service, once the
-   transaction has named its client — there is no `client_id` in the request to
-   check earlier), so the pattern to copy is there. Exposure is limited to
-   authenticated users of the same firm who hold a transaction id they were not
-   given, but the fix is one line per endpoint and it touches the posting path,
-   which is why it is written down here rather than folded into 1.6.
+   All 31 now call `_assert_txn_scope` / `_assert_recon_scope` — one firm-scoped
+   `client_id` lookup, then `assert_client_access`, returning **404** for both
+   "no such row" and "not your client" so the status code cannot be used as an
+   oracle for which ids exist. The guard sits at the router because that is where
+   every other client-scope check in the module lives; the copy 1.6 had put in
+   `bank_candidate_search_service` was removed so there is one seam rather than
+   two. `test_banking_client_scope.py` walks the **registered routes** and fails
+   for any future row-addressed endpoint that skips the guard — a per-endpoint
+   test alone would only cover the ones someone remembered.
+
+   Side effect: `set_transaction_account` on a foreign-firm id used to surface a
+   500-class error, because `_get_txn` assumed PostgREST's `.single()` returns
+   empty on no-row when it actually raises. The guard now answers 404 first, so
+   the error contract matches the intent (`test_e2e_banking.py` asserts it).
+
+   **Still open — the same pattern outside banking.** A sweep of all routers finds
+   **345 id-addressed routes with no client-scope check**, worst first:
+   `engagement_letters` (15), `sales_invoices` (12), `workflow_builder` (11),
+   `knowledge` (10), `lifecycle` / `payroll` / `recurring_invoices` (8 each),
+   `memory_intelligence` / `task_extras` / `year_end_adjustments` (7 each). That
+   count is an upper bound — it includes genuinely firm-level resources
+   (`/rules/{rule_id}`, branding, identity, platform) that have no client to
+   scope to. Each router needs the same judgement banking just had: which of its
+   id-addressed resources carry a `client_id`, and a guard on those. Worth doing
+   router by router, not as one sweep.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

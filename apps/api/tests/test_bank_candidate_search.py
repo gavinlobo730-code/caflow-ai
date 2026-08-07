@@ -414,7 +414,7 @@ def test_a_four_month_old_invoice_is_found_when_the_band_would_have_hidden_it():
     """₹90,000 credit against a ₹1,00,000 invoice from January — outside the
     ranked list's reach on amount AND on the fetch window it used."""
     db = FakeDB(_store())
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert [r["matched_entity_id"] for r in out["results"]] == ["inv-1"]
     hit = out["results"][0]
     assert hit["label"] == "INV-2026-0042 · Acme Pvt Ltd"
@@ -427,7 +427,7 @@ def test_every_read_is_scoped_to_the_firm_and_the_client():
     """A free-text search over financial documents is exactly where a missing
     tenant filter surfaces."""
     db = FakeDB(_store())
-    svc.search(db, FIRM, "t1", USER)
+    svc.search(db, FIRM, "t1")
     doc_reads = [q for q in db.log if q[0] != "bank_transactions"]
     assert doc_reads, "expected the service to read candidate tables"
     for table, eqs, _g, _l in doc_reads:
@@ -439,47 +439,15 @@ def test_every_read_is_scoped_to_the_firm_and_the_client():
 def test_the_transaction_itself_is_fetched_by_firm_so_another_firms_id_404s():
     db = FakeDB(_store())
     with pytest.raises(HTTPException) as e:
-        svc.search(db, "firm-2", "t1", USER)
+        svc.search(db, "firm-2", "t1")
     assert e.value.status_code == 404
 
 
 def test_a_missing_transaction_is_a_404_not_an_empty_result():
     db = FakeDB(_store())
     with pytest.raises(HTTPException) as e:
-        svc.search(db, FIRM, "nope", USER)
+        svc.search(db, FIRM, "nope")
     assert e.value.status_code == 404
-
-
-def test_a_manager_outside_their_book_gets_nothing_even_with_a_valid_txn_id():
-    """Only a Partner is firm-wide (core.authz._FIRMWIDE_ROLES). This endpoint is
-    addressed by transaction id and answers with a client's open invoices and
-    party names, so firm scoping alone would read out another manager's
-    receivables to anyone who has a transaction id from their book.
-
-    The check is monkeypatched because it is permissive in mock mode (no
-    SUPABASE_URL, so there is no assignments table) — what is under test is that
-    the service consults it at all, and refuses when it says no."""
-    import services.bank_candidate_search_service as mod
-
-    db = FakeDB(_store())
-    asked = []
-
-    def _deny(user, client_id):
-        asked.append((user, client_id))
-        raise HTTPException(status_code=404, detail="Not found")
-
-    real = mod.assert_client_access
-    mod.assert_client_access = _deny
-    try:
-        with pytest.raises(HTTPException) as e:
-            mod.bank_candidate_search_service.search(db, FIRM, "t1", USER)
-    finally:
-        mod.assert_client_access = real
-
-    assert e.value.status_code == 404       # not 403 — existence is not disclosed
-    assert asked == [(USER, CLIENT)]
-    # Refused BEFORE any document was read, not after.
-    assert [q[0] for q in db.log] == ["bank_transactions"]
 
 
 def test_asking_for_a_type_this_direction_cannot_settle_is_refused_out_loud():
@@ -487,7 +455,7 @@ def test_asking_for_a_type_this_direction_cannot_settle_is_refused_out_loud():
     and misleading answer."""
     db = FakeDB(_store())
     with pytest.raises(HTTPException) as e:
-        svc.search(db, FIRM, "t1", USER, entity_type="purchase_bill")
+        svc.search(db, FIRM, "t1", entity_type="purchase_bill")
     assert e.value.status_code == 422
     assert "cannot settle" in e.value.detail
 
@@ -495,7 +463,7 @@ def test_asking_for_a_type_this_direction_cannot_settle_is_refused_out_loud():
 def test_an_unknown_type_is_refused_before_any_document_is_read():
     db = FakeDB(_store())
     with pytest.raises(HTTPException) as e:
-        svc.search(db, FIRM, "t1", USER, entity_type="pizza")
+        svc.search(db, FIRM, "t1", entity_type="pizza")
     assert e.value.status_code == 422
     assert db.log == []
 
@@ -503,21 +471,21 @@ def test_an_unknown_type_is_refused_before_any_document_is_read():
 def test_a_backwards_date_range_is_refused_rather_than_silently_empty():
     db = FakeDB(_store())
     with pytest.raises(HTTPException) as e:
-        svc.search(db, FIRM, "t1", USER, date_from="2026-05-01", date_to="2026-04-01")
+        svc.search(db, FIRM, "t1", date_from="2026-05-01", date_to="2026-04-01")
     assert e.value.status_code == 422
 
 
 def test_a_minimum_above_the_maximum_is_refused():
     db = FakeDB(_store())
     with pytest.raises(HTTPException) as e:
-        svc.search(db, FIRM, "t1", USER, min_amount_paise=500, max_amount_paise=100)
+        svc.search(db, FIRM, "t1", min_amount_paise=500, max_amount_paise=100)
     assert e.value.status_code == 422
 
 
 def test_documents_are_fetched_by_date_with_no_amount_band_at_all():
     """The band is what hid the answer. If it comes back, this fails."""
     db = FakeDB(_store())
-    svc.search(db, FIRM, "t1", USER)
+    svc.search(db, FIRM, "t1")
     inv = [q for q in db.log if q[0] == "client_sales_invoices"][0]
     _t, _eqs, gtes, ltes = inv
     bounded = {k for k, _v in gtes} | {k for k, _v in ltes}
@@ -535,7 +503,7 @@ def test_draft_cancelled_and_fully_paid_invoices_stay_out_of_reach():
         r.update(over)
         rows.append(r)
     db = FakeDB(_store(client_sales_invoices=rows))
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert out["results"] == [] and out["total"] == 0
 
 
@@ -548,7 +516,7 @@ def test_receipts_are_searched_by_date_not_by_exact_amount():
         "receipt_no": "RCP-7", "receipt_date": "2026-04-09",
         "amount_paise": 12_345_00,   # nothing like the ₹90,000 bank line
     }], client_sales_invoices=[]))
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert [r["matched_entity_id"] for r in out["results"]] == ["rec-1"]
     assert out["results"][0]["label"] == "Receipt RCP-7"
 
@@ -564,7 +532,7 @@ def test_an_outgoing_line_searches_bills_and_payments_instead():
     store["vendors"] = [{"id": "vend-1", "firm_id": FIRM, "client_id": CLIENT,
                          "name": "Ramesh Kumar"}]
     db = FakeDB(store)
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert out["direction"] == "debit"
     assert out["allowed_types"] == list(DEBIT_TYPES)
     assert [r["matched_entity_id"] for r in out["results"]] == ["bill-1"]
@@ -578,13 +546,13 @@ def test_only_posted_journals_are_offered():
         "entry_date": "2026-04-09", "reference_no": "JE-1", "narration": "draft",
         "journal_lines": [{"debit_paise": 90_000_00, "credit_paise": 0}],
     }]))
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert out["results"] == []
 
 
 def test_the_default_window_is_wide_enough_for_a_quarter_old_invoice():
     db = FakeDB(_store())
-    svc.search(db, FIRM, "t1", USER)
+    svc.search(db, FIRM, "t1")
     _t, _e, gtes, ltes = [q for q in db.log if q[0] == "client_sales_invoices"][0]
     assert dict(gtes)["invoice_date"] < "2026-01-05" < dict(ltes)["invoice_date"]
     assert DEFAULT_WINDOW_DAYS >= 365
@@ -593,7 +561,7 @@ def test_the_default_window_is_wide_enough_for_a_quarter_old_invoice():
 def test_an_explicit_date_filter_narrows_the_fetch_rather_than_only_the_result():
     """Otherwise a narrow search still pays for a 400-day read."""
     db = FakeDB(_store())
-    svc.search(db, FIRM, "t1", USER, date_from="2026-04-01", date_to="2026-04-30")
+    svc.search(db, FIRM, "t1", date_from="2026-04-01", date_to="2026-04-30")
     _t, _e, gtes, ltes = [q for q in db.log if q[0] == "client_sales_invoices"][0]
     assert dict(gtes)["invoice_date"] == "2026-04-01"
     assert dict(ltes)["invoice_date"] == "2026-04-30"
@@ -603,14 +571,14 @@ def test_a_full_fetch_is_flagged_so_nothing_matching_reads_differently_from_too_
     rows = [dict(_store()["client_sales_invoices"][0], id=f"inv-{i}")
             for i in range(FETCH_LIMIT)]
     db = FakeDB(_store(client_sales_invoices=rows))
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert out["truncated"] is True
     assert out["total"] == FETCH_LIMIT and len(out["results"]) == out["limit"]
 
 
 def test_a_short_result_set_is_not_flagged_as_truncated():
     db = FakeDB(_store())
-    assert svc.search(db, FIRM, "t1", USER)["truncated"] is False
+    assert svc.search(db, FIRM, "t1")["truncated"] is False
 
 
 def test_the_endpoint_forwards_every_filter_it_accepts():
@@ -621,13 +589,13 @@ def test_the_endpoint_forwards_every_filter_it_accepts():
     seen = {}
 
     class _Spy:
-        def search(self, _db, firm_id, txn_id, current_user, **kw):
-            seen.update(kw, firm_id=firm_id, txn_id=txn_id, user=current_user["id"])
+        def search(self, _db, firm_id, txn_id, **kw):
+            seen.update(kw, firm_id=firm_id, txn_id=txn_id)
             return {"results": [], "total": 0}
 
     real_svc, real_db = rb.bank_candidate_search_service, rb._db
     rb.bank_candidate_search_service = _Spy()
-    rb._db = lambda: object()
+    rb._db = lambda: FakeDB(_store())   # the router's scope guard reads it first
     try:
         out = rb.transaction_candidate_search(
             "t1", q="acme", date_from="2026-04-01", date_to="2026-04-30",
@@ -639,7 +607,7 @@ def test_the_endpoint_forwards_every_filter_it_accepts():
 
     assert out["success"] is True and out["error"] is None
     assert seen == {
-        "firm_id": FIRM, "txn_id": "t1", "user": "u1", "q": "acme",
+        "firm_id": FIRM, "txn_id": "t1", "q": "acme",
         "date_from": "2026-04-01", "date_to": "2026-04-30",
         "min_amount_paise": 100, "max_amount_paise": 900,
         "entity_type": "sales_invoice", "party_id": "cust-1",
@@ -665,6 +633,6 @@ def test_a_broken_candidate_table_degrades_to_fewer_results_not_a_500():
         "id": "rec-1", "firm_id": FIRM, "client_id": CLIENT,
         "receipt_no": "RCP-7", "receipt_date": "2026-04-09", "amount_paise": 90_000_00,
     }]))
-    out = svc.search(db, FIRM, "t1", USER)
+    out = svc.search(db, FIRM, "t1")
     assert out["total"] == 0  # the whole fetch is abandoned, but the call returns
     assert out["results"] == []
