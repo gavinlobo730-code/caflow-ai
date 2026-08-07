@@ -267,7 +267,7 @@ found while doing the work:
 | ✅ 1.3 | ~~**Payee on `bank_transactions`** + customer/vendor lookup + auto-fill~~ **Shipped 2026-08-03** | **M** | Migration 257. `payee_id` deliberately carries **no foreign key** — the reference is polymorphic, because a payee is often neither a customer nor a vendor (a landlord, a utility, the bank itself), and inventing vendor records for them would be worse than the problem. It is a convenience for filtering and learning, never a settlement target; settlement still uses `matched_entity_*`, re-checked on every use. Auto-fill reuses the 6.2 narration parser: the parsed counterparty is matched against the client's real customers/vendors so the CA gets a **link**, falling back to a plain name when nothing matches. |
 | ✅ 1.4 | ~~**Learn-from-history suggestions** — "last time this payee was coded to X"~~ **Shipped 2026-08-03** | **M** | The key is the hard part, and it is **not** the narration: an Indian UPI line carries a UTR, so every one is unique and a raw-string key never learns anything. The key is `payee_id` when a party is linked, else the **normalised** counterparty (6.2), so 'Acme Pvt. Ltd.' and 'ACME PRIVATE LIMITED' learn as one payee. Only **posted** decisions teach — a draft is a proposal, and learning from unposted rows would let one mistaken suggestion, accepted once, become the evidence for suggesting itself. Returns **evidence, not a score**: "coded this way 8 of the last 9 times" plus the alternatives that lost, because a CA cannot audit '92% confident'. |
 | ✅ 1.5 | ~~**Transfer auto-detection** — pair opposite-sign, same-amount lines across two of the client's own accounts~~ **Shipped 2026-08-03** | **M** | Migration 258. **Detection was only half the feature.** `build_transfer_lines` already writes the COMPLETE double entry, so a detected pair whose sides both post double-counts the cash anyway — the exact overstatement this prevents, just arrived at more tidily. Hence `transfer_is_primary`: exactly one side (the outflow) carries the journal, the counterpart is excluded from the ready-to-post queue AND refused in `_plan`. Pairing goes through an atomic RPC because a half-paired row — one side pointing at a partner that doesn't point back — would be free to post its own journal. Exact paise, opposite directions, different accounts, within a few days; **ambiguity is reported, not resolved** (three ₹50,000 movements on one day have no single correct pairing, and each line is used in at most one pair).
-| 1.6 | **"Find other matches"** — searchable candidate picker with date/amount/party filters, not a fixed top-5 | **M** | |
+| ✅ 1.6 | ~~**"Find other matches"** — searchable candidate picker with date/amount/party filters, not a fixed top-5~~ **Shipped 2026-08-07** | **M** | Lengthening the ranked list would have fixed nothing: the problem was never that the right answer ranked sixth, it is that `suggestions()` **never fetched it** — an amount band on invoices/bills, exact-amount equality on receipts/payments. So the band is **lifted**, not widened: any document the direction permits is reachable, including one larger than the bank line (the old band was one-sided, so a ₹9,000 invoice against a ₹10,000 deposit had no route at all). What is *not* relaxed is what the ledger permits — **direction is a rule, not a filter**: money arriving cannot settle a purchase bill however the search box is filled in, and asking for a forbidden type is a **422 rather than an empty result**, because silently returning nothing reads as "there are none", a different and misleading answer. Draft/cancelled/fully-paid/soft-deleted stay unreachable for the same reason. With the band gone, "closest amount" starts doing real work, so results rank by \|difference\|, then date proximity, then `entity_id` — a **total** order, without which paging could repeat or drop a row. Paged with a true total plus a `truncated` flag, so "nothing matches" is distinguishable from "too much matched". A short hit still routes to the settlement modal rather than a one-click link, exactly as in the ranked list. |
 | ✅ 1.7 | ~~**Batch accept / batch exclude** alongside the existing bulk categorize~~ **Shipped 2026-08-03** | **S** | One request for the whole selection, returning an outcome for **every** row. The existing bulk categorize fires one request per row and reports a count — fine when all succeed, misleading when two do not. Rows legitimately fail (already posted, already excluded, nothing to accept) and a partial success reported as a success is how a transaction quietly stays uncoded until year end. Deliberately **not atomic across rows**: eight good rows should not roll back because the ninth was posted. "Accept" applies a matching rule first (a human wrote it), then learned history (a human did it before) — never an invented account. |
 | ✅ 1.8 | ~~**Attachments on bank transactions**~~ **Shipped 2026-08-03** | **S** | Migration 259, reusing migration 138's JSONB `{name,url}` convention rather than a table — there is no join, lifecycle or separate permission to express. **The link's scheme is an allow-list, not a sanitiser**: an attachment URL is rendered as a link a CA clicks, so a stored `javascript:` or `data:` URL is stored XSS delivered by whoever uploaded the "receipt". Only http/https are accepted. Names cannot contain path separators (the name is also what a download would be called). |
 
@@ -360,13 +360,42 @@ several are cheap because the data is already in the narration.
 7. ~~**Tier 1.3 + 1.4 — payee and learn-from-history.**~~ ✅ Done 2026-08-03.
 8. ~~**Tier 1.5 — transfer auto-detection.**~~ ✅ Done 2026-08-03.
 9. ~~**Tier 1.7 + 1.8 — batch actions and attachments.**~~ ✅ Done 2026-08-03.
-10. **1.6 ("find other matches" candidate picker, M) is the last Tier 1 item.**
+10. ~~**Tier 1.6 — "find other matches" candidate picker.**~~ ✅ Done 2026-08-07.
+   **Tier 1 is complete.** Tiers 0, 1 and 2 are now all done; what remains is Tier 3
+   (import breadth — MT940/SWIFT, an interactive column mapper, eight more bank
+   adapters, PDF/OCR, OFX/QFX), Tier 4 (Account Aggregator, receipts inbox, rule
+   auto-add-to-draft, cash-flow forecast) and the three open India-specific items
+   (cheque returns, TDS *we* withhold on vendor payments, GSTR-2B ⟷ bank cross-check).
 
    **Known follow-up from 1.2:** a split and a GST rate cannot currently be combined —
    both decide the non-bank legs, and doing them together needs a rate *per split*. The
    combination is refused with a clear message rather than silently applying one and
    dropping the other. Worth doing when a real case turns up; the pieces
    (`charge_gst.split_inclusive_charge`, `splits.build_split_lines`) already compose.
+
+   **Found while building 1.6 — client-assignment scope is missing on every
+   id-addressed banking endpoint.** `core.authz` makes only the **Partner**
+   firm-wide (`_FIRMWIDE_ROLES`); Managers, Executives and Reviewers see only the
+   clients in `user_client_assignments`. Endpoints that take a `client_id`
+   parameter enforce that with `assert_client_access` / `_scope_rows`. Endpoints
+   addressed by `{txn_id}` **do not** — they check `firm_id` and stop, so a
+   transaction id from another manager's client is accepted. 18 endpoints are
+   affected, including writes:
+
+   > `GET …/suggestions`, `POST …/categorize`, `POST …/match`, `POST …/unmatch`,
+   > `POST …/match-multi`, `PATCH /transactions/{txn_id}`, `POST …/ignore`,
+   > `POST …/unignore`, `GET|POST …/attachments`, `POST …/attachments/remove`,
+   > `POST|DELETE …/transfer-pair`, `PUT …/payee`, `GET|PUT …/splits`,
+   > `POST …/posting-preview`, **`POST …/post`**
+
+   `POST …/post` writes a journal into another manager's client's books, and
+   `…/suggestions` reads out their open invoices and party names. The new
+   `…/candidate-search` **does** assert the scope (in the service, once the
+   transaction has named its client — there is no `client_id` in the request to
+   check earlier), so the pattern to copy is there. Exposure is limited to
+   authenticated users of the same firm who hold a transaction id they were not
+   given, but the fix is one line per endpoint and it touches the posting path,
+   which is why it is written down here rather than folded into 1.6.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

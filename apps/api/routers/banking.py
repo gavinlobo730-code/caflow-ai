@@ -54,6 +54,7 @@ from services.bank_split_service import bank_split_service
 from services.bank_payee_service import bank_payee_service
 from services.bank_transfer_service import bank_transfer_service
 from services.bank_batch_service import bank_batch_service
+from services.bank_candidate_search_service import bank_candidate_search_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -385,6 +386,39 @@ def transaction_suggestions(
     if not db:
         return api_response(True, {"transaction_id": txn_id, "suggestions": []})
     return api_response(True, bank_matching_service.suggestions(db, current_user["firm_id"], txn_id))
+
+
+@router.get("/transactions/{txn_id}/candidate-search")
+def transaction_candidate_search(
+    txn_id: str,
+    q: Optional[str] = Query(None, max_length=120),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    min_amount_paise: Optional[int] = Query(None, ge=0),
+    max_amount_paise: Optional[int] = Query(None, ge=0),
+    entity_type: Optional[str] = Query(None, max_length=40),
+    party_id: Optional[str] = Query(None, max_length=64),
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Find other matches (B.1.6) — the candidate list with the amount band lifted.
+
+    /suggestions ranks the best five WITHIN a band; this searches everything the
+    direction permits, so a CA who knows the invoice number can reach it. Read
+    only — choosing a result still goes through /match.
+
+    Client-assignment scope is asserted inside the service, once the transaction
+    has told us which client it belongs to (there is no client_id to check here).
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "results": [], "total": 0})
+    return api_response(True, bank_candidate_search_service.search(
+        db, current_user["firm_id"], txn_id, current_user,
+        q=q, date_from=date_from, date_to=date_to,
+        min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
+        entity_type=entity_type, party_id=party_id, limit=limit, offset=offset))
 
 
 @router.post("/transactions/{txn_id}/categorize")
