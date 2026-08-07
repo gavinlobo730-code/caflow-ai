@@ -116,6 +116,10 @@ interface QueueTxn {
     channel: string | null; utr: string | null; vpa: string | null;
     counterparty: string | null; ifsc: string | null; summary: string;
   } | null;
+  /** Tier 1.5 — the other half of the same movement, once confirmed. Only the
+   *  primary side carries a journal; the counterpart is the same cash. */
+  transfer_pair_id?: string | null;
+  transfer_is_primary?: boolean | null;
   /** Tier 1.3 — who the money went to or came from, once a human confirms it. */
   payee_name?: string | null;
   payee_type?: "customer" | "vendor" | "other" | null;
@@ -136,6 +140,15 @@ interface QueueTxn {
     matched_on: string;
     alternatives: { account_id: string | null; category: string | null; times: number }[];
   } | null;
+}
+/** Tier 1.5 — two bank lines that look like one movement between the client's
+ *  own accounts. `primary_id` is the outflow: the side that will carry the
+ *  journal. Confirming does NOT post anything. */
+interface TransferSuggestion {
+  primary_id: string; counterpart_id: string; amount_paise: number;
+  primary_date: string | null; counterpart_date: string | null;
+  day_gap: number; confidence: "high" | "medium" | "low";
+  is_unambiguous: boolean; summary: string;
 }
 interface MatchSuggestion {
   matched_entity_type: string; matched_entity_id: string; label: string;
@@ -164,6 +177,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const [rows, setRows] = useState<QueueTxn[]>([]);
   const [loading, setLoading] = useState(false);
   const [sugg, setSugg] = useState<Record<string, MatchSuggestion[]>>({});
+  const [transfers, setTransfers] = useState<TransferSuggestion[]>([]);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
@@ -287,6 +301,36 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
+  // Tier 1.5 — detected transfer pairs for this client.
+  const loadTransfers = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    try {
+      const res = (await api.banking.transferSuggestions({ client_id: clientId })) as
+        { success: boolean; data: TransferSuggestion[] };
+      setTransfers(res.success ? (res.data ?? []) : []);
+    } catch {
+      setTransfers([]);   // a missing suggestion must never break the queue
+    }
+  }, [clientId]);
+  useEffect(() => { loadTransfers(); }, [loadTransfers]);
+
+  async function confirmTransfer(p: TransferSuggestion) {
+    setBusy((b) => ({ ...b, [p.primary_id]: true }));
+    try {
+      await api.banking.pairTransfer(p.primary_id, p.counterpart_id);
+      await Promise.all([load(), loadTransfers()]);
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [p.primary_id]: false })); }
+  }
+  async function undoTransfer(t: QueueTxn) {
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    try {
+      await api.banking.unpairTransfer(t.id);
+      await Promise.all([load(), loadTransfers()]);
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+
   // Tier 1.3 — confirm the payee the parser proposed. A separate click from
   // coding it: naming who you paid and deciding which account it belongs to are
   // two different judgements, and one should not silently carry the other.
@@ -357,6 +401,52 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
           </button>
         ))}
       </div>
+
+      {/* Tier 1.5 — one movement between the client's own accounts lands on two
+          statements. Coded separately it becomes two journals and double the
+          apparent activity, so pairing them is the point: only the paying side
+          will post, because that journal already carries both legs. */}
+      {transfers.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+          <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#F1F5F9]">
+            <p className="text-xs font-semibold text-[#334155]">
+              {transfers.length} possible transfer{transfers.length === 1 ? "" : "s"} between this
+              client&apos;s own accounts
+            </p>
+            <p className="text-[10px] text-[#64748B] mt-0.5">
+              Confirming records both lines as one movement. Only the paying side posts —
+              otherwise the same money would be counted twice.
+            </p>
+          </div>
+          <div className="divide-y divide-[#F8FAFC]">
+            {transfers.map((p) => (
+              <div key={`${p.primary_id}-${p.counterpart_id}`}
+                   className="px-4 py-2.5 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-[#1E293B]">
+                    <span className="font-mono">{fmt(p.amount_paise)}</span> out on{" "}
+                    {p.primary_date} → in on {p.counterpart_date}
+                  </p>
+                  <p className={`text-[10px] mt-0.5 ${
+                    p.is_unambiguous ? "text-[#94A3B8]" : "text-amber-700"}`}>
+                    {p.summary}
+                  </p>
+                </div>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full shrink-0 ${
+                  p.confidence === "high" ? "bg-green-50 text-green-700"
+                    : p.confidence === "medium" ? "bg-amber-50 text-amber-700"
+                    : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                  {p.confidence}
+                </span>
+                <button onClick={() => confirmTransfer(p)} disabled={busy[p.primary_id]}
+                  className="text-[10px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] shrink-0">
+                  Confirm transfer
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? <TransactionListSkeleton rows={4} /> : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
@@ -505,6 +595,25 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                   <button onClick={() => applyRule(t)} disabled={busy[t.id]}
                     className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
                     Apply rule
+                  </button>
+                </div>
+              )}
+
+              {/* An already-paired transfer. The receiving side says plainly that
+                  it will not post, so nobody goes looking for the missing button. */}
+              {t.transfer_pair_id && (
+                <div className="flex items-center gap-2 ml-1">
+                  <p className="text-[10px] text-[#64748B] min-w-0 truncate">
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 mr-1">
+                      Transfer
+                    </span>
+                    {t.transfer_is_primary
+                      ? "Paying side — this one posts the journal"
+                      : "Receiving side — the same money; the paying side posts it"}
+                  </p>
+                  <button onClick={() => undoTransfer(t)} disabled={busy[t.id]}
+                    className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] shrink-0">
+                    Not a transfer
                   </button>
                 </div>
               )}
