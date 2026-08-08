@@ -438,7 +438,7 @@ several are cheap because the data is already in the narration.
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
-   `gst_workspace` + `gst_portal` + `gst`.
+   `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -762,11 +762,12 @@ several are cheap because the data is already in the narration.
    guards each), then `ai_copilot_v2`, `billing`, `compliance_records`,
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
-   defeats a reviewer rather than merely failing to help one. **`tds_workspace`
-   and `gst_workspace` are the first two of the twelve taken, immediately
-   below; ten remain — `mca_workspace` and `relationships` (three body guards
-   each), then `ai_copilot_v2`, `billing`, `compliance_records`, `customers`,
-   `engagements`, `reconciliation`, `reminders`, `task_templates`.**
+   defeats a reviewer rather than merely failing to help one.
+   **`tds_workspace`, `gst_workspace` and `mca_workspace` are the first three of the twelve
+   taken, immediately below; nine remain — `relationships` (three body
+   guards), then `ai_copilot_v2`, `billing`, `compliance_records`,
+   `customers`, `engagements`, `reconciliation`, `reminders`,
+   `task_templates`.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -859,9 +860,37 @@ several are cheap because the data is already in the narration.
    moved above `get_supabase()` so the refusal lands before the database is
    touched at all.
 
+   **Also fixed 2026-08-08 — `mca_workspace` (13 endpoints).** The third router
+   in a row with the same shape, and by now the shape is the finding rather than
+   the individual bug: `assert_client_access` on the three POST bodies
+   (`create_company` / `create_director` / `create_filing`) and nothing on the
+   endpoints that take their client from a query parameter or address a row by
+   id. Any member of the firm could read any client's company master, its
+   directors and their DINs and PANs, and every MCA filing with its SRN.
+
+   **Both PATCH endpoints had no read at all.** `PATCH /directors/{id}` and
+   `PATCH /filings/{id}/status` fired the `UPDATE` and used whatever came back —
+   the same defect as the two GST status endpoints, found the same way. By the
+   time the row is in hand the director's KYC status or the filing's MCA21 SRN
+   has already been written (Companies Act §92/§137/§139), so there is nothing
+   left to refuse. A scoped read was added to each.
+
+   `GET /calendar` is **guarded despite reading nothing** — the deadlines are
+   pure arithmetic from the AGM date. Same reasoning as the TDS `/compute` pair:
+   the `client_id` is required by the signature and echoed through the response,
+   so an exemption would be true today and silently false the first time
+   somebody reads stored data there.
+
+   `PUT /filings/{id}/complete` is a one-line delegation to
+   `update_filing_status` in the same module. Rather than force a second,
+   meaningless check into the wrapper to satisfy the sweep, `/api/mca-workspace`
+   was added to `FOLLOW` so the sweep follows the delegation — and a runtime
+   test calls the wrapper directly, because a delegation that stopped delegating
+   would be a hole the source-level check would not see.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **220** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **215** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That

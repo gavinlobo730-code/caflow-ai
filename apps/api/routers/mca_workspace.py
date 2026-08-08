@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from core.validators import validate_cin, validate_din, validate_pan
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -100,6 +100,50 @@ _EVENT_FORMS = {"DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"}
 _COMPANY_TYPE_MAP = {"PVT": "Private Limited", "PUB": "Public Limited"}
 
 
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# The third router in a row with this shape: assert_client_access on the POST
+# bodies (create_company / create_director / create_filing) and nothing on the
+# endpoints that take their client from a QUERY PARAMETER or address a row by
+# id. Any member of the firm could read any client's company master, its
+# directors and DINs, and every MCA filing with its SRN.
+#
+# Same two answers as tds_workspace and gst_workspace:
+#   * NAMED client  → assert_client_access (404), placed BEFORE the `try`, since
+#     every handler ends in a bare `except Exception: return api_response(False,
+#     ...)` that would otherwise swallow the refusal into a 200.
+#   * ROW id → `_load_or_none`, because a missing row here is a 200 carrying
+#     {"success": false, "error": "... not found"}; a 404 refusal would make the
+#     status code an oracle for which ids are real.
+
+def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
+    """`rec` if the caller may see its client, otherwise None."""
+    if rec is None:
+        return None
+    if not can_access_client(current_user, rec.get("client_id")):
+        return None
+    return rec
+
+
+def _load_or_none(current_user: dict, table: str, mock_store: dict,
+                  row_id: str) -> Optional[dict]:
+    """Read a row the caller may see, or None.
+
+    Both PATCH endpoints had NO read at all — they fired the UPDATE and used
+    whatever came back, which cannot check a client: by then the director's KYC
+    status or the filing's SRN has already been written. The read is added so
+    the refusal happens first.
+    """
+    if _USE_MOCK:
+        rec = mock_store.get(row_id)
+    else:
+        from core.supabase_client import get_supabase
+        rows = (get_supabase().table(table).select("*")
+                .eq("id", row_id).eq("firm_id", current_user.get("firm_id"))
+                .execute().data)
+        rec = rows[0] if rows else None
+    return _visible_or_none(current_user, rec)
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/companies")
@@ -108,6 +152,7 @@ def list_companies(
     current_user: dict = Depends(rbac("mca", "read")),
 ):
     """List MCA companies for a client."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -173,20 +218,18 @@ def get_company(company_id: str, current_user: dict = Depends(rbac("mca", "read"
     """Get company with its directors."""
     try:
         firm_id = current_user["firm_id"]
+        company = _load_or_none(current_user, "mca_companies", _MOCK_COMPANIES,
+                                company_id)
+        if not company:
+            return api_response(False, None, "Company not found")
+        # The directors ride along on the company's own check — same client by
+        # construction, and the query is scoped to this company and this firm.
         if _USE_MOCK:
-            company = _MOCK_COMPANIES.get(company_id)
-            if not company:
-                return api_response(False, None, "Company not found")
             directors = [d for d in _MOCK_DIRECTORS.values()
                          if d.get("company_id") == company_id]
         else:
             from core.supabase_client import get_supabase
-            sb = get_supabase()
-            rows = sb.table("mca_companies").select("*").eq("id", company_id).eq("firm_id", firm_id).execute().data
-            if not rows:
-                return api_response(False, None, "Company not found")
-            company = rows[0]
-            directors = sb.table("mca_directors").select("*").eq("company_id", company_id).eq("firm_id", firm_id).execute().data or []
+            directors = get_supabase().table("mca_directors").select("*").eq("company_id", company_id).eq("firm_id", firm_id).execute().data or []
 
         return api_response(True, {**company, "directors": directors})
     except Exception as e:
@@ -199,6 +242,7 @@ def list_directors(
     current_user: dict = Depends(rbac("mca", "read")),
 ):
     """List directors/DINs for a client."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -278,9 +322,13 @@ def update_director(
         if not updates:
             return api_response(False, None, "No update fields provided")
 
+        # Read first: this writes KYC status and cessation dates onto a named
+        # director (Companies Act §164/§167). A check after the write is none.
+        if _load_or_none(current_user, "mca_directors", _MOCK_DIRECTORS,
+                         director_id) is None:
+            return api_response(False, None, "Director not found")
+
         if _USE_MOCK:
-            if director_id not in _MOCK_DIRECTORS:
-                return api_response(False, None, "Director not found")
             _MOCK_DIRECTORS[director_id].update(updates)
             rec = _MOCK_DIRECTORS[director_id]
         else:
@@ -306,6 +354,7 @@ def list_filings(
     current_user: dict = Depends(rbac("mca", "read")),
 ):
     """List MCA filings. Filter by company, form type, or status."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -430,9 +479,13 @@ def update_filing_status(
         if body.acknowledgement_url:
             updates["acknowledgement_url"] = body.acknowledgement_url
 
+        # Read first: marking a filing "filed" writes the MCA21 SRN and
+        # acknowledgement onto it (Companies Act §92/§137/§139).
+        if _load_or_none(current_user, "mca_filings", _MOCK_FILINGS,
+                         filing_id) is None:
+            return api_response(False, None, "Filing not found")
+
         if _USE_MOCK:
-            if filing_id not in _MOCK_FILINGS:
-                return api_response(False, None, "Filing not found")
             _MOCK_FILINGS[filing_id].update(updates)
             rec = _MOCK_FILINGS[filing_id]
         else:
@@ -461,16 +514,9 @@ def get_filing(filing_id: str, current_user: dict = Depends(rbac("mca", "read"))
     """Get MCA filing details."""
     try:
         firm_id = current_user["firm_id"]
-        if _USE_MOCK:
-            rec = _MOCK_FILINGS.get(filing_id)
-            if not rec:
-                return api_response(False, None, "Filing not found")
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("mca_filings").select("*").eq("id", filing_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Filing not found")
+        rec = _load_or_none(current_user, "mca_filings", _MOCK_FILINGS, filing_id)
+        if not rec:
+            return api_response(False, None, "Filing not found")
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
@@ -514,6 +560,12 @@ def mca_calendar(
     Returns filing calendar with form, due date, days remaining, and status.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA21.
     """
+    # The arithmetic here needs no database — but the caller is asking for a
+    # named client's statutory calendar, and the id is echoed through the
+    # response. Guarded on the same reasoning as the TDS /compute pair: the
+    # field is required by the signature, so an exemption would be true today
+    # and silently false the first time somebody reads stored data here.
+    assert_client_access(current_user, client_id)
     try:
         try:
             agm_dt = date.fromisoformat(agm_date)
@@ -579,6 +631,7 @@ def filing_history(
     current_user: dict = Depends(rbac("mca", "read")),
 ):
     """List filed MCA records with SRN and acknowledgement."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:

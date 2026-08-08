@@ -117,6 +117,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
     ),
     "/api/gst-portal": ("assert_client_access", "_assert_job_scope"),
     "/api/gst": ("assert_client_access",),
+    "/api/mca-workspace": (
+        "assert_client_access", "_visible_or_none", "can_access_client",
+        "_load_or_none",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -128,6 +132,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
 # a whole-program analysis: endpoint → service function → the helper it calls
 # (knowledge's `_load_article_or_404` is exactly that second level).
 FOLLOW: dict[str, str] = {
+    # complete_filing is a one-line delegation to update_filing_status IN THE
+    # SAME MODULE — the guard lives there, and forcing a second check into the
+    # wrapper just to satisfy the sweep would be a check that means nothing.
+    "/api/mca-workspace": "routers.mca_workspace",
     "/api/knowledge": "services.knowledge_service",
     "/api/clients/{client_id}/instructions": "services.knowledge_service",
     "/api/clients/{client_id}/knowledge": "services.knowledge_service",
@@ -228,7 +236,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/tds-workspace": 12,
               "/api/tds": 8,
               "/api/gst-workspace": 13, "/api/gst-portal": 5,
-              "/api/gst": 7}
+              "/api/gst": 7, "/api/mca-workspace": 13}
 
 
 def _code_only(src: str) -> str:
@@ -402,7 +410,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.task_extras", "routers.task_recurring",
                    "routers.tds_workspace", "routers.tds",
                    "routers.gst_workspace", "routers.gst_portal",
-                   "routers.gst"):
+                   "routers.gst", "routers.mca_workspace"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
