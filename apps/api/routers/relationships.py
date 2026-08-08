@@ -16,11 +16,52 @@ from datetime import datetime, timezone
 import uuid
 
 from models.common import api_response
-from core.authz import assert_client_access
+from core.authz import (
+    assert_client_access, can_access_client, filter_by_client, is_firmwide,
+    firmwide_roles_label,
+)
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# This router's tables split cleanly in two, and the split is the whole design:
+#
+#   FIRM-LEVEL, no client column at all — `entities` (a person or company the
+#   firm knows about), `entity_relationships` and
+#   `entity_to_entity_relationships` (entity↔entity edges). Deliberately shared
+#   ACROSS clients: that sharing is what makes cross-client match detection
+#   possible at all. Exempt, with the reason and the open question recorded in
+#   the audit doc — see the note on `get_entity` below for the part of it that
+#   is NOT exempt.
+#
+#   CLIENT-BEARING — `entity_roles` (client_id NOT NULL: "this person is a
+#   Director AT this client"), `loans`, `properties`, and above all
+#   `cross_client_matches`, whose every row names **two** clients.
+#
+# A cross-client match is the sharpest row in the sweep so far: its entire
+# content is "this PAN appears at client A and at client B". Firm-scoping alone
+# handed an Executive assigned to client A the existence of client B and a named
+# person's connection to it. Both ends are checked — not either.
+
+def _match_visible(current_user: dict, match: dict) -> bool:
+    """A cross-client match is visible only if BOTH its clients are.
+
+    Not either: the row exists to say that two named clients share a person, so
+    seeing it with only one end authorised still discloses the other end.
+    """
+    return (can_access_client(current_user, match.get("client_id_a"))
+            and can_access_client(current_user, match.get("client_id_b")))
+
+
+def _assert_role_scope(current_user: dict, role: Optional[dict]) -> dict:
+    """Check the client on an entity_role the caller has already loaded."""
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    assert_client_access(current_user, role.get("client_id"))
+    return role
 
 
 # ─── In-memory mock stores ────────────────────────────────────────────────────
@@ -250,7 +291,11 @@ def get_entity(
         entity = next((e for e in _MOCK_ENTITIES if e["id"] == entity_id and e.get("firm_id") == firm_id), None)
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found")
-        roles = [r for r in _MOCK_ENTITY_ROLES if r.get("entity_id") == entity_id and r.get("firm_id") == firm_id]
+        # The entity itself is firm-level, but its ROLES each name a client:
+        # "this person is a Director at client B" is client B's business.
+        roles = filter_by_client(current_user, [
+            r for r in _MOCK_ENTITY_ROLES
+            if r.get("entity_id") == entity_id and r.get("firm_id") == firm_id])
         relationships = [
             r for r in _MOCK_RELATIONSHIPS
             if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id) and r.get("firm_id") == firm_id
@@ -261,7 +306,7 @@ def get_entity(
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    roles = db.table("entity_roles").select("*").eq("entity_id", entity_id).eq("firm_id", firm_id).execute().data or []
+    roles = filter_by_client(current_user, db.table("entity_roles").select("*").eq("entity_id", entity_id).eq("firm_id", firm_id).execute().data or [])
     relationships = db.table("entity_relationships").select("*").eq("firm_id", firm_id).or_(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute().data or []
@@ -349,14 +394,14 @@ def remove_entity_role(
     if not db:
         global _MOCK_ENTITY_ROLES
         target = next((r for r in _MOCK_ENTITY_ROLES if r["id"] == role_id and r.get("firm_id") == firm_id), None)
-        if not target:
-            raise HTTPException(status_code=404, detail="Role not found")
+        # The role names a client (client_id NOT NULL, migration 059) — deleting
+        # "X is a Director at client B" is editing client B's record.
+        _assert_role_scope(current_user, target)
         _MOCK_ENTITY_ROLES = [r for r in _MOCK_ENTITY_ROLES if r["id"] != role_id]
         return api_response(True, {"deleted": True, "role_id": role_id})
 
-    existing = db.table("entity_roles").select("id").eq("id", role_id).eq("firm_id", firm_id).single().execute().data
-    if not existing:
-        raise HTTPException(status_code=404, detail="Role not found")
+    existing = db.table("entity_roles").select("id, client_id").eq("id", role_id).eq("firm_id", firm_id).single().execute().data
+    _assert_role_scope(current_user, existing)
 
     db.table("entity_roles").delete().eq("id", role_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"deleted": True, "role_id": role_id})
@@ -468,7 +513,7 @@ def list_cross_client_matches(
             result = [m for m in result if m.get("reviewed")]
         else:
             result = [m for m in result if not m.get("reviewed")]
-        return api_response(True, result)
+        return api_response(True, [m for m in result if _match_visible(current_user, m)])
 
     q = db.table("cross_client_matches").select("*").eq("firm_id", firm_id)
     if entity_id:
@@ -478,7 +523,8 @@ def list_cross_client_matches(
     else:
         q = q.eq("reviewed", False)
     res = q.order("created_at", desc=True).execute()
-    return api_response(True, res.data or [])
+    return api_response(True, [m for m in (res.data or [])
+                               if _match_visible(current_user, m)])
 
 
 @router.post("/cross-client-matches/detect")
@@ -490,6 +536,16 @@ def detect_cross_client_matches(
     For each entity with a PAN, find other entity_roles sharing the same PAN
     across different client_ids. Insert cross_client_matches rows (skip duplicates).
     """
+    # A firm-WIDE scan: it reads every entity_role in the firm and writes match
+    # rows pairing clients. There is no honest partial version — running it over
+    # one Executive's book and calling the result "the firm's cross-client
+    # matches" would be worse than refusing, because the gaps are invisible.
+    # 403, not the 404 used for a row: no id is involved and nothing is hidden.
+    if not is_firmwide(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Cross-client match detection scans every client in the firm "
+                   f"and is limited to {firmwide_roles_label()}.")
     db = _db()
     firm_id = current_user["firm_id"]
 
@@ -603,13 +659,17 @@ def review_cross_client_match(
     if not db:
         for i, m in enumerate(_MOCK_CROSS_MATCHES):
             if m["id"] == match_id and m.get("firm_id") == firm_id:
+                if not _match_visible(current_user, m):
+                    break
                 _MOCK_CROSS_MATCHES[i]["reviewed"] = True
                 _MOCK_CROSS_MATCHES[i]["confirmed"] = data.is_confirmed
                 return api_response(True, _MOCK_CROSS_MATCHES[i])
         raise HTTPException(status_code=404, detail="Match not found")
 
-    existing = db.table("cross_client_matches").select("id").eq("id", match_id).eq("firm_id", firm_id).single().execute().data
-    if not existing:
+    # client_id_a/client_id_b are selected so the check below has both ends —
+    # confirming a match is a judgement recorded against two named clients.
+    existing = db.table("cross_client_matches").select("id, client_id_a, client_id_b").eq("id", match_id).eq("firm_id", firm_id).single().execute().data
+    if not existing or not _match_visible(current_user, existing):
         raise HTTPException(status_code=404, detail="Match not found")
 
     update: dict = {
