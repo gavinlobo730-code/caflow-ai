@@ -16,13 +16,32 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
 
 from models.common import api_response
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client, filter_by_client
 from core.permissions import rbac
 from services import billing_service
 from services import collections_service
 from services import fee_billing_service
+from repositories.invoice_repository import invoice_repo
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
+
+
+def _assert_invoice_scope(current_user: dict, invoice_id: str) -> dict:
+    """Resolve a fee_invoices row and 404 unless the caller may access its
+    client. fee_invoices.client_id is NOT NULL (migration 014) — every
+    invoice belongs to exactly one client. invoice_repo.find_by_id() does not
+    itself filter by firm, so the firm check below is load-bearing, not
+    redundant with it.
+
+    Uses can_access_client (boolean) rather than assert_client_access so a
+    hidden invoice and a missing one raise the IDENTICAL detail text — the
+    generic "Not found" assert_client_access raises would otherwise let the
+    message itself distinguish "wrong client" from "no such invoice"."""
+    invoice = invoice_repo.find_by_id(invoice_id)
+    if (not invoice or invoice.get("firm_id") != current_user.get("firm_id")
+            or not can_access_client(current_user, invoice.get("client_id"))):
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found.")
+    return invoice
 
 
 class BillingScheduleIn(BaseModel):
@@ -69,7 +88,13 @@ class BillingScheduleIn(BaseModel):
 @router.get("/schedules")
 def list_schedules(active_only: bool = Query(False),
                    current_user: dict = Depends(rbac("billing", "read"))):
-    return api_response(True, billing_service.list_schedules(current_user["firm_id"], active_only))
+    schedules = billing_service.list_schedules(current_user["firm_id"], active_only)
+    # M2 audit finding: firm-scoped only. A no-op today — every endpoint on
+    # this router requires Partner (PERMISSIONS["billing"] in
+    # core/permissions.py), the sole firm-wide role (core/authz.py
+    # _FIRMWIDE_ROLES) — but kept explicit so this still holds if "billing"
+    # is ever opened to Manager/Executive.
+    return api_response(True, filter_by_client(current_user, schedules))
 
 
 @router.post("/schedules")
@@ -102,6 +127,11 @@ def generate(schedule_id: str = Path(...),
     sched = billing_service.get_schedule(current_user["firm_id"], schedule_id)
     if not sched:
         raise HTTPException(status_code=404, detail="Billing schedule not found")
+    # M2 audit finding: get_schedule() already firm-scopes its query, but
+    # nothing asserted the client-scope invariant explicitly at the router —
+    # the same "guards the body, not the record" gap this sweep has found in
+    # every prior router. Same reasoning as create_schedule's guard above.
+    assert_client_access(current_user, sched.get("client_id"))
     result = billing_service.generate_for_schedule(current_user["firm_id"], sched, current_user, period)
     return api_response(True, result)
 
@@ -177,6 +207,12 @@ def run_customer_reminders(client_id: Optional[str] = Query(None),
     """Run the automatic reminder cadence (7/14/21 days, capped) for the firm's
     customers. client_id optional → restrict to one client. Manual trigger of the
     same job the scheduler runs daily; idempotent via the anti-spam window."""
+    # M2 audit finding: client_id is caller-supplied. services/
+    # collections_service.py's _open_invoices() already ANDs it with firm_id
+    # (a foreign id just yields zero rows — no leak), but a silent empty
+    # result is not the same as an explicit refusal. Mirrors create_schedule's
+    # guard; a no-op when client_id is None.
+    assert_client_access(current_user, client_id)
     return api_response(True, collections_service.run_due_reminders(current_user["firm_id"], client_id))
 
 
@@ -205,6 +241,9 @@ def unbilled_work(client_id: Optional[str] = Query(None),
                   current_user: dict = Depends(rbac("billing", "read"))):
     """Unbilled (billable, not-yet-billed) work grouped by client/work item with
     billable value. Capture/visibility only — no realization/margin/profitability."""
+    # M2 audit finding: same shape as run_customer_reminders above —
+    # client_id is caller-supplied and only ANDed into the query.
+    assert_client_access(current_user, client_id)
     return api_response(True, billing_service.unbilled_work(current_user["firm_id"], client_id))
 
 
@@ -258,6 +297,11 @@ def record_fee_receipt(invoice_id: str, body: FeeReceiptIn,
     """Record a receipt against a fee_invoices row. Only marks the invoice Paid
     once cumulative receipts (paid_paise) cover its total — a partial receipt
     no longer force-marks the whole invoice as paid."""
+    # M2 audit finding: this only reached fee_billing_service.record_receipt,
+    # whose own check is firm_id-only (see _assert_invoice_scope's docstring —
+    # invoice_repo.find_by_id() doesn't filter by firm at all). fee_invoices.client_id
+    # is NOT NULL, so the row is always traceable to a client — nothing checked it.
+    _assert_invoice_scope(current_user, invoice_id)
     try:
         result = fee_billing_service.record_receipt(
             current_user["firm_id"], invoice_id, body.model_dump()

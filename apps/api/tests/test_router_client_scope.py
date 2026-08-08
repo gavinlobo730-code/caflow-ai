@@ -163,6 +163,19 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "can_access_client",
         "_load_vendor_or_404", "_assert_vendor_scope",
     ),
+    # Every endpoint here requires Partner (PERMISSIONS["billing"] in
+    # core/permissions.py is Partner-only for both actions) — the sole
+    # firm-wide role, so M2 assignment-scope cannot be bypassed by
+    # construction. What was real: the firm-boundary half of
+    # assert_client_access, unchecked everywhere but create_schedule.
+    # list_schedules uses filter_by_client (a no-op for a firm-wide caller
+    # today, kept explicit for if "billing" is ever opened to Manager/
+    # Executive); record_fee_receipt is row-addressed by invoice_id and uses
+    # the named resolver _assert_invoice_scope, same convention as
+    # sales_invoices.py's _assert_invoice_scope.
+    "/api/billing": (
+        "assert_client_access", "filter_by_client", "_assert_invoice_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -296,6 +309,37 @@ EXEMPT: dict[str, str] = {
         "returned. The renewal count IS a cardinality signal derived from "
         "client rows — that is the line being drawn, stated rather than "
         "pretending the endpoint touches nothing client-shaped.",
+    # billing.py: every endpoint requires Partner (PERMISSIONS["billing"] is
+    # Partner-only), the sole firm-wide role — these nine paths have no
+    # client_id in the request at all (verified by
+    # test_no_exemption_covers_a_resource_that_does_carry_a_client below).
+    "/api/billing/preview-run":
+        "dry run across the firm's due schedules — no client_id in the "
+        "request. Partner-only router; same reasoning as list_schedules.",
+    "/api/billing/run":
+        "firm-wide batch: generate drafts for every due schedule. No single "
+        "client_id addressed — the firm-wide-capability pattern used "
+        "elsewhere in the sweep (e.g. task-recurring's /run), except here "
+        "RBAC already restricts the caller to Partner rather than needing a "
+        "403 of its own.",
+    "/api/billing/ar-aging":
+        "firm-wide AR aging aggregate. No client_id in the request.",
+    "/api/billing/collections/dashboard":
+        "firm-wide collections KPIs. No client_id in the request.",
+    "/api/billing/collections/sweep":
+        "firm-wide batch: recompute aging on every open invoice. No single "
+        "client addressed, same reasoning as /run above.",
+    "/api/billing/collections/send-reminders":
+        "firm-wide batch reminder sweep. No client_id in the request.",
+    "/api/billing/collections/reminder-settings":
+        "firm-level policy (GET and PUT) — cadence/cap/attach-PDF for the "
+        "whole firm. No client_id in the request.",
+    "/api/billing/staff-cost-rates":
+        "firm-level staff HR data (list), not client data. No client_id in "
+        "the request.",
+    "/api/billing/staff-cost-rates/{user_id}":
+        "same table, addressed by a STAFF user_id — not a client — for the "
+        "write side.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -318,7 +362,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reconciliation": 4,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
-              "/api/vendors": 10}
+              "/api/vendors": 10, "/api/billing": 16}
 
 
 def _code_only(src: str) -> str:
@@ -496,7 +540,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.relationships", "routers.reconciliation",
                    "routers.reminders", "routers.engagements",
                    "routers.compliance_records", "routers.task_templates",
-                   "routers.customers", "routers.vendors"):
+                   "routers.customers", "routers.vendors", "routers.billing"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
