@@ -221,6 +221,25 @@ class AICopilotRepository(BaseRepository):
         _get_db().rpc("increment_message_count", {"conv_id": conversation_id}).execute()
         return saved
 
+    def get_message(self, firm_id: str, message_id: str) -> Optional[dict]:
+        if _USE_MOCK:
+            return next(
+                (m for m in MOCK_MESSAGES
+                 if m["id"] == message_id and m["firm_id"] == firm_id),
+                None,
+            )
+
+        result = (
+            _get_db()
+            .table("ai_messages")
+            .select("*")
+            .eq("id", message_id)
+            .eq("firm_id", firm_id)
+            .maybe_single()
+            .execute()
+        )
+        return result.data
+
     def rate_message(
         self, firm_id: str, message_id: str, rating: int
     ) -> Optional[dict]:
