@@ -42,7 +42,7 @@ import uuid
 
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import filter_by_client, assert_client_access
+from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -885,6 +885,11 @@ def calculate_score(
     Saves to health_scores (upsert) and inserts a health_score_history row.
     Logs timeline event if score changed.
     """
+    # M2 audit finding: row-addressed by client_id with no guard at all — any
+    # member of the firm could trigger a real write (health_scores upsert +
+    # health_score_history insert + a timeline event) for a client they
+    # aren't assigned to.
+    assert_client_access(current_user, client_id)
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
@@ -999,6 +1004,23 @@ def get_score_history(
 
 # ─── Overrides ────────────────────────────────────────────────────────────────
 
+def _assert_override_scope(current_user: dict, override_id: str) -> dict:
+    """Resolve a health_overrides row and 404 unless it belongs to the
+    caller's firm and the caller may access its client.
+    health_overrides.client_id is NOT NULL (migration 059)."""
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        row = next((o for o in _MOCK_OVERRIDES if o["id"] == override_id), None)
+    else:
+        rows = db.table("health_overrides").select("*").eq("id", override_id).limit(1).execute().data
+        row = rows[0] if rows else None
+    if (not row or row.get("firm_id") != firm_id
+            or not can_access_client(current_user, row.get("client_id"))):
+        raise HTTPException(status_code=404, detail="Override not found")
+    return row
+
+
 @router.get("/overrides")
 def list_overrides(
     client_id: str = Query(...),
@@ -1018,7 +1040,11 @@ def list_overrides(
 def recalculate_all(
     current_user: dict = Depends(rbac("client", "write")),
 ):
-    """Recalculate health scores for all clients in the firm."""
+    """Recalculate health scores for all clients in the firm — or, for an
+    assignment-scoped caller (rbac("client","write") admits Manager, who is
+    assignment-scoped under M3, not just Partner), every client they are
+    actually assigned to. M2 audit finding: this write previously touched
+    every client in the firm regardless of the caller's own assignment."""
     db = _db()
     firm_id = current_user["firm_id"]
     if not db:
@@ -1027,6 +1053,9 @@ def recalculate_all(
     # Guardrail G2: the internal practice client is never health-scored / triaged.
     clients_res = db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", False).execute()
     clients = clients_res.data or []
+    eff = effective_client_ids(current_user)
+    if eff is not None:
+        clients = [c for c in clients if str(c["id"]) in eff]
     updated = 0
     now = datetime.now(timezone.utc).isoformat()
     for client in clients:
@@ -1060,6 +1089,11 @@ def create_override(
     data: OverrideIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    # M2 audit finding: row-addressed by client_id with no guard at all — an
+    # override can force a client's grade to anything (including masking a
+    # real Critical status), and nothing checked the caller was assigned to
+    # this client.
+    assert_client_access(current_user, client_id)
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
@@ -1090,6 +1124,10 @@ def deactivate_override(
     override_id: str,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    # M2 audit finding: row-addressed by override_id, firm-scoped only in
+    # live mode and not even that in mock mode — health_overrides.client_id
+    # was never checked before deactivating.
+    _assert_override_scope(current_user, override_id)
     db = _db()
     firm_id = current_user["firm_id"]
 
@@ -1100,10 +1138,6 @@ def deactivate_override(
                 return api_response(True, {"override_id": override_id, "is_active": False})
         raise HTTPException(status_code=404, detail="Override not found")
 
-    existing = db.table("health_overrides").select("id").eq("id", override_id).eq("firm_id", firm_id).single().execute().data
-    if not existing:
-        raise HTTPException(status_code=404, detail="Override not found")
-
     db.table("health_overrides").update({
         "is_active": False,
     }).eq("id", override_id).eq("firm_id", firm_id).execute()
@@ -1112,6 +1146,23 @@ def deactivate_override(
 
 
 # ─── Alerts ───────────────────────────────────────────────────────────────────
+
+def _assert_alert_scope(current_user: dict, alert_id: str) -> dict:
+    """Resolve a health_alerts row and 404 unless it belongs to the caller's
+    firm and the caller may access its client.
+    health_alerts.client_id is NOT NULL (migration 059)."""
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        row = next((a for a in _MOCK_ALERTS if a["id"] == alert_id), None)
+    else:
+        rows = db.table("health_alerts").select("*").eq("id", alert_id).limit(1).execute().data
+        row = rows[0] if rows else None
+    if (not row or row.get("firm_id") != firm_id
+            or not can_access_client(current_user, row.get("client_id"))):
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return row
+
 
 @router.get("/alerts")
 def list_alerts(
@@ -1145,6 +1196,10 @@ def resolve_alert(
     data: AlertResolveIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
+    # M2 audit finding: row-addressed by alert_id, firm-scoped only in live
+    # mode and not even that in mock mode — health_alerts.client_id was
+    # never checked before resolving.
+    _assert_alert_scope(current_user, alert_id)
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
@@ -1155,10 +1210,6 @@ def resolve_alert(
                 _MOCK_ALERTS[i]["is_resolved"] = True
                 _MOCK_ALERTS[i]["resolved_at"] = now
                 return api_response(True, _MOCK_ALERTS[i])
-        raise HTTPException(status_code=404, detail="Alert not found")
-
-    existing = db.table("health_alerts").select("id").eq("id", alert_id).eq("firm_id", firm_id).single().execute().data
-    if not existing:
         raise HTTPException(status_code=404, detail="Alert not found")
 
     update = {
@@ -1177,11 +1228,18 @@ def resolve_alert(
 def health_dashboard(
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    # M2 audit finding: unlike list_scores/list_alerts (both already narrowed
+    # via filter_by_client), this returned NAMED critical/at-risk client rows
+    # and alerts for the WHOLE firm, unfiltered by assignment — a bigger leak
+    # than a count, since client_name/client_id are in the response.
     db = _db()
     firm_id = current_user["firm_id"]
 
     if not db:
-        scores = list(_MOCK_SCORES.values())
+        # Also a pre-existing firm-boundary gap in mock mode: _MOCK_SCORES is
+        # one process-wide store with no firm filter applied here at all.
+        scores = [s for s in _MOCK_SCORES.values() if s.get("firm_id") == firm_id]
+        scores = filter_by_client(current_user, scores)
         critical = [s for s in scores if s.get("is_critical")]
         at_risk  = [s for s in scores if s.get("is_at_risk") and not s.get("is_critical")]
 
@@ -1194,7 +1252,9 @@ def health_dashboard(
         total_score = sum(s.get("overall_score", 0) for s in scores)
         avg_score = total_score // len(scores) if scores else 0
 
-        top_alerts = [a for a in _MOCK_ALERTS if not a.get("is_resolved")][:10]
+        top_alerts = [a for a in _MOCK_ALERTS
+                      if not a.get("is_resolved") and a.get("firm_id") == firm_id]
+        top_alerts = filter_by_client(current_user, top_alerts)[:10]
 
         return api_response(True, {
             "critical_clients":   critical,
@@ -1205,13 +1265,13 @@ def health_dashboard(
         })
 
     critical_res = db.table("health_scores").select("client_id, overall_score, grade, health_grade, is_critical, is_at_risk, client_name").eq("firm_id", firm_id).eq("is_critical", True).order("overall_score").execute()
-    critical_clients = critical_res.data or []
+    critical_clients = filter_by_client(current_user, critical_res.data or [])
 
     at_risk_res = db.table("health_scores").select("client_id, overall_score, grade, health_grade, is_critical, is_at_risk, client_name").eq("firm_id", firm_id).eq("is_at_risk", True).eq("is_critical", False).order("overall_score").execute()
-    at_risk_clients = at_risk_res.data or []
+    at_risk_clients = filter_by_client(current_user, at_risk_res.data or [])
 
-    all_scores_res = db.table("health_scores").select("overall_score, grade, health_grade").eq("firm_id", firm_id).execute()
-    all_scores = all_scores_res.data or []
+    all_scores_res = db.table("health_scores").select("client_id, overall_score, grade, health_grade").eq("firm_id", firm_id).execute()
+    all_scores = filter_by_client(current_user, all_scores_res.data or [])
 
     dist: dict[str, int] = {"Healthy": 0, "Good": 0, "Needs Attention": 0, "At Risk": 0, "Critical": 0}
     total = 0
@@ -1223,8 +1283,11 @@ def health_dashboard(
     # Integer division for average — never float
     avg_score = total // len(all_scores) if all_scores else 0
 
-    alerts_res = db.table("health_alerts").select("*").eq("firm_id", firm_id).eq("is_resolved", False).order("created_at", desc=True).limit(10).execute()
-    top_alerts = alerts_res.data or []
+    # Fetch more than the final 10 before filtering — otherwise an
+    # assignment-scoped caller could see fewer than 10 alerts even when more
+    # of their OWN clients' alerts exist further down the firm-wide order.
+    alerts_res = db.table("health_alerts").select("*").eq("firm_id", firm_id).eq("is_resolved", False).order("created_at", desc=True).limit(50).execute()
+    top_alerts = filter_by_client(current_user, alerts_res.data or [])[:10]
 
     return api_response(True, {
         "critical_clients":   critical_clients,

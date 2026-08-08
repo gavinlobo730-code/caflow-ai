@@ -200,6 +200,21 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "can_access_client", "filter_by_client",
         "effective_client_ids", "_assert_conversation_scope", "_assert_message_scope",
     ),
+    # First of the "long tail" routers (not one of the original twelve).
+    # Already the best-guarded file found so far — get_client_health,
+    # get_dimension_detail, list_scores, get_score, get_score_history and
+    # list_overrides all called assert_client_access/filter_by_client before
+    # this phase. calculate_score and create_override (row-addressed by
+    # client_id) had NO guard; deactivate_override and resolve_alert were
+    # firm-scoped only (health_overrides.client_id / health_alerts.client_id
+    # are both NOT NULL, migration 059); recalculate_all is a firm-wide
+    # WRITE, confined per-caller via effective_client_ids rather than
+    # narrowed as a list; health_dashboard returned NAMED critical/at-risk
+    # client rows and alerts firm-wide, unfiltered.
+    "/api/health": (
+        "assert_client_access", "can_access_client", "filter_by_client",
+        "effective_client_ids", "_assert_override_scope", "_assert_alert_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -423,7 +438,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
               "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8,
-              "/api/copilot": 17}
+              "/api/copilot": 17, "/api/health": 13}
 
 
 def _code_only(src: str) -> str:
@@ -602,7 +617,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.reminders", "routers.engagements",
                    "routers.compliance_records", "routers.task_templates",
                    "routers.customers", "routers.vendors", "routers.billing",
-                   "routers.invoices", "routers.ai_copilot_v2"):
+                   "routers.invoices", "routers.ai_copilot_v2", "routers.health"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
