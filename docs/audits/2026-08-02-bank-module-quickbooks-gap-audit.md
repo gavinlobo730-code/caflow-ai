@@ -440,7 +440,7 @@ several are cheap because the data is already in the narration.
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
    `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`,
    `reconciliation`, `reminders`, `engagements`, `compliance_records`,
-   `task_templates`, `customers`.
+   `task_templates`, `customers`, `vendors`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -765,10 +765,10 @@ several are cheap because the data is already in the narration.
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
    defeats a reviewer rather than merely failing to help one.
-   **Ten of the twelve are now taken, immediately below — `reconciliation`
-   and `compliance_records` needed no fix at all. Two remain: `ai_copilot_v2`,
-   `billing`. `vendors` — not one of the original twelve, found while auditing
-   `customers` — is next in line, same size class.**
+   **Ten of the twelve are now taken — `reconciliation` and
+   `compliance_records` needed no fix at all. Two remain: `ai_copilot_v2`,
+   `billing`. `vendors` — found while auditing `customers`, not one of the
+   original twelve — is done too, immediately below.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -1075,9 +1075,40 @@ several are cheap because the data is already in the narration.
    fixed here — an opening-balance journal post, a soft delete, a permanent
    delete — is open the same way. Same size class as `customers`; next up.
 
+   **Also fixed 2026-08-08 — `vendors` (10 endpoints), exactly as flagged in the
+   previous phase.** Structurally the same file as `customers.py`
+   (`VendorIn.client_id` is required, same as `CustomerIn`'s), so the same
+   fix, applied the same way: `create_vendor` and `bulk_create_vendors`
+   already checked the client on the way in; every other endpoint checked
+   only the firm, including `PATCH /{id}` (can post a real opening-balance GL
+   journal) and a permanent delete that CASCADEs across bills and payments.
+
+   Two endpoints here have no `customers.py` counterpart. `ap_aging` and
+   `vendor_statement` both take `client_id` as a query param and are guarded
+   the same way as any other query-param endpoint. `vendor_statement` also
+   takes `vendor_id` in the path — `vendor_statement_service._vendor` already
+   ties `vendor_id` to `client_id` server-side (both columns must match one
+   row), so the `client_id` check alone is sufficient. A test drives the real
+   `_vendor` lookup with a vendor that belongs to a *different* client than
+   the one named, rather than trusting the service's own docstring that this
+   still holds.
+
+   **`vendors` had no lifecycle test file at all.** `customers.py` has
+   `test_customer_lifecycle.py`, driving `delete_customer`/`update_customer`
+   through the real `FakeDB` (which honours `SELECT` column projection, per
+   the reconciliation-phase fix) — that harness, not the client-scope unit
+   tests, is what proved `_load_customer_or_404` fetches enough of the row
+   for `opening_balance_paise` to survive a live query, and that a permanent
+   delete's 409 uses the row's *real* balance rather than a stale default.
+   `vendors.py` had no equivalent file, so both mutants — a narrowed live
+   `SELECT`, and the permanent-delete branch silently reusing `0` regardless
+   of the row's actual balance — survived the first mutation pass. Closed
+   with two tests against the same `FakeDB` harness rather than a hand-rolled
+   fake, since that is precisely the fidelity gap that matters here.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **190** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **184** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That

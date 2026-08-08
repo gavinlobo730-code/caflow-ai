@@ -158,6 +158,11 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "can_access_client",
         "_load_customer_or_404", "_assert_customer_scope",
     ),
+    # vendors.py mirrors customers.py exactly — same fix, same helper shape.
+    "/api/vendors": (
+        "assert_client_access", "can_access_client",
+        "_load_vendor_or_404", "_assert_vendor_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -312,7 +317,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/relationships": 19,
               "/api/reconciliation": 4,
               "/api/reminders": 3, "/api/engagements": 7,
-              "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10}
+              "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
+              "/api/vendors": 10}
 
 
 def _code_only(src: str) -> str:
@@ -490,7 +496,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.relationships", "routers.reconciliation",
                    "routers.reminders", "routers.engagements",
                    "routers.compliance_records", "routers.task_templates",
-                   "routers.customers"):
+                   "routers.customers", "routers.vendors"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
