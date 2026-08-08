@@ -3,12 +3,31 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import filter_by_client
+from core.authz import filter_by_client, assert_client_access, can_access_client
 from repositories.engagement_repository import engagement_repo
 from repositories.client_repository import client_repo
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
+
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# The "guards the body, not the record" shape again: the list was narrowed and
+# create checked its body, but every ROW-addressed endpoint checked only the
+# firm — so any member could read, edit, soft-delete or transition any client's
+# fee engagement, and generate statutory obligations into their compliance
+# records. fee_engagements.client_id is NOT NULL (migration 014), and every
+# handler already loads the row, so the guard reads what is in hand.
+
+def _assert_engagement_scope(current_user: dict, engagement) -> dict:
+    """Firm check + client check, one 404. Takes whatever find_by_id returned."""
+    if not engagement or engagement.get("firm_id") != current_user.get("firm_id"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    # Same detail as the branch above, not assert_client_access's generic
+    # "Not found" — a distinct message would be an oracle for which ids exist.
+    if not can_access_client(current_user, engagement.get("client_id")):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
 
 
 class EngagementCreate(BaseModel):
@@ -82,9 +101,8 @@ def get_engagement(
     current_user: dict = Depends(rbac("engagement", "read")),
 ):
     firm_id = current_user.get("firm_id")
-    engagement = engagement_repo.find_by_id(engagement_id)
-    if not engagement or engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = _assert_engagement_scope(
+        current_user, engagement_repo.find_by_id(engagement_id))
     return api_response(True, {"engagement": engagement})
 
 
@@ -117,9 +135,8 @@ def update_engagement(
     current_user: dict = Depends(rbac("engagement", "write")),
 ):
     firm_id = current_user.get("firm_id")
-    engagement = engagement_repo.find_by_id(engagement_id)
-    if not engagement or engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = _assert_engagement_scope(
+        current_user, engagement_repo.find_by_id(engagement_id))
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
 
@@ -127,6 +144,11 @@ def update_engagement(
         raise HTTPException(status_code=400, detail="fee_paise must be greater than 0")
 
     if "client_id" in updates:
+        # Both ends: _assert_engagement_scope above checked the engagement
+        # being edited; this checks the client it is being MOVED to. The old
+        # firm-membership test let an assigned-scope caller push an engagement
+        # into any client's book in the firm.
+        assert_client_access(current_user, updates["client_id"])
         client = client_repo.find_by_id(updates["client_id"])
         if not client or client.get("firm_id") != firm_id:
             raise HTTPException(status_code=404, detail="Client not found")
@@ -141,9 +163,8 @@ def delete_engagement(
     current_user: dict = Depends(rbac("engagement", "write")),
 ):
     firm_id = current_user.get("firm_id")
-    engagement = engagement_repo.find_by_id(engagement_id)
-    if not engagement or engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = _assert_engagement_scope(
+        current_user, engagement_repo.find_by_id(engagement_id))
 
     updated = engagement_repo.update(engagement_id, {"status": "Inactive"})
     return api_response(True, {"engagement": updated})
@@ -157,9 +178,8 @@ def transition_engagement(
 ):
     """Advance an engagement through its lifecycle (validated). Audited + timelined; no hard delete."""
     firm_id = current_user.get("firm_id")
-    engagement = engagement_repo.find_by_id(engagement_id)
-    if not engagement or engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = _assert_engagement_scope(
+        current_user, engagement_repo.find_by_id(engagement_id))
 
     old_status = engagement.get("status", "Draft")
     allowed = ENGAGEMENT_TRANSITIONS.get(old_status, [])
@@ -198,9 +218,8 @@ def generate_engagement_obligations(
     """Generate the statutory compliance obligations this engagement implies for the
     given FY (idempotent; draft obligations only — no filing)."""
     firm_id = current_user.get("firm_id")
-    engagement = engagement_repo.find_by_id(engagement_id)
-    if not engagement or engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = _assert_engagement_scope(
+        current_user, engagement_repo.find_by_id(engagement_id))
     from services import compliance_obligation_service as obligations
     fy = financial_year or obligations._current_fy()
     result = obligations.generate_for_engagement(firm_id, engagement, fy, actor=current_user)

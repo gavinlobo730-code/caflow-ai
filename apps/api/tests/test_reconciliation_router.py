@@ -136,3 +136,118 @@ def test_resolve_finding_404_for_unknown_finding(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         resolve_finding("no-such-finding", ResolveFindingRequest(), PARTNER)
     assert exc.value.status_code == 404
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Client scope on the ROW-ADDRESSED endpoints (M2 sweep)
+# ══════════════════════════════════════════════════════════════════════════════
+# `verify_books` and `list_runs` name their client, and the two tests above
+# cover those refusals. `get_run` and `resolve_finding` take an id and resolve
+# the client from the row — and until these tests, deleting either of those
+# `assert_client_access` calls broke nothing in the suite.
+#
+# WHAT THESE CAN AND CANNOT SHOW. `rbac("accounting", "approve")` admits only
+# the Partner (Manager/Executive/Reviewer are all False), and `is_firmwide` is
+# True for exactly the Partner — so on this router `can_access_client` only ever
+# exercises its TENANCY leg, never its assignment leg. That is worth stating
+# rather than implying otherwise: the guards here are defence in depth against
+# a cross-firm row and against the RBAC gate later widening, and these tests
+# pin them at that. A row carrying this firm's firm_id and another firm's
+# client_id should not exist — the guard is what stands there if one ever does.
+
+
+def _seed_foreign_run(db):
+    """A run row wearing THIS firm's firm_id but another firm's client_id.
+
+    Seeded directly, because the service could not create one: it writes the
+    pair it was handed after the guard passed. That is the point — this is the
+    shape the row-level check exists to catch.
+    """
+    db.seed("reconciliation_runs", {
+        "id": "RUN-FOREIGN", "firm_id": FIRM, "client_id": OTHER_CLIENT,
+        "trigger": "manual", "status": "completed", "checks_run": 1,
+        "findings_count": 1,
+    })
+    db.seed("reconciliation_findings", {
+        "id": "FIND-FOREIGN", "run_id": "RUN-FOREIGN", "firm_id": FIRM,
+        "client_id": OTHER_CLIENT, "check_name": "trial_balance",
+        "severity": "critical", "detail": "unbalanced",
+    })
+
+
+def test_get_run_refuses_a_run_whose_client_is_out_of_reach(monkeypatch):
+    db = _setup(monkeypatch)
+    _seed_foreign_run(db)
+    with pytest.raises(HTTPException) as exc:
+        get_run("RUN-FOREIGN", PARTNER)
+    assert exc.value.status_code == 404
+
+
+def test_a_refused_run_and_an_unknown_one_are_the_same_404(monkeypatch):
+    """The status code must not become an oracle for which run ids are real."""
+    db = _setup(monkeypatch)
+    _seed_foreign_run(db)
+    with pytest.raises(HTTPException) as hidden:
+        get_run("RUN-FOREIGN", PARTNER)
+    with pytest.raises(HTTPException) as missing:
+        get_run("no-such-run", PARTNER)
+    assert hidden.value.status_code == missing.value.status_code == 404
+    assert hidden.value.detail == missing.value.detail
+
+
+def test_get_run_refuses_before_it_reads_the_findings(monkeypatch):
+    """The findings carry the detail — account names, amounts, what is wrong
+    with the books. A refusal that arrives after they are fetched still fetched
+    them."""
+    db = _setup(monkeypatch)
+    _seed_foreign_run(db)
+    touched = []
+    real_table = db.table
+    monkeypatch.setattr(db, "table",
+                        lambda name: touched.append(name) or real_table(name))
+    with pytest.raises(HTTPException):
+        get_run("RUN-FOREIGN", PARTNER)
+    assert "reconciliation_findings" not in touched, \
+        "the findings were read despite the refusal"
+    assert "reconciliation_runs" in touched, "nothing was read at all"
+
+
+def test_get_run_will_not_hand_over_another_firms_run(monkeypatch):
+    """The row-level firm filter is NOT redundant with the client check.
+
+    `can_access_client` verifies the CLIENT belongs to the caller's firm (the
+    F1 fix), so for a normal foreign row the two guards agree. They come apart
+    on this shape: another firm's run pointing at a client that IS in my firm.
+    The client check waves it through; only the firm filter on the query stops
+    it. Pathological, and precisely why the filter is there.
+    """
+    db = _setup(monkeypatch)
+    db.seed("reconciliation_runs", {
+        "id": "RUN-ALIEN", "firm_id": "FIRM-OTHER", "client_id": CLIENT,
+        "trigger": "manual", "status": "completed",
+    })
+    with pytest.raises(HTTPException) as exc:
+        get_run("RUN-ALIEN", PARTNER)
+    assert exc.value.status_code == 404
+
+
+def test_resolve_finding_refuses_a_finding_whose_client_is_out_of_reach(monkeypatch):
+    db = _setup(monkeypatch)
+    _seed_foreign_run(db)
+    with pytest.raises(HTTPException) as exc:
+        resolve_finding("FIND-FOREIGN", ResolveFindingRequest(resolution_note="x"),
+                        PARTNER)
+    assert exc.value.status_code == 404
+    row = [f for f in db.rows("reconciliation_findings") if f["id"] == "FIND-FOREIGN"][0]
+    assert row.get("resolved_at") is None, "the finding was stamped anyway"
+
+
+def test_a_refused_finding_and_an_unknown_one_are_the_same_404(monkeypatch):
+    db = _setup(monkeypatch)
+    _seed_foreign_run(db)
+    with pytest.raises(HTTPException) as hidden:
+        resolve_finding("FIND-FOREIGN", ResolveFindingRequest(), PARTNER)
+    with pytest.raises(HTTPException) as missing:
+        resolve_finding("no-such-finding", ResolveFindingRequest(), PARTNER)
+    assert hidden.value.status_code == missing.value.status_code == 404
+    assert hidden.value.detail == missing.value.detail

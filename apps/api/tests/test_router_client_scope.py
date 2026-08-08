@@ -129,6 +129,27 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "can_access_client",
         "_match_visible", "_assert_role_scope", "is_firmwide",
     ),
+    # Audited and found already correct — all four endpoints called
+    # assert_client_access before this sweep reached them. Registering it is
+    # still worth doing: it holds the claim, and the NEXT endpoint added here
+    # fails closed. See the audit doc for what the tests could and could not
+    # show, given only the Partner gets past rbac("accounting", "approve").
+    "/api/reconciliation": ("assert_client_access",),
+    # The small tail of the "guards the body, not the record" list, taken as
+    # one batch. compliance_records was already fully guarded (task #238);
+    # reminders and engagements each had row-addressed endpoints that checked
+    # only the firm; task_templates is the firm-template pattern — its five
+    # template routes are EXEMPT and only /instantiate names a client.
+    "/api/reminders": (
+        "assert_client_access", "filter_by_client", "can_access_client",
+    ),
+    "/api/engagements": (
+        "assert_client_access", "filter_by_client", "_assert_engagement_scope",
+    ),
+    "/api/compliance-records": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+    ),
+    "/api/task-templates": ("assert_client_access",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -213,6 +234,16 @@ EXEMPT: dict[str, str] = {
         "No client_id, no stored data read.",
     "/api/gst/validate/gstr3b":
         "same, for CGST §39.",
+    "/api/task-templates":
+        "task_templates has a nullable firm_id and no client_id (migration "
+        "063; NULL = shared system template). A template is the firm's "
+        "reusable task definition — the same pattern as engagement and "
+        "workflow templates, both already exempt. The one endpoint that "
+        "names a client, /{template_id}/instantiate, IS guarded.",
+    "/api/task-templates/{template_id}":
+        "same table, addressed by id. Covers GET, PUT and DELETE; the "
+        "system-template write protection (403 on firm_id NULL) is the "
+        "router's own concern, not a client-scope one.",
     "/api/relationships/entities":
         "`entities` has a firm_id and NO client_id (migration 059). An entity "
         "is a person or company the firm knows about, and it is deliberately "
@@ -270,7 +301,10 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/tds": 8,
               "/api/gst-workspace": 13, "/api/gst-portal": 5,
               "/api/gst": 7, "/api/mca-workspace": 13,
-              "/api/relationships": 19}
+              "/api/relationships": 19,
+              "/api/reconciliation": 4,
+              "/api/reminders": 3, "/api/engagements": 7,
+              "/api/compliance-records": 6, "/api/task-templates": 6}
 
 
 def _code_only(src: str) -> str:
@@ -445,7 +479,9 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.tds_workspace", "routers.tds",
                    "routers.gst_workspace", "routers.gst_portal",
                    "routers.gst", "routers.mca_workspace",
-                   "routers.relationships"):
+                   "routers.relationships", "routers.reconciliation",
+                   "routers.reminders", "routers.engagements",
+                   "routers.compliance_records", "routers.task_templates"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

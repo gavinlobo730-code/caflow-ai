@@ -52,10 +52,13 @@ class _Query:
         self._maybe_single = False
         self._negate = False
         self._count_mode: Optional[str] = None
+        self._cols: str = "*"
 
     # -- operation selectors -------------------------------------------------
     def select(self, cols: str = "*", count: Optional[str] = None, **_k):
-        self._op = "select"; self._count_mode = count; return self
+        self._op = "select"; self._count_mode = count
+        self._cols = cols
+        return self
 
     def insert(self, payload, **_k):
         self._op = "insert"; self._payload = payload; return self
@@ -164,6 +167,23 @@ class _Query:
         return sorted(rows, key=lambda r: (r.get(col) is None, r.get(col)), reverse=desc)
 
     # -- execution -----------------------------------------------------------
+    def _project(self, row: dict) -> dict:
+        """Return only the columns the caller actually selected.
+
+        PostgREST does this; FakeDB did not, and the difference hides a real
+        class of bug: a guard that reads `row["client_id"]` keeps working in
+        tests after somebody narrows the SELECT to `"id"`, and only fails
+        against a live database. Embeds (`a(b,c)`), `*` and aggregate selects
+        are passed through untouched — this only narrows a plain column list.
+        """
+        cols = self._cols
+        if cols == "*" or "(" in cols or ":" in cols:
+            return dict(row)
+        wanted = {c.strip() for c in cols.split(",") if c.strip()}
+        if not wanted or "*" in wanted:
+            return dict(row)
+        return {k: v for k, v in row.items() if k in wanted}
+
     def execute(self) -> _Result:
         rows = self.db._tables.setdefault(self.table, [])
 
@@ -196,7 +216,11 @@ class _Query:
             out = out[self._range[0]: self._range[1] + 1]
         if self._limit is not None:
             out = out[: self._limit]
-        out = [dict(r) for r in out]
+        # Projection LAST: PostgREST orders, ranges and limits server-side, so
+        # an ORDER BY column does not have to appear in the SELECT list.
+        # Projecting first made `.order("created_at")` a no-op whenever
+        # created_at was not selected — which is not how the real thing behaves.
+        out = [self._project(r) for r in out]
         if self._single:
             if len(out) != 1:
                 raise Exception("PGRST116: single row not found")  # mimic supabase

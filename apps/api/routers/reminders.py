@@ -54,6 +54,14 @@ def mark_reminder_sent(reminder_id: str, current_user: dict = Depends(rbac("remi
         raise HTTPException(status_code=404, detail="Reminder not found")
     if reminder.get("firm_id") != firm_id:
         raise HTTPException(status_code=404, detail="Reminder not found")
+    # M2: the reminder names a client; marking it "sent" is writing that
+    # client's record. Same 404 AND the same detail as the firm check above —
+    # assert_client_access raises a generic "Not found", and a different
+    # message would make the response an oracle for which reminder ids are
+    # real even with the status codes matching.
+    from core.authz import can_access_client
+    if not can_access_client(current_user, reminder.get("client_id")):
+        raise HTTPException(status_code=404, detail="Reminder not found")
     updates = mark_sent(reminder)
     updated = reminders_repo.update(reminder_id, updates)
     return api_response(True, {"reminder": updated})
