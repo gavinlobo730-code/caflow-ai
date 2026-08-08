@@ -440,7 +440,7 @@ several are cheap because the data is already in the narration.
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
    `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`,
    `reconciliation`, `reminders`, `engagements`, `compliance_records`,
-   `task_templates`, `customers`.
+   `task_templates`, `customers`, `vendors`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -765,10 +765,10 @@ several are cheap because the data is already in the narration.
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
    defeats a reviewer rather than merely failing to help one.
-   **Ten of the twelve are now taken, immediately below — `reconciliation`
-   and `compliance_records` needed no fix at all. Two remain: `ai_copilot_v2`,
-   `billing`. `vendors` — not one of the original twelve, found while auditing
-   `customers` — is next in line, same size class.**
+   **Eleven of the twelve are now taken — `reconciliation` and
+   `compliance_records` needed no fix at all. One remains: `ai_copilot_v2`.
+   `vendors` — found while auditing `customers`, not one of the original
+   twelve — is done too, and so is `billing`, both below.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -1075,12 +1075,140 @@ several are cheap because the data is already in the narration.
    fixed here — an opening-balance journal post, a soft delete, a permanent
    delete — is open the same way. Same size class as `customers`; next up.
 
+   **Also fixed 2026-08-08 — `vendors` (10 endpoints), exactly as flagged in the
+   previous phase.** Structurally the same file as `customers.py`
+   (`VendorIn.client_id` is required, same as `CustomerIn`'s), so the same
+   fix, applied the same way: `create_vendor` and `bulk_create_vendors`
+   already checked the client on the way in; every other endpoint checked
+   only the firm, including `PATCH /{id}` (can post a real opening-balance GL
+   journal) and a permanent delete that CASCADEs across bills and payments.
+
+   Two endpoints here have no `customers.py` counterpart. `ap_aging` and
+   `vendor_statement` both take `client_id` as a query param and are guarded
+   the same way as any other query-param endpoint. `vendor_statement` also
+   takes `vendor_id` in the path — `vendor_statement_service._vendor` already
+   ties `vendor_id` to `client_id` server-side (both columns must match one
+   row), so the `client_id` check alone is sufficient. A test drives the real
+   `_vendor` lookup with a vendor that belongs to a *different* client than
+   the one named, rather than trusting the service's own docstring that this
+   still holds.
+
+   **`vendors` had no lifecycle test file at all.** `customers.py` has
+   `test_customer_lifecycle.py`, driving `delete_customer`/`update_customer`
+   through the real `FakeDB` (which honours `SELECT` column projection, per
+   the reconciliation-phase fix) — that harness, not the client-scope unit
+   tests, is what proved `_load_customer_or_404` fetches enough of the row
+   for `opening_balance_paise` to survive a live query, and that a permanent
+   delete's 409 uses the row's *real* balance rather than a stale default.
+   `vendors.py` had no equivalent file, so both mutants — a narrowed live
+   `SELECT`, and the permanent-delete branch silently reusing `0` regardless
+   of the row's actual balance — survived the first mutation pass. Closed
+   with two tests against the same `FakeDB` harness rather than a hand-rolled
+   fake, since that is precisely the fidelity gap that matters here.
+
+   **Also fixed 2026-08-08 — `billing` (16 endpoints), the last of the
+   original twelve except `ai_copilot_v2`.** A different shape from every
+   router so far: `PERMISSIONS["billing"]` (`core/permissions.py`) admits
+   only Partner for both `read` and `write`, and Partner is the *sole*
+   firm-wide role (`core/authz.py`'s `_FIRMWIDE_ROLES`). Every endpoint on
+   this router requires it, so a Manager, Executive or Reviewer 403s at the
+   RBAC dependency before any handler body runs — the M2 assignment-scope bug
+   this whole sweep exists to close **cannot occur here by construction**.
+   That was worth confirming by reading the permission matrix directly rather
+   than assuming from the router's own docstring, which makes the same claim
+   but is exactly the kind of comment that drifts (see `firmwide_roles_label`,
+   added earlier in this sweep for the same reason).
+
+   What was still real: `assert_client_access`'s *other* half. It composes a
+   firm-boundary check (does `client_id` actually belong to the caller's
+   firm?) with the assignment check, and only the second one is moot for a
+   firm-wide caller — the first still matters, because a Partner in Firm B
+   supplying Firm A's id should not reach Firm A's data. `create_schedule`
+   already had this guard (a prior fix). Nothing else did:
+
+   - `generate` (`POST /schedules/{schedule_id}/generate`) loads the schedule
+     via `billing_service.get_schedule`, which does firm-scope its own query —
+     but nothing asserted the invariant at the router, so a future edit to
+     that query (e.g. someone "simplifying" it to drop the `firm_id` filter)
+     would have nothing left to catch it. Same reasoning as every prior
+     router in this sweep: guard the record, not just trust the query under
+     it.
+   - `run_customer_reminders` and `unbilled_work` both take an optional
+     `client_id` **query parameter**. The services already `AND` it with
+     `firm_id` (`collections_service._open_invoices`,
+     `billing_service.unbilled_work`), so a foreign id was never a leak —
+     just a silent empty result instead of an explicit refusal, which is
+     still the wrong behavior for a caller-supplied id that names something
+     real in another firm.
+   - `record_fee_receipt` (`POST /fee-invoices/{invoice_id}/receipts`) is the
+     one genuine gap with a real leak shape. `fee_invoices` is a **separate**
+     table from the `billing_schedules` system above it in the same file
+     (migration 172's Fee Billing system), and `fee_invoices.client_id` is
+     `NOT NULL` (migration 014) — every invoice belongs to exactly one
+     client. `services/fee_billing_service.record_receipt`'s only check was
+     `invoice.get("firm_id") != firm_id`, and the repository call underneath
+     it (`invoice_repo.find_by_id`) does not filter by firm **at all** — the
+     manual Python comparison after the fetch was the only thing standing
+     between a foreign firm's `invoice_id` and a receipt being posted against
+     it. Fixed with a named resolver, `_assert_invoice_scope`, mirroring
+     `sales_invoices.py`'s `_assert_invoice_scope` — not just for the
+     sweep's own row-addressed-endpoint test (which requires a named
+     resolver rather than a bare `assert_client_access` call on principle:
+     see that test's docstring), but because the naming makes the
+     resolve-then-assert discipline explicit at the call site.
+   - `list_schedules` returns the firm's whole schedule catalogue with no
+     `client_id` filter at all. Since `effective_client_ids` returns `None`
+     for a firm-wide caller, narrowing it with `filter_by_client` is a
+     no-op *today* — but it is the same real, load-bearing call used
+     throughout the rest of the codebase for this exact shape, kept explicit
+     so the invariant already holds if `"billing"` is ever opened to Manager
+     or Executive (a plausible product direction, not a hypothetical one).
+
+   The other eleven endpoints — `preview_run`, `run`, `ar_aging`,
+   `collections_dashboard`, `run_overdue_sweep`, `send_reminders`, the
+   reminder-settings GET/PUT, and the staff-cost-rate GET/PUT — are firm-wide
+   aggregates or firm-level settings/HR data with no `client_id` in the
+   request at all, and stay exempt with that reason (verified, not assumed,
+   by the sweep's own honesty test that an exemption cannot cover a handler
+   whose source mentions `client_id`).
+
+   **Another message-oracle bug, same shape as `customers`' but caught before
+   merge this time.** The first version of `_assert_invoice_scope` used
+   `assert_client_access` for the client-check branch, which raises its own
+   generic `"Not found"` — while the missing-row branch raised this router's
+   own `f"Invoice {id} not found."`. A hidden invoice and a missing one would
+   have produced the same status code with different bodies, the exact
+   pattern the `reminders`/`customers` phases already found and fixed
+   elsewhere. Caught by the equal-detail-text test for this router *before*
+   the phase was called done, not after — the fix is the same one used
+   everywhere else: `can_access_client` (boolean) plus the router's own
+   message for both branches.
+
+   **Found while writing this phase, not fixed here (the bug-fixing rule):**
+   `routers/invoices.py` reads and writes the exact same `fee_invoices` table
+   `record_fee_receipt` above guards, and it is *not* Partner-gated —
+   `PERMISSIONS["invoice"]` is `_AT_LEAST_EXECUTIVE`, so Manager and Executive
+   (both assignment-scoped under M3) can reach it directly. Every handler —
+   `list_invoices`, `get_invoice`, `generate_from_engagement`,
+   `generate_from_time_entries`, `download_invoice_pdf`,
+   `change_invoice_status`, `delete_invoice` — checks only
+   `invoice.get("firm_id") != firm_id` (or the equivalent for the
+   engagement it is generated from), with no assignment check at all, and
+   with `403` rather than the rest of the codebase's `404` convention. This
+   is a live M2 gap, not a firm-boundary one: an Executive assigned to a
+   single client can currently list, download, transition the status of, and
+   **permanently delete** (Draft-only, but still) every other client's fee
+   invoices firm-wide. Larger in blast radius than anything found in
+   `billing` itself — promoted to the very next phase rather than left for
+   later in the tail, the same way `vendors` followed `customers` immediately
+   after being flagged.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **190** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **181** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
-   `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
+   `itr_workspace` / `ai_copilot_v2` / `platform` at 6 each. That
    count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
@@ -1088,7 +1216,8 @@ several are cheap because the data is already in the narration.
    prefix to `AUDITED`. One router at a time — a blanket sweep would either
    over-guard firm-level endpoints or under-guard the ones whose client is named
    in a body rather than a path, which is precisely how the batch endpoints were
-   missed the first time.
+   missed the first time. `invoices` goes next given the finding directly
+   above, ahead of `ai_copilot_v2` and the rest of the tail.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

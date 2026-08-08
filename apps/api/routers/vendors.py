@@ -30,6 +30,53 @@ _logger = logging.getLogger("caflow.vendors")
 
 router = APIRouter(prefix="/api/vendors", tags=["vendors"])
 
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# Mirrors customers.py's identical fix exactly — this file is a structural copy
+# of it (VendorIn.client_id is required, same as CustomerIn's). create_vendor
+# and bulk_create_vendors already checked the client on the way in (task #231);
+# every other endpoint checked only the firm, including a write that can post a
+# real opening-balance GL journal, a soft delete, and a PERMANENT delete that
+# CASCADEs across bills and payments.
+#
+# vendor_statement and ap_aging take client_id directly and are guarded the
+# same way as the query-param endpoints — vendor_statement_service._vendor
+# already ties vendor_id to client_id server-side (both must match the same
+# row), so the client check on client_id is sufficient without a second
+# vendor-level check here.
+
+def _assert_vendor_scope(current_user: dict, vendor: Optional[dict],
+                         vendor_id: str) -> dict:
+    """404 if missing/wrong firm, then 404 if outside assignment — the SAME
+    detail either way. can_access_client (boolean), not assert_client_access,
+    so this raises the router's own f"Vendor {id} not found" for both branches
+    instead of assert_client_access's generic "Not found" — two different
+    messages behind one status code would still be an oracle."""
+    firm_id = current_user.get("firm_id")
+    not_found = HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+    if not vendor or vendor.get("firm_id") != firm_id:
+        raise not_found
+    if not can_access_client(current_user, vendor.get("client_id")):
+        raise not_found
+    return vendor
+
+
+def _load_vendor_or_404(current_user: dict, vendor_id: str) -> dict:
+    """Resolve one vendor, firm- and client-scoped, from mock or live store.
+    Always selects the WHOLE row (never a narrowed column list) — several call
+    sites here originally selected only opening_balance_paise, and a guard
+    reading client_id off a row that never fetched it would silently pass (a
+    missing client reads as "firm-level" and is allowed)."""
+    if _USE_MOCK:
+        vendor = next((v for v in MOCK_VENDORS if v["id"] == vendor_id), None)
+    else:
+        from core.supabase_client import get_supabase
+        resp = (get_supabase().table("vendors").select("*")
+                .eq("id", vendor_id).eq("firm_id", current_user.get("firm_id"))
+                .limit(1).execute())
+        vendor = resp.data[0] if resp.data else None
+    return _assert_vendor_scope(current_user, vendor, vendor_id)
+
 # ---------------------------------------------------------------------------
 # Mock store
 # ---------------------------------------------------------------------------
@@ -122,6 +169,7 @@ def list_vendors(
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """List vendors for a client."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             firm_id = current_user.get("firm_id")
@@ -494,18 +542,8 @@ def get_vendor(
 ):
     """Get a single vendor by ID."""
     try:
-        if _USE_MOCK:
-            vendor = next((v for v in MOCK_VENDORS if v["id"] == vendor_id), None)
-            if not vendor:
-                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-            return api_response(True, vendor)
-
-        from core.supabase_client import get_supabase
-        db = get_supabase()
-        resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-        return api_response(True, resp.data[0])
+        vendor = _load_vendor_or_404(current_user, vendor_id)
+        return api_response(True, vendor)
     except HTTPException:
         raise
     except Exception as e:
@@ -525,6 +563,11 @@ def update_vendor(
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         data = payload
 
+        # The prior-row fetch doubles as the M2 guard: WRITING opening_balance_paise
+        # can post a real GL journal, so the refusal must land before that fetch
+        # even decides whether anything changed, let alone before the update.
+        prior = _load_vendor_or_404(current_user, vendor_id)
+
         if _USE_MOCK:
             for i, v in enumerate(MOCK_VENDORS):
                 if v["id"] == vendor_id:
@@ -535,10 +578,6 @@ def update_vendor(
         from core.supabase_client import get_supabase
         db = get_supabase()
         firm_id = current_user.get("firm_id")
-        prior_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
-        if not prior_resp.data:
-            raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-        prior = prior_resp.data[0]
 
         # Tenant isolation (OOS-5): scope the write by firm_id. Under service-role
         # (RLS bypassed) an unscoped by-id update could mutate another firm's row.
@@ -583,26 +622,15 @@ def get_vendor_dependencies(
     whether a permanent delete is safe (it is only when there are none).
     Mirrors customers.py's get_customer_dependencies exactly."""
     try:
-        firm_id = current_user.get("firm_id")
+        vend = _load_vendor_or_404(current_user, vendor_id)
+        opening = vend.get("opening_balance_paise") or 0
         if _USE_MOCK:
-            vend = next((v for v in MOCK_VENDORS if v["id"] == vendor_id), None)
-            if not vend:
-                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-            opening = vend.get("opening_balance_paise") or 0
             deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0,
                                "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:
             from core.supabase_client import get_supabase
-            db = get_supabase()
-            vend_resp = (
-                db.table("vendors").select("opening_balance_paise")
-                .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
-            )
-            if not vend_resp.data:
-                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-            opening = vend_resp.data[0].get("opening_balance_paise") or 0
-            deps = _vendor_dependencies(db, vendor_id, opening)
+            deps = _vendor_dependencies(get_supabase(), vendor_id, opening)
         return api_response(True, {
             "can_delete": not deps["has_any"],
             "dependencies": deps["counts"],
@@ -636,6 +664,12 @@ def delete_vendor(
     """
     try:
         firm_id = current_user.get("firm_id")
+        # Both branches below act on a real, named client's books — one
+        # deactivates a vendor, the other permanently destroys its row. The
+        # refusal has to land before either, so resolve-and-check happens once,
+        # up front, for mock and live alike.
+        vend = _load_vendor_or_404(current_user, vendor_id)
+
         if _USE_MOCK:
             for i, v in enumerate(MOCK_VENDORS):
                 if v["id"] == vendor_id:
@@ -652,13 +686,7 @@ def delete_vendor(
         db = get_supabase()
 
         if permanent:
-            vend_resp = (
-                db.table("vendors").select("opening_balance_paise")
-                .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
-            )
-            if not vend_resp.data:
-                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-            opening = vend_resp.data[0].get("opening_balance_paise") or 0
+            opening = vend.get("opening_balance_paise") or 0
             deps = _vendor_dependencies(db, vendor_id, opening)
             if deps["has_any"]:
                 raise HTTPException(
@@ -713,12 +741,10 @@ def get_vendor_outstanding(
         db = get_supabase()
         firm_id = current_user.get("firm_id")
 
-        # Tenant isolation: service-role bypasses RLS, so EVERY read here must be
-        # firm-scoped — otherwise a guessed vendor_id leaks another firm's payables (H15).
-        v_resp = (db.table("vendors").select("id")
-                  .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute())
-        if not v_resp.data:
-            raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+        # _load_vendor_or_404 fetches the whole row rather than just "id" — the
+        # M2 guard's own input, client_id, must never depend on which columns a
+        # caller's SELECT happened to need.
+        _load_vendor_or_404(current_user, vendor_id)
 
         # M5: outstanding = Σ (net_payable − paid) over live bills, excluding drafts
         # (never received — no payable exists yet) and cancelled bills, matching
@@ -761,6 +787,7 @@ def ap_aging(
 ):
     """Accounts-payable aging for a client — per-bill outstanding bucketed by age.
     Derived entirely from posted bills, payments and debit notes (firm-scoped)."""
+    assert_client_access(current_user, client_id)
     try:
         from core.supabase_client import get_supabase
         from services.vendor_statement_service import vendor_statement_service
@@ -784,6 +811,10 @@ def vendor_statement(
 ):
     """Vendor account statement: opening payable, period bills/payments/debit notes
     with a running balance, and closing payable. Derived from posted data only."""
+    # vendor_statement_service._vendor ties vendor_id to client_id server-side
+    # (both must match one row), so checking client_id is sufficient — no
+    # separate vendor-level check is needed here.
+    assert_client_access(current_user, client_id)
     try:
         from core.supabase_client import get_supabase
         from services.vendor_statement_service import vendor_statement_service
