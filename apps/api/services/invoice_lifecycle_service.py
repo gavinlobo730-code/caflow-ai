@@ -16,18 +16,22 @@ from repositories.invoice_repository import invoice_repo
 logger = logging.getLogger("caflow.services")
 
 
-def run_overdue_check(firm_id: Optional[str] = None) -> dict:
+def run_overdue_check(firm_id: Optional[str] = None, client_id: Optional[str] = None) -> dict:
     """
     Find Issued invoices whose due_date has passed and mark them Overdue.
 
     Invoices without a due_date fall back to invoice_date + 30 days,
     the standard credit period applied at generation time.
 
+    client_id confines the check to one client — routers/invoices.py's
+    run_overdue_check_endpoint uses this to run the check once per client an
+    assignment-scoped caller may access, rather than firm-wide.
+
     Returns:
         dict with 'transitioned' count and list of affected invoice ids.
     """
     today = date.today()
-    issued = invoice_repo.find_all(firm_id=firm_id, status="Issued")
+    issued = invoice_repo.find_all(firm_id=firm_id, client_id=client_id, status="Issued")
 
     transitioned: list[str] = []
     for invoice in issued:

@@ -176,6 +176,19 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/billing": (
         "assert_client_access", "filter_by_client", "_assert_invoice_scope",
     ),
+    # A live M2 gap, not a firm-boundary one: PERMISSIONS["invoice"] is
+    # _AT_LEAST_EXECUTIVE (unlike billing's Partner-only), so Manager and
+    # Executive both reach every endpoint here directly. fee_invoices.
+    # client_id and fee_engagements.client_id are both NOT NULL (migration
+    # 014) — nothing on this router is a firm-level resource in disguise.
+    # run_overdue_check_endpoint is a firm-wide WRITE, confined per-caller
+    # via effective_client_ids (the recurring_invoices.py /run pattern)
+    # rather than narrowed as a list, since narrowing a write's OUTPUT after
+    # the fact would be the wrong shape.
+    "/api/invoices": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+        "_assert_invoice_scope", "_assert_engagement_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -362,7 +375,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reconciliation": 4,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
-              "/api/vendors": 10, "/api/billing": 16}
+              "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8}
 
 
 def _code_only(src: str) -> str:
@@ -540,7 +553,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.relationships", "routers.reconciliation",
                    "routers.reminders", "routers.engagements",
                    "routers.compliance_records", "routers.task_templates",
-                   "routers.customers", "routers.vendors", "routers.billing"):
+                   "routers.customers", "routers.vendors", "routers.billing",
+                   "routers.invoices"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

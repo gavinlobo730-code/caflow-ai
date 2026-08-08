@@ -16,11 +16,45 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from repositories.invoice_repository import invoice_repo
-from core.exceptions import NotFoundError
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
+
+
+def _assert_invoice_scope(current_user: dict, invoice_id: str) -> dict:
+    """Resolve a fee_invoices row and 404 unless the caller may access its
+    client. invoice_repo.find_by_id() does not itself filter by firm, so the
+    firm check below is load-bearing, not redundant with it.
+
+    404 (not the router's previous 403) and can_access_client (not
+    assert_client_access, which raises its own generic message) so a hidden
+    invoice and a missing one are byte-identical — existence isn't
+    disclosed, matching every other audited router. Previously a missing
+    invoice_id got 404 "Invoice not found" while a wrong-firm one got 403
+    "Access denied": two different status codes on the same not-yours
+    outcome is itself a disclosure oracle, independent of the M2 gap this
+    fixes."""
+    invoice = invoice_repo.find_by_id(invoice_id)
+    if (not invoice or invoice.get("firm_id") != current_user.get("firm_id")
+            or not can_access_client(current_user, invoice.get("client_id"))):
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice
+
+
+def _assert_engagement_scope(current_user: dict, engagement_id: str) -> dict:
+    """Resolve a fee_engagements row and 404 unless the caller may access its
+    client. fee_engagements.client_id is NOT NULL (migration 014) — every
+    engagement belongs to exactly one client. engagement_repo.find_by_id()
+    does not itself filter by firm, same shape as invoice_repo above."""
+    from repositories.engagement_repository import engagement_repo
+
+    engagement = engagement_repo.find_by_id(engagement_id)
+    if (not engagement or engagement.get("firm_id") != current_user.get("firm_id")
+            or not can_access_client(current_user, engagement.get("client_id"))):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
 
 
 class InvoiceListQuery(BaseModel):
@@ -65,6 +99,13 @@ def list_invoices(
     """
     firm_id = current_user.get("firm_id")
 
+    # M2 audit finding: client_id is caller-supplied and was never checked
+    # against the caller's assignment — any member of the firm could list
+    # any other client's invoices by id, and without one at all the query
+    # returned every invoice in the firm unfiltered.
+    if client_id:
+        assert_client_access(current_user, client_id)
+
     invoices = invoice_repo.find_all(
         firm_id=firm_id,
         engagement_id=engagement_id,
@@ -73,6 +114,8 @@ def list_invoices(
         date_from=date_from,
         date_to=date_to,
     )
+    if not client_id:
+        invoices = filter_by_client(current_user, invoices)
 
     return api_response(True, {
         "invoices": invoices,
@@ -90,16 +133,7 @@ def get_invoice(
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
     """Fetch a single invoice by ID."""
-    firm_id = current_user.get("firm_id")
-
-    try:
-        invoice = invoice_repo.find_by_id_or_raise(invoice_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-
-    if invoice.get("firm_id") != firm_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
+    invoice = _assert_invoice_scope(current_user, invoice_id)
     return api_response(True, {"invoice": invoice})
 
 
@@ -121,19 +155,10 @@ def generate_from_engagement(
     Query parameters:
       - invoice_month: Optional invoice date (ISO format, defaults to today)
     """
-    from repositories.engagement_repository import engagement_repo
     from services.invoice_generation_service import generate_invoice_from_engagement
 
-    firm_id = current_user.get("firm_id")
-
-    # Verify engagement exists and belongs to firm
-    try:
-        engagement = engagement_repo.get_or_raise(engagement_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-
-    if engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Verify the engagement exists and the caller may access its client
+    _assert_engagement_scope(current_user, engagement_id)
 
     try:
         invoice_id = generate_invoice_from_engagement(engagement_id, invoice_month)
@@ -164,19 +189,10 @@ def generate_from_time_entries(
       - invoice_month: Optional invoice date (ISO format, defaults to today)
       - billable_only: Include only billable time entries (default: true)
     """
-    from repositories.engagement_repository import engagement_repo
     from services.invoice_generation_service import generate_invoice_from_time_entries
 
-    firm_id = current_user.get("firm_id")
-
-    # Verify engagement exists and belongs to firm
-    try:
-        engagement = engagement_repo.get_or_raise(engagement_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-
-    if engagement.get("firm_id") != firm_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Verify the engagement exists and the caller may access its client
+    _assert_engagement_scope(current_user, engagement_id)
 
     try:
         invoice_id = generate_invoice_from_time_entries(
@@ -206,15 +222,7 @@ def download_invoice_pdf(
     from fastapi.responses import Response
     from services.invoice_pdf_service import get_invoice_pdf
 
-    firm_id = current_user.get("firm_id")
-
-    try:
-        invoice = invoice_repo.find_by_id_or_raise(invoice_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-
-    if invoice.get("firm_id") != firm_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    _assert_invoice_scope(current_user, invoice_id)
 
     pdf_bytes, filename = get_invoice_pdf(invoice_id)
     return Response(
@@ -236,12 +244,27 @@ def run_overdue_check_endpoint(
     Run the invoice lifecycle check for this firm: any Issued invoice past
     its due date (invoice_date + 30 days if no explicit due_date) is marked
     Overdue. Also runs automatically via the daily scheduler.
+
+    M2 audit finding: this is a WRITE across every invoice in the firm, not
+    a list — narrowing the output would be the wrong shape, since the status
+    transitions would already have happened. Instead the run itself is
+    confined to the caller's book, the same "confine-the-run" pattern
+    recurring_invoices.py's /run uses: a Partner is firm-wide and runs once
+    across the whole firm as before; an Executive or Reviewer runs once per
+    client they are actually assigned to.
     """
     from services.invoice_lifecycle_service import run_overdue_check
 
     firm_id = current_user.get("firm_id")
-    result = run_overdue_check(firm_id=firm_id)
-    return api_response(True, result)
+    eff = effective_client_ids(current_user)
+    targets = [None] if eff is None else sorted(eff)
+
+    merged = {"transitioned": 0, "invoice_ids": []}
+    for target in targets:
+        res = run_overdue_check(firm_id=firm_id, client_id=target)
+        merged["transitioned"] += res.get("transitioned", 0)
+        merged["invoice_ids"].extend(res.get("invoice_ids", []))
+    return api_response(True, merged)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,15 +284,7 @@ def change_invoice_status(
       - new_status: One of 'Draft', 'Issued', 'Paid', 'Overdue'
     """
     firm_id = current_user.get("firm_id")
-
-    # Verify invoice exists and belongs to firm
-    try:
-        invoice = invoice_repo.find_by_id_or_raise(invoice_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-
-    if invoice.get("firm_id") != firm_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    invoice = _assert_invoice_scope(current_user, invoice_id)
 
     # Validate new_status
     valid_statuses = {"Draft", "Issued", "Paid", "Overdue"}
@@ -300,16 +315,7 @@ def delete_invoice(
 
     Raises 400 if invoice is not in Draft status.
     """
-    firm_id = current_user.get("firm_id")
-
-    # Verify invoice exists and belongs to firm
-    try:
-        invoice = invoice_repo.find_by_id_or_raise(invoice_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-
-    if invoice.get("firm_id") != firm_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    invoice = _assert_invoice_scope(current_user, invoice_id)
 
     # Only Draft invoices can be deleted
     if invoice.get("status") != "Draft":
