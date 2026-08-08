@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from domain.gst.classifier import (
     TransactionForClassification,
     classify_transactions,
@@ -33,6 +34,18 @@ from domain.gst.validator import GSTValidator, InvoiceToValidate
 from services import gst_return_service
 
 router = APIRouter(prefix="/api/gst", tags=["gst"])
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# This router imported no authz. Only `FromBooksRequest` carries a client_id,
+# and both endpoints that take one read a client's posted invoices, credit
+# notes and GL control accounts straight out of the ledger — and resolve the
+# client's own GSTIN on the way.
+#
+# The other five endpoints are exempt and stay that way: /classify, /gstr1/build,
+# /gstr3b/compute and the two /validate endpoints are pure functions over rows
+# the caller supplied in the request, and their models have NO client_id at all.
+# That is a stronger exemption than the TDS /compute pair had, where the field
+# existed and was merely unused — here there is nothing to check.
 
 _validator = GSTValidator()
 
@@ -331,6 +344,8 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
+    # Before the database is touched at all, let alone the client's ledger.
+    assert_client_access(current_user, req.client_id)
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
@@ -352,6 +367,8 @@ def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depend
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
+    # Before the database is touched at all, let alone the client's ledger.
+    assert_client_access(current_user, req.client_id)
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")

@@ -11,11 +11,31 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/gst-portal", tags=["gst_portal"])
 _logger = logging.getLogger("caflow.gst_portal.router")
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# Read-only against the GST portal, but every row here is a named client's
+# filing data: sync jobs carry the client's GSTIN, and snapshots hold what the
+# portal returned for it. This router imported no authz.
+#
+# `/sync-jobs/{job_id}/run` is the one addressed by a row rather than naming a
+# client, so the job is resolved first — and it must be resolved BEFORE the run,
+# because running it writes snapshots into that client's record.
+
+
+def _assert_job_scope(current_user: dict, job_id: str) -> dict:
+    """Resolve a sync job within the firm and check its client."""
+    from domain.gst.portal_service import get_sync_job
+    job = get_sync_job(current_user["firm_id"], job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Sync job not found")
+    assert_client_access(current_user, job.get("client_id"))
+    return job
 
 
 class CreateSyncJobRequest(BaseModel):
@@ -40,6 +60,7 @@ def create_sync_job(
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """Create a GST portal sync job. Read-only — no filing."""
+    assert_client_access(current_user, req.client_id)
     from domain.gst.portal_service import create_sync_job
     try:
         job = create_sync_job(
@@ -65,6 +86,7 @@ def run_sync_job(
     # CA REVIEW REQUIRED — Data pulled from portal, not submitted.
     """
     from domain.gst.portal_service import run_sync_job as _run, list_sync_jobs
+    _assert_job_scope(current_user, job_id)
     try:
         result = _run(current_user["firm_id"], job_id)
         # A failed/partial sync must read as such to the CA, not as a plain
@@ -99,6 +121,7 @@ def list_sync_jobs(
     client_id: str,
     current_user: dict = Depends(rbac("gst", "read")),
 ):
+    assert_client_access(current_user, client_id)
     from domain.gst.portal_service import list_sync_jobs as _list
     return api_response(True, _list(current_user["firm_id"], client_id))
 
@@ -109,6 +132,7 @@ def save_manual_snapshot(
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """Save manually uploaded GST portal data."""
+    assert_client_access(current_user, req.client_id)
     from domain.gst.portal_service import save_manual_snapshot as _save
     try:
         snap = _save(
@@ -131,5 +155,6 @@ def list_snapshots(
     snapshot_type: Optional[str] = None,
     current_user: dict = Depends(rbac("gst", "read")),
 ):
+    assert_client_access(current_user, client_id)
     from domain.gst.portal_service import list_snapshots as _list
     return api_response(True, _list(current_user["firm_id"], client_id, snapshot_type))

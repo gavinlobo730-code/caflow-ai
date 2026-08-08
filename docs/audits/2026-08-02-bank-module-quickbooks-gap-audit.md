@@ -437,7 +437,8 @@ several are cheap because the data is already in the narration.
    client scope. Currently audited: `banking`, `sales_invoices`, `purchase_bills`,
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
-   `task_extras`, `task_recurring`, `tds_workspace` + `tds`.
+   `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
+   `gst_workspace` + `gst_portal` + `gst`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -761,8 +762,11 @@ several are cheap because the data is already in the narration.
    guards each), then `ai_copilot_v2`, `billing`, `compliance_records`,
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
-   defeats a reviewer rather than merely failing to help one. **`tds_workspace` was the
-   first of the twelve taken, immediately below.**
+   defeats a reviewer rather than merely failing to help one. **`tds_workspace`
+   and `gst_workspace` are the first two of the twelve taken, immediately
+   below; ten remain — `mca_workspace` and `relationships` (three body guards
+   each), then `ai_copilot_v2`, `billing`, `compliance_records`, `customers`,
+   `engagements`, `reconciliation`, `reminders`, `task_templates`.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -816,9 +820,48 @@ several are cheap because the data is already in the narration.
    Third flaw found in the sweep by using it; reverting it to first-match is a
    mutant the suite kills.
 
+   **Also fixed 2026-08-07 — the THREE GST routers (25 endpoints).**
+   `gst_workspace` on `/api/gst-workspace` (13), `gst_portal` on
+   `/api/gst-portal` (5) and `gst` on `/api/gst` (7). One feature, three
+   registrations — and `/api/gst` is a string prefix of the other two, which is
+   exactly the shadowing the longest-match fix above was for.
+
+   `gst_workspace` is the TDS shape again: `assert_client_access` on its four
+   POST bodies (task #231) and nothing anywhere else. Every endpoint taking its
+   client from a query parameter and every one addressed by a row id was open —
+   any member of the firm could read any client's GSTR-1, GSTR-3B, GSTR-9 draft
+   and GSTR-2B reconciliation. `gst.py` and `gst_portal.py` imported no authz at
+   all.
+
+   **The two status endpoints had no read at all.** `PATCH /gstr1/{id}/status`
+   and its GSTR-3B twin fired the `UPDATE` and used whatever came back. There is
+   no way to check a client from that — by the time the row is in hand the
+   return has already moved to `submitted` (CGST §37/§39). A scoped read was
+   added so the refusal happens first, and a test drives the real query path to
+   prove the update never runs on a refusal.
+
+   **`/sync-jobs/{job_id}/run` needed the same treatment one level down.**
+   `run_sync_job` in `domain/gst/portal_service.py` reads `job["client_id"]`
+   itself — but only after flipping the job to `running` and starting to write
+   snapshots into that client's record. A `get_sync_job(firm_id, job_id)` lookup
+   was added so the router can resolve and refuse before any of that, with the
+   firm filter on the query rather than applied afterwards.
+
+   **Five endpoints on `gst.py` are exempt, and this is a stronger exemption
+   than the TDS `/compute` pair got.** `/classify`, `/gstr1/build`,
+   `/gstr3b/compute` and the two `/validate` endpoints are pure functions over
+   rows the caller supplied, and their request models carry **no `client_id` at
+   all** — there is nothing to check, rather than a field that exists and
+   happens to be unused. A test asserts `/validate/gstr1` is *not* client-scoped,
+   because over-guarding is a real failure mode. The two `/from-books`
+   endpoints, which read a client's posted invoices, credit notes and GL control
+   accounts and resolve that client's own GSTIN, are guarded — and the guard was
+   moved above `get_supabase()` so the refusal lands before the database is
+   touched at all.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **226** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **220** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
