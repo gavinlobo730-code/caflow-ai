@@ -129,6 +129,12 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "can_access_client",
         "_match_visible", "_assert_role_scope", "is_firmwide",
     ),
+    # Audited and found already correct — all four endpoints called
+    # assert_client_access before this sweep reached them. Registering it is
+    # still worth doing: it holds the claim, and the NEXT endpoint added here
+    # fails closed. See the audit doc for what the tests could and could not
+    # show, given only the Partner gets past rbac("accounting", "approve").
+    "/api/reconciliation": ("assert_client_access",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -270,7 +276,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/tds": 8,
               "/api/gst-workspace": 13, "/api/gst-portal": 5,
               "/api/gst": 7, "/api/mca-workspace": 13,
-              "/api/relationships": 19}
+              "/api/relationships": 19,
+              "/api/reconciliation": 4}
 
 
 def _code_only(src: str) -> str:
@@ -445,7 +452,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.tds_workspace", "routers.tds",
                    "routers.gst_workspace", "routers.gst_portal",
                    "routers.gst", "routers.mca_workspace",
-                   "routers.relationships"):
+                   "routers.relationships", "routers.reconciliation"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

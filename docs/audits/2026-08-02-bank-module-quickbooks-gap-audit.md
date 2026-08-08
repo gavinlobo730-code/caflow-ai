@@ -438,7 +438,8 @@ several are cheap because the data is already in the narration.
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
-   `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`.
+   `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`,
+   `reconciliation`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -763,10 +764,11 @@ several are cheap because the data is already in the narration.
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
    defeats a reviewer rather than merely failing to help one.
-   **`tds_workspace`, `gst_workspace`, `mca_workspace` and `relationships`
-   are the first four of the twelve taken, immediately below; eight remain —
+   **`tds_workspace`, `gst_workspace`, `mca_workspace`, `relationships` and
+   `reconciliation` are the first five of the twelve taken, immediately
+   below — `reconciliation` turned out to need no fix at all. Seven remain:
    `ai_copilot_v2`, `billing`, `compliance_records`, `customers`,
-   `engagements`, `reconciliation`, `reminders`, `task_templates`.**
+   `engagements`, `reminders`, `task_templates`.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -943,9 +945,56 @@ several are cheap because the data is already in the narration.
    router with a mock branch has this hazard, and mock-only tests will not show
    it.
 
+   **Audited 2026-08-08 — `reconciliation` (4 endpoints): already correct, no
+   fix needed.** All four already called `assert_client_access` — this is the
+   "Verify Books" router built in task #244, guarded when it was written. The
+   work here was backing that claim rather than assuming it.
+
+   Two of the four guards had **no test at all**: `GET /runs/{run_id}` and
+   `POST /findings/{finding_id}/resolve` resolve the client from the row, and
+   the existing tests only covered "unknown id". Deleting either
+   `assert_client_access` broke nothing in the suite. Fixed.
+
+   **What those tests can and cannot show, stated rather than implied.**
+   `rbac("accounting", "approve")` admits only the Partner — Manager, Executive
+   and Reviewer are all False — and `is_firmwide` is True for exactly the
+   Partner. So on this router `can_access_client` only ever exercises its
+   TENANCY leg; the assignment leg is unreachable. The guards are defence in
+   depth against a cross-firm row and against the RBAC gate later widening, and
+   the tests pin them at that and no further. Claiming the assignment boundary
+   was tested here would have been false.
+
+   The `services/reconciliation_service.py` queries were swept too: every
+   read is firm+client scoped, or scoped through a parent it already scoped
+   (`bank_transactions` via `reconciliation_id`), or writes the pair it was
+   handed. Nothing to fix.
+
+   **A fidelity gap in the shared test harness, found by mutation-testing this
+   router.** `tests/e2e_harness.py`'s `FakeDB.select()` ignored its column list
+   and returned whole rows. That hides a real class of bug across every test
+   using it: a guard reading `row["client_id"]` keeps passing after somebody
+   narrows the `SELECT` to `"id"`, and only fails against a live database.
+   `select()` now projects. Two things worth recording about the fix:
+
+   * The first attempt projected **before** ordering, which broke one inventory
+     test — correctly. PostgREST orders, ranges and limits server-side, so an
+     `ORDER BY` column need not appear in the `SELECT` list. Projection belongs
+     last. The suite caught my error, which is the harness earning its keep.
+   * Embeds (`a(b,c)`), `*` and aliased selects are passed through untouched;
+     this only narrows a plain column list.
+
+   One mutant looked equivalent and was not, which is worth writing down
+   because the reasoning generalises. Dropping the row-level `firm_id` filter
+   from `get_run` appeared redundant with the client check, since
+   `can_access_client` verifies the client belongs to the caller's firm (the F1
+   fix). The two come apart on one shape: **another firm's row pointing at a
+   client that IS in my firm.** The client check waves it through; only the
+   query's firm filter stops it. Pathological, and exactly why the filter is
+   there — now pinned by a test.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **210** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **208** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
