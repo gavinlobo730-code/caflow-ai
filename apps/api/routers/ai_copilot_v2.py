@@ -11,7 +11,7 @@ from models.ai_copilot import (
     GLOBAL_SUGGESTED_QUESTIONS, CLIENT_SUGGESTED_QUESTIONS, COMPLIANCE_SUGGESTED_QUESTIONS,
 )
 from core.permissions import rbac
-from core.authz import assert_client_access, effective_client_ids
+from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 
 router = APIRouter(prefix="/api/copilot", tags=["AI Copilot Phase 11"])
 
@@ -26,6 +26,32 @@ def _service():
     return ai_copilot_service
 
 
+def _assert_conversation_scope(current_user: dict, conversation_id: str) -> dict:
+    """Resolve an ai_conversations row and 404 unless it belongs to the
+    caller's firm and (if client-scoped) the caller may access its client.
+
+    Does NOT apply MessageIn.context_id's per-message override — send_message
+    layers that check on top of this one, since a message may target a
+    different (still caller-authorized) context than its conversation."""
+    conv = _repo().get_conversation(current_user["firm_id"], conversation_id)
+    if not conv or not can_access_client(current_user, conv.get("context_id")):
+        raise HTTPException(404, "Conversation not found")
+    return conv
+
+
+def _assert_message_scope(current_user: dict, message_id: str) -> dict:
+    """Resolve an ai_messages row via its conversation and 404 unless the
+    caller may access the conversation's client context. ai_messages itself
+    carries no context_id — only its parent conversation does."""
+    msg = _repo().get_message(current_user["firm_id"], message_id)
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    conv = _repo().get_conversation(current_user["firm_id"], msg["conversation_id"])
+    if not conv or not can_access_client(current_user, conv.get("context_id")):
+        raise HTTPException(404, "Message not found")
+    return msg
+
+
 # ── Conversations ─────────────────────────────────────────────────────────────
 
 @router.get("/conversations")
@@ -37,6 +63,10 @@ def list_conversations(
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
     convs = _repo().list_conversations(firm_id, user_id, is_archived=is_archived, limit=limit)
+    # M2: already scoped to the caller's own conversations (user_id), but a
+    # conversation's context_id could name a client the caller was later
+    # unassigned from — narrow the same way any other client-bearing list is.
+    convs = filter_by_client(current_user, convs, key="context_id")
     return api_response(True, {"conversations": convs})
 
 
@@ -47,6 +77,11 @@ def create_conversation(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
+    # M2 audit finding: context_id is caller-supplied ("e.g., client_id" per
+    # ConversationCreateIn) and was never checked — every OTHER endpoint that
+    # reads or acts on a context_id (send_message, quick_chat,
+    # client_intelligence) already does.
+    assert_client_access(current_user, payload.context_id)
     conv = _repo().create_conversation(firm_id, user_id, payload.model_dump())
     return api_response(True, conv)
 
@@ -56,10 +91,10 @@ def get_conversation(
     conversation_id: str,
     current_user: dict = Depends(rbac("task", "read")),
 ):
-    firm_id = current_user["firm_id"]
-    conv = _repo().get_conversation(firm_id, conversation_id)
-    if not conv:
-        raise HTTPException(404, "Conversation not found")
+    # M2 audit finding: row-addressed by conversation_id, firm-scoped only —
+    # a conversation's context_id (client) was never checked, so any member
+    # of the firm could read another's client-scoped AI chat history.
+    conv = _assert_conversation_scope(current_user, conversation_id)
     messages = _repo().list_messages(conversation_id)
     return api_response(True, {**conv, "messages": messages})
 
@@ -69,8 +104,9 @@ def archive_conversation(
     conversation_id: str,
     current_user: dict = Depends(rbac("task", "read")),
 ):
-    firm_id = current_user["firm_id"]
-    updated = _repo().archive_conversation(firm_id, conversation_id)
+    # M2 audit finding: same shape as get_conversation above.
+    _assert_conversation_scope(current_user, conversation_id)
+    updated = _repo().archive_conversation(current_user["firm_id"], conversation_id)
     if not updated:
         raise HTTPException(404, "Conversation not found")
     return api_response(True, updated)
@@ -111,6 +147,11 @@ def rate_message(
     payload: FeedbackIn,
     current_user: dict = Depends(rbac("task", "read")),
 ):
+    # M2 audit finding: row-addressed by message_id, firm-scoped only — a
+    # message's conversation (and that conversation's client context) was
+    # never checked, so any member of the firm could rate/comment on
+    # another's client-scoped chat message.
+    _assert_message_scope(current_user, message_id)
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
     feedback = _repo().add_feedback(firm_id, message_id, user_id, payload.rating,
@@ -229,8 +270,15 @@ def list_recommendations(
     current_user: dict = Depends(rbac("task", "read")),
 ):
     firm_id = current_user["firm_id"]
+    # M2 audit finding: client_id is caller-supplied and was never checked;
+    # without one, the firm's whole recommendation list was returned
+    # unfiltered by assignment.
+    if client_id:
+        assert_client_access(current_user, client_id)
     recs = _repo().list_recommendations(firm_id, client_id=client_id, status=status,
                                           rec_type=rec_type, priority=priority, limit=limit)
+    if not client_id:
+        recs = filter_by_client(current_user, recs)
     return api_response(True, {"recommendations": recs, "total": len(recs)})
 
 
@@ -242,6 +290,12 @@ def act_recommendation(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
+    # M2 audit finding: row-addressed by rec_id, firm-scoped only —
+    # ai_recommendations.client_id (nullable — firm-wide recs like
+    # airec-003 exist) was never checked before acting on it.
+    rec = _repo().get_recommendation(firm_id, rec_id)
+    if not rec or not can_access_client(current_user, rec.get("client_id")):
+        raise HTTPException(404, "Recommendation not found")
     updated = _service().act_on_recommendation(firm_id, rec_id, payload.action, user_id, payload.snooze_days)
     if not updated:
         raise HTTPException(404, "Recommendation not found")
@@ -258,6 +312,12 @@ def execute_ai_action(
     """Execute an AI-recommended action after user confirmation."""
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
+    # M2 audit finding: when linked to a recommendation, that recommendation's
+    # client was never checked — same shape as act_recommendation above.
+    if payload.recommendation_id:
+        rec = _repo().get_recommendation(firm_id, payload.recommendation_id)
+        if not rec or not can_access_client(current_user, rec.get("client_id")):
+            raise HTTPException(404, "Recommendation not found")
     action = _repo().create_ai_action(firm_id, {
         "action_type": payload.action_type,
         "action_data": payload.action_data,
@@ -278,6 +338,10 @@ def list_summaries(
     current_user: dict = Depends(rbac("task", "read")),
 ):
     firm_id = current_user["firm_id"]
+    # M2 audit finding: entity_id can be a client_id (context_type "client"
+    # summaries are stored keyed by client_id) and was never checked.
+    if entity_id:
+        assert_client_access(current_user, entity_id)
     from repositories.ai_copilot_repository import MOCK_SUMMARIES
     summaries = [s for s in MOCK_SUMMARIES if s["firm_id"] == firm_id and not s["is_stale"]]
     if summary_type:

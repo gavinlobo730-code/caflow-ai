@@ -1246,12 +1246,87 @@ several are cheap because the data is already in the narration.
 
    **25 new tests, all 7 mutants killed, full suite identical to baseline.**
 
+   **Also fixed 2026-08-08 — `ai_copilot_v2` (17 endpoints), the last of the
+   original twelve "guards the body, not the record" routers.** Three
+   endpoints (`send_message`, `quick_chat`, `client_intelligence`) already
+   guarded their `context_id`/`client_id` before this phase. Every other
+   row-addressed or query-param endpoint that reaches client-scoped data did
+   not: `create_conversation` accepted a caller-supplied `context_id` ("e.g.,
+   client_id" per its own model comment) unchecked; `get_conversation` and
+   `archive_conversation` were firm-scoped only, so any member of the firm
+   could read or archive another's client-scoped AI chat history by id;
+   `rate_message` was the same shape one hop further in — `ai_messages`
+   carries no `context_id` of its own, only its parent conversation does, so
+   the fix resolves message → conversation → context before allowing a
+   rating; `list_recommendations` took an unchecked `client_id` query param
+   and returned the firm's whole list unfiltered without one;
+   `act_recommendation` and (when linked to one) `execute_ai_action` were
+   row/body-addressed by `rec_id` with no check that `ai_recommendations.
+   client_id` — nullable, since some recommendations are firm-wide — named a
+   client the caller may access; `list_summaries` took the same unchecked
+   pattern via `entity_id`.
+
+   **Two named resolvers**, `_assert_conversation_scope` and
+   `_assert_message_scope`, both use `can_access_client` and this router's
+   own message for every branch, matching the message-oracle discipline
+   from every prior phase. `list_conversations` and `list_recommendations`
+   both got a real `filter_by_client` call rather than being exempted
+   alongside their path-mates (`create_conversation`/`act_recommendation`'s
+   siblings) — the same fix `billing.py`'s `list_schedules` needed for the
+   identical shared-path reason: `EXEMPT` is keyed by path, not by method,
+   so exempting `/conversations` would have hidden `create_conversation`'s
+   real guard from the ratchet too.
+
+   **Found and NOT fixed here — recorded as an open question, the same way
+   the entity register and the task dashboard were in earlier phases.** Four
+   endpoints — `compliance_intelligence`, `workflow_intelligence`,
+   `relationship_intelligence`, `executive_dashboard` — aggregate across the
+   whole firm with no per-client identifiers in their CURRENT output,
+   confirmed by reading `domain/ai_copilot_service.py`'s actual
+   implementations rather than the aspirational Pydantic response models in
+   `models/ai_copilot.py` (which declare fields like `at_risk_clients` /
+   `cross_client_conflicts` that the real functions do not populate). That
+   is a real gap, not a non-issue: an Executive assigned to one client sees
+   firm-wide compliance/workflow/relationship counts today. But a correct
+   fix is bigger than a guard, for two different reasons:
+     - `workflow_intelligence` pulls from `workflow_failures` and
+       `workflow_approvals`, neither of which carries a `client_id` column
+       — only `instance_id` (migration 068). Narrowing by client means
+       joining through `workflow_instances`, which the repository does not
+       currently expose a method for.
+     - `compliance_intelligence` and `executive_dashboard` cache ONE
+       firm-wide summary per firm (`ai_summaries`, `entity_id=None`) shared
+       across every caller regardless of assignment. Narrowing the counts
+       they compute without also changing the cache key would still serve
+       a Manager's cached firm-wide response to the next Reviewer who asks —
+       a cross-caller cache-poisoning shape distinct from every other fix
+       in this sweep, and one that needs a caching-architecture decision
+       (key by scope? skip the cache for scoped callers?) before it can be
+       guarded correctly.
+     - `relationship_intelligence`'s cross-client PAN/email matching is
+       *computed over* the whole client list by design — the same tension
+       already on record for `/api/relationships/entities`: narrowing the
+       input set changes what the analysis IS, not just who can see it.
+
+   **Also found, unrelated to M2 — `list_summaries` reads from the WRONG
+   data source in live mode.** It always reads the in-process
+   `MOCK_SUMMARIES` list directly, bypassing `_USE_MOCK` and the
+   repository's `get_summary`/`upsert_summary` methods entirely (which
+   correctly branch to the real `ai_summaries` table). In production this
+   endpoint is effectively always empty — a "whole feature unreachable"
+   bug in the same family as `memory_intelligence`'s from an earlier phase,
+   not a client-scope one. Not fixed here (a data-source bug, not an
+   authorization one); the `entity_id` guard was still added on the
+   principle that the same risk exists whether or not it is reachable today.
+
+   **29 new tests, all 9 mutants killed, full suite identical to baseline.**
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **175** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **169** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `itr_workspace` /
-   `ai_copilot_v2` / `platform` at 6 each. That
+   `platform` at 6 each, and a long tail mostly in the 3-5 range. That
    count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
@@ -1259,8 +1334,9 @@ several are cheap because the data is already in the narration.
    prefix to `AUDITED`. One router at a time — a blanket sweep would either
    over-guard firm-level endpoints or under-guard the ones whose client is named
    in a body rather than a path, which is precisely how the batch endpoints were
-   missed the first time. `ai_copilot_v2` — the last of the original twelve
-   "guards the body, not the record" routers — goes next.
+   missed the first time. All twelve of the original "guards the body, not the
+   record" routers are now done — the remaining 169 are the long tail, worked
+   worst-first.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

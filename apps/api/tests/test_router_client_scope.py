@@ -189,6 +189,17 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_invoice_scope", "_assert_engagement_scope",
     ),
+    # The last of the original twelve "guards the body, not the record"
+    # routers. send_message/quick_chat/client_intelligence already guarded
+    # their context_id/client_id before this phase; every other row-addressed
+    # or query-param endpoint that reaches client-scoped data did not.
+    # Four intelligence/dashboard endpoints are EXEMPT below — not because
+    # they carry no client data, but because narrowing them properly needs
+    # more than a guard; see the EXEMPT reasons and the audit doc.
+    "/api/copilot": (
+        "assert_client_access", "can_access_client", "filter_by_client",
+        "effective_client_ids", "_assert_conversation_scope", "_assert_message_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -353,6 +364,42 @@ EXEMPT: dict[str, str] = {
     "/api/billing/staff-cost-rates/{user_id}":
         "same table, addressed by a STAFF user_id — not a client — for the "
         "write side.",
+    "/api/copilot/suggestions":
+        "GLOBAL/CLIENT/COMPLIANCE_SUGGESTED_QUESTIONS are hardcoded prompt "
+        "lists in models/ai_copilot.py — no client_id in the request, no "
+        "stored data read.",
+    # These four aggregate across the whole firm with no per-client
+    # identifiers in their CURRENT output — confirmed by reading
+    # domain/ai_copilot_service.py's actual implementations, not the
+    # aspirational Pydantic response models in models/ai_copilot.py (which
+    # declare fields like at_risk_clients/cross_client_conflicts that the
+    # real functions do not populate). That is a real gap, not a
+    # non-issue — recorded as an open question in the audit doc rather than
+    # guarded here, because a correct fix is bigger than a guard:
+    "/api/copilot/intelligence/compliance":
+        "get_compliance_intelligence caches ONE firm-wide summary per firm "
+        "(ai_summaries, entity_id=None) shared across every caller "
+        "regardless of assignment — narrowing the counts it computes "
+        "without also changing the cache key would still serve a "
+        "firm-wide-cached response to the next assignment-scoped caller.",
+    "/api/copilot/intelligence/workflows":
+        "failing_workflows/overdue_approvals come from workflow_failures/ "
+        "workflow_approvals, neither of which carries a client_id column "
+        "(only instance_id, migration 068) — narrowing by client requires "
+        "joining through workflow_instances, which the repository does not "
+        "currently expose.",
+    "/api/copilot/intelligence/relationships":
+        "cross_client_conflicts is computed over the firm's WHOLE client "
+        "list by design (PAN/email-domain cross-matching only means "
+        "something compared across every client) — the same tension "
+        "already recorded for /api/relationships/entities: narrowing the "
+        "input set would change what the analysis IS, not just who can "
+        "see it.",
+    "/api/copilot/executive-dashboard":
+        "same caching issue as intelligence/compliance (ai_summaries, "
+        "summary_type='executive', entity_id=None) — also aggregates "
+        "revenue/capacity/churn signals across every client by design, "
+        "the same tension as intelligence/relationships.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -375,7 +422,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reconciliation": 4,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
-              "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8}
+              "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8,
+              "/api/copilot": 17}
 
 
 def _code_only(src: str) -> str:
@@ -554,7 +602,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.reminders", "routers.engagements",
                    "routers.compliance_records", "routers.task_templates",
                    "routers.customers", "routers.vendors", "routers.billing",
-                   "routers.invoices"):
+                   "routers.invoices", "routers.ai_copilot_v2"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
