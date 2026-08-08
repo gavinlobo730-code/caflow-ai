@@ -30,6 +30,67 @@ _logger = logging.getLogger("caflow.customers")
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
+
+# ── Client-assignment scope (M2) ──────────────────────────────────────────────
+# create_customer and bulk_create_customers already checked the client on the
+# way IN (task #231). Every OTHER endpoint here — including reads, a WRITE that
+# can trigger a real opening-balance journal post, a soft delete and a
+# PERMANENT delete — checked only the firm. `customers.client_id` is required
+# by CustomerIn, so it is never absent on a real row.
+#
+# Two shapes, matching every prior phase:
+#   * query-param endpoints (list/outstanding-summary/ar-aging) get
+#     assert_client_access BEFORE the `try` — several handlers in this file end
+#     in a bare `except Exception:` with no `except HTTPException: raise`
+#     ahead of it, so a guard placed inside would have its 404 caught and
+#     turned into a 200. Placed uniformly for every query-param guard, even
+#     the two that already have the re-raise, so the router does not depend on
+#     everyone remembering which handlers have it.
+#   * row-addressed endpoints resolve the row through _load_customer_or_404,
+#     which always selects the WHOLE row rather than a narrowed column list —
+#     several call sites here originally selected only `opening_balance_paise`,
+#     and a guard reading `client_id` off a row that never fetched it would
+#     silently pass (a missing client reads as "firm-level" and is allowed).
+
+def _assert_customer_scope(current_user: dict, customer: Optional[dict],
+                           customer_id: str) -> dict:
+    """404 if missing/wrong firm, then 404 if outside assignment — the SAME
+    detail either way, so the response body can never become an oracle for
+    which ids are real. `can_access_client` (boolean), not
+    `assert_client_access`, precisely so this can raise the router's own
+    f"Customer {id} not found" instead of assert_client_access's generic
+    "Not found" — two different messages behind one status code would still
+    tell a caller which case they hit.
+    """
+    firm_id = current_user.get("firm_id")
+    not_found = HTTPException(status_code=404,
+                              detail=f"Customer {customer_id} not found")
+    if not customer or customer.get("firm_id") != firm_id:
+        raise not_found
+    if not can_access_client(current_user, customer.get("client_id")):
+        raise not_found
+    return customer
+
+
+def _load_customer_or_404(current_user: dict, customer_id: str) -> dict:
+    """Resolve one customer, firm- and client-scoped, from mock or live store.
+
+    The mock branches this replaces did not all firm-scope consistently either
+    (get_customer/update_customer/get_customer_dependencies/delete_customer
+    filtered by id alone) — centralizing the lookup fixes that as the same
+    change, not a separate one, since it is the identical "addressed by id,
+    nothing checked who it belongs to" pattern.
+    """
+    if _USE_MOCK:
+        customer = next((c for c in MOCK_CUSTOMERS if c["id"] == customer_id), None)
+    else:
+        from core.supabase_client import get_supabase
+        resp = (get_supabase().table("customers").select("*")
+                .eq("id", customer_id).eq("firm_id", current_user.get("firm_id"))
+                .limit(1).execute())
+        customer = resp.data[0] if resp.data else None
+    return _assert_customer_scope(current_user, customer, customer_id)
+
 # ---------------------------------------------------------------------------
 # Mock store (used when SUPABASE_URL is not configured)
 # ---------------------------------------------------------------------------
@@ -120,6 +181,7 @@ def list_customers(
     include_inactive: bool = Query(False),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             firm_id = current_user.get("firm_id")
@@ -448,6 +510,7 @@ def get_outstanding_summary(
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """Aggregate outstanding balances across all customers for a client."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             return api_response(True, {"client_id": client_id, "total_outstanding_paise": 0, "customers": []})
@@ -501,6 +564,7 @@ def ar_aging(
     age (the AR mirror of /vendors/ap-aging). Derived entirely from posted invoices,
     receipts and credit notes (firm-scoped); foreign invoices carry dual-currency
     detail, INR-only clients see the base aging unchanged."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             return api_response(True, {"as_of": None, "buckets": {}, "total_outstanding_paise": 0, "invoices": []})
@@ -522,18 +586,8 @@ def get_customer(
     current_user: dict = Depends(rbac("client", "read")),
 ):
     try:
-        if _USE_MOCK:
-            cust = next((c for c in MOCK_CUSTOMERS if c["id"] == customer_id), None)
-            if not cust:
-                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-            return api_response(True, cust)
-
-        from core.supabase_client import get_supabase
-        db = get_supabase()
-        resp = db.table("customers").select("*").eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-        return api_response(True, resp.data[0])
+        cust = _load_customer_or_404(current_user, customer_id)
+        return api_response(True, cust)
     except HTTPException:
         raise
     except Exception as e:
@@ -552,6 +606,11 @@ def update_customer(
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         data = payload
 
+        # The prior-row fetch doubles as the M2 guard: WRITING opening_balance_paise
+        # can post a real GL journal, so the refusal must land before that fetch even
+        # decides whether anything changed, let alone before the update itself.
+        prior = _load_customer_or_404(current_user, customer_id)
+
         if _USE_MOCK:
             for i, c in enumerate(MOCK_CUSTOMERS):
                 if c["id"] == customer_id:
@@ -562,11 +621,6 @@ def update_customer(
         from core.supabase_client import get_supabase
         db = get_supabase()
         firm_id = current_user.get("firm_id")
-        # Snapshot the prior row for opening-balance change detection + rollback.
-        prior_resp = db.table("customers").select("*").eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
-        if not prior_resp.data:
-            raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-        prior = prior_resp.data[0]
 
         # Tenant isolation (OOS-5): scope the write by firm_id. Under service-role
         # (RLS bypassed) an unscoped by-id update could mutate another firm's row.
@@ -612,27 +666,16 @@ def get_customer_dependencies(
     """Report the accounting records linked to a customer so the UI can decide
     whether a permanent delete is safe (it is only when there are none)."""
     try:
-        firm_id = current_user.get("firm_id")
+        cust = _load_customer_or_404(current_user, customer_id)
+        opening = cust.get("opening_balance_paise") or 0
         if _USE_MOCK:
-            cust = next((c for c in MOCK_CUSTOMERS if c["id"] == customer_id), None)
-            if not cust:
-                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-            opening = cust.get("opening_balance_paise") or 0
             deps = {"counts": {"invoices": 0, "receipts": 0, "credit_notes": 0,
                                "recurring_templates": 0,
                                "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:
             from core.supabase_client import get_supabase
-            db = get_supabase()
-            cust_resp = (
-                db.table("customers").select("opening_balance_paise")
-                .eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
-            )
-            if not cust_resp.data:
-                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-            opening = cust_resp.data[0].get("opening_balance_paise") or 0
-            deps = _customer_dependencies(db, customer_id, opening)
+            deps = _customer_dependencies(get_supabase(), customer_id, opening)
         return api_response(True, {
             "can_delete": not deps["has_any"],
             "dependencies": deps["counts"],
@@ -666,6 +709,15 @@ def delete_customer(
     """
     try:
         firm_id = current_user.get("firm_id")
+        # Both branches below act on a real, named client's books — one
+        # deactivates a customer, the other permanently destroys its row (and,
+        # via CASCADE, everything the has_any check doesn't catch). The refusal
+        # has to land before either, so resolve-and-check happens once, up front,
+        # for mock and live alike — the mock loop below no longer needs its own
+        # not-found raise, but the DB branch's opening-balance figure now comes
+        # from this same fetch instead of a second query.
+        cust = _load_customer_or_404(current_user, customer_id)
+
         if _USE_MOCK:
             for i, c in enumerate(MOCK_CUSTOMERS):
                 if c["id"] == customer_id:
@@ -682,14 +734,7 @@ def delete_customer(
         db = get_supabase()
 
         if permanent:
-            # Verify the customer exists in this firm and gather its opening balance.
-            cust_resp = (
-                db.table("customers").select("opening_balance_paise")
-                .eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
-            )
-            if not cust_resp.data:
-                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-            opening = cust_resp.data[0].get("opening_balance_paise") or 0
+            opening = cust.get("opening_balance_paise") or 0
             deps = _customer_dependencies(db, customer_id, opening)
             if deps["has_any"]:
                 # CASCADE FKs would otherwise destroy these records silently.
@@ -745,12 +790,13 @@ def get_customer_outstanding(
         from core.supabase_client import get_supabase
         db = get_supabase()
 
-        # Fetch customer for opening balance (firm-scoped)
+        # _load_customer_or_404 fetches the whole row (not just
+        # opening_balance_paise, the field this endpoint actually wants) —
+        # the M2 guard's own input, client_id, must never depend on which
+        # columns a caller's SELECT happened to need.
         firm_id = current_user.get("firm_id")
-        cust_resp = db.table("customers").select("opening_balance_paise").eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
-        if not cust_resp.data:
-            raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-        opening_balance = cust_resp.data[0].get("opening_balance_paise") or 0
+        cust = _load_customer_or_404(current_user, customer_id)
+        opening_balance = cust.get("opening_balance_paise") or 0
 
         inv_resp = (
             db.table("client_sales_invoices")

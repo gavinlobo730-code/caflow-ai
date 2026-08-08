@@ -440,7 +440,7 @@ several are cheap because the data is already in the narration.
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
    `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`,
    `reconciliation`, `reminders`, `engagements`, `compliance_records`,
-   `task_templates`.
+   `task_templates`, `customers`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -765,9 +765,10 @@ several are cheap because the data is already in the narration.
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
    defeats a reviewer rather than merely failing to help one.
-   **Nine of the twelve are now taken, immediately below — `reconciliation`
-   and `compliance_records` turned out to need no fix at all. Three remain:
-   `ai_copilot_v2`, `billing`, `customers`.**
+   **Ten of the twelve are now taken, immediately below — `reconciliation`
+   and `compliance_records` needed no fix at all. Two remain: `ai_copilot_v2`,
+   `billing`. `vendors` — not one of the original twelve, found while auditing
+   `customers` — is next in line, same size class.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -1028,9 +1029,55 @@ several are cheap because the data is already in the narration.
    may exist wherever a router's own not-found detail is more specific than
    "Not found".
 
+   **Also fixed 2026-08-08 — `customers` (10 endpoints), and it went beyond
+   the "guards the body, not the record" shape.** `create_customer` and
+   `bulk_create_customers` already checked the client on the way in (task
+   #231). Every other endpoint — including `PATCH /{id}`, which can post a
+   real opening-balance GL journal, a soft delete, and a **permanent** delete
+   that CASCADEs across invoices/receipts/credit notes — checked only the
+   firm. `customers.client_id` is required by `CustomerIn`, so it is never
+   absent on a real row; nothing here is a firm-level resource in disguise.
+
+   One shared helper, `_load_customer_or_404`, replaces every row-addressed
+   lookup and **always selects the whole row**, not a narrowed column list —
+   several call sites originally selected only `opening_balance_paise`, and a
+   guard reading `client_id` off a row that never fetched it would silently
+   pass (a missing client reads as "firm-level" and is let through — the exact
+   `FakeDB` lesson from the reconciliation phase, this time in a real
+   endpoint rather than in test infrastructure).
+
+   **The mock branches were inconsistent with each other before this, too.**
+   `list_customers`'s mock branch already filtered by `firm_id`.
+   `get_customer`, `update_customer`, `get_customer_dependencies` and
+   `delete_customer`'s did not — they matched on id alone, so in dev/mock mode
+   any customer id from any firm was readable. Centralizing the lookup fixed
+   that as the same change, not a separate one.
+
+   **A message-oracle bug found while writing the equal-404s test, the same
+   shape as the small-router batch's but the opposite direction.** This
+   router's own convention echoes the id into its 404s
+   (`f"Customer {id} not found"`), which is fine — the caller already knows
+   the id they asked for. But the new guard's client-check branch was calling
+   `assert_client_access`, which raises its own generic `"Not found"` — so a
+   *hidden* customer got `"Not found"` while a *missing* one got
+   `"Customer X not found"`. Same status code, different body: still an
+   oracle. Fixed by using `can_access_client` (boolean) and raising the
+   router's own message for both branches. The lesson from the small-router
+   batch generalizes in both directions: whichever message a router's OWN
+   convention uses, both refusal paths have to produce it identically.
+
+   **Found while writing this phase, not fixed here (the bug-fixing rule):**
+   `routers/vendors.py` is structurally the same file — `list_vendors`,
+   `get_vendor`, `update_vendor`, `get_vendor_dependencies`, `delete_vendor`
+   and `get_vendor_outstanding` show the identical shape, including the
+   inconsistent-mock-firm-scoping detail (`list_vendors`'s mock branch filters
+   `firm_id`; `get_vendor`'s does not). The vendor equivalent of every write
+   fixed here — an opening-balance journal post, a soft delete, a permanent
+   delete — is open the same way. Same size class as `customers`; next up.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **195** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **190** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
