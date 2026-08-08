@@ -1203,12 +1203,55 @@ several are cheap because the data is already in the narration.
    later in the tail, the same way `vendors` followed `customers` immediately
    after being flagged.
 
+   **Also fixed 2026-08-08 — `invoices` (8 endpoints), exactly as flagged in
+   the previous phase.** Confirmed live, not just structurally suspicious:
+   `PERMISSIONS["invoice"]` is `_AT_LEAST_EXECUTIVE`, so unlike `billing`
+   both Manager and Executive — assignment-scoped roles under M3 — reach
+   every handler directly. Every one of them checked only
+   `invoice.get("firm_id") != firm_id` (or the equivalent for the engagement
+   an invoice is generated from), with no assignment check, and refused with
+   `403` rather than this codebase's `404` convention — a disclosure oracle
+   in its own right, independent of the M2 gap: a missing `invoice_id`
+   already got 404 while a wrong-firm one got 403, so the status code alone
+   said whether the id was real. `fee_invoices.client_id` and
+   `fee_engagements.client_id` are both `NOT NULL` (migration 014), so
+   nothing here is a firm-level resource in disguise.
+
+   Two named resolvers, `_assert_invoice_scope` and `_assert_engagement_scope`
+   (the latter for the two generate-from-engagement endpoints), both use
+   `can_access_client` and this router's own `"Invoice not found"` /
+   `"Engagement not found"` for every branch — missing, wrong-firm, and
+   wrong-client all raise byte-identical details, closing the pre-existing
+   403/404 oracle at the same time as the M2 gap. Neither repository method
+   underneath them (`invoice_repo.find_by_id`, `engagement_repo.find_by_id`)
+   filters by firm at all, so the manual firm check inside each resolver is
+   load-bearing, not redundant — confirmed by reading both repositories
+   directly rather than assuming.
+
+   **`run_overdue_check_endpoint` needed a different shape than every other
+   fix in this sweep.** It is a WRITE across every Issued invoice in the
+   firm (the daily Issued→Overdue transition), not a list — narrowing the
+   *output* after the fact would be the wrong model, since the status
+   transitions would already have happened to clients the caller cannot
+   see. Confined the run itself instead, the same pattern already shipped in
+   `recurring_invoices.py`'s `/run`: a firm-wide caller still runs once
+   across the whole firm; an Executive or Reviewer now runs the check once
+   per client they are actually assigned to, merging the results. Required
+   a small service change — `invoice_lifecycle_service.run_overdue_check`
+   gained an optional `client_id` param threaded into the existing
+   `invoice_repo.find_all(client_id=...)` filter it already supported for
+   other callers — verified the daily scheduler's call site
+   (`jobs/scheduler.py`) still passes only `firm_id` by keyword, so its
+   firm-wide behavior is unchanged.
+
+   **25 new tests, all 7 mutants killed, full suite identical to baseline.**
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **181** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **175** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
-   certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
-   `itr_workspace` / `ai_copilot_v2` / `platform` at 6 each. That
+   certainly all firm-level), `year_end_adjustments` (7), then `itr_workspace` /
+   `ai_copilot_v2` / `platform` at 6 each. That
    count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
@@ -1216,8 +1259,8 @@ several are cheap because the data is already in the narration.
    prefix to `AUDITED`. One router at a time — a blanket sweep would either
    over-guard firm-level endpoints or under-guard the ones whose client is named
    in a body rather than a path, which is precisely how the batch endpoints were
-   missed the first time. `invoices` goes next given the finding directly
-   above, ahead of `ai_copilot_v2` and the rest of the tail.
+   missed the first time. `ai_copilot_v2` — the last of the original twelve
+   "guards the body, not the record" routers — goes next.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
