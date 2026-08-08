@@ -121,6 +121,14 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "_visible_or_none", "can_access_client",
         "_load_or_none",
     ),
+    # `entities` and the two entity↔entity tables carry no client column at all
+    # (migrations 059/156) — they are firm-level and EXEMPT below. Everything
+    # that names a client is guarded, and `_match_visible` is the sharp one:
+    # a cross-client match row names TWO clients, so both are checked.
+    "/api/relationships": (
+        "assert_client_access", "filter_by_client", "can_access_client",
+        "_match_visible", "_assert_role_scope", "is_firmwide",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -205,6 +213,31 @@ EXEMPT: dict[str, str] = {
         "No client_id, no stored data read.",
     "/api/gst/validate/gstr3b":
         "same, for CGST §39.",
+    "/api/relationships/entities":
+        "`entities` has a firm_id and NO client_id (migration 059). An entity "
+        "is a person or company the firm knows about, and it is deliberately "
+        "shared across clients — that sharing is what makes cross-client "
+        "match detection possible at all. It can also exist with no roles "
+        "yet. It IS traceable to clients through entity_roles, and whether "
+        "the register itself should be narrowed that way is a product "
+        "decision recorded in the audit doc, not a mechanical one. The "
+        "ROLES returned by /entities/{entity_id} ARE narrowed.",
+    "/api/relationships/entities/{entity_id}":
+        "same table, addressed by id. EXEMPT is keyed by path, so this one "
+        "entry covers both the PATCH and the GET. The PATCH edits the "
+        "firm-level entity itself and has no client to check. The GET also "
+        "returns the entity's ROLES, which do name clients — those ARE "
+        "narrowed with filter_by_client, and because this exemption would "
+        "let the endpoint pass either way, the narrowing is pinned by a "
+        "runtime test rather than by the sweep.",
+    "/api/relationships/relationships":
+        "`entity_relationships` is an edge between two entities (migration "
+        "059) and has no client column. The entities at both ends are "
+        "firm-level; the edge cannot be more client-scoped than its ends.",
+    "/api/relationships/entity-to-entity":
+        "`entity_to_entity_relationships` (migration 156) — holding, "
+        "subsidiary, associate and JV edges between firm-level entities. "
+        "Companies Act §2(87)/§2(6). Same reasoning, no client column.",
     "/api/tds/compute-amount":
         "a calculator: section + amount in, rate + TDS in paise out. The "
         "request model has no client_id at all — there is nothing to check "
@@ -236,7 +269,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/tds-workspace": 12,
               "/api/tds": 8,
               "/api/gst-workspace": 13, "/api/gst-portal": 5,
-              "/api/gst": 7, "/api/mca-workspace": 13}
+              "/api/gst": 7, "/api/mca-workspace": 13,
+              "/api/relationships": 19}
 
 
 def _code_only(src: str) -> str:
@@ -410,7 +444,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.task_extras", "routers.task_recurring",
                    "routers.tds_workspace", "routers.tds",
                    "routers.gst_workspace", "routers.gst_portal",
-                   "routers.gst", "routers.mca_workspace"):
+                   "routers.gst", "routers.mca_workspace",
+                   "routers.relationships"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

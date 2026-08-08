@@ -438,7 +438,7 @@ several are cheap because the data is already in the narration.
    `engagement_letters`, `workflow_builder`, `knowledge`, `lifecycle`,
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
-   `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`.
+   `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -763,11 +763,10 @@ several are cheap because the data is already in the narration.
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
    defeats a reviewer rather than merely failing to help one.
-   **`tds_workspace`, `gst_workspace` and `mca_workspace` are the first three of the twelve
-   taken, immediately below; nine remain — `relationships` (three body
-   guards), then `ai_copilot_v2`, `billing`, `compliance_records`,
-   `customers`, `engagements`, `reconciliation`, `reminders`,
-   `task_templates`.**
+   **`tds_workspace`, `gst_workspace`, `mca_workspace` and `relationships`
+   are the first four of the twelve taken, immediately below; eight remain —
+   `ai_copilot_v2`, `billing`, `compliance_records`, `customers`,
+   `engagements`, `reconciliation`, `reminders`, `task_templates`.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -888,9 +887,65 @@ several are cheap because the data is already in the narration.
    test calls the wrapper directly, because a delegation that stopped delegating
    would be a hole the source-level check would not see.
 
+   **Also fixed 2026-08-08 — `relationships` (19 endpoints), and it contained
+   the sharpest row in the sweep so far.**
+
+   This router's tables split in two, and the split IS the design.
+   **Firm-level, no client column:** `entities` (a person or company the firm
+   knows about), `entity_relationships` and `entity_to_entity_relationships`
+   (migrations 059/156). They are deliberately shared across clients — that
+   sharing is what makes cross-client match detection possible at all.
+   **Client-bearing:** `entity_roles` (client_id NOT NULL — "X is a Director AT
+   this client"), `loans`, `properties`, and `cross_client_matches`.
+
+   **A cross-client match names TWO clients.** Its entire content is "this PAN
+   appears at client A and at client B". Firm-scoping alone handed an Executive
+   assigned to client A the existence of client B and a named person's link to
+   it, along with that person's PAN as the `match_value`. Both ends are checked
+   now — **not either**, because seeing the row with only one end authorised
+   still discloses the other. Checking only the first end, only the second, and
+   `or` instead of `and` are three separate mutants, all killed.
+
+   **`POST /cross-client-matches/detect` is firm-wide** — it reads every
+   `entity_role` in the firm and writes match rows pairing clients. There is no
+   honest partial version: running it over one Executive's book and calling the
+   result "the firm's cross-client matches" would be worse than refusing,
+   because the gaps are invisible. 403, third one in the sweep after the memory
+   pipeline and the task trigger jobs.
+
+   `DELETE /roles/{role_id}` was firm-scoped only — deleting "X is a Shareholder
+   at client C" is editing client C's record. Guarded.
+
+   **The entity register itself stays firm-level, and that is a decision rather
+   than an oversight.** `entities` has no client_id, so `assert_client_access`
+   has nothing to check — but unlike a template it IS traceable to clients
+   through `entity_roles`, which is the "can a row be traced to a client" test
+   this sweep has applied everywhere else (task_tags, payroll_slips,
+   workflow_executions were all scoped through a parent). Narrowing it would
+   break the shared-entity model the cross-client feature depends on, and an
+   entity can legitimately exist with no roles at all. What IS narrowed is the
+   part that names clients: `GET /entities/{entity_id}` returns the entity's
+   ROLES alongside it, and those are filtered. **Whether the register itself
+   should be assignment-scoped is an open product question** — an Executive can
+   currently see the name, PAN, date of birth and address of every director and
+   beneficial owner the firm has recorded, across every client. Recorded here
+   rather than decided in an authz commit.
+
+   **A systematic gap in my own testing, found by the mutation pass.** Every
+   endpoint in this router has TWO implementations — a mock branch and a real-DB
+   branch, selected by `_db()` returning None. The first mutation run left
+   **six** survivors and every one was on the live branch, because the tests
+   only drove the mock path. Two of those mutants were a live `SELECT` dropping
+   the very column the guard reads; since `can_access_client(user, None)` treats
+   a missing client as "firm-level resource" and returns True, that is the guard
+   failing **open**. Live-path tests were added with a fake that honours the
+   column projection precisely so those cannot hide. Worth carrying forward: any
+   router with a mock branch has this hazard, and mock-only tests will not show
+   it.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **215** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **210** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
