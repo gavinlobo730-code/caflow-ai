@@ -439,7 +439,8 @@ several are cheap because the data is already in the narration.
    `payroll`, `recurring_invoices`, `memory_intelligence`, `tasks` +
    `task_extras`, `task_recurring`, `tds_workspace` + `tds`,
    `gst_workspace` + `gst_portal` + `gst`, `mca_workspace`, `relationships`,
-   `reconciliation`.
+   `reconciliation`, `reminders`, `engagements`, `compliance_records`,
+   `task_templates`.
 
    **Also fixed 2026-08-07 — `engagement_letters` (19 endpoints).** This one had
    imported `core.authz` for years and used it in exactly one place
@@ -764,11 +765,9 @@ several are cheap because the data is already in the narration.
    `customers`, `engagements`, `reconciliation`, `reminders`, `task_templates`.
    Worth taking before the routers with no guard at all, because the shape
    defeats a reviewer rather than merely failing to help one.
-   **`tds_workspace`, `gst_workspace`, `mca_workspace`, `relationships` and
-   `reconciliation` are the first five of the twelve taken, immediately
-   below — `reconciliation` turned out to need no fix at all. Seven remain:
-   `ai_copilot_v2`, `billing`, `compliance_records`, `customers`,
-   `engagements`, `reminders`, `task_templates`.**
+   **Nine of the twelve are now taken, immediately below — `reconciliation`
+   and `compliance_records` turned out to need no fix at all. Three remain:
+   `ai_copilot_v2`, `billing`, `customers`.**
 
    **Also fixed 2026-08-07 — the TWO TDS routers (20 endpoints).**
    `tds_workspace` on `/api/tds-workspace` (12) and `tds` on `/api/tds` (8) are
@@ -992,9 +991,46 @@ several are cheap because the data is already in the narration.
    query's firm filter stops it. Pathological, and exactly why the filter is
    there — now pinned by a test.
 
+   **Also fixed 2026-08-08 — the small-router batch: `reminders` (3),
+   `engagements` (7), `compliance_records` (6), `task_templates` (6).** The
+   tail of the "guards the body, not the record" list, taken as one phase
+   because each alone would have been ceremony. What each turned out to need:
+
+   * **`reminders` — one gap.** `PATCH /{id}/sent` checked only the firm; the
+     reminder names a client and marking it sent writes that client's record.
+   * **`engagements` — five gaps, plus one more of the update-both-ends kind.**
+     Every row-addressed endpoint (`GET`, `PATCH`, `DELETE`, `/transition`,
+     `/generate-obligations`) was firm-only; the last of those writes draft
+     statutory obligations into the client's compliance records. And
+     `PATCH`'s destination check verified only firm membership, so an
+     assigned-scope caller could move an engagement into any client's book.
+     `fee_engagements.client_id` is NOT NULL (migration 014), so the guard
+     reads the row already in hand.
+   * **`compliance_records` — already fully guarded** (task #238). The
+     list/get/create/update guards were already pinned in
+     `test_audit_remediation_5_1a` and `test_r238`; the two router guards
+     nothing pinned — `/firm/summary`'s narrowing and `/client/{id}/health` —
+     are pinned now.
+   * **`task_templates` — the firm-template pattern.** Five template routes
+     exempt (`firm_id` nullable, no client_id — migration 063; NULL = shared
+     system template), and `/instantiate`, the one route that names a client,
+     was already guarded — before the template is even loaded, and a mutant
+     that moves the check after the load is killed.
+
+   **A refusal-message oracle, caught by this batch's own test.** The
+   equal-404s test failed on its first run because a hidden reminder said
+   `"Not found"` (assert_client_access's generic detail) while a missing one
+   said `"Reminder not found"` — with matching status codes, the DETAIL still
+   distinguished them. Both `reminders` and `engagements` now refuse with the
+   router's own message via `can_access_client`, and the tests assert the
+   details are equal, not just the codes. Worth a look-back some time: earlier
+   phases asserted status-code equality only, so the same message-level oracle
+   may exist wherever a router's own not-found detail is more specific than
+   "Not found".
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **208** id-addressed
+   parameter, drop everything under an `AUDITED` prefix): **195** id-addressed
    routes have no client-scope check. Worst first: `health` (8, and almost
    certainly all firm-level), `year_end_adjustments` (7), then `invoices` /
    `itr_workspace` / `vendors` / `ai_copilot_v2` / `platform` at 6 each. That
