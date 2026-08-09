@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -70,6 +71,37 @@ MOCK_CREDIT_NOTE_LINES: list[dict] = []
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _cn_owner(current_user: dict, cn_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this credit note, firm-scoped.
+
+    Mirrors sales_invoices.py's `_invoice_owner`: returns a pair rather than
+    just the id so "no such credit note" and "a credit note with no
+    client_id" cannot collapse into one answer.
+    """
+    if _USE_MOCK:
+        cn = next((c for c in MOCK_CREDIT_NOTES if c.get("id") == cn_id), None)
+        return (cn is not None, cn.get("client_id") if cn else None)
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("credit_notes").select("client_id")
+            .eq("id", cn_id).eq("firm_id", current_user.get("firm_id"))
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_cn_scope(current_user: dict, cn_id: str) -> Optional[str]:
+    """404 unless the caller may act on this credit note's client.
+
+    can_access_client (not assert_client_access) and ONE fixed message for
+    every failure branch — missing, wrong firm, and right firm but
+    unassigned all read identically, so the response cannot be used as an
+    oracle for which ids exist (mirrors year_end.py's _assert_engagement_scope).
+    """
+    found, client_id = _cn_owner(current_user, cn_id)
+    if not found or not can_access_client(current_user, client_id):
+        raise HTTPException(status_code=404, detail="Credit note not found")
+    return client_id
+
 
 def _current_fy() -> str:
     now = datetime.now(timezone.utc)
@@ -157,6 +189,7 @@ def list_credit_notes(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List credit notes for a client."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             result = [cn for cn in MOCK_CREDIT_NOTES if cn["client_id"] == client_id and not cn.get("deleted_at")]
@@ -194,6 +227,7 @@ def create_credit_note(
         data = data.model_dump()
         firm_id   = current_user.get("firm_id")
         client_id = data["client_id"]
+        assert_client_access(current_user, client_id)
         lines_data = data.get("lines", [])
         if not lines_data:
             raise HTTPException(status_code=422, detail="At least one line item is required")
@@ -318,6 +352,7 @@ def get_credit_note(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Get a single credit note with its line items."""
+    _assert_cn_scope(current_user, cn_id)
     try:
         if _USE_MOCK:
             cn = next((c for c in MOCK_CREDIT_NOTES if c["id"] == cn_id and not c.get("deleted_at")), None)
@@ -351,6 +386,7 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
     regardless of status (mirrors sales_invoices' own soft-update fields —
     this router has no attachment concept, matching the Sales Invoice
     baseline, which has none either)."""
+    _assert_cn_scope(current_user, cn_id)
     try:
         data = data.model_dump(exclude_none=True)
         lines_data = data.pop("lines", None)
@@ -436,6 +472,7 @@ def issue_credit_note(
     Auto-creates journal entry via Phase2JournalService.
     CGST Act §34: Credit note must be issued to reverse GST liability.
     """
+    _assert_cn_scope(current_user, cn_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
 
@@ -637,6 +674,7 @@ def delete_credit_note(
     the full document and a status summary respectively, independent of
     whether the row itself still exists.
     """
+    _assert_cn_scope(current_user, cn_id)
     try:
         if _USE_MOCK:
             for i, cn in enumerate(MOCK_CREDIT_NOTES):

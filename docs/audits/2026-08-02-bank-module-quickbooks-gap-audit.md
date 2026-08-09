@@ -1912,6 +1912,62 @@ several are cheap because the data is already in the narration.
    `/api/receipts`, `/api/purchase-payments`, `/api/einvoice`,
    `/api/eway-bill`, `/api/form-26as`, and more — 94 unique paths, 108
    routes total).
+
+   **Also fixed 2026-08-09 — the four GST note-type routers:
+   `credit_notes.py`, `debit_notes.py`, `purchase_credit_notes.py`,
+   `sales_debit_notes.py`.** None of the four imported `core.authz` at
+   all — the exact same shape `sales_invoices.py`/`purchase_bills.py` had
+   before their own fix earlier in this sweep. `list_*`/`create_*` took
+   `client_id` from the query/body and never checked it; `get_*`/
+   `update_*`/`issue_*`/`delete_*` (and `debit_notes.py`'s/
+   `purchase_credit_notes.py`'s `upload`/`document-url` pair, which mints
+   a live signed Storage URL to the note's attachment) are row-addressed
+   and checked only `firm_id` — so any Executive/Reviewer/Manager in the
+   firm could read, edit, issue or delete another staff member's assigned
+   client's GST notes, not just their own book.
+
+   Each router gets its own `_assert_*_scope(current_user, id) ->
+   client_id` resolver — but rather than copying `sales_invoices.py`'s
+   `_assert_invoice_scope` shape verbatim (permissive on a missing row in
+   mock mode, and `assert_client_access`'s generic "Not found" for the
+   denied branch vs. the handler's own id-embedded "X not found" for a
+   genuinely missing row — two different message templates, a live
+   message-oracle gap in that earlier fix this discovery surfaced), all
+   four instead follow `year_end.py`'s more rigorous
+   `_assert_engagement_scope` shape: `can_access_client` (not
+   `assert_client_access`) with **one fixed, non-id-embedding message**
+   covering every failure branch — missing, wrong firm, and right firm
+   but unassigned all read identically — enforced in **both** mock and
+   live mode, not just live. `sales_invoices.py`/`purchase_bills.py`'s
+   older, looser shape is a real residual gap (status code still matches,
+   only the message text differs) — left as-is for now since it's a
+   message-level leak, not an M2 bypass, and out of scope for a
+   worst-first pass; recorded here rather than silently carried forward.
+
+   **59 new tests, all passing on first run** (deny/allow pairs for every
+   endpoint across all four routers, four hidden-vs-missing message-oracle
+   checks using the SAME id across both scenarios — the only valid way to
+   test message parity once the message is id-parameterized — plus e2e
+   `FakeDB` tests exercising each resolver's own SQL lookup with
+   `can_access_client` still stubbed, mirroring
+   `test_year_end_engagements_client_scope.py`'s e2e split). **32
+   mutants, all killed** (the internal `can_access_client` check plus
+   every guard call site, across all four routers). Full suite identical
+   to the 44-failure baseline (`git stash -u` diff, byte for byte).
+
+   **Still open, recounted the same way:** **90** id-addressed routes
+   (down from 108 — 18 row-addressed routes across the four routers:
+   4 on `/api/credit-notes` (get/update/issue/delete), 5 each on
+   `/api/debit-notes` and `/api/purchase-credit-notes` (get/update/
+   document-url/issue/delete), 4 on `/api/sales-debit-notes`). Worst
+   first: `/api/dsc`, `/api/firm-hsn-library`, `/api/service-catalogue`,
+   `/api/settings/email-templates`, `/api/settings/invoice-templates`,
+   `/api/time-entries` (2 each), and a long tail of 1-route paths —
+   `/api/accounting`, `/api/approvals`, `/api/identity`,
+   `/api/tally-migration`, `/api/xbrl`, `/api/fixed-assets`,
+   `/api/receipts`, `/api/purchase-payments`, `/api/einvoice`,
+   `/api/eway-bill`, `/api/form-26as`, `/api/document-intelligence-v2`,
+   and more (84 unique paths, 90 routes total).
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
