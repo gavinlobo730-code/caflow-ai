@@ -1541,6 +1541,104 @@ several are cheap because the data is already in the narration.
    `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
    `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
    mostly in the 1-4 range.
+
+   **`year_end.py` and `year_end_reviews.py`, the next of the `/api/year-end`
+   siblings — audited together, and had to be.** `year_end.py` owns the root
+   `year_end_engagements` table itself (create, list, get, PATCH status);
+   `year_end_reviews.py` owns the review-and-approve workflow nested one
+   segment deeper, under the SAME literal path
+   (`/engagements/{engagement_id}/reviews/...`). Unlike
+   `year_end_adjustments.py`'s clean split from its siblings (`/{engagement_id}
+   /adjustments` shares no string prefix with `/engagements/...` or
+   `/{engagement_id}/checklist`), there is no distinguishing segment here:
+   every route `year_end_reviews.py` owns is a string-prefix EXTENSION of a
+   route `year_end.py` owns, so the sweep's longest-prefix-match cannot
+   register one without the other — registering just `year_end.py`'s routes
+   would have swept `year_end_reviews.py`'s completely unaudited ones in
+   under the same prefix by accident (or the reverse). Same shape as
+   `/api/tasks` being shared by `tasks.py` and `task_extras.py`: one
+   registration, `/api/year-end/engagements`, is a claim about both files —
+   guarding the engagement record while leaving its approval-and-lock
+   workflow open would be absurd anyway.
+
+   **`year_end.py` (4 endpoints) had zero client-assignment checks —
+   `core.authz` wasn't even imported.** `create_engagement` took `client_id`
+   on the body and never checked it. `list_engagements` took an OPTIONAL
+   `client_id`: checked when given, but when omitted the list was firm-wide
+   with no per-row narrowing at all — fixed with `filter_by_client` in both
+   branches, the same "unscoped list defaults to everything" shape found
+   repeatedly this sweep. `get_engagement` and `update_engagement_status`
+   are row-addressed by `engagement_id`, resolved by `firm_id` alone. A new
+   `_assert_engagement_scope(current_user, engagement_id)` resolver
+   (module-local to `year_end.py`, same name as the unrelated resolvers
+   already in `year_end_adjustments.py` and `invoices.py` — the established
+   per-file-local-helper convention) replaces both call sites and, as a
+   side effect, closes the SAME `.single()`-raises-on-zero-rows bug already
+   fixed in `year_end_adjustments.py` and found-not-fixed in six other files:
+   `get_engagement`'s live-mode `.single()` call had no `try`/`except`.
+
+   **`year_end_reviews.py` (5 endpoints) was the more serious gap: every one
+   is a WRITE, and one of them is irreversible.** `submit_for_review`,
+   `approve_review`, `request_revision`, `final_approve` and
+   `get_review_state` each resolved their engagement with a local
+   `_get_mock_engagement`/`_get_db_engagement` pair that checked `firm_id`
+   only — this router never imported `core.authz` at all. `final_approve`
+   transitions `approved` → `locked`, a terminal state with no outgoing
+   transition in `_STATUS_TRANSITIONS`; a Manager or Executive could have
+   locked another staff member's client's engagement permanently. Fixed by
+   deleting both local resolvers and delegating to `year_end.py`'s
+   `_assert_engagement_scope` by name (`from routers.year_end import
+   _assert_engagement_scope`) rather than duplicating the check against the
+   same table in a second file — one place the client-assignment logic
+   lives, not two copies that could drift apart. `year_end_reviews.py`
+   itself still imports no `core.authz` name directly (only the resolver,
+   transitively), so it is deliberately NOT added to
+   `test_every_audited_router_actually_imports_the_authz_engine`'s module
+   list — same reasoning as `platform.py` and the `knowledge`/`mca_workspace`
+   `FOLLOW` entries: the check that matters is the resolver-name check
+   (`test_a_row_addressed_endpoint_is_not_satisfied_by_a_bare_client_check`)
+   and the real runtime tests, not which file happens to hold the `import`
+   line.
+
+   **One test-fixture bug found and fixed, caused directly by the
+   delegation:** `test_r3_8_year_end_review_workflow.py`'s `yer_app` fixture
+   flipped `routers.year_end_reviews._USE_MOCK` to `False` for its e2e
+   `FakeDB` tests but never touched `routers.year_end._USE_MOCK` — a
+   separate module-level flag that `_assert_engagement_scope` now reads,
+   since it lives in `year_end.py`. Every review-workflow e2e test failed
+   (404 or `KeyError: 'data'`) because the resolver was reading the
+   (test-empty) in-memory mock store instead of the seeded `FakeDB`. In
+   production the two flags are always identical (both computed from
+   `SUPABASE_URL` at import time) — this was purely a test-fixture gap
+   exposed by the new cross-module call, fixed by flipping both flags in the
+   fixture.
+
+   **35 new tests** across two new files
+   (`test_year_end_engagements_client_scope.py`,
+   `test_year_end_reviews_client_scope.py`), covering mock mode, e2e
+   `FakeDB` live mode for `year_end.py`'s two DB-touching paths
+   (`_assert_engagement_scope`, `list_engagements`), and the missing/hidden
+   message-oracle check. **14 mutants, all killed** on the second pass — the
+   first had two live-mode survivors (`list_engagements`'s
+   `filter_by_client` call and `_assert_engagement_scope`'s internal
+   `can_access_client` check, neither exercised because every original test
+   used mock mode), closed with the e2e `FakeDB` tests above, the same
+   pattern as `year_end_adjustments.py`'s own first-pass survivor. Full
+   suite identical to baseline.
+
+   **Still open, recounted the same way:** **135** id-addressed routes (down
+   from 142 — 7 of `year_end`/`year_end_reviews`'s 9 routes carry an
+   `{engagement_id}`; the other 2, `POST`/`GET /engagements`, have no path
+   parameter at all and were never in this count to begin with). Worst
+   first: `/api/year-end` (17 — the remaining siblings:
+   `year_end_checklist.py`, `year_end_statements.py`, `year_end_notes.py`,
+   `year_end_exports.py`, `year_end_mappings.py`; `year_end_mappings.py` is
+   the one genuinely disjoint from this collision, its own `/api/year-end/
+   mappings` prefix shares no segment with `engagements` or the bare
+   `{engagement_id}` branch), then `/api/portal` (7), `/api/clients`,
+   `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
+   `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
+   mostly in the 1-4 range.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

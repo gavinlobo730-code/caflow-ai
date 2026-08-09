@@ -260,6 +260,27 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # reasoning; this entry exists only so the sweep counts its routes as
     # looked-at rather than unaudited.
     "/api/platform": (),
+    # year_end.py OWNS the collection (create/list/get/PATCH status) and
+    # year_end_reviews.py owns a workflow nested one level deeper under the
+    # SAME literal path segment ("/engagements/{engagement_id}/reviews/..."
+    # is a string prefix of nothing shorter than "/engagements/
+    # {engagement_id}" itself) — the sweep's prefix-longest-match can't
+    # separate "the collection resource" from "a sub-resource of it owned by
+    # a different file" the way it separated year_end_adjustments.py's
+    # "/{engagement_id}/adjustments" from its year-end siblings, because
+    # here there IS no distinguishing segment above the shared one: every
+    # route year_end_reviews.py owns starts with a route year_end.py also
+    # owns. Same shape as "/api/tasks" being shared by tasks.py and
+    # task_extras.py — registering the shared prefix is a claim about BOTH
+    # files, which is the honest reading here too: guarding the engagement
+    # CRUD while leaving its review-approval-and-lock workflow open would be
+    # absurd. year_end_reviews.py's 5 endpoints delegate to year_end.py's
+    # own _assert_engagement_scope by name rather than duplicating the
+    # check against the same table in a second file.
+    "/api/year-end/engagements": (
+        "assert_client_access", "can_access_client", "filter_by_client",
+        "_assert_engagement_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -516,7 +537,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8,
               "/api/copilot": 17, "/api/health": 13,
               "/api/year-end/{engagement_id}/adjustments": 7,
-              "/api/itr": 17, "/api/platform": 9}
+              "/api/itr": 17, "/api/platform": 9,
+              "/api/year-end/engagements": 9}
 
 
 def _code_only(src: str) -> str:
@@ -696,7 +718,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.compliance_records", "routers.task_templates",
                    "routers.customers", "routers.vendors", "routers.billing",
                    "routers.invoices", "routers.ai_copilot_v2", "routers.health",
-                   "routers.year_end_adjustments", "routers.itr_workspace"):
+                   "routers.year_end_adjustments", "routers.itr_workspace",
+                   "routers.year_end"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

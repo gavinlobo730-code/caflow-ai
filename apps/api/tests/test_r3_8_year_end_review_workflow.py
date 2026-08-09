@@ -36,9 +36,16 @@ def _client_for(app: FastAPI, user: dict) -> TestClient:
 @pytest.fixture
 def yer_app(monkeypatch):
     import routers.year_end_reviews as mod
+    import routers.year_end as year_end_mod
     db = FakeDB()
     monkeypatch.setattr(mod, "_USE_MOCK", False)
     monkeypatch.setattr(mod, "log_event", lambda *a, **k: None)
+    # _assert_engagement_scope lives in routers.year_end and is called by
+    # name from routers.year_end_reviews (client-assignment scope fix) — its
+    # own _USE_MOCK flag governs which branch it takes, independently of
+    # year_end_reviews's, so it has to be flipped here too or the resolver
+    # reads the (empty in this test) in-memory mock store instead of FakeDB.
+    monkeypatch.setattr(year_end_mod, "_USE_MOCK", False)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
     app = FastAPI()
     app.include_router(mod.router)
