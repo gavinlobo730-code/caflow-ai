@@ -1739,6 +1739,61 @@ several are cheap because the data is already in the narration.
    only — the last entangled sibling; `year_end_mappings.py`'s 4 routes
    carry no `{id}` path parameter and were never in this id-addressed
    count), then `/api/portal` (7), and the same long tail.
+
+   **`year_end_exports.py` and `year_end_mappings.py` — the last two of the
+   eight-file year-end cluster this sweep started with
+   `year_end_adjustments.py`, closed together.** `year_end_exports.py` is
+   the last sibling entangled by the `/{engagement_id}/...` collision
+   shape; `year_end_mappings.py` is the one genuinely disjoint file (its
+   own top-level `/mappings` segment, not nested under `/{engagement_id}`)
+   and needed **zero code changes**.
+
+   `year_end_exports.py` (5 endpoints) had the same shape as
+   `year_end_statements.py` and `year_end_notes.py` before it: all 5 had no
+   client-assignment check, and two — `list_exports`, `get_download_url` —
+   never resolved the engagement at all (live mode applied only an inline
+   `firm_id` filter, mock mode had no tenancy check whatsoever). The other
+   three (`export_financial_statements`, `export_notes`,
+   `export_complete_pack`) used a `_mock_engagement`/`_get_engagement` pair
+   — live checked `firm_id` only, mock checked only that the engagement
+   existed. **`get_download_url` was the sharpest finding of this whole
+   cluster**: it hands back a live, signed Supabase Storage URL, valid for
+   an hour, to the export PDF — a client's complete financial-statements
+   pack, its Notes to Accounts, or the full year-end pack. An unassigned
+   caller reaching this endpoint wasn't a metadata leak, it was a real
+   exfiltration path: a working download link to another client's filed
+   financial statements. Fixed the same way as the other siblings —
+   delegates to `year_end.py`'s `_assert_engagement_scope` — and, while
+   touching `get_download_url` for the fix, its own `.single()` call (same
+   raises-on-zero-rows shape found repeatedly this sweep) was wrapped in
+   `try`/`except` too.
+
+   `year_end_mappings.py` (4 endpoints) maps a firm's Chart of Accounts to
+   Schedule III statutory line items. `account_group_mappings` has
+   `firm_id` and, grepped across the whole file, no `client_id` anywhere —
+   a firm's mapping of its own chart of accounts is firm-wide
+   configuration, applied identically across every client, the same
+   reasoning already established for `task-templates`/
+   `engagement-templates`/`workflow-templates`. Registered EXEMPT with that
+   reason, no code touched — the same "genuinely firm-level, verified by
+   reading the whole file rather than assumed" treatment `platform.py` got
+   two phases ago.
+
+   **15 new mock-mode tests plus 6 new e2e tests for `year_end_exports.py`
+   (one needed a small addition to the shared e2e harness pattern: `FakeDB`
+   has no `.storage` mock, so the one test exercising the signed-URL path
+   monkeypatches a minimal fake), all passing on first run; 6 mutants, all
+   killed** (5 resolver call sites plus the `.single()` try/except). Full
+   suite identical to baseline — for `year_end_mappings.py`, trivially so,
+   since nothing in it changed.
+
+   **Still open, recounted the same way:** **118** id-addressed routes
+   (down from 123 — `/api/year-end` no longer appears among unaudited
+   routers at all; the entire eight-file cluster is now `AUDITED` or
+   `EXEMPT`). Worst first: `/api/portal` (7), `/api/clients`,
+   `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
+   `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
+   mostly in the 1-4 range.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

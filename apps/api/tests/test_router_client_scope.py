@@ -314,6 +314,28 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/year-end/{engagement_id}/notes": (
         "can_access_client", "_assert_engagement_scope",
     ),
+    # year_end_exports.py — the last of the year-end siblings entangled by
+    # collision with year_end.py's own "/engagements" branch (all others
+    # are "/{engagement_id}/..." like this one, colliding with nothing but
+    # each other — "/exports" is disjoint from "/adjustments", "/reviews",
+    # "/checklist", "/notes", "/financial-statements", "/schedules").
+    # get_download_url was the sharpest gap: it hands back a live signed
+    # Storage URL to the export PDF, so an unassigned caller reaching it
+    # was a real exfiltration path, not just metadata.
+    "/api/year-end/{engagement_id}/exports": (
+        "can_access_client", "_assert_engagement_scope",
+    ),
+    # year_end_mappings.py — Chart of Accounts -> Schedule III line mapping.
+    # account_group_mappings has firm_id and no client_id at all: a firm's
+    # mapping of its own chart of accounts to statutory line items is a
+    # firm-wide configuration, applied uniformly across every client, same
+    # reasoning as task_templates/engagement_templates/workflow_templates
+    # (all already EXEMPT below). Genuinely disjoint from the rest of the
+    # year-end cluster: "/mappings" is a distinct top-level segment, not
+    # nested under "/{engagement_id}/...". Empty tuple + EXEMPT entries
+    # below complete the entire year-end cluster this sweep started with
+    # year_end_adjustments.py.
+    "/api/year-end/mappings": (),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -545,6 +567,18 @@ EXEMPT: dict[str, str] = {
         "irreversible hard delete of the firm and everything under it via "
         "platform_purge_firm — the firm IS the unit being removed, there is "
         "no narrower client to scope this to.",
+    "/api/year-end/mappings":
+        "account_group_mappings has firm_id and no client_id at all "
+        "(grepped the whole file) — a firm's mapping of its own chart of "
+        "accounts to Schedule III line items is firm-wide configuration, "
+        "identical across every client, the same reasoning as "
+        "task-templates/engagement-templates/workflow-templates. Covers "
+        "GET and POST, which share this path.",
+    "/api/year-end/mappings/bulk":
+        "same table, the bulk-upsert variant.",
+    "/api/year-end/mappings/defaults":
+        "same table — default mapping suggestions plus firm-level "
+        "auto-initialization from the firm's own chart of accounts.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -575,7 +609,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/year-end/{engagement_id}/checklist": 2,
               "/api/year-end/{engagement_id}/financial-statements": 4,
               "/api/year-end/{engagement_id}/schedules": 1,
-              "/api/year-end/{engagement_id}/notes": 5}
+              "/api/year-end/{engagement_id}/notes": 5,
+              "/api/year-end/{engagement_id}/exports": 5,
+              "/api/year-end/mappings": 4}
 
 
 def _code_only(src: str) -> str:

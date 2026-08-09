@@ -16,6 +16,17 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+# M2 audit finding: every endpoint below resolved its engagement by firm_id
+# alone (_get_engagement, live mode) or not checked its client at all
+# (_mock_engagement, mock mode); list_exports and get_download_url didn't
+# resolve the engagement at all, applying only an inline firm_id filter in
+# live mode and no tenancy check whatsoever in mock mode. get_download_url
+# is the sharpest one — it hands back a live, signed download URL to the
+# export PDF (a client's complete financial-statements pack), so an
+# unassigned caller reaching it was a real exfiltration path, not just a
+# metadata leak. Delegates to year_end.py's own _assert_engagement_scope
+# rather than a sixth copy of the same check.
+from routers.year_end import _assert_engagement_scope
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -26,40 +37,6 @@ router = APIRouter(prefix="/year-end", tags=["year-end-exports"])
 # ── Mock store ────────────────────────────────────────────────────────────────
 # engagement_id → list of export records
 _MOCK_EXPORTS: dict[str, list[dict]] = {}
-
-
-def _get_engagement(db, engagement_id: str, firm_id: str) -> dict:
-    row = (
-        db.table("year_end_engagements")
-        .select("*")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    return row
-
-
-def _mock_engagement(engagement_id: str) -> dict:
-    try:
-        from routers.year_end import _MOCK_ENGAGEMENTS
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
-        if not eng:
-            raise HTTPException(status_code=404, detail="Engagement not found")
-        return eng
-    except ImportError:
-        return {
-            "id": engagement_id,
-            "firm_id": "firm-001",
-            "client_id": "client-001",
-            "financial_year": "2024-25",
-            "fy_start": "2024-04-01",
-            "fy_end": "2025-03-31",
-            "status": "approved",
-        }
 
 
 def _storage_path(firm_id: str, client_id: str, financial_year: str, filename: str) -> str:
@@ -207,8 +184,12 @@ def export_financial_statements(
     from services.year_end_pdf_service import generate_financial_statements_pdf
     from services.year_end_financial_service import generate_financial_statements
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _mock_engagement(engagement_id)
         statements = generate_financial_statements(None, eng["client_id"], eng["firm_id"],
                                                     eng["fy_start"], eng["fy_end"])
         pdf_bytes = generate_financial_statements_pdf(eng, statements)
@@ -229,7 +210,6 @@ def export_financial_statements(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_engagement(db, engagement_id, current_user["firm_id"])
 
     try:
         statements = _get_statements_data(db, eng)
@@ -255,8 +235,12 @@ def export_notes(
     """Generate notes PDF, upload to storage, record export."""
     from services.year_end_pdf_service import generate_notes_pdf
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _mock_engagement(engagement_id)
         from routers.year_end_notes import _MOCK_NOTES
         notes = _MOCK_NOTES.get(engagement_id, [])
         pdf_bytes = generate_notes_pdf(eng, notes)
@@ -277,7 +261,6 @@ def export_notes(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_engagement(db, engagement_id, current_user["firm_id"])
     notes = _get_notes_data(db, engagement_id, current_user["firm_id"])
     pdf_bytes = generate_notes_pdf(eng, notes)
     filename  = f"notes_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -299,8 +282,12 @@ def export_complete_pack(
     from services.year_end_pdf_service import generate_complete_pack_pdf
     from services.year_end_financial_service import generate_financial_statements
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _mock_engagement(engagement_id)
         statements = generate_financial_statements(None, eng["client_id"], eng["firm_id"],
                                                     eng["fy_start"], eng["fy_end"])
         from routers.year_end_notes import _MOCK_NOTES
@@ -325,7 +312,6 @@ def export_complete_pack(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_engagement(db, engagement_id, current_user["firm_id"])
 
     try:
         statements = _get_statements_data(db, eng)
@@ -349,6 +335,11 @@ def list_exports(
     engagement_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: never resolved the engagement at all — live mode
+    # applied only an inline firm_id filter on year_end_exports, mock mode
+    # had no tenancy check whatsoever.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         return api_response(True, _MOCK_EXPORTS.get(engagement_id, []))
 
@@ -373,6 +364,11 @@ def get_download_url(
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
     """Return a signed download URL with 1-hour expiry."""
+    # M2 audit finding: never resolved the engagement at all — a signed,
+    # live download URL to another client's export PDF was reachable by
+    # any same-firm caller, not just those assigned to that client.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         exports = _MOCK_EXPORTS.get(engagement_id, [])
         export  = next((e for e in exports if e["id"] == export_id), None)
@@ -387,16 +383,24 @@ def get_download_url(
     from core.supabase_client import get_supabase
     db = get_supabase()
 
-    export = (
-        db.table("year_end_exports")
-        .select("*")
-        .eq("id", export_id)
-        .eq("engagement_id", engagement_id)
-        .eq("firm_id", current_user["firm_id"])
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        export = (
+            db.table("year_end_exports")
+            .select("*")
+            .eq("id", export_id)
+            .eq("engagement_id", engagement_id)
+            .eq("firm_id", current_user["firm_id"])
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Supabase's real .single() raises (PGRST116) rather than returning
+        # None on zero rows — without this a missing export_id crashes to
+        # 500 instead of the 404 below. Found while touching this endpoint
+        # for the M2 fix above; same shape already fixed elsewhere in this
+        # sweep.
+        export = None
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
 
