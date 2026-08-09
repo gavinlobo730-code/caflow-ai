@@ -127,6 +127,25 @@ def create_einvoice_record(
     return res.data[0] if res.data else row
 
 
+def get_einvoice_record(firm_id: str, record_id: str) -> dict | None:
+    """Read a single record by id, scoped to the firm.
+
+    Module 9.0: the two row-addressed IRN routes mutate by record_id and
+    previously scoped on firm_id alone, so the router had no way to learn a
+    record's client_id *before* writing to it. This read is what lets the
+    router enforce client-assignment scope ahead of the mutation.
+    """
+    if _USE_MOCK:
+        row = _MOCK_RECORDS.get(record_id)
+        return row if row and row.get("firm_id") == firm_id else None
+
+    sb = _supabase()
+    res = sb.table("einvoice_records").select("*").eq("id", record_id).eq(
+        "firm_id", firm_id
+    ).execute()
+    return (res.data or [None])[0]
+
+
 def record_irn_generated(
     firm_id: str,
     record_id: str,

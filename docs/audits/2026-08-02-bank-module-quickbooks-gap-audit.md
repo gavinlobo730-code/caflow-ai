@@ -2723,6 +2723,80 @@ several are cheap because the data is already in the narration.
     to baseline" would have stayed green through a silent deletion of 29 passing
     tests — only the *passed* count caught it.
 
+    **Phase: `einvoice.py`, `form_26as.py`, `fixed_assets.py` — the
+    row-addressed writes.**
+
+    Unlike the previous two phases, all three routers here already carry
+    `main.py`'s mount-level `_CLIENT_GUARD`, and the guard is stronger than it
+    first looks: it reads `client_id` from the path, the query string, **and**
+    the JSON body on POST/PUT/PATCH. So every route that names a client was
+    already covered. What it structurally cannot see is a route addressed by a
+    **row id** that carries no `client_id` anywhere — the guard simply never
+    fires, and all six such routes here scoped on `firm_id` alone.
+
+    `fixed_assets.py` holds the two sharpest findings in the whole sweep so
+    far, because they are financial **writes**, not reads:
+    `POST /{asset_id}/depreciate` posts a depreciation journal and
+    `PATCH /{asset_id}/dispose` posts a disposal journal with gain/loss. An
+    unassigned Executive could therefore *move the ledger* of a client whose
+    book they cannot otherwise see — every earlier finding in this sweep leaked
+    data; these two corrupt it. Both endpoints already fetched the asset and
+    404'd on a firm miss, so the check slots in immediately after that fetch,
+    before every mutation (and, for disposal, before the conditional
+    is_disposed claim described in that handler's own docstring). This is the
+    same IDOR family as the **task #241** fix already recorded in this file —
+    that one closed the cross-FIRM half on `depreciation-schedule`; this closes
+    the within-firm half on all three client_id-bearing routes plus the two
+    writes.
+
+    `einvoice.py` — `/records/{record_id}/irn-generated` and `/cancel` mutate
+    an e-invoice's IRN state. There was no way to enforce scope before the
+    write because the router had no read: `record_irn_generated` went straight
+    to an `UPDATE ... WHERE id AND firm_id`. Added
+    `get_einvoice_record(firm_id, record_id)` to the service (the router
+    delegates everything, so router-level DB access would have broken the
+    layering) and `_assert_record_scope` in the router. **One placement detail
+    is load-bearing**: both handlers wrap their service call in
+    `except Exception as e: raise HTTPException(500, ...)`, and
+    `HTTPException` *is* an `Exception` — a guard placed inside that `try`
+    would be caught and re-raised as a **500**, turning a clean denial into a
+    server error. The resolver is therefore called *outside* the `try`, and
+    `test_irn_generated_denial_is_404_not_500` fails if anyone moves it back.
+
+    `form_26as.py` — `/uploads/{upload_id}/parse` and `/uploads/{upload_id}/
+    uploaded`. A 26AS upload is the client's full annual tax statement (IT Act
+    s.203AA), so this is taxpayer data rather than metadata. Both resolved the
+    row inline with a duplicated mock/real branch, and `mark_26as_uploaded`'s
+    mock branch checked **nothing at all** — not even the firm. One
+    `get_upload(firm_id, upload_id)` service function plus `_assert_upload_
+    scope` now covers both routes and both modes, deleting the duplication.
+
+    The other half of this phase is the **explicit checks**: six routes
+    (`einvoice.list_records`, `form_26as.list_uploads`/`get_reconciliation`,
+    `fixed_assets.list_assets`/`create_asset`/`depreciation_schedule`) were
+    mount-guard-covered but named no guard in their own source, so the ratchet
+    correctly refused them. Following the convention already set by
+    `client_copilot_chat` last phase, each now calls `assert_client_access`
+    explicitly, so the check is visible where the read or the journal posting
+    actually happens rather than inferred from a mount three files away.
+
+    **21 new tests**, and **12 mutants across 18 sites, all killed**. Worth
+    recording *how* that number was reached: the first mutation run had **two
+    survivors** — the firm filter inside each new resolver could be deleted
+    with the entire file still green, because every router test monkeypatches
+    `get_einvoice_record`/`get_upload` wholesale and never runs the real body.
+    That is precisely the blind spot mutation testing exists to expose, and the
+    honest fix was two direct unit tests on the real mock-mode bodies rather
+    than recording it as a known limitation — unlike the `ai_copilot.py` and
+    `payment_service.history()` cases in earlier phases, this one was cheap to
+    actually close. Full suite is **byte-identical to the 44-failure baseline**
+    (6025 → 6064 passed, **+39 exactly accounted for**: 21 tests + 15 new
+    ratchet routes + 3 MIN_ROUTES entries). Note `test_phase3_tds.py::
+    test_form26as_reconciliation` sits in touched territory and *is* among the
+    44 — it fails identically on unmodified `main` with `assert 503 == 200`
+    (no Supabase in the test env), which is why the comparison is run against
+    a stashed working tree each phase rather than trusting the count alone.
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

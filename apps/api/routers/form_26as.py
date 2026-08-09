@@ -9,12 +9,31 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/form-26as", tags=["form_26as"])
 _logger = logging.getLogger("caflow.form26as.router")
+
+
+def _assert_upload_scope(upload_id: str, current_user: dict) -> dict:
+    """Resolve upload_id to its row inside the caller's firm AND assigned book.
+
+    Both routes below are row-addressed and carry no client_id, so the
+    mount-level guard never fires on them. They previously scoped on firm_id
+    alone — and mark_26as_uploaded's mock branch checked nothing at all, so
+    it did not even enforce the firm. A 26AS upload is the client's full
+    annual tax statement (IT Act s.203AA), so this is taxpayer data, not
+    metadata. ONE fixed message covers missing, wrong-firm and unassigned
+    alike, so the response is not an existence oracle."""
+    from domain.income_tax.form26as_service import get_upload
+    upload = get_upload(current_user["firm_id"], upload_id)
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if not can_access_client(current_user, upload.get("client_id")):
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return upload
 
 
 class CreateUploadRequest(BaseModel):
@@ -64,25 +83,14 @@ def parse_upload(
     Upload the raw text from TRACES portal (PDF → text extraction).
     """
     from domain.income_tax.form26as_service import (
-        parse_26as_text, save_parsed_records, _MOCK_UPLOADS
+        parse_26as_text, save_parsed_records
     )
-    import os
-    use_mock = not os.environ.get("SUPABASE_URL")
+    # Resolves the row, the firm AND the assigned book in one place — this
+    # replaces the old inline mock/real lookup, whose mock branch skipped the
+    # firm_id check entirely.
+    upload = _assert_upload_scope(upload_id, current_user)
 
     try:
-        if use_mock:
-            upload = _MOCK_UPLOADS.get(upload_id)
-        else:
-            from core.supabase_client import get_supabase
-            sb = get_supabase()
-            res = sb.table("form_26as_uploads").select("*").eq("id", upload_id).eq(
-                "firm_id", current_user["firm_id"]
-            ).single().execute()
-            upload = res.data
-
-        if not upload:
-            raise HTTPException(404, detail="Upload not found")
-
         records = parse_26as_text(req.raw_text)
         result = save_parsed_records(
             firm_id=current_user["firm_id"],
@@ -109,6 +117,9 @@ def list_uploads(
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     from domain.income_tax.form26as_service import list_uploads as _list
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     return api_response(True, _list(current_user["firm_id"], client_id, financial_year))
 
 
@@ -163,6 +174,9 @@ def get_reconciliation(
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     from domain.income_tax.form26as_service import get_reconciliation as _get
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     result = _get(current_user["firm_id"], client_id, financial_year)
     return api_response(True, result)
 
@@ -173,28 +187,9 @@ def mark_26as_uploaded(
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """Mark that CA has uploaded 26AS from TRACES portal."""
-    from domain.income_tax.form26as_service import _MOCK_UPLOADS
-    import os
-    use_mock = not os.environ.get("SUPABASE_URL")
-
-    if use_mock:
-        upload = _MOCK_UPLOADS.get(upload_id, {})
-        timeline_service.log(
-            client_id=upload.get("client_id", ""),
-            category="tax",
-            action="26as_uploaded",
-            description=f"Form 26AS uploaded for FY {upload.get('financial_year')}",
-            severity="info",
-            metadata={"upload_id": upload_id},
-        )
-        return api_response(True, upload)
-
-    from core.supabase_client import get_supabase
-    sb = get_supabase()
-    res = sb.table("form_26as_uploads").select("*").eq("id", upload_id).eq(
-        "firm_id", current_user["firm_id"]
-    ).single().execute()
-    upload = res.data or {}
+    # One resolver for both modes — the old mock branch read _MOCK_UPLOADS
+    # directly and enforced neither firm nor assignment.
+    upload = _assert_upload_scope(upload_id, current_user)
     timeline_service.log(
         client_id=upload.get("client_id", ""),
         category="tax",
