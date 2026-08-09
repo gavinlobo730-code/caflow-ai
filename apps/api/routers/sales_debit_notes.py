@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -90,6 +91,33 @@ def _current_fy_long() -> str:
     return f"{start}-{str(start + 1)[2:]}"
 
 
+def _sdn_owner(current_user: dict, sdn_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this sales debit note, firm-scoped.
+    Mirrors credit_notes.py's `_cn_owner` / debit_notes.py's `_dn_owner`."""
+    if _USE_MOCK:
+        d = next((x for x in MOCK_SALES_DEBIT_NOTES if x.get("id") == sdn_id), None)
+        return (d is not None, d.get("client_id") if d else None)
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("sales_debit_notes").select("client_id")
+            .eq("id", sdn_id).eq("firm_id", current_user.get("firm_id"))
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_sdn_scope(current_user: dict, sdn_id: str) -> Optional[str]:
+    """404 unless the caller may act on this sales debit note's client.
+
+    can_access_client (not assert_client_access) and ONE fixed message for
+    every failure branch — missing, wrong firm, and right firm but
+    unassigned all read identically, so the response cannot be used as an
+    oracle for which ids exist (mirrors year_end.py's _assert_engagement_scope).
+    """
+    found, client_id = _sdn_owner(current_user, sdn_id)
+    if not found or not can_access_client(current_user, client_id):
+        raise HTTPException(status_code=404, detail="Debit note not found")
+    return client_id
+
+
 def _next_sdn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
     try:
         resp = (db.table("sales_debit_notes").select("id", count="exact")
@@ -139,6 +167,7 @@ def list_sales_debit_notes(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List sales debit notes for a client (firm-scoped — tenant isolation)."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             res = [d for d in MOCK_SALES_DEBIT_NOTES if d["client_id"] == client_id and not d.get("deleted_at")]
@@ -164,6 +193,7 @@ def create_sales_debit_note(data: SalesDebitNoteIn, current_user: dict = Depends
         data = data.model_dump()
         firm_id = current_user.get("firm_id")
         client_id = data["client_id"]
+        assert_client_access(current_user, client_id)
         is_interstate = bool(data.get("is_interstate"))
         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
             data.get("lines", []), is_interstate)
@@ -208,6 +238,7 @@ def create_sales_debit_note(data: SalesDebitNoteIn, current_user: dict = Depends
 @router.get("/{sdn_id}")
 def get_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accounting", "read"))):
     """Get a single sales debit note with its line items."""
+    _assert_sdn_scope(current_user, sdn_id)
     try:
         if _USE_MOCK:
             d = next((x for x in MOCK_SALES_DEBIT_NOTES if x["id"] == sdn_id and not x.get("deleted_at")), None)
@@ -239,6 +270,7 @@ def update_sales_debit_note(sdn_id: str, data: SalesDebitNoteUpdateIn, current_u
     editable regardless of status (mirrors sales_invoices' own soft-update
     fields — this router has no attachment concept, matching the Sales
     Invoice baseline, which has none either)."""
+    _assert_sdn_scope(current_user, sdn_id)
     try:
         data = data.model_dump(exclude_none=True)
         lines_data = data.pop("lines", None)
@@ -321,6 +353,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
     statement stay reconciled: invoice net outstanding =
     (total + debit_note_paise) - paid - credited. No upper bound — unlike a credit
     note there is nothing to exceed when you're increasing what's owed."""
+    _assert_sdn_scope(current_user, sdn_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
         if _USE_MOCK:
@@ -468,6 +501,7 @@ def delete_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("acco
     The row is genuinely removed (not soft-deleted): the create/delete
     audit_log events already capture the full document and a status summary
     respectively, independent of whether the row itself still exists."""
+    _assert_sdn_scope(current_user, sdn_id)
     try:
         if _USE_MOCK:
             for i, d in enumerate(MOCK_SALES_DEBIT_NOTES):

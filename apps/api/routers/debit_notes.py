@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -94,6 +95,37 @@ def _compute_line_gst(taxable: int, gst_rate_bps: int, is_interstate: bool) -> t
     return cgst, full_gst - cgst, 0
 
 
+def _dn_owner(current_user: dict, dn_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this debit note, firm-scoped.
+
+    Mirrors credit_notes.py's `_cn_owner` / sales_invoices.py's
+    `_invoice_owner`: a pair, so "no such debit note" and "a debit note
+    with no client_id" cannot collapse into one answer.
+    """
+    if _USE_MOCK:
+        dn = next((d for d in MOCK_DEBIT_NOTES if d.get("id") == dn_id), None)
+        return (dn is not None, dn.get("client_id") if dn else None)
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("debit_notes").select("client_id")
+            .eq("id", dn_id).eq("firm_id", current_user.get("firm_id"))
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_dn_scope(current_user: dict, dn_id: str) -> Optional[str]:
+    """404 unless the caller may act on this debit note's client.
+
+    can_access_client (not assert_client_access) and ONE fixed message for
+    every failure branch — missing, wrong firm, and right firm but
+    unassigned all read identically, so the response cannot be used as an
+    oracle for which ids exist (mirrors year_end.py's _assert_engagement_scope).
+    """
+    found, client_id = _dn_owner(current_user, dn_id)
+    if not found or not can_access_client(current_user, client_id):
+        raise HTTPException(status_code=404, detail="Debit note not found")
+    return client_id
+
+
 def _next_dn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
     try:
         resp = (db.table("debit_notes").select("id", count="exact")
@@ -137,6 +169,7 @@ def list_debit_notes(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List debit notes for a client (firm-scoped — tenant isolation)."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             res = [d for d in MOCK_DEBIT_NOTES if d["client_id"] == client_id and not d.get("deleted_at")]
@@ -162,6 +195,7 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
         data = data.model_dump()
         firm_id = current_user.get("firm_id")
         client_id = data["client_id"]
+        assert_client_access(current_user, client_id)
         is_interstate = bool(data.get("is_interstate"))
         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
             data.get("lines", []), is_interstate)
@@ -207,6 +241,7 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
 @router.get("/{dn_id}")
 def get_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting", "read"))):
     """Single debit note with its lines — feeds the edit page and detail drawer."""
+    _assert_dn_scope(current_user, dn_id)
     try:
         if _USE_MOCK:
             dn = next((d for d in MOCK_DEBIT_NOTES if d["id"] == dn_id and not d.get("deleted_at")), None)
@@ -239,6 +274,7 @@ def update_debit_note(dn_id: str, data: DebitNoteUpdateIn, current_user: dict = 
     path is a fresh note, not an edit (CGST Act §34). notes/document_url stay
     editable regardless of status (soft fields — never touch the posted
     GST/AP figures), mirroring purchase_bills.py's draft/locked split."""
+    _assert_dn_scope(current_user, dn_id)
     try:
         data = data.model_dump(exclude_none=True)
         lines_data = data.pop("lines", None)
@@ -323,6 +359,7 @@ async def upload_debit_note_document(
     """Plain attachment upload (no AI extraction) — returns a private-bucket
     storage PATH, the same shape purchase_bills.py's document_url stores.
     Mirrors document_intelligence_v1.py's _upload_bill_document."""
+    assert_client_access(current_user, client_id)
     try:
         content = await file.read()
         firm_id = current_user.get("firm_id")
@@ -348,6 +385,7 @@ def get_debit_note_document_url(dn_id: str, current_user: dict = Depends(rbac("a
     """Mint a fresh signed URL for the note's attachment — document_url is a
     private-bucket storage PATH, not a browser-openable URL. Mirrors
     purchase_bills.py's get_purchase_bill_document_url."""
+    _assert_dn_scope(current_user, dn_id)
     try:
         if _USE_MOCK:
             dn = next((d for d in MOCK_DEBIT_NOTES if d["id"] == dn_id), None)
@@ -382,6 +420,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
     """Issue a draft debit note: relieve the linked bill's payable in the sub-ledger,
     then post the GL journal. AP sub-ledger, GL AP control and vendor statement stay
     reconciled: bill net outstanding = net_payable − paid − debited."""
+    _assert_dn_scope(current_user, dn_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
         if _USE_MOCK:
@@ -545,6 +584,7 @@ def delete_debit_note(
     full document and a status summary respectively, independent of
     whether the row itself still exists.
     """
+    _assert_dn_scope(current_user, dn_id)
     try:
         if _USE_MOCK:
             for i, dn in enumerate(MOCK_DEBIT_NOTES):

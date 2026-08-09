@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -98,6 +99,33 @@ def _current_fy_long() -> str:
     return f"{start}-{str(start + 1)[2:]}"
 
 
+def _pcn_owner(current_user: dict, pcn_id: str) -> tuple[bool, Optional[str]]:
+    """`(row_exists, client_id)` for this purchase credit note, firm-scoped.
+    Mirrors credit_notes.py's `_cn_owner` / debit_notes.py's `_dn_owner`."""
+    if _USE_MOCK:
+        d = next((x for x in MOCK_PURCHASE_CREDIT_NOTES if x.get("id") == pcn_id), None)
+        return (d is not None, d.get("client_id") if d else None)
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("purchase_credit_notes").select("client_id")
+            .eq("id", pcn_id).eq("firm_id", current_user.get("firm_id"))
+            .limit(1).execute().data) or []
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_pcn_scope(current_user: dict, pcn_id: str) -> Optional[str]:
+    """404 unless the caller may act on this purchase credit note's client.
+
+    can_access_client (not assert_client_access) and ONE fixed message for
+    every failure branch — missing, wrong firm, and right firm but
+    unassigned all read identically, so the response cannot be used as an
+    oracle for which ids exist (mirrors year_end.py's _assert_engagement_scope).
+    """
+    found, client_id = _pcn_owner(current_user, pcn_id)
+    if not found or not can_access_client(current_user, client_id):
+        raise HTTPException(status_code=404, detail="Credit note not found")
+    return client_id
+
+
 def _next_pcn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
     try:
         resp = (db.table("purchase_credit_notes").select("id", count="exact")
@@ -147,6 +175,7 @@ def list_purchase_credit_notes(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List purchase credit notes for a client (firm-scoped — tenant isolation)."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             res = [d for d in MOCK_PURCHASE_CREDIT_NOTES if d["client_id"] == client_id and not d.get("deleted_at")]
@@ -172,6 +201,7 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         data = data.model_dump()
         firm_id = current_user.get("firm_id")
         client_id = data["client_id"]
+        assert_client_access(current_user, client_id)
         is_interstate = bool(data.get("is_interstate"))
         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
             data.get("lines", []), is_interstate)
@@ -216,6 +246,7 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
 @router.get("/{pcn_id}")
 def get_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("accounting", "read"))):
     """Get a single purchase credit note with its line items."""
+    _assert_pcn_scope(current_user, pcn_id)
     try:
         if _USE_MOCK:
             d = next((x for x in MOCK_PURCHASE_CREDIT_NOTES if x["id"] == pcn_id and not x.get("deleted_at")), None)
@@ -246,6 +277,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
     correction path is a fresh note, not an edit (CGST Act §34). notes/
     document_url stay editable regardless of status — mirrors debit_notes.py's
     identical draft/locked split."""
+    _assert_pcn_scope(current_user, pcn_id)
     try:
         data = data.model_dump(exclude_none=True)
         lines_data = data.pop("lines", None)
@@ -329,6 +361,7 @@ async def upload_purchase_credit_note_document(
 ):
     """Plain attachment upload (no AI extraction). Mirrors debit_notes.py's
     upload_debit_note_document."""
+    assert_client_access(current_user, client_id)
     try:
         content = await file.read()
         firm_id = current_user.get("firm_id")
@@ -353,6 +386,7 @@ async def upload_purchase_credit_note_document(
 def get_purchase_credit_note_document_url(pcn_id: str, current_user: dict = Depends(rbac("accounting", "read"))):
     """Mint a fresh signed URL for the note's attachment. Mirrors
     debit_notes.py's get_debit_note_document_url."""
+    _assert_pcn_scope(current_user, pcn_id)
     try:
         if _USE_MOCK:
             d = next((x for x in MOCK_PURCHASE_CREDIT_NOTES if x["id"] == pcn_id), None)
@@ -390,6 +424,7 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
     (net_payable + credit_note_paise) - paid - debited. No upper bound — unlike a
     (purchase) debit note there is nothing to exceed when you're increasing what's
     owed."""
+    _assert_pcn_scope(current_user, pcn_id)
     try:
         from services.phase2_journal_service import phase2_journal_service
         if _USE_MOCK:
@@ -536,6 +571,7 @@ def delete_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("
     The row is genuinely removed (not soft-deleted): the create/delete
     audit_log events already capture the full document and a status summary
     respectively, independent of whether the row itself still exists."""
+    _assert_pcn_scope(current_user, pcn_id)
     try:
         if _USE_MOCK:
             for i, d in enumerate(MOCK_PURCHASE_CREDIT_NOTES):

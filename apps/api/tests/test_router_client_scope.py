@@ -376,6 +376,24 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/clients": (
         "effective_client_ids", "_assert_firm", "can_access_client",
     ),
+    # credit_notes.py, debit_notes.py, purchase_credit_notes.py,
+    # sales_debit_notes.py — the four GST note-type routers. None imported
+    # core.authz at all before this fix, the same shape as sales_invoices.py/
+    # purchase_bills.py before THEIR fix earlier in this sweep. list_*/
+    # create_* took client_id from the query/body and never checked it;
+    # get_*/update_*/issue_*/delete_* (and debit_notes.py's/
+    # purchase_credit_notes.py's upload/document-url pair, which mints a live
+    # signed Storage URL) are row-addressed and checked only firm_id. Each
+    # resolver uses can_access_client with ONE fixed message covering every
+    # failure branch (missing / wrong firm / right firm but unassigned) in
+    # BOTH mock and live mode — the year_end.py `_assert_engagement_scope`
+    # shape, not the older permissive-in-mock/id-embedded-message shape
+    # sales_invoices.py used. Confirmed disjoint prefixes — each string is
+    # owned by exactly one router file.
+    "/api/credit-notes": ("assert_client_access", "can_access_client", "_assert_cn_scope"),
+    "/api/debit-notes": ("assert_client_access", "can_access_client", "_assert_dn_scope"),
+    "/api/purchase-credit-notes": ("assert_client_access", "can_access_client", "_assert_pcn_scope"),
+    "/api/sales-debit-notes": ("assert_client_access", "can_access_client", "_assert_sdn_scope"),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -665,7 +683,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/portal/document-requests": 3, "/api/portal/messages": 2,
               "/api/portal/dues": 1, "/api/portal/clients": 2,
               "/api/portal/contacts": 2,
-              "/api/clients": 7}
+              "/api/clients": 7,
+              "/api/credit-notes": 6, "/api/debit-notes": 8,
+              "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6}
 
 
 def _code_only(src: str) -> str:
@@ -847,7 +867,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.invoices", "routers.ai_copilot_v2", "routers.health",
                    "routers.year_end_adjustments", "routers.itr_workspace",
                    "routers.year_end", "routers.portal", "routers.portal_access",
-                   "routers.clients"):
+                   "routers.clients", "routers.credit_notes", "routers.debit_notes",
+                   "routers.purchase_credit_notes", "routers.sales_debit_notes"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
