@@ -281,6 +281,16 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "can_access_client", "filter_by_client",
         "_assert_engagement_scope",
     ),
+    # year_end_checklist.py — the standard 12-item checklist, addressed by
+    # engagement_id (list, PATCH by item_id). "/checklist" is a literal
+    # segment that string-prefix-collides with nothing else under
+    # "/api/year-end" (siblings use "/adjustments", "/reviews", "/exports",
+    # "/notes", "/financial-statements", "/schedules", "/engagements",
+    # "mappings"). Delegates to year_end.py's _assert_engagement_scope by
+    # name, same pattern as year_end_reviews.py.
+    "/api/year-end/{engagement_id}/checklist": (
+        "can_access_client", "_assert_engagement_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -538,7 +548,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/copilot": 17, "/api/health": 13,
               "/api/year-end/{engagement_id}/adjustments": 7,
               "/api/itr": 17, "/api/platform": 9,
-              "/api/year-end/engagements": 9}
+              "/api/year-end/engagements": 9,
+              "/api/year-end/{engagement_id}/checklist": 2}
 
 
 def _code_only(src: str) -> str:

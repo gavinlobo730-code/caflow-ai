@@ -32,8 +32,14 @@ def _client_for(app: FastAPI, user: dict) -> TestClient:
 @pytest.fixture
 def checklist_app(monkeypatch):
     import routers.year_end_checklist as mod
+    import routers.year_end as year_end_mod
     db = FakeDB()
     monkeypatch.setattr(mod, "_USE_MOCK", False)
+    # _assert_engagement_scope lives in routers.year_end and is called by
+    # name from routers.year_end_checklist (client-assignment scope fix) —
+    # its own _USE_MOCK flag governs which branch it takes, independently
+    # of year_end_checklist's, so it has to be flipped here too.
+    monkeypatch.setattr(year_end_mod, "_USE_MOCK", False)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
     app = FastAPI()
     app.include_router(mod.router)
