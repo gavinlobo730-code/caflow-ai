@@ -17,6 +17,17 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+# M2 audit finding: every endpoint below resolved its engagement by firm_id
+# alone (_get_engagement, live mode) or not at all (_mock_engagement_meta,
+# mock mode — checked existence only, not even firm_id); list_versions and
+# get_version didn't resolve the engagement at all, applying only an inline
+# firm_id filter in live mode and no tenancy check whatsoever in mock mode.
+# Delegates to year_end.py's own _assert_engagement_scope rather than a
+# fourth copy of the same check (year_end_reviews.py, year_end_checklist.py
+# already delegate the same way) — also closes the same
+# .single()-raises-on-zero-rows bug _get_engagement had, already fixed
+# elsewhere in this sweep.
+from routers.year_end import _assert_engagement_scope
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -30,35 +41,6 @@ _VALID_SCHEDULE_TYPES = {
 # ── Mock version store ────────────────────────────────────────────────────────
 # engagement_id → list of version snapshots
 _MOCK_VERSIONS: dict[str, list[dict]] = {}
-
-
-def _get_engagement(engagement_id: str, firm_id: str) -> dict:
-    """Fetch engagement from DB and enforce firm isolation."""
-    from core.supabase_client import get_supabase
-    db = get_supabase()
-    row = (
-        db.table("year_end_engagements")
-        .select("*")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    return row
-
-
-def _mock_engagement_meta(engagement_id: str) -> dict:
-    try:
-        from routers.year_end import _MOCK_ENGAGEMENTS
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
-        if not eng:
-            raise HTTPException(status_code=404, detail="Engagement not found")
-        return eng
-    except ImportError:
-        raise HTTPException(status_code=503, detail="Engagement service unavailable")
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -82,11 +64,13 @@ def get_financial_statements(
     """
     from services.year_end_financial_service import generate_financial_statements
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
     if _USE_MOCK:
-        eng = _mock_engagement_meta(engagement_id)
         supabase = None
     else:
-        eng = _get_engagement(engagement_id, current_user["firm_id"])
         from core.supabase_client import get_supabase
         supabase = get_supabase()
 
@@ -116,11 +100,13 @@ def create_snapshot(
     """
     from services.year_end_financial_service import generate_financial_statements
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
     if _USE_MOCK:
-        eng = _mock_engagement_meta(engagement_id)
         supabase = None
     else:
-        eng = _get_engagement(engagement_id, current_user["firm_id"])
         from core.supabase_client import get_supabase
         supabase = get_supabase()
 
@@ -188,6 +174,11 @@ def list_versions(
     engagement_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: never resolved the engagement at all — live mode
+    # applied only an inline firm_id filter on the versions table, mock
+    # mode had no tenancy check whatsoever.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         return api_response(True, _MOCK_VERSIONS.get(engagement_id, []))
 
@@ -211,6 +202,9 @@ def get_version(
     version_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: never resolved the engagement at all.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         versions = _MOCK_VERSIONS.get(engagement_id, [])
         ver = next((v for v in versions if v["id"] == version_id), None)
@@ -220,16 +214,24 @@ def get_version(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    row = (
-        db.table("financial_statement_versions")
-        .select("*")
-        .eq("id", version_id)
-        .eq("engagement_id", engagement_id)
-        .eq("firm_id", current_user["firm_id"])
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        row = (
+            db.table("financial_statement_versions")
+            .select("*")
+            .eq("id", version_id)
+            .eq("engagement_id", engagement_id)
+            .eq("firm_id", current_user["firm_id"])
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Supabase's real .single() raises (PGRST116) rather than returning
+        # None on zero rows — without this a missing version_id crashes to
+        # 500 instead of the 404 below. Found while touching this endpoint
+        # for the M2 fix above; same shape already fixed elsewhere in this
+        # sweep.
+        row = None
     if not row:
         raise HTTPException(status_code=404, detail="Version not found")
     return api_response(True, row)
@@ -252,10 +254,10 @@ def get_schedule(
                    f"Must be one of: {sorted(_VALID_SCHEDULE_TYPES)}",
         )
 
-    if _USE_MOCK:
-        eng = _mock_engagement_meta(engagement_id)
-    else:
-        eng = _get_engagement(engagement_id, current_user["firm_id"])
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
 
     # Mock schedule data — all values in integer paise
     mock_schedules: dict = {
