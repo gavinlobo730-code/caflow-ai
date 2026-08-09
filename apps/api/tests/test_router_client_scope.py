@@ -703,6 +703,64 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # protection and idempotency inside payment_service — there is no
     # current_user for a client-assignment check to run against.
     "/api/payments": ("can_access_client",),
+    # insights.py — the LEGACY /api/insights alias over the same ai_insights
+    # table ai_insights.py serves under /api/ai-insights (both are mounted;
+    # the frontend's lib/api/index.ts calls this one). list_insights already
+    # used filter_by_client pre-phase. update_insight_status is row-addressed
+    # by insight_id and ai_insights_repo.update_status filters on firm_id
+    # alone — the newer router's identically-named _assert_insight_scope
+    # resolver closed exactly this hole for the ack/dismiss transitions and
+    # this alias kept it open for the generic status transition.
+    "/api/insights": (
+        "assert_client_access", "filter_by_client", "_assert_insight_scope",
+    ),
+    # assignments.py — M3 client-assignment administration. Mounts the MFA
+    # guard, NOT main.py's _CLIENT_GUARD, so nothing was checking client_id
+    # for it. list_client_assignments (assignment:read = Manager+) let a
+    # Manager enumerate the staff roster of any client in the firm.
+    # list_user_assignments was the sharper one: addressed by a STAFF
+    # user_id, so there is no client_id to gate — a Manager could pass a
+    # colleague's user_id and read back that person's ENTIRE client book,
+    # defeating the M3 "one manager cannot see another manager's book"
+    # decision core.authz is built around. Narrowed with effective_client_ids
+    # (None for the Partner, who still sees the full list) rather than
+    # refused outright, so the legitimate "who else works on MY clients"
+    # question still answers. create/bulk/remove are Partner-only by RBAC —
+    # the sole firm-wide role — so their assert_client_access can never deny
+    # a real caller today; it is the fail-closed default for if assignment
+    # administration is ever opened to Manager, where granting yourself
+    # access to a client outside your own book is the escalation Module 9
+    # exists to prevent. Same convention as billing.py's Partner-only routes.
+    "/api/assignments": ("assert_client_access", "effective_client_ids"),
+    # risks.py — the risk register (document_risks.client_id NOT NULL,
+    # migration 004, plus risks derived from compliance_records).
+    # list_risks took client_id from the query string and only ever narrowed
+    # it INTO the firm-scoped query; with client_id omitted — the default —
+    # it returned every client's risks in the firm, each row carrying
+    # client_id AND client_name. filter_by_client covers both. client_risks
+    # is addressed directly by client_id and had no check at all.
+    # update_risk_status is row-addressed by risk_id (so main.py's
+    # _CLIENT_GUARD never fires on it) and domain/risk_engine.update_risk
+    # scopes its UPDATE by id+firm_id only; new get_risk lookup in the engine
+    # + _assert_risk_scope resolver in the router (can_access_client, one
+    # fixed "Risk not found" message — already the pre-existing text) closes
+    # it. risk_stats and firm_score are EXEMPT below.
+    "/api/risks": (
+        "assert_client_access", "filter_by_client", "_assert_risk_scope",
+    ),
+    # notifications.py — the in-app notification feed. notifications.client_id
+    # is nullable (migration 004): a notification is EITHER about a client or
+    # firm-level. This router mounts no client guard at all, and
+    # create_notification wrote body.client_id straight into the row with no
+    # check anywhere — an unassigned caller could plant a notification
+    # against another staff member's client. list_notifications is
+    # recipient-scoped (user_id=caller) and so was never cross-user, but a
+    # notification about a client the recipient has since been UNASSIGNED
+    # from should stop being readable, the same rule the underlying record
+    # obeys — hence filter_by_client. The five remaining routes are
+    # recipient-owned tallies and transitions with no client_id in them at
+    # all; all EXEMPT below.
+    "/api/notifications": ("assert_client_access", "filter_by_client"),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -1154,6 +1212,35 @@ EXEMPT: dict[str, str] = {
         "assignment check to run against. Protected instead by provider "
         "signature verification, replay protection (unique "
         "provider_event_id) and idempotency, all inside payment_service.",
+    # risks.py — the two firm-wide aggregates.
+    "/api/risks/stats":
+        "counts by severity plus a resolved tally across the firm. No client "
+        "is named and no per-client figure is returned — the same line drawn "
+        "for /api/tasks/summary/dashboard and /api/lifecycle/dashboard. The "
+        "counts ARE derived from client rows, which is stated rather than "
+        "glossed over.",
+    "/api/risks/firm/score":
+        "a single 0-100 integer: the severity-weighted average over the "
+        "firm's open risks. Nothing per-client is returned at all.",
+    # notifications.py — the recipient-owned routes. Every one is already "
+    # scoped by user_id=the caller's own id, which is STRICTLER than a
+    # client-assignment check: they read and write only the caller's own
+    # inbox, never another staff member's.
+    "/api/notifications/count":
+        "the caller's own unread tally (count_unread(user_id=caller)) — one "
+        "integer, no client named.",
+    "/api/notifications/read-all":
+        "marks the CALLER's own notifications read (mark_all_read("
+        "user_id=caller)). Touches no other user's row and names no client.",
+    "/api/notifications/{notification_id}/read":
+        "addressed by id but scoped by firm_id AND user_id=the caller, so it "
+        "can only ever transition the caller's own notification — a stricter "
+        "gate than client assignment, not a looser one.",
+    "/api/notifications/{notification_id}/archive":
+        "same table, same recipient scoping, the archive transition.",
+    "/api/notifications/stats":
+        "firm-wide counts by type/severity. No client is named and no "
+        "per-client figure is returned.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -1201,7 +1288,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
               "/api/public/engagement-letters": 3,
               "/api/receipts": 5, "/api/purchase-payments": 5,
-              "/api/document-intelligence-v2": 5, "/api/payments": 6}
+              "/api/document-intelligence-v2": 5, "/api/payments": 6,
+              "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
+              "/api/notifications": 7}
 
 
 def _code_only(src: str) -> str:
@@ -1391,7 +1480,9 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.compliance", "routers.compliance_ops",
                    "routers.ai_insights", "routers.eway_bill",
                    "routers.inventory", "routers.receipts",
-                   "routers.purchase_payments", "routers.document_intelligence_v2"):
+                   "routers.purchase_payments", "routers.document_intelligence_v2",
+                   "routers.insights", "routers.assignments", "routers.risks",
+                   "routers.notifications"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
