@@ -2118,6 +2118,147 @@ several are cheap because the data is already in the narration.
    `/api/document-intelligence-v2`, `/api/payments`, `/api/public`), and a
    long tail mostly in the 1-2 range (28 unique top-level path groups, 63
    routes total).
+
+   **Also fixed 2026-08-09 — the next worst-first trio: `accounting.py`,
+   `approvals.py`, `xbrl_engine.py`.** `approvals.py` (Module 9.0/M4
+   maker-checker governance inbox) turned out EXEMPT, not a gap:
+   `approval_requests` has a `firm_id` and NO `client_id` column at all
+   (migration 083) — a governance request (user create/activate, role
+   change, client-assignment change, COA change) is a firm object, not a
+   client's. `assignment_create`/`assignment_remove`/`assignment_transfer`
+   name a `client_id` *inside their JSONB payload*, but the row itself has
+   no client column to check assignment against, and RBAC already restricts
+   the inbox to Manager+ (read) and Partner-only (approve). Registered with
+   an empty check-tuple plus a per-path `EXEMPT` entry for all 6 unique
+   paths (7 routes), the `dsc.py`/`firm_hsn_library.py`/`identity.py`
+   treatment.
+
+   `accounting.py` and `xbrl_engine.py` were both real gaps.
+   `chart_of_accounts.client_id` is NULLABLE (migration 003: NULL =
+   firm-level template); `journal_entries.client_id` is NOT NULL (every
+   journal belongs to exactly one client); `xbrl_packages.client_id` is NOT
+   NULL (migration 156). `list_journal_entries`/`create_journal_entry`/
+   `post_opening_balances_endpoint`/`list_journals_queue` (accounting.py)
+   and `create_package`/`list_packages` (xbrl_engine.py) took `client_id`
+   from the query/body and never checked it. `update_account` and
+   `post_journal_entry` (`PATCH /journal/{entry_id}/post`, the legacy
+   in-memory engine that is never Supabase-backed regardless of
+   `SUPABASE_URL` — see the module note above `create_journal_entry`) had
+   NO check at all, not even `firm_id`. `update_package_data`/
+   `validate_package`/`generate_xml`/`review_package` (xbrl_engine.py) are
+   row-addressed by `package_id` and checked only `firm_id` — an unassigned
+   Executive (`year_end.write`) or Manager (`year_end.approve`) could read,
+   edit, validate, generate XML for, or mark reviewed another staff
+   member's assigned client's Balance Sheet and P&L. New resolvers
+   (`_assert_account_scope`, `_assert_journal_scope`,
+   `_assert_package_scope`) all use `can_access_client` with ONE fixed,
+   non-id-embedding message per resource, the `year_end.py`
+   `_assert_engagement_scope` shape — replacing the id-embedded
+   `NotFoundError` text `update_account`/`post_journal_entry` raised
+   before. `list_journal_entries` (client_id omitted) now narrows with
+   `filter_by_client`; `list_journals_queue` threads `effective_client_ids`
+   into a new `allowed_client_ids` parameter on
+   `journal_posting_service.list_journals`, filtered in Python (not pushed
+   into the query as `.in_()`) to match the `effective_client_ids`
+   convention used elsewhere (`task_extras_repository`,
+   `ai_copilot_service`) — an empty assigned set means "see nothing", which
+   an empty `.in_()` list does not reliably express in PostgREST.
+
+   `post_draft_journal` (`/journals/{journal_id}/post`) and
+   `reverse_journal_entry` (`/journal/{entry_id}/reverse`) require
+   `accounting.approve`, Partner-only by RBAC (the sole firm-wide role) —
+   M2 cannot be bypassed by construction there, so the new checks
+   (`_assert_draft_scope`, and an inline `can_access_client` check on the
+   already-fetched `orig` row) close only the firm-**boundary** half, the
+   `billing.py` `record_fee_receipt` convention rather than the
+   `reconciliation.py` "no code needed" one — unlike `reconciliation.py`,
+   these two had no existing check to find. The seven reporting endpoints
+   (`ledger`/`trial-balance`/`profit-loss`/`balance-sheet`/`schedule-iii`/
+   `cash-flow`/`statement-analysis`) now check a **named** `client_id`; the
+   `client_id=None` "firm-wide consolidation" case is **recorded, not
+   fixed** — `"accounting"` read is `_AT_LEAST_EXECUTIVE`, not Partner-only,
+   so a non-firm-wide caller who simply omits `client_id` still gets the
+   whole firm's aggregated financial statements. Correctly narrowing that
+   means threading `effective_client_ids` through `domain/reporting.py`'s
+   `ReportingService` and both its Supabase and mock sources — a bigger
+   lift than a guard, the same line already drawn for
+   `/api/copilot/intelligence/*` and `/api/copilot/executive-dashboard`.
+
+   **Two unrelated bugs found while reading these files, neither fixed
+   here.** (1) Chart-of-Accounts CRUD (`GET`/`POST /accounts`, `PATCH
+   /accounts/{account_id}`) and the legacy `PATCH /journal/{entry_id}/post`
+   always operate on `domain/accounting_service.py`'s shared in-memory
+   Python dicts, regardless of `SUPABASE_URL` — unlike every other
+   accounting endpoint, which branches to a real Supabase-backed service in
+   production. A real firm's Chart of Accounts edits never persist; the
+   endpoint always reads and writes the same fake demo seed data every
+   firm's requests share. `AccountIn` also has no `client_id` field at all,
+   so a client-specific account can never be created through the public API
+   even though the schema supports one — both are product/correctness gaps
+   independent of client-scope, out of proportion to a worst-first authz
+   pass. (2) `xbrl_engine.py`'s `validate_package` (success branch) and
+   `review_package` (unconditionally) call `timeline_service.log(...,
+   action=..., metadata=...)` — `TimelineService.log()` has neither
+   parameter (only its sibling `log_timeline_event` does), so every real
+   call on that path 500s. The same misuse pattern is not confined to this
+   file: `tally_migration.py`'s `execute_import` (non-dry-run completion),
+   `form_26as.py`'s reconciliation-complete handler, and
+   `domain/income_tax/form26as_service.py`'s mismatch-insight helper all
+   call `timeline_service.log()` the same wrong way — five call sites
+   across four files, all silently broken on their success path. Recorded
+   here rather than fixed, the same reasoning as the `.single()`-raises
+   bug already found (and left) in seven other files this sweep — a real
+   correctness question, independent of M2, and a bigger fix than this
+   phase's scope. The new tests for `xbrl_engine.py` neutralise
+   `timeline_service.log` (the same way `tests/e2e_harness.py`'s
+   `wire_e2e` does for the identical singleton) so they exercise the authz
+   guard, not this pre-existing crash.
+
+   **72 new tests, all passing on first run** (29 for `accounting.py` —
+   mock-mode deny/allow pairs for every endpoint, hidden-vs-missing
+   message-oracle checks using the SAME id, e2e `FakeDB` tests for the
+   three Partner-only endpoints that query `journal_entries` directly and
+   short-circuit before the guard in mock mode; 14 for `xbrl_engine.py`,
+   mock-mode only since the router delegates entirely to
+   `domain/income_tax/xbrl_service.py`'s own `_MOCK_PACKAGES` store, the
+   `tally_migration.py` shape). `approvals.py` needed no test file — a
+   pure-`EXEMPT` router, the `dsc.py`/`identity.py`/`platform.py`
+   convention. **28 mutants, all killed** (every new
+   `assert_client_access`/`can_access_client`/`filter_by_client`/
+   `effective_client_ids`/`_assert_account_scope`/`_assert_draft_scope`/
+   `_assert_journal_scope`/`_assert_package_scope` call site across
+   `accounting.py`, `journal_posting_service.py` and `xbrl_engine.py`).
+   Full suite identical to the 44-failure baseline (`git stash -u` diff,
+   byte for byte).
+
+   **Still open, recounted the same way:** **49** id-addressed routes (down
+   from 63). The recount method, made explicit here for the first time:
+   walk `app.routes`, keep only `/api/*` routes not already under an
+   `AUDITED` prefix and not part of the out-of-scope client-portal-login
+   surface (`/api/portal/self`, `/api/portal/me`, `/api/portal/dashboard`,
+   `/api/portal/memberships`, `/api/portal/accept-invite`), then keep only
+   those whose path
+   contains ANY `{...}` parameter — not just ones spelled `{..._id}`, which
+   undercounts by missing `/api/payments/webhook/{provider}` and
+   `/api/public/engagement-letters/{token}`. `/api/accounting`
+   (`{account_id}`, `{journal_id}`, and the two `{entry_id}` routes),
+   `/api/approvals` (`{request_id}` and its three sub-actions) and
+   `/api/xbrl` (the four `{package_id}` routes) account for exactly 12 of
+   the 14-route drop this walk finds; the residual 2 is a small pre-existing
+   gap between this walk and the "63" figure printed by the previous entry
+   that predates this phase and was not chased down — recorded rather than
+   quietly absorbed into the new total. All twelve of this phase's routes
+   are now either genuinely guarded or `EXEMPT` with a written reason
+   rather than silently dropped. Worst first: a cluster of nine at 3 each
+   (`/api/ai-insights`, `/api/eway-bill`, `/api/inventory`,
+   `/api/receipts`, `/api/compliance`, `/api/purchase-payments`,
+   `/api/document-intelligence-v2`, `/api/payments`, `/api/public`), then
+   `/api/assignments`, `/api/documents`, `/api/einvoice`,
+   `/api/fixed-assets`, `/api/form-26as`, `/api/notifications`,
+   `/api/risks` at 2 each, and a long tail of eight 1-route paths
+   (`/api/ai-copilot`, `/api/automation`, `/api/firm-hsn-rate-history`,
+   `/api/income-tax`, `/api/insights`, `/api/party-credits`, `/api/team`,
+   `/api/workload`) — 24 unique top-level path groups, 49 routes total.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

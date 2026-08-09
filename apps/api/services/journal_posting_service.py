@@ -34,8 +34,17 @@ class JournalPostingService:
 
     # ── Approval queue (Draft / Posted) ───────────────────────────────────────
     def list_journals(self, db, firm_id: str, client_id: Optional[str],
-                      status: str = "draft") -> list[dict]:
-        q = db.table("journal_entries").select(self._SELECT).eq("firm_id", firm_id).is_("deleted_at", "null")
+                      status: str = "draft",
+                      allowed_client_ids: Optional[set[str]] = None) -> list[dict]:
+        """`allowed_client_ids` narrows an omitted `client_id` to the caller's own
+        assigned book (M2) — None means firm-wide (a firm-wide role, or a
+        specific client_id already named and checked by the router). Filtered in
+        Python, not pushed into the query, matching the effective_client_ids
+        convention used elsewhere (task_extras_repository, ai_copilot_service) —
+        an empty assigned set means "see nothing", which an empty `.in_()` list
+        does not reliably express in PostgREST."""
+        q = db.table("journal_entries").select("client_id, " + self._SELECT).eq(
+            "firm_id", firm_id).is_("deleted_at", "null")
         if client_id:
             q = q.eq("client_id", client_id)
         if status == "draft":
@@ -43,6 +52,8 @@ class JournalPostingService:
         elif status == "posted":
             q = q.eq("is_posted", True)
         rows = q.order("created_at", desc=True).execute().data or []
+        if not client_id and allowed_client_ids is not None:
+            rows = [r for r in rows if str(r.get("client_id")) in allowed_client_ids]
         return [self._summarise(r) for r in rows]
 
     def _summarise(self, r: dict) -> dict:

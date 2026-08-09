@@ -475,6 +475,55 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "can_access_client", "filter_by_client",
         "_assert_job_scope",
     ),
+    # accounting.py — Chart of Accounts, Journal Entries, Ledger, Trial
+    # Balance, P&L, Balance Sheet. chart_of_accounts.client_id is NULLABLE
+    # (migration 003: NULL = firm-level template); journal_entries.client_id
+    # is NOT NULL (every journal belongs to exactly one client).
+    # list_journal_entries/create_journal_entry/post_opening_balances_endpoint/
+    # list_journals_queue took client_id from the query/body and never
+    # checked it. update_account/post_journal_entry (the row-addressed,
+    # legacy in-memory engine — see the module note above
+    # create_journal_entry) are row-addressed and had NO check at all, not
+    # even firm_id; _assert_account_scope/_assert_journal_scope replace the
+    # id-embedded NotFoundError text with ONE fixed message covering missing
+    # and hidden alike (year_end.py's shape). post_draft_journal
+    # (/journals/{journal_id}/post) and reverse_journal_entry
+    # (/journal/{entry_id}/reverse) require `accounting.approve`, Partner-only
+    # by RBAC (the sole firm-wide role) — M2 cannot be bypassed by
+    # construction there, so _assert_draft_scope and the inline
+    # can_access_client check close only the firm-BOUNDARY half, the same
+    # convention billing.py's Partner-only record_fee_receipt used. The seven
+    # reporting endpoints (ledger/trial-balance/profit-loss/balance-sheet/
+    # schedule-iii/cash-flow/statement-analysis) now check a NAMED client_id;
+    # the client_id=None "firm-wide consolidation" case is recorded, not
+    # fixed — see get_ledger's docstring and the audit doc, the same line
+    # drawn for /api/copilot/intelligence/*.
+    "/api/accounting": (
+        "assert_client_access", "can_access_client", "filter_by_client",
+        "_assert_account_scope", "_assert_draft_scope", "_assert_journal_scope",
+    ),
+    # approvals.py — Module 9.0/M4 maker-checker governance inbox.
+    # approval_requests has a firm_id and NO client_id column at all
+    # (migration 083) — a request (user create/activate, role change,
+    # client-assignment change, COA change) is a FIRM governance object, not
+    # a client's. assignment_create/assignment_remove/assignment_transfer
+    # name a client_id inside their JSONB payload, but the ROW ITSELF has no
+    # client column to check assignment against — there is no narrower scope
+    # to apply than the RBAC already in place (read: Manager+, approve:
+    # Partner-only, core/permissions.py). Every route is EXEMPT below.
+    "/api/approvals": (),
+    # xbrl_engine.py — MCA XBRL package generation. xbrl_packages.client_id
+    # is NOT NULL (migration 156). create_package/list_packages took
+    # client_id from the body/query and never checked it; update_package_data/
+    # validate_package/generate_xml/review_package are row-addressed by
+    # package_id and checked only firm_id — an unassigned Executive (write)
+    # or Manager (approve) could read/edit/validate/generate-XML/review
+    # another staff member's assigned client's Balance Sheet and P&L data.
+    # _assert_package_scope is the year_end.py-shaped resolver (can_access_
+    # client, ONE fixed "XBRL package not found." message) in both mock and
+    # live mode. get_tag_mappings is the one EXEMPT route — the statutory
+    # Schedule III -> XBRL tag table, identical for every firm and client.
+    "/api/xbrl": ("assert_client_access", "can_access_client", "_assert_package_scope"),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -831,6 +880,44 @@ EXEMPT: dict[str, str] = {
         "never a client_id.",
     "/api/identity/login-event":
         "records the CALLER's own sign-in/sign-out event. No client_id.",
+    # accounting.py — the two firm-level path groups.
+    "/api/accounting/accounts":
+        "AccountIn (models/accounting.py) has no client_id field at all — the "
+        "public API can only ever create a firm-level account; "
+        "chart_of_accounts.client_id IS nullable (migration 003, NULL = "
+        "firm-level template) but nothing here ever sets it. Covers GET "
+        "(list_accounts) and POST (create_account), which share this path. "
+        "A client-specific Chart of Accounts is a real schema capability "
+        "the API never exposes — recorded as a product gap in the audit "
+        "doc, not a client-scope one.",
+    "/api/accounting/year-lock":
+        "firms.locked_financial_years (migration 136) is a firm-level "
+        "financial-year lock, no client_id — the whole firm's books lock "
+        "together for a given FY. Covers GET (get_year_lock) and POST "
+        "(set_year_lock, Partner-only), which share this path.",
+    # approvals.py — every route, approval_requests has no client_id column
+    # at all (migration 083). See the AUDITED entry above for the full
+    # reasoning; each entry below just names the path it covers.
+    "/api/approvals":
+        "approval_requests has a firm_id and NO client_id column (migration "
+        "083) — a governance request is a firm object. Covers GET "
+        "(list_approvals) and POST (create_approval), which share this path.",
+    "/api/approvals/types":
+        "the static REQUEST_TYPES tuple. No stored data read at all.",
+    "/api/approvals/{request_id}":
+        "same table, addressed by id (get_approval).",
+    "/api/approvals/{request_id}/approve":
+        "same table, the approve transition (Partner-only, MFA-guarded).",
+    "/api/approvals/{request_id}/reject":
+        "same table, the reject transition (Partner-only, MFA-guarded).",
+    "/api/approvals/{request_id}/cancel":
+        "same table, the cancel transition (requester or Partner only, "
+        "enforced by services/approval_service.cancel).",
+    # xbrl_engine.py — the one route with no client at all.
+    "/api/xbrl/tag-mappings":
+        "the statutory Schedule III -> MCA XBRL taxonomy tag table "
+        "(domain/income_tax/xbrl_service.DEFAULT_MAPPINGS) — identical for "
+        "every firm and every client, no stored data read.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -872,7 +959,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 9,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
-              "/api/identity": 11, "/api/tally-migration": 7}
+              "/api/identity": 11, "/api/tally-migration": 7,
+              "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7}
 
 
 def _code_only(src: str) -> str:
@@ -1057,7 +1145,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.clients", "routers.credit_notes", "routers.debit_notes",
                    "routers.purchase_credit_notes", "routers.sales_debit_notes",
                    "routers.service_catalogue", "routers.time_tracking",
-                   "routers.tally_migration"):
+                   "routers.tally_migration", "routers.accounting",
+                   "routers.xbrl_engine"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

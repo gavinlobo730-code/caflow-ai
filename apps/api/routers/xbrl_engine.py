@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -41,6 +42,7 @@ def create_package(
     current_user: dict = Depends(rbac("year_end", "write")),
 ):
     """Create XBRL package for a client financial year."""
+    assert_client_access(current_user, req.client_id)
     from domain.income_tax.xbrl_service import create_xbrl_package
     try:
         pkg = create_xbrl_package(
@@ -61,8 +63,30 @@ def list_packages(
     client_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    assert_client_access(current_user, client_id)
     from domain.income_tax.xbrl_service import list_xbrl_packages
     return api_response(True, list_xbrl_packages(current_user["firm_id"], client_id))
+
+
+def _assert_package_scope(current_user: dict, package_id: str) -> dict:
+    """Resolve an XBRL package and check the caller may reach its client.
+
+    xbrl_packages.client_id is NOT NULL (migration 156) — every package
+    belongs to exactly one client. ONE fixed message covers missing and
+    hidden alike (year_end.py's `_assert_engagement_scope` shape), in both
+    mock and live mode.
+    """
+    from domain.income_tax.xbrl_service import _USE_MOCK, _MOCK_PACKAGES, _supabase
+    if _USE_MOCK:
+        pkg = _MOCK_PACKAGES.get(package_id)
+    else:
+        res = (_supabase().table("xbrl_packages").select("id, client_id")
+               .eq("id", package_id).eq("firm_id", current_user["firm_id"])
+               .limit(1).execute())
+        pkg = (res.data or [None])[0]
+    if not pkg or not can_access_client(current_user, pkg.get("client_id")):
+        raise HTTPException(404, detail="XBRL package not found.")
+    return pkg
 
 
 @router.put("/packages/{package_id}/data")
@@ -72,6 +96,7 @@ def update_package_data(
     current_user: dict = Depends(rbac("year_end", "write")),
 ):
     """Update Schedule III data in XBRL package. Amounts must be in integer paise."""
+    _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import update_xbrl_data
     try:
         result = update_xbrl_data(
@@ -95,6 +120,7 @@ def validate_package(
     Validate XBRL package against MCA taxonomy.
     Checks mandatory tags, data types, and balancing equations.
     """
+    _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import validate_xbrl_package
     try:
         result = validate_xbrl_package(current_user["firm_id"], package_id)
@@ -123,6 +149,7 @@ def generate_xml(
     Generate XBRL XML from validated package.
     # CA REVIEW REQUIRED — DO NOT AUTO-FILE to MCA portal
     """
+    _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import generate_xbrl_xml
     try:
         xml = generate_xbrl_xml(
@@ -148,6 +175,7 @@ def review_package(
     current_user: dict = Depends(rbac("year_end", "approve")),
 ):
     """Mark XBRL package as CA-reviewed."""
+    _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import _supabase, _USE_MOCK, _MOCK_PACKAGES
     from datetime import datetime, timezone
     update = {
