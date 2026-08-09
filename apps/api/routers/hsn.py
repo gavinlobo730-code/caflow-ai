@@ -23,6 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.hsn")
@@ -104,6 +105,19 @@ async def search_hsn(
     frequently used codes first (rate-bearing, from history), then the rest of
     the firm's own library — de-duped by code. Each row carries a pre-fill
     hint: description, GST rate (bps) and unit (UQC)."""
+    # hsn_sac_preferences is per-client usage history — when a client_id is
+    # supplied this reads that client's book, so it needs the same check as any
+    # other client-scoped read (mount-guard-covered; explicit so it is visible).
+    # No client_id means a firm-level library search with nothing to check.
+    #
+    # OUTSIDE the try on purpose: the handler ends in a blanket
+    # `except Exception -> api_response(False, ...)`, and HTTPException is an
+    # Exception, so a check placed inside would be swallowed into a generic
+    # "Unable to search" 200 — the denial silently downgraded to a soft error.
+    # Same trap as einvoice.py's IRN routes.
+    if client_id:
+        assert_client_access(current_user, client_id)
+
     try:
         term = _SAFE_Q.sub(" ", (q or "").strip()).strip()
         if _USE_MOCK:

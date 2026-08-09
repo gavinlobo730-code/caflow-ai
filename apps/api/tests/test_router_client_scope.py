@@ -829,6 +829,24 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/fixed-assets": (
         "assert_client_access", "can_access_client",
     ),
+    # analytics.py — three of the five routes build NAMED per-client lists
+    # (client_name alongside revenue, cost, margin, realization rate). clients
+    # was already narrowed by the M6 #6 fix; profitability and
+    # revenue-vs-effort were not, and handed an unassigned Executive the
+    # commercial position of the firm's entire book. Firm-level TOTALS are
+    # deliberately left firm-wide in all three — they name no client, the same
+    # line drawn for /api/copilot/intelligence/* and the task dashboard.
+    "/api/analytics": ("effective_client_ids",),
+    # intelligence.py — compliance-risk, relationship-health and
+    # recommendations each emit one row PER CLIENT with client_name, and none
+    # of the three services had a narrowing parameter at all. Added
+    # allowed_client_ids (the F2 convention) rather than filtering in the
+    # router, because compute_recommendations is built entirely from the other
+    # two plus journal-suggestions — narrowing at the source covers all four.
+    "/api/intelligence": ("assert_client_access", "effective_client_ids"),
+    "/api/hsn": ("assert_client_access",),
+    "/api/fx-reports": ("assert_client_access",),
+    "/api/currencies": ("assert_client_access",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -1323,6 +1341,29 @@ EXEMPT: dict[str, str] = {
         "book. Covers GET (list_capacity) and PUT (set_capacity), which "
         "share this path.",
     # team.py — the role change.
+    # analytics.py — the two routes that aggregate over STAFF, not clients.
+    "/api/analytics/team":
+        "per-EMPLOYEE task counts and hours (users joined to tasks by "
+        "assigned_to/assignee_id). Names staff, never a client — the same "
+        "reasoning as /api/workload/capacity and /api/team/{user_id}/role.",
+    "/api/analytics/firm":
+        "firm-level totals only — task counts, active-client COUNT, revenue "
+        "sum, hours. No client is named and no per-client figure is returned, "
+        "the same line drawn for /api/copilot/intelligence/* and "
+        "/api/risks/stats. Its two task SELECTs did list the per-client column "
+        "while reading it nowhere; that dead column was removed so this "
+        "exemption is literally true rather than true-in-spirit — the exact "
+        "mirror of workload.get_team_workload, where the same column was ADDED "
+        "to the SELECT precisely so the rows COULD be narrowed.",
+    # intelligence.py — the one route built on the workload engine.
+    "/api/intelligence/workload-insights":
+        "overloaded/idle team members and the unassigned backlog COUNT, keyed "
+        "by staff user_id. Names staff, never a client.",
+    # currencies.py — the ISO 4217 master.
+    "/api/currencies":
+        "the global ISO 4217 currency master (currency_service.list_currencies "
+        "takes no firm_id or client_id at all) — reference data shared by every "
+        "firm, with no client to scope to.",
     "/api/team/{user_id}/role":
         "users has a firm_id and NO client_id column (migration 003) — "
         "addressed by a STAFF user_id, and already firm-membership checked. "
@@ -1378,7 +1419,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
               "/api/notifications": 7, "/api/documents": 5, "/api/workload": 4,
               "/api/team": 2, "/api/ai-copilot": 3,
-              "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5}
+              "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5,
+              "/api/analytics": 5, "/api/intelligence": 6, "/api/hsn": 1,
+              "/api/fx-reports": 5, "/api/currencies": 2}
 
 
 def _code_only(src: str) -> str:

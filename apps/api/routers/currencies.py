@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from domain.currency import resolve_currency_policy
 from domain.currency import currency_service
 
@@ -46,6 +47,10 @@ def get_currency_policy(
     Phase 1: always {active: false, functional_currency: "INR"} unless all three
     gates (env, firm entitlement, client enablement) are on.
     """
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible, and BEFORE the mock short-circuit below — which
+    # otherwise returns a policy for any client_id without consulting scope.
+    assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
     if _USE_MOCK:
         pol = resolve_currency_policy(None, None)

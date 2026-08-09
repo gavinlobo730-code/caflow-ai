@@ -2797,6 +2797,83 @@ several are cheap because the data is already in the narration.
     (no Supabase in the test env), which is why the comparison is run against
     a stashed working tree each phase rather than trusting the count alone.
 
+    **Phase: `analytics.py`, `intelligence.py`, `hsn.py`, `fx_reports.py`,
+    `currencies.py` — the named per-client aggregates.**
+
+    The distinguishing shape of this phase is the **named per-client
+    aggregate**: an endpoint that takes no `client_id`, reads the whole firm,
+    and returns one row *per client* carrying `client_name` next to a figure.
+    Nothing about it looks like a leak — it reads like a dashboard — which is
+    why these survived four earlier phases of this sweep.
+
+    `intelligence.py` was the worst of it. `compliance-risk`,
+    `relationship-health` and `recommendations` each emit a row per client with
+    `client_name`, and none of the three services had a narrowing parameter
+    **at all** — there was nothing a router could have passed. Added
+    `allowed_client_ids` (the F2 convention) to the services rather than
+    filtering in the routers, because `compute_recommendations` is built
+    entirely from the other two plus `journal-suggestions`; narrowing at the
+    source covers all four endpoints at once, and `recommendations` is the one
+    that interpolates `client_name` straight into user-facing titles
+    ("Re-engage Theirs Ltd"). `journal-suggestions` defaults to `client_id=None`
+    — the firm-wide read — so that default is narrowed too.
+
+    `analytics.py` — `clients` was already correctly narrowed by the earlier
+    **M6 #6** fix (pinned by a test now so it stays that way), but
+    `profitability` and `revenue-vs-effort` were not: both build a `by_client`
+    list of `client_name` + revenue + cost + margin + a health status, i.e. the
+    commercial position of the firm's entire book. Worth recording that
+    `revenue-vs-effort` *has* a `client_id` parameter which is **dead** — it is
+    shadowed by a loop variable of the same name in the `by_client` build and
+    filters nothing — so the mount-level guard firing on it would not have
+    scoped that read either.
+
+    **The firm-level-totals question was decided per endpoint, not by one
+    blanket rule**, and both directions are pinned by a test so neither reads
+    as an oversight. `analytics.clients` keeps its firm-wide `total_minutes`,
+    which comes from a *separate* firm-wide query naming no client.
+    `profitability`'s `firm_metrics` **narrow with the book**, because they are
+    summed from the very per-client dicts being filtered — leaving them wide
+    would compute them from rows the caller may not see, and would let an
+    Executive recover the firm's aggregate position by subtracting their own.
+    An earlier draft of this change asserted the opposite and the test caught
+    it, which is the only reason the distinction got written down at all.
+
+    The remaining seven routes (`fx-reports` ×5, `currencies/policy`,
+    `hsn/search`) were mount-guard-covered but named no guard of their own, so
+    each now calls `assert_client_access` where the read happens. Two placement
+    details matter: on `currencies/policy` the check sits **ahead of** the
+    `_USE_MOCK` early return, which would otherwise hand back a policy for any
+    `client_id` without consulting scope; and on `hsn/search` the check had to
+    move **outside** the handler's blanket `except Exception -> api_response
+    (False, ...)`, which was swallowing the 404 into a generic "Unable to
+    search" **200**. That is the identical trap documented for `einvoice.py`
+    one phase earlier — the second instance of it found in this sweep, and the
+    reason it is now called out in both files' comments.
+
+    Two EXEMPT entries were added with reasons (`analytics/team` and
+    `intelligence/workload-insights` aggregate over **staff**, never clients;
+    `currencies` is the global ISO 4217 master, which takes no `firm_id` or
+    `client_id` at all). A third, `analytics/firm`, was initially **rejected by
+    the ratchet's own `test_no_exemption_covers_a_resource_that_does_carry_a_
+    client` guard**: the handler listed the per-client column in two `SELECT`s
+    while reading it nowhere. Rather than weaken a guard that was working, the
+    dead column was removed so the exemption states something literally true —
+    the exact mirror of `workload.get_team_workload`, where the same column was
+    *added* to the SELECT precisely so the rows could be narrowed.
+
+    **17 new tests; 11 mutants across 21 sites, all killed.** One survivor on
+    the first run, again from a stub that was too permissive: the
+    `compute_relationship_health` pass-through inside `compute_recommendations`
+    could be stripped because the test's stub ignored its `allowed` argument.
+    Fixed by making the stub honour it, the same failure mode as the previous
+    phase's two survivors. Also worth recording: the `hsn/search` test is
+    driven through `asyncio.run` rather than a `@pytest.mark.asyncio` marker —
+    `pytest-asyncio` is not installed in this project, so a bare `async def`
+    test is silently **skipped**, i.e. green for free. Full suite failure set
+    **byte-identical to the 44-failure baseline** (6064 → 6105 passed, **+41
+    exactly accounted for**: 17 tests + 19 new ratchet routes + 5 MIN_ROUTES).
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

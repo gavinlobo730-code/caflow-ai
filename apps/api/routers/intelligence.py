@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access, effective_client_ids
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
@@ -18,21 +19,30 @@ router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 def compliance_risk(current_user: dict = Depends(rbac("ai", "read"))):
     """Per-client predictive compliance risk scores and predicted misses."""
     from services.intelligence_service import compute_compliance_risk
-    return api_response(True, compute_compliance_risk(current_user["firm_id"]))
+    # None for a firm-wide role; a set of assigned ids otherwise. Every row
+    # this returns names its client, so it must be narrowed.
+    return api_response(True, compute_compliance_risk(
+        current_user["firm_id"], effective_client_ids(current_user)))
 
 
 @router.get("/relationship-health")
 def relationship_health(current_user: dict = Depends(rbac("ai", "read"))):
     """Client relationship / engagement health scores."""
     from services.intelligence_service import compute_relationship_health
-    return api_response(True, compute_relationship_health(current_user["firm_id"]))
+    # None for a firm-wide role; a set of assigned ids otherwise. Every row
+    # this returns names its client, so it must be narrowed.
+    return api_response(True, compute_relationship_health(
+        current_user["firm_id"], effective_client_ids(current_user)))
 
 
 @router.get("/recommendations")
 def recommendations(current_user: dict = Depends(rbac("ai", "read"))):
     """Proactive compliance, client and operational recommendations."""
     from services.intelligence_service import compute_recommendations
-    return api_response(True, compute_recommendations(current_user["firm_id"]))
+    # None for a firm-wide role; a set of assigned ids otherwise. Every row
+    # this returns names its client, so it must be narrowed.
+    return api_response(True, compute_recommendations(
+        current_user["firm_id"], effective_client_ids(current_user)))
 
 
 @router.get("/workload-insights")
@@ -49,7 +59,12 @@ def journal_suggestions(
 ):
     """Suggested recurring journal entries detected from posted-entry patterns."""
     from services.intelligence_service import compute_journal_suggestions
-    return api_response(True, compute_journal_suggestions(current_user["firm_id"], client_id))
+    # An explicit client_id is mount-guard-covered; the default (None) reads
+    # the whole firm, so narrow that case too.
+    if client_id:
+        assert_client_access(current_user, client_id)
+    return api_response(True, compute_journal_suggestions(
+        current_user["firm_id"], client_id, effective_client_ids(current_user)))
 
 
 class JournalSuggestionApproval(BaseModel):
@@ -70,6 +85,9 @@ def approve_journal_suggestion_endpoint(
     Posting to the ledger still requires Partner approval (accounting.approve).
     """
     from services.intelligence_service import approve_journal_suggestion
+    # Creates a DRAFT journal entry against body.client_id — the mount guard
+    # inspects JSON bodies, but this makes the check visible at the write.
+    assert_client_access(current_user, body.client_id)
     try:
         entry = approve_journal_suggestion(
             firm_id=current_user["firm_id"],
