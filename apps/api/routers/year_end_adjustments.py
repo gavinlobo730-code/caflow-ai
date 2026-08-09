@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import can_access_client
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 
@@ -36,19 +37,32 @@ _VALID_STATUSES = {"draft", "pending_review", "approved", "posted", "rejected"}
 _MOCK_ADJUSTMENTS: dict[str, list[dict]] = {}
 
 
-def _get_mock_engagement_status(engagement_id: str) -> str:
-    """Return mock engagement status — always 'draft' unless overridden."""
+def _get_mock_engagement(engagement_id: str) -> dict:
+    """Return the mock engagement row, or {} if not found. Mock mode has no
+    engagement store worth enforcing tenancy against — real enforcement runs
+    against the live DB (core/authz.py's ENFORCEMENT NOTE)."""
     # Import here to avoid circular imports; mock only
     try:
         from routers.year_end import _MOCK_ENGAGEMENTS
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id, {})
-        return eng.get("status", "draft")
+        return _MOCK_ENGAGEMENTS.get(engagement_id, {})
     except Exception:
-        return "draft"
+        return {}
 
 
-def _guard_locked_mock(engagement_id: str) -> None:
-    if _get_mock_engagement_status(engagement_id) == "locked":
+def _assert_engagement_client_mock(current_user: dict, engagement_id: str) -> None:
+    """M2 audit finding: every endpoint on this router resolved the
+    engagement (for the locked-status check below) but never checked its
+    client against the caller's assignment. Permissive when the mock
+    engagement is missing, matching this codebase's established mock-mode
+    convention (nothing to scope against)."""
+    eng = _get_mock_engagement(engagement_id)
+    if eng.get("client_id") and not can_access_client(current_user, eng["client_id"]):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+
+def _guard_locked_mock(current_user: dict, engagement_id: str) -> None:
+    _assert_engagement_client_mock(current_user, engagement_id)
+    if _get_mock_engagement(engagement_id).get("status") == "locked":
         raise HTTPException(
             status_code=403,
             detail="Engagement is locked — no write operations permitted",
@@ -94,19 +108,42 @@ def _require_positive_paise(amount_paise: int) -> None:
         raise HTTPException(status_code=422, detail="amount_paise must be a positive integer (in paise)")
 
 
-def _fetch_engagement_db(db, engagement_id: str, firm_id: str) -> dict:
-    row = (
-        db.table("year_end_engagements")
-        .select("id, status, firm_id, client_id")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
+def _assert_engagement_scope(db, engagement_id: str, current_user: dict,
+                             *, require_unlocked: bool = False) -> dict:
+    """Resolve a year_end_engagements row and 404 unless it belongs to the
+    caller's firm and the caller may access its client. With
+    require_unlocked (every WRITE endpoint below), also 403s if the
+    engagement is locked — reads (list_adjustments) may still see a locked
+    engagement's adjustments; only writes are blocked.
+
+    Pre-existing bug found while testing this fix, not itself an M2 issue:
+    Supabase's real .single() raises (PGRST116) rather than returning None
+    when zero rows match, so a missing or wrong-firm engagement_id was
+    crashing this into a 500 instead of the 404 below — the same
+    .single()-without-a-try/except shape also appears in health.py,
+    relationships.py, lifecycle.py, engagement_letters.py, fixed_assets.py
+    and form_26as.py (unaudited, out of scope for this phase)."""
+    try:
+        row = (
+            db.table("year_end_engagements")
+            .select("id, status, firm_id, client_id")
+            .eq("id", engagement_id)
+            .eq("firm_id", current_user["firm_id"])
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        row = None
+    if not row or not can_access_client(current_user, row["client_id"]):
+        # can_access_client (boolean), not assert_client_access, so a
+        # hidden engagement and a missing one raise byte-identical detail
+        # text — assert_client_access's generic "Not found" would otherwise
+        # distinguish the two even at matching status codes. Checked before
+        # the locked-status check so an unassigned caller learns nothing
+        # about the engagement's state, not even that it exists.
         raise HTTPException(status_code=404, detail="Engagement not found")
-    if row["status"] == "locked":
+    if require_unlocked and row["status"] == "locked":
         raise HTTPException(
             status_code=403,
             detail="Engagement is locked — no write operations permitted",
@@ -151,7 +188,7 @@ def create_adjustment(
     }
 
     if _USE_MOCK:
-        _guard_locked_mock(engagement_id)
+        _guard_locked_mock(current_user, engagement_id)
         record["client_id"] = "client-001"
         _MOCK_ADJUSTMENTS.setdefault(engagement_id, []).append(record)
         return api_response(True, record)
@@ -160,7 +197,7 @@ def create_adjustment(
     db = get_supabase()
     # F9 fix: client_id is NOT NULL on year_end_adjustments; derive it from the
     # (firm-validated) engagement rather than trusting client input.
-    eng = _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    eng = _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
     record["client_id"] = eng["client_id"]
 
     result = db.table("year_end_adjustments").insert(record).execute()
@@ -179,11 +216,17 @@ def list_adjustments(
     engagement_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: unlike every write endpoint below (which resolves
+    # the engagement via _assert_engagement_scope), this read never checked
+    # the engagement at all — not even that it belonged to the caller's
+    # firm, let alone their assignment.
     if _USE_MOCK:
+        _assert_engagement_client_mock(current_user, engagement_id)
         return api_response(True, _MOCK_ADJUSTMENTS.get(engagement_id, []))
 
     from core.supabase_client import get_supabase
     db = get_supabase()
+    _assert_engagement_scope(db, engagement_id, current_user)
     rows = (
         db.table("year_end_adjustments")
         .select("*")
@@ -209,7 +252,7 @@ def update_adjustment(
     now = datetime.now(timezone.utc).isoformat()
 
     if _USE_MOCK:
-        _guard_locked_mock(engagement_id)
+        _guard_locked_mock(current_user, engagement_id)
         items = _MOCK_ADJUSTMENTS.get(engagement_id, [])
         adj = next((a for a in items if a["id"] == adjustment_id), None)
         if not adj:
@@ -223,17 +266,23 @@ def update_adjustment(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
 
-    existing = (
-        db.table("year_end_adjustments")
-        .select("*")
-        .eq("id", adjustment_id)
-        .eq("engagement_id", engagement_id)
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        existing = (
+            db.table("year_end_adjustments")
+            .select("*")
+            .eq("id", adjustment_id)
+            .eq("engagement_id", engagement_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Same pre-existing .single()-raises-on-zero-rows shape as
+        # _assert_engagement_scope above — a missing adjustment_id crashed
+        # this into a 500 instead of the 404 below.
+        existing = None
     if not existing:
         raise HTTPException(status_code=404, detail="Adjustment not found")
     if existing["status"] != "draft":
@@ -261,7 +310,7 @@ def submit_adjustment(
     now = datetime.now(timezone.utc).isoformat()
 
     if _USE_MOCK:
-        _guard_locked_mock(engagement_id)
+        _guard_locked_mock(current_user, engagement_id)
         items = _MOCK_ADJUSTMENTS.get(engagement_id, [])
         adj = next((a for a in items if a["id"] == adjustment_id), None)
         if not adj:
@@ -276,17 +325,23 @@ def submit_adjustment(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
 
-    existing = (
-        db.table("year_end_adjustments")
-        .select("*")
-        .eq("id", adjustment_id)
-        .eq("engagement_id", engagement_id)
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        existing = (
+            db.table("year_end_adjustments")
+            .select("*")
+            .eq("id", adjustment_id)
+            .eq("engagement_id", engagement_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Same pre-existing .single()-raises-on-zero-rows shape as
+        # _assert_engagement_scope above — a missing adjustment_id crashed
+        # this into a 500 instead of the 404 below.
+        existing = None
     if not existing:
         raise HTTPException(status_code=404, detail="Adjustment not found")
     if existing["status"] != "draft":
@@ -318,7 +373,7 @@ def approve_adjustment(
     now = datetime.now(timezone.utc).isoformat()
 
     if _USE_MOCK:
-        _guard_locked_mock(engagement_id)
+        _guard_locked_mock(current_user, engagement_id)
         items = _MOCK_ADJUSTMENTS.get(engagement_id, [])
         adj = next((a for a in items if a["id"] == adjustment_id), None)
         if not adj:
@@ -335,17 +390,23 @@ def approve_adjustment(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
 
-    existing = (
-        db.table("year_end_adjustments")
-        .select("*")
-        .eq("id", adjustment_id)
-        .eq("engagement_id", engagement_id)
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        existing = (
+            db.table("year_end_adjustments")
+            .select("*")
+            .eq("id", adjustment_id)
+            .eq("engagement_id", engagement_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Same pre-existing .single()-raises-on-zero-rows shape as
+        # _assert_engagement_scope above — a missing adjustment_id crashed
+        # this into a 500 instead of the 404 below.
+        existing = None
     if not existing:
         raise HTTPException(status_code=404, detail="Adjustment not found")
     if existing["status"] != "pending_review":
@@ -389,7 +450,7 @@ def post_adjustment(
     now = datetime.now(timezone.utc).isoformat()
 
     if _USE_MOCK:
-        _guard_locked_mock(engagement_id)
+        _guard_locked_mock(current_user, engagement_id)
         items = _MOCK_ADJUSTMENTS.get(engagement_id, [])
         adj = next((a for a in items if a["id"] == adjustment_id), None)
         if not adj:
@@ -412,17 +473,23 @@ def post_adjustment(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
 
-    existing = (
-        db.table("year_end_adjustments")
-        .select("*")
-        .eq("id", adjustment_id)
-        .eq("engagement_id", engagement_id)
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        existing = (
+            db.table("year_end_adjustments")
+            .select("*")
+            .eq("id", adjustment_id)
+            .eq("engagement_id", engagement_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Same pre-existing .single()-raises-on-zero-rows shape as
+        # _assert_engagement_scope above — a missing adjustment_id crashed
+        # this into a 500 instead of the 404 below.
+        existing = None
     if not existing:
         raise HTTPException(status_code=404, detail="Adjustment not found")
     if existing["status"] != "approved":
@@ -501,7 +568,7 @@ def reject_adjustment(
     now = datetime.now(timezone.utc).isoformat()
 
     if _USE_MOCK:
-        _guard_locked_mock(engagement_id)
+        _guard_locked_mock(current_user, engagement_id)
         items = _MOCK_ADJUSTMENTS.get(engagement_id, [])
         adj = next((a for a in items if a["id"] == adjustment_id), None)
         if not adj:
@@ -517,17 +584,23 @@ def reject_adjustment(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
 
-    existing = (
-        db.table("year_end_adjustments")
-        .select("*")
-        .eq("id", adjustment_id)
-        .eq("engagement_id", engagement_id)
-        .single()
-        .execute()
-        .data
-    )
+    try:
+        existing = (
+            db.table("year_end_adjustments")
+            .select("*")
+            .eq("id", adjustment_id)
+            .eq("engagement_id", engagement_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Same pre-existing .single()-raises-on-zero-rows shape as
+        # _assert_engagement_scope above — a missing adjustment_id crashed
+        # this into a 500 instead of the 404 below.
+        existing = None
     if not existing:
         raise HTTPException(status_code=404, detail="Adjustment not found")
     if existing["status"] != "pending_review":

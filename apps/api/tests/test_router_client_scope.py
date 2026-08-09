@@ -215,6 +215,21 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "can_access_client", "filter_by_client",
         "effective_client_ids", "_assert_override_scope", "_assert_alert_scope",
     ),
+    # year_end.py, year_end_checklist.py and year_end_adjustments.py all
+    # declare the SAME router prefix ("/year-end") and are included at
+    # app.include_router(..., prefix="/api") — three DISTINCT routers
+    # sharing one namespace, the same shape as /api/gst's three-way split.
+    # Registering "/api/year-end" here would sweep in year_end.py's
+    # /engagements routes and year_end_checklist.py's /{id}/checklist
+    # routes too — neither audited. The literal path segment
+    # "/{engagement_id}/adjustments" is what actually distinguishes this
+    # router's routes and does not string-prefix-collide with either
+    # sibling's paths (they diverge at "engagements" / "checklist" vs
+    # "adjustments").
+    "/api/year-end/{engagement_id}/adjustments": (
+        "can_access_client", "_load_engagement_or_404", "_fetch_engagement_db",
+        "_assert_engagement_client_mock", "_guard_locked_mock",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -438,7 +453,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
               "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8,
-              "/api/copilot": 17, "/api/health": 13}
+              "/api/copilot": 17, "/api/health": 13,
+              "/api/year-end/{engagement_id}/adjustments": 7}
 
 
 def _code_only(src: str) -> str:
@@ -617,7 +633,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.reminders", "routers.engagements",
                    "routers.compliance_records", "routers.task_templates",
                    "routers.customers", "routers.vendors", "routers.billing",
-                   "routers.invoices", "routers.ai_copilot_v2", "routers.health"):
+                   "routers.invoices", "routers.ai_copilot_v2", "routers.health",
+                   "routers.year_end_adjustments"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
