@@ -1460,6 +1460,87 @@ several are cheap because the data is already in the narration.
    over-guard firm-level endpoints or under-guard the ones whose client is named
    in a body rather than a path, which is precisely how the batch endpoints were
    missed the first time.
+
+   **`itr_workspace.py` and `platform.py` — the two worst-first entries from
+   above, taken together since one needed real fixes and the other needed
+   none.** Not one of the original twelve; found next in the long tail.
+
+   `itr_workspace.py` (17 endpoints, prefix `/api/itr`, no prefix collision):
+   11 needed a guard. Five are query-param endpoints (`list_snapshots`,
+   `list_filings`, `list_disallowances`, `list_deductions`, `list_bf_losses`)
+   that took `client_id` straight from the caller and never checked it — the
+   familiar shape. Six are row-addressed (`review_snapshot` by `snapshot_id`,
+   `transition_filing`/`save_version`/`record_acknowledgement` by `filing_id`,
+   `update_disallowance_status` by `disallowance_id`, `utilize_loss` by
+   `loss_id`) and had no client check at all. `create_snapshot`,
+   `create_filing`, `create_disallowance`, `auto_detect_40a3`,
+   `create_deduction` and `create_bf_loss` were already guarded pre-phase
+   (`client_id` is on the request body).
+
+   This router delegates 100% to `domain/income_tax/computation_workspace.py`
+   and `domain/income_tax/itr_workflow.py` rather than touching Supabase
+   inline the way `billing.py`/`invoices.py`/`year_end_adjustments.py` do, so
+   the four resolvers (`_assert_snapshot_scope`, `_assert_filing_scope`,
+   `_assert_disallowance_scope`, `_assert_bf_loss_scope`) call new
+   `get_snapshot`/`get_disallowance`/`get_bf_loss`/`get_filing` lookup
+   functions added to those two domain modules instead of querying inline —
+   matching the router's existing layering rather than breaking it for this
+   one fix. `transition_filing`, `save_version` and `record_acknowledgement`
+   share a single resolver, `_assert_filing_scope`, since all three act on the
+   same `itr_filings` row via `filing_id` — three near-identical resolvers
+   would have meant three places the check could drift apart. All four
+   resolvers use `can_access_client` from the first line written, not
+   `assert_client_access` — the message-oracle bug (a resolver's own 404 text
+   differing from `assert_client_access`'s generic one at a matching status
+   code) has now recurred often enough in this sweep to guard against by
+   default rather than wait to find it.
+
+   **Found, not fixed — the same `.single()`-raises-on-zero-rows bug, now in
+   a seventh file.** While writing the new `get_bf_loss` lookup, its sibling
+   `utilize_bf_loss` in the same module was reading a brought-forward-loss row
+   with `.single()` and no `try`/`except` — a missing or wrong-firm `loss_id`
+   crashes to `500` instead of the `404` the code was written to produce, the
+   identical shape already found in `health.py`, `relationships.py`,
+   `lifecycle.py`, `engagement_letters.py`, `fixed_assets.py` and
+   `form_26as.py`. Not fixed this phase, same reasoning as those six: a
+   correctness question independent of client-scope, out of proportion to
+   chase down while the actual M2 gap in this file is the guard. Flagged with
+   a comment on the new `get_bf_loss` function so the next reader sees it
+   without re-discovering it.
+
+   `platform.py` (9 endpoints, prefix `/api/platform`) needed **no code
+   change** — read in full and confirmed genuinely exempt rather than
+   assumed. It is the platform *owner's* cross-tenant admin surface, gated by
+   `require_platform_admin`/`require_platform_admin_mfa` from
+   `core.platform_auth`, a completely separate authorization system from
+   `core.authz` — the router's own docstring says as much
+   ("intentionally NOT part of firm RBAC"). It uses
+   `get_service_supabase()` on purpose, to bypass firm RLS: suspending or
+   purging a firm is the operator of the whole system acting, not a firm
+   member reaching a client. Every endpoint reads or writes only
+   `firms`/`users` rows — grepped for `client_id` across the whole file and
+   found none. Registered with an empty guard-name tuple and all 9 endpoints
+   (8 unique paths — GET and soft-DELETE share `/firms/{firm_id}`) in
+   `EXEMPT` with the reason; deliberately **not** added to
+   `test_every_audited_router_actually_imports_the_authz_engine`'s module
+   list, since it correctly has no `core.authz` import to check for.
+
+   **35 new tests** (`test_itr_workspace_client_scope.py`), all passing on
+   first run. **15 mutants, all killed** — the 11 endpoint-level guard calls
+   plus the internal `can_access_client` check inside each of the 4
+   resolvers. Full suite identical to baseline (44 pre-existing
+   environment-only failures, unchanged).
+
+   **Still open, recounted the same way:** **142** id-addressed routes (down
+   from 154 — the 6 `itr_workspace` and 6 `platform` routes that were the
+   worst-first entries above are both now `AUDITED`). Worst first this time:
+   `/api/year-end` (24, across `year_end.py`/`year_end_checklist.py`/
+   `year_end_statements.py`/etc. — several distinct unaudited routers sharing
+   the namespace, the same three-way-collision shape already seen with
+   `year_end_adjustments.py`), then `/api/portal` (7), `/api/clients`,
+   `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
+   `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
+   mostly in the 1-4 range.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

@@ -89,6 +89,19 @@ def list_itr_filings(firm_id: str, client_id: str) -> list[dict]:
     return res.data or []
 
 
+def get_filing(firm_id: str, filing_id: str) -> dict | None:
+    """Fetch a single ITR filing by id, scoped to firm_id. Used by the
+    router to resolve the filing's client before checking assignment scope."""
+    if _USE_MOCK:
+        f = _MOCK_FILINGS.get(filing_id)
+        return f if f and f.get("firm_id") == firm_id else None
+    sb = _supabase()
+    res = sb.table("itr_filings").select("*").eq(
+        "id", filing_id
+    ).eq("firm_id", firm_id).execute()
+    return res.data[0] if res.data else None
+
+
 def transition_itr_status(
     firm_id: str,
     filing_id: str,

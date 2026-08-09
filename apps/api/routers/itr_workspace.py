@@ -13,12 +13,53 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
+
+
+def _assert_snapshot_scope(current_user: dict, snapshot_id: str) -> dict:
+    """Resolve a tax_computation_snapshots row and 404 unless the caller may
+    access its client."""
+    from domain.income_tax.computation_workspace import get_snapshot
+    snap = get_snapshot(current_user["firm_id"], snapshot_id)
+    if not snap or not can_access_client(current_user, snap.get("client_id")):
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    return snap
+
+
+def _assert_filing_scope(current_user: dict, filing_id: str) -> dict:
+    """Resolve an itr_filings row and 404 unless the caller may access its
+    client. Shared by every endpoint addressed by filing_id (transition,
+    save_version, acknowledge) — they all act on the same row."""
+    from domain.income_tax.itr_workflow import get_filing
+    filing = get_filing(current_user["firm_id"], filing_id)
+    if not filing or not can_access_client(current_user, filing.get("client_id")):
+        raise HTTPException(status_code=404, detail="Filing not found")
+    return filing
+
+
+def _assert_disallowance_scope(current_user: dict, disallowance_id: str) -> dict:
+    """Resolve a tax_disallowances row and 404 unless the caller may access
+    its client."""
+    from domain.income_tax.computation_workspace import get_disallowance
+    dis = get_disallowance(current_user["firm_id"], disallowance_id)
+    if not dis or not can_access_client(current_user, dis.get("client_id")):
+        raise HTTPException(status_code=404, detail="Disallowance not found")
+    return dis
+
+
+def _assert_bf_loss_scope(current_user: dict, loss_id: str) -> dict:
+    """Resolve a brought_forward_losses row and 404 unless the caller may
+    access its client."""
+    from domain.income_tax.computation_workspace import get_bf_loss
+    loss = get_bf_loss(current_user["firm_id"], loss_id)
+    if not loss or not can_access_client(current_user, loss.get("client_id")):
+        raise HTTPException(status_code=404, detail="Loss record not found")
+    return loss
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
@@ -141,6 +182,8 @@ def list_snapshots(
     financial_year: str,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import list_snapshots as _list
     return api_response(True, _list(current_user["firm_id"], client_id, financial_year))
 
@@ -154,6 +197,8 @@ def review_snapshot(
     Mark computation snapshot as CA-reviewed.
     # CA REVIEW REQUIRED
     """
+    # M2 audit finding: row-addressed by snapshot_id, no client check at all.
+    _assert_snapshot_scope(current_user, snapshot_id)
     from domain.income_tax.computation_workspace import review_snapshot as _review
     try:
         result = _review(current_user["firm_id"], snapshot_id, current_user["id"])
@@ -211,6 +256,8 @@ def list_filings(
     client_id: str,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     from domain.income_tax.itr_workflow import list_itr_filings
     return api_response(True, list_itr_filings(current_user["firm_id"], client_id))
 
@@ -225,6 +272,8 @@ def transition_filing(
     Advance ITR filing through workflow.
     # CA REVIEW REQUIRED — Partner review required before ready_for_filing.
     """
+    # M2 audit finding: row-addressed by filing_id, no client check at all.
+    _assert_filing_scope(current_user, filing_id)
     from domain.income_tax.itr_workflow import transition_itr_status
     try:
         result = transition_itr_status(
@@ -262,6 +311,8 @@ def save_version(
     req: SaveVersionRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
+    # M2 audit finding: row-addressed by filing_id, no client check at all.
+    _assert_filing_scope(current_user, filing_id)
     from domain.income_tax.itr_workflow import save_itr_version
     try:
         ver = save_itr_version(
@@ -287,6 +338,8 @@ def record_acknowledgement(
     Record ITR acknowledgement after CA files on Income Tax Portal.
     # CA REVIEW REQUIRED — CA must manually file on portal before calling this
     """
+    # M2 audit finding: row-addressed by filing_id, no client check at all.
+    _assert_filing_scope(current_user, filing_id)
     from domain.income_tax.itr_workflow import record_filing_acknowledgement
     try:
         result = record_filing_acknowledgement(
@@ -347,6 +400,8 @@ def list_disallowances(
     financial_year: str,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import list_disallowances as _list
     return api_response(True, _list(current_user["firm_id"], client_id, financial_year))
 
@@ -357,6 +412,8 @@ def update_disallowance_status(
     req: DisallowanceStatusRequest,
     current_user: dict = Depends(rbac("income_tax", "approve")),
 ):
+    # M2 audit finding: row-addressed by disallowance_id, no client check at all.
+    _assert_disallowance_scope(current_user, disallowance_id)
     from domain.income_tax.computation_workspace import update_disallowance_status as _update
     result = _update(current_user["firm_id"], disallowance_id, req.status)
     return api_response(True, result)
@@ -410,6 +467,8 @@ def list_deductions(
     financial_year: str,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import list_deduction_claims
     return api_response(True, list_deduction_claims(current_user["firm_id"], client_id, financial_year))
 
@@ -449,6 +508,8 @@ def list_bf_losses(
     client_id: str,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import list_bf_losses as _list
     return api_response(True, _list(current_user["firm_id"], client_id))
 
@@ -459,6 +520,8 @@ def utilize_loss(
     req: UtilizeLossRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
+    # M2 audit finding: row-addressed by loss_id, no client check at all.
+    _assert_bf_loss_scope(current_user, loss_id)
     from domain.income_tax.computation_workspace import utilize_bf_loss
     try:
         result = utilize_bf_loss(current_user["firm_id"], loss_id, req.utilization_paise)
