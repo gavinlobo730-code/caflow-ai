@@ -2424,6 +2424,99 @@ several are cheap because the data is already in the narration.
    the AP mirror), `document_intelligence_v2.py` (5 routes) and
    `payments.py` (6 routes, including the public gateway webhook).
 
+   **Also fixed 2026-08-09 — that AR/AP + payment-gateway cluster:
+   `receipts.py`, `purchase_payments.py`, `document_intelligence_v2.py` and
+   `payments.py` (via `services/payment_service.py`).**
+
+   `receipts.py` — customer receipts, the AR settlement engine's thin
+   router. `list_receipts` took the required `client_id` from the query
+   string and never checked it. `create_receipt` takes `client_id` in the
+   body (`ReceiptIn`) and delegates to `services.receipt_service.
+   create_receipt_core`, which only ever scopes by firm+client for data
+   isolation — never checks the CALLER's assignment — so the guard is added
+   at the router call site, the same shape as `sales_invoices.py`'s
+   create. `get_receipt`/`update_allocations`/`reverse_receipt` are all
+   row-addressed by `receipt_id` and previously checked only `firm_id`; new
+   `_assert_receipt_scope` resolver (`can_access_client`, one fixed
+   "Receipt {id} not found" message — already the pre-existing text every
+   handler here used) closes all three. `reverse_receipt` delegates to
+   `reversal_service.reverse_receipt`, which reads `client_id` off the row
+   AFTER loading it by `firm_id` alone — the resolver call happens in the
+   router BEFORE that delegation, the "check before delegating" shape
+   `compliance_ops.py` used for `assign_obligation`/`transition_obligation`.
+
+   `purchase_payments.py` — the AP mirror. `list_purchase_payments` took
+   the required `client_id` from the query string and never checked it.
+   `create_purchase_payment` takes `client_id` in the body
+   (`PurchasePaymentIn`) — validated it belonged to the vendor's own books
+   but never checked the CALLER's assignment; the added
+   `assert_client_access` covers BOTH the domestic and the foreign-currency
+   (`_create_foreign_payment`) branches, since both read the same
+   `client_id` checked once at entry. `get_purchase_payment`/
+   `reverse_purchase_payment` are row-addressed by `payment_id` and checked
+   only `firm_id`; new `_assert_payment_scope` resolver closes both.
+   `update_purchase_payment_allocations` is a genuine one-line delegation to
+   `services/purchase_payment_service.py`'s `update_allocations_core` —
+   confirmed its ONLY caller (grepped the whole tree; `bank_posting_service.
+   py` calls the sibling `create_payment_core` from the bank-reconciliation
+   posting path instead, already scoped by the banking router's own guards,
+   so that function was left untouched) — so the `can_access_client` check
+   lives there, right where `client_id` is resolved off the payment row,
+   rather than duplicating a second lookup at the router call site.
+
+   `document_intelligence_v2.py` — AI government-notice extraction
+   (# CA REVIEW REQUIRED — no government portal is ever touched here, only
+   Groq extraction + task/notification creation). `extract_notice` takes
+   `client_id` in the body and had no check at all — an unassigned
+   Executive/Manager could spend the firm's Groq quota extracting and
+   persisting a notice against another staff member's client, plus notify
+   every partner about it; the guard runs before the AI call, not just
+   before persistence. `list_notices` took the required `client_id` from
+   the query string and never checked it. `get_notice`/
+   `update_notice_status`/`approve_notice` are row-addressed by `notice_id`
+   and checked only `firm_id`; new `_assert_notice_scope` resolver (one
+   fixed "Notice not found" message, already the pre-existing text every
+   handler here used) closes all three.
+
+   `payments.py` (Phase 4.6) — online payment links + the public gateway
+   webhook. Every staff endpoint is a genuine one-line delegation to
+   `services/payment_service.py` — `create_link`/`send_link_email` already
+   threaded `actor=current_user` through pre-phase, but the service never
+   checked it against anything. `list_links`/`get_link`/`history` took
+   only `invoice_id`/`link_id` and returned whatever the firm-scoped query
+   found, with no client-assignment check at all. The check now lives in
+   `payment_service.py` itself; `get_link` is also `send_link_email`'s own
+   resolver, so fixing it there closes that endpoint too (confirmed by
+   mutation: stripping `get_link`'s check fails BOTH `GET /links/{id}` and
+   `POST /links/{id}/send` in the ratchet, via its depth-2 FOLLOW).
+   `history`'s own check is redundant with `list_links`'s — `history` calls
+   `list_links` internally, so a caller without access is refused there
+   regardless of `history`'s own line; confirmed empirically (stripping
+   `history`'s check alone left both the ratchet and the direct unit test
+   passing, since the refusal still fires one call frame down) and left in
+   as defense-in-depth, documented rather than silently relied upon.
+   `payment_webhook` is EXEMPT: PUBLIC by design (a gateway cannot
+   authenticate as a staff user, per the module's own docstring), protected
+   instead by provider signature verification, replay protection and
+   idempotency inside `payment_service`.
+
+   **46 new tests** across four new `test_receipts_client_scope.py` (10)/
+   `test_purchase_payments_client_scope.py` (12)/
+   `test_document_intelligence_v2_client_scope.py` (14)/
+   `test_payments_client_scope.py` (10) files, mirroring the established
+   `*_client_scope.py` shape (`test_payments_client_scope.py` reuses
+   `test_online_payments.py`'s `FakeDB`/`_seed_invoice` rather than
+   duplicating an in-memory Supabase double). One pre-existing test,
+   `test_online_payments.py::test_history_is_firm_scoped`, needed a new
+   required `actor` argument threaded through to `ps.history(...)` —
+   mechanical, not a behavior change. **16 mutants, all killed** (13
+   independently observable via the ratchet's source-scan + 3 confirmed via
+   direct unit test/experiment where the ratchet's depth-2 FOLLOW masked a
+   redundant check, as detailed above for `history`). Full suite identical
+   to the 44-failure baseline (5846 → 5917 passed, +71 exactly accounted
+   for: 46 new dedicated tests + 25 new ratchet parametrizations from the 4
+   newly AUDITED prefixes).
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

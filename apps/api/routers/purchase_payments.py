@@ -13,6 +13,7 @@ from models.common import api_response
 from models.invoices import PurchasePaymentIn, PurchasePaymentAllocationsUpdateIn
 from models.accounting import JournalReversalIn
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -227,6 +228,37 @@ def _next_payment_seq(db, firm_id: str, fy: str) -> int:
         return 1
 
 
+def _assert_payment_scope(current_user: dict, payment_id: str) -> dict:
+    """Resolve payment_id to its row and verify the caller's client-assignment
+    scope. One fixed "Payment not found" message covers both a missing row
+    and one outside the caller's assigned book (message-oracle), matching
+    the pre-existing text every handler here already used."""
+    if _USE_MOCK:
+        payment = next(
+            (p for p in MOCK_PURCHASE_PAYMENTS if p["id"] == payment_id and p.get("firm_id") == current_user.get("firm_id")),
+            None,
+        )
+        if not payment:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        return payment
+
+    db = _get_db()
+    resp = (
+        db.table("purchase_payments")
+        .select("*, vendors(name)")
+        .eq("id", payment_id)
+        .eq("firm_id", current_user["firm_id"])
+        .maybe_single()
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    payment = resp.data
+    if not can_access_client(current_user, payment.get("client_id")):
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return payment
+
+
 # ---------------------------------------------------------------------------
 # List
 # ---------------------------------------------------------------------------
@@ -242,6 +274,7 @@ def list_purchase_payments(
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
 
     if _USE_MOCK:
@@ -290,27 +323,9 @@ def get_purchase_payment(
     payment_id: str,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    firm_id = current_user["firm_id"]
-
-    if _USE_MOCK:
-        payment = next((p for p in MOCK_PURCHASE_PAYMENTS if p["id"] == payment_id and p.get("firm_id") == firm_id), None)
-        if not payment:
-            raise HTTPException(status_code=404, detail="Payment not found")
-        return api_response(True, payment)
-
     try:
-        db = _get_db()
-        resp = (
-            db.table("purchase_payments")
-            .select("*, vendors(name)")
-            .eq("id", payment_id)
-            .eq("firm_id", firm_id)
-            .maybe_single()
-            .execute()
-        )
-        if not resp.data:
-            raise HTTPException(status_code=404, detail="Payment not found")
-        return api_response(True, resp.data)
+        payment = _assert_payment_scope(current_user, payment_id)
+        return api_response(True, payment)
     except HTTPException:
         raise
     except Exception as e:
@@ -337,6 +352,7 @@ def create_purchase_payment(
     firm_id = current_user["firm_id"]
     data = data.model_dump()
     client_id = data.get("client_id")
+    assert_client_access(current_user, client_id)
     vendor_id = data.get("vendor_id")
     if not vendor_id:
         raise HTTPException(status_code=422, detail="vendor_id is required")
@@ -795,6 +811,7 @@ def reverse_purchase_payment(
     if _USE_MOCK:
         return api_response(True, {"id": payment_id, "reversed": True, "mock": True})
     try:
+        _assert_payment_scope(current_user, payment_id)
         db = _get_db()
         result = reversal_service.reverse_payment(
             db, current_user["firm_id"], payment_id, data.reversal_date, created_by=current_user.get("id"),

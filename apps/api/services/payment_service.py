@@ -19,6 +19,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.authz import can_access_client
 from core.ist_clock import ist_today
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -77,6 +78,8 @@ def create_link(db, firm_id: str, invoice_id: str, actor: dict,
     inv = _get_invoice(db, firm_id, invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found.")
+    if not can_access_client(actor, inv.get("client_id")):
+        raise HTTPException(status_code=404, detail="Invoice not found.")
     outstanding = _outstanding(inv)
     if outstanding <= 0:
         raise HTTPException(status_code=422, detail="Invoice has no outstanding balance to collect.")
@@ -122,16 +125,24 @@ def create_link(db, firm_id: str, invoice_id: str, actor: dict,
     return updated or {**link_row, "short_url": result.short_url, "status": "active"}
 
 
-def list_links(db, firm_id: str, invoice_id: str) -> list[dict]:
+def list_links(db, firm_id: str, invoice_id: str, actor: dict) -> list[dict]:
+    inv = _get_invoice(db, firm_id, invoice_id)
+    if inv and not can_access_client(actor, inv.get("client_id")):
+        raise HTTPException(status_code=404, detail="Invoice not found.")
     return (db.table("customer_payment_links").select("*")
             .eq("firm_id", firm_id).eq("invoice_id", invoice_id)
             .order("created_at", desc=True).execute().data or [])
 
 
-def get_link(db, firm_id: str, link_id: str) -> Optional[dict]:
+def get_link(db, firm_id: str, link_id: str, actor: dict) -> Optional[dict]:
     rows = (db.table("customer_payment_links").select("*")
             .eq("firm_id", firm_id).eq("id", link_id).limit(1).execute().data or [])
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    link = rows[0]
+    if not can_access_client(actor, link.get("client_id")):
+        return None
+    return link
 
 
 def list_payments(db, firm_id: str, invoice_id: str) -> list[dict]:
@@ -140,13 +151,15 @@ def list_payments(db, firm_id: str, invoice_id: str) -> list[dict]:
             .order("created_at", desc=True).execute().data or [])
 
 
-def history(db, firm_id: str, invoice_id: str) -> dict:
+def history(db, firm_id: str, invoice_id: str, actor: dict) -> dict:
     """Outstanding + links + payments for the invoice UI (Deliverable G)."""
     inv = _get_invoice(db, firm_id, invoice_id)
+    if inv and not can_access_client(actor, inv.get("client_id")):
+        raise HTTPException(status_code=404, detail="Invoice not found.")
     return {
         "invoice_id": invoice_id,
         "outstanding_paise": _outstanding(inv) if inv else 0,
-        "links": list_links(db, firm_id, invoice_id),
+        "links": list_links(db, firm_id, invoice_id, actor),
         "payments": list_payments(db, firm_id, invoice_id),
     }
 
@@ -154,7 +167,7 @@ def history(db, firm_id: str, invoice_id: str) -> dict:
 # ── Email a payment link (Deliverable H — reuse email + invoice_deliveries) ────
 
 def send_link_email(db, firm_id: str, link_id: str, actor: dict) -> dict:
-    link = get_link(db, firm_id, link_id)
+    link = get_link(db, firm_id, link_id, actor)
     if not link:
         raise HTTPException(status_code=404, detail="Payment link not found.")
     inv = _get_invoice(db, firm_id, link["invoice_id"])

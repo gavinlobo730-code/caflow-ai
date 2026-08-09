@@ -13,6 +13,7 @@ from models.common import api_response
 from models.invoices import ReceiptIn, ReceiptAllocationsUpdateIn
 from models.accounting import JournalReversalIn
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
 from services import receipt_service
 from services import reversal_service
@@ -68,6 +69,28 @@ def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_pa
     raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
 
 
+def _assert_receipt_scope(current_user: dict, receipt_id: str) -> dict:
+    """Resolve receipt_id to its row and verify the caller's client-assignment
+    scope. One fixed 404 covers both a missing row and one outside the
+    caller's assigned book (message-oracle), matching the pre-existing
+    "Receipt {id} not found" text every handler here already used."""
+    if _USE_MOCK:
+        rcpt = next((r for r in MOCK_RECEIPTS if r["id"] == receipt_id), None)
+        if not rcpt:
+            raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
+        return rcpt
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    resp = db.table("receipts").select("*").eq("id", receipt_id).eq("firm_id", current_user["firm_id"]).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
+    receipt = resp.data[0]
+    if not can_access_client(current_user, receipt.get("client_id")):
+        raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
+    return receipt
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -83,6 +106,7 @@ def list_receipts(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List receipts, optionally filtered by customer and date range."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             result = [r for r in MOCK_RECEIPTS if r["client_id"] == client_id]
@@ -122,6 +146,7 @@ def create_receipt(
     (validation → receipt no → AR update → allocations → journal → audit → timeline).
     All amounts in integer paise.
     """
+    assert_client_access(current_user, data.client_id)
     try:
         db = None
         if not _USE_MOCK:
@@ -148,19 +173,13 @@ def get_receipt(
 ):
     """Get a receipt with its allocations."""
     try:
+        receipt = _assert_receipt_scope(current_user, receipt_id)
         if _USE_MOCK:
-            rcpt = next((r for r in MOCK_RECEIPTS if r["id"] == receipt_id), None)
-            if not rcpt:
-                raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
             allocs = [a for a in MOCK_RECEIPT_ALLOCATIONS if a.get("receipt_id") == receipt_id]
-            return api_response(True, {**rcpt, "allocations": allocs})
+            return api_response(True, {**receipt, "allocations": allocs})
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("receipts").select("*").eq("id", receipt_id).eq("firm_id", current_user["firm_id"]).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
-        receipt = resp.data[0]
         allocs_resp = db.table("receipt_allocations").select("*").eq("receipt_id", receipt_id).execute()
         receipt["allocations"] = allocs_resp.data or []
         return api_response(True, receipt)
@@ -184,11 +203,12 @@ def update_allocations(
     """
     try:
         allocations = [a.model_dump() for a in data.allocations]
+        # F1 fix: scope the receipt to the caller's firm AND client-assignment —
+        # cannot touch another firm's receipt, nor an unassigned staff member's
+        # client's receipt.
+        rcpt = _assert_receipt_scope(current_user, receipt_id)
 
         if _USE_MOCK:
-            rcpt = next((r for r in MOCK_RECEIPTS if r["id"] == receipt_id), None)
-            if not rcpt:
-                raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
             total_allocated = sum(int(a.get("allocated_paise", 0)) for a in allocations)
             if total_allocated > rcpt["amount_paise"]:
                 raise HTTPException(status_code=422, detail="Allocated amount exceeds receipt amount")
@@ -205,15 +225,9 @@ def update_allocations(
         db = get_supabase()
 
         firm_id = current_user.get("firm_id")
-        # F1 fix: scope the receipt to the caller's firm — cannot touch another firm's receipt.
-        resp = (db.table("receipts").select("amount_paise, tds_paise, client_id")
-                .eq("id", receipt_id).eq("firm_id", firm_id).limit(1).execute())
-        if not resp.data:
-            raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
-
-        receipt_client_id = resp.data[0].get("client_id")
-        amount_paise    = int(resp.data[0]["amount_paise"])
-        tds_paise       = int(resp.data[0].get("tds_paise") or 0)
+        receipt_client_id = rcpt.get("client_id")
+        amount_paise    = int(rcpt["amount_paise"])
+        tds_paise       = int(rcpt.get("tds_paise") or 0)
         total_allocated = sum(int(a.get("allocated_paise", 0)) for a in allocations)
         # Cap at the SETTLEMENT value (cash + customer-deducted TDS), matching
         # the creation path — a §194J receipt of ₹98,000 cash + ₹2,000 TDS
@@ -325,6 +339,7 @@ def reverse_receipt(
     if _USE_MOCK:
         return api_response(True, {"id": receipt_id, "reversed": True, "mock": True})
     try:
+        _assert_receipt_scope(current_user, receipt_id)
         from core.supabase_client import get_supabase
         db = get_supabase()
         result = reversal_service.reverse_receipt(
