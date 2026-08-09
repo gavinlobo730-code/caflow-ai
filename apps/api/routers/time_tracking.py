@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import filter_by_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from repositories.time_tracking_repository import time_tracking_repo
 
 router = APIRouter(prefix="/api/time-entries", tags=["time-tracking"])
@@ -19,6 +19,25 @@ def _compute_duration(started_at: str, ended_at: str) -> int:
     end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
     delta = end - start
     return max(0, int(delta.total_seconds() / 60))
+
+
+def _assert_entry_scope(current_user: dict, entry: Optional[dict]) -> dict:
+    """404 unless the entry exists in the caller's firm AND (when the entry
+    carries a client_id — many don't, e.g. internal/admin work) the caller
+    may access that client. can_access_client(user, None) is always True, so
+    a client-less entry is unaffected. ONE fixed message for both the
+    missing-row and hidden-client branches — mirrors year_end.py's
+    _assert_engagement_scope.
+
+    # M2 audit finding: stop_timer/update_entry/delete_entry resolved the
+    # entry by firm_id alone and never checked its client against the
+    # caller's assignment — an Executive/Reviewer/Manager could stop, edit
+    # or delete another staff member's time entry against an assigned
+    # client outside their own book.
+    """
+    if not entry or not can_access_client(current_user, entry.get("client_id")):
+        raise HTTPException(status_code=404, detail="Time entry not found")
+    return entry
 
 
 class ManualEntryCreate(BaseModel):
@@ -100,6 +119,11 @@ def export_entries(
     if fmt not in ("csv", "xlsx"):
         raise HTTPException(status_code=400, detail="fmt must be 'csv' or 'xlsx'")
 
+    # M2 audit finding: this export had no assignment-scope filtering at
+    # all (unlike list_entries's filter_by_client just above) — an
+    # Executive/Reviewer/Manager could export another staff member's
+    # unassigned client's billing data, or every client in the firm's, by
+    # passing client_id (or omitting it) with no ownership check.
     firm_id = current_user.get("firm_id")
     content, filename, media_type = export_time_entries(
         firm_id=firm_id,
@@ -108,6 +132,7 @@ def export_entries(
         client_id=client_id,
         date_from=date_from,
         date_to=date_to,
+        effective_client_ids=effective_client_ids(current_user),
     )
     return Response(
         content=content,
@@ -118,6 +143,7 @@ def export_entries(
 
 @router.post("/start")
 def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_entry", "write"))):
+    assert_client_access(current_user, body.client_id)
     firm_id = current_user.get("firm_id")
     user_id = current_user.get("id")
 
@@ -145,8 +171,7 @@ def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_en
 def stop_timer(entry_id: str, current_user: dict = Depends(rbac("time_entry", "write"))):
     firm_id = current_user.get("firm_id")
     entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Time entry not found")
+    entry = _assert_entry_scope(current_user, entry)
     if entry.get("ended_at"):
         raise HTTPException(status_code=400, detail="Timer already stopped")
 
@@ -158,6 +183,7 @@ def stop_timer(entry_id: str, current_user: dict = Depends(rbac("time_entry", "w
 
 @router.post("")
 def create_manual_entry(body: ManualEntryCreate, current_user: dict = Depends(rbac("time_entry", "write"))):
+    assert_client_access(current_user, body.client_id)
     firm_id = current_user.get("firm_id")
     user_id = current_user.get("id")
 
@@ -186,8 +212,7 @@ def create_manual_entry(body: ManualEntryCreate, current_user: dict = Depends(rb
 def update_entry(entry_id: str, body: EntryUpdate, current_user: dict = Depends(rbac("time_entry", "write"))):
     firm_id = current_user.get("firm_id")
     entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Time entry not found")
+    _assert_entry_scope(current_user, entry)
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "started_at" in updates and "ended_at" in updates:
@@ -200,8 +225,7 @@ def update_entry(entry_id: str, body: EntryUpdate, current_user: dict = Depends(
 def delete_entry(entry_id: str, current_user: dict = Depends(rbac("time_entry", "delete"))):
     firm_id = current_user.get("firm_id")
     entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Time entry not found")
+    _assert_entry_scope(current_user, entry)
     time_tracking_repo.delete(entry_id, firm_id=firm_id)
     return api_response(True, {"deleted": True})
 

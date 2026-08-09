@@ -394,6 +394,60 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/debit-notes": ("assert_client_access", "can_access_client", "_assert_dn_scope"),
     "/api/purchase-credit-notes": ("assert_client_access", "can_access_client", "_assert_pcn_scope"),
     "/api/sales-debit-notes": ("assert_client_access", "can_access_client", "_assert_sdn_scope"),
+    # service_catalogue.py — the Product/Service catalogue, CLIENT-owned by
+    # design (migration 182: "Client B must never inherit Client A's
+    # products"). The router never imported core.authz at all before this
+    # fix. list_services/create_service take client_id directly (query/
+    # body) and use assert_client_access, the sales_invoices.py list/create
+    # shape; bulk_create_services checks every DISTINCT client_id in the
+    # batch up front via _assert_batch_scope, before any row is processed —
+    # same convention as sales_invoices.py's own _assert_batch_scope.
+    # update_service/delete_service/record_service_used are row-addressed
+    # and used _assert_service_scope (can_access_client, ONE fixed message
+    # — "Service not found." — already the pre-existing text every one of
+    # these handlers used for its own missing-row branch, so the fix
+    # introduces no second wording for the same condition).
+    "/api/service-catalogue": (
+        "assert_client_access", "can_access_client", "_assert_service_scope",
+        "_assert_batch_scope",
+    ),
+    # time_tracking.py. stop_timer/update_entry/delete_entry are
+    # row-addressed and checked only firm_id (list_entries right above them
+    # already used filter_by_client — M2/M5); create_manual_entry/
+    # start_timer take an optional client_id and never checked it either —
+    # assert_client_access is a no-op for client_id=None (client-less/
+    # internal-work entries), so this doesn't break that case.
+    # _assert_entry_scope is the row-addressed resolver (can_access_client,
+    # ONE fixed "Time entry not found" message, already the pre-existing
+    # text). Also fixed beyond the audit doc's original 2-route count for
+    # this path: export_entries had NO assignment filtering at all — now
+    # threads effective_client_ids into time_export_service.export_time_entries,
+    # which drops any entry outside it (client-less entries always kept).
+    "/api/time-entries": (
+        "assert_client_access", "can_access_client", "filter_by_client",
+        "effective_client_ids", "_assert_entry_scope",
+    ),
+    # dsc.py — Digital Signature Certificate tracker. dsc_records has a
+    # firm_id and NO client_id column at all (migration 014, grepped the
+    # whole table + router) — a DSC belongs to the FIRM (a partner, staff
+    # member, or the firm's own token), not to any one client's book. There
+    # is no assignment to check against; every route is EXEMPT below.
+    "/api/dsc": (),
+    # firm_hsn_library.py — the firm's own CA-curated HSN/SAC code list.
+    # firm_hsn_library has a firm_id and NO client_id column (migration
+    # 179) — firm-wide BY DESIGN per the module's own docstring: "the
+    # library itself stays firm-wide, shared across all of the firm's
+    # clients, even though the Product/Service referencing a code is
+    # client-owned" (service_catalogue.py, which IS client-owned, is fixed
+    # above). Every route is EXEMPT below.
+    "/api/firm-hsn-library": (),
+    # branding.py — firm Branding, Invoice Settings, Invoice Templates and
+    # Email Templates, all under "/api/settings". Grepped the whole file:
+    # no client_id anywhere. Firm-level configuration applied uniformly
+    # across every client the firm serves — the same reasoning as
+    # task-templates/engagement-templates/workflow-templates/year-end
+    # mappings, all already EXEMPT above. Every route is EXEMPT below.
+    "/api/settings": (),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -647,6 +701,80 @@ EXEMPT: dict[str, str] = {
         "path. The row-addressed siblings ({client_id}, {client_id}/archive, "
         "{client_id}/restore) are guarded via _assert_firm and are NOT "
         "exempt — this entry covers only the bare '/api/clients' path.",
+    # dsc.py — dsc_records has firm_id and no client_id column at all
+    # (migration 014). Covers GET (list) and POST (create), which share
+    # this path.
+    "/api/dsc":
+        "dsc_records has a firm_id and NO client_id column (migration 014) "
+        "— a Digital Signature Certificate belongs to the firm (a partner, "
+        "staff member, or the firm's own token), not to any client's book. "
+        "Covers GET (list_dsc) and POST (create_dsc), which share this path.",
+    "/api/dsc/{dsc_id}":
+        "same table, addressed by id. Covers PATCH (update_dsc) and DELETE "
+        "(delete_dsc).",
+    "/api/dsc/{dsc_id}/renew":
+        "same table, the renew (extend expiry) operation.",
+    # firm_hsn_library.py — firm_hsn_library has firm_id and no client_id
+    # column at all (migration 179), firm-wide by design per the module's
+    # own docstring.
+    "/api/firm-hsn-library/":
+        "firm_hsn_library has a firm_id and NO client_id column (migration "
+        "179) — the firm's own HSN/SAC code library is firm-wide by "
+        "design, shared across every client the firm serves (see the "
+        "module docstring). Covers GET (list_library) and POST (add_code), "
+        "which share this path.",
+    "/api/firm-hsn-library/bulk":
+        "same table, the bulk-import variant.",
+    "/api/firm-hsn-library/bulk-delete":
+        "same table, the bulk permanent-delete variant.",
+    "/api/firm-hsn-library/{library_id}":
+        "same table, addressed by id. Covers PATCH (update_code) and "
+        "DELETE (retire_code).",
+    "/api/firm-hsn-library/{library_id}/purge":
+        "same table, the permanent-delete-once-unused operation.",
+    # branding.py — firm Branding/Invoice Settings/Invoice Templates/Email
+    # Templates, all under /api/settings. Grepped the whole file: no
+    # client_id anywhere. Firm-level configuration, applied uniformly
+    # across every client — same reasoning as task/engagement/workflow
+    # templates and year-end mappings, all already exempt above.
+    "/api/settings/branding":
+        "firm_branding has a firm_id and no client_id (repositories/"
+        "branding_repository.py, grepped) — the firm's own logo/colours/"
+        "font, applied to every document it issues. Covers GET "
+        "(get_branding) and PUT (upsert_branding).",
+    "/api/settings/branding/logo":
+        "same resource, the logo-upload endpoint.",
+    "/api/settings/invoice-settings":
+        "firm invoice numbering/bank-details configuration — firm-level, "
+        "no client_id. Covers GET and PUT.",
+    "/api/settings/invoice-templates":
+        "firm-level invoice template DEFINITIONS (layout/font choices), "
+        "reused across every client's invoices — no client_id. Covers GET "
+        "(list) and POST (create).",
+    "/api/settings/invoice-templates/{template_id}":
+        "same table, addressed by id. Covers PATCH (update) and DELETE.",
+    "/api/settings/invoice-templates/{template_id}/set-default":
+        "same table, the set-default operation.",
+    "/api/settings/email-templates":
+        "firm-level email template DEFINITIONS (subject/body per "
+        "template_type), reused across every client's correspondence — no "
+        "client_id. Covers GET (list) and POST (upsert).",
+    "/api/settings/email-templates/{template_id}":
+        "same table, addressed by id. Covers PATCH (update) and DELETE.",
+    # time_tracking.py — the two "my own" endpoints. Addressed by the
+    # caller's own user_id, not a client; there is no OTHER staff member's
+    # data being read, so there is nothing for an assignment check to gate.
+    "/api/time-entries/summary/me":
+        "addressed by the caller's own user_id, not a client — my_summary "
+        "aggregates only entries the caller logged "
+        "(time_tracking_repo.get_summary(user_id=current_user['id'])). The "
+        "by_client breakdown in the response reflects the caller's OWN "
+        "work, never another staff member's assigned book.",
+    "/api/time-entries/running/me":
+        "same reasoning — addressed by the caller's own user_id "
+        "(find_running(user_id=current_user['id'])), returns only the "
+        "caller's own currently-running timer, never another staff "
+        "member's.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -685,7 +813,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/portal/contacts": 2,
               "/api/clients": 7,
               "/api/credit-notes": 6, "/api/debit-notes": 8,
-              "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6}
+              "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
+              "/api/service-catalogue": 6, "/api/time-entries": 9,
+              "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14}
 
 
 def _code_only(src: str) -> str:
@@ -868,7 +998,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.year_end_adjustments", "routers.itr_workspace",
                    "routers.year_end", "routers.portal", "routers.portal_access",
                    "routers.clients", "routers.credit_notes", "routers.debit_notes",
-                   "routers.purchase_credit_notes", "routers.sales_debit_notes"):
+                   "routers.purchase_credit_notes", "routers.sales_debit_notes",
+                   "routers.service_catalogue", "routers.time_tracking"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
