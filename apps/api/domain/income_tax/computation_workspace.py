@@ -132,6 +132,19 @@ def list_snapshots(firm_id: str, client_id: str, financial_year: str) -> list[di
     return res.data or []
 
 
+def get_snapshot(firm_id: str, snapshot_id: str) -> Optional[dict]:
+    """Fetch a single snapshot by id, scoped to firm_id. Used by the router
+    to resolve the snapshot's client before checking assignment scope."""
+    if _USE_MOCK:
+        s = _MOCK_SNAPSHOTS.get(snapshot_id)
+        return s if s and s.get("firm_id") == firm_id else None
+    sb = _supabase()
+    res = sb.table("tax_computation_snapshots").select("*").eq(
+        "id", snapshot_id
+    ).eq("firm_id", firm_id).execute()
+    return res.data[0] if res.data else None
+
+
 def review_snapshot(firm_id: str, snapshot_id: str, reviewed_by: str) -> dict:
     """Mark snapshot as reviewed. IT Act — CA must review before filing."""
     if _USE_MOCK:
@@ -219,6 +232,20 @@ def list_disallowances(firm_id: str, client_id: str, financial_year: str) -> lis
         "client_id", client_id
     ).eq("financial_year", financial_year).order("created_at", desc=True).execute()
     return res.data or []
+
+
+def get_disallowance(firm_id: str, disallowance_id: str) -> Optional[dict]:
+    """Fetch a single disallowance by id, scoped to firm_id. Used by the
+    router to resolve the disallowance's client before checking assignment
+    scope."""
+    if _USE_MOCK:
+        d = _MOCK_DISALLOWANCES.get(disallowance_id)
+        return d if d and d.get("firm_id") == firm_id else None
+    sb = _supabase()
+    res = sb.table("tax_disallowances").select("*").eq(
+        "id", disallowance_id
+    ).eq("firm_id", firm_id).execute()
+    return res.data[0] if res.data else None
 
 
 def update_disallowance_status(
@@ -403,6 +430,23 @@ def list_bf_losses(firm_id: str, client_id: str) -> list[dict]:
         "client_id", client_id
     ).order("assessment_year").execute()
     return res.data or []
+
+
+def get_bf_loss(firm_id: str, loss_id: str) -> Optional[dict]:
+    """Fetch a single brought-forward-loss row by id, scoped to firm_id.
+    Used by the router to resolve the loss's client before checking
+    assignment scope. Deliberately NOT .single() — see utilize_bf_loss's
+    own .single() call a few lines down for the bug this avoids: Supabase's
+    real .single() raises (PGRST116) rather than returning no data on zero
+    rows, which would turn a routine 404 into an unhandled 500."""
+    if _USE_MOCK:
+        l = _MOCK_LOSSES.get(loss_id)
+        return l if l and l.get("firm_id") == firm_id else None
+    sb = _supabase()
+    res = sb.table("brought_forward_losses").select("*").eq(
+        "id", loss_id
+    ).eq("firm_id", firm_id).execute()
+    return res.data[0] if res.data else None
 
 
 def utilize_bf_loss(

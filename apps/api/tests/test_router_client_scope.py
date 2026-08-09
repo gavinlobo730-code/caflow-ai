@@ -230,6 +230,36 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "can_access_client", "_load_engagement_or_404", "_fetch_engagement_db",
         "_assert_engagement_client_mock", "_guard_locked_mock",
     ),
+    # Not one of the original twelve — found while working the long tail.
+    # The router delegates 100% to domain/income_tax/{computation_workspace,
+    # itr_workflow}.py rather than touching Supabase directly, so the four
+    # row-addressed resolvers below live in the ROUTER but call new lookup
+    # functions added to those two domain modules (get_snapshot,
+    # get_disallowance, get_bf_loss, get_filing) rather than querying inline
+    # — matching the router's existing layering instead of breaking it.
+    # transition_filing/save_version/record_acknowledgement share ONE
+    # resolver, _assert_filing_scope, since all three act on the same
+    # itr_filings row via filing_id. create_snapshot/create_filing/
+    # create_disallowance/auto_detect_40a3/create_deduction/create_bf_loss
+    # were already guarded pre-phase (client_id is on the request body).
+    "/api/itr": (
+        "assert_client_access", "can_access_client",
+        "_assert_snapshot_scope", "_assert_filing_scope",
+        "_assert_disallowance_scope", "_assert_bf_loss_scope",
+    ),
+    # Platform admin tooling — cross-tenant BY DESIGN, gated by a completely
+    # separate authorization system (core.platform_auth's require_platform_admin
+    # / require_platform_admin_mfa, checked against the platform_admins
+    # allowlist) rather than core.authz. It uses get_service_supabase() to
+    # bypass firm RLS on purpose: a platform owner suspending or purging a
+    # firm is not a firm member reaching a client, it is the operator of the
+    # whole system. Every one of its 9 endpoints touches only firms/users
+    # rows — never a client — so the empty tuple here is not an oversight;
+    # nothing in this router could satisfy a client-scope check because none
+    # of it is client data. All 9 endpoints are EXEMPT below with that
+    # reasoning; this entry exists only so the sweep counts its routes as
+    # looked-at rather than unaudited.
+    "/api/platform": (),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -430,6 +460,37 @@ EXEMPT: dict[str, str] = {
         "summary_type='executive', entity_id=None) — also aggregates "
         "revenue/capacity/churn signals across every client by design, "
         "the same tension as intelligence/relationships.",
+    # platform.py — the platform OWNER's cross-tenant admin surface, not a
+    # firm member's. Every endpoint reads/writes only firms/users rows via
+    # get_service_supabase() and is gated by require_platform_admin(_mfa)
+    # from core.platform_auth, a separate system from core.authz entirely.
+    # GET and DELETE /firms/{firm_id} share this path (soft delete); the
+    # HARD delete lives at its own /permanent path.
+    "/api/platform/me":
+        "UI gating only — returns whether the caller is a platform admin. "
+        "Touches no table at all.",
+    "/api/platform/stats":
+        "firm-count/user-count/client-count TALLIES across the whole "
+        "platform — the platform owner's dashboard, not scoped to any one "
+        "firm's clients let alone one staff member's assignments.",
+    "/api/platform/firms":
+        "lists every firm on the platform with per-firm user/client counts. "
+        "firms has no client_id — it IS the tenant boundary, one level "
+        "above a client.",
+    "/api/platform/firms/{firm_id}":
+        "same table, addressed by id. Covers GET (firm detail) and DELETE "
+        "(soft delete) — both act on the firm row itself, never a client.",
+    "/api/platform/firms/{firm_id}/users":
+        "lists a firm's staff (name/email/role/status) — users has a "
+        "firm_id, not a client_id. Staff roster, not client data.",
+    "/api/platform/firms/{firm_id}/suspend":
+        "flips firms.is_active — a firm-level operational flag.",
+    "/api/platform/firms/{firm_id}/unsuspend":
+        "same field, the reverse operation.",
+    "/api/platform/firms/{firm_id}/permanent":
+        "irreversible hard delete of the firm and everything under it via "
+        "platform_purge_firm — the firm IS the unit being removed, there is "
+        "no narrower client to scope this to.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -454,7 +515,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
               "/api/vendors": 10, "/api/billing": 16, "/api/invoices": 8,
               "/api/copilot": 17, "/api/health": 13,
-              "/api/year-end/{engagement_id}/adjustments": 7}
+              "/api/year-end/{engagement_id}/adjustments": 7,
+              "/api/itr": 17, "/api/platform": 9}
 
 
 def _code_only(src: str) -> str:
@@ -634,7 +696,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.compliance_records", "routers.task_templates",
                    "routers.customers", "routers.vendors", "routers.billing",
                    "routers.invoices", "routers.ai_copilot_v2", "routers.health",
-                   "routers.year_end_adjustments"):
+                   "routers.year_end_adjustments", "routers.itr_workspace"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
