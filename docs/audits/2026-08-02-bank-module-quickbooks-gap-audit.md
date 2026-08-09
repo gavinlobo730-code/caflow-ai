@@ -1384,11 +1384,73 @@ several are cheap because the data is already in the narration.
    live-mode test using a fake Supabase client. Full suite identical to
    baseline once the R3.15 test was reconciled.
 
+   **Also fixed 2026-08-08 — `year_end_adjustments` (7 endpoints).** Every
+   endpoint resolves an `engagement_id`, and `year_end_engagements` is the
+   client-bearing table (`client_id` derived from it, never trusted from the
+   request — an earlier F9 fix). Every WRITE already called a resolver
+   (`_fetch_engagement_db` live / `_guard_locked_mock` mock) that checked
+   the engagement belonged to the caller's firm and, live-only, that it
+   wasn't locked — but neither ever checked the engagement's *client*
+   against the caller's assignment. `list_adjustments` didn't call any
+   resolver at all. `rbac("year_end", "read"/"write")` is
+   `_AT_LEAST_EXECUTIVE` and `"approve"` is `_AT_LEAST_MANAGER` — both
+   assignment-scoped roles under M3, so this was live on every endpoint.
+
+   **A three-way shared-prefix collision, a new shape for this sweep.**
+   `year_end.py`, `year_end_checklist.py` and `year_end_adjustments.py` all
+   declare the identical router prefix (`"/year-end"`) and are mounted at
+   `app.include_router(..., prefix="/api")` — three distinct, separately
+   unaudited routers in one namespace, not a string-prefix-of-a-longer-one
+   shape like `/api/gst`'s three-way split. Registering `/api/year-end`
+   would have swept in the other two files' completely unaudited routes.
+   Registered the literal path segment that actually distinguishes this
+   router's routes instead —
+   `/api/year-end/{engagement_id}/adjustments` — which doesn't
+   string-prefix-collide with either sibling (`/engagements...` or
+   `/{engagement_id}/checklist...`).
+
+   **Two bugs found while testing the fix, neither one M2 — both fixed in
+   the same file since they sit in the exact lines being touched.**
+   Supabase's real `.single()` raises (`PGRST116`) rather than returning
+   `None` when zero rows match, so a missing or wrong-firm `engagement_id`
+   (or `adjustment_id`, in five more call sites in this same file) was
+   crashing every one of these endpoints into a `500` instead of the `404`
+   the `if not row` line was written to produce — caught by the e2e
+   `FakeDB` harness, which mimics this real Postgrest behavior exactly. The
+   same `.single()`-without-a-`try`/`except` shape also appears in
+   `health.py`, `relationships.py`, `lifecycle.py`, `engagement_letters.py`,
+   `fixed_assets.py` and `form_26as.py` — found, not fixed; a correctness
+   question independent of client-scope and out of proportion for this
+   phase to chase across six more files. Second: the client-check branch
+   originally used `assert_client_access`, which raises its own generic
+   `"Not found"`, while the missing-row branch raised this router's own
+   `"Engagement not found"` — the same message-oracle shape fixed in three
+   of the last four phases, closed the same way with `can_access_client`.
+
+   **Unified the two write-time resolvers into one, `_assert_engagement_scope
+   (db, engagement_id, current_user, *, require_unlocked=False)`,** rather
+   than keeping a separate `_fetch_engagement_db`/`_load_engagement_or_404`
+   split — partly for the obvious reason (one function, one place the
+   client check can be forgotten from) and partly a mechanical constraint:
+   `test_a_row_addressed_endpoint_is_not_satisfied_by_a_bare_client_check`
+   requires a resolver named from a fixed list for any path matching
+   `{engagement_id}` (among others), and `_assert_engagement_scope` is
+   already that name in `invoices.py` — reusing it here, in a different
+   module, is exactly the established per-router-local-helper convention
+   the sweep has used everywhere else (`_assert_invoice_scope` also exists
+   independently in both `billing.py` and `sales_invoices.py`).
+
+   **27 new tests, all 7 mutants killed** on the second pass — the first had
+   one survivor (`list_adjustments`'s live-mode branch, never exercised
+   because both of its tests used mock mode), closed with two e2e tests via
+   the same `FakeDB` harness used for the resolver itself. Full suite
+   identical to baseline.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **161** id-addressed
-   routes have no client-scope check. Worst first: `year_end_adjustments` (7),
-   then `itr_workspace` / `platform` at 6 each, and a long tail mostly in the
+   parameter, drop everything under an `AUDITED` prefix): **154** id-addressed
+   routes have no client-scope check. Worst first: `itr_workspace` / `platform`
+   at 6 each, and a long tail mostly in the
    3-5 range. That
    count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
