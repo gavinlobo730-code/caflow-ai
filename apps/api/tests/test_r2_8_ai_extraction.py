@@ -25,6 +25,13 @@ from core.auth import get_current_user
 
 FIRM_A = "firm-aaa"
 FIRM_B = "firm-bbb"
+
+# _build_firm_context also takes the caller (M2 client-assignment scope — it
+# narrows the NAMED client list that goes into the Groq prompt). These are
+# firm-ISOLATION tests, so a Partner (the sole firm-wide role) keeps them
+# testing exactly what they tested before: the firm_id threading, unchanged.
+USER_A = {"id": "ua", "firm_id": FIRM_A, "auth_user_id": "ua", "role": "Partner"}
+USER_B = {"id": "ub", "firm_id": FIRM_B, "auth_user_id": "ub", "role": "Partner"}
 PARTNER_A = {"id": "u-a", "auth_user_id": "u-a", "firm_id": FIRM_A, "role": "Partner", "email": "a@f"}
 PARTNER_B = {"id": "u-b", "auth_user_id": "u-b", "firm_id": FIRM_B, "role": "Partner", "email": "b@f"}
 
@@ -453,7 +460,7 @@ class TestAiCopilotFirmContextScoping:
         monkeypatch.setattr(risk_mod, "get_risk_dashboard_stats", fake_risk_stats)
         monkeypatch.setattr(client_mod, "client_repo", FakeClientRepo())
 
-        mod._build_firm_context(FIRM_A)
+        mod._build_firm_context(FIRM_A, USER_A)
 
         assert captured["dashboard_firm_id"] == FIRM_A
         assert captured["compliance_firm_id"] == FIRM_A
@@ -494,8 +501,8 @@ class TestAiCopilotFirmContextScoping:
         monkeypatch.setattr(risk_mod, "get_risk_dashboard_stats", fake_risk_stats)
         monkeypatch.setattr(client_mod, "client_repo", FakeClientRepo())
 
-        ctx_a = mod._build_firm_context(FIRM_A)
-        ctx_b = mod._build_firm_context(FIRM_B)
+        ctx_a = mod._build_firm_context(FIRM_A, USER_A)
+        ctx_b = mod._build_firm_context(FIRM_B, USER_B)
 
         assert "Firm A Client" in ctx_a
         assert "Firm B Client" not in ctx_a

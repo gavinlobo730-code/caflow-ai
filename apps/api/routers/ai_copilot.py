@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import Request
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from middleware.rate_limit import check_rate_limit
 
 _logger = logging.getLogger("caflow.ai_copilot")
@@ -49,7 +50,7 @@ class CopilotRequest(BaseModel):
     context: Optional[str] = "general"
 
 
-def _build_firm_context(firm_id: str) -> str:
+def _build_firm_context(firm_id: str, current_user: dict) -> str:
     """Build context string from live service layer data scoped to firm.
 
     R2.8/F19 tenancy fix: every call below must be scoped to firm_id — these
@@ -57,7 +58,18 @@ def _build_firm_context(firm_id: str) -> str:
     counts (active_clients, overdue_tasks, compliance_overdue, high_risk
     counts across every firm) into the Groq system prompt instead of the
     caller's own firm's numbers.
+
+    M2: the CLIENT NAMES below are the sharp part — they go verbatim into the
+    Groq system prompt, so an unassigned Executive could simply ask the copilot
+    to list them. They are narrowed to the caller's assigned book.
+    get_firm_summary takes allowed_client_ids (the F2 convention). The task
+    dashboard and risk tallies expose no per-client scoping parameter and are
+    left firm-wide COUNTS — no client is named in them; that is the same line
+    already drawn for /api/copilot/intelligence/*, recorded in the audit doc
+    rather than silently narrowed here.
     """
+    allowed = effective_client_ids(current_user)
+
     try:
         from domain.task_service import TaskDomainService
         task_svc = TaskDomainService()
@@ -67,7 +79,8 @@ def _build_firm_context(firm_id: str) -> str:
 
     try:
         from domain.compliance_record_service import compliance_record_service
-        firm_summary = compliance_record_service.get_firm_summary(firm_id=firm_id)
+        firm_summary = compliance_record_service.get_firm_summary(
+            firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
         firm_summary = {}
 
@@ -81,7 +94,8 @@ def _build_firm_context(firm_id: str) -> str:
         from repositories.client_repository import client_repo
         # Pass firm_id to prevent cross-firm data leak
         clients = client_repo.find_all(firm_id=firm_id)
-        client_names = [c["client_name"] for c in clients]
+        # `clients` rows key their own id as "id", not "client_id".
+        client_names = [c["client_name"] for c in filter_by_client(current_user, clients, key="id")]
     except Exception:
         client_names = []
 
@@ -103,7 +117,11 @@ def _build_firm_context(firm_id: str) -> str:
 
 @router.get("/firm-context")
 def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
-    """Return structured firm-level context for the AI Copilot panel."""
+    """Return structured firm-level context for the AI Copilot panel.
+
+    M2: `clients` below is a NAMED list of every client in the firm — the same
+    leak _build_firm_context has, in structured form. Narrowed identically;
+    see that function for why the task/risk tallies are left firm-wide."""
     firm_id = current_user.get("firm_id")
 
     try:
@@ -117,7 +135,8 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
 
     try:
         from domain.compliance_record_service import compliance_record_service
-        firm_summary = compliance_record_service.get_firm_summary(firm_id=firm_id)
+        firm_summary = compliance_record_service.get_firm_summary(
+            firm_id=firm_id, allowed_client_ids=effective_client_ids(current_user))
     except Exception:
         firm_summary = {}
 
@@ -129,7 +148,7 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
 
     try:
         from repositories.client_repository import client_repo
-        clients = client_repo.find_all(firm_id=firm_id)
+        clients = filter_by_client(current_user, client_repo.find_all(firm_id=firm_id), key="id")
         client_list = [{"id": c["id"], "name": c["client_name"], "status": c.get("status")} for c in clients]
     except Exception:
         client_list = []
@@ -223,6 +242,7 @@ async def client_copilot_chat(
     if not api_key:
         return api_response(False, None, "AI Copilot is not configured on the server")
 
+    assert_client_access(current_user, client_id)
     client_context = _build_client_context(current_user["firm_id"], client_id)
     if not client_context:
         return api_response(False, None, "Client not found")
@@ -259,7 +279,7 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
         return api_response(False, None, "AI Copilot is not configured on the server")
 
     try:
-        firm_context = _build_firm_context(current_user["firm_id"])
+        firm_context = _build_firm_context(current_user["firm_id"], current_user)
         system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=firm_context)
 
         messages = [{"role": "system", "content": system_prompt}]

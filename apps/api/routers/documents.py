@@ -8,7 +8,7 @@ from repositories.document_repository import document_repo
 from services.activity_service import log_activity
 from services.audit_service import log_event
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client, filter_by_client
 from services.internal_client_service import assert_partner_for_internal_id
 
 
@@ -18,6 +18,24 @@ def _scope_client(client_id, current_user):
     if client_id:
         assert_partner_for_internal_id(client_id, current_user)
         assert_client_access(current_user, client_id)
+
+
+def _assert_document_scope(doc_id: str, current_user: dict) -> dict:
+    """Resolve doc_id to its row inside the caller's firm AND assigned book.
+
+    documents.client_id is NOT NULL (migration 001). Both row-addressed routes
+    below previously checked firm_id alone, so any member of the firm could
+    mint a signed download URL for — or soft-delete — a document belonging to
+    another staff member's client. ONE fixed message covers missing,
+    wrong-firm and unassigned alike, so the response is not an existence
+    oracle."""
+    doc = document_repo.get_or_raise(doc_id)
+    # Hard reject: missing firm_id is also a denial — do not allow NULL bypass
+    if doc.get("firm_id") != current_user["firm_id"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not can_access_client(current_user, doc.get("client_id")):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -31,7 +49,13 @@ def list_documents(
     client_id: str | None = None,
     current_user: dict = Depends(rbac("document", "read")),
 ):
+    # M2: with client_id omitted — the default — this returned every document
+    # in the firm. filter_by_client covers that; the explicit check covers the
+    # named case without relying on the mount-level guard.
+    if client_id:
+        assert_client_access(current_user, client_id)
     docs = document_repo.find_all(firm_id=current_user["firm_id"], client_id=client_id)
+    docs = filter_by_client(current_user, docs)
     return api_response(True, {"documents": docs, "total": len(docs)})
 
 
@@ -135,11 +159,7 @@ def get_download_url(
     current_user: dict = Depends(rbac("document", "read")),
 ):
     """Generate a fresh signed download URL for a document."""
-    doc = document_repo.get_or_raise(doc_id)
-
-    # Hard reject: missing firm_id is also a denial — do not allow NULL bypass
-    if doc.get("firm_id") != current_user["firm_id"]:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _assert_document_scope(doc_id, current_user)
 
     if _USE_MOCK or not doc.get("storage_path"):
         return api_response(True, {"download_url": None})
@@ -158,10 +178,7 @@ def delete_document(
 ):
     """Soft-delete a document by setting deleted_at and deleted_by. The row is
     kept for audit purposes — no hard deletes on document records."""
-    doc = document_repo.get_or_raise(doc_id)
-
-    if doc.get("firm_id") != current_user["firm_id"]:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _assert_document_scope(doc_id, current_user)
 
     document_repo.soft_delete(doc_id, deleted_by=current_user.get("auth_user_id"))
 

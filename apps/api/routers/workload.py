@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client
 from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
 
 from datetime import date, timedelta
@@ -76,13 +77,17 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
     users = [u for u in (users_result.data or []) if u.get("is_active") is not False]
 
     # Single query for all open tasks for the firm
-    tasks_result = db.table("tasks").select("id, assigned_to, assignee_id, status, due_date, priority").eq("firm_id", firm_id).neq("status", "completed").execute()
-    tasks = tasks_result.data or []
+    # M2: client_id is selected purely so these firm-wide reads can be narrowed
+    # to the caller's assigned book — every figure below (active/overdue/
+    # due-this-week/utilisation, per named colleague) is otherwise computed
+    # over every client in the firm. tasks.client_id is NOT NULL (migration 002).
+    tasks_result = db.table("tasks").select("id, assigned_to, assignee_id, status, due_date, priority, client_id").eq("firm_id", firm_id).neq("status", "completed").execute()
+    tasks = filter_by_client(current_user, tasks_result.data or [])
 
     # Single query for recently completed (this month)
     month_start = date.today().replace(day=1).isoformat()
-    completed_result = db.table("tasks").select("id, assigned_to, assignee_id, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", month_start).execute()
-    completed_tasks = completed_result.data or []
+    completed_result = db.table("tasks").select("id, assigned_to, assignee_id, updated_at, client_id").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", month_start).execute()
+    completed_tasks = filter_by_client(current_user, completed_result.data or [])
 
     # Aggregate per user in Python — avoids N+1
     def get_uid(t: dict) -> str:
@@ -183,8 +188,12 @@ def get_user_workload(user_id: str, current_user: dict = Depends(rbac("workload"
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # M2: this returns FULL task rows (title, description, due_date, client_id)
+    # in overdue_tasks/due_today, not just counts — so without narrowing, any
+    # Executive could read the substance of a colleague's work on clients
+    # outside their own assigned book.
     tasks_result = db.table("tasks").select("*").eq("firm_id", firm_id).or_(f"assigned_to.eq.{user_id},assignee_id.eq.{user_id}").execute()
-    tasks = tasks_result.data or []
+    tasks = filter_by_client(current_user, tasks_result.data or [])
 
     open_tasks = [t for t in tasks if t["status"] != "completed"]
     overdue = [t for t in open_tasks if t.get("due_date") and t["due_date"] < today]
