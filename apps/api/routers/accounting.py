@@ -14,6 +14,7 @@ from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger
 from services.journal_posting_service import journal_posting_service
 from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
@@ -56,8 +57,27 @@ def create_account(data: AccountIn, current_user: dict = Depends(rbac("accountin
         raise HTTPException(status_code=422, detail=str(e))
 
 
+def _assert_account_scope(current_user: dict, account_id: str) -> dict:
+    """Resolve a Chart-of-Accounts row and check the caller may reach its client.
+
+    chart_of_accounts.client_id is NULLABLE (migration 003: NULL = firm-level
+    template) — can_access_client(user, None) is always True, so a firm-level
+    account is never refused. ONE fixed message covers missing and hidden alike
+    (year_end.py's `_assert_engagement_scope` shape), not the id-embedded
+    NotFoundError text this endpoint used before.
+    """
+    try:
+        account = accounting_service.get_account(account_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    if not can_access_client(current_user, account.get("client_id")):
+        raise HTTPException(status_code=404, detail="Account not found.")
+    return account
+
+
 @router.patch("/accounts/{account_id}")
 def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
+    _assert_account_scope(current_user, account_id)
     try:
         account = accounting_service.update_account(account_id, data.model_dump(exclude_none=True))
         return api_response(True, account)
@@ -72,13 +92,19 @@ def list_journal_entries(
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    if client_id:
+        assert_client_access(current_user, client_id)
     entries = accounting_service.list_journal_entries(
         client_id=client_id,
         start_date=start_date,
         end_date=end_date,
         firm_id=current_user["firm_id"],
     )
-    return api_response(True, entries)
+    # journal_entries.client_id is NOT NULL (migration 003) — every row names a
+    # client, so an omitted client_id must be narrowed to the caller's own
+    # assigned book rather than returned firm-wide (the tally_migration.py
+    # list_jobs shape).
+    return api_response(True, filter_by_client(current_user, entries))
 
 
 @router.post("/journal")
@@ -90,6 +116,7 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
     uses (no alternative posting path). Dev/demo (no SUPABASE_URL) keeps the
     in-memory engine so existing tests are unaffected.
     """
+    assert_client_access(current_user, data.client_id)
     try:
         payload = data.model_dump()
         payload["firm_id"] = current_user["firm_id"]
@@ -135,6 +162,7 @@ def post_opening_balances_endpoint(
     opening balance is created or edited; this endpoint is retained only for
     one-off backfill of records entered before auto-posting existed. Idempotent;
     refuses to write into a locked financial year."""
+    assert_client_access(current_user, data.client_id)
     from services.opening_balance_service import post_opening_balances
     try:
         result = post_opening_balances(
@@ -204,11 +232,28 @@ def list_journals_queue(
     """Phase 3.5 journal approval queue — Draft / Posted, with source + totals.
     Backed by the production ledger (real journal_entries), the single source for
     both manual and auto-generated (e.g. bank) drafts."""
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _prod_db()
     if not db:
         return api_response(True, [])
     return api_response(True, journal_posting_service.list_journals(
-        db, current_user["firm_id"], client_id, status))
+        db, current_user["firm_id"], client_id, status,
+        allowed_client_ids=effective_client_ids(current_user)))
+
+
+def _assert_draft_scope(db, current_user: dict, journal_id: str) -> None:
+    """Row-addressed by journal_id. `approve` is Partner-only by RBAC (the sole
+    firm-wide role — core.authz._FIRMWIDE_ROLES), so M2 cannot be bypassed by
+    construction; this closes the firm-BOUNDARY half only, the same convention
+    billing.py's record_fee_receipt used despite billing also being Partner-only.
+    Same fixed text journal_posting_service.post_draft already uses for its own
+    missing-row branch, so a hidden vs. missing journal reads identically."""
+    row = (db.table("journal_entries").select("client_id")
+           .eq("id", journal_id).eq("firm_id", current_user["firm_id"])
+           .limit(1).execute().data or [None])[0]
+    if row and not can_access_client(current_user, row.get("client_id")):
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
 
 
 @router.post("/journals/{journal_id}/post")
@@ -220,13 +265,30 @@ def post_draft_journal(journal_id: str, current_user: dict = Depends(rbac("accou
     db = _prod_db()
     if not db:
         return api_response(True, {"id": journal_id, "is_posted": True})
+    _assert_draft_scope(db, current_user, journal_id)
     return api_response(True, journal_posting_service.post_draft(
         db, current_user["firm_id"], journal_id, actor_id=current_user.get("auth_user_id")))
+
+
+def _assert_journal_scope(current_user: dict, entry_id: str) -> dict:
+    """Row-addressed by entry_id, against the legacy in-memory engine (never
+    Supabase-backed, regardless of SUPABASE_URL — see the module note above
+    create_journal_entry). ONE fixed message covers missing and hidden alike,
+    replacing the id-embedded NotFoundError text this endpoint used before
+    (the year_end.py `_assert_engagement_scope` shape)."""
+    try:
+        entry = accounting_service.get_journal_entry(entry_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    if not can_access_client(current_user, entry.get("client_id")):
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    return entry
 
 
 @router.patch("/journal/{entry_id}/post")
 def post_journal_entry(entry_id: str, current_user: dict = Depends(rbac("accounting", "approve"))):
     """Post (approve) a journal entry — Partner only."""
+    _assert_journal_scope(current_user, entry_id)
     try:
         entry = accounting_service.post_journal_entry(entry_id)
         log_event(current_user["firm_id"], "journal_entry", entry_id, "approve",
@@ -283,6 +345,14 @@ def reverse_journal_entry(
         orig = (db.table("journal_entries").select("client_id, reference_no, entry_type")
                 .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
 
+        # `approve` is Partner-only by RBAC (firm-wide), so M2 cannot be
+        # bypassed by construction — this closes the firm-BOUNDARY half, the
+        # billing.py/record_fee_receipt convention. Same fixed text
+        # phase2_journal_service.reverse_entry already raises for a genuinely
+        # missing/wrong-firm entry_id, so hidden vs. missing read identically.
+        if orig and not can_access_client(current_user, orig.get("client_id")):
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+
         # task #102: a Receipt/Payment journal must be reversed through its own
         # cascade (POST /api/receipts/{id}/reverse or
         # POST /api/purchase-payments/{id}/reverse) — reversing the JOURNAL
@@ -335,7 +405,20 @@ def get_ledger(
 ):
     """Per-account general ledger from the single reporting engine — opening,
     running and closing balances are computed server-side (firm/client scoped,
-    posted-only). The browser only renders the result."""
+    posted-only). The browser only renders the result.
+
+    client_id is checked when named; when omitted, every reporting endpoint
+    below aggregates across the WHOLE FIRM rather than narrowing to the
+    caller's own assigned clients — "accounting" read is _AT_LEAST_EXECUTIVE,
+    not Partner-only, so this is a live gap for a non-firm-wide caller who
+    simply omits client_id. Recorded, not fixed: correctly narrowing an
+    aggregate report means threading effective_client_ids through
+    domain/reporting.py's ReportingService (ledger/trial_balance/profit_loss/
+    balance_sheet/schedule_iii/cash_flow) and both its Supabase and mock
+    sources — a bigger lift than a guard, the same line drawn for
+    /api/copilot/intelligence/* and /api/copilot/executive-dashboard."""
+    if client_id:
+        assert_client_access(current_user, client_id)
     return api_response(True, _reporting_service().ledger(
         current_user["firm_id"], client_id, account_id, start_date, end_date
     ))
@@ -353,6 +436,8 @@ def get_trial_balance(
     Cash basis is derived from real allocation links (management reporting only);
     it never affects GST returns, which remain invoice-based per the CGST Act.
     """
+    if client_id:
+        assert_client_access(current_user, client_id)
     tb = _reporting_service().trial_balance(
         current_user["firm_id"], client_id, as_of_date, basis=basis
     )
@@ -371,6 +456,8 @@ def get_profit_loss(
     IT Act Section 44AA: professionals may use cash basis for record-keeping.
     basis=cash is management reporting only — never affects GST/ITR filings.
     """
+    if client_id:
+        assert_client_access(current_user, client_id)
     pl = _reporting_service().profit_loss(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
@@ -388,6 +475,8 @@ def get_balance_sheet(
     Companies Act Section 128: balance sheet must use accrual for companies.
     basis=cash excludes unpaid A/R and A/P — for management view only.
     """
+    if client_id:
+        assert_client_access(current_user, client_id)
     bs = _reporting_service().balance_sheet(
         current_user["firm_id"], client_id, as_of_date, basis=basis
     )
@@ -408,6 +497,8 @@ def get_schedule_iii(
     line-caption grouping is done server-side (never in the UI). client_id=None
     returns the firm-wide consolidation.
     """
+    if client_id:
+        assert_client_access(current_user, client_id)
     data = _reporting_service().schedule_iii(
         current_user["firm_id"], client_id, fy_start, fy_end
     )
@@ -428,6 +519,8 @@ def get_cash_flow(
     (guaranteed by double-entry; all integer paise). basis=cash is management
     reporting only (IT Act §145) and never affects GST/ITR filings.
     """
+    if client_id:
+        assert_client_access(current_user, client_id)
     cf = _reporting_service().cash_flow_statement(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
@@ -449,6 +542,8 @@ async def get_statement_analysis(
     totals). Advisory only, for the CA's own review — never auto-filed or
     submitted anywhere.
     """
+    if client_id:
+        assert_client_access(current_user, client_id)
     from domain.financial_analysis_service import generate_statement_analysis
 
     def _fy_range(fy: str) -> tuple[str, str]:
