@@ -2063,6 +2063,61 @@ several are cheap because the data is already in the narration.
    `/api/document-intelligence-v2`, `/api/payments`, `/api/public`), and a
    long tail mostly in the 1-2 range (30 unique top-level path groups, 73
    routes total).
+
+   **Also fixed 2026-08-09 — the next worst-first pair: `identity.py`,
+   `tally_migration.py`.** `identity.py` turned out EXEMPT, not a gap:
+   `users` and `login_events` both have a `firm_id` and NO `client_id`
+   column at all (migrations 003/085) — every one of its 11 routes manages
+   STAFF accounts (invite, activate, suspend, role change, force-logout,
+   login history), not client data. Registered `AUDITED` with an empty
+   check-tuple plus a per-path `EXEMPT` entry and reason for all 10 unique
+   paths, the same treatment as `dsc.py`/`firm_hsn_library.py`/
+   `branding.py` last phase.
+
+   `tally_migration.py` was a real gap, and a sharper one than most of this
+   sweep: `tally_migration_jobs.client_id` is genuinely OPTIONAL (ledgers/
+   journals can be a firm-level migration; customers/vendors need a target
+   client — `domain/tally/migration_service.py`'s `_import_single_item`).
+   `create_job` already checked a supplied `client_id` belonged to the
+   caller's FIRM via a bespoke inline query — but never checked
+   ASSIGNMENT, the familiar firm-boundary-only gap; replaced with
+   `assert_client_access`, which checks both and deletes the bespoke query
+   entirely. `list_jobs` returned EVERY job in the firm, completely
+   unfiltered — an Executive/Reviewer/Manager could see which OTHER
+   clients had a Tally migration in progress (file names, status) outside
+   their own book; now narrowed with `filter_by_client`. `get_job`/
+   `parse_xml`/`preview_import`/`execute_import`/`rollback_import` are all
+   row-addressed by `job_id` and previously resolved the job by `firm_id`
+   alone — meaning an unassigned caller could not just READ another
+   client's migration, but actually **execute** it: `execute_import` with
+   `is_dry_run=false` writes real `customers`/`vendors` rows into the
+   target client's books via `_import_single_item`, and `rollback_import`
+   deletes them again. A new `_assert_job_scope` resolver
+   (`can_access_client`, ONE fixed `"Migration job not found"` message
+   covering missing/wrong-firm/right-firm-but-unassigned alike) now guards
+   all five — closing, as a side effect, a pre-existing message-oracle
+   inconsistency where `get_job` said `"Migration job not found"` but
+   `parse_xml` said `"Job not found"` for the identical condition.
+   `can_access_client(user, None)` is always True throughout, so firm-level
+   (client-less) jobs are unaffected by any of this.
+
+   **36 new tests, all passing on first run** (mock-mode deny/allow pairs
+   for every real endpoint, a firm-level-job-is-never-refused case, the
+   `list_jobs` filtering, and a hidden-vs-missing message-oracle check
+   using the SAME id across both scenarios). **8 mutants, all killed**
+   (every new `assert_client_access`/`can_access_client`/
+   `filter_by_client`/`_assert_job_scope` call site). Full suite identical
+   to the 44-failure baseline (`git stash -u` diff, byte for byte).
+
+   **Still open, recounted the same way:** **63** id-addressed routes
+   (down from 73 — 5 each on `/api/identity` and `/api/tally-migration`
+   account for the 10-route drop). Worst first: `/api/accounting`,
+   `/api/approvals`, `/api/xbrl` (4 each), then a cluster of nine at 3
+   each (`/api/ai-insights`, `/api/eway-bill`, `/api/inventory`,
+   `/api/receipts`, `/api/compliance`, `/api/purchase-payments`,
+   `/api/document-intelligence-v2`, `/api/payments`, `/api/public`), and a
+   long tail mostly in the 1-2 range (28 unique top-level path groups, 63
+   routes total).
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

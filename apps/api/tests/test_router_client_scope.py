@@ -448,6 +448,33 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # task-templates/engagement-templates/workflow-templates/year-end
     # mappings, all already EXEMPT above. Every route is EXEMPT below.
     "/api/settings": (),
+    # identity.py — staff (users) administration: create/invite, activate,
+    # suspend, role change, force-logout, login history. `users` and
+    # `login_events` both have a firm_id and NO client_id column at all
+    # (migrations 003/085, grepped) — a "user" here is a STAFF MEMBER of the
+    # firm, not a client; there is no assignment to check. Every route is
+    # EXEMPT below.
+    "/api/identity": (),
+    # tally_migration.py — tally_migration_jobs.client_id is OPTIONAL
+    # (ledgers/journals can be a firm-level migration; customers/vendors
+    # need a target client — domain/tally/migration_service.py's
+    # _import_single_item). create_job checks the request-body client_id
+    # directly via assert_client_access (replacing a bespoke inline
+    # firm-only query that never checked assignment); list_jobs returned
+    # EVERY job in the firm unfiltered — now narrowed with filter_by_client
+    # (an Executive/Reviewer/Manager could otherwise see which other
+    # clients had a migration in progress outside their own book);
+    # get_job/parse_xml/preview_import/execute_import/rollback_import are
+    # row-addressed by job_id and use the new _assert_job_scope resolver
+    # (can_access_client, ONE fixed "Migration job not found" message — was
+    # two different strings, "Migration job not found" vs "Job not found",
+    # before this fix, a pre-existing message-oracle inconsistency closed
+    # as a side effect). can_access_client(user, None) is always True, so a
+    # client-less (firm-level) job is unaffected throughout.
+    "/api/tally-migration": (
+        "assert_client_access", "can_access_client", "filter_by_client",
+        "_assert_job_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -775,6 +802,35 @@ EXEMPT: dict[str, str] = {
         "(find_running(user_id=current_user['id'])), returns only the "
         "caller's own currently-running timer, never another staff "
         "member's.",
+    # identity.py — staff administration. `users`/`login_events` have a
+    # firm_id and NO client_id column (migrations 003/085) — every route
+    # manages STAFF accounts, not clients.
+    "/api/identity/users":
+        "users has a firm_id and NO client_id (migration 003) — a staff "
+        "roster, not client data. Covers GET (list_users) and POST "
+        "(create_user).",
+    "/api/identity/users/{user_id}/role":
+        "same table, addressed by a STAFF user_id — not a client.",
+    "/api/identity/users/{user_id}/suspend":
+        "same table, addressed by a staff user_id.",
+    "/api/identity/users/{user_id}/reactivate":
+        "same table, addressed by a staff user_id.",
+    "/api/identity/users/{user_id}/force-logout":
+        "same table, addressed by a staff user_id.",
+    "/api/identity/users/{user_id}/login-history":
+        "login_events has a firm_id and NO client_id (migration 085) — a "
+        "staff member's own sign-in history, addressed by their user_id.",
+    "/api/identity/force-logout-all":
+        "firm-wide batch: revokes every staff member's sessions. No "
+        "client_id in the request or touched table.",
+    "/api/identity/login-history":
+        "same table as above, the firm-wide feed (GET, no id).",
+    "/api/identity/accept-invite":
+        "completes a staff invite from a server-issued token — identity is "
+        "established from the verified JWT and the pre-created invite row, "
+        "never a client_id.",
+    "/api/identity/login-event":
+        "records the CALLER's own sign-in/sign-out event. No client_id.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -815,7 +871,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/credit-notes": 6, "/api/debit-notes": 8,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 9,
-              "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14}
+              "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
+              "/api/identity": 11, "/api/tally-migration": 7}
 
 
 def _code_only(src: str) -> str:
@@ -999,7 +1056,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.year_end", "routers.portal", "routers.portal_access",
                    "routers.clients", "routers.credit_notes", "routers.debit_notes",
                    "routers.purchase_credit_notes", "routers.sales_debit_notes",
-                   "routers.service_catalogue", "routers.time_tracking"):
+                   "routers.service_catalogue", "routers.time_tracking",
+                   "routers.tally_migration"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
