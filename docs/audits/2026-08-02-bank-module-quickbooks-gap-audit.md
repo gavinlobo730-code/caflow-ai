@@ -2630,6 +2630,99 @@ several are cheap because the data is already in the narration.
     5983 passed, +66 exactly accounted for: 43 new dedicated tests + 23 new
     ratchet parametrizations from the 4 newly AUDITED prefixes).
 
+    **Phase: `documents.py`, `workload.py`, `team.py`, `ai_copilot.py` — the
+    firm-wide reads.**
+
+    Where the previous phase was about routers with no mount-level guard, this
+    one is mostly about a shape the guard *structurally* cannot catch: an
+    endpoint that takes **no `client_id` at all** and reads across the whole
+    firm. `require_client_access` only fires when a `client_id` is present in
+    the request, so the default "give me everything" call was never checked
+    anywhere.
+
+    `documents.py` — `documents.client_id` is NOT NULL (migration 001).
+    `upload_document`/`parse_document` were already guarded via `_scope_client`
+    (multipart form fields are invisible to the mount-level guard, so those two
+    always had to be explicit — pinned by a test now so they cannot regress).
+    The other three were not: `list_documents` returned EVERY document in the
+    firm when `client_id` was omitted, which is the default the UI uses;
+    `get_download_url` and `delete_document` are **row-addressed** by `doc_id`
+    and checked `firm_id` alone. `get_download_url` is the sharpest of the
+    pair — it mints a live signed Storage URL to the file itself, so an
+    unassigned caller reaching it was a real exfiltration path rather than a
+    metadata leak, the same shape as the `year_end_exports.py` finding earlier
+    in this sweep. `_assert_document_scope` is the resolver, keeping the
+    pre-existing NULL-`firm_id` hard reject and reusing the pre-existing
+    "Document not found" text for every branch.
+
+    `workload.py` — no mount-level guard, no `client_id` in any request.
+    `get_user_workload` is the worst endpoint found in this phase: it selects
+    `*` and returns FULL task rows (title, description, due_date, client_id)
+    under `overdue_tasks`/`due_today`, so any Executive could read the
+    substance of a colleague's work on clients outside their own book — not
+    counts, the actual task content. `get_team_workload` computed every named
+    colleague's active/overdue/due-this-week/utilisation figures over every
+    client in the firm; `client_id` is now added to its `SELECT` list purely so
+    the rows can be narrowed first, which is pinned by its own test because an
+    unused-looking column is exactly the kind of thing a later tidy-up
+    removes — and removing it would silently restore the leak, since every row
+    would then have `client_id=None` and survive `filter_by_client`. The two
+    `/capacity` routes are EXEMPT (`user_capacity` has a staff `user_id` and no
+    `client_id`, migration 066).
+
+    `team.py` — same shape, lower severity: `list_team` fed
+    `task_repo.find_all(firm_id=...)` straight into `compute_team_workload`,
+    which returns aggregate counts rather than rows. Narrowed identically. The
+    role change is EXEMPT (`users` has no `client_id`, migration 003 — the same
+    reasoning as every `/api/identity` route).
+
+    `ai_copilot.py` — the FIRM-context copilot on `/api/ai-copilot`. **Not** the
+    same router as `ai_copilot_v2.py`, which owns `/api/copilot` and was audited
+    earlier: two files, two prefixes, one feature name, and the pre-existing
+    `test_ai_copilot_client_scope.py` covers the *other* one (this phase's tests
+    are in `test_ai_copilot_firm_context_client_scope.py` for that reason).
+    `get_firm_context` and `copilot_chat` have no `client_id` anywhere, and both
+    built a NAMED list of every client in the firm — `copilot_chat` puts those
+    names verbatim into the Groq system prompt, so an unassigned Executive could
+    simply ask the copilot to list them. Narrowed via `filter_by_client(...,
+    key="id")`; the key matters, since `clients` rows name their own id as `id`
+    rather than `client_id` and the default key would have matched nothing and
+    filtered nothing. `get_firm_summary` now receives `allowed_client_ids` (the
+    F2 convention it already supported and this caller never used).
+    `client_copilot_chat` takes `client_id` in the path — mount-guard-covered
+    already; the explicit check is added so the refusal is visible at the point
+    the Groq call is made.
+
+    **Deliberately NOT narrowed, and why:** the task dashboard
+    (`TaskDomainService.get_dashboard_summary`) and the risk tallies
+    (`get_risk_dashboard_stats`) expose no per-client scoping parameter at all.
+    They are left as firm-wide COUNTS in which no client is named — the same
+    line already drawn for `/api/copilot/intelligence/*` and for
+    `/api/risks/stats` in the previous phase. Adding a scoping parameter to
+    those two services is a real change with its own call-site fan-out; it is
+    recorded here as open rather than done badly.
+
+    **24 new tests** across `test_documents_client_scope.py` (12)/
+    `test_workload_team_client_scope.py` (6)/
+    `test_ai_copilot_firm_context_client_scope.py` (6). **15 mutants, all
+    killed** — though note the honest limitation: for the four `ai_copilot.py`
+    mutants only the dedicated tests fail, not the ratchet. `/api/ai-copilot` is
+    in FOLLOW (same-module, the `mca_workspace` shape) so the sweep sees the
+    whole of `_build_firm_context`, and the `allowed = effective_client_ids(...)`
+    line keeps satisfying it even when the narrowing it feeds is stripped. The
+    ratchet is the coarse net there; the runtime tests are what actually hold
+    those four. Same category of blind spot as `payment_service.history()` last
+    phase, recorded rather than papered over.
+
+    One process note worth keeping: `test_ai_copilot_client_scope.py` was
+    briefly **overwritten** while writing this phase's tests, destroying 29
+    pre-existing `ai_copilot_v2.py` tests. It was caught only because the
+    full-suite pass count moved by +13 when +42 was expected, and the numbers
+    were reconciled instead of accepted. Restored from git and the new file
+    renamed. The lesson is the reconciliation, not the slip: "failures identical
+    to baseline" would have stayed green through a silent deletion of 29 passing
+    tests — only the *passed* count caught it.
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

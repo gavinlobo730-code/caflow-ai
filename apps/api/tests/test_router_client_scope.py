@@ -761,6 +761,58 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # recipient-owned tallies and transitions with no client_id in them at
     # all; all EXEMPT below.
     "/api/notifications": ("assert_client_access", "filter_by_client"),
+    # documents.py — documents.client_id is NOT NULL (migration 001).
+    # upload_document/parse_document were already guarded via _scope_client
+    # (multipart form fields are invisible to the mount-level guard, so those
+    # were always explicit). list_documents returned EVERY document in the
+    # firm when client_id was omitted — the default. get_download_url and
+    # delete_document are row-addressed by doc_id and checked firm_id alone;
+    # get_download_url is the sharpest of the pair, since it mints a live
+    # signed Storage URL to the file itself, the same shape as the
+    # year_end_exports.py finding earlier in this sweep.
+    # _assert_document_scope is the resolver (can_access_client, ONE fixed
+    # "Document not found" message — already the pre-existing text).
+    "/api/documents": (
+        "assert_client_access", "filter_by_client", "_scope_client",
+        "_assert_document_scope",
+    ),
+    # workload.py — team capacity/utilisation. No mount-level client guard.
+    # tasks.client_id is NOT NULL (migration 002). get_team_workload computed
+    # every named colleague's active/overdue/due-this-week/utilisation figures
+    # over EVERY client in the firm; client_id is now selected purely so the
+    # rows can be narrowed first. get_user_workload was worse: it selects "*"
+    # and returns FULL task rows (title, description, due_date, client_id) in
+    # overdue_tasks/due_today, so an Executive could read the substance of a
+    # colleague's work on clients outside their own book, not just counts.
+    # The two /capacity routes are EXEMPT below.
+    "/api/workload": ("filter_by_client",),
+    # team.py — the roster with per-member workload counts. No mount-level
+    # client guard. list_team fed task_repo.find_all(firm_id=...) — every task
+    # in the firm — straight into compute_team_workload. Aggregate counts
+    # only, so lower severity than workload.py's raw-row leak, but the same
+    # underlying firm-wide read; narrowed with filter_by_client. The role
+    # change is EXEMPT below (users has no client_id).
+    "/api/team": ("filter_by_client",),
+    # ai_copilot.py — the FIRM-context copilot on /api/ai-copilot. NOT the
+    # same router as ai_copilot_v2.py, which owns /api/copilot and is already
+    # audited above; two files, two prefixes, one feature name — the same
+    # trap as /api/tasks vs /api/task-recurring.
+    # client_copilot_chat takes client_id in the path (mount-guard-covered;
+    # explicit assert_client_access added so the check is visible where the
+    # Groq call is made). get_firm_context and copilot_chat have NO client_id
+    # anywhere, so the mount guard never fires on them — and both built a
+    # NAMED list of every client in the firm: copilot_chat puts those names
+    # verbatim into the Groq system prompt, so an unassigned Executive could
+    # simply ask the copilot to list them. Narrowed via filter_by_client(...,
+    # key="id") — `clients` rows key their own id as "id", not "client_id" —
+    # and get_firm_summary now takes allowed_client_ids (the F2 convention).
+    # The task-dashboard and risk tallies expose no per-client scoping
+    # parameter and are left firm-wide COUNTS with no client named, the same
+    # line already drawn for /api/copilot/intelligence/* and recorded in the
+    # audit doc.
+    "/api/ai-copilot": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -785,6 +837,12 @@ FOLLOW: dict[str, str] = {
     "/api/purchase-payments": "services.purchase_payment_service",
     # Every staff route on this prefix delegates to payment_service.
     "/api/payments": "services.payment_service",
+    # copilot_chat builds its whole context through _build_firm_context IN THE
+    # SAME MODULE (the mca_workspace shape above) — that is where the narrowing
+    # belongs, since get_firm_context needs the identical scoping and the two
+    # would otherwise drift. Verified by mutation: stripping the narrowing from
+    # _build_firm_context fails BOTH endpoints' sweep entries.
+    "/api/ai-copilot": "routers.ai_copilot",
 }
 
 # Endpoints whose RESOURCE has no client to scope to, with the reason. An
@@ -1241,6 +1299,18 @@ EXEMPT: dict[str, str] = {
     "/api/notifications/stats":
         "firm-wide counts by type/severity. No client is named and no "
         "per-client figure is returned.",
+    # workload.py — the capacity configuration pair.
+    "/api/workload/capacity":
+        "user_capacity has a firm_id and a STAFF user_id, and no client_id "
+        "column at all (migration 066) — how many hours a week a staff "
+        "member can work is a property of that person, not of any client's "
+        "book. Covers GET (list_capacity) and PUT (set_capacity), which "
+        "share this path.",
+    # team.py — the role change.
+    "/api/team/{user_id}/role":
+        "users has a firm_id and NO client_id column (migration 003) — "
+        "addressed by a STAFF user_id, and already firm-membership checked. "
+        "Same reasoning as every /api/identity route, all exempt above.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -1290,7 +1360,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
               "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
-              "/api/notifications": 7}
+              "/api/notifications": 7, "/api/documents": 5, "/api/workload": 4,
+              "/api/team": 2, "/api/ai-copilot": 3}
 
 
 def _code_only(src: str) -> str:
@@ -1482,7 +1553,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.inventory", "routers.receipts",
                    "routers.purchase_payments", "routers.document_intelligence_v2",
                    "routers.insights", "routers.assignments", "routers.risks",
-                   "routers.notifications"):
+                   "routers.notifications", "routers.documents",
+                   "routers.workload", "routers.team", "routers.ai_copilot"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"
