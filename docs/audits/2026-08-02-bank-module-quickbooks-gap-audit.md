@@ -1712,6 +1712,33 @@ several are cheap because the data is already in the narration.
    (down from 133). Worst first: `/api/year-end` (10, across
    `year_end_notes.py`, `year_end_exports.py`, `year_end_mappings.py`),
    then `/api/portal` (7), and the same long tail.
+
+   **`year_end_notes.py` — the third of the four remaining siblings,
+   confirmed disjoint (its `/notes` segment string-prefix-collides with no
+   sibling) and audited alone.** All 5 endpoints had no client-assignment
+   check; three of them — `list_notes`, `get_note`, `lock_note` — never
+   resolved the engagement at all, the same "worse than the others" shape
+   `year_end_statements.py` had in the previous phase: live mode applied
+   only an inline `firm_id` filter directly on `year_end_notes`, mock mode
+   (`_MOCK_NOTES`, keyed purely by `engagement_id`) had no tenancy check
+   whatsoever. The other two (`generate_notes`, `update_note`) used a
+   `_mock_engagement`/`_get_engagement_db` pair — live checked `firm_id`
+   only; mock checked only that the engagement existed. Fixed the same way
+   as the three siblings before it: every endpoint now delegates to
+   `year_end.py`'s `_assert_engagement_scope`, deleting both local helpers.
+   As a simplification made possible by the single shared resolver, the
+   locked-engagement check in `generate_notes` and `update_note` — previously
+   duplicated once per branch — now runs once, right after the guard.
+
+   **15 new mock-mode tests plus 4 new e2e tests, all passing on first run;
+   5 mutants, all killed** (one resolver call site per endpoint). Full
+   suite identical to baseline.
+
+   **Still open, recounted the same way:** **123** id-addressed routes
+   (down from 128). Worst first: `/api/year-end` (5, `year_end_exports.py`
+   only — the last entangled sibling; `year_end_mappings.py`'s 4 routes
+   carry no `{id}` path parameter and were never in this id-addressed
+   count), then `/api/portal` (7), and the same long tail.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
