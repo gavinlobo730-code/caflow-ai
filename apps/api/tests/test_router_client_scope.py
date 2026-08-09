@@ -632,6 +632,77 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # counts its 3 routes as looked-at rather than silently skipped; every
     # one is EXEMPT below with this same reasoning.
     "/api/public/engagement-letters": (),
+    # receipts.py — customer receipts, the AR settlement engine's thin
+    # router. list_receipts took the required client_id from the query
+    # string and never checked it. create_receipt takes client_id in the
+    # body (ReceiptIn) and delegates to services.receipt_service.
+    # create_receipt_core, which only ever scopes by firm+client for data
+    # isolation — never checks the CALLER's assignment — so the guard is
+    # added here at the call site, the same shape as sales_invoices.py's
+    # create. get_receipt/update_allocations/reverse_receipt are all
+    # row-addressed by receipt_id and previously checked only firm_id; new
+    # _assert_receipt_scope resolver (can_access_client, one fixed "Receipt
+    # {id} not found" message — already the pre-existing text every handler
+    # here used) closes all three. reverse_receipt delegates to
+    # reversal_service.reverse_receipt, which reads client_id off the row
+    # AFTER loading it by firm_id alone — the resolver call happens in the
+    # router BEFORE that delegation, the same "check before delegating"
+    # shape compliance_ops.py used for assign_obligation/
+    # transition_obligation.
+    "/api/receipts": (
+        "assert_client_access", "can_access_client", "_assert_receipt_scope",
+    ),
+    # purchase_payments.py — the AP mirror of receipts.py. list_purchase_
+    # payments took the required client_id from the query string and never
+    # checked it. create_purchase_payment takes client_id in the body
+    # (PurchasePaymentIn) — validated it belonged to the vendor's own books
+    # but never checked the CALLER's assignment; the added
+    # assert_client_access covers BOTH the domestic and the foreign-
+    # currency (_create_foreign_payment) branches, since both read the same
+    # client_id checked once at entry. get_purchase_payment/
+    # reverse_purchase_payment are row-addressed by payment_id and checked
+    # only firm_id; new _assert_payment_scope resolver (can_access_client,
+    # one fixed "Payment not found" message, already the pre-existing text)
+    # closes both. update_purchase_payment_allocations is a genuine
+    # one-line delegation to services/purchase_payment_service.py's
+    # update_allocations_core — confirmed its ONLY caller (grepped the
+    # whole tree) — so the can_access_client check lives there, right where
+    # client_id is resolved off the payment row, rather than duplicating a
+    # second lookup at the call site; see FOLLOW below.
+    "/api/purchase-payments": (
+        "assert_client_access", "can_access_client", "_assert_payment_scope",
+    ),
+    # document_intelligence_v2.py — AI government-notice extraction
+    # (Chapter "CA REVIEW REQUIRED" — no government portal is ever touched
+    # here, only Groq extraction + task/notification creation).
+    # extract_notice takes client_id in the body and had no check at all —
+    # an unassigned Executive/Manager could spend the firm's Groq quota
+    # extracting and persisting a notice against another staff member's
+    # client, plus notify every partner about it. list_notices took the
+    # required client_id from the query string and never checked it.
+    # get_notice/update_notice_status/approve_notice are row-addressed by
+    # notice_id and checked only firm_id; new _assert_notice_scope resolver
+    # (can_access_client, one fixed "Notice not found" message — already
+    # the pre-existing text every handler here used) closes all three.
+    "/api/document-intelligence-v2": (
+        "assert_client_access", "can_access_client", "_assert_notice_scope",
+    ),
+    # payments.py (Phase 4.6) — online payment links + the public gateway
+    # webhook. Every staff endpoint is a genuine one-line delegation to
+    # services/payment_service.py — create_link/send_link_email already
+    # threaded `actor=current_user` through pre-phase, but the service
+    # never checked it against anything. list_links/get_link/history took
+    # only invoice_id/link_id and returned whatever the firm-scoped query
+    # found, with no client-assignment check at all. The check now lives in
+    # payment_service.py itself (create_link, list_links, get_link, history
+    # — get_link is also send_link_email's own resolver, so fixing it there
+    # closes that endpoint too) — see FOLLOW below. payment_webhook is the
+    # one EXEMPT route: it is PUBLIC by design (a gateway cannot
+    # authenticate as a staff user, per the module's own docstring) and is
+    # protected instead by provider signature verification, replay
+    # protection and idempotency inside payment_service — there is no
+    # current_user for a client-assignment check to run against.
+    "/api/payments": ("can_access_client",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -650,6 +721,12 @@ FOLLOW: dict[str, str] = {
     "/api/knowledge": "services.knowledge_service",
     "/api/clients/{client_id}/instructions": "services.knowledge_service",
     "/api/clients/{client_id}/knowledge": "services.knowledge_service",
+    # update_purchase_payment_allocations is the one route on this prefix
+    # that's a genuine delegation — every other route calls
+    # assert_client_access/_assert_payment_scope directly in the router.
+    "/api/purchase-payments": "services.purchase_payment_service",
+    # Every staff route on this prefix delegates to payment_service.
+    "/api/payments": "services.payment_service",
 }
 
 # Endpoints whose RESOURCE has no client to scope to, with the reason. An
@@ -1069,6 +1146,14 @@ EXEMPT: dict[str, str] = {
         "(IT Act 2000 §10A).",
     "/api/public/engagement-letters/{token}/reject":
         "same token-scoped flow, the recipient's decline.",
+    # payments.py — the one PUBLIC route on this prefix (see the AUDITED
+    # entry above for the full reasoning).
+    "/api/payments/webhook/{provider}":
+        "the payment gateway's callback — a gateway cannot authenticate as "
+        "a firm-staff user, so there is no current_user for a client-"
+        "assignment check to run against. Protected instead by provider "
+        "signature verification, replay protection (unique "
+        "provider_event_id) and idempotency, all inside payment_service.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -1114,7 +1199,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 10, "/api/compliance": 12,
               "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
-              "/api/public/engagement-letters": 3}
+              "/api/public/engagement-letters": 3,
+              "/api/receipts": 5, "/api/purchase-payments": 5,
+              "/api/document-intelligence-v2": 5, "/api/payments": 6}
 
 
 def _code_only(src: str) -> str:
@@ -1303,7 +1390,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.xbrl_engine", "routers.income_tax",
                    "routers.compliance", "routers.compliance_ops",
                    "routers.ai_insights", "routers.eway_bill",
-                   "routers.inventory"):
+                   "routers.inventory", "routers.receipts",
+                   "routers.purchase_payments", "routers.document_intelligence_v2"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

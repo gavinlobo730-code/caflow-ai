@@ -57,13 +57,13 @@ def create_payment_link(body: CreateLinkBody, current_user: dict = Depends(rbac(
 @router.get("/links")
 def list_payment_links(invoice_id: str = Query(...), current_user: dict = Depends(rbac("accounting", "read"))):
     db = _require_db()
-    return api_response(True, payment_service.list_links(db, current_user.get("firm_id"), invoice_id))
+    return api_response(True, payment_service.list_links(db, current_user.get("firm_id"), invoice_id, current_user))
 
 
 @router.get("/links/{link_id}")
 def get_payment_link(link_id: str, current_user: dict = Depends(rbac("accounting", "read"))):
     db = _require_db()
-    link = payment_service.get_link(db, current_user.get("firm_id"), link_id)
+    link = payment_service.get_link(db, current_user.get("firm_id"), link_id, current_user)
     if not link:
         raise HTTPException(status_code=404, detail="Payment link not found.")
     return api_response(True, link)
@@ -80,7 +80,7 @@ def send_payment_link(link_id: str, current_user: dict = Depends(rbac("accountin
 def payment_history(invoice_id: str = Query(...), current_user: dict = Depends(rbac("accounting", "read"))):
     """Outstanding + links + payments for an invoice (payment history / timeline)."""
     db = _require_db()
-    return api_response(True, payment_service.history(db, current_user.get("firm_id"), invoice_id))
+    return api_response(True, payment_service.history(db, current_user.get("firm_id"), invoice_id, current_user))
 
 
 # ── Public webhook (Deliverables E, I) ────────────────────────────────────────

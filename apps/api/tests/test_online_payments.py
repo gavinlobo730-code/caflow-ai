@@ -449,7 +449,7 @@ def test_history_is_firm_scoped():
     db.seed("customer_payment_links", {"id": "LX", "firm_id": OTHER_FIRM, "invoice_id": INVOICE,
                                        "client_id": "CLX", "customer_id": "CX", "amount_paise": 1,
                                        "provider": "mock", "status": "active"})
-    hist = ps.history(db, FIRM, INVOICE)
+    hist = ps.history(db, FIRM, INVOICE, actor={"auth_user_id": "u1", "email": "x"})
     assert all(l["firm_id"] == FIRM for l in hist["links"])
     assert hist["outstanding_paise"] == 100000
 

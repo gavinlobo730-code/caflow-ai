@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
+from core.authz import can_access_client
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -606,12 +607,20 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
     receipts.py's H3 fix), then re-applies the requested set. Firm+client
     scoped throughout; `allocations` is a list of
     {purchase_bill_id, allocated_paise} dicts.
+
+    This is the sole caller-facing entry point (only
+    routers/purchase_payments.py's update_purchase_payment_allocations calls
+    it) — the client-assignment check against `actor` lives here rather than
+    duplicated at the call site, mirroring compliance_ops.py's
+    assign_obligation/transition_obligation call-site convention.
     """
     resp = (db.table("purchase_payments").select("amount_paise, client_id")
             .eq("id", payment_id).eq("firm_id", firm_id).limit(1).execute())
     if not resp.data:
         raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found")
     client_id = resp.data[0].get("client_id")
+    if not can_access_client(actor, client_id):
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found")
     amount_paise = int(resp.data[0]["amount_paise"])
 
     total_requested = sum(int(a.get("allocated_paise", 0) or 0) for a in allocations)

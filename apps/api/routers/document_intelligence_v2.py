@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 
@@ -134,6 +135,23 @@ def _create_task_for_notice(firm_id: str, client_id: str, notice: dict, db=None)
         return None
 
 
+def _assert_notice_scope(current_user: dict, notice_id: str) -> dict | None:
+    """Resolve notice_id to its row and verify the caller's client-assignment
+    scope. Returns None for both a missing row and an out-of-scope one — the
+    caller renders one fixed "Notice not found" either way, so a wrong-client
+    guess cannot be distinguished from a real 404."""
+    firm_id = current_user["firm_id"]
+    if _USE_MOCK:
+        rec = _MOCK_NOTICES.get(notice_id)
+    else:
+        from core.supabase_client import get_supabase
+        rows = get_supabase().table("government_notices").select("*").eq("id", notice_id).eq("firm_id", firm_id).execute().data
+        rec = rows[0] if rows else None
+    if rec is None or not can_access_client(current_user, rec.get("client_id")):
+        return None
+    return rec
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/notices/extract")
@@ -148,6 +166,7 @@ def extract_notice(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
     Call POST /notices/{id}/approve after CA reviews extracted data.
     """
+    assert_client_access(current_user, body.client_id)
     firm_id = current_user["firm_id"]
 
     # R2.8/F19: AI extraction happens BEFORE any persistence. A failed or
@@ -243,6 +262,7 @@ def list_notices(
     current_user: dict = Depends(rbac("compliance", "read")),
 ):
     """List government notices for a client."""
+    assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
@@ -265,17 +285,9 @@ def list_notices(
 def get_notice(notice_id: str, current_user: dict = Depends(rbac("compliance", "read"))):
     """Get a government notice with its linked task ID."""
     try:
-        firm_id = current_user["firm_id"]
-        if _USE_MOCK:
-            rec = _MOCK_NOTICES.get(notice_id)
-            if not rec:
-                return api_response(False, None, "Notice not found")
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("government_notices").select("*").eq("id", notice_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else None
-            if not rec:
-                return api_response(False, None, "Notice not found")
+        rec = _assert_notice_scope(current_user, notice_id)
+        if rec is None:
+            return api_response(False, None, "Notice not found")
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete document processing. Please try again.")
@@ -289,6 +301,9 @@ def update_notice_status(
 ):
     """Update notice status: open → in_progress → responded → closed."""
     try:
+        if _assert_notice_scope(current_user, notice_id) is None:
+            return api_response(False, None, "Notice not found")
+
         firm_id = current_user["firm_id"]
         allowed = {"open", "in_progress", "responded", "closed"}
         if body.status not in allowed:
@@ -326,6 +341,9 @@ def approve_notice(
     Only after CA approval is the notice considered verified and actionable.
     """
     try:
+        if _assert_notice_scope(current_user, notice_id) is None:
+            return api_response(False, None, "Notice not found")
+
         firm_id = current_user["firm_id"]
         updates = {
             "ca_approved": True,
