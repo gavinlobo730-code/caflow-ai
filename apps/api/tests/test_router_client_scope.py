@@ -847,6 +847,43 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/hsn": ("assert_client_access",),
     "/api/fx-reports": ("assert_client_access",),
     "/api/currencies": ("assert_client_access",),
+    # ── Final batch: everything left uncovered by the sweep ────────────────
+    "/api/customer-statements": ("assert_client_access",),
+    "/api/party-credits": ("assert_client_access",),
+    "/api/timeline": ("assert_client_access",),
+    # search.py was already fully narrowed before this sweep reached it —
+    # effective_client_ids plus a per-entity _in_scope helper across accounts,
+    # journals, leads and engagements. Registered so it stays that way.
+    "/api/search": ("effective_client_ids", "_in_scope"),
+    "/api/document-intelligence-v1": ("assert_client_access",),
+    # practice.py never accepts a caller-supplied client_id: it DERIVES the
+    # firm's own internal practice client from firm_id server-side
+    # (get_internal_client_id / provision) and every write is additionally
+    # pinned to is_internal=True. That derivation IS the guard here, so it is
+    # what the sweep checks — there is no id for a caller to tamper with.
+    "/api/practice": ("get_internal_client_id", "provision"),
+    # Routers with no client-scoped resource at all. They need an AUDITED entry
+    # so their routes enter ROUTES and their EXEMPT reasons are validated; every
+    # route on each is exempt below, which is the point — an exemption you have
+    # to write down is different from a router nobody looked at.
+    "/api/firm-hsn-rate-history": ("assert_client_access",),
+    "/api/assistant": ("assert_client_access",),
+    "/api/audit": ("assert_client_access",),
+    "/api/scheduler": ("assert_client_access",),
+    "/api/automation": ("assert_client_access",),
+    "/api/onboarding": ("assert_client_access",),
+    # The CLIENT PORTAL — a separate auth audience, which is why
+    # require_client_access deliberately skips it (see its docstring). Staff
+    # assignment scope is not the control here and could not be: the caller is
+    # the client. The equivalent control is that client_id is resolved from the
+    # authenticated portal MEMBERSHIP (get_current_portal_client) or from the
+    # caller's own JWT (get_jwt_user) — never accepted from the request — so
+    # there is no id to tamper with. That resolution is what the sweep checks.
+    "/api/portal/self": ("get_current_portal_client",),
+    "/api/portal/me": ("get_current_portal_client",),
+    "/api/portal/dashboard": ("get_current_portal_client",),
+    "/api/portal/memberships": ("get_jwt_user",),
+    "/api/portal/accept-invite": ("get_jwt_user",),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -1359,6 +1396,56 @@ EXEMPT: dict[str, str] = {
     "/api/intelligence/workload-insights":
         "overloaded/idle team members and the unassigned backlog COUNT, keyed "
         "by staff user_id. Names staff, never a client.",
+    # firm_hsn_rate_history.py — the firm's own HSN rate-change log.
+    "/api/firm-hsn-rate-history/":
+        "firm_hsn_rate_history has firm_id + firm_hsn_library_id and NO "
+        "client_id column (migration 181) — a rate version is a property of "
+        "the FIRM's HSN library entry, shared across every client that uses "
+        "that code. Same reasoning as /api/firm-hsn-library itself. Covers GET "
+        "(list_history) and POST (add_rate_version), which share this path.",
+    "/api/firm-hsn-rate-history/resolve":
+        "same table, resolves the rate version in force on a given date.",
+    "/api/firm-hsn-rate-history/{rate_history_id}":
+        "same table, addressed by id.",
+    # assistant.py — a pure Groq passthrough.
+    "/api/assistant":
+        "a stateless Groq passthrough over a static SYSTEM_PROMPT — it loads "
+        "no client data at all. Its request model carried a client_id field "
+        "that nothing read; that dead field was REMOVED in this phase, because "
+        "this router has no mount-level client guard and a dead client_id is a "
+        "trap for whoever wires it up later.",
+    # audit.py / scheduler_status.py / automation.py / onboarding.py —
+    # firm-level operations, none of which name a client.
+    "/api/audit":
+        "the firm's own audit log (audit_log has firm_id and actor user_id, "
+        "no client_id) — who did what in this firm's admin surface.",
+    "/api/scheduler/run":
+        "fires the firm's scheduled-job runner. Takes no client_id and returns "
+        "job outcomes, not client data.",
+    "/api/scheduler/status":
+        "whether the in-process scheduler is enabled, plus last-run times.",
+    "/api/automation/rules":
+        "automation_rules is firm-wide configuration (firm_id, trigger, "
+        "action) with no client_id — a rule is firm property, like a workflow "
+        "template. Covers GET (list) on this path.",
+    "/api/automation/rules/{rule_id}/toggle":
+        "same table, addressed by rule id — enables/disables a firm rule.",
+    "/api/automation/executions":
+        "the firm's rule-execution log, keyed by rule.",
+    "/api/automation/stats":
+        "firm-level counts of rules and executions. No client is named.",
+    "/api/automation/trigger":
+        "manually fires the firm's automation pass.",
+    "/api/onboarding/firm":
+        "creates the FIRM itself — there is no client yet at this point.",
+    "/api/onboarding/invite":
+        "invites a STAFF member to the firm (users has no client_id).",
+    "/api/onboarding/seed-coa":
+        "seeds the firm-wide master Chart of Accounts (migration 057 seeds it "
+        "with client_id NULL by design) so posting can always resolve "
+        "accounts.",
+    "/api/onboarding/status":
+        "which onboarding steps this firm has completed.",
     # currencies.py — the ISO 4217 master.
     "/api/currencies":
         "the global ISO 4217 currency master (currency_service.list_currencies "
@@ -1421,7 +1508,16 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/team": 2, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5,
               "/api/analytics": 5, "/api/intelligence": 6, "/api/hsn": 1,
-              "/api/fx-reports": 5, "/api/currencies": 2}
+              "/api/fx-reports": 5, "/api/currencies": 2,
+              "/api/customer-statements": 4, "/api/party-credits": 3,
+              "/api/timeline": 1, "/api/search": 1,
+              "/api/firm-hsn-rate-history": 4, "/api/assistant": 1,
+              "/api/audit": 1, "/api/scheduler": 2, "/api/automation": 5,
+              "/api/onboarding": 4, "/api/practice": 3,
+              "/api/document-intelligence-v1": 1,
+              "/api/portal/self": 8, "/api/portal/me": 1,
+              "/api/portal/dashboard": 1, "/api/portal/memberships": 1,
+              "/api/portal/accept-invite": 1}
 
 
 def _code_only(src: str) -> str:
@@ -1567,7 +1663,12 @@ def test_a_row_addressed_endpoint_is_not_satisfied_by_a_bare_client_check():
     guard, not the bare check."""
     resolvers = ("_assert_txn_scope", "_assert_recon_scope",
                  "_assert_invoice_scope", "_assert_bill_scope",
-                 "_assert_engagement_scope", "_assert_instance_scope")
+                 "_assert_engagement_scope", "_assert_instance_scope",
+                 # The client portal's equivalent: resolves the row and checks
+                 # it against the authenticated MEMBERSHIP's client rather than
+                 # a caller-supplied id — the same resolve-then-check shape,
+                 # for the audience where staff assignment scope cannot apply.
+                 "invoice_in_scope")
     checked = 0
     for prefix, path, method, endpoint in ROUTES:
         # Keyed by a row id, and nothing else in the request names a client.

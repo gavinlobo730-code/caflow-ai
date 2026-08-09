@@ -76,7 +76,13 @@ def _assert_receipt_scope(current_user: dict, receipt_id: str) -> dict:
     "Receipt {id} not found" text every handler here already used."""
     if _USE_MOCK:
         rcpt = next((r for r in MOCK_RECEIPTS if r["id"] == receipt_id), None)
-        if not rcpt:
+        # The mock branch used to check neither the firm NOR the assignment, so
+        # it diverged from the real branch below on the very thing this helper
+        # exists to enforce — and _USE_MOCK is exactly the mode the in-memory
+        # test run uses, so no test could catch it.
+        if not rcpt or rcpt.get("firm_id") not in (None, current_user.get("firm_id")):
+            raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
+        if not can_access_client(current_user, rcpt.get("client_id")):
             raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
         return rcpt
 
