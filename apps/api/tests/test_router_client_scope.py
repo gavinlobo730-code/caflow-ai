@@ -336,6 +336,32 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # below complete the entire year-end cluster this sweep started with
     # year_end_adjustments.py.
     "/api/year-end/mappings": (),
+    # portal.py — CA-facing document requests, messages and dues for a
+    # client's portal. NOT the same surface as portal_self.py/
+    # portal_data.py's "/api/portal/self/*" and "/api/portal/me"/
+    # "/dashboard"/"/memberships"/"/accept-invite" routes — those serve the
+    # CLIENT's own portal login (get_current_portal_client/get_jwt_user), a
+    # structurally different authorization model (a portal contact sees
+    # only their own bound client_id, not a firm-staff assignment), and are
+    # out of scope for this sweep. Confirmed no literal-segment collision:
+    # "document-requests"/"messages"/"dues" (this file) vs "clients"/
+    # "contacts" (portal_access.py) vs "self"/"me"/"dashboard"/
+    # "memberships"/"accept-invite" (portal_self.py/portal_data.py).
+    "/api/portal/document-requests": (
+        "assert_client_access", "_assert_doc_request_scope",
+    ),
+    "/api/portal/messages": ("assert_client_access",),
+    "/api/portal/dues": ("assert_client_access",),
+    # portal_access.py — CA-side portal-contact management (enable a
+    # client's portal, invite/resend/deactivate a contact). list/invite are
+    # addressed directly by client_id (assert_client_access); resend/
+    # deactivate are row-addressed by contact_id and previously had no
+    # client check at all — the service layer's get_contact() checked only
+    # firm_id.
+    "/api/portal/clients": ("assert_client_access",),
+    "/api/portal/contacts": (
+        "can_access_client", "_assert_contact_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -611,7 +637,10 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/year-end/{engagement_id}/schedules": 1,
               "/api/year-end/{engagement_id}/notes": 5,
               "/api/year-end/{engagement_id}/exports": 5,
-              "/api/year-end/mappings": 4}
+              "/api/year-end/mappings": 4,
+              "/api/portal/document-requests": 3, "/api/portal/messages": 2,
+              "/api/portal/dues": 1, "/api/portal/clients": 2,
+              "/api/portal/contacts": 2}
 
 
 def _code_only(src: str) -> str:
@@ -792,7 +821,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.customers", "routers.vendors", "routers.billing",
                    "routers.invoices", "routers.ai_copilot_v2", "routers.health",
                    "routers.year_end_adjustments", "routers.itr_workspace",
-                   "routers.year_end"):
+                   "routers.year_end", "routers.portal", "routers.portal_access"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

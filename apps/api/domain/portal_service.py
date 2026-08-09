@@ -62,6 +62,12 @@ def list_document_requests(firm_id: str, client_id: str) -> list[dict]:
     return sorted(rows, key=lambda r: r["created_at"], reverse=True)
 
 
+def get_document_request(request_id: str) -> dict | None:
+    """Fetch a document request by id, without mutating it. Used by the
+    router to resolve the request's client before checking assignment scope."""
+    return next((r for r in _MOCK_DOC_REQUESTS if r["id"] == request_id), None)
+
+
 def complete_document_request(request_id: str) -> dict | None:
     """Mark a document request as fulfilled. Returns the updated record or None."""
     now = _now()

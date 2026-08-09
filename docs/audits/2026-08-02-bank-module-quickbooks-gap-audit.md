@@ -1794,6 +1794,67 @@ several are cheap because the data is already in the narration.
    `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
    `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
    mostly in the 1-4 range.
+
+   **`portal.py` and `portal_access.py` — the worst-first entry above,
+   both staff-facing CA management surfaces sharing the literal
+   `/api/portal` prefix with two CLIENT-facing files that are genuinely out
+   of scope.** `/api/portal` turned out to be FOUR router files sharing one
+   literal prefix, not two: `portal.py`/`portal_access.py` are CA-side
+   (`rbac("portal", ...)`, this sweep's usual model); `portal_self.py`/
+   `portal_data.py` (the `/self/*`, `/me`, `/dashboard`, `/memberships`,
+   `/accept-invite` routes) serve the **client's own** portal login via
+   `get_current_portal_client`/`get_jwt_user` — a structurally different
+   authorization model where a portal contact is bound to exactly one
+   client_id at the identity layer, not scoped by a firm-staff assignment
+   table. Left untouched this phase; not the same bug class this sweep
+   exists for. The two staff-facing files were confirmed disjoint from
+   each other and from the client-facing pair by literal path segment —
+   `document-requests`/`messages`/`dues` (`portal.py`) vs `clients`/
+   `contacts` (`portal_access.py`) vs `self`/`me`/`dashboard`/
+   `memberships`/`accept-invite` (the client-facing pair) — so registered
+   and fixed without touching the other two.
+
+   `portal.py` (6 endpoints): `list_document_requests`,
+   `create_document_request`, `list_messages`, `send_message` and
+   `get_dues` all took `client_id` from the query or body and never
+   checked it. `complete_document_request` is row-addressed by
+   `request_id` and checked only `firm_id`. This endpoint already had an
+   unusual, deliberate convention worth preserving rather than replacing:
+   a refusal is a `200` with `{success: false, error: "Document request
+   not found"}`, not a raised `HTTPException` — and the missing-row and
+   wrong-firm cases already used byte-identical text. The new
+   `_assert_doc_request_scope` resolver (added to `domain/portal_service.
+   py` as a new non-mutating `get_document_request` lookup for the mock
+   side) extends that exact convention to the client-assignment case
+   rather than switching the endpoint to a different refusal shape.
+
+   `portal_access.py` (4 endpoints): `list_portal_contacts` and
+   `invite_portal_contact` are addressed directly by `client_id` and used
+   a bespoke `_assert_client_in_firm` helper — a hand-rolled duplicate of
+   half of `core.authz.assert_client_access` (the firm-boundary half only,
+   never the assignment half) — now deleted and replaced with the real
+   thing. `resend_portal_invite` and `deactivate_portal_contact` are
+   row-addressed by `contact_id` and had no client check at all: the
+   service layer's `get_contact()` filters by `firm_id` only. A new
+   `_assert_contact_scope` resolver closes both, reusing `get_contact`'s
+   own refusal text ("Portal contact not found.") so the message stays
+   identical between the missing-row and hidden-row cases — the service's
+   own subsequent 404 on the same text means there's no way for the two
+   call sites to drift apart.
+
+   **22 new tests, all passing on first run; 12 mutants, all killed** (6
+   guard call sites in `portal.py`, one internal resolver check, 4 guard
+   call sites in `portal_access.py`, one internal resolver check). Full
+   suite identical to baseline.
+
+   **Still open, recounted the same way:** **113** id-addressed routes
+   (down from 118 — `/api/portal/clients/{client_id}/contacts` (2 routes)
+   and the two `/api/portal/contacts/{contact_id}/...` routes plus
+   `complete_document_request` account for the 5-route drop; the other
+   `/api/portal` routes never carried a path parameter and were never in
+   this count). Worst first: `/api/clients`, `/api/identity`,
+   `/api/tally-migration`, `/api/debit-notes`, `/api/purchase-credit-notes`,
+   `/api/settings` (5 each), and a long tail mostly in the 1-4 range.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
