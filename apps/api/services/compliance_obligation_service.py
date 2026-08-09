@@ -313,12 +313,19 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
 
 
 def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: Optional[str] = None,
-                 actor: Optional[dict] = None) -> dict:
+                 actor: Optional[dict] = None, allowed_client_ids: Optional[set] = None) -> dict:
     """Generate obligations for every active engagement (optionally one client) for the
     given FY (defaults to the current Indian FY), then apply the no-engagement
-    fallback to any in-scope client that has no ACTIVE engagement at all. Idempotent."""
+    fallback to any in-scope client that has no ACTIVE engagement at all. Idempotent.
+
+    allowed_client_ids confines a firm-wide run (client_id=None) to a non
+    firm-wide caller's assigned clients — mirrors get_firm_summary's F2
+    convention. None means unrestricted (firm-wide role, or a single
+    client_id already checked by the caller)."""
     fy = financial_year or _current_fy()
     engagements = engagement_repo.find_all(firm_id=firm_id, client_id=client_id)
+    if allowed_client_ids is not None:
+        engagements = [e for e in engagements if str(e.get("client_id")) in allowed_client_ids]
     active = [e for e in engagements if e.get("status") in _ACTIVE_ENGAGEMENT_STATUSES]
     total_gen = total_skip = 0
     per_engagement = []
@@ -336,6 +343,8 @@ def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: 
         from repositories.client_repository import client_repo
         fallback_client_ids = [c["id"] for c in client_repo.find_all(firm_id=firm_id)
                                if c["id"] not in covered_client_ids]
+        if allowed_client_ids is not None:
+            fallback_client_ids = [c for c in fallback_client_ids if c in allowed_client_ids]
     for cid in fallback_client_ids:
         res = generate_default_for_client(firm_id, cid, fy, actor=actor)
         total_gen += res["generated"]
@@ -435,9 +444,14 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
         pass
 
 
-def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] = None) -> dict:
+def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] = None,
+            allowed_client_ids: Optional[set] = None) -> dict:
     """Escalate open obligations on the 7/3/1-day + overdue cadence to the internal
-    team. Idempotent per (record, tier, day) via last_escalated_tier/on. Internal only."""
+    team. Idempotent per (record, tier, day) via last_escalated_tier/on. Internal only.
+
+    allowed_client_ids confines the run to a non firm-wide caller's assigned
+    clients (F2 convention, as in generate_due/dashboard). None means every
+    obligation in the firm — the scheduler's unrestricted nightly run."""
     today = today or ist_today()
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
@@ -445,6 +459,8 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
     for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=("Filed", "Completed")):
+        if allowed_client_ids is not None and str(r.get("client_id")) not in allowed_client_ids:
+            continue
         due = str(r.get("due_date", ""))[:10]
         if not due:
             continue
@@ -459,8 +475,16 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     return {"escalated": sum(counts.values()), **counts}
 
 
-def dashboard(firm_id: str, today: Optional[date] = None) -> dict:
+def dashboard(firm_id: str, today: Optional[date] = None, allowed_client_ids: Optional[set] = None) -> dict:
+    """allowed_client_ids confines the dashboard — including the raw `queue`
+    of obligation rows, not just the aggregate counts — to a non firm-wide
+    caller's assigned clients. Without this, an Executive assigned to two
+    clients saw every client's obligations and named `by_client` figures,
+    unlike the aggregate-only dashboards (tasks/lifecycle) this pattern was
+    deliberately left unscoped for."""
     records = _records_for(firm_id)
+    if allowed_client_ids is not None:
+        records = [r for r in records if str(r.get("client_id")) in allowed_client_ids]
     agg = aggregate_dashboard(records, today)
     return {**agg, "queue": records}
 

@@ -524,6 +524,56 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # live mode. get_tag_mappings is the one EXEMPT route — the statutory
     # Schedule III -> XBRL tag table, identical for every firm and client.
     "/api/xbrl": ("assert_client_access", "can_access_client", "_assert_package_scope"),
+    # income_tax.py — ITR/HRA/capital-gains/advance-tax computation. /compute,
+    # /hra/compute, /capital-gains/cii-table, /capital-gains/compute and
+    # /advance-tax/compute are stateless calculators with no client_id in
+    # their request models — EXEMPT below. create_capital_gains and
+    # save_advance_tax already called assert_client_access pre-phase (tasks
+    # #238/#230). list_capital_gains/list_advance_tax took client_id from the
+    # query string and only ever filtered it into the firm-scoped WHERE
+    # clause, never checking the caller's assignment; delete_capital_gains is
+    # row-addressed by record_id and checked only firm_id.
+    # _assert_capital_gains_scope is the new resolver (can_access_client, one
+    # fixed "Capital gains record not found" message, the year_end.py shape) —
+    # a no-op in mock mode, which has no persistent store to protect.
+    "/api/income-tax": ("assert_client_access", "can_access_client", "_assert_capital_gains_scope"),
+    # "/api/compliance" is a SHARED prefix — TWO DISTINCT FILES both declare
+    # APIRouter(prefix="/api/compliance"): compliance.py (4 routes: /tasks,
+    # /calendar, /seed, /due-dates/calculate — the older compliance_calendar
+    # entity) and compliance_ops.py (8 routes: /obligations/*, /dashboard,
+    # /run-escalations — the canonical compliance_records entity, Phase
+    # 4.4). Same shape as "/api/tasks" (tasks.py + task_extras.py) and "/api
+    # /gst" (three files) — registering the shared prefix is a claim about
+    # BOTH files.
+    #
+    # compliance.py: list_compliance_tasks and compliance_calendar already
+    # used filter_by_client pre-phase (client_id, when supplied, is narrowed
+    # into the firm-scoped query AND then filtered — a caller-named foreign
+    # client_id returns rows filter_by_client immediately drops, so this was
+    # already correct, not merely permissive). seed_compliance_calendar
+    # checked only client.firm_id == firm_id (a bespoke inline check, the
+    # tally_migration.py-shaped gap) and never the caller's assignment — an
+    # Executive/Manager could seed ~30 compliance task rows into any other
+    # staff member's assigned client. calculate_due_dates is a stateless
+    # due-date calculator (year/month only) — EXEMPT below.
+    #
+    # compliance_ops.py: list_obligations and obligations_calendar already
+    # used filter_by_client pre-phase. assign_obligation/transition_
+    # obligation/mark_filed_obligation called the domain service directly
+    # (get_record/update_record/mark_filed), which checks only firm_id — the
+    # SAME compliance_records table routers/compliance_records.py
+    # additionally guards with assert_client_access at its own call site
+    # (_assert_obligation_scope mirrors that call site rather than pushing
+    # the check into the shared domain service). generate_obligations/
+    # compliance_dashboard/run_escalations ran across the WHOLE FIRM with no
+    # assignment check at all — compliance.write/read are Executive+, not
+    # firm-wide-only (core/permissions.py) — confined via allowed_client_ids
+    # =effective_client_ids(...), the same F2 convention compliance_record_
+    # service.get_firm_summary already used.
+    "/api/compliance": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+        "_assert_obligation_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -918,6 +968,30 @@ EXEMPT: dict[str, str] = {
         "the statutory Schedule III -> MCA XBRL taxonomy tag table "
         "(domain/income_tax/xbrl_service.DEFAULT_MAPPINGS) — identical for "
         "every firm and every client, no stored data read.",
+    # income_tax.py — five stateless calculators. None of their request
+    # models carry a client_id; nothing is persisted or read from a table.
+    "/api/income-tax/compute":
+        "ComputeITRRequest has no client_id — a pure tax computation over "
+        "caller-supplied income/deduction figures, nothing stored or read.",
+    "/api/income-tax/hra/compute":
+        "plain scalar query params (basic/hra/rent/is_metro) — Section "
+        "10(13A) exemption math, nothing stored or read.",
+    "/api/income-tax/capital-gains/cii-table":
+        "the statutory Cost Inflation Index table (Section 48 2nd proviso) "
+        "— identical for every firm and client, no stored data read.",
+    "/api/income-tax/capital-gains/compute":
+        "ComputeCapitalGainsRequest has no client_id — a stateless "
+        "estimator, does not persist anything (unlike POST /capital-gains, "
+        "which does and is guarded).",
+    "/api/income-tax/advance-tax/compute":
+        "ComputeAdvanceTaxRequest has no client_id — a stateless Section "
+        "234C interest estimator, does not persist anything (unlike POST "
+        "/advance-tax, which does and is guarded).",
+    # compliance.py (sharing the /api/compliance prefix with compliance_ops.py
+    # — see the AUDITED comment) — the one stateless route.
+    "/api/compliance/due-dates/calculate":
+        "plain year/month query params — GST/ITR due-date math (CGST Act "
+        "§§37/39), no client_id, nothing stored or read.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -960,7 +1034,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/service-catalogue": 6, "/api/time-entries": 9,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
               "/api/identity": 11, "/api/tally-migration": 7,
-              "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7}
+              "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7,
+              "/api/income-tax": 10, "/api/compliance": 12}
 
 
 def _code_only(src: str) -> str:
@@ -1146,7 +1221,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.purchase_credit_notes", "routers.sales_debit_notes",
                    "routers.service_catalogue", "routers.time_tracking",
                    "routers.tally_migration", "routers.accounting",
-                   "routers.xbrl_engine"):
+                   "routers.xbrl_engine", "routers.income_tax",
+                   "routers.compliance", "routers.compliance_ops"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

@@ -2259,6 +2259,94 @@ several are cheap because the data is already in the narration.
    (`/api/ai-copilot`, `/api/automation`, `/api/firm-hsn-rate-history`,
    `/api/income-tax`, `/api/insights`, `/api/party-credits`, `/api/team`,
    `/api/workload`) — 24 unique top-level path groups, 49 routes total.
+   **Also fixed 2026-08-09 — `income_tax.py` (10 routes) and the shared
+   `/api/compliance` prefix (`compliance.py` + `compliance_ops.py`, 12
+   routes combined).** Next worst-first tier after accounting/approvals/
+   xbrl.
+
+   `income_tax.py`: `create_capital_gains` and `save_advance_tax` already
+   called `assert_client_access` from an earlier phase (tasks #238/#230),
+   but their read/delete siblings were missed — the exact "guarded the
+   write, not the sibling" shape found throughout this sweep.
+   `list_capital_gains`/`list_advance_tax` took `client_id` from the query
+   string and only ever filtered it into the firm-scoped `WHERE` clause,
+   never checking the caller's assignment; `delete_capital_gains` is
+   row-addressed by `record_id` and checked only `firm_id`. New
+   `_assert_capital_gains_scope` resolver (`can_access_client`, one fixed
+   "Capital gains record not found" message, the `year_end.py` shape) is a
+   no-op in mock mode, which has no persistent store to protect. The five
+   stateless calculators (`/compute`, `/hra/compute`,
+   `/capital-gains/cii-table`, `/capital-gains/compute`,
+   `/advance-tax/compute`) carry no `client_id` in their request models —
+   `EXEMPT`.
+
+   **`/api/compliance` turned out to be a SHARED prefix** — the same trap
+   as `/api/tasks` (`tasks.py` + `task_extras.py`) and `/api/gst` (three
+   files): `compliance.py` (the older `compliance_calendar` entity: /tasks,
+   /calendar, /seed, /due-dates/calculate) and `compliance_ops.py` (the
+   canonical Phase 4.4 `compliance_records` entity: /obligations/*,
+   /dashboard, /run-escalations) both declare
+   `APIRouter(prefix="/api/compliance")`. Registering the prefix is a claim
+   about both files, found only by checking for the collision before
+   registering — missing it would have left `compliance.py` silently
+   unaudited under a prefix that *looked* covered.
+
+   `compliance.py`: `list_compliance_tasks` and `compliance_calendar`
+   already used `filter_by_client` correctly — a caller-named foreign
+   `client_id` is narrowed into the firm-scoped query and then immediately
+   dropped by the filter, so this was already safe rather than merely
+   permissive. `seed_compliance_calendar` checked only
+   `client.firm_id == firm_id` (a bespoke inline check, the
+   `tally_migration.py`-shaped gap) and never the caller's assignment — an
+   Executive/Manager could seed ~30 compliance task rows into any other
+   staff member's assigned client just by supplying its id. Replaced with
+   `assert_client_access`, which subsumes the firm-boundary check.
+   `calculate_due_dates` is a stateless due-date calculator (year/month
+   only) — `EXEMPT`.
+
+   `compliance_ops.py`: `list_obligations` and `obligations_calendar`
+   already used `filter_by_client`. `assign_obligation`/
+   `transition_obligation`/`mark_filed_obligation` all called the domain
+   service directly (`get_record`/`update_record`/`mark_filed`), which
+   checks only `firm_id` — the SAME `compliance_records` table
+   `routers/compliance_records.py` additionally guards with
+   `assert_client_access` at its own call site (task #238's phase). New
+   `_assert_obligation_scope` mirrors that call site rather than pushing
+   the check into the shared domain service. `generate_obligations`/
+   `compliance_dashboard`/`run_escalations` ran across the WHOLE FIRM with
+   no assignment check at all — `compliance.write`/`read` are Executive+,
+   not firm-wide-only (`core/permissions.py`) — the same "firm-wide job
+   reachable by a non-firm-wide role" shape as the memory pipeline and
+   task `trigger-*` endpoints, but unlike those, a *partial* per-caller run
+   is an honest answer here (nothing forces an all-or-nothing computation),
+   so all three are confined via `allowed_client_ids=effective_client_ids
+   (...)` rather than a blanket 403 — the same F2 convention
+   `compliance_record_service.get_firm_summary` already used. Named a
+   `compliance_dashboard` specifically: unlike the tasks/lifecycle
+   "aggregate counts only" dashboards left deliberately unscoped, this one
+   returns the raw `queue` of obligation rows and a named `by_client`
+   breakdown — real per-client data, not a cardinality signal — so it was
+   narrowed rather than recorded as an open question.
+
+   **24 new tests** (11 for `income_tax.py`; 11 for `compliance_ops.py`
+   added to `test_compliance_engagement.py`'s existing mock-repo fixtures
+   — service-level `allowed_client_ids` narrowing plus router-level
+   assignment-scope calls; 2 for `compliance.py` added to
+   `test_pilot_features.py`'s existing `seed_compliance_calendar`
+   contract tests). **10 mutants, all killed** — every new guard call site
+   individually stripped from source and confirmed to fail the ratchet's
+   `test_every_endpoint_in_an_audited_router_consults_client_scope`, then
+   restored (`list_capital_gains`, `list_advance_tax`,
+   `delete_capital_gains`'s call to `_assert_capital_gains_scope`,
+   `assign_obligation`, `transition_obligation`, `mark_filed_obligation`,
+   `generate_obligations`, `compliance_dashboard`, `run_escalations`,
+   `seed_compliance_calendar` — one mutation of
+   `_assert_capital_gains_scope`'s own body was a no-op against the ratchet
+   by design, since the sweep checks the call site's source, not the
+   callee's; that path is instead covered by
+   `test_income_tax_client_scope.py`'s direct unit tests on the resolver).
+   Full suite identical to the 44-failure baseline.
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

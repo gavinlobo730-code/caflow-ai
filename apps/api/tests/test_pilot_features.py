@@ -461,3 +461,35 @@ class TestComplianceSeedContract:
                     r = seed_compliance_calendar(client_id="c-001", financial_year=fy, current_user=USER_A)
                     results.append(r["data"]["seeded"])
         assert results[0] == results[1]
+
+
+# ─── Compliance Seed — client-assignment scope (M2) ──────────────────────────
+# Sweep finding: seed_compliance_calendar checked only client.firm_id ==
+# firm_id — a bespoke inline firm-boundary check — and never the caller's
+# assignment, letting an Executive/Manager seed ~30 task rows into any other
+# staff member's assigned client. Mock mode's can_access_client is permissive
+# by design (no assignments table), so assert_client_access is patched
+# directly to simulate real enforcement — the same technique the
+# *_client_scope.py `deny` fixtures use.
+
+class TestComplianceSeedAssignmentScope:
+    def test_seeding_an_unassigned_clients_calendar_is_refused(self):
+        from fastapi import HTTPException
+        from routers.compliance import seed_compliance_calendar
+
+        def _deny(user, client_id):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        with patch("routers.compliance.assert_client_access", _deny):
+            with pytest.raises(HTTPException) as exc_info:
+                seed_compliance_calendar(client_id="c-001", financial_year="2025-26", current_user=USER_A)
+        assert exc_info.value.status_code == 404
+
+    def test_seeding_an_assigned_clients_calendar_still_works(self):
+        from routers.compliance import seed_compliance_calendar
+        with patch("routers.compliance.assert_client_access", lambda user, client_id: None):
+            with patch("routers.compliance.compliance_repo") as mock_cr:
+                mock_cr.create.return_value = {"id": "t-1"}
+                result = seed_compliance_calendar(client_id="c-001", financial_year="2025-26", current_user=USER_A)
+        assert result["success"] is True
+        assert result["data"]["seeded"] == 30
