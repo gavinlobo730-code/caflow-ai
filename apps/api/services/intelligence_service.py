@@ -27,7 +27,9 @@ logger = logging.getLogger("caflow.services")
 
 # ── Predictive compliance ────────────────────────────────────────────────────
 
-def compute_compliance_risk(firm_id: str) -> dict:
+def compute_compliance_risk(
+    firm_id: str, allowed_client_ids: Optional[set[str]] = None
+) -> dict:
     """
     Per-client compliance risk scoring (0-100, higher = riskier).
 
@@ -40,6 +42,11 @@ def compute_compliance_risk(firm_id: str) -> dict:
     from repositories.compliance_records_repository import compliance_records_repo
 
     clients = client_repo.find_all(firm_id=firm_id)
+    # M2: every row below NAMES its client (client_name + per-client risk
+    # score), so a firm-wide read here hands an unassigned Executive the whole
+    # client list. None = firm-wide role, nothing to narrow (the F2 convention).
+    if allowed_client_ids is not None:
+        clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
     records = compliance_records_repo.find_all(firm_id=firm_id)
 
     today = date.today()
@@ -125,7 +132,9 @@ def compute_compliance_risk(firm_id: str) -> dict:
 
 # ── Relationship intelligence ────────────────────────────────────────────────
 
-def compute_relationship_health(firm_id: str) -> dict:
+def compute_relationship_health(
+    firm_id: str, allowed_client_ids: Optional[set[str]] = None
+) -> dict:
     """
     Client relationship / engagement health scoring (0-100, higher = healthier).
 
@@ -139,6 +148,9 @@ def compute_relationship_health(firm_id: str) -> dict:
     from repositories.invoice_repository import invoice_repo
 
     clients = client_repo.find_all(firm_id=firm_id)
+    # M2: same shape as compute_compliance_risk — each row names its client.
+    if allowed_client_ids is not None:
+        clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
     tasks = task_repo.find_all(firm_id=firm_id)
     invoices = invoice_repo.find_all(firm_id=firm_id)
 
@@ -209,7 +221,11 @@ def compute_relationship_health(firm_id: str) -> dict:
 
 # ── Auto journal suggestions ─────────────────────────────────────────────────
 
-def compute_journal_suggestions(firm_id: str, client_id: Optional[str] = None) -> dict:
+def compute_journal_suggestions(
+    firm_id: str,
+    client_id: Optional[str] = None,
+    allowed_client_ids: Optional[set[str]] = None,
+) -> dict:
     """
     Pattern recognition over posted journal entries.
 
@@ -230,6 +246,10 @@ def compute_journal_suggestions(firm_id: str, client_id: Optional[str] = None) -
         firm_id=firm_id, client_id=client_id, start_date=lookback_start,
     )
     posted = [e for e in entries if e.get("status") == "posted"]
+    # M2: with no client_id the read spans the whole firm and every suggestion
+    # carries the client_id it was derived from, so narrow before patterning.
+    if allowed_client_ids is not None:
+        posted = [e for e in posted if str(e.get("client_id")) in allowed_client_ids]
 
     patterns: dict[tuple, dict] = {}
     for e in posted:
@@ -292,13 +312,15 @@ def approve_journal_suggestion(firm_id: str, suggestion: dict, user_id: Optional
 
 # ── Proactive recommendations ────────────────────────────────────────────────
 
-def compute_recommendations(firm_id: str) -> dict:
+def compute_recommendations(
+    firm_id: str, allowed_client_ids: Optional[set[str]] = None
+) -> dict:
     """Rule-based compliance / client / operational recommendations."""
     recommendations: list[dict] = []
 
     # Compliance recommendations from the risk engine above
     try:
-        risk = compute_compliance_risk(firm_id)
+        risk = compute_compliance_risk(firm_id, allowed_client_ids)
         for c in risk["clients"]:
             if c["risk_level"] in ("high", "critical"):
                 recommendations.append({
@@ -317,7 +339,7 @@ def compute_recommendations(firm_id: str) -> dict:
 
     # Client recommendations from relationship health
     try:
-        health = compute_relationship_health(firm_id)
+        health = compute_relationship_health(firm_id, allowed_client_ids)
         for c in health["clients"]:
             if c["health_level"] == "critical":
                 recommendations.append({
@@ -346,7 +368,7 @@ def compute_recommendations(firm_id: str) -> dict:
 
     # Operational recommendations from journal patterns
     try:
-        journal = compute_journal_suggestions(firm_id)
+        journal = compute_journal_suggestions(firm_id, allowed_client_ids=allowed_client_ids)
         if journal["suggestions"]:
             recommendations.append({
                 "category": "operational",

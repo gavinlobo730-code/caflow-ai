@@ -212,10 +212,14 @@ def firm_analytics(
     # Bounded to the period, not the firm's entire task history (same pattern
     # already used correctly by team_analytics above) — completed tasks from
     # years ago were previously fetched in full just to be filtered out here.
-    completed_result = db.table("tasks").select("id, client_id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
+    # The per-client column was in both SELECTs and read by nothing here — this
+    # handler returns firm-level TOTALS only and names no client. Dropped so the
+    # column list matches what the code actually uses; see this route's entry in
+    # the client-scope ratchet's EXEMPT table for the full reasoning.
+    completed_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
     completed = completed_result.data or []
 
-    open_result = db.table("tasks").select("id, client_id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).neq("status", "completed").execute()
+    open_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).neq("status", "completed").execute()
     open_tasks = open_result.data or []
 
     # Guardrail G2: the internal practice client is not part of the active-client KPI.
@@ -302,6 +306,28 @@ def profitability_analytics(
     revenue_by_client = invoice_repo.get_revenue_by_client(firm_id, date_from, date_to)
     cost_by_client = time_tracking_analytics_repo.get_cost_by_client(firm_id, date_from, date_to)
 
+    # M2: by_client / by_engagement below NAME every client (client_name plus
+    # revenue, cost, margin and a health status), so an unassigned Executive
+    # could read the commercial position of the firm's entire book.
+    #
+    # Narrowing here happens BEFORE firm_metrics is summed, so on this endpoint
+    # the totals narrow too — deliberately, and unlike client_analytics above,
+    # whose total_minutes comes from a SEPARATE firm-wide query rather than
+    # from the per-client data being filtered. Leaving these totals firm-wide
+    # would mean deriving them from rows the caller is not allowed to see, and
+    # would let an Executive read the firm's aggregate commercial position by
+    # subtracting their own book. A firm-wide role (_eff is None) is unchanged.
+    from core.authz import effective_client_ids
+    _eff = effective_client_ids(current_user)
+    if _eff is not None:
+        client_map = {k: v for k, v in client_map.items() if str(k) in _eff}
+        engagement_map = {
+            k: v for k, v in engagement_map.items()
+            if str(v.get("client_id")) in _eff
+        }
+        revenue_by_client = {k: v for k, v in revenue_by_client.items() if str(k) in _eff}
+        cost_by_client = {k: v for k, v in cost_by_client.items() if str(k) in _eff}
+
     # Firm-level metrics
     total_revenue_paise = sum(revenue_by_client.values())
     total_cost_paise = sum(cost_by_client.values())
@@ -358,6 +384,15 @@ def profitability_analytics(
     if include_by_engagement:
         revenue_by_engagement = invoice_repo.get_revenue_by_engagement(firm_id, date_from, date_to)
         cost_by_engagement = time_tracking_analytics_repo.get_cost_by_engagement(firm_id, date_from, date_to)
+        # An engagement row also names its client — narrow by the engagement's
+        # own client_id, falling back to the revenue row's when the engagement
+        # is missing from engagement_map (already narrowed above).
+        if _eff is not None:
+            revenue_by_engagement = {
+                eid: row for eid, row in revenue_by_engagement.items()
+                if str((engagement_map.get(eid) or {}).get("client_id")
+                       or row.get("client_id")) in _eff
+            }
 
         by_engagement = []
         for engagement_id in revenue_by_engagement:
@@ -456,6 +491,27 @@ def revenue_vs_effort(
     # NameError on every call and 500'd this endpoint unconditionally.
     all_clients = client_repo.find_all(firm_id=firm_id)
     client_map = {c["id"]: c for c in all_clients}
+
+    # M2: by_client / by_engagement below name every client (client_name plus
+    # revenue, effort and realization rate). Narrow at the engagement map, which
+    # is what both lists are keyed off. NOTE the `client_id` PARAMETER on this
+    # endpoint is dead — it is shadowed by a loop variable of the same name in
+    # the by_client build below and never filters anything — so the mount-level
+    # guard firing on it would not have scoped this read either.
+    from core.authz import effective_client_ids
+    _eff = effective_client_ids(current_user)
+    if _eff is not None:
+        client_map = {k: v for k, v in client_map.items() if str(k) in _eff}
+        engagement_map = {
+            k: v for k, v in engagement_map.items()
+            if str(v.get("client_id")) in _eff
+        }
+        revenue_by_engagement = {
+            k: v for k, v in revenue_by_engagement.items() if k in engagement_map
+        }
+        effort_by_engagement = {
+            k: v for k, v in effort_by_engagement.items() if k in engagement_map
+        }
 
     # Helper function to calculate realization rate
     def calc_realization_rate(revenue_paise: int, effort_minutes: int, hourly_rate_paise: int) -> float:

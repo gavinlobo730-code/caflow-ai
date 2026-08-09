@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Query
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from services.fx_reporting_service import fx_reporting_service
 
 _logger = logging.getLogger("caflow.fx_reports")
@@ -51,6 +52,9 @@ def realized_fx(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Realized FX gain/loss recognised on settlements in the window (per document)."""
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
     return _run(lambda db: fx_reporting_service.realized_fx(db, firm_id, client_id, start_date, end_date),
                 {"period": {"start": start_date, "end": end_date}, "lines": [],
@@ -64,6 +68,9 @@ def unrealized_fx(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Period-end unrealized FX revaluation runs (idempotent deltas + auto-reversal)."""
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
     return _run(lambda db: fx_reporting_service.unrealized_fx(db, firm_id, client_id, period_end),
                 {"period_end": period_end, "lines": [], "by_currency": [], "net_paise": 0})
@@ -76,6 +83,9 @@ def currency_exposure(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Open foreign monetary exposure by currency (AR + bank − AP), foreign + base."""
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
     return _run(lambda db: fx_reporting_service.currency_exposure(db, firm_id, client_id, as_of),
                 {"as_of": as_of, "by_currency": []})
@@ -89,6 +99,9 @@ def exchange_rate_audit(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Every exchange rate used (document bookings + FX adjustments) with provenance."""
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
     return _run(lambda db: fx_reporting_service.exchange_rate_audit(db, firm_id, client_id, start_date, end_date),
                 {"period": {"start": start_date, "end": end_date},
@@ -102,6 +115,9 @@ def open_foreign_balances(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Each open foreign document's foreign + base outstanding at the booked rate."""
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
     return _run(lambda db: fx_reporting_service.open_foreign_balances(db, firm_id, client_id, as_of),
                 {"as_of": as_of, "receivables": [], "payables": [], "bank_accounts": []})
