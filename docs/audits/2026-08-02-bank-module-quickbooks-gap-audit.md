@@ -1794,6 +1794,124 @@ several are cheap because the data is already in the narration.
    `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
    `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
    mostly in the 1-4 range.
+
+   **`portal.py` and `portal_access.py` — the worst-first entry above,
+   both staff-facing CA management surfaces sharing the literal
+   `/api/portal` prefix with two CLIENT-facing files that are genuinely out
+   of scope.** `/api/portal` turned out to be FOUR router files sharing one
+   literal prefix, not two: `portal.py`/`portal_access.py` are CA-side
+   (`rbac("portal", ...)`, this sweep's usual model); `portal_self.py`/
+   `portal_data.py` (the `/self/*`, `/me`, `/dashboard`, `/memberships`,
+   `/accept-invite` routes) serve the **client's own** portal login via
+   `get_current_portal_client`/`get_jwt_user` — a structurally different
+   authorization model where a portal contact is bound to exactly one
+   client_id at the identity layer, not scoped by a firm-staff assignment
+   table. Left untouched this phase; not the same bug class this sweep
+   exists for. The two staff-facing files were confirmed disjoint from
+   each other and from the client-facing pair by literal path segment —
+   `document-requests`/`messages`/`dues` (`portal.py`) vs `clients`/
+   `contacts` (`portal_access.py`) vs `self`/`me`/`dashboard`/
+   `memberships`/`accept-invite` (the client-facing pair) — so registered
+   and fixed without touching the other two.
+
+   `portal.py` (6 endpoints): `list_document_requests`,
+   `create_document_request`, `list_messages`, `send_message` and
+   `get_dues` all took `client_id` from the query or body and never
+   checked it. `complete_document_request` is row-addressed by
+   `request_id` and checked only `firm_id`. This endpoint already had an
+   unusual, deliberate convention worth preserving rather than replacing:
+   a refusal is a `200` with `{success: false, error: "Document request
+   not found"}`, not a raised `HTTPException` — and the missing-row and
+   wrong-firm cases already used byte-identical text. The new
+   `_assert_doc_request_scope` resolver (added to `domain/portal_service.
+   py` as a new non-mutating `get_document_request` lookup for the mock
+   side) extends that exact convention to the client-assignment case
+   rather than switching the endpoint to a different refusal shape.
+
+   `portal_access.py` (4 endpoints): `list_portal_contacts` and
+   `invite_portal_contact` are addressed directly by `client_id` and used
+   a bespoke `_assert_client_in_firm` helper — a hand-rolled duplicate of
+   half of `core.authz.assert_client_access` (the firm-boundary half only,
+   never the assignment half) — now deleted and replaced with the real
+   thing. `resend_portal_invite` and `deactivate_portal_contact` are
+   row-addressed by `contact_id` and had no client check at all: the
+   service layer's `get_contact()` filters by `firm_id` only. A new
+   `_assert_contact_scope` resolver closes both, reusing `get_contact`'s
+   own refusal text ("Portal contact not found.") so the message stays
+   identical between the missing-row and hidden-row cases — the service's
+   own subsequent 404 on the same text means there's no way for the two
+   call sites to drift apart.
+
+   **22 new tests, all passing on first run; 12 mutants, all killed** (6
+   guard call sites in `portal.py`, one internal resolver check, 4 guard
+   call sites in `portal_access.py`, one internal resolver check). Full
+   suite identical to baseline.
+
+   **Still open, recounted the same way:** **113** id-addressed routes
+   (down from 118 — `/api/portal/clients/{client_id}/contacts` (2 routes)
+   and the two `/api/portal/contacts/{contact_id}/...` routes plus
+   `complete_document_request` account for the 5-route drop; the other
+   `/api/portal` routes never carried a path parameter and were never in
+   this count). Worst first: `/api/clients`, `/api/identity`,
+   `/api/tally-migration`, `/api/debit-notes`, `/api/purchase-credit-notes`,
+   `/api/settings` (5 each), and a long tail mostly in the 1-4 range.
+
+   **Also fixed 2026-08-09 — `clients.py`, the root Client resource.**
+   `get_client_workspace`, `update_client`, `archive_client` and
+   `restore_client` all checked only `_assert_firm(client, firm_id)` — the
+   firm boundary, not assignment. `PERMISSIONS["client"]` gates read at
+   `_ALL_STAFF` and write at `_AT_LEAST_MANAGER`, so any Executive or
+   Reviewer in the firm could pull the FULL workspace (compliance tasks,
+   documents, AI insights, activity log) of any client in the firm, and
+   any Manager could edit, archive or restore any client in the firm —
+   not just their assigned book. Architecturally the sharpest finding of
+   this cluster of phases: `clients.py` is the most central resource in
+   the app, and every one of its four non-delete write/read endpoints was
+   open. `delete_client` is gated `_PARTNER_ONLY`, the sole firm-wide
+   role, so by RBAC construction the caller can never actually be denied
+   there — it goes through the identical guard anyway for consistency
+   rather than being carved out as a special case.
+
+   `_assert_firm` now takes `current_user` instead of a bare `firm_id`,
+   keeps the existing firm-mismatch raise, and adds
+   `if not can_access_client(current_user, client.get("id")): raise
+   HTTPException(404, "Client not found")` — the SAME text as the
+   firm-mismatch branch, so a caller cannot use the message to tell
+   "wrong firm" apart from "right firm, not your client" (message-oracle).
+   `list_clients` already filtered correctly via `effective_client_ids`
+   (pre-existing, marked `# M2: assignment scope` in the code) and needed
+   no change; `create_client` has no existing client to scope against.
+
+   GET and POST share the bare `/api/clients` path, and `EXEMPT` is keyed
+   by path only — so that one path is EXEMPT with the reasoning written
+   out (`create_client` has nothing to check; `list_clients`'s real
+   `effective_client_ids` filtering just isn't visible to the path-level
+   static check because POST shares the path). The row-addressed siblings
+   (`{client_id}`, `{client_id}/archive`, `{client_id}/restore`) are NOT
+   exempt — they're covered by `_assert_firm` in the `AUDITED` tuple like
+   every other phase.
+
+   **12 new tests, all passing on first run** (workspace/update/archive/
+   restore/delete × hidden+allowed, one hidden-vs-missing message-oracle
+   check, one cross-firm-short-circuits-before-assignment-check
+   regression guard). **6 mutants, all killed** (the internal
+   `can_access_client` check plus all 5 `_assert_firm` call sites). Full
+   suite identical to the 44-failure baseline (`git stash -u` diff, byte
+   for byte).
+
+   **Still open, recounted the same way:** **108** id-addressed routes
+   (down from 113 — `/api/clients/{client_id}` (GET/PATCH/DELETE, 3
+   routes) plus `/archive` and `/restore` (1 each) account for the
+   5-route drop). Worst first: `/api/credit-notes`, `/api/debit-notes`,
+   `/api/purchase-credit-notes`, `/api/sales-debit-notes` (3 each),
+   `/api/dsc`, `/api/firm-hsn-library`, `/api/service-catalogue`,
+   `/api/settings/email-templates`, `/api/settings/invoice-templates`,
+   `/api/time-entries` (2 each), and a long tail of 1-route paths
+   (`/api/accounting`, `/api/approvals`, `/api/identity`,
+   `/api/tally-migration`, `/api/xbrl`, `/api/fixed-assets`,
+   `/api/receipts`, `/api/purchase-payments`, `/api/einvoice`,
+   `/api/eway-bill`, `/api/form-26as`, and more — 94 unique paths, 108
+   routes total).
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

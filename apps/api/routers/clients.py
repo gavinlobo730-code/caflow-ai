@@ -11,7 +11,7 @@ from mock_data import MOCK_ACTIVITY_LOGS
 from datetime import date
 from services.audit_service import log_event
 from services.internal_client_service import assert_can_view_client
-from core.authz import effective_client_ids
+from core.authz import effective_client_ids, can_access_client
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -24,9 +24,16 @@ def _supabase_enabled() -> bool:
     return bool(os.environ.get("SUPABASE_URL"))
 
 
-def _assert_firm(client: dict, firm_id: str | None) -> None:
-    """Raise 404 if client belongs to a different firm."""
+def _assert_firm(client: dict, current_user: dict) -> None:
+    """Raise 404 if client belongs to a different firm, or is outside the
+    caller's client-assignment scope (M2 — Executive/Reviewer/Manager only
+    see clients assigned to them; only Partner is firm-wide, per
+    core.authz._FIRMWIDE_ROLES). Both branches share the same message so a
+    caller cannot distinguish "hidden" from "missing" (message-oracle)."""
+    firm_id = current_user.get("firm_id")
     if client.get("firm_id") and client["firm_id"] != firm_id:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not can_access_client(current_user, client.get("id")):
         raise HTTPException(status_code=404, detail="Client not found")
 
 
@@ -176,7 +183,7 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    _assert_firm(client, firm_id)
+    _assert_firm(client, current_user)
     # Guardrail G1: the internal practice client is Partner-only (404 to non-partners).
     assert_can_view_client(client, current_user)
 
@@ -243,7 +250,7 @@ def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depen
     existing = client_repo.find_by_id(client_id, firm_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Client not found")
-    _assert_firm(existing, firm_id)
+    _assert_firm(existing, current_user)
     if body.status and body.status.value == "archived":
         raise HTTPException(
             status_code=400,
@@ -263,7 +270,7 @@ def archive_client(client_id: str, current_user: dict = Depends(rbac("client", "
     client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    _assert_firm(client, firm_id)
+    _assert_firm(client, current_user)
     if client.get("status") == "archived":
         raise HTTPException(status_code=409, detail="Client is already archived")
     actor_id = current_user.get("auth_user_id")
@@ -281,7 +288,7 @@ def restore_client(client_id: str, current_user: dict = Depends(rbac("client", "
     client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    _assert_firm(client, firm_id)
+    _assert_firm(client, current_user)
     if client.get("status") != "archived":
         raise HTTPException(status_code=409, detail="Client is not archived")
     actor_id = current_user.get("auth_user_id")
@@ -304,7 +311,7 @@ def delete_client(client_id: str, current_user: dict = Depends(rbac("client", "d
     client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    _assert_firm(client, firm_id)
+    _assert_firm(client, current_user)
 
     blockers = _check_delete_blockers(client_id, firm_id, client_pan=client.get("pan"))
     if blockers:

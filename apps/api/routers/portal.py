@@ -17,6 +17,7 @@ import os
 
 from models.common import api_response
 from core.permissions import rbac  # M1: applied to every endpoint below (was unauthenticated)
+from core.authz import assert_client_access, can_access_client  # M2: assignment scope
 import domain.portal_service as portal_svc
 from services import portal_data_service  # Phase 4.5.2: canonical AR (retires `transactions` dues)
 
@@ -53,6 +54,24 @@ class SendMessageBody(BaseModel):
     from_ca: bool = True
 
 
+def _assert_doc_request_scope(current_user: dict, request_id: str):
+    """Resolve a document_requests row, without mutating it, and return None
+    unless it belongs to the caller's firm and the caller may access its
+    client — matching this router's existing convention of a 200 + {success:
+    false} refusal (not a raised HTTPException) for "not found", so a missing
+    request_id and an unassigned one read identically."""
+    firm_id = current_user["firm_id"]
+    db = _db()
+    if db is None:
+        row = portal_svc.get_document_request(request_id)
+    else:
+        res = db.table("document_requests").select("*").eq("id", request_id).execute()
+        row = res.data[0] if res.data else None
+    if not row or row.get("firm_id") != firm_id or not can_access_client(current_user, row.get("client_id")):
+        return None
+    return row
+
+
 # ── Document Requests ─────────────────────────────────────────────────────────
 
 @router.get("/document-requests")
@@ -61,6 +80,8 @@ def list_document_requests(
     current_user: dict = Depends(rbac("portal", "read")),
 ):
     """List all document requests for a client."""
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
@@ -84,6 +105,8 @@ def create_document_request(
     current_user: dict = Depends(rbac("portal", "write")),
 ):
     """Create a new document request from CA to client."""
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, body.client_id)
     firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
@@ -121,29 +144,17 @@ def complete_document_request(
     current_user: dict = Depends(rbac("portal", "write")),
 ):
     """Mark a document request as fulfilled."""
-    firm_id = current_user["firm_id"]
+    # M2 audit finding: row-addressed by request_id, checked only firm_id —
+    # never checked the caller's assignment to its client.
+    if _assert_doc_request_scope(current_user, request_id) is None:
+        return api_response(False, None, "Document request not found")
+
     db = _db()
     now = _now()
 
     if db is None:
         updated = portal_svc.complete_document_request(request_id)
-        if updated is None:
-            return api_response(False, None, "Document request not found")
-        if updated.get("firm_id") and updated["firm_id"] != firm_id:
-            return api_response(False, None, "Document request not found")
         return api_response(True, updated)
-
-    fetch_res = (
-        db.table("document_requests")
-        .select("id, firm_id")
-        .eq("id", request_id)
-        .execute()
-    )
-    if not fetch_res.data:
-        return api_response(False, None, "Document request not found")
-    existing = fetch_res.data[0]
-    if existing.get("firm_id") != firm_id:
-        return api_response(False, None, "Document request not found")
 
     res = (
         db.table("document_requests")
@@ -162,6 +173,8 @@ def list_messages(
     current_user: dict = Depends(rbac("portal", "read")),
 ):
     """List all portal messages for a client (CA → client broadcasts)."""
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
@@ -185,6 +198,8 @@ def send_message(
     current_user: dict = Depends(rbac("portal", "write")),
 ):
     """Send a portal message from CA to client."""
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, body.client_id)
     firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
@@ -226,5 +241,7 @@ def get_dues(
     retired here. The portal client-facing equivalent is GET /api/portal/self/dues.
     All amounts are in integer paise — never float.
     """
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
     return api_response(True, portal_data_service.dues(firm_id, client_id, db=_db()))
