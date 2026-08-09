@@ -12,11 +12,35 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client, filter_by_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/tally-migration", tags=["tally_migration"])
 _logger = logging.getLogger("caflow.tally.router")
+
+
+def _assert_job_scope(current_user: dict, job_id: str) -> dict:
+    """Fetch the job (firm-scoped) and 404 unless the caller may also access
+    its client — jobs are optionally client_id-scoped (ledgers/journals can
+    be firm-level; customers/vendors need a target client), and
+    can_access_client(user, None) is always True, so a client-less job is
+    unaffected. ONE fixed message for both the missing-row and
+    hidden-client branches.
+
+    # M2 audit finding: get_job/parse_xml/preview_import/execute_import/
+    # rollback_import resolved the job by firm_id alone and never checked
+    # its optional client_id against the caller's assignment — an
+    # Executive/Reviewer/Manager could reach, parse, preview, actually
+    # IMPORT (writing real customers/vendors into the target client's
+    # books) or roll back another staff member's assigned client's Tally
+    # migration.
+    """
+    from domain.tally.migration_service import get_migration_job
+    job = get_migration_job(current_user["firm_id"], job_id)
+    if not job or not can_access_client(current_user, job.get("client_id")):
+        raise HTTPException(404, detail="Migration job not found")
+    return job
 
 
 class CreateJobRequest(BaseModel):
@@ -51,17 +75,11 @@ def create_job(
     """Create a Tally migration job."""
     from domain.tally.migration_service import create_migration_job
 
-    # A supplied client_id must belong to the caller's firm (never trust a
-    # request-body id — same guard pattern as every client-scoped router).
-    if req.client_id:
-        import os
-        if os.environ.get("SUPABASE_URL"):
-            from core.supabase_client import get_supabase
-            owned = get_supabase().table("clients").select("id").eq(
-                "id", req.client_id
-            ).eq("firm_id", current_user["firm_id"]).execute().data
-            if not owned:
-                raise HTTPException(404, detail="Client not found")
+    # A supplied client_id must belong to the caller's firm AND the caller's
+    # own assignment (never trust a request-body id — same guard pattern as
+    # every client-scoped router). assert_client_access(user, None) is a
+    # no-op, so a firm-level (no client_id) job is unaffected.
+    assert_client_access(current_user, req.client_id)
 
     try:
         job = create_migration_job(
@@ -84,8 +102,13 @@ def create_job(
 def list_jobs(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    """M2 audit finding: this returned every job in the firm, unfiltered —
+    an Executive/Reviewer/Manager could see which OTHER clients had a Tally
+    migration in progress (file names, status) outside their own assigned
+    book. filter_by_client keeps client-less (firm-level) jobs unconditionally."""
     from domain.tally.migration_service import list_migration_jobs
-    return api_response(True, list_migration_jobs(current_user["firm_id"]))
+    jobs = list_migration_jobs(current_user["firm_id"])
+    return api_response(True, filter_by_client(current_user, jobs))
 
 
 @router.get("/jobs/{job_id}")
@@ -93,10 +116,7 @@ def get_job(
     job_id: str,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    from domain.tally.migration_service import get_migration_job
-    job = get_migration_job(current_user["firm_id"], job_id)
-    if not job:
-        raise HTTPException(404, detail="Migration job not found")
+    job = _assert_job_scope(current_user, job_id)
     return api_response(True, job)
 
 
@@ -108,11 +128,9 @@ def parse_xml(
 ):
     """Parse uploaded Tally XML export."""
     from domain.tally.migration_service import (
-        parse_tally_xml, validate_migration_data, save_migration_items, get_migration_job
+        parse_tally_xml, validate_migration_data, save_migration_items
     )
-    job = get_migration_job(current_user["firm_id"], job_id)
-    if not job:
-        raise HTTPException(404, detail="Job not found")
+    job = _assert_job_scope(current_user, job_id)
 
     try:
         parsed = parse_tally_xml(req.xml_content)
@@ -137,6 +155,7 @@ def preview_import(
 ):
     """Preview all items to be imported, grouped by type."""
     from domain.tally.migration_service import get_migration_preview
+    _assert_job_scope(current_user, job_id)
     try:
         preview = get_migration_preview(current_user["firm_id"], job_id)
         return api_response(True, preview)
@@ -156,6 +175,7 @@ def execute_import(
     Never imports without explicit CA confirmation.
     """
     from domain.tally.migration_service import execute_import as _execute
+    _assert_job_scope(current_user, job_id)
     try:
         result = _execute(
             firm_id=current_user["firm_id"],
@@ -192,6 +212,7 @@ def rollback_import(
 ):
     """Rollback: delete all records created by this import job."""
     from domain.tally.migration_service import rollback_migration
+    _assert_job_scope(current_user, job_id)
     try:
         result = rollback_migration(current_user["firm_id"], job_id, current_user["id"])
         return api_response(True, result)
