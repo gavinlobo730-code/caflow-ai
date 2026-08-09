@@ -307,6 +307,13 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/year-end/{engagement_id}/schedules": (
         "can_access_client", "_assert_engagement_scope",
     ),
+    # year_end_notes.py — Notes to Accounts, addressed by engagement_id
+    # (list, generate, get/PATCH/lock by note_id). "/notes" doesn't
+    # string-prefix-collide with any sibling. list_notes, get_note and
+    # lock_note never resolved the engagement at all before this fix.
+    "/api/year-end/{engagement_id}/notes": (
+        "can_access_client", "_assert_engagement_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -567,7 +574,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/year-end/engagements": 9,
               "/api/year-end/{engagement_id}/checklist": 2,
               "/api/year-end/{engagement_id}/financial-statements": 4,
-              "/api/year-end/{engagement_id}/schedules": 1}
+              "/api/year-end/{engagement_id}/schedules": 1,
+              "/api/year-end/{engagement_id}/notes": 5}
 
 
 def _code_only(src: str) -> str:

@@ -18,6 +18,14 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+# M2 audit finding: every endpoint below resolved its engagement by firm_id
+# alone (_get_engagement_db, live mode) or not checked its client at all
+# (_mock_engagement, mock mode); list_notes, get_note and lock_note didn't
+# resolve the engagement at all, applying only an inline firm_id filter on
+# year_end_notes in live mode and no tenancy check whatsoever in mock mode.
+# Delegates to year_end.py's own _assert_engagement_scope rather than a
+# fifth copy of the same check.
+from routers.year_end import _assert_engagement_scope
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -38,37 +46,6 @@ _ALL_NOTE_TYPES    = _AUTO_NOTE_TYPES | _MANUAL_NOTE_TYPES
 # ── Mock store ────────────────────────────────────────────────────────────────
 # engagement_id → list of note dicts
 _MOCK_NOTES: dict[str, list[dict]] = {}
-
-
-def _mock_engagement(engagement_id: str) -> dict:
-    try:
-        from routers.year_end import _MOCK_ENGAGEMENTS
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
-        if not eng:
-            raise HTTPException(status_code=404, detail="Engagement not found")
-        return eng
-    except ImportError:
-        return {
-            "id": engagement_id,
-            "firm_id": "firm-001",
-            "client_id": "client-001",
-            "financial_year": "2024-25",
-        }
-
-
-def _get_engagement_db(db, engagement_id: str, firm_id: str) -> dict:
-    row = (
-        db.table("year_end_engagements")
-        .select("*")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    return row
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -276,6 +253,11 @@ def list_notes(
     engagement_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: never resolved the engagement at all — live mode
+    # applied only an inline firm_id filter on year_end_notes, mock mode
+    # had no tenancy check whatsoever.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         return api_response(True, _MOCK_NOTES.get(engagement_id, []))
 
@@ -305,17 +287,18 @@ def generate_notes(
     """
     now = datetime.now(timezone.utc).isoformat()
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
+    if eng.get("status") == "locked":
+        raise HTTPException(status_code=403, detail="Engagement is locked")
+
     if _USE_MOCK:
-        eng = _mock_engagement(engagement_id)
-        if eng.get("status") == "locked":
-            raise HTTPException(status_code=403, detail="Engagement is locked")
         db = None
     else:
         from core.supabase_client import get_supabase
         db = get_supabase()
-        eng = _get_engagement_db(db, engagement_id, current_user["firm_id"])
-        if eng["status"] == "locked":
-            raise HTTPException(status_code=403, detail="Engagement is locked")
 
     computed = {
         "fixed_assets": _compute_fixed_assets_note_data(
@@ -379,6 +362,9 @@ def get_note(
     note_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: never resolved the engagement at all.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         notes = _MOCK_NOTES.get(engagement_id, [])
         note = next((n for n in notes if n["id"] == note_id), None)
@@ -412,10 +398,14 @@ def update_note(
 ):
     now = datetime.now(timezone.utc).isoformat()
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
+    if eng.get("status") == "locked":
+        raise HTTPException(status_code=403, detail="Engagement is locked")
+
     if _USE_MOCK:
-        eng = _mock_engagement(engagement_id)
-        if eng.get("status") == "locked":
-            raise HTTPException(status_code=403, detail="Engagement is locked")
         notes = _MOCK_NOTES.get(engagement_id, [])
         note = next((n for n in notes if n["id"] == note_id), None)
         if not note:
@@ -429,9 +419,6 @@ def update_note(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_engagement_db(db, engagement_id, current_user["firm_id"])
-    if eng["status"] == "locked":
-        raise HTTPException(status_code=403, detail="Engagement is locked")
 
     existing = (
         db.table("year_end_notes")
@@ -468,6 +455,9 @@ def lock_note(
 ):
     """Lock a note — immutable after locking. Requires Manager or Partner."""
     now = datetime.now(timezone.utc).isoformat()
+
+    # M2 audit finding: never resolved the engagement at all.
+    _assert_engagement_scope(current_user, engagement_id)
 
     if _USE_MOCK:
         notes = _MOCK_NOTES.get(engagement_id, [])
