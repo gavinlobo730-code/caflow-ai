@@ -1671,6 +1671,47 @@ several are cheap because the data is already in the narration.
    (down from 135). Worst first: `/api/year-end` (15, across
    `year_end_statements.py`, `year_end_notes.py`, `year_end_exports.py`,
    `year_end_mappings.py`), then `/api/portal` (7), and the same long tail.
+
+   **`year_end_statements.py` — the second of the four remaining siblings,
+   confirmed disjoint (its two literal segments, `/financial-statements`
+   and `/schedules`, string-prefix-collide with nothing else under
+   `/api/year-end`) and audited alone.** The worst of the four so far: all
+   5 endpoints had no client-assignment check, and two — `list_versions`
+   and `get_version` — never resolved the engagement AT ALL. Both queried
+   `financial_statement_versions` directly: live mode applied only an
+   inline `firm_id` filter, mock mode (`_MOCK_VERSIONS`, keyed purely by
+   `engagement_id`) had no tenancy check whatsoever, not even a firm one.
+   The other three (`get_financial_statements`, `create_snapshot`,
+   `get_schedule`) used a `_get_engagement`/`_mock_engagement_meta` pair —
+   the live half checked `firm_id` only; the mock half was weaker still,
+   checking only that the mock engagement existed, not even its firm.
+   Fixed the same way as the last two phases: every endpoint now delegates
+   to `year_end.py`'s `_assert_engagement_scope`, deleting both local
+   helpers.
+
+   **Found and fixed while touching `get_version`, not itself an M2
+   issue:** its own `.single()` call on `financial_statement_versions` had
+   the same raises-on-zero-rows shape as `_get_engagement`'s — a missing
+   `version_id` crashed to `500` instead of the `404` the code intended.
+   Wrapped in `try`/`except` since the fix sits in the exact lines already
+   being touched for the guard, the same proportionality rule applied
+   throughout this sweep (fix it where you're already working; don't go
+   chase it into untouched files).
+
+   **Registered as two `AUDITED` entries, not one** —
+   `/api/year-end/{engagement_id}/financial-statements` (4 routes) and
+   `/api/year-end/{engagement_id}/schedules` (1 route) — since they're
+   genuinely separate literal path segments even though both live in the
+   same file and share one resolver.
+
+   **17 new mock-mode tests plus 6 new e2e tests, all passing on first run;
+   6 mutants, all killed** (5 resolver call sites, one per endpoint, plus
+   the `.single()` try/except). Full suite identical to baseline.
+
+   **Still open, recounted the same way:** **128** id-addressed routes
+   (down from 133). Worst first: `/api/year-end` (10, across
+   `year_end_notes.py`, `year_end_exports.py`, `year_end_mappings.py`),
+   then `/api/portal` (7), and the same long tail.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

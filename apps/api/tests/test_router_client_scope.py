@@ -291,6 +291,22 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/year-end/{engagement_id}/checklist": (
         "can_access_client", "_assert_engagement_scope",
     ),
+    # year_end_statements.py owns TWO distinct literal segments —
+    # "/financial-statements" (4 routes) and "/schedules" (1 route) — that
+    # neither collide with each other nor with any sibling ("/adjustments",
+    # "/reviews", "/checklist", "/exports", "/notes", "/engagements",
+    # "mappings"). Registered as two entries since they're separate path
+    # segments, both pointing at the same file's resolver. list_versions and
+    # get_version never resolved the engagement at all before this fix —
+    # live mode applied only an inline firm_id filter on
+    # financial_statement_versions, mock mode had no tenancy check
+    # whatsoever.
+    "/api/year-end/{engagement_id}/financial-statements": (
+        "can_access_client", "_assert_engagement_scope",
+    ),
+    "/api/year-end/{engagement_id}/schedules": (
+        "can_access_client", "_assert_engagement_scope",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -549,7 +565,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/year-end/{engagement_id}/adjustments": 7,
               "/api/itr": 17, "/api/platform": 9,
               "/api/year-end/engagements": 9,
-              "/api/year-end/{engagement_id}/checklist": 2}
+              "/api/year-end/{engagement_id}/checklist": 2,
+              "/api/year-end/{engagement_id}/financial-statements": 4,
+              "/api/year-end/{engagement_id}/schedules": 1}
 
 
 def _code_only(src: str) -> str:
