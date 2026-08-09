@@ -574,6 +574,64 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_obligation_scope",
     ),
+    # ai_insights.py — the AI-generated insight feed (Chapter 17). ai_insights
+    # has a client_id column (repositories/ai_insights_repository.py).
+    # list_insights took client_id from the query string and never checked
+    # it when supplied; when NOT supplied it returned every insight in the
+    # FIRM, now narrowed with filter_by_client (the tally_migration.py-shaped
+    # gap). generate_insights is row-addressed by client_id in the path and
+    # had no check at all — an unassigned Executive/Manager could trigger a
+    # real AI generation run against another staff member's client.
+    # ack_insight/dismiss_insight are row-addressed by insight_id and checked
+    # only firm_id; new _assert_insight_scope resolver (can_access_client,
+    # one fixed "Insight not found" message, the year_end.py shape).
+    # insight_feed returns NAMED insight rows (each carrying client_id/
+    # client_name) firm-wide with no narrowing at all — confined via
+    # allowed_client_ids=effective_client_ids(...) threaded into
+    # get_insight_feed, the same F2 convention compliance_ops.py's
+    # generate_obligations/compliance_dashboard/run_escalations used.
+    # cross_client_patterns is the one EXEMPT route below — see its reason.
+    "/api/ai-insights": (
+        "assert_client_access", "filter_by_client", "effective_client_ids",
+        "_assert_insight_scope",
+    ),
+    # eway_bill.py — CGST Act §68/Rule 138. create_eway_bill already called
+    # assert_client_access pre-phase. list_eway_bills took client_id from
+    # the query string and never checked it. record_ewb_generated/
+    # extend_ewb/cancel_ewb are row-addressed by record_id with NO client_id
+    # in the request body at all and checked only firm_id — an unassigned
+    # staff member with gst.approve could record/extend/cancel another
+    # client's E-Way Bill just by guessing or observing a record_id. New
+    # get_eway_bill lookup (domain/income_tax/eway_service.py) + router-level
+    # _assert_ewb_scope resolver (can_access_client, one fixed "E-Way Bill
+    # record not found" message) closes the row-addressed gap.
+    "/api/eway-bill": ("assert_client_access", "_assert_ewb_scope"),
+    # inventory.py — stock register, per-item ledger, manual adjustment and
+    # NRV write-down for kind='good' catalogue items (migration 188).
+    # service_catalogue.client_id is NOT NULL (migration 182, service_
+    # catalogue.py's own AUDITED entry). None of the four endpoints here
+    # imported core.authz at all before this fix — list_stock_items/
+    # get_item_stock_ledger take client_id from the query string,
+    # adjust_stock/writedown_stock_to_nrv from the request body
+    # (StockAdjustmentIn.client_id / NrvWritedownIn.client_id, both
+    # required), and none of the four checked it — an unassigned Executive
+    # (read) or Manager (write) could read another staff member's client's
+    # stock register or post a real inventory adjustment (with its own GL
+    # journal, CGST Act §17(5)(h) ITC reversal) against it.
+    "/api/inventory": ("assert_client_access",),
+    # engagement_sign_public.py — client-facing engagement-letter signing,
+    # registered WITHOUT the staff auth guard at all (see the module
+    # docstring): there is no firm-staff JWT, no core.authz applicable, and
+    # no user to check an assignment for. The unguessable sign_token IS the
+    # credential, and every query is already constrained to the single row
+    # it resolves to via `.eq("sign_token", token)` — structurally the same
+    # "different authorization model" carve-out already recorded for
+    # portal_self.py/portal_data.py's "/api/portal/self/*" client-portal-
+    # login surface (see the AUDITED note on portal.py above). Registered
+    # with an empty tuple (the /api/platform shape) purely so the sweep
+    # counts its 3 routes as looked-at rather than silently skipped; every
+    # one is EXEMPT below with this same reasoning.
+    "/api/public/engagement-letters": (),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -992,6 +1050,25 @@ EXEMPT: dict[str, str] = {
     "/api/compliance/due-dates/calculate":
         "plain year/month query params — GST/ITR due-date math (CGST Act "
         "§§37/39), no client_id, nothing stored or read.",
+    # ai_insights.py — the one route with no real client-scoped data.
+    "/api/ai-insights/cross-client":
+        "get_cross_client_patterns (domain/ai_insight_service.py) is a "
+        "hardcoded stub that returns the same fixed sample patterns for "
+        "every firm regardless of real data — its own docstring says so "
+        "('In production this would query the DB... For now return "
+        "realistic mock patterns.'). There is no real client-scoped row "
+        "here for an assignment check to gate.",
+    # engagement_sign_public.py — see the AUDITED entry above for the full
+    # reasoning (public token-bearer flow, no firm-staff caller at all).
+    "/api/public/engagement-letters/{token}":
+        "public, token-scoped (view_letter) — no firm-staff user, no "
+        "core.authz applicable. Every query is constrained to the single "
+        "engagement the unguessable sign_token resolves to.",
+    "/api/public/engagement-letters/{token}/sign":
+        "same token-scoped flow, the recipient's electronic acceptance "
+        "(IT Act 2000 §10A).",
+    "/api/public/engagement-letters/{token}/reject":
+        "same token-scoped flow, the recipient's decline.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -1035,7 +1112,9 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
               "/api/identity": 11, "/api/tally-migration": 7,
               "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7,
-              "/api/income-tax": 10, "/api/compliance": 12}
+              "/api/income-tax": 10, "/api/compliance": 12,
+              "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
+              "/api/public/engagement-letters": 3}
 
 
 def _code_only(src: str) -> str:
@@ -1222,7 +1301,9 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.service_catalogue", "routers.time_tracking",
                    "routers.tally_migration", "routers.accounting",
                    "routers.xbrl_engine", "routers.income_tax",
-                   "routers.compliance", "routers.compliance_ops"):
+                   "routers.compliance", "routers.compliance_ops",
+                   "routers.ai_insights", "routers.eway_bill",
+                   "routers.inventory"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

@@ -307,10 +307,20 @@ def get_cross_client_patterns(firm_id: Optional[str] = None) -> list[dict]:
     ]
 
 
-def get_insight_feed(firm_id: Optional[str] = None, limit: int = 20) -> list[dict]:
+def get_insight_feed(
+    firm_id: Optional[str] = None,
+    limit: int = 20,
+    allowed_client_ids: Optional[set[str]] = None,
+) -> list[dict]:
+    """allowed_client_ids=None means firm-wide (a firm-wide caller, or
+    mock/dev — see core.authz.effective_client_ids); otherwise only insights
+    for a client in that set are returned, so a non-firm-wide caller's feed
+    never surfaces another staff member's assigned client."""
     from repositories.ai_insights_repository import ai_insights_repo
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     open_insights = ai_insights_repo.find_all(firm_id=firm_id, status="open")
+    if allowed_client_ids is not None:
+        open_insights = [i for i in open_insights if i.get("client_id") in allowed_client_ids]
     sorted_insights = sorted(
         open_insights,
         key=lambda i: (severity_order.get(i["severity"], 5), i["created_at"]),

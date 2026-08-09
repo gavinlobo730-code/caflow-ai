@@ -2347,6 +2347,83 @@ several are cheap because the data is already in the narration.
    `test_income_tax_client_scope.py`'s direct unit tests on the resolver).
    Full suite identical to the 44-failure baseline.
 
+   **Also fixed 2026-08-09 — the next worst-first tier: `ai_insights.py` (6
+   routes), `eway_bill.py` (5 routes) and `inventory.py` (4 routes); also
+   registered `engagement_sign_public.py`'s `/api/public/engagement-letters`
+   (3 routes) as EXEMPT.**
+
+   `ai_insights.py` — the Chapter 17 AI insight feed. `list_insights` took
+   `client_id` from the query string and never checked it when supplied;
+   when omitted it returned every insight in the FIRM unfiltered — the
+   `tally_migration.py`-shaped gap, now narrowed with `filter_by_client`.
+   `generate_insights` is row-addressed by `client_id` in the PATH and had
+   no check at all — an unassigned Executive/Manager could trigger a real
+   AI generation run against another staff member's client.
+   `ack_insight`/`dismiss_insight` are row-addressed by `insight_id` and
+   checked only `firm_id`; new `_assert_insight_scope` resolver
+   (`can_access_client`, one fixed "Insight not found" message, the
+   `year_end.py` shape) closes that gap. `insight_feed` returns NAMED
+   insight rows (each carrying `client_id`/`client_name`) firm-wide with no
+   narrowing at all — confined via `allowed_client_ids=effective_client_ids
+   (...)` threaded into `get_insight_feed`, the same F2 convention
+   `compliance_ops.py`'s `generate_obligations`/`compliance_dashboard`/
+   `run_escalations` used. `cross_client_patterns` is the one EXEMPT route:
+   `get_cross_client_patterns` is a hardcoded stub that returns the same
+   fixed sample patterns for every firm regardless of real data (its own
+   docstring says so) — there is no real client-scoped row for an
+   assignment check to gate.
+
+   `eway_bill.py` — CGST Act §68/Rule 138. `create_eway_bill` already
+   called `assert_client_access` from an earlier phase. `list_eway_bills`
+   took `client_id` from the query string and never checked it.
+   `record_ewb_generated`/`extend_ewb`/`cancel_ewb` are row-addressed by
+   `record_id` with NO `client_id` in the request body at all and checked
+   only `firm_id` — an unassigned staff member with `gst.approve` could
+   record/extend/cancel another client's E-Way Bill just by guessing or
+   observing a `record_id`. New `get_eway_bill` lookup
+   (`domain/income_tax/eway_service.py`) + router-level `_assert_ewb_scope`
+   resolver closes the row-addressed gap.
+
+   `inventory.py` — stock register, per-item ledger, manual adjustment and
+   NRV write-down for `kind='good'` catalogue items (migration 188). None
+   of the four endpoints imported `core.authz` at all before this fix —
+   `list_stock_items`/`get_item_stock_ledger` take `client_id` from the
+   query string, `adjust_stock`/`writedown_stock_to_nrv` from the request
+   body (`StockAdjustmentIn.client_id` / `NrvWritedownIn.client_id`, both
+   required) — and none of the four checked it against the caller's
+   assignment. An unassigned Executive (read) or Manager (write) could read
+   another staff member's client's stock register, or post a real
+   inventory adjustment (with its own GL journal, CGST Act §17(5)(h) ITC
+   reversal) against it.
+
+   `engagement_sign_public.py`'s `/api/public/engagement-letters` (3
+   routes) is a client-facing signing flow registered WITHOUT the staff
+   auth guard at all — there is no firm-staff JWT, no `core.authz`
+   applicable, and no user to check an assignment for. The unguessable
+   `sign_token` IS the credential, and every query is already constrained
+   to the single row it resolves to. Registered with an empty tuple (the
+   `/api/platform` shape) and all 3 routes EXEMPT, the same "different
+   authorization model" carve-out already recorded for
+   `portal_self.py`/`portal_data.py`'s client-portal-login surface.
+
+   **30 new tests** (13 for `ai_insights.py`, 9 for `eway_bill.py`, 8 for
+   `inventory.py`, in new `test_ai_insights_client_scope.py`/
+   `test_eway_bill_client_scope.py`/`test_inventory_client_scope.py` files
+   mirroring the established `*_client_scope.py` shape). **13 mutants, all
+   killed** — every new guard call site individually stripped from source
+   and confirmed to fail the ratchet's
+   `test_every_endpoint_in_an_audited_router_consults_client_scope`, then
+   restored (`list_insights`, `insight_feed`, `generate_insights`,
+   `ack_insight`, `dismiss_insight`, `list_eway_bills`,
+   `record_ewb_generated`, `extend_ewb`, `cancel_ewb`, `list_stock_items`,
+   `get_item_stock_ledger`, `adjust_stock`, `writedown_stock_to_nrv`). Full
+   suite identical to the 44-failure baseline.
+
+   **Next worst-first tier after this one:** the AR/AP + payment-gateway
+   cluster — `receipts.py` (5 routes), `purchase_payments.py` (5 routes,
+   the AP mirror), `document_intelligence_v2.py` (5 routes) and
+   `payments.py` (6 routes, including the public gateway webhook).
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
