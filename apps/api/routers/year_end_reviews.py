@@ -20,6 +20,16 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+# M2 audit finding: every endpoint below resolved its engagement by firm_id
+# alone (_get_mock_engagement/_get_db_engagement, now removed) and never
+# checked the caller's assignment to its client — a Manager or Executive
+# could submit, approve, send back for revision, or FINAL-APPROVE (an
+# irreversible lock) another staff member's client's engagement. Delegates
+# to year_end.py's own _assert_engagement_scope rather than duplicating the
+# check: same table, same mock store (already imported cross-file below),
+# one place the client-assignment logic can live rather than two copies
+# that could drift apart.
+from routers.year_end import _assert_engagement_scope
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -35,43 +45,10 @@ def _role_gte(role: str, minimum: str) -> bool:
         return False
 
 
-# ── Mock helper ───────────────────────────────────────────────────────────────
-
-def _get_mock_engagement(engagement_id: str, firm_id: str) -> dict:
-    try:
-        from routers.year_end import _MOCK_ENGAGEMENTS
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
-        if not eng or eng["firm_id"] != firm_id:
-            raise HTTPException(status_code=404, detail="Engagement not found")
-        return eng
-    except ImportError:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-
-
 def _update_mock_engagement(engagement_id: str, updates: dict) -> dict:
-    try:
-        from routers.year_end import _MOCK_ENGAGEMENTS
-        if engagement_id not in _MOCK_ENGAGEMENTS:
-            raise HTTPException(status_code=404, detail="Engagement not found")
-        _MOCK_ENGAGEMENTS[engagement_id].update(updates)
-        return _MOCK_ENGAGEMENTS[engagement_id]
-    except ImportError:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-
-
-def _get_db_engagement(db, engagement_id: str, firm_id: str) -> dict:
-    row = (
-        db.table("year_end_engagements")
-        .select("*")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    return row
+    from routers.year_end import _MOCK_ENGAGEMENTS
+    _MOCK_ENGAGEMENTS[engagement_id].update(updates)
+    return _MOCK_ENGAGEMENTS[engagement_id]
 
 
 def _record_review_event(db, engagement_id: str, firm_id: str, event_type: str,
@@ -134,8 +111,9 @@ def submit_for_review(
             detail=f"Role '{role}' cannot submit for review. Requires Executive or above.",
         )
 
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _get_mock_engagement(engagement_id, firm_id)
         if eng["status"] != "draft":
             raise HTTPException(
                 status_code=422,
@@ -150,7 +128,6 @@ def submit_for_review(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_db_engagement(db, engagement_id, firm_id)
     if eng["status"] != "draft":
         raise HTTPException(
             status_code=422,
@@ -200,8 +177,9 @@ def approve_review(
             detail=f"Role '{role}' cannot approve. Requires Manager or above.",
         )
 
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _get_mock_engagement(engagement_id, firm_id)
         if eng["status"] != "in_review":
             raise HTTPException(
                 status_code=422,
@@ -216,7 +194,6 @@ def approve_review(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_db_engagement(db, engagement_id, firm_id)
     if eng["status"] != "in_review":
         raise HTTPException(
             status_code=422,
@@ -266,8 +243,9 @@ def request_revision(
             detail=f"Role '{role}' cannot request revision. Requires Manager or above.",
         )
 
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _get_mock_engagement(engagement_id, firm_id)
         if eng["status"] != "in_review":
             raise HTTPException(
                 status_code=422,
@@ -282,7 +260,6 @@ def request_revision(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_db_engagement(db, engagement_id, firm_id)
     if eng["status"] != "in_review":
         raise HTTPException(
             status_code=422,
@@ -333,8 +310,9 @@ def final_approve(
             detail=f"Role '{role}' cannot give final approval. Only Partner can lock an engagement.",
         )
 
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
-        eng = _get_mock_engagement(engagement_id, firm_id)
         if eng["status"] != "approved":
             raise HTTPException(
                 status_code=422,
@@ -350,7 +328,6 @@ def final_approve(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_db_engagement(db, engagement_id, firm_id)
     if eng["status"] != "approved":
         raise HTTPException(
             status_code=422,
@@ -442,10 +419,9 @@ def get_review_state(
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
     """The three-step timeline + full audit history the review page renders."""
-    firm_id = current_user["firm_id"]
+    eng = _assert_engagement_scope(current_user, engagement_id)
 
     if _USE_MOCK:
-        eng = _get_mock_engagement(engagement_id, firm_id)
         # Mock mode has no audit table -- synthesize one entry reflecting the
         # engagement's current status so the frontend's history[0].to_status
         # (its sole source for "what state is this in") stays correct.
@@ -461,7 +437,6 @@ def get_review_state(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _get_db_engagement(db, engagement_id, firm_id)
 
     actor_ids = {eng.get(f) for _, f, _ in _STEP_FIELDS if eng.get(f)}
     history_rows = (

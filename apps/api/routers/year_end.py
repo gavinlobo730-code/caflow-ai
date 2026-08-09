@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client, filter_by_client
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -37,6 +38,48 @@ def _parse_financial_year(financial_year: str) -> tuple[str, str]:
 def _check_engagement_locked(engagement: dict) -> None:
     if engagement.get("status") == "locked":
         raise HTTPException(status_code=403, detail="Engagement is locked. No further modifications are allowed.")
+
+
+def _assert_engagement_scope(current_user: dict, engagement_id: str) -> dict:
+    """Resolve a year_end_engagements row and 404 unless it belongs to the
+    caller's firm and the caller may access its client.
+
+    # M2 audit finding: get_engagement and update_engagement_status resolved
+    # the engagement by firm_id alone and never checked its client against
+    # the caller's assignment — a Manager or Executive assigned to no client
+    # in common with this engagement could still read and transition it.
+    # can_access_client (not assert_client_access) so a hidden engagement and
+    # a missing one raise byte-identical detail text, the same message-oracle
+    # fix already applied across this sweep.
+    """
+    firm_id = current_user["firm_id"]
+    if _USE_MOCK:
+        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
+        if not eng or eng["firm_id"] != firm_id or not can_access_client(current_user, eng.get("client_id")):
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        return eng
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    try:
+        row = (
+            db.table("year_end_engagements")
+            .select("*")
+            .eq("id", engagement_id)
+            .eq("firm_id", firm_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception:
+        # Supabase's real .single() raises (PGRST116) rather than returning
+        # None on zero rows — without this the intended 404 below crashes to
+        # an unhandled 500 for a missing or wrong-firm engagement_id. Same
+        # shape already fixed in year_end_adjustments.py's own resolver.
+        row = None
+    if not row or not can_access_client(current_user, row.get("client_id")):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return row
 
 
 # ── Mock store (in-memory, for dev/test) ─────────────────────────────────────
@@ -81,6 +124,8 @@ def create_engagement(
     data: EngagementCreateIn,
     current_user: dict = Depends(rbac("year_end", "write")),
 ):
+    # M2 audit finding: client_id was caller-supplied and never checked.
+    assert_client_access(current_user, data.client_id)
     firm_id = current_user["firm_id"]
     fy_start, fy_end = _parse_financial_year(data.financial_year)
     now = datetime.now(timezone.utc).isoformat()
@@ -127,6 +172,11 @@ def list_engagements(
     financial_year: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: client_id, when supplied, was never checked; when
+    # omitted, the list was firm-wide with no per-row narrowing at all — an
+    # Executive assigned to one client could list every client's engagements.
+    if client_id:
+        assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
 
     if _USE_MOCK:
@@ -136,6 +186,7 @@ def list_engagements(
             and (not client_id or e["client_id"] == client_id)
             and (not financial_year or e["financial_year"] == financial_year)
         ]
+        results = filter_by_client(current_user, results)
         return api_response(True, results)
 
     from core.supabase_client import get_supabase
@@ -146,6 +197,7 @@ def list_engagements(
     if financial_year:
         q = q.eq("financial_year", financial_year)
     rows = q.order("created_at", desc=True).execute().data
+    rows = filter_by_client(current_user, rows)
     return api_response(True, rows)
 
 
@@ -154,14 +206,13 @@ def get_engagement(
     engagement_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
-    firm_id = current_user["firm_id"]
+    # M2 audit finding: row-addressed by engagement_id, resolved by firm_id
+    # alone with no check that the caller is assigned to its client.
+    row = _assert_engagement_scope(current_user, engagement_id)
 
     if _USE_MOCK:
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
-        if not eng or eng["firm_id"] != firm_id:
-            raise HTTPException(status_code=404, detail="Engagement not found")
         detail = {
-            **eng,
+            **row,
             "checklist_completion_pct": 0,
             "adjustment_count": 0,
         }
@@ -169,17 +220,6 @@ def get_engagement(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    row = (
-        db.table("year_end_engagements")
-        .select("*")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
 
     # Checklist completion %
     checklist_rows = (
@@ -223,10 +263,12 @@ def update_engagement_status(
     if new_status not in _VALID_STATUSES:
         raise HTTPException(status_code=422, detail=f"Invalid status '{new_status}'")
 
+    # M2 audit finding: row-addressed by engagement_id, resolved by firm_id
+    # alone with no check that the caller is assigned to its client — a
+    # wrong-firm-assigned Manager or Executive could transition (write to)
+    # another staff member's client's engagement.
     if _USE_MOCK:
-        eng = _MOCK_ENGAGEMENTS.get(engagement_id)
-        if not eng or eng["firm_id"] != firm_id:
-            raise HTTPException(status_code=404, detail="Engagement not found")
+        eng = _assert_engagement_scope(current_user, engagement_id)
         _check_engagement_locked(eng)
 
         allowed_transitions = _STATUS_TRANSITIONS.get(eng["status"], [])
@@ -245,20 +287,11 @@ def update_engagement_status(
         eng["updated_at"] = datetime.now(timezone.utc).isoformat()
         return api_response(True, eng)
 
+    row = _assert_engagement_scope(current_user, engagement_id)
+    _check_engagement_locked(row)
+
     from core.supabase_client import get_supabase
     db = get_supabase()
-    row = (
-        db.table("year_end_engagements")
-        .select("*")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    _check_engagement_locked(row)
 
     allowed_transitions = _STATUS_TRANSITIONS.get(row["status"], [])
     if new_status not in allowed_transitions:
