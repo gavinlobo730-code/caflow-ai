@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from models.common import api_response
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from core.ist_clock import ist_today
 from domain.income_tax.itr_engine import (
@@ -319,6 +319,13 @@ def list_capital_gains(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # Sweep finding: client_id came from the query string and was only
+    # ever filtered into the firm-scoped WHERE clause, never checked
+    # against the caller's assignment — an unassigned Executive/Reviewer
+    # could list another staff member's assigned client's capital-gains
+    # register just by supplying its id. create_capital_gains already
+    # closed this for the write side (see the task #238 comment below).
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -382,12 +389,30 @@ def create_capital_gains(
     return api_response(True, {**record, **_cg_response(result)})
 
 
+def _assert_capital_gains_scope(current_user: dict, record_id: str, db) -> None:
+    """Resolve a capital_gains row and 404 unless it belongs to the caller's
+    firm and the caller may access its client. Row-addressed by record_id, so
+    (unlike list/create) there is no client_id to check until the row is
+    fetched — delete_capital_gains previously checked only firm_id, letting
+    an unassigned Executive/Reviewer delete another staff member's assigned
+    client's capital-gains record. Mock mode (db is None) has no persistent
+    store to protect against, matching every other handler in this module."""
+    if db is None:
+        return
+    row = (db.table("capital_gains").select("client_id").eq("id", record_id)
+           .eq("firm_id", current_user["firm_id"]).execute())
+    rec = (row.data or [None])[0]
+    if not rec or not can_access_client(current_user, rec.get("client_id")):
+        raise HTTPException(status_code=404, detail="Capital gains record not found")
+
+
 @router.delete("/capital-gains/{record_id}")
 def delete_capital_gains(
     record_id: str,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     db = _db()
+    _assert_capital_gains_scope(current_user, record_id, db)
     if not db:
         return api_response(True, {"id": record_id})
     row = (db.table("capital_gains").delete().eq("id", record_id)
@@ -476,6 +501,9 @@ def list_advance_tax(
     fy: str = Query(...),
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
+    # Same gap as list_capital_gains above — client_id was filtered into the
+    # query but never checked against the caller's assignment.
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])

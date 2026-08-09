@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import filter_by_client
+from core.authz import filter_by_client, assert_client_access
 from repositories.compliance_repository import compliance_repo
 from repositories.client_repository import client_repo
 from services.compliance_engine import (
@@ -51,12 +51,13 @@ def seed_compliance_calendar(
     """
     firm_id = current_user.get("firm_id")
 
-    # Verify client belongs to this firm
-    client = client_repo.find_by_id(client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-    if client.get("firm_id") and client["firm_id"] != firm_id:
-        raise HTTPException(status_code=404, detail="Client not found")
+    # Sweep finding: this checked only client.firm_id == firm_id (a bespoke
+    # inline firm-boundary check, the tally_migration.py-shaped gap) and
+    # never the caller's assignment — an Executive/Manager could seed ~30
+    # compliance task rows into any other staff member's assigned client
+    # just by supplying its id. assert_client_access subsumes the firm-
+    # boundary check (client_repo.find_by_id is looked up inside it too).
+    assert_client_access(current_user, client_id)
 
     today = date.today()
     # Financial year is the April-start year; default to current FY

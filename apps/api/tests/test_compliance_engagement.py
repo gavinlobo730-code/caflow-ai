@@ -373,6 +373,52 @@ def test_escalate_tiers_and_idempotent():
     assert ob.escalate(FIRM, today=today, actor=ACTOR)["escalated"] == 0
 
 
+# ── allowed_client_ids (F2 client-assignment scope) ──────────────────────────
+# Sweep finding: generate_due/escalate/dashboard all ran across the WHOLE
+# FIRM with no assignment check — reachable by a non firm-wide caller since
+# compliance.write/read are Executive+, not firm-wide-only (core/
+# permissions.py). allowed_client_ids confines each, mirroring
+# compliance_record_service.get_firm_summary's existing F2 convention.
+# None (the default, exercised by every test above) stays unrestricted, so
+# the scheduler's nightly firm-wide calls are unaffected.
+
+def test_generate_due_confines_firm_wide_run_via_allowed_client_ids():
+    _engagement("GST Compliance", client="CL-A")
+    _engagement("TDS Compliance", client="CL-B")
+    ob.generate_due(FIRM, financial_year=FY, actor=ACTOR, allowed_client_ids={"CL-A"})
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-A") != []
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-B") == []
+
+
+def test_generate_due_allowed_client_ids_also_confines_the_no_engagement_fallback():
+    _client("CL-A")
+    _client("CL-B")
+    ob.generate_due(FIRM, financial_year=FY, actor=ACTOR, allowed_client_ids={"CL-A"})
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-A") != []
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-B") == []
+
+
+def test_escalate_confines_via_allowed_client_ids():
+    today = date(2026, 6, 10)
+    rec_a = _obl("2026-06-09")   # CL-1, overdue
+    rec_b = compliance_records_repo.create({
+        "firm_id": FIRM, "client_id": "CL-OTHER", "compliance_type": "GST",
+        "obligation_type": "GSTR3B", "due_date": "2026-06-09", "status": "Not Started"})
+    res = ob.escalate(FIRM, today=today, actor=ACTOR, allowed_client_ids={"CL-1"})
+    assert res["escalated"] == 1
+    assert compliance_records_repo.find_by_id(rec_a["id"])["last_escalated_tier"] == "overdue"
+    assert compliance_records_repo.find_by_id(rec_b["id"]).get("last_escalated_tier") is None
+
+
+def test_dashboard_confines_via_allowed_client_ids():
+    _seed_obl("CL-A")
+    _seed_obl("CL-B")
+    dash = ob.dashboard(FIRM, allowed_client_ids={"CL-A"})
+    assert dash["summary"]["total_obligations"] == 1
+    assert {r["client_id"] for r in dash["queue"]} == {"CL-A"}
+    assert {c["key"] for c in dash["by_client"]} == {"CL-A"}
+
+
 # ── Dashboard / calendar over the canonical entity ───────────────────────────
 
 def test_dashboard_and_calendar_projection():
@@ -462,3 +508,101 @@ def test_mark_filed_endpoint_404_other_firm():
     with pytest.raises(HTTPException) as ei:
         mark_filed_obligation(rec["id"], MarkFiledBody(), current_user=PARTNER)
     assert ei.value.status_code == 404
+
+
+# ── assign/transition/mark-filed/generate/dashboard/escalate — assignment
+# scope at the ROUTER layer ───────────────────────────────────────────────────
+# Sweep finding: assign_obligation/transition_obligation/mark_filed_obligation
+# called the domain service directly (get_record/update_record/mark_filed),
+# which checks only firm_id — the SAME compliance_records table routers/
+# compliance_records.py additionally guards with assert_client_access at its
+# own call site. generate_obligations/compliance_dashboard/run_escalations
+# ran across the WHOLE FIRM with no assignment check at all (compliance.write/
+# read are Executive+, not firm-wide-only — core/permissions.py).
+#
+# Mock mode's can_access_client/effective_client_ids are permissive by
+# design (no assignments table) — unlike _scope_exec_to_client_a above (which
+# patches core.authz.effective_client_ids for the filter_by_client-based
+# endpoints), this router's new guards call assert_client_access/
+# effective_client_ids by their OWN locally-imported names, so the fake must
+# be patched directly onto routers.compliance_ops to actually be reached.
+
+def _co_deny(monkeypatch, refuse_client="CL-B"):
+    import routers.compliance_ops as co
+
+    def _assert(user, client_id):
+        if client_id == refuse_client:
+            raise HTTPException(status_code=404, detail="Not found")
+
+    monkeypatch.setattr(co, "assert_client_access", _assert)
+    monkeypatch.setattr(co, "effective_client_ids",
+                        lambda u: None if u.get("role") == "Partner" else {"CL-A"})
+    return co
+
+
+def test_assign_obligation_endpoint_assignment_scope(monkeypatch):
+    co = _co_deny(monkeypatch)
+    rec_b = _seed_obl("CL-B")
+    with pytest.raises(HTTPException) as ei:
+        co.assign_obligation(rec_b["id"], co.AssignBody(preparer_id="p9"), current_user=EXEC_A)
+    assert ei.value.status_code == 404
+
+    rec_a = _seed_obl("CL-A")
+    resp = co.assign_obligation(rec_a["id"], co.AssignBody(preparer_id="p9"), current_user=EXEC_A)
+    assert resp["data"]["preparer_id"] == "p9"
+
+
+def test_transition_obligation_endpoint_assignment_scope(monkeypatch):
+    co = _co_deny(monkeypatch)
+    rec_b = _seed_obl("CL-B")
+    with pytest.raises(HTTPException) as ei:
+        co.transition_obligation(rec_b["id"], co.TransitionBody(status="In Progress"), current_user=EXEC_A)
+    assert ei.value.status_code == 404
+
+    rec_a = _seed_obl("CL-A")
+    resp = co.transition_obligation(rec_a["id"], co.TransitionBody(status="In Progress"), current_user=EXEC_A)
+    assert resp["data"]["obligation"]["status"] == "In Progress"
+
+
+def test_mark_filed_endpoint_assignment_scope(monkeypatch):
+    co = _co_deny(monkeypatch)
+    rec_b = _seed_obl("CL-B")
+    with pytest.raises(HTTPException) as ei:
+        co.mark_filed_obligation(rec_b["id"], co.MarkFiledBody(), current_user=EXEC_A)
+    assert ei.value.status_code == 404
+
+
+def test_generate_obligations_endpoint_named_foreign_client_is_refused(monkeypatch):
+    co = _co_deny(monkeypatch)
+    with pytest.raises(HTTPException) as ei:
+        co.generate_obligations(client_id="CL-B", financial_year=FY, current_user=EXEC_A)
+    assert ei.value.status_code == 404
+
+
+def test_generate_obligations_endpoint_omitted_client_confines_to_assignment(monkeypatch):
+    co = _co_deny(monkeypatch)
+    _client("CL-A")
+    _client("CL-B")
+    co.generate_obligations(client_id=None, financial_year=FY, current_user=EXEC_A)
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-A") != []
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-B") == []
+
+
+def test_compliance_dashboard_endpoint_assignment_scope(monkeypatch):
+    co = _co_deny(monkeypatch)
+    _seed_obl("CL-A")
+    _seed_obl("CL-B")
+    resp = co.compliance_dashboard(current_user=EXEC_A)
+    assert {r["client_id"] for r in resp["data"]["queue"]} == {"CL-A"}
+    resp_partner = co.compliance_dashboard(current_user=PARTNER)
+    assert {r["client_id"] for r in resp_partner["data"]["queue"]} == {"CL-A", "CL-B"}
+
+
+def test_run_escalations_endpoint_assignment_scope(monkeypatch):
+    co = _co_deny(monkeypatch)
+    rec_a = _seed_obl("CL-A", due="2020-01-01")
+    rec_b = _seed_obl("CL-B", due="2020-01-01")
+    resp = co.run_escalations(current_user=EXEC_A)
+    assert resp["data"]["escalated"] == 1
+    assert compliance_records_repo.find_by_id(rec_a["id"])["last_escalated_tier"] == "overdue"
+    assert compliance_records_repo.find_by_id(rec_b["id"]).get("last_escalated_tier") is None
