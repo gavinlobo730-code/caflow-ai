@@ -225,3 +225,18 @@ def list_eway_bills(
         q = q.eq("status", status)
     res = q.order("created_at", desc=True).execute()
     return res.data or []
+
+
+def get_eway_bill(firm_id: str, record_id: str) -> dict | None:
+    """Firm-scoped lookup by id — the resolve half of a resolve-then-assert
+    guard. record_ewb_generated/extend/cancel are all row-addressed by
+    record_id with no client_id in the request at all, so the caller's
+    client-assignment scope can only be checked after loading the record's
+    own client_id via this."""
+    if _USE_MOCK:
+        rec = _MOCK_RECORDS.get(record_id)
+        return rec if rec and rec.get("firm_id") == firm_id else None
+
+    sb = _supabase()
+    res = sb.table("eway_bill_records").select("*").eq("id", record_id).eq("firm_id", firm_id).limit(1).execute()
+    return res.data[0] if res.data else None

@@ -8,12 +8,24 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/eway-bill", tags=["eway_bill"])
 _logger = logging.getLogger("caflow.eway_bill.router")
+
+
+def _assert_ewb_scope(current_user: dict, record_id: str) -> dict:
+    """Resolve record_id to its row and verify the caller's client-assignment
+    scope — record_ewb_generated/extend/cancel are row-addressed with no
+    client_id in the request body at all. One fixed 404 covers both a
+    missing record and one outside the caller's assigned book."""
+    from domain.income_tax.eway_service import get_eway_bill
+    rec = get_eway_bill(current_user["firm_id"], record_id)
+    if rec is None or not can_access_client(current_user, rec.get("client_id")):
+        raise HTTPException(status_code=404, detail="E-Way Bill record not found")
+    return rec
 
 
 class CreateEWayBillRequest(BaseModel):
@@ -88,6 +100,7 @@ def list_eway_bills(
     status: Optional[str] = None,
     current_user: dict = Depends(rbac("gst", "read")),
 ):
+    assert_client_access(current_user, client_id)
     from domain.income_tax.eway_service import list_eway_bills as _list
     return api_response(True, _list(current_user["firm_id"], client_id, status))
 
@@ -99,6 +112,7 @@ def record_ewb_generated(
     current_user: dict = Depends(rbac("gst", "approve")),
 ):
     """# CA REVIEW REQUIRED — Record EWB generated on NIC portal."""
+    _assert_ewb_scope(current_user, record_id)
     from domain.income_tax.eway_service import record_ewb_generated as _record
     try:
         result = _record(
@@ -132,6 +146,7 @@ def extend_ewb(
     req: ExtendEWBRequest,
     current_user: dict = Depends(rbac("gst", "approve")),
 ):
+    _assert_ewb_scope(current_user, record_id)
     from domain.income_tax.eway_service import record_ewb_extended
     try:
         result = record_ewb_extended(
@@ -149,6 +164,7 @@ def cancel_ewb(
     current_user: dict = Depends(rbac("gst", "approve")),
 ):
     """# CA REVIEW REQUIRED — Cancel EWB on NIC portal first."""
+    _assert_ewb_scope(current_user, record_id)
     from domain.income_tax.eway_service import record_ewb_cancelled
     try:
         result = record_ewb_cancelled(

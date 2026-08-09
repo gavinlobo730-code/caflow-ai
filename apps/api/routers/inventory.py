@@ -17,6 +17,7 @@ from typing import Optional
 from models.common import api_response
 from models.inventory import StockAdjustmentIn, NrvWritedownIn
 from core.permissions import rbac
+from core.authz import assert_client_access
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 
@@ -76,6 +77,7 @@ def list_stock_items(
     register, no longer ties to the Balance Sheet Inventory account. Items
     with no ledger history yet (never received a stock-in movement) show 0,
     same as before."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             return api_response(True, [])
@@ -115,6 +117,7 @@ def get_item_stock_ledger(
 ):
     """Movement history for one stock item — mirrors the accounting Ledger
     view's shape (opening/running balance per row)."""
+    assert_client_access(current_user, client_id)
     try:
         if _USE_MOCK:
             return api_response(True, {"item": None, "lines": []})
@@ -151,6 +154,7 @@ def adjust_stock(
     destruction, or free samples given away. The CA explicitly confirms both
     the quantity/direction and whether it triggers an ITC reversal (CGST Act
     §17(5)(h)) before this posts; never inferred or auto-triggered."""
+    assert_client_access(current_user, data.client_id)
     try:
         if data.direction == "increase" and data.reverse_itc:
             raise HTTPException(
@@ -212,6 +216,7 @@ def writedown_stock_to_nrv(
     inventory must be carried at the LOWER of cost or NRV). No quantity
     change — value only. A no-op (200, data=null) if NRV is already >= the
     current average cost, or the item has no stock yet."""
+    assert_client_access(current_user, data.client_id)
     try:
         if _USE_MOCK:
             return api_response(True, None)
