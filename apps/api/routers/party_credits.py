@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from services.party_credit_service import party_credit_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -41,6 +42,7 @@ def list_party_credits(
     if _USE_MOCK:
         return api_response(True, [])
     try:
+        assert_client_access(current_user, client_id)
         db = _get_db()
         rows = party_credit_service.list_balances(db, current_user["firm_id"], client_id, party_type)
         return api_response(True, rows)
@@ -61,6 +63,7 @@ def get_party_credit(
     if _USE_MOCK:
         return api_response(True, {"balance_paise": 0, "ledger": []})
     try:
+        assert_client_access(current_user, client_id)
         db = _get_db()
         firm_id = current_user["firm_id"]
         balance = party_credit_service.get_balance(db, firm_id, client_id, party_type, party_id)
@@ -82,6 +85,9 @@ def apply_party_credit(
         raise HTTPException(status_code=422, detail="Party credits require a configured database.")
     if data.amount_paise <= 0:
         raise HTTPException(status_code=422, detail="amount_paise must be positive")
+    assert_client_access(current_user, data.client_id)
+    # client_id rides in the JSON body here; explicit so the check is visible
+    # before the credit is applied. Outside the try — see below.
     try:
         db = _get_db()
         row = party_credit_service.apply_credit(

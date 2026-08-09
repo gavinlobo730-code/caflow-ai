@@ -2874,6 +2874,79 @@ several are cheap because the data is already in the narration.
     **byte-identical to the 44-failure baseline** (6064 → 6105 passed, **+41
     exactly accounted for**: 17 tests + 19 new ratchet routes + 5 MIN_ROUTES).
 
+    **Final phase: the last 42 routes — and guard PLACEMENT as a checked class.**
+
+    This phase closes the sweep. **Every API route in the application is now
+    either audited or exempt with a written reason — 0 uncovered**, across 100
+    audited prefixes and 130 written exemptions.
+
+    The substantive finding is not another unguarded endpoint; it is that **a
+    scope check is only worth what its position makes it worth**. Two placements
+    silently neutralise a correct check, and this sweep hit them four times:
+
+    * **A — the check sits after an early `return`** on a mock/short-circuit
+      branch, so the branch that returns real data never runs it.
+    * **B — the check sits inside a `try`** whose handler swallows `Exception`.
+      `HTTPException` *is* an `Exception`, so the denial is downgraded (to a
+      500 in `einvoice.py`, to a soft `success: false` **200** in `hsn.py`).
+
+    Having tripped over these one at a time, this phase scanned every router
+    with an AST pass instead of waiting to meet the third. That turned three
+    anecdotes into a class and found two more instances of A beyond the known
+    `currencies.get_currency_policy`: **`receipts._assert_receipt_scope`** (its
+    mock branch checked neither firm nor assignment) and
+    **`purchase_payments._assert_payment_scope`** (checked the firm, not the
+    assignment) — both diverging from their own real branches on the one thing
+    the resolver exists to do. Plus **`timeline.list_timeline_events`**, whose
+    check sat below a mock branch returning real events.
+
+    The sting in pattern A is worth stating plainly: **`_USE_MOCK` is exactly
+    the mode the in-memory CI job runs in**, so a guard placed below a mock
+    branch is precisely the guard no test can reach. The production path was
+    always correct in all three cases — the defect was that the *tested* path
+    was not, which is how it survived this long. Pattern B is now a standing
+    regression test rather than a one-off scan
+    (`test_no_scope_check_sits_inside_a_swallowing_try`), and it correctly
+    tolerates a **tuple** `except (ValidationError, KeyError)` — which does not
+    catch `HTTPException` — the one false positive the raw scan produced.
+
+    The remaining routes: `customer-statements` (4) and `party-credits` (3)
+    were mount-guard-covered but named no guard, and got explicit checks — one
+    of them nearly a `NameError`, since the email/apply endpoints carry
+    `client_id` in the JSON body rather than a query param. `search.py` was
+    found **already fully narrowed** before the sweep reached it, and is now
+    registered so it stays that way. `assistant.py` carried a `client_id`
+    field that nothing read, on a router with **no mount guard at all** — it
+    was removed rather than exempted, because a dead `client_id` on an
+    unguarded router is a trap for whoever wires it up next.
+
+    Three registrations state a *mechanism* rather than a check, which is the
+    honest description in each case. `practice.py` never accepts a
+    caller-supplied client id — it derives the firm's own internal practice
+    entity from `firm_id` server-side, so the derivation *is* the guard and is
+    what the sweep now verifies. The **client portal** (12 routes) is a
+    separate auth audience where staff assignment scope cannot apply because
+    the caller *is* the client; its equivalent control is that `client_id`
+    comes from the authenticated membership (`get_current_portal_client`) or
+    the caller's own JWT, never from the request. `portal_data`'s
+    row-addressed invoice routes use `invoice_in_scope(firm_id, client_id,
+    invoice_id)` — a genuine resolve-then-check — which was added to the
+    row-addressed test's resolver list rather than exempting those two routes.
+
+    **8 new tests; 8 mutants across 12 sites, all killed.** Full suite failure
+    set **byte-identical to the 44-failure baseline** (6105 → 6172 passed,
+    **+67 exactly accounted for**: 8 tests + 42 new ratchet routes + 17
+    MIN_ROUTES).
+
+    **Sweep total across the six phases:** ~110 new tests, ~60 mutants all
+    killed, and the ratchet extended from a handful of prefixes to complete
+    coverage of the API surface. The most severe findings, in order: the two
+    `fixed_assets` financial **writes** (an unassigned Executive could post
+    depreciation or a disposal against another book's ledger), the
+    `year_end_exports` and `documents` signed-URL exfiltration paths, and the
+    `ai_copilot` / `intelligence` endpoints that put every client's **name**
+    into an LLM prompt or a dashboard row.
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 

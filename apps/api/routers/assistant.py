@@ -28,7 +28,14 @@ class Message(BaseModel):
 class AssistantRequest(BaseModel):
     question: str
     conversation_history: Optional[List[Message]] = []
-    client_id: Optional[str] = None
+    # NOTE: a client_id field used to sit here and was read by nothing — this
+    # endpoint is a pure Groq passthrough over a static SYSTEM_PROMPT and loads
+    # no client data. Removed because this router carries NO mount-level client
+    # guard (main.py includes it with no dependencies), so a dead client_id is
+    # a trap: the moment someone wires it up to real client context, there is
+    # nothing enforcing assignment scope. If the assistant ever becomes
+    # client-aware, add _CLIENT_GUARD to its include_router FIRST. Pydantic
+    # ignores unknown fields by default, so callers still sending it are fine.
 
 
 @router.post("")

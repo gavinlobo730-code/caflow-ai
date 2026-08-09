@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
 from services.customer_statement_service import customer_statement_service
 from services.audit_service import log_event
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
@@ -51,6 +52,9 @@ def get_statement(
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
     """Generate the customer statement (JSON). Read-only."""
+    # Mount-guard-covered (client_id is required here); explicit so the scope
+    # check is visible at the read, and AHEAD of the no-DB early return.
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, {"customer": {"id": customer_id}, "transactions": [],
@@ -70,6 +74,9 @@ def get_statement_pdf(
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
     """Download the statement as a PDF (read-only document)."""
+    # Mount-guard-covered (client_id is required here); explicit so the scope
+    # check is visible at the read, and AHEAD of the no-DB early return.
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return Response(content=b"", media_type="application/pdf")
@@ -87,6 +94,9 @@ def email_statement(
     current_user: dict = Depends(rbac("invoice", "write")),
 ):
     """Email the statement PDF to the customer (tracked + audited)."""
+    # client_id rides in the JSON body here (the mount guard does inspect JSON
+    # bodies on POST); explicit so the check is visible before the send.
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"sent": True, "to": data.to_email})
@@ -139,6 +149,9 @@ def list_deliveries(
     customer_id: str = Query(...),
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
+    # Mount-guard-covered (client_id is required here); explicit so the scope
+    # check is visible at the read, and AHEAD of the no-DB early return.
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])

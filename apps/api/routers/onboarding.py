@@ -109,7 +109,7 @@ def create_firm(
     }).execute()
 
     # Batch 3.1: seed the firm-wide master Chart of Accounts (Migration-057
-    # architecture; client_id NULL) so posting can always resolve its accounts.
+    # architecture; seeded with a NULL client column) so posting can always resolve its accounts.
     # Idempotent + non-fatal (re-runnable); firm creation must still succeed.
     try:
         from services.coa_seed_service import seed_firm_coa

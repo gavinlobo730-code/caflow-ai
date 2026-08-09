@@ -27,6 +27,13 @@ def list_timeline_events(
     Return paginated timeline events for a client.
     Events are ordered newest-first.
     """
+    # Hoisted ABOVE the mock branch: it returns real (mock) events and used to
+    # sit before this check, so the whole in-memory test run — which is where
+    # _USE_MOCK is true — exercised the unguarded path. Same placement bug as
+    # currencies.get_currency_policy.
+    from core.authz import assert_client_access
+    assert_client_access(current_user, client_id)
+
     if _USE_MOCK:
         from services.timeline_service import MOCK_TIMELINE_EVENTS
         firm_id = current_user.get("firm_id")
@@ -39,9 +46,6 @@ def list_timeline_events(
             events = [e for e in events if e.get("financial_year") == financial_year]
         events = sorted(events, key=lambda e: e["created_at"], reverse=True)
         return api_response(True, events[offset: offset + limit])
-
-    from core.authz import assert_client_access
-    assert_client_access(current_user, client_id)
 
     from core.supabase_client import get_supabase
     db = get_supabase()

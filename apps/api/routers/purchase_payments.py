@@ -240,6 +240,11 @@ def _assert_payment_scope(current_user: dict, payment_id: str) -> dict:
         )
         if not payment:
             raise HTTPException(status_code=404, detail="Payment not found")
+        # The mock branch checked the firm but NOT the assignment, diverging
+        # from the real branch below — and _USE_MOCK is the mode the in-memory
+        # test run uses, so no test could catch the divergence.
+        if not can_access_client(current_user, payment.get("client_id")):
+            raise HTTPException(status_code=404, detail="Payment not found")
         return payment
 
     db = _get_db()
