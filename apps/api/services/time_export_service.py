@@ -80,9 +80,16 @@ def export_time_entries(
     client_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    effective_client_ids: Optional[set] = None,
 ) -> tuple[bytes, str, str]:
     """
     Export filtered time entries.
+
+    `effective_client_ids` is the caller's M2 assignment scope (None means
+    "every client in the firm" — a firm-wide role, or mock/dev): entries
+    whose client_id falls outside it are dropped before the file is built,
+    mirroring the router's own list_entries -> filter_by_client. A
+    client-less entry (internal/admin work) is always kept.
 
     Returns:
         (content_bytes, filename, media_type)
@@ -98,6 +105,8 @@ def export_time_entries(
         date_from=date_from,
         date_to=date_to,
     )
+    if effective_client_ids is not None:
+        entries = [e for e in entries if not e.get("client_id") or e.get("client_id") in effective_client_ids]
 
     try:
         users_by_id = {u["id"]: u for u in user_repo.find_all(firm_id=firm_id)}

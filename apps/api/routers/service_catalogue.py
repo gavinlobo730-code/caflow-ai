@@ -37,6 +37,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.service_catalogue import ServiceCatalogueIn, ServiceCatalogueUpdateIn
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client
 from core.ist_clock import ist_today
 from services.period_validation_service import period_validation_service
 
@@ -76,6 +77,39 @@ def _hsn_in_library(firm_id: str, hsn_code: str) -> bool:
 def _norm_name(v: Optional[str]) -> str:
     """Case/space-insensitive key for duplicate detection."""
     return re.sub(r"\s+", " ", (v or "").strip()).lower()
+
+
+def _service_owner(current_user: dict, service_id: str) -> tuple[bool, Optional[str]]:
+    """(row_exists, client_id) — the resolver's own row lookup, mirrors
+    sales_invoices.py's _invoice_owner / credit_notes.py's _cn_owner."""
+    firm_id = current_user.get("firm_id")
+    if _USE_MOCK:
+        row = next((s for s in MOCK_SERVICES if s.get("id") == service_id and s.get("firm_id") == firm_id), None)
+        return (row is not None, row.get("client_id") if row else None)
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    rows = (
+        db.table("service_catalogue").select("client_id")
+        .eq("id", service_id).eq("firm_id", firm_id).execute().data or []
+    )
+    return (bool(rows), rows[0].get("client_id") if rows else None)
+
+
+def _assert_service_scope(current_user: dict, service_id: str) -> Optional[str]:
+    """404 unless the caller may act on this preset's client.
+
+    can_access_client (not assert_client_access) and ONE fixed message for
+    every failure branch — missing, wrong firm, and right firm but
+    unassigned all read identically, in both mock and live mode (mirrors
+    year_end.py's _assert_engagement_scope / credit_notes.py's
+    _assert_cn_scope — the same message text every handler below already
+    uses for its own not-found branch, so this doesn't introduce a second
+    wording for the same condition).
+    """
+    found, client_id = _service_owner(current_user, service_id)
+    if not found or not can_access_client(current_user, client_id):
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return client_id
 
 
 def _fy_start_or_april_default(financial_year_start: Optional[str]) -> str:
@@ -207,6 +241,15 @@ def _sort_recent_first(rows: list[dict]) -> list[dict]:
     )
 
 
+def _assert_batch_scope(current_user: dict, client_ids) -> None:
+    """Every DISTINCT client in a bulk payload, checked before ANY row is
+    processed (mirrors sales_invoices.py's own _assert_batch_scope) — a bulk
+    import is exactly where someone could slip one foreign client_id in among
+    many of their own."""
+    for client_id in sorted({c for c in client_ids if c}):
+        assert_client_access(current_user, client_id)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -222,6 +265,7 @@ def list_services(
     """List/search one client's presets. Active-only by default; ranked by
     relevance then recency/frequency. Empty query returns the recent/frequent
     presets (the picker's before-you-type list)."""
+    assert_client_access(current_user, client_id)
     try:
         term = _SAFE_Q.sub(" ", (q or "").strip()).strip()
         firm_id = current_user.get("firm_id")
@@ -278,6 +322,7 @@ def create_service(
     """Create a preset. A second ACTIVE preset with the same name (case/space-
     insensitive) is rejected as a duplicate: the existing row is returned with
     duplicate=True and nothing is inserted."""
+    assert_client_access(current_user, data.client_id)
     try:
         firm_id = current_user.get("firm_id")
         payload = data.model_dump()
@@ -395,6 +440,7 @@ def bulk_create_services(
     checked against both the pre-fetched existing rows AND rows already
     accepted earlier in this same batch.
     """
+    _assert_batch_scope(current_user, [s.get("client_id") if isinstance(s, dict) else None for s in data.services])
     try:
         firm_id = current_user.get("firm_id")
         items = data.services or []
@@ -592,6 +638,7 @@ def update_service(
 ):
     """Edit a preset, or archive/restore it via is_active. Renaming to an
     existing active name is rejected as a duplicate."""
+    _assert_service_scope(current_user, service_id)
     try:
         firm_id = current_user.get("firm_id")
         patch = {k: v for k, v in data.model_dump().items() if v is not None}
@@ -826,6 +873,7 @@ def delete_service(
     """Permanently delete a preset — only when it is not linked to any real,
     non-draft/cancelled document, or to any inventory stock movement. See the
     module note above for what counts as "used" and why."""
+    _assert_service_scope(current_user, service_id)
     try:
         firm_id = current_user.get("firm_id")
 
@@ -866,6 +914,7 @@ def record_service_used(
     """Fire-and-forget usage bump (use_count += 1, last_used_at = now) so the
     picker can rank recent/frequent presets. Decoupled from invoice posting: the
     editor calls this when a preset is picked; it touches no accounting state."""
+    _assert_service_scope(current_user, service_id)
     try:
         firm_id = current_user.get("firm_id")
         now = datetime.now(timezone.utc).isoformat()

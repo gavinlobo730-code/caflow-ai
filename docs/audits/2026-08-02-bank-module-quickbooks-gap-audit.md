@@ -1968,6 +1968,101 @@ several are cheap because the data is already in the narration.
    `/api/receipts`, `/api/purchase-payments`, `/api/einvoice`,
    `/api/eway-bill`, `/api/form-26as`, `/api/document-intelligence-v2`,
    and more (84 unique paths, 90 routes total).
+
+   **Also fixed 2026-08-09 — the six worst-first routers from above:
+   `dsc.py`, `firm_hsn_library.py`, `service_catalogue.py`, `branding.py`
+   (`/api/settings/email-templates` + `/api/settings/invoice-templates`),
+   `time_tracking.py`.** Three of the six turned out to be genuine EXEMPT
+   findings, not gaps: `dsc_records` has a `firm_id` and NO `client_id`
+   column at all (migration 014) — a Digital Signature Certificate belongs
+   to the firm, not any client's book; `firm_hsn_library` likewise has no
+   `client_id` (migration 179), firm-wide by design per its own module
+   docstring ("shared across all of the firm's clients, even though the
+   Product/Service referencing a code is client-owned"); `branding.py`
+   (grepped the whole file) has no `client_id` anywhere — firm-level
+   logo/invoice-numbering/template configuration, the same reasoning as
+   task/engagement/workflow templates and year-end mappings, all already
+   exempt. All three are registered in `AUDITED` with an empty check-tuple
+   (the `/api/platform` pattern) plus a per-path `EXEMPT` entry and reason
+   for every one of their routes, rather than left out of the sweep
+   entirely — the claim "looked at, found no client to scope to" now holds
+   and ratchets forward.
+
+   `service_catalogue.py` was a real gap: CLIENT-owned by design (migration
+   182 — "Client B must never inherit Client A's products") but the router
+   never imported `core.authz` at all. `list_services`/`create_service`
+   take `client_id` directly (query/body) and now call
+   `assert_client_access`, the `sales_invoices.py` list/create shape.
+   `bulk_create_services` checks every DISTINCT `client_id` in the batch up
+   front via a new `_assert_batch_scope`, before any row is processed —
+   same convention as `sales_invoices.py`'s own `_assert_batch_scope`, so a
+   mixed batch with one foreign client_id among many of the caller's own
+   fails the whole batch rather than silently landing the rows before the
+   refusal. `update_service`/`delete_service`/`record_service_used` are
+   row-addressed and previously checked only `firm_id`; a new
+   `_assert_service_scope` resolver (`can_access_client`, not
+   `assert_client_access`) raises the SAME "Service not found." text every
+   one of these handlers already used for its own missing-row branch, so
+   the fix introduces no second wording for the same condition (the
+   message-oracle property established earlier in this sweep, for free
+   here since the text pre-existed).
+
+   `time_tracking.py`: `stop_timer`/`update_entry`/`delete_entry` are
+   row-addressed and checked only `firm_id` (`list_entries` right above
+   them already used `filter_by_client` — M2/M5, untouched); a new
+   `_assert_entry_scope` resolver covers all three, raising the
+   pre-existing "Time entry not found" text for both the missing-row and
+   hidden-client branches. `create_manual_entry`/`start_timer` take an
+   optional `client_id` and never checked it; `assert_client_access` is a
+   no-op for `client_id=None` (internal/admin time entries carry none), so
+   the fix does not regress that case. **Found beyond this router's
+   original 2-route count in the worst-first list:** `export_entries` (GET
+   `/export`) had NO assignment filtering at all — unlike `list_entries`
+   immediately above it — so an Executive/Reviewer/Manager could export
+   another staff member's unassigned client's billing data, or the whole
+   firm's, via the `client_id` filter or by omitting it entirely. Fixed by
+   threading `effective_client_ids` through to
+   `time_export_service.export_time_entries`, which now drops any entry
+   whose `client_id` falls outside it (a client-less entry is always kept)
+   — the same filtering `list_entries` already applied, moved to the export
+   layer. Two endpoints are EXEMPT, not gaps: `GET /summary/me` and `GET
+   /running/me` are addressed by the caller's OWN `user_id`, not a client —
+   they aggregate only time the caller logged themselves, never another
+   staff member's assigned book, so there is no other caller's data for an
+   assignment check to gate.
+
+   **33 new tests, all passing on first run** (mock-mode deny/allow pairs
+   for every real endpoint across both routers, hidden-vs-missing
+   message-oracle checks using the SAME id across both scenarios, e2e
+   `FakeDB` tests for `service_catalogue.py`'s resolver's own SQL branch,
+   and dedicated coverage for `time_tracking.py`'s three new shapes: a
+   client-less entry is never refused, the export's DB-level filtering
+   drops out-of-scope rows while keeping client-less ones, and the export
+   router-to-service wiring actually passes `effective_client_ids`
+   through). **16 mutants, all killed** (every new `assert_client_access`/
+   `can_access_client`/`_assert_service_scope`/`_assert_batch_scope`/
+   `_assert_entry_scope` call site, plus the export filter itself, across
+   both routers and the export service). Full suite identical to the
+   44-failure baseline (`git stash -u` diff, byte for byte).
+
+   **Still open, recounted the same way:** **73** id-addressed routes
+   (down from 90 — the five routers above account for the 17-route drop:
+   3 each on `/api/dsc` (get covers PATCH/DELETE `{dsc_id}` + POST
+   `{dsc_id}/renew`), `/api/firm-hsn-library` (PATCH/DELETE `{library_id}`
+   + DELETE `{library_id}/purge`), `/api/service-catalogue` (PATCH/DELETE
+   `{service_id}` + POST `{service_id}/used`) and `/api/time-entries`
+   (PATCH/DELETE `{entry_id}` + POST `{entry_id}/stop`), plus 5 on
+   `/api/settings` (PATCH/DELETE on both `email-templates/{template_id}`
+   and `invoice-templates/{template_id}`, plus the `set-default`
+   sub-route) — all now either genuinely guarded or EXEMPT with a written
+   reason rather than silently dropped). Worst first:
+   `/api/identity`, `/api/tally-migration` (5 each), `/api/accounting`,
+   `/api/approvals`, `/api/xbrl` (4 each), then a cluster of nine at 3
+   each (`/api/ai-insights`, `/api/eway-bill`, `/api/inventory`,
+   `/api/receipts`, `/api/compliance`, `/api/purchase-payments`,
+   `/api/document-intelligence-v2`, `/api/payments`, `/api/public`), and a
+   long tail mostly in the 1-2 range (30 unique top-level path groups, 73
+   routes total).
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
