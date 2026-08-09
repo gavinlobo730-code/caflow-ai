@@ -813,6 +813,22 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/ai-copilot": (
         "assert_client_access", "filter_by_client", "effective_client_ids",
     ),
+    # All three routers below already carry main.py's mount-level guard, so
+    # their client_id-bearing routes were covered. What the guard structurally
+    # cannot see is a route addressed by a ROW ID that carries no client_id
+    # anywhere — it never fires, and each of these scoped on firm_id alone.
+    "/api/einvoice": (
+        "assert_client_access", "_assert_record_scope",
+    ),
+    "/api/form-26as": (
+        "assert_client_access", "_assert_upload_scope",
+    ),
+    # depreciate/dispose are financial WRITES that post a journal — the same
+    # IDOR family as the task #241 read-side fix on depreciation-schedule, but
+    # capable of moving another book's ledger rather than just reading it.
+    "/api/fixed-assets": (
+        "assert_client_access", "can_access_client",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -1361,7 +1377,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
               "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
               "/api/notifications": 7, "/api/documents": 5, "/api/workload": 4,
-              "/api/team": 2, "/api/ai-copilot": 3}
+              "/api/team": 2, "/api/ai-copilot": 3,
+              "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5}
 
 
 def _code_only(src: str) -> str:

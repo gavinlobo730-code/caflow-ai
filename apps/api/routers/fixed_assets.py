@@ -18,6 +18,7 @@ import re
 from models.common import api_response
 from models.accounting import FixedAssetIn, DepreciationIn, DisposalIn
 from core.permissions import rbac
+from core.authz import assert_client_access, can_access_client
 from services.timeline_service import timeline_service
 from services.phase2_journal_service import Phase2JournalService
 from services.period_validation_service import period_validation_service, get_fy_for_date
@@ -163,6 +164,9 @@ def list_assets(
     include_disposed: bool = Query(False),
     current_user: dict = Depends(rbac("accounting", "read"))
 ):
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
@@ -183,6 +187,10 @@ def create_asset(
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """Add an asset and auto-post the acquisition journal."""
+    # client_id rides in the JSON body, which the mount-level guard does
+    # inspect on POST/PUT/PATCH; explicit so the check is visible before the
+    # acquisition journal is posted.
+    assert_client_access(current_user, data.client_id)
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -252,6 +260,14 @@ def post_depreciation(
 
     asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    # Row-addressed by asset_id with no client_id in the request, so the
+    # mount-level guard never fires. Same IDOR family as the task #241 fix on
+    # depreciation_schedule below, but a WRITE: this posts a depreciation
+    # journal, so an unassigned caller could move another book's ledger.
+    # Checked before every mutation, and reuses the 404 above so the response
+    # is not an existence oracle.
+    if not can_access_client(current_user, asset.get("client_id")):
         raise HTTPException(status_code=404, detail="Asset not found")
     if asset["is_disposed"]:
         raise HTTPException(status_code=422, detail="Cannot depreciate a disposed asset")
@@ -347,6 +363,11 @@ def dispose_asset(
     asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+    # Same row-addressed gap as post_depreciation, and likewise a WRITE: this
+    # posts a disposal journal with gain/loss. Checked before the conditional
+    # claim described above, so an unassigned caller never reaches the ledger.
+    if not can_access_client(current_user, asset.get("client_id")):
+        raise HTTPException(status_code=404, detail="Asset not found")
 
     disposal_type   = data.disposal_type
     sale_proceeds   = data.sale_proceeds_paise
@@ -417,6 +438,10 @@ def depreciation_schedule(
     current_user: dict = Depends(rbac("accounting", "read"))
 ):
     """Return projected depreciation schedule for all active assets."""
+    # task #241 closed the cross-FIRM half of this IDOR (below); this closes
+    # the within-firm half — firm_id alone still let an unassigned member read
+    # another staff member's client register.
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])

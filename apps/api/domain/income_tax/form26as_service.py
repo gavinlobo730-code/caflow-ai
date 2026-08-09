@@ -70,6 +70,25 @@ def create_upload(
     return res.data[0] if res.data else row
 
 
+def get_upload(firm_id: str, upload_id: str) -> dict | None:
+    """Read a single 26AS upload by id, scoped to the firm.
+
+    Module 9.0: both row-addressed upload routes previously resolved the row
+    on firm_id alone (and the mock branch of mark_26as_uploaded checked
+    nothing at all), so neither could enforce client-assignment scope. This
+    read gives the router the upload's client_id before it acts.
+    """
+    if _USE_MOCK:
+        row = _MOCK_UPLOADS.get(upload_id)
+        return row if row and row.get("firm_id") == firm_id else None
+
+    sb = _supabase()
+    res = sb.table("form_26as_uploads").select("*").eq("id", upload_id).eq(
+        "firm_id", firm_id
+    ).execute()
+    return (res.data or [None])[0]
+
+
 def parse_26as_text(raw_text: str) -> list[dict]:
     """
     Parse Form 26AS plain text (downloaded from TRACES portal).
