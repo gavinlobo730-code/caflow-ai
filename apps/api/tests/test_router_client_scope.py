@@ -362,6 +362,20 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/portal/contacts": (
         "can_access_client", "_assert_contact_scope",
     ),
+    # clients.py — the root Client resource. get_client_workspace/update_client/
+    # archive_client/restore_client/delete_client all previously checked only
+    # _assert_firm(client, firm_id) (firm boundary, not assignment) — any
+    # Executive/Reviewer (read) or Manager (write) in the firm could reach ANY
+    # client in it, not just their assigned book. _assert_firm now takes
+    # current_user and also raises on !can_access_client, reusing the identical
+    # "Client not found" text so the firm-check and assignment-check branches
+    # cannot be distinguished (message-oracle). delete_client is Partner-only
+    # by RBAC (_PARTNER_ONLY, the sole firm-wide role) so the added check can
+    # never actually deny a real caller there — it still goes through the same
+    # path for consistency. list_clients was already correct (effective_client_ids).
+    "/api/clients": (
+        "effective_client_ids", "_assert_firm", "can_access_client",
+    ),
 }
 
 # Routers whose endpoints are one-line delegations, with the client-scope check
@@ -605,6 +619,16 @@ EXEMPT: dict[str, str] = {
     "/api/year-end/mappings/defaults":
         "same table — default mapping suggestions plus firm-level "
         "auto-initialization from the firm's own chart of accounts.",
+    "/api/clients":
+        "shared by GET list_clients and POST create_client. create_client "
+        "makes a brand-new client — there is no existing client_id to check "
+        "assignment against. list_clients already narrows via "
+        "effective_client_ids (pre-existing, marked 'M2: assignment scope' "
+        "in the code) — real coverage, just not visible to this path-level "
+        "check since POST shares the path and this test picks one winner per "
+        "path. The row-addressed siblings ({client_id}, {client_id}/archive, "
+        "{client_id}/restore) are guarded via _assert_firm and are NOT "
+        "exempt — this entry covers only the bare '/api/clients' path.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without
@@ -640,7 +664,8 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/year-end/mappings": 4,
               "/api/portal/document-requests": 3, "/api/portal/messages": 2,
               "/api/portal/dues": 1, "/api/portal/clients": 2,
-              "/api/portal/contacts": 2}
+              "/api/portal/contacts": 2,
+              "/api/clients": 7}
 
 
 def _code_only(src: str) -> str:
@@ -821,7 +846,8 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.customers", "routers.vendors", "routers.billing",
                    "routers.invoices", "routers.ai_copilot_v2", "routers.health",
                    "routers.year_end_adjustments", "routers.itr_workspace",
-                   "routers.year_end", "routers.portal", "routers.portal_access"):
+                   "routers.year_end", "routers.portal", "routers.portal_access",
+                   "routers.clients"):
         src = inspect.getsource(importlib.import_module(module))
         assert re.search(r"^from core\.authz import", src, re.M), \
             f"{module} does not import core.authz"

@@ -1855,6 +1855,63 @@ several are cheap because the data is already in the narration.
    this count). Worst first: `/api/clients`, `/api/identity`,
    `/api/tally-migration`, `/api/debit-notes`, `/api/purchase-credit-notes`,
    `/api/settings` (5 each), and a long tail mostly in the 1-4 range.
+
+   **Also fixed 2026-08-09 — `clients.py`, the root Client resource.**
+   `get_client_workspace`, `update_client`, `archive_client` and
+   `restore_client` all checked only `_assert_firm(client, firm_id)` — the
+   firm boundary, not assignment. `PERMISSIONS["client"]` gates read at
+   `_ALL_STAFF` and write at `_AT_LEAST_MANAGER`, so any Executive or
+   Reviewer in the firm could pull the FULL workspace (compliance tasks,
+   documents, AI insights, activity log) of any client in the firm, and
+   any Manager could edit, archive or restore any client in the firm —
+   not just their assigned book. Architecturally the sharpest finding of
+   this cluster of phases: `clients.py` is the most central resource in
+   the app, and every one of its four non-delete write/read endpoints was
+   open. `delete_client` is gated `_PARTNER_ONLY`, the sole firm-wide
+   role, so by RBAC construction the caller can never actually be denied
+   there — it goes through the identical guard anyway for consistency
+   rather than being carved out as a special case.
+
+   `_assert_firm` now takes `current_user` instead of a bare `firm_id`,
+   keeps the existing firm-mismatch raise, and adds
+   `if not can_access_client(current_user, client.get("id")): raise
+   HTTPException(404, "Client not found")` — the SAME text as the
+   firm-mismatch branch, so a caller cannot use the message to tell
+   "wrong firm" apart from "right firm, not your client" (message-oracle).
+   `list_clients` already filtered correctly via `effective_client_ids`
+   (pre-existing, marked `# M2: assignment scope` in the code) and needed
+   no change; `create_client` has no existing client to scope against.
+
+   GET and POST share the bare `/api/clients` path, and `EXEMPT` is keyed
+   by path only — so that one path is EXEMPT with the reasoning written
+   out (`create_client` has nothing to check; `list_clients`'s real
+   `effective_client_ids` filtering just isn't visible to the path-level
+   static check because POST shares the path). The row-addressed siblings
+   (`{client_id}`, `{client_id}/archive`, `{client_id}/restore`) are NOT
+   exempt — they're covered by `_assert_firm` in the `AUDITED` tuple like
+   every other phase.
+
+   **12 new tests, all passing on first run** (workspace/update/archive/
+   restore/delete × hidden+allowed, one hidden-vs-missing message-oracle
+   check, one cross-firm-short-circuits-before-assignment-check
+   regression guard). **6 mutants, all killed** (the internal
+   `can_access_client` check plus all 5 `_assert_firm` call sites). Full
+   suite identical to the 44-failure baseline (`git stash -u` diff, byte
+   for byte).
+
+   **Still open, recounted the same way:** **108** id-addressed routes
+   (down from 113 — `/api/clients/{client_id}` (GET/PATCH/DELETE, 3
+   routes) plus `/archive` and `/restore` (1 each) account for the
+   5-route drop). Worst first: `/api/credit-notes`, `/api/debit-notes`,
+   `/api/purchase-credit-notes`, `/api/sales-debit-notes` (3 each),
+   `/api/dsc`, `/api/firm-hsn-library`, `/api/service-catalogue`,
+   `/api/settings/email-templates`, `/api/settings/invoice-templates`,
+   `/api/time-entries` (2 each), and a long tail of 1-route paths
+   (`/api/accounting`, `/api/approvals`, `/api/identity`,
+   `/api/tally-migration`, `/api/xbrl`, `/api/fixed-assets`,
+   `/api/receipts`, `/api/purchase-payments`, `/api/einvoice`,
+   `/api/eway-bill`, `/api/form-26as`, and more — 94 unique paths, 108
+   routes total).
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
