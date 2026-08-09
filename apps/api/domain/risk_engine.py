@@ -290,6 +290,27 @@ def compute_firm_risk_score(firm_id: Optional[str] = None) -> int:
     return min(100, total_weight // max(len(open_risks), 1))
 
 
+def get_risk(risk_id: str, firm_id: Optional[str] = None) -> dict | None:
+    """Resolve one risk row inside a firm — the lookup half of the router's
+    resolve-then-assert client-scope guard. Deliberately mirrors update_risk's
+    dual-path source set exactly, so anything that can be UPDATED can always be
+    RESOLVED to its owning client first."""
+    import os
+    if os.environ.get("SUPABASE_URL"):
+        db = __import__("core.supabase_client", fromlist=["get_supabase"]).get_supabase()
+        q = db.table("document_risks").select("*").eq("id", risk_id)
+        if firm_id:
+            q = q.eq("firm_id", firm_id)
+        result = q.limit(1).execute()
+        return result.data[0] if result.data else None
+
+    from domain.document_intelligence_service import MOCK_DOCUMENT_RISKS
+    for risk in list(MOCK_RISKS) + list(MOCK_DOCUMENT_RISKS):
+        if risk["id"] == risk_id:
+            return risk
+    return None
+
+
 def update_risk(risk_id: str, resolution_status: str, firm_id: Optional[str] = None) -> dict | None:
     """Update a risk's resolution status."""
     import os

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access, filter_by_client
 from repositories.notifications_repository import notifications_repo
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -37,6 +38,12 @@ def list_notifications(
         notification_type=type,
         limit=limit,
     )
+    # M2: notifications.client_id is nullable (migration 004) — a notification
+    # ABOUT a client the caller is no longer assigned to should stop being
+    # readable, the same rule the underlying record obeys. filter_by_client
+    # keeps client-less (firm-level) notifications. unread_count below is a
+    # bare tally that names no client, so it is left as the recipient's own.
+    notifications = filter_by_client(current_user, notifications)
     unread_count = notifications_repo.count_unread(firm_id=firm_id, user_id=user_id)
     return api_response(True, {
         "notifications": notifications,
@@ -83,6 +90,11 @@ def archive_one(notification_id: str, current_user: dict = Depends(rbac("notific
 @router.post("")
 def create_notification(body: NotificationCreate, current_user: dict = Depends(rbac("notification", "write"))):
     firm_id = current_user.get("firm_id")
+    # M2: body.client_id was written straight into the row with no check —
+    # this router carries no mount-level client guard at all, so an unassigned
+    # caller could plant a notification against another staff member's client.
+    # A no-op when client_id is None (a firm-level notification).
+    assert_client_access(current_user, body.client_id)
     notif = notifications_repo.create({
         "firm_id": firm_id,
         "type": body.type,

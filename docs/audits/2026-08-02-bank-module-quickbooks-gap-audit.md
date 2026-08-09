@@ -2517,6 +2517,119 @@ several are cheap because the data is already in the narration.
    for: 46 new dedicated tests + 25 new ratchet parametrizations from the 4
    newly AUDITED prefixes).
 
+    **Phase: `insights.py`, `assignments.py`, `risks.py`, `notifications.py`
+    — the genuinely unprotected routers.**
+
+    First a correction that reframes (without invalidating) everything above.
+    `main.py:166` defines `_CLIENT_GUARD = [Depends(require_client_access)]`
+    and applies it at mount time to most routers. `require_client_access`
+    (`services/internal_client_service.py:95-132`, introduced in `e39f147`
+    on 2026-07-18, i.e. before this whole M2 sweep began) reads `client_id`
+    from the path params, the query string, and — on POST/PUT/PATCH — the
+    JSON body, and calls `assert_client_access` on it. It does NOT cover
+    multipart/form-data fields, and it cannot cover a **row-addressed**
+    endpoint, where the client is reached only by loading the row.
+
+    So for a router mounted with `_CLIENT_GUARD`, the query- and body-param
+    gaps this sweep has been closing were already covered at the mount, and
+    the in-handler checks added for them are defense-in-depth and
+    self-documentation rather than a live fix. What was — and remains —
+    genuinely exploitable is (a) every row-addressed endpoint, on any
+    router, and (b) every endpoint on a router that carries no
+    `_CLIENT_GUARD` at all. The four routers in this phase were selected on
+    exactly that basis. Which of the two a given fix is, is called out
+    per-endpoint from here on.
+
+    `insights.py` — the LEGACY `/api/insights` alias over the same
+    `ai_insights` table `ai_insights.py` serves under `/api/ai-insights`.
+    Both are mounted; the frontend's `lib/api/index.ts` calls this one.
+    `list_insights` already narrowed with `filter_by_client` pre-phase.
+    `update_insight_status` is **row-addressed** by `insight_id` and
+    `ai_insights_repo.update_status` filters on `firm_id` alone, so an
+    unassigned Executive/Manager could acknowledge, resolve or dismiss
+    another staff member's client's insight by guessing an id — a live gap
+    the mount guard could not see. The sibling router's identically-named
+    `_assert_insight_scope` resolver had closed exactly this hole for its
+    own ack/dismiss transitions back in the ai-insights phase; this alias
+    kept it open for the generic status transition, which is the sharper
+    lesson: **fixing one router over a table does not fix the table.**
+
+    `assignments.py` — M3 client-assignment administration, the surface
+    that decides what everyone else can see. Mounts `_MFA_GUARD`, **not**
+    `_CLIENT_GUARD`, so nothing was checking `client_id` for it at all.
+    `list_client_assignments` (`assignment:read` = Manager+) let a Manager
+    enumerate the staff roster of any client in the firm.
+    `list_user_assignments` was the worst finding of the phase: it is
+    addressed by a STAFF `user_id`, so there is no `client_id` for
+    `assert_client_access` to gate, and a Manager could pass a colleague's
+    `user_id` and read back that person's ENTIRE client book — directly
+    defeating the M3 decision `core.authz`'s `_FIRMWIDE_ROLES` exists to
+    encode ("one manager cannot see another manager's book"). Narrowed with
+    `effective_client_ids` (`None` for the Partner, who still sees the full
+    list) rather than refused outright, so the legitimate "who else works on
+    MY clients" question still answers. `create_assignment`/`create_bulk`/
+    `remove_assignment` are Partner-only by RBAC — the sole firm-wide role —
+    so their added `assert_client_access` can never deny a real caller
+    today; it is the fail-closed default for if assignment administration is
+    ever opened to Manager, where granting yourself access to a client
+    outside your own book is precisely the escalation Module 9 exists to
+    prevent (same convention as `billing.py`'s Partner-only routes). The
+    check deliberately went into the four handlers rather than into
+    `_validate_client_in_firm`: that validator would still exist with the
+    check stripped out, so holding the guard there would let the ratchet
+    pass on its name alone — the `_load_article_or_404` trap the sweep's own
+    docstring warns about. Pinned by a test.
+
+    `risks.py` — the risk register (`document_risks.client_id` NOT NULL,
+    migration 004, plus risks derived from `compliance_records`).
+    `list_risks` took `client_id` from the query string and only ever
+    narrowed it INTO the firm-scoped query; more to the point, with
+    `client_id` **omitted** — the default the UI actually uses — it returned
+    every client's risks in the firm, each row carrying `client_id` AND
+    `client_name`, and the mount guard never fires when the param is absent.
+    `filter_by_client` covers both cases. `client_risks` is addressed
+    directly by `client_id` (mount-guard-covered; explicit check added for
+    consistency). `update_risk_status` is **row-addressed** by `risk_id` and
+    `domain/risk_engine.update_risk` scopes its UPDATE by `id`+`firm_id`
+    only — a live gap; new `get_risk` lookup in the engine plus an
+    `_assert_risk_scope` resolver in the router close it. `get_risk`
+    deliberately mirrors `update_risk`'s dual-path source set exactly (real
+    `document_risks` table, or `MOCK_RISKS` + `MOCK_DOCUMENT_RISKS`) so that
+    anything updatable is always first attributable to a client; that
+    invariant is pinned by its own test rather than left as a comment.
+    `risk_stats` and `firm_score` are EXEMPT — severity tallies and a single
+    0-100 integer, no client named, the same line already drawn for
+    `/api/tasks/summary/dashboard` and `/api/lifecycle/dashboard`.
+
+    `notifications.py` — carries no client guard at all, and
+    `create_notification` wrote `body.client_id` straight into the row with
+    no check anywhere: an unassigned caller could plant a notification
+    against another staff member's client, which then surfaces in that
+    client's feed and every downstream digest. A live gap.
+    `list_notifications` is recipient-scoped (`user_id`=the caller) and so
+    was never cross-USER, but a notification about a client the recipient
+    has since been UNASSIGNED from should stop being readable, the same rule
+    the underlying record obeys — hence `filter_by_client`, which keeps
+    client-less (firm-level) notifications since `notifications.client_id`
+    is nullable (migration 004). `unread_count` is left as the recipient's
+    own bare tally: it names no client. The five remaining routes
+    (`/count`, `/read-all`, `/{id}/read`, `/{id}/archive`, `/stats`) are
+    EXEMPT — each is scoped by `user_id`=the caller, which is a **stricter**
+    gate than client assignment, not a looser one; pinned by tests asserting
+    the recipient scoping rather than taken on trust.
+
+    **43 new tests** across four new `test_insights_client_scope.py` (9)/
+    `test_risks_client_scope.py` (16)/`test_assignments_client_scope.py`
+    (12)/`test_notifications_client_scope.py` (6) files, in the established
+    `*_client_scope.py` shape. **15 mutants, all killed.** The mutation
+    harness itself was corrected mid-phase: an earlier version deleted a
+    bare `if` line and left its body dangling, so the resulting
+    `IndentationError` read as a caught guard while proving nothing — every
+    mutation is now an explicit (old → new) pair `ast.parse`d before the
+    suite runs. Full suite identical to the 44-failure baseline (5917 →
+    5983 passed, +66 exactly accounted for: 43 new dedicated tests + 23 new
+    ratchet parametrizations from the 4 newly AUDITED prefixes).
+
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
