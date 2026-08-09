@@ -12,6 +12,13 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+# M2 audit finding: list_checklist and update_checklist_item resolved their
+# engagement by firm_id alone (live mode, via _fetch_engagement_db, now
+# removed) or not at all (mock mode — _MOCK_CHECKLIST was keyed purely by
+# engagement_id with no tenancy check whatsoever). Delegates to
+# year_end.py's own _assert_engagement_scope rather than duplicating the
+# check against the same table in a third file.
+from routers.year_end import _assert_engagement_scope
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -40,23 +47,6 @@ _VALID_ITEM_STATUSES = ["pending", "in_progress", "complete", "not_applicable"]
 
 # engagement_id → list of checklist item dicts
 _MOCK_CHECKLIST: dict[str, list[dict]] = {}
-
-
-def _fetch_engagement_db(db, engagement_id: str, firm_id: str) -> dict:
-    """F1/F4-class fix: validate the engagement belongs to the caller's firm
-    before touching its checklist -- neither endpoint checked this at all."""
-    row = (
-        db.table("year_end_engagements")
-        .select("id, firm_id")
-        .eq("id", engagement_id)
-        .eq("firm_id", firm_id)
-        .maybe_single()
-        .execute()
-        .data
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    return row
 
 
 def _init_checklist_items(engagement_id: str) -> list[dict]:
@@ -95,6 +85,11 @@ def list_checklist(
     engagement_id: str,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    eng = _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         if engagement_id not in _MOCK_CHECKLIST:
             _MOCK_CHECKLIST[engagement_id] = _init_checklist_items(engagement_id)
@@ -102,7 +97,6 @@ def list_checklist(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    eng = _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
 
     existing = (
         db.table("year_end_checklist_items")
@@ -150,6 +144,11 @@ def update_checklist_item(
 
     now = datetime.now(timezone.utc).isoformat()
 
+    # M2 audit finding: engagement resolved by firm_id alone (live) or not
+    # checked at all (mock) — never checked the caller's assignment to its
+    # client.
+    _assert_engagement_scope(current_user, engagement_id)
+
     if _USE_MOCK:
         items = _MOCK_CHECKLIST.get(engagement_id, [])
         item = next((i for i in items if i["id"] == item_id), None)
@@ -167,7 +166,6 @@ def update_checklist_item(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
 
     existing = (
         db.table("year_end_checklist_items")

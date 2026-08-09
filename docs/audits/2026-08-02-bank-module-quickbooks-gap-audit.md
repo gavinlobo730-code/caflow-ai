@@ -1639,6 +1639,38 @@ several are cheap because the data is already in the narration.
    `/api/identity`, `/api/tally-migration`, `/api/debit-notes`,
    `/api/purchase-credit-notes`, `/api/settings` (5 each), and a long tail
    mostly in the 1-4 range.
+
+   **`year_end_checklist.py` — the first of the five remaining siblings,
+   confirmed disjoint (its own `/checklist` segment doesn't string-prefix-
+   collide with any other sibling) and audited alone.** Two endpoints,
+   `list_checklist` and `update_checklist_item`, both addressed by
+   `engagement_id`. The live branch resolved the engagement with a
+   firm-only local helper (`_fetch_engagement_db`, now removed); the MOCK
+   branch didn't check the engagement at all — `_MOCK_CHECKLIST` was keyed
+   purely by `engagement_id` with no tenancy check whatsoever, not even a
+   firm check, the "mock branch doesn't firm-scope even though the live
+   branch does" shape this sweep has watched for since the start. Fixed the
+   same way as `year_end_reviews.py`: delegates to `year_end.py`'s
+   `_assert_engagement_scope` by name for both branches, rather than a
+   third copy of the same check.
+
+   **A pre-existing test fixture had the identical `_USE_MOCK` cross-module
+   gap already found and fixed once this phase** —
+   `test_year_end_tenancy.py`'s `checklist_app` fixture flipped
+   `year_end_checklist._USE_MOCK` for its e2e tests but not
+   `year_end._USE_MOCK`, the flag the newly-delegated resolver now reads.
+   Same cause, same fix, same file class as `test_r3_8_year_end_review_
+   workflow.py`'s `yer_app` fixture from the previous phase — flipped both
+   flags.
+
+   **8 new mock-mode tests plus 3 new e2e tests, all passing on first run;
+   2 mutants, both killed** (the two resolver call sites — one per
+   endpoint). Full suite identical to baseline.
+
+   **Still open, recounted the same way:** **133** id-addressed routes
+   (down from 135). Worst first: `/api/year-end` (15, across
+   `year_end_statements.py`, `year_end_notes.py`, `year_end_exports.py`,
+   `year_end_mappings.py`), then `/api/portal` (7), and the same long tail.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
