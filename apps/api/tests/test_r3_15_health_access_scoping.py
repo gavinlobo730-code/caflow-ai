@@ -18,8 +18,20 @@ bug R3.14 fixed in the same file.
 Covers, against the real router functions (not the mocked-out unit style):
   * the removed firm_id query-param override (cross-tenant leak)
   * assignment-scope enforcement on every read endpoint
-  * write endpoints remain firm-scoped-only (unchanged), matching the
-    established compliance_records.py/compliance_ops.py precedent
+
+UPDATE (2026-08-08, client-assignment sweep): R3.15 originally left write
+endpoints firm-scoped-only, "matching the established compliance_records.py
+/compliance_ops.py precedent, where reads are assignment-scoped but writes
+are not." That precedent no longer holds — task #238, part of the same
+sweep, extended assignment-scope to compliance_records.py's OWN writes
+(create_compliance_record, update_compliance_record) for exactly the reason
+R3.15 predates: an unauthorized WRITE (here, overwriting a client's health
+score or creating an override that can mask a real Critical status) is at
+least as sensitive as an unauthorized read, not less. calculate_score is
+now assignment-scoped too, consistent with create_override/
+deactivate_override/resolve_alert in this same file (also newly guarded)
+and with every write this sweep has touched elsewhere. See the audit doc's
+health.py entry.
 """
 import inspect
 
@@ -179,11 +191,12 @@ def test_list_alerts_with_explicit_unassigned_client_id_404s(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-#  Write endpoints remain firm-scoped only (unchanged) — matches the
-#  established compliance_records.py/compliance_ops.py precedent, where
-#  reads are assignment-scoped but writes are not.
+#  Write endpoints are ALSO assignment-scoped (see the module docstring's
+#  2026-08-08 update — this reverses R3.15's original "writes are
+#  firm-scoped only" position, which the compliance_records.py precedent it
+#  cited has since moved past).
 # --------------------------------------------------------------------------- #
-def test_calculate_score_still_works_for_a_non_assigned_executive(monkeypatch):
+def test_calculate_score_404s_for_unassigned_client(monkeypatch):
     db = FakeDB()
     _wire(monkeypatch, db)
     _scope_exec_to(monkeypatch, {"CL-A"})       # exec is NOT assigned to CL-B
@@ -193,5 +206,20 @@ def test_calculate_score_still_works_for_a_non_assigned_executive(monkeypatch):
                                               "health_grade": "Healthy", "trend": "+0",
                                               "hard_override": None, "hard_override_reason": None,
                                               "is_critical": False, "is_at_risk": False})
-    resp = health.calculate_score("CL-B", EXEC_A)
+    with pytest.raises(HTTPException) as ei:
+        health.calculate_score("CL-B", EXEC_A)
+    assert ei.value.status_code == 404
+
+
+def test_calculate_score_still_works_for_an_assigned_executive(monkeypatch):
+    db = FakeDB()
+    _wire(monkeypatch, db)
+    _scope_exec_to(monkeypatch, {"CL-A"})
+    db.seed("clients", {"id": "CL-A", "firm_id": FIRM_A, "client_name": "A Co", "is_internal": False})
+    monkeypatch.setattr(health, "_calculate_scores_db",
+                        lambda db, cid, fid: {"overall_score": 90, "grade": "Healthy",
+                                              "health_grade": "Healthy", "trend": "+0",
+                                              "hard_override": None, "hard_override_reason": None,
+                                              "is_critical": False, "is_at_risk": False})
+    resp = health.calculate_score("CL-A", EXEC_A)
     assert resp["success"] is True

@@ -1321,12 +1321,75 @@ several are cheap because the data is already in the narration.
 
    **29 new tests, all 9 mutants killed, full suite identical to baseline.**
 
+   **Also fixed 2026-08-08 — `health` (13 endpoints), the first of the "long
+   tail" routers (not one of the original twelve).** The best-guarded file
+   found so far going in: `get_client_health`, `get_dimension_detail`,
+   `list_scores`, `get_score`, `get_score_history` and `list_overrides` all
+   already called `assert_client_access`/`filter_by_client` — R3.15, an
+   earlier phase, had already closed a cross-TENANT `firm_id` query-param
+   override on this router's reads and assignment-scoped every read
+   endpoint. What R3.15 explicitly left alone was writes: `calculate_score`
+   and `create_override` (row-addressed by `client_id`) had no guard at
+   all; `deactivate_override` and `resolve_alert` (row-addressed by their
+   own id) were firm-scoped only in live mode and not even that in mock
+   mode (`health_overrides.client_id` / `health_alerts.client_id` are both
+   `NOT NULL`, migration 059).
+
+   **R3.15's own test suite caught a REAL conflict, not a false positive.**
+   `test_calculate_score_still_works_for_a_non_assigned_executive` failed
+   against the new guard — R3.15's module docstring explicitly documented
+   "write endpoints remain firm-scoped-only (unchanged), matching the
+   established compliance_records.py/compliance_ops.py precedent." That
+   precedent no longer holds: task #238, earlier in *this* sweep, extended
+   assignment-scope to compliance_records.py's own writes
+   (`create_compliance_record`, `update_compliance_record`) — confirmed by
+   rereading that file's fix comments directly rather than trusting the
+   claim secondhand. R3.15 predates that evolution. Rather than revert the
+   new guard to keep the old test green, the test was updated: renamed to
+   `test_calculate_score_404s_for_unassigned_client` (mirroring the read
+   pattern), with a new `test_calculate_score_still_works_for_an_assigned_
+   executive` alongside it, and the module docstring records why. An
+   unauthorized WRITE here — overwriting a client's health score, or
+   creating an override that can mask a real Critical status — is at least
+   as sensitive as an unauthorized read, not less, and every other write
+   this sweep has guarded (`create_override`/`deactivate_override`/
+   `resolve_alert` in this same file included) makes the same call.
+
+   **`recalculate_all` needed the confine-the-run shape**, same as
+   `invoices.py`'s `run_overdue_check_endpoint` and `recurring_invoices.py`'s
+   `/run`: a firm-wide WRITE across every client's score, now confined via
+   `effective_client_ids` — a Partner still runs once across the whole
+   firm; a Manager (assignment-scoped under M3, and `rbac("client","write")`
+   admits Manager, not just Partner) now runs it once per client they are
+   actually assigned to.
+
+   **`health_dashboard` was the most severe finding in this router** — worse
+   than a leaked count, since `critical_clients`/`at_risk_clients` are NAMED
+   rows (`client_id`, `client_name`, score), returned firm-wide with no
+   narrowing at all, unlike `list_scores`/`list_alerts` two sections above
+   it in the same file which already used `filter_by_client`. Fixed the
+   same way. Its mock branch had a second, separate bug: no firm filter
+   whatsoever on `_MOCK_SCORES` (every other endpoint in this file does
+   filter mock data by firm) — a real cross-tenant gap in dev/mock mode,
+   fixed alongside the M2 issue since it lives in the same three lines.
+   `top_alerts` fetches a larger batch (50, not 10) before filtering and
+   narrowing to 10 — filtering after a pre-limited fetch could otherwise
+   under-fill an assignment-scoped caller's list even when more of their
+   own clients' alerts exist further down the firm-wide order.
+
+   **21 new tests, all 9 mutants killed on the second pass** — the first
+   pass had one survivor (`health_dashboard`'s live-mode branch), because
+   both dashboard tests forced mock mode via the shared `deny` fixture and
+   never exercised the live-mode query path at all; closed with a dedicated
+   live-mode test using a fake Supabase client. Full suite identical to
+   baseline once the R3.15 test was reconciled.
+
    **Still open — the same pattern in the remaining routers.** Counted rather
    than estimated this time (walk `app.routes`, keep `/api/*` paths with a path
-   parameter, drop everything under an `AUDITED` prefix): **169** id-addressed
-   routes have no client-scope check. Worst first: `health` (8, and almost
-   certainly all firm-level), `year_end_adjustments` (7), then `itr_workspace` /
-   `platform` at 6 each, and a long tail mostly in the 3-5 range. That
+   parameter, drop everything under an `AUDITED` prefix): **161** id-addressed
+   routes have no client-scope check. Worst first: `year_end_adjustments` (7),
+   then `itr_workspace` / `platform` at 6 each, and a long tail mostly in the
+   3-5 range. That
    count is an upper bound — it includes
    genuinely firm-level resources (`/rules/{rule_id}`, branding, identity,
    platform) with no client to scope to. Each router needs the same judgement:
@@ -1334,9 +1397,7 @@ several are cheap because the data is already in the narration.
    prefix to `AUDITED`. One router at a time — a blanket sweep would either
    over-guard firm-level endpoints or under-guard the ones whose client is named
    in a body rather than a path, which is precisely how the batch endpoints were
-   missed the first time. All twelve of the original "guards the body, not the
-   record" routers are now done — the remaining 169 are the long tail, worked
-   worst-first.
+   missed the first time.
 11. **Tier 4.1 (Account Aggregator) needs a product decision before any engineering** —
    partner selection and compliance review gate the work.
 
