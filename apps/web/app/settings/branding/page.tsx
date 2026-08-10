@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, Palette, Image, Globe, Save, Upload, Eye } from "lucide-react";
+// `Image` is aliased: lucide's icon of that name shadows next/image, which made
+// jsx-a11y/alt-text flag this decorative SVG as a real image missing an alt.
+import { ChevronLeft, Palette, Image as ImageIcon, Globe, Save, Upload, Eye } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
@@ -252,7 +254,7 @@ export default function BrandingPage() {
             {/* Logo */}
             <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
               <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-                <Image size={15} className="text-[#64748B]" />
+                <ImageIcon size={15} className="text-[#64748B]" />
                 <h2 className="text-sm font-semibold text-[#0F172A]">Logo</h2>
               </div>
               <div className="px-5 py-4 space-y-3">
