@@ -21,6 +21,33 @@ def _passbook_off_by_default(monkeypatch):
     monkeypatch.setenv("REPORTING_PASSBOOK_MODE", "off")
 
 
+@pytest.fixture
+def dev_header_auth(monkeypatch):
+    """Opt in to the documented dev/test auth mode: X-User-Role / X-Firm-Id /
+    X-User-Id headers stand in for a Supabase JWT.
+
+    core.auth.get_current_user only honours those headers when SUPABASE_URL is
+    unset AND APP_ENV=development — the second condition is what stops a
+    production deployment from being spoofed by anyone who can set a header.
+    That gate is correct and is deliberately NOT relaxed; tests that want the
+    dev mode ask for it here, per module.
+
+    Deliberately a fixture rather than an autouse/global setting, because
+    APP_ENV=development is not auth-only: year_end_exports.py swallows a
+    Storage upload failure instead of raising 500 under it. Turning it on for
+    the whole suite would silently move every export test onto that path.
+
+    Most test modules here don't need this at all — they override
+    app.dependency_overrides[get_current_user] instead, which is the dominant
+    convention (38 of the 43 TestClient modules). This fixture exists for the
+    handful written against the header mode, where the point of the test is to
+    vary the CALLER'S ROLE per request (partner vs manager vs executive) and a
+    header is the natural way to say that.
+    """
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+
+
 # ── Real-Postgres harness: build the migrated schema ONCE per session ────────
 import json
 import os
