@@ -3,6 +3,12 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 
+# These tests authenticate with X-User-Role / X-Firm-Id headers, which
+# core.auth only honours in the documented dev/test mode. Opt in per module
+# rather than globally — see the fixture docstring in conftest.py.
+pytestmark = pytest.mark.usefixtures("dev_header_auth")
+
+
 client = TestClient(app)
 HEADERS = {"X-User-Role": "partner", "X-Firm-Id": "firm-001", "X-User-Id": "user-001"}
 MANAGER_HEADERS = {"X-User-Role": "manager", "X-Firm-Id": "firm-001", "X-User-Id": "user-002"}
