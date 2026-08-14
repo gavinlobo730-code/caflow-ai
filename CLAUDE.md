@@ -15,7 +15,7 @@ Indian tax domain rules — never violate these:
 - GSTR-1 due date: 11th of the following month
 - GSTR-3B due date: 20th of the following month
 - GSTR-9 (annual): 31st December
-- TDS return (24Q/26Q): 31st of month following quarter end
+- TDS return (24Q/26Q): Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May. Q4 is the exception — it is NOT the end of the month following quarter end (that would be 30 Apr). services/compliance_engine.py::tds_return_due_date is the authority; keep any prose in step with it.
 - Advance tax due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
 - Never auto-submit anything to any government portal — always require explicit CA confirmation click
 - Every rupee calculation must use integer paise arithmetic, never floating point

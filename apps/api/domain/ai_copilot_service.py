@@ -78,22 +78,28 @@ def _get_workflow_repo():
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are PracticeSync AI Copilot — an expert assistant for Indian Chartered Accountants.
+_SYSTEM_PROMPT_TEMPLATE = """You are PracticeSync AI Copilot — an expert assistant for Indian Chartered Accountants.
 You have deep knowledge of:
-- Indian Income Tax Act (IT Act 1961) and all amendments through AY 2026-27
-- CGST Act 2017 and GST Rules — all sections and notifications
+- Indian Income Tax Act (IT Act 1961)
+- CGST Act 2017 and GST Rules — sections and notifications
 - TDS provisions: Sections 192-196D with thresholds and rates
 - Companies Act 2013 (MCA compliance, ROC filings)
 - SEBI regulations and FEMA provisions
 - CA firm operations: client management, compliance calendars, billing
 
-Current financial year: 2026-27 (April 1 2026 to March 31 2027)
+Current financial year: {fy} (1 April {fy_start} to 31 March {fy_end})
 
-Key compliance dates:
+Rates and thresholds change with each Finance Act. State which year a rate you
+quote applies to, and if you cannot confirm it for the year being asked about,
+say so rather than presenting it as current.
+
+Key compliance dates (statutory, stable across years):
 - GSTR-1: 11th of following month (Section 37 CGST Act)
 - GSTR-3B: 20th of following month (Rule 61 CGST Rules)
 - GSTR-9: 31st December (Section 44 CGST Act)
-- TDS 26Q/24Q: 31st of month following quarter end (Rule 31A IT Rules)
+- TDS 26Q/24Q: Q1 31 July, Q2 31 October, Q3 31 January, Q4 31 MAY (Rule 31A IT
+  Rules). Q4 is the exception — it is NOT the end of the month following quarter
+  end, which would be 30 April.
 - Advance Tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
 - ITR for companies: 31st October; individuals: 31st July
 - MCA MGT-7: 60 days from AGM; AOC-4: 30 days from AGM
@@ -105,6 +111,27 @@ Rules you MUST follow:
 4. If uncertain, say so and recommend CA review
 5. Keep responses concise and actionable
 6. Flag time-sensitive issues prominently"""
+
+
+def _system_prompt() -> str:
+    """The copilot brief, with the financial year resolved at call time.
+
+    The year used to be the literal string "2026-27" in the template. That is
+    correct for exactly twelve months and then silently wrong — on 1 April 2027
+    the copilot would still introduce itself as working in FY 2026-27, and
+    every "this year" answer would be off by one until somebody noticed and
+    shipped a deploy. Rendering it from the IST clock costs one function call
+    and cannot go stale.
+
+    ist_fy_label() is the same helper the compliance calendar uses, so the
+    copilot and the obligations it talks about can never disagree about which
+    year it is.
+    """
+    from core.ist_clock import ist_fy_label
+
+    fy = ist_fy_label()                      # e.g. "2026-27"
+    fy_start = int(fy.split("-")[0])         # 2026
+    return _SYSTEM_PROMPT_TEMPLATE.format(fy=fy, fy_start=fy_start, fy_end=fy_start + 1)
 
 
 class AICopilotService:
@@ -278,7 +305,7 @@ class AICopilotService:
     def _build_messages(
         self, history: list[dict], context: str, user_message: str
     ) -> list[dict]:
-        messages = [{"role": "system", "content": f"{_SYSTEM_PROMPT}\n\n{context}"}]
+        messages = [{"role": "system", "content": f"{_system_prompt()}\n\n{context}"}]
         for msg in history[-8:]:
             if msg["role"] in ("user", "assistant"):
                 messages.append({"role": msg["role"], "content": msg["content"]})
@@ -435,7 +462,7 @@ Include:
 Format as a structured professional report. Cite relevant sections of IT Act / CGST Act."""
 
         messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)
@@ -516,7 +543,7 @@ Provide:
 Cite CGST Act / IT Act sections where relevant."""
 
         messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)
@@ -591,7 +618,7 @@ Provide:
 4. Priority actions"""
 
         messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)
@@ -652,7 +679,7 @@ Analyse and provide:
 Cite relevant sections of Companies Act 2013 and IT Act."""
 
         messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)
@@ -781,7 +808,7 @@ Firm data as of {now.strftime('%d %B %Y')}:
         )
         try:
             messages = [
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _system_prompt()},
                 {"role": "user", "content": summary_prompt},
             ]
             ai_summary_raw, _ = await self._call_groq(messages)
