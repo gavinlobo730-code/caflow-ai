@@ -1,0 +1,93 @@
+# Keeps the API awake across the daily scheduler window.
+#
+# WHY THIS EXISTS
+#   jobs/scheduler.py runs IN PROCESS: APScheduler fires run_daily_jobs() at
+#   06:00 IST inside the live FastAPI worker. On Render's free tier the
+#   instance spins down after ~15 minutes without inbound traffic, and a
+#   stopped process cannot fire a timer. At 6am nobody is using the app, so
+#   without this the instance is asleep and the day's jobs — compliance
+#   reminders, recurring invoices, overdue transitions, collections, customer
+#   reminders, compliance escalations — simply never run.
+#
+#   ENABLE_SCHEDULER=true is necessary but not sufficient on a spun-down
+#   instance. This workflow supplies the missing half: inbound traffic just
+#   before the scheduled hour, so the process is alive when the timer fires.
+#
+# WHY /health AND NOT /api/scheduler/run
+#   The scheduler's own warning suggests POST /api/scheduler/run, but that
+#   endpoint is rbac("team", "write") — it needs a real user's JWT, which
+#   expires hourly and would mean secret plumbing and a refresh flow in CI.
+#   GET /health is unauthenticated and a request of any kind is all Render
+#   needs to wake the service. Waking it is the whole job; the scheduler
+#   already knows what to do once it is running.
+#
+# WHY A WINDOW AND NOT ONE PING
+#   GitHub's scheduled workflows are best-effort and routinely start 5-15
+#   minutes late under load. Render keeps an instance awake for roughly 15
+#   minutes after the last request. Three pings spread over ~6 minutes, from a
+#   05:45 IST start, keeps the service up across 06:00 IST even if GitHub runs
+#   this a quarter of an hour behind.
+#
+# THIS IS A FREE-TIER WORKAROUND
+#   A paid Render instance does not spin down and makes this file unnecessary.
+#   Delete it if you upgrade — a workflow whose reason has expired is worse
+#   than no workflow, because it looks load-bearing.
+name: Wake API before scheduler
+
+on:
+  schedule:
+    # 00:15 UTC = 05:45 IST, fifteen minutes before the 06:00 IST job.
+    # Cron here is UTC and GitHub does not honour timezones.
+    - cron: "15 0 * * *"
+  # So you can wake it by hand, and test this workflow without waiting a day.
+  workflow_dispatch:
+
+# Never run two of these at once; a backed-up scheduled run plus a manual
+# trigger would just spend Actions minutes pinging the same URL twice.
+concurrency:
+  group: wake-api
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    name: ping /health across the scheduler window
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Wake the instance and hold it awake
+        env:
+          # Not a secret — this is the public API origin.
+          API: https://practicesync-ai.onrender.com
+        run: |
+          set -uo pipefail
+          ok=0
+          for attempt in 1 2 3; do
+            # --max-time 90: a cold start on the free tier takes up to ~50s,
+            # so the FIRST request is expected to be slow. Failing it at the
+            # default timeout would report a healthy service as down.
+            # `code=$(...)` takes curl's exit status, so `|| code=000` REPLACES
+            # the value on failure. Piping `|| echo 000` inside the
+            # substitution instead would append to whatever curl already
+            # printed and yield "000000".
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' \
+                        --max-time 90 "$API/health") || code="000"
+            echo "ping $attempt -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              ok=$((ok + 1))
+            else
+              echo "  body: $(head -c 300 /tmp/health.json 2>/dev/null)"
+            fi
+            # No sleep after the last ping — it would just burn a minute.
+            [ "$attempt" -lt 3 ] && sleep 180
+          done
+
+          echo "healthy responses: $ok/3"
+          # Fail only if EVERY ping failed. One bad response inside a 6-minute
+          # window is a blip; three is the service being down, and that is
+          # worth an email from GitHub — it means the scheduler will not run
+          # and the books will quietly go un-processed for the day.
+          if [ "$ok" -eq 0 ]; then
+            echo "::error::API did not respond on any of 3 attempts — the 06:00 IST scheduler run will not happen."
+            exit 1
+          fi
