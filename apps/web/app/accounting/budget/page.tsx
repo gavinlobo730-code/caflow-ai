@@ -93,9 +93,10 @@ async function fetchActualsForQuarter(
   end: string
 ): Promise<Record<string, number>> {
   const sb = getSupabaseClient();
-  // journal_lines, not "journal_entry_lines" — the latter has never existed, so
-  // this whole page failed on a missing relation. See the table-name test in
-  // apps/api/tests/test_frontend_tables_exist.py.
+  // journal_lines, the base table, rather than the journal_entry_lines view
+  // (migration 016). The view exists and works, but it flattens away the
+  // parent entry, so it exposes neither is_posted nor deleted_at — and those
+  // are exactly the two columns this query has to filter on.
   //
   // "Posted" is is_posted + deleted_at IS NULL, matching what the reporting
   // engine counts (apps/api/domain/reporting/sources.py). It deliberately does
@@ -146,7 +147,9 @@ export default function BudgetPage() {
 
       // Load Revenue + Expense accounts only
       const { data: accs, error: accErr } = await sb
-        // chart_of_accounts — there is no "accounts" table and never was.
+        // chart_of_accounts, the base table. The "accounts" view (migration
+        // 016) also works and is a plain SELECT * of it; naming the table
+        // avoids a second name for one thing.
         .from("chart_of_accounts")
         .select("*")
         .eq("firm_id", firmId)

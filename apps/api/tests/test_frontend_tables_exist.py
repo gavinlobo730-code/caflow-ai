@@ -1,29 +1,46 @@
 """
-Every table the frontend queries must actually exist.
+Every relation the frontend queries must actually exist.
 
 THE MISTAKE THIS EXISTS TO CATCH
-    Four pages queried tables that have never existed in this database:
+    /risks queried `dsc_tracker`. No such relation has ever existed — the table
+    is dsc_records. The query sat partway through a multi-section load() behind
+    `if (error) throw`, so it did not break one widget: every risk section below
+    it was left empty too.
 
-        /accounting/budget      accounts, journal_entry_lines
-        /accounting/recurring   accounts
-        /risks                  dsc_tracker
-        /portal/employee        salary_slips
+    Nothing caught it. A PostgREST call against a missing relation is a runtime
+    error on one page — not a type error, not a build error, not a lint error.
+    `tsc` is happy, because `.from("dsc_tracker")` is just a string.
 
-    Every one was a naming slip — the real tables are chart_of_accounts,
-    journal_lines, dsc_records and payroll_slips. And every one killed the WHOLE
-    page, because the query sits inside the page's load() with `if (error)
-    throw`, so a missing relation takes down everything after it. On /risks the
-    dead query sat partway through a multi-section load, so the sections below
-    it never populated either.
+A CORRECTION, KEPT HERE ON PURPOSE
+    This file originally claimed FOUR pages were broken this way, naming
+    `accounts`, `journal_entry_lines` and `salary_slips` alongside dsc_tracker.
+    That was wrong. All three are real relations in production — compatibility
+    VIEWS created by migrations 016 and 072 — and the pages querying them
+    worked. Only dsc_tracker was ever a missing relation.
 
-    None of it was caught by anything. A PostgREST call against a missing table
-    is a runtime error on one page — not a type error, not a build error, not a
-    lint error. `tsc` is happy: `.from("dsc_tracker")` is a string.
+    The claim was never checked against this file's own replay, which said
+    plainly that `accounts` and `journal_entry_lines` were live. The assertion
+    written to "pin the fix" only checked that the frontend had STOPPED naming
+    them, which is true of any name nobody uses and proves nothing about
+    whether it exists. An assertion that cannot fail for the stated reason is
+    worse than no assertion: it reads as evidence.
+
+    `salary_slips` was invisible for a second, duller reason — the replay's
+    CREATE pattern did not match `CREATE OR REPLACE VIEW`, and DROP VIEW was
+    not handled at all. Both are fixed below, and
+    test_the_migration_replay_agrees_with_the_real_schema now spot-checks views
+    as well as tables so the same blind spot cannot come back quietly.
 
 RELATION TO test_frontend_does_not_read_dropped_tables.py
-    That file catches a table the migrations DROPPED. This one catches a table
-    that was never CREATED, which is the larger set and the one that bit here —
-    none of these four were ever dropped, because none ever existed.
+    That file catches a relation the migrations DROPPED. This one catches a
+    relation that was never CREATED, which is the larger set and the one that
+    bit here — dsc_tracker was never dropped, because it never existed.
+
+RELATION TO test_frontend_columns_exist_pg.py
+    That file checks the COLUMNS inside each .select() against a real Postgres
+    with every migration applied, and is strictly more accurate than this
+    regex replay. It only runs where HARNESS_PG is set. This file stays because
+    it runs everywhere, including the mock-mode CI job.
 """
 import re
 from pathlib import Path
@@ -39,10 +56,20 @@ WEB = API_ROOT.parents[1] / "apps" / "web"
 # Empty today — every table apps/web touches is created by a migration.
 EXEMPT: dict[str, str] = {}
 
+# "OR REPLACE" is optional and was the gap that hid salary_slips: migration 072
+# writes CREATE OR REPLACE VIEW, which the original pattern did not match, so a
+# view that plainly exists looked missing.
 _CREATE = re.compile(
-    r"CREATE\s+(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?([a-z_0-9]+)",
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?(?:TABLE|VIEW)\s+"
+    r"(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?([a-z_0-9]+)",
     re.I)
-_DROP = re.compile(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?([a-z_0-9]+)", re.I)
+# DROP VIEW matters as much as DROP TABLE: migration 016 drops the three compat
+# views and recreates them. Ignoring the drop happened to give the right answer
+# there (dropped then recreated), but a drop that is NOT followed by a recreate
+# would leave a dead name looking live.
+_DROP = re.compile(
+    r"DROP\s+(?:MATERIALIZED\s+)?(?:TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?(?:public\.)?([a-z_0-9]+)",
+    re.I)
 _RENAME = re.compile(
     r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?([a-z_0-9]+)\s+RENAME\s+TO\s+(?:public\.)?([a-z_0-9]+)",
     re.I)
@@ -64,7 +91,8 @@ def _live_tables() -> set[str]:
     for path in sorted(p for p in MIGRATIONS.glob("*.sql") if "rollback" not in p.name):
         src = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(
-                r"(CREATE\s+(?:TABLE|VIEW|MATERIALIZED\s+VIEW)|DROP\s+TABLE|ALTER\s+TABLE)[^;]*;",
+                r"(CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?(?:TABLE|VIEW)"
+                r"|DROP\s+(?:MATERIALIZED\s+)?(?:TABLE|VIEW)|ALTER\s+TABLE)[^;]*;",
                 src, re.I | re.S):
             stmt = m.group(0)
             head = stmt.upper().lstrip()
@@ -107,7 +135,7 @@ def test_the_scan_finds_both_sides():
 
 
 def test_the_migration_replay_agrees_with_the_real_schema():
-    """Spot-check the replay against tables known to exist in production. If
+    """Spot-check the replay against relations known to exist in production. If
     these drop out, the parser has broken and every assertion below is
     worthless — a shrinking `live` set turns this file into a false alarm
     generator, which is how a useful test gets deleted."""
@@ -118,19 +146,34 @@ def test_the_migration_replay_agrees_with_the_real_schema():
         assert t in live, f"{t} exists in production but not in the migration replay"
 
 
-def test_the_four_pages_that_broke_now_name_real_tables():
-    """Pins the specific fix. A revert would otherwise only be caught by the
-    general check below, which reads as a nameless regression."""
-    live = _live_tables()
-    refs = _frontend_queries()
+def test_the_replay_sees_views_and_not_just_tables():
+    """The blind spot that produced this file's original false claim.
 
-    for gone in ("accounts", "journal_entry_lines", "dsc_tracker", "salary_slips"):
-        assert gone not in refs, (
-            f'a page queries "{gone}" again — that table does not exist. '
-            f"See this file's docstring for what it should be."
-        )
-    for real in ("chart_of_accounts", "journal_lines", "dsc_records", "payroll_slips"):
-        assert real in live
+    These five are VIEWS in production — confirmed against the live database —
+    and three of them are written as CREATE OR REPLACE VIEW, which the first
+    version of the CREATE pattern silently skipped. A relation missing from the
+    replay reads as "this page queries something that does not exist", which is
+    exactly the wrong conclusion to hand someone.
+    """
+    live = _live_tables()
+    for v in ("accounts", "journal_entry_lines", "compliance_entries",
+              "salary_slips", "clients_external"):
+        assert v in live, (
+            f"{v} is a view in production but the migration replay does not see "
+            f"it — check the CREATE/DROP patterns before trusting any failure "
+            f"this file reports.")
+
+
+def test_dsc_tracker_stays_gone():
+    """Pins the one real fix. Deliberately asserts BOTH halves: that nothing
+    queries the name, AND that the name genuinely does not exist. The original
+    version of this test checked only the first, which is true of every string
+    nobody has typed and so could not fail for the reason it claimed."""
+    assert "dsc_tracker" not in _live_tables(), (
+        "dsc_tracker now exists — if a migration created it, this test's "
+        "premise is gone and it should be deleted, not worked around.")
+    assert "dsc_tracker" not in _frontend_queries(), (
+        'a page queries "dsc_tracker" again — the table is dsc_records.')
 
 
 def test_no_frontend_code_queries_a_table_that_does_not_exist():
