@@ -71,22 +71,20 @@ AWAITING_DECISION = {
 # or delete, not permission questions to answer.
 #
 # Both were found by this scan and confirmed against the production database.
-CANNOT_SUCCEED = {
-    # Migration 153 revoked INSERT/UPDATE/DELETE on `users` from `authenticated`
-    # outright — verified in production: has_table_privilege(...,'UPDATE') is
-    # false. Revoking the grant is the STRONGEST version of this fix and the
-    # model for the rest, but app/settings/page.tsx still tries to update
-    # full_name that way, so "change your display name" fails for everyone. A
-    # role policy would not help; the write needs an API endpoint.
-    "users": "settings/page.tsx updates full_name, but the grant is revoked — "
-             "the feature is already broken and needs an endpoint",
-    # public.transactions does not exist in production at all (checked
-    # pg_class). lib/data/gst.ts reads it in two places and updates
-    # gst_invoice_category in a third, so those GST paths cannot ever have
-    # worked. Nothing to guard until the table question is settled.
-    "transactions": "public.transactions does not exist in production; the GST "
-                    "helpers in lib/data/gst.ts read and update a missing table",
-}
+# Both original entries have since been fixed, so the set is empty. It stays
+# because the third category is still the right home for a direct write that
+# cannot land — an empty dict here is a statement that none currently exist, and
+# test_no_unaccounted_direct_write_table_appears will demand a decision the
+# moment one does.
+#
+#   * `users` — settings/page.tsx wrote full_name directly while migration 153
+#     had revoked the grant, so saving a display name answered "permission
+#     denied for table users". Replaced by PATCH /api/identity/me.
+#   * `transactions` — lib/data/gst.ts updated gst_invoice_category on a table
+#     migration 139 dropped. That whole path is gone; the GST screens now use
+#     the API's from-books endpoints. Reads of the dropped table that remain
+#     elsewhere are tracked in test_frontend_does_not_read_dropped_tables.py.
+CANNOT_SUCCEED: dict[str, str] = {}
 
 _CHAIN = re.compile(r'\.from\("([a-z_]+)"\)((?:[^;]|\n){0,400}?)(?=\.from\("|;|\Z)', re.S)
 _WRITE = re.compile(r'\.\s*(insert|upsert|update|delete)\s*\(')

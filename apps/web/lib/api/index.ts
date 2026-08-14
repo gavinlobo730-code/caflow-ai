@@ -1137,6 +1137,12 @@ export const api = {
       request("/api/identity/login-history") as Promise<ApiResp<{ events: LoginEvent[] }>>,
     recordLoginEvent: (event: "login" | "logout") =>
       request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
+    // The caller's own display name. Deliberately takes no user id — the row is
+    // addressed server-side from the verified token, so this can only ever edit
+    // the caller's own profile.
+    updateMyProfile: (full_name: string) =>
+      request<ApiResp<{ id: string; full_name: string }>>(
+        "/api/identity/me", { method: "PATCH", body: JSON.stringify({ full_name }) }),
     // The caller's own resource→actions map, served straight from the backend's
     // PERMISSIONS matrix. Consumed by AuthContext so the UI has one source of
     // truth for action gating instead of role lists copied beside each button.

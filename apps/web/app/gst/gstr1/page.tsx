@@ -15,10 +15,8 @@ import {
   FileText,
   CheckCircle,
   AlertTriangle,
-  AlertCircle,
   Download,
   FileCheck,
-  ChevronRight,
   ArrowLeft,
   Info,
   X,
@@ -29,6 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   buildGSTR1,
@@ -45,6 +44,11 @@ import {
 function r(rupees: number): string {
   return "₹" + rupees.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+// The from-books totals arrive in paise. Kept as a SEPARATE function from r()
+// above rather than converting at the call site: two units behind one formatter
+// name is how a GST figure silently ends up 100x out.
+const p = formatPaise;
 
 function buildPeriodOptions() {
   const opts: { value: string; label: string }[] = [];
@@ -110,7 +114,9 @@ export default function GSTR1Page() {
     try {
       const res = await buildGSTR1(clientId, yearMonth);
       setResult(res);
-      setFilingStatus(res.validation_errors.length === 0 ? "validated" : "draft");
+      // from-books raises on anything it will not compute, so a returned
+      // result is a validated one; a failure lands in catch below.
+      setFilingStatus("validated");
       setActiveTab("summary");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Build failed");
@@ -255,15 +261,9 @@ export default function GSTR1Page() {
               )}
               <span className="text-sm text-[#475569]">
                 <strong>{result.invoice_count}</strong> invoices
-                · Taxable <strong>{r(result.taxable_total_rupees)}</strong>
-                · Tax <strong>{r(result.tax_total_rupees)}</strong>
+                · Taxable <strong>{p(result.taxable_total_paise)}</strong>
+                · Tax <strong>{p(result.tax_total_paise)}</strong>
               </span>
-              {result.validation_errors.length > 0 && (
-                <span className="flex items-center gap-1 text-xs text-red-600">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {result.validation_errors.length} error{result.validation_errors.length !== 1 ? "s" : ""}
-                </span>
-              )}
               {result.validation_warnings.length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-600">
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -290,7 +290,7 @@ export default function GSTR1Page() {
                   Mark as Filed
                 </button>
               )}
-              {(filingStatus === "draft" || filingStatus === "validated") && result.validation_errors.length === 0 && (
+              {(filingStatus === "draft" || filingStatus === "validated") && (
                 <button
                   onClick={handleApprove}
                   disabled={approving}
@@ -303,27 +303,9 @@ export default function GSTR1Page() {
             </div>
           </div>
 
-          {/* Hard errors (block approval) */}
-          {result.validation_errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-5">
-              <h3 className="font-semibold text-red-800 text-sm mb-3 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                Validation Errors — must fix before CA approval
-              </h3>
-              <ul className="space-y-2">
-                {result.validation_errors.map((e, i) => (
-                  <li key={i} className="text-sm text-red-700 flex items-start gap-2">
-                    <ChevronRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <span>
-                      {e.invoice_ref && <span className="font-mono mr-1">[{e.invoice_ref}]</span>}
-                      <span className="text-xs text-red-500 mr-1">[{e.field}]</span>
-                      {e.message}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* The hard-errors panel lived here. From-books validates before it
+              computes and raises 422, so an error never arrives as part of a
+              result — it surfaces through the page's error banner instead. */}
 
           {/* Tabs */}
           <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
@@ -389,7 +371,7 @@ export default function GSTR1Page() {
                       ))}
                       <tr className="font-semibold bg-blue-50">
                         <td className="py-2.5 text-blue-800">Total Tax</td>
-                        <td className="py-2.5 text-right font-mono text-blue-900">{r(result.tax_total_rupees)}</td>
+                        <td className="py-2.5 text-right font-mono text-blue-900">{p(result.tax_total_paise)}</td>
                       </tr>
                     </tbody>
                   </table>
