@@ -148,7 +148,8 @@ export default function RecurringPage() {
       setFirmId(fid);
       const sb = getSupabaseClient();
       const { data } = await sb
-        .from("accounts")
+        // chart_of_accounts — there is no "accounts" table and never was.
+        .from("chart_of_accounts")
         .select("*")
         .eq("firm_id", fid)
         .eq("is_active", true)

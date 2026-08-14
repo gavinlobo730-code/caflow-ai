@@ -317,18 +317,27 @@ export default function RisksPage() {
       const sixtyAhead = new Date(today);
       sixtyAhead.setDate(sixtyAhead.getDate() + 60);
       const sixtyAheadStr = sixtyAhead.toISOString().slice(0, 10);
+      // dsc_records, not "dsc_tracker" — the latter has never existed, and this
+      // query threw partway through load(), so every risk section below it was
+      // left empty too.
+      //
+      // A DSC is held by a PERSON and registered to the firm: dsc_records has
+      // holder_name but no client_id, so there is no client to attribute one to.
+      // The client column therefore reads "Firm-wide" rather than inventing an
+      // owner — the holder name in the next column is the identifying fact.
       const { data: dscData, error: dscErr } = await sb
-        .from("dsc_tracker")
-        .select("client_id, dsc_holder_name, expiry_date")
+        .from("dsc_records")
+        .select("id, holder_name, expiry_date")
         .eq("firm_id", firmId)
+        .is("deleted_at", null)
         .lte("expiry_date", sixtyAheadStr)
         .gte("expiry_date", todayStr);
       if (dscErr) throw dscErr;
       setDscExpiryRisks(
-        ((dscData ?? []) as { client_id: string; dsc_holder_name: string; expiry_date: string }[]).map((d) => ({
-          clientId: d.client_id,
-          clientName: clientMap[d.client_id] ?? "Unknown",
-          dscHolder: d.dsc_holder_name,
+        ((dscData ?? []) as { id: string; holder_name: string; expiry_date: string }[]).map((d) => ({
+          clientId: "",
+          clientName: "Firm-wide",
+          dscHolder: d.holder_name,
           expiryDate: d.expiry_date,
           daysLeft: Math.ceil((new Date(d.expiry_date).getTime() - today.getTime()) / 86400000),
         }))

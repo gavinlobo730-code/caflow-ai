@@ -149,14 +149,46 @@ export default function EmployeePortalPage() {
     setPayslipsError(false);
     try {
       const supabase = getSupabaseClient();
+      // payroll_slips, not "salary_slips" — the latter has never existed, so
+      // this threw a missing-relation error rather than returning nothing.
+      //
+      // The period lives on the parent run (payroll_runs.month), not on the
+      // slip, and the amounts are gross_paise / net_paise. Ordered by
+      // created_at because PostgREST cannot sort parent rows by an embedded
+      // column, and slips are created per run in period order anyway.
+      //
+      // KNOWN LIMIT — this still returns nothing for an employee. The only
+      // policy on payroll_slips is payroll_slips_own_firm, gated on
+      // get_my_firm_id(), which is NULL for a portal employee because they are
+      // not a row in `users`. payroll_employees has employee_sees_own_record;
+      // payroll_slips and leave_balances never got the equivalent. Granting it
+      // is a deliberate decision about who may read payroll, not a rename, so
+      // it is deliberately NOT bundled into this fix.
       const { data, error: err } = await supabase
-        .from("salary_slips")
-        .select("id, month, year, gross_salary_paise, net_salary_paise, created_at")
+        .from("payroll_slips")
+        .select("id, gross_paise, net_paise, created_at, payroll_runs!inner(month)")
         .eq("employee_id", employee.id)
-        .order("year", { ascending: false })
-        .order("month", { ascending: false });
+        .order("created_at", { ascending: false });
       if (err) throw new Error(err.message);
-      setPayslips(data ?? []);
+
+      type SlipRow = {
+        id: string; gross_paise: number | null; net_paise: number | null;
+        created_at: string; payroll_runs: { month: string } | null;
+      };
+      setPayslips(((data ?? []) as unknown as SlipRow[]).map((r) => {
+        // payroll_runs.month is text. It is empty in this database, so both the
+        // "YYYY-MM" and bare-month encodings are handled rather than guessed at.
+        const raw = r.payroll_runs?.month ?? "";
+        const [ys, ms] = raw.includes("-") ? raw.split("-") : ["", raw];
+        return {
+          id: r.id,
+          month: Number(ms) || 1,
+          year: Number(ys) || 0,
+          gross_salary_paise: r.gross_paise,
+          net_salary_paise: r.net_paise,
+          created_at: r.created_at,
+        };
+      }));
     } catch (e) {
       // A failed fetch must NOT fall through to the empty "No payslips found"
       // state — flag it so the UI shows a retryable error instead (audit M17).

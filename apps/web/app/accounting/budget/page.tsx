@@ -84,7 +84,7 @@ interface LineRow {
   account_id: string;
   debit_paise: number;
   credit_paise: number;
-  journal_entries: { entry_date: string; status: string } | null;
+  journal_entries: { entry_date: string; is_posted: boolean; deleted_at: string | null } | null;
 }
 
 async function fetchActualsForQuarter(
@@ -93,12 +93,21 @@ async function fetchActualsForQuarter(
   end: string
 ): Promise<Record<string, number>> {
   const sb = getSupabaseClient();
-  // Query journal_entry_lines joined with journal_entries for posted entries
+  // journal_lines, not "journal_entry_lines" — the latter has never existed, so
+  // this whole page failed on a missing relation. See the table-name test in
+  // apps/api/tests/test_frontend_tables_exist.py.
+  //
+  // "Posted" is is_posted + deleted_at IS NULL, matching what the reporting
+  // engine counts (apps/api/domain/reporting/sources.py). It deliberately does
+  // NOT filter on journal_entries.status: the two columns disagree on a handful
+  // of rows, and if this page used a different definition of posted than the
+  // P&L, budget-vs-actual would not tie to the P&L a CA reads beside it.
   const { data, error } = await sb
-    .from("journal_entry_lines")
-    .select("account_id, debit_paise, credit_paise, journal_entries!inner(entry_date, status)")
+    .from("journal_lines")
+    .select("account_id, debit_paise, credit_paise, journal_entries!inner(entry_date, is_posted, deleted_at)")
     .eq("journal_entries.firm_id", firmId)
-    .eq("journal_entries.status", "posted")
+    .eq("journal_entries.is_posted", true)
+    .is("journal_entries.deleted_at", null)
     .gte("journal_entries.entry_date", start)
     .lte("journal_entries.entry_date", end);
   // A non-null PostgREST error is a real failure, not "no postings this
@@ -137,7 +146,8 @@ export default function BudgetPage() {
 
       // Load Revenue + Expense accounts only
       const { data: accs, error: accErr } = await sb
-        .from("accounts")
+        // chart_of_accounts — there is no "accounts" table and never was.
+        .from("chart_of_accounts")
         .select("*")
         .eq("firm_id", firmId)
         .in("account_type", ["Revenue", "Expense"])
