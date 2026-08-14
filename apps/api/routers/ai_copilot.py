@@ -5,7 +5,7 @@ Different from /api/assistant (simple Q&A). Serves /api/ai-copilot.
 import os
 import logging
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import HTTPException, APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import Request
@@ -34,7 +34,10 @@ You can help with:
 - Summarizing client health scores
 - Explaining GST/ITR/TDS rules with section references (CGST Act 2017, IT Act 1961)
 
-Always be specific. Reference actual client names and data from the context when relevant.
+Be specific about numbers and deadlines. The context deliberately contains NO
+client names or identifiers — do not ask for them, invent them, or claim to know
+which client a figure belongs to. Answer with counts and general guidance, and
+tell the user to open the relevant screen for per-client detail.
 End tax law answers with: Source: [Act name], Section [number]
 """
 
@@ -95,13 +98,19 @@ def _build_firm_context(firm_id: str, current_user: dict) -> str:
         # Pass firm_id to prevent cross-firm data leak
         clients = client_repo.find_all(firm_id=firm_id)
         # `clients` rows key their own id as "id", not "client_id".
-        client_names = [c["client_name"] for c in filter_by_client(current_user, clients, key="id")]
+        # CLIENT CONFIDENTIALITY: client names are deliberately NOT collected here.
+        # Only the COUNT reaches the prompt. See the note above the return below.
+        client_count = len(filter_by_client(current_user, clients, key="id"))
     except Exception:
-        client_names = []
+        client_count = 0
 
     lines = [
         f"Active Clients: {dashboard.get('active_clients', 0)}",
-        f"Clients: {', '.join(client_names) if client_names else 'N/A'}",
+        # Count only — never the names. Groq is a third-party processor and a
+        # client list is exactly the sort of thing an Indian CA practice must not
+        # hand to one (ICAI client-confidentiality obligations). Aggregates keep
+        # "what is my workload?" answerable while identifying nobody.
+        f"Clients: {client_count}",
         f"Overdue Tasks: {dashboard.get('overdue_tasks', 0)}",
         f"Tasks Due Today: {dashboard.get('tasks_due_today', 0)}",
         f"Compliance Overdue: {dashboard.get('compliance_overdue', 0)}",
@@ -177,98 +186,41 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
 
 
 def _build_client_context(firm_id: str, client_id: str) -> str:
-    """Build context for a single client: profile, tasks, compliance, intelligence scores."""
-    lines = []
-    try:
-        from repositories.client_repository import client_repo
-        client = client_repo.find_by_id(client_id)
-        if not client or client.get("firm_id") != firm_id:
-            return ""
-        lines.append(f"Client: {client.get('client_name')}")
-        lines.append(f"Entity Type: {client.get('entity_type', 'N/A')}")
-        lines.append(f"GSTIN: {client.get('gstin', 'N/A')}, PAN: {client.get('pan', 'N/A')}")
-        lines.append(f"Status: {client.get('status', 'N/A')}")
-    except Exception:
-        return ""
+    """REMOVED — deliberately a stub that returns nothing.
 
-    try:
-        from repositories.task_repository import task_repo
-        tasks = [t for t in task_repo.find_all(firm_id=firm_id) if t.get("client_id") == client_id]
-        open_tasks = [t for t in tasks if t.get("status") != "completed"]
-        lines.append(f"Open Tasks: {len(open_tasks)}")
-        for t in open_tasks[:10]:
-            lines.append(f"  - {t.get('title')} (due {t.get('due_date', 'n/a')}, {t.get('status')})")
-    except Exception:
-        pass
-
-    try:
-        from repositories.compliance_records_repository import compliance_records_repo
-        records = [r for r in compliance_records_repo.find_all(firm_id=firm_id)
-                   if r.get("client_id") == client_id]
-        lines.append(f"Compliance Records: {len(records)}")
-        for r in records[:10]:
-            lines.append(
-                f"  - {r.get('compliance_type') or r.get('type')} "
-                f"(due {r.get('due_date', 'n/a')}, {r.get('status')})"
-            )
-    except Exception:
-        pass
-
-    try:
-        from services.intelligence_service import compute_compliance_risk, compute_relationship_health
-        risk = next((c for c in compute_compliance_risk(firm_id)["clients"]
-                     if c["client_id"] == client_id), None)
-        if risk:
-            lines.append(f"Compliance Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
-        health = next((c for c in compute_relationship_health(firm_id)["clients"]
-                       if c["client_id"] == client_id), None)
-        if health:
-            lines.append(f"Relationship Health: {health['health_score']}/100 ({health['health_level']})")
-            lines.append(f"Outstanding Receivables: ₹{health['outstanding_paise'] // 100:,}")
-    except Exception:
-        pass
-
-    return "\n".join(lines)
-
+    This used to assemble a single client's name, entity type, GSTIN, PAN,
+    status, open task titles with due dates and compliance records into a Groq
+    prompt. Its only caller (the client-level copilot) is now a 410, so the
+    body is gone rather than left as dead code: an unreachable function that
+    still knows how to serialise a PAN is one refactor away from being reachable
+    again. Kept as a stub only because a test monkeypatches this name.
+    """
+    return ""
 
 @router.post("/client/{client_id}/chat")
 async def client_copilot_chat(
-    client_id: str,
     body: CopilotRequest,
     current_user: dict = Depends(rbac("ai", "copilot")),
 ):
-    """Client-level copilot: same model, context scoped to a single client."""
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return api_response(False, None, "AI Copilot is not configured on the server")
+    """DISABLED — this endpoint sent a single client's identifying data to Groq.
 
-    assert_client_access(current_user, client_id)
-    client_context = _build_client_context(current_user["firm_id"], client_id)
-    if not client_context:
-        return api_response(False, None, "Client not found")
+    It built its prompt from client_name, entity_type, GSTIN, PAN, status,
+    individual task titles with due dates, and compliance records, and posted
+    that to a third-party AI provider. Unlike the firm-level copilot there was
+    no reduced version worth keeping: the endpoint's entire purpose was to feed
+    one client's data to the model.
 
-    try:
-        system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=client_context)
-        messages = [{"role": "system", "content": system_prompt}]
-        messages += [{"role": msg.role, "content": msg.content} for msg in body.conversation_history]
-        messages.append({"role": "user", "content": body.message})
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                GROQ_API_URL,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"model": GROQ_MODEL, "messages": messages, "max_tokens": 1024},
-                timeout=30,
-            )
-
-        if response.status_code != 200:
-            return api_response(False, None, f"AI service error: {response.status_code}")
-
-        answer: str = response.json()["choices"][0]["message"]["content"]
-        return api_response(True, {"answer": answer, "client_id": client_id})
-    except Exception as e:
-        _logger.error("AI Copilot (client) error: %s", e)
-        return api_response(False, None, "AI Copilot is temporarily unavailable. Please try again.")
+    Kept as an explicit 410 rather than deleted so callers get a clear reason
+    instead of a bare 404, and so the removal is visible to anyone reading the
+    router. If this comes back it needs a provider that does not retain
+    submitted data, or a locally-hosted model — not a smaller prompt.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail="The client-level copilot has been withdrawn: it sent client "
+               "identifiers (GSTIN, PAN) to a third-party AI provider. Use the "
+               "firm-level copilot, which carries no client-identifying data.",
+    )
 
 
 @router.post("/chat")

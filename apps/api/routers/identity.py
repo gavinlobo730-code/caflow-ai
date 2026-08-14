@@ -199,8 +199,12 @@ class LoginEventBody(BaseModel):
     event: str  # 'login' | 'logout'
 
 
+# NOTE: was rbac("ai", "read") — wrong resource entirely (this records who
+# signed in, not anything AI), and a read-level action guarding a WRITE:
+# it persists a row via login_events_repo.record below.
 @router.post("/login-event")
-def record_login_event(body: LoginEventBody, current_user: dict = Depends(rbac("ai", "read"))):
+def record_login_event(body: LoginEventBody,
+                       current_user: dict = Depends(rbac("identity", "write"))):
     """Recorded by the frontend on sign-in / sign-out for the current user."""
     if body.event not in ("login", "logout"):
         raise HTTPException(400, "event must be 'login' or 'logout'")

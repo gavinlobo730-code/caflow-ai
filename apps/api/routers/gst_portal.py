@@ -57,7 +57,9 @@ class ManualSnapshotRequest(BaseModel):
 @router.post("/sync-jobs")
 def create_sync_job(
     req: CreateSyncJobRequest,
-    current_user: dict = Depends(rbac("gst", "read")),
+    # was rbac("gst", "read") — this MUTATES (creates / runs a sync job), and
+    # save_manual_snapshot in this same file already uses gst:compute.
+    current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """Create a GST portal sync job. Read-only — no filing."""
     assert_client_access(current_user, req.client_id)
@@ -79,7 +81,9 @@ def create_sync_job(
 @router.post("/sync-jobs/{job_id}/run")
 def run_sync_job(
     job_id: str,
-    current_user: dict = Depends(rbac("gst", "read")),
+    # was rbac("gst", "read") — this MUTATES (creates / runs a sync job), and
+    # save_manual_snapshot in this same file already uses gst:compute.
+    current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """
     Execute GST portal sync. Read-only.
