@@ -5,18 +5,15 @@
  * Parses CSV client-side (no external library). All balances in integer paise.
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Upload, ChevronRight, CheckCircle, AlertCircle, Link as LinkIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { parseCSV, buildParsedAccounts, type ParsedAccount, type ColumnMap } from "@/lib/accounting/trialBalanceParser";
-import {
-  checkTrialBalanceImportCapability,
-  type TrialBalanceImportCapability,
-} from "@/lib/accounting/trialBalanceImportCapability";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { useClientPicker } from "@/lib/workspace/useClientPicker";
+import { api } from "@/lib/api";
 
 const SAMPLE_CSV = `Account Name,Account Code,Debit Balance,Credit Balance,Account Type
 Cash in Hand,1001,50000,0,Asset
@@ -27,26 +24,23 @@ Sales Account,4001,0,450000,Revenue
 Purchase Account,5001,300000,0,Expense`;
 
 export default function TrialBalanceImportPage() {
-  const [capability, setCapability] = useState<TrialBalanceImportCapability | null>(null);
+  // A trial balance belongs to ONE client — it becomes that client's opening
+  // journal. The old firm-wide import had no client at all, which is part of
+  // why it could never have posted anything meaningful.
+  const { clients, clientId: selectedClientId, setClientId: setSelectedClientId } = useClientPicker();
+  const [openingDate, setOpeningDate] = useState("");
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [colMap, setColMap] = useState<ColumnMap>({ nameCol: 0, codeCol: -1, drCol: 2, crCol: 3, typeCol: -1 });
   const [accounts, setAccounts] = useState<ParsedAccount[]>([]);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; errors: number } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    posted?: boolean; reason?: string; journal_entry_id?: string; opening_date?: string;
+    accounts?: number; adjustment_lines?: number; total_debit_paise?: number;
+  } | null>(null);
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-
-  // C4: gate the entire wizard on whether the required schema exists, rather
-  // than letting every row's write silently fail before telling the user.
-  useEffect(() => {
-    const sb = getSupabaseClient();
-    checkTrialBalanceImportCapability(async () => {
-      const { error } = await sb.from("chart_of_accounts").select("opening_balance_dr_paise").limit(1);
-      return { error: error ? { message: error.message } : null };
-    }).then(setCapability);
-  }, []);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -96,32 +90,29 @@ export default function TrialBalanceImportPage() {
   const diff = totalDr - totalCr;
 
   async function runImport() {
+    if (!selectedClientId) {
+      setErr("Select the client this trial balance belongs to.");
+      return;
+    }
     setImporting(true);
+    setErr("");
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      let success = 0;
-      let errors = 0;
-
-      for (const acc of accounts) {
-        const finalType = acc.typeOverride ?? acc.account_type;
-        const { error } = await sb.from("chart_of_accounts").upsert({
-          firm_id: firmId,
+      // The backend posts ONE balanced opening journal for these lines. It is
+      // the only thing that makes a trial balance real — the reporting engine
+      // reads journals, not account-master fields — and it refuses an
+      // unbalanced trial balance rather than posting lopsided entries.
+      const resp = await api.accounting.importTrialBalance({
+        client_id: selectedClientId,
+        opening_date: openingDate || null,
+        rows: accounts.map(acc => ({
           account_name: acc.account_name,
+          account_type: acc.typeOverride ?? acc.account_type,
+          debit_paise: acc.dr_paise,
+          credit_paise: acc.cr_paise,
           account_code: acc.account_code || null,
-          account_type: finalType,
-          opening_balance_dr_paise: acc.dr_paise,
-          opening_balance_cr_paise: acc.cr_paise,
-        }, { onConflict: "firm_id,account_name" });
-
-        if (error) {
-          errors++;
-        } else {
-          success++;
-        }
-      }
-
-      setImportResult({ success, errors });
+        })),
+      });
+      setImportResult(resp.data);
       setStep(4);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error during import. Please try again.");
@@ -135,31 +126,30 @@ export default function TrialBalanceImportPage() {
         <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Trial Balance Import</h1>
         <p className="text-sm text-[#64748B] mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
 
-        {capability === null && (
-          <Card>
-            <CardContent className="pt-8 pb-8 text-center text-sm text-[#64748B]">
-              Checking feature availability…
-            </CardContent>
-          </Card>
-        )}
+        {/* A trial balance is one client's opening position and posts to that
+            client's ledger, so the client is chosen before anything else. */}
+        <Card className="mb-6">
+          <CardContent className="pt-5 pb-5 flex flex-wrap items-end gap-4">
+            <div className="flex-1 min-w-[220px]">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Client *</label>
+              <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
+            </div>
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Opening date</label>
+              <input
+                type="date"
+                value={openingDate}
+                onChange={e => setOpeningDate(e.target.value)}
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+              />
+              <p className="text-[11px] text-[#94A3B8] mt-1">
+                Defaults to the client&apos;s financial-year start (1 April).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
-        {capability && !capability.available && (
-          <Card className="border-amber-200 bg-amber-50">
-            <CardContent className="pt-8 pb-8 text-center">
-              <AlertCircle size={40} className="mx-auto mb-4 text-amber-600" />
-              <h2 className="text-lg font-bold text-[#0F172A] mb-2">Trial Balance Import isn&apos;t available yet</h2>
-              <p className="text-sm text-amber-800 max-w-md mx-auto">{capability.reason}</p>
-              <p className="text-xs text-[#94A3B8] mt-4">You can still add opening balances manually via the Chart of Accounts.</p>
-              <Link href="/accounting/account-groups">
-                <Button variant="outline" className="mt-6 flex items-center gap-1.5 mx-auto">
-                  <LinkIcon size={14} />View Chart of Accounts
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        {capability?.available && (
+        {selectedClientId && (
         <>
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-8 text-sm">
@@ -366,16 +356,40 @@ export default function TrialBalanceImportPage() {
             <Card>
               <CardContent className="pt-8 pb-8 text-center">
                 <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
-                <h2 className="text-xl font-bold text-[#0F172A] mb-2">Import Complete</h2>
-                <p className="text-[#475569] mb-1">{importResult.success} accounts imported successfully.</p>
-                {importResult.errors > 0 && (
-                  <p className="text-red-600">{importResult.errors} errors encountered.</p>
+                <h2 className="text-xl font-bold text-[#0F172A] mb-2">
+                  {importResult.posted ? "Posted to the ledger" : "Already up to date"}
+                </h2>
+                {importResult.posted ? (
+                  <>
+                    <p className="text-[#475569] mb-1">
+                      {importResult.accounts} accounts, posted as one balanced opening
+                      journal of {importResult.adjustment_lines} line
+                      {importResult.adjustment_lines === 1 ? "" : "s"}
+                      {importResult.opening_date ? ` dated ${importResult.opening_date}` : ""}.
+                    </p>
+                    <p className="text-xs text-[#94A3B8]">
+                      These balances are now in the General Ledger, so the trial
+                      balance and balance sheet reflect them.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[#475569] mb-1">
+                    {importResult.reason ?? "Nothing to post."} Re-importing the same
+                    trial balance does not duplicate it.
+                  </p>
                 )}
-                <Link href="/accounting/account-groups">
-                  <Button className="mt-6 flex items-center gap-1.5">
-                    <LinkIcon size={14} />View Chart of Accounts
-                  </Button>
-                </Link>
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <Link href="/reports/trial-balance">
+                    <Button className="flex items-center gap-1.5">
+                      <LinkIcon size={14} />View Trial Balance
+                    </Button>
+                  </Link>
+                  <Link href="/accounting/account-groups">
+                    <Button variant="outline" className="flex items-center gap-1.5">
+                      <LinkIcon size={14} />Chart of Accounts
+                    </Button>
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           </div>

@@ -244,6 +244,22 @@ export const api = {
     postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
     ledger: (params: Record<string, string>) => request(`/api/accounting/ledger?${new URLSearchParams(params)}`),
     trialBalance: (params?: Record<string, string>) => request(`/api/accounting/trial-balance${params ? "?" + new URLSearchParams(params) : ""}`),
+    // Bring an imported trial balance into a client's ledger as one balanced
+    // opening journal. `preview: true` validates and returns totals without
+    // writing anything, so the wizard can show what is wrong before committing.
+    // Amounts are integer paise; the backend refuses an unbalanced trial balance.
+    importTrialBalance: (data: {
+      client_id: string;
+      rows: { account_name: string; account_type: string;
+              debit_paise: number; credit_paise: number; account_code?: string | null }[];
+      opening_date?: string | null;
+      preview?: boolean;
+    }) => request<ApiResp<{
+      posted?: boolean; reason?: string; journal_entry_id?: string;
+      opening_date?: string; accounts?: number; adjustment_lines?: number;
+      total_debit_paise?: number; total_credit_paise?: number;
+      valid?: boolean; rows?: number;
+    }>>("/api/accounting/trial-balance/import", { method: "POST", body: JSON.stringify(data) }),
     // First/last posted entry dates — what "All Time" resolves to on the
     // reporting screens, so a period split by month/quarter covers the books
     // rather than the 1900–2999 placeholder.
