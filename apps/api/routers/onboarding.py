@@ -4,7 +4,6 @@ POST /api/onboarding/firm       — create firm + first Partner user (JWT-authen
 POST /api/onboarding/invite     — invite user to firm (Partner/Manager only)
 GET  /api/onboarding/status     — onboarding completeness check (Partner/Manager only)
 """
-import os
 import re
 import secrets
 import logging
@@ -167,8 +166,9 @@ def invite_user(
     firm_name = firm["name"] if firm else "Your firm"
 
     token = secrets.token_urlsafe(32)
-    frontend_url = os.environ.get("FRONTEND_URL", "https://caflow-ai.pages.dev")
-    invite_link = f"{frontend_url}/accept-invite?token={token}&firm_id={firm_id}&role={body.role}"
+    from core.urls import frontend_base
+    invite_link = (f"{frontend_base()}/accept-invite"
+                   f"?token={token}&firm_id={firm_id}&role={body.role}")
 
     db.table("pending_invites").insert({
         "firm_id": firm_id,

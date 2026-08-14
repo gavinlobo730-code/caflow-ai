@@ -5,7 +5,7 @@ Tech stack:
 - Frontend: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui
 - Backend: FastAPI (Python 3.11)
 - Database: Supabase (Postgres)
-- AI: Groq API (llama-3.3-70b-versatile) for chat/text features — requires GROQ_API_KEY in both apps/api/.env and apps/web/.env.local. Gemini API (gemini-2.5-flash) for image-based invoice extraction only (routers/document_intelligence_v1.py) — requires GEMINI_API_KEY in apps/api/.env; Groq's vision models were unavailable on this account (live 404 model_not_found), Gemini's free tier is multimodal-native and already provisioned for this project. PDF invoice extraction still uses Groq (text-only, works fine).
+- AI: Groq API (llama-3.3-70b-versatile) for chat/text features — requires GROQ_API_KEY in apps/api/.env ONLY. Every AI key is backend-only: apps/web builds as a static export (`output: "export"` in next.config.js), so it has no server and can read nothing but NEXT_PUBLIC_* values, which are inlined into the browser bundle. An AI key in the frontend environment is at best ignored and at worst published. Gemini API (gemini-2.5-flash) for image-based invoice extraction only (routers/document_intelligence_v1.py) — requires GEMINI_API_KEY in apps/api/.env; Groq's vision models were unavailable on this account (live 404 model_not_found), Gemini's free tier is multimodal-native and already provisioned for this project. PDF invoice extraction still uses Groq (text-only, works fine).
 - Package manager: pnpm for frontend, pip for backend
 
 Indian tax domain rules — never violate these:

@@ -204,15 +204,18 @@ def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: s
         # re-clicks an already-accepted link there is simply redirected on to
         # their dashboard instead of erroring.
         #
-        # NOTE: if PORTAL_BASE_URL is set explicitly in the deployment environment
-        # (e.g. Render), it must be updated there too — this default only applies
-        # when the env var is unset.
-        base = os.environ.get("PORTAL_BASE_URL", "https://caflow-ai.pages.dev/portal/activate")
-        link = f"{base}?invite={invite_token}"
+        # Both URLs come from core.urls, which derives them from FRONTEND_URL.
+        # They used to be two independent literals here: the activation host
+        # named a Cloudflare Pages project that has since been renamed, and the
+        # sign-in host named a domain nobody owns and had no env var behind it
+        # at all — so it was wrong in every invitation and unfixable without a
+        # deploy. A client reads both of these, so neither may be a guess.
+        from core.urls import portal_activate_url, portal_login_url
+        link = f"{portal_activate_url()}?invite={invite_token}"
         _send(email, "You've been invited to your accountant's client portal",
               f'<p>You have been granted access to your secure client portal.</p>'
               f'<p><a href="{link}">Set up your account</a> — you\'ll choose a password so you can '
-              f'sign in any time at practicesync.com/portal/login.</p>'
+              f'sign in any time at <a href="{portal_login_url()}">{portal_login_url()}</a>.</p>'
               f'<p>This link expires in 14 days.</p>')
     except Exception:  # pragma: no cover - email is best-effort
         pass
