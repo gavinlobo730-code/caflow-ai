@@ -188,7 +188,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         file_name: file.name,
         storage_path: storagePath,
         storage_bucket: STORAGE_BUCKET,
-        file_size: file.size,
+        file_size_bytes: file.size,   // the column is file_size_bytes
         financial_year: financialYear,
       });
 

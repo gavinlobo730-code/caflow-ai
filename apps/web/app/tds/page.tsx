@@ -115,7 +115,7 @@ interface TDSCertificate {
   deductee_pan: string;
   period: string;
   amount_paise: number;
-  issue_date: string | null;
+  issued_at: string | null;   // the column is issued_at, not issue_date
   status: "Pending" | "Issued";
 }
 
@@ -399,7 +399,7 @@ export default function TDSPage() {
         // the tables are absent — never show fictional records).
         const [retRes, certRes] = await Promise.all([
           sb.from("tds_returns").select("*").eq("firm_id", fid).order("due_date", { ascending: false }),
-          sb.from("tds_certificates").select("*").eq("firm_id", fid).order("issue_date", { ascending: false }),
+          sb.from("tds_certificates").select("*").eq("firm_id", fid).order("issued_at", { ascending: false }),
         ]);
         if (retRes.error) {
           setTableError(true);
@@ -675,7 +675,7 @@ export default function TDSPage() {
                     <td className="px-4 py-3 text-xs font-mono text-[#475569]">{c.deductee_pan}</td>
                     <td className="px-4 py-3 text-xs text-[#475569]">{c.period}</td>
                     <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{formatPaise(c.amount_paise)}</td>
-                    <td className="px-4 py-3 text-xs text-[#475569]">{c.issue_date ? new Date(c.issue_date).toLocaleDateString("en-IN") : "—"}</td>
+                    <td className="px-4 py-3 text-xs text-[#475569]">{c.issued_at ? new Date(c.issued_at).toLocaleDateString("en-IN") : "—"}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[c.status]}`}>{c.status}</span>
                     </td>

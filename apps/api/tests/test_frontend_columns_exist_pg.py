@@ -28,15 +28,28 @@ WHY IT USES A REAL DATABASE
     mode that gets a test deleted. Applying the migrations and reading
     information_schema is exact, and the harness for it already exists.
 
-WHAT IT DOES NOT CHECK
-    Only `.select()`. Column names inside `.eq()`, `.order()`, `.in()` and
-    friends are not verified. That gap is real and has already bitten once:
-    /reports/cash-flow filtered `.in("filing_type", ...)` on compliance_calendar,
-    where the column is compliance_type — a third bad name on a query this file
-    had already flagged for two others, found only by reading the code. It is
-    left deliberately, because those calls take dotted and computed forms that
-    need a different parser and half a check that works beats none. Widening it
-    is the obvious next change, and would have caught that one.
+WHAT IT CHECKS
+    Three places a column name is written, all failing the same way:
+
+        .select("a, b")          read    — PostgREST rejects the whole select
+        .eq("a", …) .order("a")  filter  — rejects the request
+        .insert({ a: … })        write   — rejects the write
+
+    Filters and writes were added after /reports/cash-flow was found filtering
+    `.in("filing_type", …)` on compliance_calendar (the column is
+    compliance_type) — a third bad name on a query this file had already
+    flagged for two others, invisible to a select-only checker and found only
+    by reading the code. Widening it turned up 13 more across five pages.
+
+WHAT IT STILL DOES NOT CHECK
+    A column that is MISSING. This finds names that do not exist; it cannot
+    find a NOT NULL column a write forgot — /clients/documents omitted
+    client_documents.file_name, so that upload could not have worked even with
+    every name corrected. Comparing write payloads against NOT NULL columns is
+    the obvious next widening.
+
+    Also unread: `.match({…})`, and any query whose table or column arrives as
+    a variable or template literal.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
@@ -52,7 +65,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _frontend_select_parser import scan  # noqa: E402
+from _frontend_select_parser import scan, scan_filters, scan_writes  # noqa: E402
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -78,6 +91,30 @@ INTENTIONAL: dict[str, str] = {
     #
     # Adding anything here is a hole in the check below. An entry must be a
     # query that MEANS to fail, never a typo someone did not want to fix.
+}
+
+# Filter/write offenders NOT fixed yet, because fixing them needs a decision
+# rather than a rename. A ratchet, not an exemption: test_no_unfixed_entry_is_stale
+# below fails once one is fixed, so the list can only shrink.
+#
+# /tds records a TDS deduction against a tds_deductions table that does not
+# exist as the page imagines it. Seven names are wrong AND two things cannot be
+# renamed at all:
+#   * client_id is NOT NULL, but the page inserts client_id: null — it has no
+#     client picker, so every deduction ever entered on that form failed.
+#   * There is NO financial-year column on tds_deductions, so the form's `fy`
+#     has nowhere to go. Dropping it loses data the CA typed; deriving it in the
+#     browser is business logic the frontend must not hold (CLAUDE.md).
+# Both need a product call — a client picker, and either a financial_year column
+# or an agreed derivation in the backend.
+UNFIXED: dict[str, str] = {
+    "tds_deductions.party_name":         "deductee_name",
+    "tds_deductions.party_pan":          "deductee_pan",
+    "tds_deductions.gross_amount_paise": "payment_amount_paise",
+    "tds_deductions.tds_rate":           "tds_rate_pct",
+    "tds_deductions.tds_amount_paise":   "tds_paise",
+    "tds_deductions.payment_date":       "transaction_date",
+    "tds_deductions.fy":                 "NO EQUIVALENT — needs a column or a backend derivation",
 }
 
 # Columns that DID NOT EXIST and were fixed in this change, kept as a named
@@ -220,3 +257,54 @@ def test_every_intentional_entry_says_which_page_and_why():
         assert len(why) > 120, (
             f"{col}: an exemption is a hole in this check — explain why the "
             f"query means to fail, or fix the name instead")
+
+
+# ── filters and writes ──────────────────────────────────────────────────────
+
+def _bad(refs, schema: set[str]) -> dict[str, set[str]]:
+    relations = {s.split(".", 1)[0] for s in schema}
+    out: dict[str, set[str]] = {}
+    for path, rel, col in refs:
+        if rel in relations and f"{rel}.{col}" not in schema:
+            out.setdefault(f"{rel}.{col}", set()).add(path)
+    return out
+
+
+def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
+    """Vacuity guards, one per scan. The filter walk once matched only its first
+    chain step (a stray \\A anchored it to the start of the whole file) and so
+    found NOTHING while reporting a clean result — exactly the failure a floor
+    like this catches."""
+    assert len(scan_filters(WEB)) >= 400, "filter scan found too little — parser likely broke"
+    assert len(scan_writes(WEB)) >= 200, "write scan found too little — parser likely broke"
+
+
+def test_no_filter_names_a_column_that_does_not_exist(schema):
+    new = {k: v for k, v in _bad(scan_filters(WEB), schema).items() if k not in UNFIXED}
+    assert not new, (
+        "these FILTER arguments name columns that do not exist, so the request "
+        "is rejected and the page's load() fails:\n  "
+        + "\n  ".join(f"{c}  ({', '.join(sorted(f))})" for c, f in sorted(new.items()))
+    )
+
+
+def test_no_write_payload_names_a_column_that_does_not_exist(schema):
+    new = {k: v for k, v in _bad(scan_writes(WEB), schema).items() if k not in UNFIXED}
+    assert not new, (
+        "these INSERT/UPDATE payload keys name columns that do not exist, so the "
+        "WRITE fails and nothing is saved:\n  "
+        + "\n  ".join(f"{c}  ({', '.join(sorted(f))})" for c, f in sorted(new.items()))
+    )
+
+
+def test_no_unfixed_entry_is_stale(schema):
+    """Makes UNFIXED a ratchet. Fix one and this tells you to delete its line,
+    so the list can only shrink and cannot become a silent permanent exemption."""
+    seen = set(_bad(scan_filters(WEB), schema)) | set(_bad(scan_writes(WEB), schema))
+    stale = sorted(set(UNFIXED) - seen)
+    assert not stale, f"these are listed as unfixed but no longer appear — delete them: {stale}"
+
+
+def test_every_unfixed_entry_names_its_real_column_or_says_there_is_none():
+    for col, real in UNFIXED.items():
+        assert real, f"{col}: say what the real column is"

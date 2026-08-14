@@ -104,7 +104,9 @@ export default function SuppliersPage() {
     const sb = getSupabaseClient();
     getFirmId().then(async (fid) => {
       setFirmId(fid);
-      const { data, error } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_active", true).order("client_name");
+      // clients has no is_active column; its lifecycle field is `status`
+      // (CHECK: active | inactive | archived).
+      const { data, error } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("status", "active").order("client_name");
       if (error) throw error;
       setClients((data ?? []) as Client[]);
       if (data && data.length > 0) setSelectedClientId((data[0] as Client).id);
