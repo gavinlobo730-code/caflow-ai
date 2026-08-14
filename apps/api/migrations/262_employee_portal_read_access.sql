@@ -77,6 +77,27 @@
 --   portal stays empty — correctly so, and now for a reason a CA can act on
 --   rather than a policy quirk.
 
+-- RE-RUNNABLE, AND ATOMIC. Both matter, for reasons that only show up outside
+-- a clean install.
+--
+--   * Every CREATE POLICY here is preceded by DROP POLICY IF EXISTS. The
+--     migration runner skips files already recorded in public.schema_migrations,
+--     so a second run normally never happens — but it does happen when a
+--     migration is applied out of band (e.g. through the Supabase dashboard or
+--     MCP, which record into supabase_migrations.schema_migrations, a DIFFERENT
+--     table). Without the guards the re-run dies on "policy ... already exists".
+--     The CI migration job cannot catch this: it applies each file exactly once
+--     to a throwaway database.
+--
+--   * scripts/db/apply_migrations.py invokes `psql -f` WITHOUT
+--     --single-transaction, so without the BEGIN/COMMIT below each statement
+--     would autocommit independently. A failure between the DROP and the CREATE
+--     of a RESTRICTIVE policy would then leave that policy dropped and not
+--     recreated — and dropping a RESTRICTIVE policy WIDENS access. Wrapping the
+--     file makes that impossible: it either fully applies or does nothing.
+
+BEGIN;
+
 -- ─── 1. One auth identity, one employee record ───────────────────────────────
 -- Every policy below scopes by auth_user_id. Without uniqueness, two employee
 -- rows sharing an auth_user_id would each see the other's payslips — the exact
@@ -130,6 +151,7 @@ GRANT  EXECUTE ON FUNCTION public.my_payroll_run_ids() TO authenticated;
 -- unchanged, so staff scoping is exactly as it was and no write path widens.
 DROP POLICY IF EXISTS "payroll_employees_assignment_scope" ON public.payroll_employees;
 
+DROP POLICY IF EXISTS "payroll_employees_assignment_scope_select" ON public.payroll_employees;
 CREATE POLICY "payroll_employees_assignment_scope_select" ON public.payroll_employees
   AS RESTRICTIVE FOR SELECT
   USING (
@@ -137,15 +159,18 @@ CREATE POLICY "payroll_employees_assignment_scope_select" ON public.payroll_empl
     OR id IN (SELECT public.my_employee_ids())
   );
 
+DROP POLICY IF EXISTS "payroll_employees_assignment_scope_insert" ON public.payroll_employees;
 CREATE POLICY "payroll_employees_assignment_scope_insert" ON public.payroll_employees
   AS RESTRICTIVE FOR INSERT
   WITH CHECK (public.can_access_client(client_id::text));
 
+DROP POLICY IF EXISTS "payroll_employees_assignment_scope_update" ON public.payroll_employees;
 CREATE POLICY "payroll_employees_assignment_scope_update" ON public.payroll_employees
   AS RESTRICTIVE FOR UPDATE
   USING (public.can_access_client(client_id::text))
   WITH CHECK (public.can_access_client(client_id::text));
 
+DROP POLICY IF EXISTS "payroll_employees_assignment_scope_delete" ON public.payroll_employees;
 CREATE POLICY "payroll_employees_assignment_scope_delete" ON public.payroll_employees
   AS RESTRICTIVE FOR DELETE
   USING (public.can_access_client(client_id::text));
@@ -162,6 +187,7 @@ CREATE POLICY "employee_sees_own_record" ON public.payroll_employees
 -- one of their own payslips, so a run they have no slip in stays invisible.
 DROP POLICY IF EXISTS "payroll_runs_assignment_scope" ON public.payroll_runs;
 
+DROP POLICY IF EXISTS "payroll_runs_assignment_scope_select" ON public.payroll_runs;
 CREATE POLICY "payroll_runs_assignment_scope_select" ON public.payroll_runs
   AS RESTRICTIVE FOR SELECT
   USING (
@@ -169,15 +195,18 @@ CREATE POLICY "payroll_runs_assignment_scope_select" ON public.payroll_runs
     OR id IN (SELECT public.my_payroll_run_ids())
   );
 
+DROP POLICY IF EXISTS "payroll_runs_assignment_scope_insert" ON public.payroll_runs;
 CREATE POLICY "payroll_runs_assignment_scope_insert" ON public.payroll_runs
   AS RESTRICTIVE FOR INSERT
   WITH CHECK (public.can_access_client(client_id::text));
 
+DROP POLICY IF EXISTS "payroll_runs_assignment_scope_update" ON public.payroll_runs;
 CREATE POLICY "payroll_runs_assignment_scope_update" ON public.payroll_runs
   AS RESTRICTIVE FOR UPDATE
   USING (public.can_access_client(client_id::text))
   WITH CHECK (public.can_access_client(client_id::text));
 
+DROP POLICY IF EXISTS "payroll_runs_assignment_scope_delete" ON public.payroll_runs;
 CREATE POLICY "payroll_runs_assignment_scope_delete" ON public.payroll_runs
   AS RESTRICTIVE FOR DELETE
   USING (public.can_access_client(client_id::text));
@@ -203,3 +232,5 @@ DROP POLICY IF EXISTS "employee_reads_own_leave_balances" ON public.leave_balanc
 CREATE POLICY "employee_reads_own_leave_balances" ON public.leave_balances
   FOR SELECT TO authenticated
   USING (employee_id IN (SELECT public.my_employee_ids()));
+
+COMMIT;
