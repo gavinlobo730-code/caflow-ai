@@ -494,8 +494,11 @@ export const api = {
   copilot: {
     chat: (body: { message: string; conversation_history: unknown[]; context?: string }) =>
       request("/api/ai-copilot/chat", { method: "POST", body: JSON.stringify(body) }),
-    clientChat: (clientId: string, body: { message: string; conversation_history: unknown[] }) =>
-      request(`/api/ai-copilot/client/${clientId}/chat`, { method: "POST", body: JSON.stringify(body) }),
+    // clientChat was removed with the endpoint it called. That endpoint posted a
+    // single client's name, GSTIN and PAN to Groq and now returns 410. The
+    // wrapper had no callers, which is exactly why it had to go rather than be
+    // left pointing at a dead route: an unused helper that still builds the URL
+    // is the thing someone wires a button to next.
   },
   payroll: {
     // client_id omitted -> every client in the firm (firm-wide dashboard);
@@ -1134,6 +1137,12 @@ export const api = {
       request("/api/identity/login-history") as Promise<ApiResp<{ events: LoginEvent[] }>>,
     recordLoginEvent: (event: "login" | "logout") =>
       request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
+    // The caller's own resource→actions map, served straight from the backend's
+    // PERMISSIONS matrix. Consumed by AuthContext so the UI has one source of
+    // truth for action gating instead of role lists copied beside each button.
+    myPermissions: () =>
+      request<ApiResp<{ role: string | null; permissions: Record<string, string[]> }>>(
+        "/api/identity/permissions"),
   },
 };
 

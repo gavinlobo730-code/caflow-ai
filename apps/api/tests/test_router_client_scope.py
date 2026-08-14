@@ -1252,6 +1252,10 @@ EXEMPT: dict[str, str] = {
         "never a client_id.",
     "/api/identity/login-event":
         "records the CALLER's own sign-in/sign-out event. No client_id.",
+    "/api/identity/permissions":
+        "returns the caller's own role and its resource:action map from the "
+        "static PERMISSIONS matrix in core/permissions.py. Reads no table at "
+        "all, so there is no client row to scope.",
     # accounting.py — the two firm-level path groups.
     "/api/accounting/accounts":
         "AccountIn (models/accounting.py) has no client_id field at all — the "
@@ -1507,7 +1511,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 9,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
-              "/api/identity": 11, "/api/tally-migration": 7,
+              "/api/identity": 12, "/api/tally-migration": 7,
               "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 10, "/api/compliance": 12,
               "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ShieldCheck, Check, X, Clock, Loader2, Ban, Lock } from "lucide-react";
 import Link from "next/link";
 import { api, type ApprovalRequest } from "@/lib/api";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
 
 function isMfaError(msg: string) {
@@ -21,8 +21,14 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export default function ApprovalsPage() {
-  const { userRole } = useAuth();
-  const isPartner = userRole === "Partner";
+  // Maker/checker, read off the matrix instead of restated as a role:
+  //   approval:approve = Partner only (the checker)
+  //   approval:request = Executive and up (the maker, who may also cancel)
+  // Splitting them fixes the Reviewer case — Reviewer held neither, but the old
+  // `!isPartner` branch still offered them Cancel, which the API answers 403.
+  const { can } = usePermissions();
+  const canApprove = can("approval", "approve");
+  const canRequest = can("approval", "request");
 
   const [tab, setTab] = useState<"pending" | "history">("pending");
   const [items, setItems] = useState<ApprovalRequest[]>([]);
@@ -130,7 +136,7 @@ export default function ApprovalsPage() {
                 <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_STYLE[r.status] ?? ""}`}>
                   {r.status}
                 </span>
-                {r.status === "pending" && isPartner && (
+                {r.status === "pending" && canApprove && (
                   <>
                     <button disabled={busy === r.id} onClick={() => act(r.id, "approve")}
                       className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg bg-[#182350] text-white disabled:opacity-60">
@@ -142,7 +148,7 @@ export default function ApprovalsPage() {
                     </button>
                   </>
                 )}
-                {r.status === "pending" && !isPartner && (
+                {r.status === "pending" && !canApprove && canRequest && (
                   <button disabled={busy === r.id} onClick={() => act(r.id, "cancel")}
                     className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-60">
                     <Ban size={12} /> Cancel

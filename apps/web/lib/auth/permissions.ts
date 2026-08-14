@@ -149,3 +149,70 @@ export function isPartnerOnlyAllowed(role: UserRole | null): boolean {
 }
 
 export { ALWAYS_VISIBLE };
+
+// ─── Action-level permissions ────────────────────────────────────────────────
+//
+// Everything above gates PAGES by role. This gates ACTIONS, and it does not
+// hold a role list of its own: the map comes from the backend
+// (GET /api/identity/permissions), which serves core/permissions.py verbatim.
+//
+// The reason it is fetched rather than mirrored here: a second copy of the
+// matrix in TypeScript drifts silently, and it already had. `accounting:read`
+// admits Executive while `accounting:write` does not, so screens that showed
+// write buttons to anyone who could read the page were offering an Executive
+// actions the backend answers with 403 — a button that only fails after being
+// pressed. There is now exactly one copy of the matrix, in Python.
+//
+// Still UX only. rbac() on each endpoint is what actually authorises; hiding a
+// button no more protects an endpoint than not drawing a door locks a room.
+
+/** resource → the actions the caller may perform on it. Mirrors the backend's
+ *  `get_accessible_resources()` response shape exactly. */
+export type PermissionMap = Record<string, string[]>;
+
+/**
+ * Can the caller perform `action` on `resource`?
+ *
+ * Fails CLOSED on a null map — the same doctrine as the role helpers above.
+ * null means "not resolved yet" (the fetch is in flight) or "the fetch failed";
+ * in both cases the honest answer is "don't offer it", not "assume yes".
+ */
+export function can(
+  permissions: PermissionMap | null,
+  resource: string,
+  action: string
+): boolean {
+  if (!permissions) return false;
+  return permissions[resource]?.includes(action) ?? false;
+}
+
+/**
+ * True if the caller may perform EVERY one of the given resource:action pairs.
+ * For a control whose handler makes more than one call — "Post" both writes the
+ * journal and approves it — where showing it on the weaker of the two would put
+ * the user through a half-completed action.
+ */
+export function canAll(
+  permissions: PermissionMap | null,
+  pairs: Array<[resource: string, action: string]>
+): boolean {
+  return pairs.every(([resource, action]) => can(permissions, resource, action));
+}
+
+/**
+ * Narrow an unknown JSON body into a PermissionMap, or null if it is not one.
+ *
+ * The backend response is parsed, not trusted: a partial outage that returns
+ * HTML, or an older backend without this endpoint, must land on null (fail
+ * closed) rather than on a truthy object that answers `can()` with undefined.
+ */
+export function parsePermissionMap(raw: unknown): PermissionMap | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: PermissionMap = {};
+  for (const [resource, actions] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(actions)) return null;
+    if (!actions.every((a) => typeof a === "string")) return null;
+    out[resource] = actions as string[];
+  }
+  return out;
+}

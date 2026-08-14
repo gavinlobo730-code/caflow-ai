@@ -14,24 +14,46 @@ import {
   DatabaseZap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // Firm administration only. Chart of Accounts, statements and cash flow now live
 // in the client workspace (Client → Accounting); the duplicate firm-level screens
 // were retired in the Phase 3 consolidation. Payroll & Fee Billing map to the
 // accounting workspace, so they are surfaced here.
-const NAV_ITEMS = [
+//
+// `requires` names the backend permission the page's own data calls need, read
+// off the endpoint rather than guessed, so a link disappears for anyone who
+// would only reach a 403. The four Chart-of-Accounts screens carry none: they
+// query Supabase directly (`sb.from("chart_of_accounts")`), so RLS governs them
+// and no entry in the rbac matrix applies. An absent `requires` means "no
+// FastAPI permission governs this page", never "nobody checked".
+const NAV_ITEMS: Array<{
+  label: string;
+  href: string;
+  icon: typeof GitBranch;
+  requires?: [resource: string, action: string];
+}> = [
   { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
   { label: "Account Groups",      href: "/accounting/account-groups",        icon: Layers },
   { label: "Import COA",          href: "/accounting/coa-import",            icon: Upload },
   { label: "Export COA",          href: "/accounting/coa-export",            icon: Download },
-  { label: "Fee Billing",         href: "/billing",                          icon: Receipt },
-  { label: "Payroll",             href: "/payroll",                          icon: Briefcase },
+  // billing.py is Partner-only throughout ("exposes fee economics").
+  { label: "Fee Billing",         href: "/billing",                          icon: Receipt,
+    requires: ["billing", "read"] },
+  // payroll.py: every endpoint the page calls is rbac("payroll", read|write).
+  { label: "Payroll",             href: "/payroll",                          icon: Briefcase,
+    requires: ["payroll", "read"] },
   { label: "Payroll Statutory",   href: "/payroll/statutory",                icon: ShieldCheck },
-  { label: "Data Migration",      href: "/migration",                        icon: DatabaseZap },
+  // tally_migration.py list_jobs → rbac("accounting", "read"), which excludes
+  // Reviewer; the page's first call is that list, so it renders nothing for one.
+  { label: "Data Migration",      href: "/migration",                        icon: DatabaseZap,
+    requires: ["accounting", "read"] },
 ];
 
 export function AccountingPanel() {
   const pathname = usePathname();
+  const { can } = usePermissions();
+  const items = NAV_ITEMS.filter((i) => !i.requires || can(i.requires[0], i.requires[1]));
 
   return (
     <div className="flex flex-col h-full text-[#182350]">
@@ -48,7 +70,7 @@ export function AccountingPanel() {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+        {items.map(({ label, href, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

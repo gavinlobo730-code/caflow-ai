@@ -10,7 +10,13 @@ import {
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
-import { normalizeRole, type UserRole } from "@/lib/auth/permissions";
+import {
+  can as canDo,
+  normalizeRole,
+  parsePermissionMap,
+  type PermissionMap,
+  type UserRole,
+} from "@/lib/auth/permissions";
 
 /**
  * Resolve the caller's role AND firm membership from the AUTHORITATIVE source —
@@ -34,6 +40,26 @@ async function resolveUserContext(user: User | null): Promise<{ role: UserRole |
   }
 }
 
+/**
+ * Fetch the caller's resource→actions map from the backend.
+ *
+ * Returns null on ANY failure — an unreachable/cold-starting API, an older
+ * backend without the endpoint, a body that is not the expected shape. Null
+ * means `can()` says no everywhere, so a failure hides action controls rather
+ * than showing ones the server will refuse. Imported lazily to match the rest
+ * of this file, which keeps the API client out of the auth bundle.
+ */
+async function resolvePermissions(): Promise<PermissionMap | null> {
+  try {
+    const { api } = await import("@/lib/api");
+    const res = await api.identity.myPermissions();
+    if (!res?.success) return null;
+    return parsePermissionMap(res.data?.permissions);
+  } catch {
+    return null;
+  }
+}
+
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
@@ -49,6 +75,15 @@ interface AuthContextValue {
   hasFirm: boolean | null;
   /** The user's full name from the users table. null = not yet resolved or not set. */
   fullName: string | null;
+  /**
+   * The caller's resource→actions map, served by GET /api/identity/permissions
+   * straight from the backend's PERMISSIONS matrix. null = not yet resolved, or
+   * the request failed — `can()` treats both as "no", which is the fail-closed
+   * reading and matches how userRole=null is handled above.
+   */
+  permissions: PermissionMap | null;
+  /** `can("accounting", "write")` — action-level gating for the current user. */
+  can: (resource: string, action: string) => boolean;
   /** Re-resolve role + firm membership (call after creating a firm in onboarding). */
   refreshUserContext: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -76,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<PermissionMap | null>(null);
 
   function applyContext(u: User | null) {
     setHasFirm(null);
@@ -84,6 +120,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setHasFirm(hasFirm);
       setFullName(fullName);
     }).catch(() => { setUserRole(null); setHasFirm(false); setFullName(null); });
+    // Action-level permissions, resolved independently of the role query above.
+    // Kept separate on purpose: the role comes from Supabase directly (used for
+    // nav/page gating and available even if the API is asleep), while this comes
+    // from the API and is the authority on what the API will actually accept.
+    // Deliberately NOT awaited — nothing here gates first paint; until it lands,
+    // can() answers false and action controls stay hidden.
+    setPermissions(null);
+    if (u) {
+      resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
+    }
   }
 
   useEffect(() => {
@@ -145,6 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserRole(role);
     setHasFirm(hasFirm);
     setFullName(fullName);
+    // Onboarding calls this right after the users row gains a firm_id and a
+    // role; without re-resolving here the map stays null for the rest of the
+    // session and every action control would remain hidden for a new Partner.
+    resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
     return hasFirm;
   }, []);
 
@@ -167,8 +217,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  const can = useCallback(
+    (resource: string, action: string) => canDo(permissions, resource, action),
+    [permissions]
+  );
+
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, fullName, refreshUserContext, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
@@ -178,4 +233,24 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
+}
+
+/**
+ * Action-level gating for the current user.
+ *
+ *   const { can } = usePermissions();
+ *   {can("accounting", "write") && <Button>Post entry</Button>}
+ *
+ * `resolved` distinguishes "definitely not allowed" from "we don't know yet",
+ * for the few places that want a spinner rather than an absent control. Most
+ * call sites should ignore it: `can()` already answers false while unresolved,
+ * which is the fail-closed default.
+ */
+export function usePermissions(): {
+  can: (resource: string, action: string) => boolean;
+  permissions: PermissionMap | null;
+  resolved: boolean;
+} {
+  const { can, permissions } = useAuth();
+  return { can, permissions, resolved: permissions !== null };
 }
