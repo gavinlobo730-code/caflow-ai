@@ -29,12 +29,17 @@ const CATEGORY_DESC: Record<DocCategory, string> = {
   "Other": "Miscellaneous documents",
 };
 
+// client_documents as it actually is (migration 014). Migration 023 declares a
+// different shape and is a silent no-op — CREATE TABLE IF NOT EXISTS on a table
+// 014 already created. The user-supplied name lives in `description`, and the
+// category in `doc_type`.
 interface ClientDocument {
   id: string;
   firm_id: string;
   client_id: string;
-  document_name: string;
-  category: DocCategory;
+  file_name: string;
+  description: string | null;
+  doc_type: DocCategory;
   file_path: string;
   file_size: number;
   expiry_date: string | null;
@@ -104,8 +109,11 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
       const { error: insertErr } = await sb.from("client_documents").insert({
         firm_id: firmId,
         client_id: clientId,
-        document_name: docName,
-        category,
+        // file_name is NOT NULL and was never set — this insert could not have
+        // succeeded regardless of the renamed columns.
+        file_name: file.name,
+        description: docName,
+        doc_type: category,
         file_path: filePath,
         file_size: file.size,
         expiry_date: expiryDate || null,
@@ -233,7 +241,7 @@ export default function ClientDocumentsPage() {
   useEffect(() => { load(); }, [load]);
 
   async function handleDelete(doc: ClientDocument) {
-    if (!confirm(`Delete "${doc.document_name}"?`)) return;
+    if (!confirm(`Delete "${doc.description ?? doc.file_name}"?`)) return;
     try {
       const sb = getSupabaseClient();
       await sb.storage.from("documents").remove([doc.file_path]);
@@ -250,7 +258,7 @@ export default function ClientDocumentsPage() {
     return daysUntilExpiry(d.expiry_date) <= 60 && d.expiry_date >= today;
   });
 
-  const categoryDocs = documents.filter(d => d.category === activeCategory);
+  const categoryDocs = documents.filter(d => d.doc_type === activeCategory);
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
@@ -293,7 +301,7 @@ export default function ClientDocumentsPage() {
               {expiringDocs.length} document{expiringDocs.length > 1 ? "s" : ""} expiring within 60 days
             </p>
             <p className="text-xs text-amber-600 mt-0.5">
-              {expiringDocs.map(d => `${d.document_name} (${fmtDate(d.expiry_date)})`).join(", ")}
+              {expiringDocs.map(d => `${d.description ?? d.file_name} (${fmtDate(d.expiry_date)})`).join(", ")}
             </p>
           </div>
         </div>
@@ -306,7 +314,7 @@ export default function ClientDocumentsPage() {
       {/* Category tabs */}
       <div className="flex gap-1 border-b border-[#E2E8F0] overflow-x-auto">
         {CATEGORIES.map(cat => {
-          const count = documents.filter(d => d.category === cat).length;
+          const count = documents.filter(d => d.doc_type === cat).length;
           return (
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
@@ -341,7 +349,7 @@ export default function ClientDocumentsPage() {
               className={`bg-white rounded-xl border p-4 space-y-3 ${isExpired ? "border-red-200" : isExpiringSoon ? "border-amber-200" : "border-[#E2E8F0]"}`}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="font-medium text-[#0F172A] text-sm truncate">{doc.document_name}</p>
+                  <p className="font-medium text-[#0F172A] text-sm truncate">{doc.description ?? doc.file_name}</p>
                   <p className="text-xs text-[#94A3B8] mt-0.5">{formatBytes(doc.file_size)}</p>
                 </div>
                 {(isExpiringSoon || isExpired) && (
