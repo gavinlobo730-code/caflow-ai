@@ -69,6 +69,12 @@ EXEMPT: dict[str, str] = {
         "As RAZORPAY_KEY_ID — real-money credential, mock provider is default.",
     "RAZORPAY_WEBHOOK_SECRET":
         "As RAZORPAY_KEY_ID — real-money credential, mock provider is default.",
+    "SENTRY_TRACES_SAMPLE_RATE":
+        "Performance-tracing knob, defaulting to 0 (off) in main.py. Declaring "
+        "it would invite someone to set a rate; the free Sentry tier drops "
+        "events once the transaction quota is gone, and the events it drops "
+        "include the posting failures Sentry is installed to surface. Raising "
+        "it should be a deliberate act on a paid plan, not a filled-in blank.",
     "MOCK_WEBHOOK_SECRET":
         "Mock payment provider's webhook signing secret. services/payments/"
         "mock.py refuses a hardcoded default on purpose, so an unset value "

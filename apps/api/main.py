@@ -18,7 +18,22 @@ if _SENTRY_DSN:
     sentry_sdk.init(
         dsn=_SENTRY_DSN,
         environment=os.environ.get("ENVIRONMENT", "production"),
-        traces_sample_rate=1.0,
+        # Performance tracing OFF. This is an error-reporting install, not an
+        # APM one: what it exists to surface is capture_posting_failure() —
+        # swallowed exceptions in fail-soft financial-posting code, the class
+        # of bug that lost five sales invoices' COGS journals for weeks (task
+        # #244). At 1.0 every request became a transaction, and the scheduler
+        # alone now ticks once a minute — roughly 43k transactions a month
+        # before a single user request, against a free-tier allowance of about
+        # 10k. Exhausting the quota makes Sentry DROP events, including the
+        # errors this is here for, so a sample rate meant to buy insight
+        # silently buys blindness instead. Raise it deliberately, with a paid
+        # plan, if anyone actually wants latency data.
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
+        # No request bodies, headers or user records. The posting-failure tags
+        # set in core/observability.py are the ONLY app data that reaches
+        # Sentry, and they are chosen explicitly there — this flag does not
+        # govern them.
         send_default_pii=False,
     )
 
