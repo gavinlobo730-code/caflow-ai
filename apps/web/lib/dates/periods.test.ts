@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/dates/periods.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fyRangeFor, shiftFY, resolvePeriodRange, periodOptionLabel, splitPeriodColumns, formatRangeLabel } from "./periods.ts";
+import { fyRangeFor, shiftFY, resolvePeriodRange, periodOptionLabel, splitPeriodColumns, periodSplitNotice, formatRangeLabel } from "./periods.ts";
 
 const FY = "2026-27";
 const TODAY = "2026-07-12"; // a Sunday
@@ -134,4 +134,96 @@ test("all_time collapses to a single 'All Time' column even when Monthly/Quarter
 test("an accidentally wide custom range (not just all_time) also collapses rather than generating a huge column count", () => {
   const cols = splitPeriodColumns("custom", FY, { from: "1950-01-01", to: "2026-01-01" }, "month", TODAY);
   assert.equal(cols.length, 1);
+});
+
+// ── All Time against the real ledger ──────────────────────────────────────────
+// The bug these cover: "Display columns by: Quarterly" was a silent no-op on
+// All Time. It collapsed (correctly — 1900–2999 by quarter is ~4,400 columns)
+// but said nothing, so the control read as broken. Given the client's actual
+// posted span, All Time becomes a range that can genuinely be split.
+
+const SPAN = { first: "2024-04-01", last: "2026-03-31" }; // two financial years
+
+test("all_time with a ledger span splits by quarter instead of collapsing", () => {
+  const cols = splitPeriodColumns("all_time", FY, { from: "", to: "" }, "quarter", TODAY, SPAN);
+  assert.equal(cols.length, 8, "two financial years is eight quarters");
+  assert.equal(cols[0].start, "2024-04-01");
+  assert.equal(cols[7].end, "2026-03-31");
+});
+
+test("all_time with a ledger span splits by month and by year too", () => {
+  assert.equal(splitPeriodColumns("all_time", FY, { from: "", to: "" }, "month", TODAY, SPAN).length, 24);
+});
+
+test("'Yearly' means FINANCIAL year, not calendar year", () => {
+  // Apr 2024 – Mar 2026 is exactly two Indian financial years. Under a calendar
+  // split it would be three columns, the last holding one quarter of a year —
+  // which is not a unit any CA reports in.
+  const cols = splitPeriodColumns("all_time", FY, { from: "", to: "" }, "year", TODAY, SPAN);
+  assert.equal(cols.length, 2);
+  assert.deepEqual(cols.map((c) => c.label), ["FY 2024-25", "FY 2025-26"]);
+});
+
+test("the split never runs past the ledger — no empty leading or trailing column", () => {
+  const cols = splitPeriodColumns("all_time", FY, { from: "", to: "" }, "quarter", TODAY, SPAN);
+  assert.ok(cols.every((c) => c.start >= SPAN.first && c.end <= SPAN.last));
+});
+
+test("all_time WITHOUT a span still collapses — an empty ledger must not invent a range", () => {
+  const cols = splitPeriodColumns("all_time", FY, { from: "", to: "" }, "quarter", TODAY, null);
+  assert.equal(cols.length, 1);
+  assert.equal(cols[0].label, "All Time");
+});
+
+test("a ledger span does not affect any period other than all_time", () => {
+  const cols = splitPeriodColumns("this_fy", FY, { from: "", to: "" }, "quarter", TODAY, SPAN);
+  assert.equal(cols.length, 4);
+  assert.equal(cols[0].start, "2026-04-01", "this_fy must stay the FY, not the ledger span");
+});
+
+test("total still returns exactly one column — the regression a naive refactor introduces", () => {
+  // splitBy() returns [] for "total"; falling through to it would hand every
+  // existing single-period report zero columns instead of a total.
+  for (const span of [SPAN, null] as const) {
+    for (const mode of ["this_fy", "all_time", "last_fy"] as const) {
+      const cols = splitPeriodColumns(mode, FY, { from: "", to: "" }, "total", TODAY, span);
+      assert.equal(cols.length, 1, `${mode} with span=${span ? "set" : "null"}`);
+    }
+  }
+});
+
+test("a ledger span longer than the column cap collapses rather than rendering 100+ columns", () => {
+  const long = { first: "2000-01-01", last: "2026-01-01" }; // 26 years
+  assert.equal(splitPeriodColumns("all_time", FY, { from: "", to: "" }, "month", TODAY, long).length, 1);
+  // ...but quarterly over the same span is 105 columns, also over the cap,
+  // while yearly (27) is under it and must still split.
+  assert.equal(splitPeriodColumns("all_time", FY, { from: "", to: "" }, "year", TODAY, long).length, 27);
+});
+
+// ── The notice: why a requested split did not happen ──────────────────────────
+
+test("no notice when the split actually happened", () => {
+  assert.equal(periodSplitNotice("all_time", FY, { from: "", to: "" }, "quarter", TODAY, SPAN), null);
+  assert.equal(periodSplitNotice("this_fy", FY, { from: "", to: "" }, "month", TODAY, SPAN), null);
+});
+
+test("no notice for 'total' — nothing was refused", () => {
+  assert.equal(periodSplitNotice("all_time", FY, { from: "", to: "" }, "total", TODAY, null), null);
+});
+
+test("an empty ledger explains itself instead of silently showing one column", () => {
+  const notice = periodSplitNotice("all_time", FY, { from: "", to: "" }, "quarter", TODAY, null);
+  assert.ok(notice && notice.includes("No posted entries"));
+});
+
+test("exceeding the column cap says so, and says what to do about it", () => {
+  const long = { first: "2000-01-01", last: "2026-01-01" };
+  const notice = periodSplitNotice("all_time", FY, { from: "", to: "" }, "month", TODAY, long);
+  assert.ok(notice && notice.includes("Monthly"), "names the granularity that was refused");
+  assert.ok(notice && /\d+/.test(notice), "says how many columns it would have been");
+});
+
+test("an inverted custom range is reported rather than rendered as one odd column", () => {
+  const notice = periodSplitNotice("custom", FY, { from: "2026-06-30", to: "2026-06-01" }, "month", TODAY);
+  assert.ok(notice && notice.includes("ends before it starts"));
 });

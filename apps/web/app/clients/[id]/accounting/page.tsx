@@ -20,7 +20,8 @@ import {
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
-import { splitPeriodColumns, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { splitPeriodColumns, periodSplitNotice, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 
 // ── Tab definitions ────────────────────────────────────────────────────────
@@ -1480,9 +1481,17 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [granularity, setGranularity] = useState<Granularity>("total");
+  // "All Time" means the client's actual posted books, not the 1900-2999
+  // placeholder — without this a Monthly/Quarterly split over All Time exceeds
+  // the column cap and silently collapses back to a single total.
+  const ledgerSpan = useLedgerSpan(clientId);
   const columnDefs = useMemo(
-    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity),
-    [periodMode, financialYear, customFrom, customTo, granularity],
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
+    [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
+  );
+  const splitNotice = useMemo(
+    () => periodSplitNotice(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
+    [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
   );
 
   const [columns, setColumns] = useState<PLColumnResult[]>([]);
@@ -1646,6 +1655,14 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         </div>
       </div>
 
+      {/* Why a requested column split did not happen. Previously this collapsed
+          in silence, so "Display: Quarterly" looked like a broken control. */}
+      {splitNotice && (
+        <div role="status" className="bg-slate-50 border border-[#E2E8F0] rounded px-3 py-2 text-xs text-[#64748B]">
+          {splitNotice}
+        </div>
+      )}
+
       {/* Cash basis disclaimer — IT Act §44AA */}
       {basis === "cash" && (
         <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
@@ -1778,9 +1795,17 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [granularity, setGranularity] = useState<Granularity>("total");
+  // "All Time" means the client's actual posted books, not the 1900-2999
+  // placeholder — without this a Monthly/Quarterly split over All Time exceeds
+  // the column cap and silently collapses back to a single total.
+  const ledgerSpan = useLedgerSpan(clientId);
   const columnDefs = useMemo(
-    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity),
-    [periodMode, financialYear, customFrom, customTo, granularity],
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
+    [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
+  );
+  const splitNotice = useMemo(
+    () => periodSplitNotice(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
+    [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
   );
 
   const [columns, setColumns] = useState<BSColumnResult[]>([]);
@@ -1945,6 +1970,13 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
+
+      {/* Why a requested column split did not happen — see ProfitAndLoss. */}
+      {splitNotice && (
+        <div role="status" className="bg-slate-50 border border-[#E2E8F0] rounded px-3 py-2 text-xs text-[#64748B]">
+          {splitNotice}
+        </div>
+      )}
 
       {/* Cash basis disclaimer — Companies Act §128 */}
       {basis === "cash" && (

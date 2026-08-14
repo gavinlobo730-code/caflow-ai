@@ -244,6 +244,10 @@ export const api = {
     postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
     ledger: (params: Record<string, string>) => request(`/api/accounting/ledger?${new URLSearchParams(params)}`),
     trialBalance: (params?: Record<string, string>) => request(`/api/accounting/trial-balance${params ? "?" + new URLSearchParams(params) : ""}`),
+    // First/last posted entry dates — what "All Time" resolves to on the
+    // reporting screens, so a period split by month/quarter covers the books
+    // rather than the 1900–2999 placeholder.
+    ledgerSpan: (params?: Record<string, string>) => request(`/api/accounting/ledger-span${params ? "?" + new URLSearchParams(params) : ""}`),
     profitLoss: (params?: Record<string, string>) => request(`/api/accounting/profit-loss${params ? "?" + new URLSearchParams(params) : ""}`),
     balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
     scheduleIii: (params?: Record<string, string>) => request(`/api/accounting/schedule-iii${params ? "?" + new URLSearchParams(params) : ""}`),
