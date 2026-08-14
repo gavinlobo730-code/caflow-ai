@@ -1,105 +1,80 @@
-import { getFirmId } from "./getFirmId";
 /**
- * Transaction data layer — READ-ONLY access to the legacy `transactions` table.
+ * Transaction feed for /reports and /client-portal.
  *
- * All amounts in paise (integer). Never float.
+ * These functions used to query a `transactions` table directly. Migration 139
+ * dropped it as an abandoned parallel model — correctly, the live double-entry
+ * books are journal_entries + journal_lines — but recorded that "no code reads
+ * or writes it", which was true of the backend and false of this file. Both
+ * screens have been failing on a missing relation ever since.
  *
- * Scope note: this module reads only. The invoice-WRITE path that used to live
- * here (`createInvoice` + `computeInvoiceTotals`, plus the `TransactionLine` /
- * `CreateInvoiceInput` / `SupplyType` / `InvoiceType` types that existed solely
- * to feed it) was deleted — it had zero callers, wrote straight to Supabase
- * from the browser instead of going through the API, and duplicated GST logic
- * that had drifted into being wrong (it halved the tax with Math.round on BOTH
- * legs, so an odd tax amount overstated CGST+SGST by a paise and left the
- * header total disagreeing with the sum of its own lines).
+ * There is no single live table to swap in: a sale is a client_sales_invoices
+ * row and a purchase is a purchase_bills row, with different column names and
+ * different parties. Deciding what "a transaction" means is therefore a real
+ * decision, and it lives in the backend (services/report_transactions_service.py)
+ * rather than here — CLAUDE.md, zero business logic in the frontend. This file
+ * is now just the typed client for those two endpoints.
  *
- * Sales invoices are created through POST /api/sales-invoices/ only; the GST
- * arithmetic has exactly one client-side mirror, lib/money/gstLine.ts, which is
- * pinned to the backend by shared/gst-parity-vectors.json. Do not reintroduce a
- * second implementation here.
+ * All amounts remain integer paise. Nothing here divides by 100.
  */
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 
 export interface Transaction {
   id: string;
-  firm_id: string;
   client_id: string;
+  /** "sales_invoice" | "purchase_invoice" — the vocabulary the reports split on. */
   transaction_type: string;
   transaction_date: string;
   reference_no?: string;
   party_name: string;
-  party_gstin?: string;
   taxable_amount_paise: number;
   cgst_paise: number;
   sgst_paise: number;
   igst_paise: number;
   tds_paise: number;
+  tds_section?: string | null;
   total_paise: number;
-  gst_rate?: number;
+  paid_paise: number;
+  /** total − paid, floored at zero. Computed server-side so every caller that
+   *  asks "what is still owed" gets the same answer. */
+  outstanding_paise: number;
   is_interstate: boolean;
-  place_of_supply?: string;
-  tds_section?: string;
+  place_of_supply?: string | null;
   status: string;
-  notes?: string;
-  created_at: string;
 }
 
-export async function getTransactions(clientId?: string, type?: string): Promise<Transaction[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  let q = sb.from("transactions").select("*").eq("firm_id", firmId).is("deleted_at", null).order("transaction_date", { ascending: false });
-  if (clientId) q = q.eq("client_id", clientId);
-  if (type) q = q.eq("transaction_type", type);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Transaction[];
-}
-
-export async function getGSTSummary(clientId: string, month: string) {
-  // month: "2025-06"
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const from = `${month}-01`;
-  const to = `${month}-31`;
-
-  const { data } = await sb.from("transactions")
-    .select("transaction_type,taxable_amount_paise,cgst_paise,sgst_paise,igst_paise,tds_paise,total_paise,party_name,party_gstin,place_of_supply,is_interstate,transaction_date,reference_no")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("status", "posted")
-    .gte("transaction_date", from)
-    .lte("transaction_date", to)
-    .is("deleted_at", null);
-
-  const sales = (data ?? []).filter(t => t.transaction_type === "sales_invoice");
-  const purchases = (data ?? []).filter(t => t.transaction_type === "purchase_invoice");
-
-  const sum = (arr: typeof sales, field: string) =>
-    arr.reduce((s, t) => s + ((t as Record<string, number>)[field] ?? 0), 0);
-
-  return {
-    // GSTR-1 — Outward supplies
-    gstr1: {
-      taxable: sum(sales, "taxable_amount_paise"),
-      cgst: sum(sales, "cgst_paise"),
-      sgst: sum(sales, "sgst_paise"),
-      igst: sum(sales, "igst_paise"),
-      total: sum(sales, "total_paise"),
-      lines: sales,
-    },
-    // GSTR-3B — Output tax liability and ITC
-    gstr3b: {
-      output_cgst: sum(sales, "cgst_paise"),
-      output_sgst: sum(sales, "sgst_paise"),
-      output_igst: sum(sales, "igst_paise"),
-      itc_cgst: sum(purchases, "cgst_paise"),
-      itc_sgst: sum(purchases, "sgst_paise"),
-      itc_igst: sum(purchases, "igst_paise"),
-      // Net liability — CGST Act Section 49
-      net_cgst: sum(sales, "cgst_paise") - sum(purchases, "cgst_paise"),
-      net_sgst: sum(sales, "sgst_paise") - sum(purchases, "sgst_paise"),
-      net_igst: sum(sales, "igst_paise") - sum(purchases, "igst_paise"),
-    },
-    tds_deducted: sum(purchases, "tds_paise"),
+export interface GSTSummary {
+  period: string;
+  gstr1: {
+    taxable: number; cgst: number; sgst: number; igst: number;
+    total: number; lines: Transaction[];
   };
+  gstr3b: {
+    output_cgst: number; output_sgst: number; output_igst: number;
+    itc_cgst: number; itc_sgst: number; itc_igst: number;
+    net_cgst: number; net_sgst: number; net_igst: number;
+  };
+  tds_deducted: number;
+  ca_review_required: true;
+}
+
+/**
+ * Issued sales invoices and received purchase bills, newest first.
+ *
+ * Omitting `clientId` returns every client the caller is assigned to — the
+ * backend resolves that from the token, so this cannot be widened from here.
+ * The `type` parameter the old signature accepted is gone: both callers filtered
+ * on `transaction_type` themselves afterwards, and a server-side filter nobody
+ * used was one more thing to keep in step.
+ */
+export async function getTransactions(clientId?: string): Promise<Transaction[]> {
+  const res = await api.reports.transactions(clientId);
+  if (!res.success) throw new Error(res.error ?? "Failed to load transactions");
+  return res.data.transactions;
+}
+
+/** GSTR-1 / GSTR-3B working figures for one client-month (month: "YYYY-MM"). */
+export async function getGSTSummary(clientId: string, month: string): Promise<GSTSummary> {
+  const res = await api.reports.gstSummary(clientId, month);
+  if (!res.success) throw new Error(res.error ?? "Failed to load GST summary");
+  return res.data;
 }

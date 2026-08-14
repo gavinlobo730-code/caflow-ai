@@ -447,6 +447,14 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # across every client the firm serves — the same reasoning as
     # task-templates/engagement-templates/workflow-templates/year-end
     # mappings, all already EXEMPT above. Every route is EXEMPT below.
+    # reports.py — the unified transaction feed replacing the dropped
+    # `transactions` table. Both routes narrow to the caller's book before any
+    # query: a named client goes through assert_client_access (404, not 403, so
+    # a client outside the caller's assignments is not even disclosed), and an
+    # omitted client_id resolves to effective_client_ids — None for firm-wide
+    # roles, an explicit id list otherwise, which the service reads as its
+    # `client_ids` filter.
+    "/api/reports": ("assert_client_access", "effective_client_ids", "_scoped_client_ids"),
     "/api/settings": (),
     # identity.py — staff (users) administration: create/invite, activate,
     # suspend, role change, force-logout, login history. `users` and
@@ -1515,7 +1523,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 9,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
-              "/api/identity": 13, "/api/tally-migration": 7,
+              "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
               "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 10, "/api/compliance": 12,
               "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
