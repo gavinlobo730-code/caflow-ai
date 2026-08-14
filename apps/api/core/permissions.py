@@ -342,6 +342,20 @@ def _to_role(role: str) -> Role:
     raise ValueError(f"Unknown role: {role!r}")
 
 
+def canonical_role(role: str | None) -> str | None:
+    """Public, non-raising form of `_to_role` — returns the canonical role string
+    ('Partner', 'Reviewer', …) or None for anything unrecognised.
+
+    Exists so callers outside this module (the /api/identity/permissions endpoint)
+    can canonicalise a stored role without importing a private helper or catching
+    ValueError at every call site.
+    """
+    try:
+        return _to_role(role).value
+    except ValueError:
+        return None
+
+
 def can(role: str, resource: str, action: str) -> bool:
     """Return True if role is allowed to perform action on resource."""
     try:

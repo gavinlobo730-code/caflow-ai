@@ -17,8 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from models.common import api_response
-from core.auth import get_jwt_user
-from core.permissions import rbac, Role
+from core.auth import get_current_user, get_jwt_user
+from core.permissions import rbac, Role, canonical_role, get_accessible_resources
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
 from services.audit_service import log_event
@@ -193,6 +193,31 @@ def firm_login_history(
     current_user: dict = Depends(rbac("team", "read")),
 ):
     return api_response(True, {"events": login_events_repo.list_for_firm(current_user["firm_id"], limit=limit)})
+
+
+# ─── Self-service: what may the caller do? ───────────────────────────────────
+# Deliberately guarded by get_current_user, NOT by rbac(). Gating "which actions
+# am I allowed?" behind a permission is circular — every role would need it, so
+# the guard would assert nothing while implying it asserts something.
+#
+# This exists so the FRONTEND stops re-deriving the matrix. Before this, the UI
+# hardcoded role lists (hasRole(role, ["Partner","Manager"])) beside each button,
+# which drifts the moment core/permissions.py changes: an Executive was still
+# shown accounting write actions the backend answers with 403. Serving the
+# matrix means there is exactly one copy of it, here.
+#
+# Not a security boundary. rbac() on each endpoint is still the only thing that
+# decides anything; this only decides what is worth rendering.
+@router.get("/permissions")
+def my_permissions(current_user: dict = Depends(get_current_user)):
+    """The caller's own resource→actions map, plus their canonical role."""
+    role = canonical_role(current_user.get("role"))
+    if role is None:
+        # Unknown role string: an empty map rather than a 500. The frontend
+        # helpers fail closed on an empty map, which is the right outcome for a
+        # row carrying a role nobody recognises.
+        return api_response(True, {"role": None, "permissions": {}})
+    return api_response(True, {"role": role, "permissions": get_accessible_resources(role)})
 
 
 class LoginEventBody(BaseModel):

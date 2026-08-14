@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { History, LogOut, Loader2, ShieldAlert } from "lucide-react";
 import { api, type LoginEvent } from "@/lib/api";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 
 // M6 — administrative login history + global force-logout (Partner oversight).
@@ -20,8 +20,14 @@ const EVENT_STYLE: Record<string, string> = {
 };
 
 export default function LoginHistoryPage() {
-  const { userRole } = useAuth();
-  const isPartner = userRole === "Partner";
+  // Two different permissions, previously conflated into one `isPartner` flag:
+  //   team:read  (Manager+) — identity.login_history, i.e. seeing this page
+  //   team:write (Partner)  — identity.force_logout_all, the button below
+  // The old flag hid the button correctly but ALSO told every Manager the page
+  // was Partner-only, while the list they were reading loaded fine.
+  const { can } = usePermissions();
+  const canViewHistory = can("team", "read");
+  const canForceLogout = can("team", "write");
   const [events, setEvents] = useState<LoginEvent[]>([]);
   const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -46,7 +52,7 @@ export default function LoginHistoryPage() {
   useEffect(() => { load(); }, [load]);
 
   async function forceLogoutAll() {
-    if (!isPartner) return;
+    if (!canForceLogout) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       const r = await api.identity.forceLogoutAll() as { data?: { users_affected?: number } };
@@ -71,7 +77,7 @@ export default function LoginHistoryPage() {
             </span>
           )}
         </div>
-        {isPartner && (
+        {canForceLogout && (
           <button onClick={forceLogoutAll} disabled={busy}
             className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out all users
@@ -83,9 +89,9 @@ export default function LoginHistoryPage() {
         {capped && ` Showing the most recent ${LOGIN_HISTORY_DEFAULT_LIMIT} events.`}
       </p>
 
-      {!isPartner && (
+      {!canViewHistory && (
         <div className="flex items-center gap-2 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-          <ShieldAlert size={14} /> Login history is visible to Partners only.
+          <ShieldAlert size={14} /> Login history is visible to Managers and Partners only.
         </div>
       )}
       {error && <div className="text-[12px] text-red-600 mb-2">{error}</div>}

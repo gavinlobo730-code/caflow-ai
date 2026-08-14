@@ -22,8 +22,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
-import { useAuth } from "@/lib/auth/AuthContext";
-import { hasRole } from "@/lib/auth/permissions";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -102,9 +101,12 @@ export default function ClientsPage() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
-  const { userRole } = useAuth();
-  const canArchive = hasRole(userRole, ["Partner", "Manager"]);
-  const canDelete  = hasRole(userRole, ["Partner"]);
+  // Read from the backend's permission map rather than a role list copied here:
+  // archive/delete are rbac("client","write") and rbac("client","delete"), and a
+  // second copy of who holds those is a copy that can drift out of step.
+  const { can } = usePermissions();
+  const canArchive = can("client", "write");
+  const canDelete  = can("client", "delete");
   const hasActions = canArchive || canDelete;
 
   // ── Data loading ────────────────────────────────────────────────────────────

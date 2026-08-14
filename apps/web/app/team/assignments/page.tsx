@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link2, Search, Check, Loader2, ShieldAlert } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 
 interface Member { id: string; full_name?: string; email?: string; role?: string }
@@ -13,8 +13,11 @@ interface Client { id: string; client_name?: string; entity_type?: string; gstin
 // Partner assigns clients to staff; this controls what each user can discover,
 // view, search, be notified about, and use as AI context (enforced server-side).
 export default function AssignmentsPage() {
-  const { userRole } = useAuth();
-  const isPartner = userRole === "Partner";
+  // assignment:write is Partner-only in the matrix; assignment:read is Manager+.
+  // Named after the permission rather than the role so a matrix change moves the
+  // UI with it — this page is the administration surface for exactly that grant.
+  const { can } = usePermissions();
+  const canAssign = can("assignment", "write");
 
   const [members, setMembers] = useState<Member[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -55,7 +58,7 @@ export default function AssignmentsPage() {
   }, []);
 
   async function toggle(clientId: string) {
-    if (!selectedUser || !isPartner) return;
+    if (!selectedUser || !canAssign) return;
     setBusy(clientId); setError(null);
     const isAssigned = assigned.has(clientId);
     try {
@@ -87,7 +90,7 @@ export default function AssignmentsPage() {
         (Partners have firm-wide access and are not listed here).
       </p>
 
-      {!isPartner && (
+      {!canAssign && (
         <div className="flex items-center gap-2 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
           <ShieldAlert size={14} /> View only — only a Partner can change assignments.
         </div>
@@ -140,7 +143,7 @@ export default function AssignmentsPage() {
                     return (
                       <button
                         key={c.id}
-                        disabled={!isPartner || busy === c.id}
+                        disabled={!canAssign || busy === c.id}
                         onClick={() => toggle(c.id)}
                         className="w-full flex items-center justify-between px-4 py-2.5 border-b border-gray-50 hover:bg-[#F8FAFC] disabled:opacity-60"
                       >

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lucide-react";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { Can } from "@/components/Can";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -70,6 +72,14 @@ export default function MigrationPage() {
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<MigrationPreview | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+
+  // tally_migration.py: create/parse are rbac("accounting", "write") (Manager+),
+  // while BOTH the dry run and the live import go through /jobs/{id}/import,
+  // which is rbac("accounting", "approve") — Partner only. The wizard offered
+  // every step to everyone, so a Manager could fill in a whole migration and
+  // only discover at the last click that importing was never theirs to do.
+  const { can } = usePermissions();
+  const canStartImport = can("accounting", "write");
 
   // Create form
   const [name, setName] = useState("");
@@ -155,10 +165,12 @@ export default function MigrationPage() {
           <h2 className="text-sm font-semibold text-[#1E293B]">Migration Center</h2>
           <p className="text-xs text-[#94A3B8] mt-0.5">Import data from Tally — Masters, Ledgers, Journals, Balances</p>
         </div>
-        <button onClick={() => { setShowCreate(true); setStep("create"); setJobId(null); setParseResult(null); setImportResult(null); }}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
-          <Plus size={12} /> New Import
-        </button>
+        {canStartImport && (
+          <button onClick={() => { setShowCreate(true); setStep("create"); setJobId(null); setParseResult(null); setImportResult(null); }}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            <Plus size={12} /> New Import
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
@@ -269,11 +281,21 @@ export default function MigrationPage() {
                   <p className="text-xs text-red-700 font-medium">Live import — data will be written. Ensure you have reviewed the preview.</p>
                 </div>
               )}
-              <button onClick={handleImport} disabled={working || (preview.error_count > 0 && !isDryRun)}
-                className={`text-xs px-4 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 ${isDryRun ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}`}>
-                {working && <Loader2 size={10} className="animate-spin" />}
-                {isDryRun ? "Run Dry Run →" : "Execute Import →"}
-              </button>
+              {/* An explanation rather than a vanished button: this is the last
+                  step of a wizard the user has already filled in, so silence
+                  here reads as a broken screen. */}
+              <Can resource="accounting" action="approve" fallback={
+                <p className="text-xs text-[#64748B] border border-[#E2E8F0] rounded-lg px-3 py-2">
+                  Running an import — including a dry run — requires Partner approval rights.
+                  The job is saved; ask a Partner to run it from this screen.
+                </p>
+              }>
+                <button onClick={handleImport} disabled={working || (preview.error_count > 0 && !isDryRun)}
+                  className={`text-xs px-4 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 ${isDryRun ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}`}>
+                  {working && <Loader2 size={10} className="animate-spin" />}
+                  {isDryRun ? "Run Dry Run →" : "Execute Import →"}
+                </button>
+              </Can>
             </div>
           )}
 
@@ -291,10 +313,12 @@ export default function MigrationPage() {
                 </div>
               </div>
               {importResult.is_dry_run && (
-                <button onClick={() => { setIsDryRun(false); setStep("preview"); }}
-                  className="text-xs px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
-                  Proceed with Live Import →
-                </button>
+                <Can resource="accounting" action="approve">
+                  <button onClick={() => { setIsDryRun(false); setStep("preview"); }}
+                    className="text-xs px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                    Proceed with Live Import →
+                  </button>
+                </Can>
               )}
               <button onClick={() => { setShowCreate(false); load(); }}
                 className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg">Done</button>

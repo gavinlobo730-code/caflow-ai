@@ -4,18 +4,39 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserCheck, LayoutGrid, Users, Link2, ShieldCheck, History } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
-const TEAM_ITEMS = [
-  { href: "/team", label: "Team", icon: UserCheck },
-  { href: "/team/assignments", label: "Assignments", icon: Link2 },
-  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
-  { href: "/team/login-history", label: "Login History", icon: History },
+// `requires` names the backend permission that the page's OWN data calls need,
+// so the link disappears for anyone who would only reach a 403. It is set only
+// where the page is API-backed and the requirement was read off the endpoint:
+// an item with no `requires` is a claim that no FastAPI permission governs it,
+// not that nobody checked.
+//
+// Work Allocation and Attendance query Supabase directly (RLS, not rbac()), so
+// there is no matrix entry to gate them on — inventing one here would hide a
+// page that actually works.
+const TEAM_ITEMS: Array<{
+  href: string;
+  label: string;
+  icon: typeof UserCheck;
+  requires?: [resource: string, action: string];
+}> = [
+  // identity.list_users → rbac("team", "read")
+  { href: "/team", label: "Team", icon: UserCheck, requires: ["team", "read"] },
+  // assignments.list_* → rbac("assignment", "read")
+  { href: "/team/assignments", label: "Assignments", icon: Link2, requires: ["assignment", "read"] },
+  // approvals.list_approvals → rbac("approval", "read")
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck, requires: ["approval", "read"] },
+  // identity.login_history → rbac("team", "read")
+  { href: "/team/login-history", label: "Login History", icon: History, requires: ["team", "read"] },
   { href: "/team/work-allocation", label: "Work Allocation", icon: LayoutGrid },
   { href: "/payroll/attendance", label: "Attendance", icon: Users },
 ];
 
 export function TeamPanel() {
   const pathname = usePathname();
+  const { can } = usePermissions();
+  const items = TEAM_ITEMS.filter((i) => !i.requires || can(i.requires[0], i.requires[1]));
 
   return (
     <div className="flex flex-col h-full">
@@ -33,7 +54,7 @@ export function TeamPanel() {
           Navigate
         </p>
         <div className="space-y-0.5">
-          {TEAM_ITEMS.map(({ href, label, icon: Icon }) => {
+          {items.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/team"
                 ? isExactPath(pathname, "/team")

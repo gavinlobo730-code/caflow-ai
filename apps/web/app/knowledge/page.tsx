@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 
 interface Article {
@@ -15,8 +15,12 @@ interface Version { version: number; changed_by?: string | null; changed_at?: st
 
 function KnowledgeInner() {
   const params = useSearchParams();
-  const { userRole } = useAuth();
-  const canAuthor = (userRole ?? "Partner") === "Partner" || userRole === "Manager";
+  // Was `(userRole ?? "Partner") === "Partner" || userRole === "Manager"` — a
+  // hand-rolled copy of knowledge:write that also failed OPEN: an unresolved
+  // role defaulted to Partner, so every user was briefly offered the authoring
+  // controls on load. The permission map answers false until it resolves.
+  const { can } = usePermissions();
+  const canAuthor = can("knowledge", "write");
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
