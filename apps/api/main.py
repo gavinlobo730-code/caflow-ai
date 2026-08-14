@@ -33,11 +33,10 @@ def _parse_origins(raw: str) -> list[str]:
             origins.append(o)
     return origins
 
+from core.urls import default_allowed_origins
+
 _ALLOWED_ORIGINS = _parse_origins(
-    os.environ.get(
-        "ALLOWED_ORIGINS",
-        "http://localhost:3000,https://caflow-ai.pages.dev",
-    )
+    os.environ.get("ALLOWED_ORIGINS") or default_allowed_origins()
 )
 _logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 

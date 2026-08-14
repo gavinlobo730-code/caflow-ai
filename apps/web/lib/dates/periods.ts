@@ -128,6 +128,23 @@ export interface PeriodColumn {
   end: string;
 }
 
+/**
+ * The client's real posted-ledger bounds, from GET /api/accounting/ledger-span.
+ * null when the ledger is empty — which is NOT the same as "unknown", and is
+ * why All Time falls back to the placeholder span rather than inventing a
+ * range around today.
+ */
+export type LedgerSpan = { first: string; last: string } | null;
+
+/**
+ * Most columns a split may produce before it collapses to a single total.
+ * 60 is chosen to comfortably clear the cases a CA actually asks for — a
+ * financial year monthly (12), five years monthly (60), fifteen years
+ * quarterly (60) — while stopping a decade-deep ledger split by month from
+ * rendering a table nobody can read.
+ */
+export const MAX_SPLIT_COLUMNS = 60;
+
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function pad2(n: number): string {
@@ -226,11 +243,46 @@ function splitByYear(start: string, end: string): PeriodColumn[] {
 }
 
 /**
+ * The range a split actually runs over.
+ *
+ * Differs from resolvePeriodRange in one case: "All Time" resolves there to a
+ * 1900–2999 placeholder, because that function is used to SCOPE A QUERY and an
+ * unbounded window is the correct scope for "everything". For SPLITTING, that
+ * placeholder is useless — eleven centuries by quarter is ~4,400 columns — so
+ * here it is replaced by the client's real first and last posted entry dates
+ * when the caller has them.
+ */
+function resolveSplitRange(
+  mode: PeriodMode,
+  financialYear: string,
+  custom: { from: string; to: string },
+  todayIso?: string,
+  ledgerSpan?: LedgerSpan,
+): DateRange {
+  if (mode === "all_time" && ledgerSpan) {
+    return { start: ledgerSpan.first, end: ledgerSpan.last };
+  }
+  return resolvePeriodRange(mode, financialYear, custom, todayIso);
+}
+
+function splitBy(granularity: Granularity, start: string, end: string): PeriodColumn[] {
+  switch (granularity) {
+    case "month": return splitByMonth(start, end);
+    case "quarter": return splitByQuarter(start, end);
+    case "year": return splitByYear(start, end);
+    default: return [];
+  }
+}
+
+/**
  * Resolve a period mode to its overall [start, end], then split it into
  * display columns per `granularity`. "total" (the default) always returns
  * exactly one column spanning the whole range — identical to today's single-
  * period statements, so existing call sites are unaffected until they opt in
  * to a finer granularity.
+ *
+ * Pass `ledgerSpan` so "All Time" means the client's actual books rather than
+ * the 1900–2999 placeholder; without it, All Time can only ever be one column.
  */
 export function splitPeriodColumns(
   mode: PeriodMode,
@@ -238,24 +290,57 @@ export function splitPeriodColumns(
   custom: { from: string; to: string },
   granularity: Granularity,
   todayIso?: string,
+  ledgerSpan?: LedgerSpan,
 ): PeriodColumn[] {
-  const { start, end } = resolvePeriodRange(mode, financialYear, custom, todayIso);
-  // "All Time" (or an accidentally wide custom range) resolves to the
-  // 1900–2999 placeholder bound, not the client's actual earliest
-  // transaction date — this function has no DB access to know that. Monthly/
-  // quarterly splitting over a millennium-plus span would generate tens of
-  // thousands of columns, so any range this wide always collapses to one
-  // Total column regardless of the requested granularity.
-  const spanDays = (new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86_400_000;
-  if (start > end || spanDays > 366 * 20) {
-    return [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
+  const { start, end } = resolveSplitRange(mode, financialYear, custom, todayIso, ledgerSpan);
+  const totalColumn = () =>
+    [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
+
+  // "total" and an inverted range both mean one column. Checked BEFORE
+  // splitBy, which returns [] for "total" — falling through would hand every
+  // existing single-period call site an empty report rather than a total.
+  if (granularity === "total" || start > end) return totalColumn();
+
+  const split = splitBy(granularity, start, end);
+  // Guard against a column count nobody can read and no browser enjoys
+  // laying out. With a real ledger span this is rarely reached — it takes ~5
+  // years of books to hit it monthly — but "All Time" on a decade-old ledger
+  // split by month legitimately produces 120+ columns, and a table that wide
+  // is not the report the user was asking for. Collapsing is the honest
+  // fallback; periodSplitNotice() below is what makes it visible rather than
+  // silent, which is the failure this whole path used to have.
+  if (split.length > MAX_SPLIT_COLUMNS) return totalColumn();
+  return split;
+}
+
+/**
+ * Why a requested split did not happen, or null when it did.
+ *
+ * This exists because the previous behaviour was to collapse silently: the
+ * "Display columns by" control stayed on "Quarterly" while rendering a single
+ * Total column, which reads as a broken control rather than a deliberate
+ * limit. Anything that refuses a user's explicit choice has to say so.
+ */
+export function periodSplitNotice(
+  mode: PeriodMode,
+  financialYear: string,
+  custom: { from: string; to: string },
+  granularity: Granularity,
+  todayIso?: string,
+  ledgerSpan?: LedgerSpan,
+): string | null {
+  if (granularity === "total") return null;
+
+  if (mode === "all_time" && !ledgerSpan) {
+    return "No posted entries yet — pick a financial year to split into columns.";
   }
-  switch (granularity) {
-    case "month": return splitByMonth(start, end);
-    case "quarter": return splitByQuarter(start, end);
-    case "year": return splitByYear(start, end);
-    case "total":
-    default:
-      return [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
+  const { start, end } = resolveSplitRange(mode, financialYear, custom, todayIso, ledgerSpan);
+  if (start > end) return "That date range ends before it starts.";
+
+  const count = splitBy(granularity, start, end).length;
+  if (count > MAX_SPLIT_COLUMNS) {
+    const label = GRANULARITY_OPTIONS.find((o) => o.value === granularity)?.label ?? granularity;
+    return `${label} columns would need ${count} columns for this range (limit ${MAX_SPLIT_COLUMNS}) — showing a single total. Narrow the period or pick a coarser split.`;
   }
+  return null;
 }

@@ -5,27 +5,78 @@ services:
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: ./apps/api
     healthCheckPath: /health
+
+    # ------------------------------------------------------------------------
+    # This list is checked against the code by
+    # apps/api/tests/test_render_manifest_matches_code.py — every environment
+    # variable the backend reads must either appear below or carry a written
+    # reason in that test's EXEMPT map. It drifted badly before that check
+    # existed: 24 variables were read, 11 were declared, and one declared
+    # variable (DOCUMENT_INTELLIGENCE_PROVIDER) was read by nothing at all.
+    #
+    # `sync: false` means "the value is set in the Render dashboard, not here".
+    # No secret belongs in this file.
+    #
+    # NOTE ON LITERAL VALUES: entries with `value:` only take effect if the
+    # service is actually managed by this blueprint. If it was created by hand
+    # in the dashboard, Render never reads this file and these must be set
+    # there too. ENABLE_SCHEDULER is the one that bites — see below.
+    # ------------------------------------------------------------------------
     envVars:
+      # --- Core platform ---------------------------------------------------
       - key: APP_ENV
         value: production
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: GROQ_API_KEY
+      # Anon key — needed by core/supabase_client.py to build a per-user client
+      # (anon key + caller's JWT) so Postgres RLS applies to the API path too.
+      # Without it, get_user_client() raises and the USE_USER_JWT path is dead.
+      - key: SUPABASE_ANON_KEY
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
-      - key: DOCUMENT_INTELLIGENCE_PROVIDER
-        value: mock
+      # The app's public origin, and the SINGLE source of every user-facing
+      # link the backend emits — team invitations, client-portal activation
+      # and portal sign-in all derive from it via core/urls.py. Pointing the
+      # app at a custom domain later is this one value.
+      - key: FRONTEND_URL
+        sync: false
+
+      # --- AI providers ----------------------------------------------------
+      # Groq: chat/text features + PDF invoice extraction.
+      - key: GROQ_API_KEY
+        sync: false
+      # Gemini: image-based invoice extraction ONLY (document_intelligence_v1).
+      # Was missing from this manifest entirely while being read by the code —
+      # if a deploy ever rebuilt the service from this file, image extraction
+      # would have silently stopped working (the router logs "refusing to
+      # fabricate an extraction" and returns nothing rather than failing loud).
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # --- Email -----------------------------------------------------------
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
-      - key: FRONTEND_URL
+      # Optional, and normally unset. Client-portal activation links derive
+      # from FRONTEND_URL via core/urls.py; this only exists for a deployment
+      # that serves the portal from a DIFFERENT host than the app.
+      - key: PORTAL_BASE_URL
         sync: false
+
+      # --- Scheduled jobs --------------------------------------------------
+      # Off unless this reads exactly "true". When unset, jobs/scheduler.py
+      # logs a warning and stays dormant — compliance reminders, recurring
+      # invoices, overdue-invoice notices, collections and escalations never
+      # fire on their own, silently. Set it in the DASHBOARD as well; a literal
+      # here only applies to a blueprint-managed service.
       - key: ENABLE_SCHEDULER
         value: "true"
+
+      # --- Reporting -------------------------------------------------------
       # Reporting passbook: serve accrual Trial Balance / P&L / Balance Sheet from
       # the pre-aggregated account_period_balances cache (one small read) instead
       # of replaying the whole posted ledger. "on" serves the fast path with an
@@ -34,3 +85,34 @@ services:
       # Quoted so YAML doesn't parse the bareword `on` as a boolean.
       - key: REPORTING_PASSBOOK_MODE
         value: "on"
+
+      # --- Security flags (M6, staged rollout — default OFF) ---------------
+      # Declared rather than left implicit: these change who can reach what, so
+      # their state should be visible in the manifest even while they are off.
+      # See core/security_config.py.
+      - key: USE_USER_JWT
+        sync: false
+      - key: REQUIRE_MFA
+        sync: false
+
+      # --- Product feature flags (default OFF) -----------------------------
+      # Platform-wide multi-currency kill switch. OFF ⇒ everything is INR-only
+      # regardless of per-firm or per-client settings, so this flag decides
+      # whether a whole product surface exists. Declared for the same reason as
+      # the security flags: its state should be readable here, not just in a
+      # dashboard. See core/feature_flags.py.
+      - key: MULTI_CURRENCY_ENABLED
+        sync: false
+
+      # --- Payments --------------------------------------------------------
+      # "mock" (default) or "razorpay". The RAZORPAY_* secrets are deliberately
+      # NOT declared here — see the test's EXEMPT map for why.
+      - key: PAYMENT_PROVIDER
+        sync: false
+
+      # --- Observability ---------------------------------------------------
+      # Unset ⇒ Sentry is not initialised and errors are logged only. This is
+      # what alerts on swallowed financial-posting exceptions, so an unset DSN
+      # means those failures are invisible in production.
+      - key: SENTRY_DSN
+        sync: false

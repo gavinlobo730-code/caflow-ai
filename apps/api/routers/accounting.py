@@ -444,6 +444,30 @@ def get_trial_balance(
     return api_response(True, tb)
 
 
+@router.get("/ledger-span")
+def get_ledger_span(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """First and last posted entry dates — what "All Time" actually means.
+
+    Guarded with accounting:read, matching trial-balance / profit-loss /
+    balance-sheet: the span leaks when a client's books begin and end, which is
+    the same class of fact as the reports themselves and must not be reachable
+    through a looser permission just because the payload is two dates.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+        scoped = [client_id]
+    else:
+        ids = effective_client_ids(current_user)
+        scoped = None if ids is None else sorted(ids)
+
+    from core.supabase_client import get_supabase
+    from services.ledger_span_service import ledger_span
+    return api_response(True, ledger_span(get_supabase(), current_user["firm_id"], scoped))
+
+
 @router.get("/profit-loss")
 def get_profit_loss(
     start_date: Optional[str] = Query(None),
