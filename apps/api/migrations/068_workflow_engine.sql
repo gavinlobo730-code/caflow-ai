@@ -43,6 +43,25 @@ CREATE TABLE IF NOT EXISTS workflow_steps (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- REPLAYABILITY FIX: workflow_steps already exists from migration 002 with a
+-- different shape (workflow_id/step_name/...), so the CREATE TABLE above is a
+-- silent no-op on any database that ran 002 — and every index/policy below that
+-- names a column 002 never had then fails. On a clean replay this file died
+-- here with: column "template_id" does not exist.
+--
+-- Add the columns this migration declares, idempotently, so the statements
+-- below have something to bind to. Nullable on purpose: the table may already
+-- hold rows from the 002-era shape, and a NOT NULL add would fail on those.
+-- Migration 157 later does the same repair; running it twice is harmless.
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS template_id          UUID REFERENCES workflow_templates(id) ON DELETE CASCADE;
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS step_type            TEXT;
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS name                 TEXT;
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS description          TEXT;
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS config               JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS next_step_id         UUID;
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS true_branch_step_id  UUID;
+ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS false_branch_step_id UUID;
+
 CREATE INDEX IF NOT EXISTS idx_wf_steps_template ON workflow_steps(template_id);
 
 -- ── Workflow Triggers ────────────────────────────────────────────────────────

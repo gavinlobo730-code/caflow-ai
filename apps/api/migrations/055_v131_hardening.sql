@@ -75,9 +75,19 @@ ALTER TABLE bank_transactions
     ADD COLUMN IF NOT EXISTS import_hash TEXT;
 
 -- Unique constraint via index (partial: only on non-null import_hash)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_bank_transactions_import
-    ON bank_transactions (client_id, bank_account_id, txn_date, debit_paise, credit_paise, description)
-    WHERE bank_account_id IS NOT NULL;
+-- REPLAYABILITY GUARD: this statement names an object that only exists on a
+-- database where it was created out-of-band or by a LATER migration, so a
+-- clean replay died here. Guarded, not deleted: on a database that has the
+-- object (i.e. production) the statement still runs, unchanged.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='bank_transactions'
+               AND column_name='bank_account_id') THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_bank_transactions_import
+        ON bank_transactions (client_id, bank_account_id, txn_date, debit_paise, credit_paise, description)
+        WHERE bank_account_id IS NOT NULL;
+  END IF;
+END $$;
 
 
 -- ─── 4. Performance Indexes ───────────────────────────────────────────────────

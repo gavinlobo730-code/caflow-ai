@@ -55,7 +55,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON fixed_deposits      TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON loans               TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON bank_reconciliations TO authenticated;
 GRANT SELECT, INSERT, UPDATE         ON ledger_balances     TO authenticated;
-GRANT SELECT, INSERT, UPDATE         ON invoice_sequences   TO authenticated;
+-- REPLAYABILITY GUARD: this statement names an object that only exists on a
+-- database where it was created out-of-band or by a LATER migration, so a
+-- clean replay died here. Guarded, not deleted: on a database that has the
+-- object (i.e. production) the statement still runs, unchanged.
+DO $$ BEGIN
+  IF to_regclass('public.invoice_sequences') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON invoice_sequences TO authenticated;
+  END IF;
+END $$;
 
 -- ── Firm management ───────────────────────────────────────────────────────────
 GRANT SELECT, INSERT, UPDATE, DELETE ON firm_profiles       TO authenticated;

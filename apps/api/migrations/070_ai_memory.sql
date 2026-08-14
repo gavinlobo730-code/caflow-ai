@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS client_profiles (
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- REPLAYABILITY FIX: client_profiles already exists from migration 059, so the
+-- CREATE TABLE above is a silent no-op and the indexes below bind to columns
+-- that the 059-era table never had. On a clean replay this file died here with:
+-- column "is_current" does not exist. Same reasoning as the 068 repair.
+ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS firm_id           UUID;
+ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS client_id         UUID;
+ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS is_current        BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS last_computed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_cp_firm_client    ON client_profiles(firm_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_cp_current        ON client_profiles(firm_id, is_current) WHERE is_current = true;
 CREATE INDEX IF NOT EXISTS idx_cp_computed       ON client_profiles(last_computed_at);

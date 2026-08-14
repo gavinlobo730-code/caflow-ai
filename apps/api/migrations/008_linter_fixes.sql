@@ -127,7 +127,16 @@ CREATE INDEX IF NOT EXISTS idx_reminders_firm_id       ON reminders(firm_id)    
 CREATE INDEX IF NOT EXISTS idx_reminders_client_id     ON reminders(client_id)        WHERE client_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_team_members_firm_id    ON team_members(firm_id)       WHERE firm_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_team_members_user_id    ON team_members(user_id)       WHERE user_id IS NOT NULL;
+-- REPLAYABILITY GUARD: this statement names an object that only exists on a
+-- database where it was created out-of-band or by a LATER migration, so a
+-- clean replay died here. Guarded, not deleted: on a database that has the
+-- object (i.e. production) the statement still runs, unchanged.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='team_members' AND column_name='user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id) WHERE user_id IS NOT NULL;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_workflows_firm_id       ON workflows(firm_id)          WHERE firm_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow_id ON workflow_steps(workflow_id) WHERE workflow_id IS NOT NULL;
