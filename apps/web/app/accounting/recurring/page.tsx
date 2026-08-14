@@ -148,7 +148,9 @@ export default function RecurringPage() {
       setFirmId(fid);
       const sb = getSupabaseClient();
       const { data } = await sb
-        // chart_of_accounts — there is no "accounts" table and never was.
+        // chart_of_accounts, the base table. The "accounts" view (migration
+        // 016) also works and is a plain SELECT * of it; naming the table
+        // avoids a second name for one thing.
         .from("chart_of_accounts")
         .select("*")
         .eq("firm_id", fid)

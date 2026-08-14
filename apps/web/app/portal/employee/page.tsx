@@ -19,9 +19,9 @@ interface EmployeeRecord {
   designation: string | null;
   department: string | null;
   pan: string | null;
-  bank_account_number: string | null;
+  bank_account_no: string | null;
   bank_name: string | null;
-  ifsc_code: string | null;
+  bank_ifsc: string | null;
 }
 
 interface SalarySlip {
@@ -34,13 +34,28 @@ interface SalarySlip {
   created_at: string;
 }
 
+// Mirrors leave_balances as it actually is (migration 027): ONE row per
+// employee per year, holding the days REMAINING for each of three fixed leave
+// types. There is no leave_type/total_days/used_days shape — this page used to
+// ask for those three columns and PostgREST rejected the whole select, so the
+// leave tab could never load even for firm staff.
+//
+// Nothing records days taken, so "Total" and "Used" cannot be shown without
+// inventing them. The table below shows the balance, which is the number the
+// employee is actually asking for.
 interface LeaveBalance {
   id: string;
-  leave_type: string;
-  total_days: number;
-  used_days: number;
   year: number;
+  casual_leave_balance: number;
+  sick_leave_balance: number;
+  earned_leave_balance: number;
 }
+
+const LEAVE_TYPES: ReadonlyArray<{ label: string; key: keyof LeaveBalance }> = [
+  { label: "Casual", key: "casual_leave_balance" },
+  { label: "Sick", key: "sick_leave_balance" },
+  { label: "Earned", key: "earned_leave_balance" },
+];
 
 type TabId = "payslips" | "leave" | "profile";
 
@@ -124,7 +139,7 @@ export default function EmployeePortalPage() {
         }
         const { data, error: err } = await supabase
           .from("payroll_employees")
-          .select("id, name, designation, department, pan, bank_account_number, bank_name, ifsc_code")
+          .select("id, name, designation, department, pan, bank_account_no, bank_name, bank_ifsc")
           .eq("auth_user_id", session.user.id)
           .eq("portal_enabled", true)
           .maybeSingle();
@@ -149,21 +164,18 @@ export default function EmployeePortalPage() {
     setPayslipsError(false);
     try {
       const supabase = getSupabaseClient();
-      // payroll_slips, not "salary_slips" — the latter has never existed, so
-      // this threw a missing-relation error rather than returning nothing.
+      // Reads payroll_slips directly rather than the salary_slips view
+      // (migration 072), which also exists and exposes the same rows. Either
+      // works; this one names the base table the amounts actually live on.
       //
       // The period lives on the parent run (payroll_runs.month), not on the
       // slip, and the amounts are gross_paise / net_paise. Ordered by
       // created_at because PostgREST cannot sort parent rows by an embedded
       // column, and slips are created per run in period order anyway.
       //
-      // KNOWN LIMIT — this still returns nothing for an employee. The only
-      // policy on payroll_slips is payroll_slips_own_firm, gated on
-      // get_my_firm_id(), which is NULL for a portal employee because they are
-      // not a row in `users`. payroll_employees has employee_sees_own_record;
-      // payroll_slips and leave_balances never got the equivalent. Granting it
-      // is a deliberate decision about who may read payroll, not a rename, so
-      // it is deliberately NOT bundled into this fix.
+      // The payroll_runs!inner(month) embed needs the RUN to be visible under
+      // RLS, not just the slip — an inner join drops the row otherwise.
+      // Migration 262 grants both, scoped to the employee's own records.
       const { data, error: err } = await supabase
         .from("payroll_slips")
         .select("id, gross_paise, net_paise, created_at, payroll_runs!inner(month)")
@@ -211,7 +223,7 @@ export default function EmployeePortalPage() {
       const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
       const { data, error: err } = await supabase
         .from("leave_balances")
-        .select("id, leave_type, total_days, used_days, year")
+        .select("id, year, casual_leave_balance, sick_leave_balance, earned_leave_balance")
         .eq("employee_id", employee.id)
         .eq("year", currentYear);
       if (err) throw new Error(err.message);
@@ -402,25 +414,26 @@ export default function EmployeePortalPage() {
                   <thead>
                     <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
                       <th className="px-5 py-3 text-left font-semibold">Leave Type</th>
-                      <th className="px-4 py-3 text-right font-semibold">Total Days</th>
-                      <th className="px-4 py-3 text-right font-semibold">Used</th>
-                      <th className="px-4 py-3 text-right font-semibold">Balance</th>
+                      <th className="px-4 py-3 text-right font-semibold">Days Remaining</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F8FAFC]">
-                    {leaveBalances.map(lb => {
-                      const balance = lb.total_days - lb.used_days;
-                      return (
-                        <tr key={lb.id} className="hover:bg-[#F8FAFC]">
-                          <td className="px-5 py-3 font-medium text-[#0F172A] capitalize">{lb.leave_type}</td>
-                          <td className="px-4 py-3 text-right text-[#475569]">{lb.total_days}</td>
-                          <td className="px-4 py-3 text-right text-amber-600">{lb.used_days}</td>
-                          <td className={`px-4 py-3 text-right font-semibold ${balance > 0 ? "text-green-700" : "text-red-600"}`}>
-                            {balance}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {/* One row per leave type, unpacked from the single
+                        leave_balances row for the year. Days taken are not
+                        recorded anywhere, so there is no Used column to fill. */}
+                    {leaveBalances.flatMap(lb =>
+                      LEAVE_TYPES.map(({ label, key }) => {
+                        const days = Number(lb[key] ?? 0);
+                        return (
+                          <tr key={`${lb.id}-${key}`} className="hover:bg-[#F8FAFC]">
+                            <td className="px-5 py-3 font-medium text-[#0F172A]">{label}</td>
+                            <td className={`px-4 py-3 text-right font-semibold ${days > 0 ? "text-green-700" : "text-red-600"}`}>
+                              {days}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -442,11 +455,11 @@ export default function EmployeePortalPage() {
                 { label: "Department", value: employee.department ?? "—" },
                 { label: "PAN", value: employee.pan ?? "—" },
                 { label: "Bank Name", value: employee.bank_name ?? "—" },
-                { label: "Account Number", value: employee.bank_account_number
-                  ? `****${employee.bank_account_number.slice(-4)}`
+                { label: "Account Number", value: employee.bank_account_no
+                  ? `****${employee.bank_account_no.slice(-4)}`
                   : "—"
                 },
-                { label: "IFSC Code", value: employee.ifsc_code ?? "—" },
+                { label: "IFSC Code", value: employee.bank_ifsc ?? "—" },
               ].map(field => (
                 <div key={field.label} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
                   <span className="text-xs text-[#64748B]">{field.label}</span>
