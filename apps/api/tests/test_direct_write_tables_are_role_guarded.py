@@ -27,43 +27,32 @@ from pathlib import Path
 import pytest
 
 WEB = Path(__file__).resolve().parents[3] / "apps" / "web"
-MIGRATION = (Path(__file__).resolve().parents[1]
-             / "migrations" / "260_role_aware_write_policies.sql")
+_MIG_DIR = Path(__file__).resolve().parents[1] / "migrations"
+MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
+                     _MIG_DIR / "261_role_aware_write_policies_part2.sql"]
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
 GUARDED = {
+    # migration 260 — mirrored an existing endpoint's rbac() guard
     "chart_of_accounts", "clients", "customers", "tasks", "documents",
     "fee_invoices", "fee_engagements", "mca_filings", "firms",
+    # migration 261 — no endpoint existed; each rule argued in that file's header
+    "attendance", "leave_balances", "compliance_calendar", "it_notices",
+    "tax_audits", "tax_planning_records", "shared_reports", "scheduled_reports",
+    "client_documents", "document_requests", "suppliers", "msme_payments",
+    "client_timeline_events",
 }
 
-# Written from the browser, NOT yet role-guarded. Every entry needs a product
+# Written from the browser and NOT yet role-guarded. An entry needs a product
 # decision — "who may edit this?" — before a rule can be written, because no API
 # endpoint exists whose rbac() guard could be copied.
 #
-# Shrinking this set is the work. Growing it requires adding a line here, which
-# is the point: a new unguarded direct write cannot arrive silently.
-AWAITING_DECISION = {
-    "attendance":             "staff attendance — plausibly self-service, so the "
-                              "payroll tier (Manager+) may be wrong",
-    "client_documents":       "client document store; the `document` resource is the "
-                              "likely owner but no endpoint writes this table",
-    "client_timeline_events": "insert-only for authenticated already (UPDATE/DELETE "
-                              "grants are revoked); low risk, still undecided",
-    "compliance_calendar":    "who may edit a filing calendar — all staff, or seniors?",
-    "document_requests":      "portal-facing; an external Client may legitimately write",
-    "it_notices":             "income-tax notices; income_tax:compute is Executive+ but "
-                              "no endpoint writes this table",
-    "leave_balances":         "same self-service question as attendance",
-    "msme_payments":          "MSME payment tracking under accounting, unconfirmed",
-    "scheduled_reports":      "report:write is Manager+, but scheduling may be intended "
-                              "as a personal setting",
-    "shared_reports":         "report sharing; same question as scheduled_reports",
-    "suppliers":              "distinct from `vendors` (which HAS an API at "
-                              "/api/vendors); this table has none",
-    "tax_audits":             "tax audit records, owner unclear",
-    "tax_planning_records":   "tax planning, owner unclear",
-}
+# Empty: every table the browser writes now carries a role rule (260 + 261). The
+# category stays because the NEXT unguarded direct write should land here, with
+# the question it raises, rather than being waved through — which is exactly
+# what test_no_unaccounted_direct_write_table_appears enforces.
+AWAITING_DECISION: dict[str, str] = {}
 
 # Direct writes that CANNOT succeed, so no role policy would add anything. Kept
 # as a third category rather than lumped in above, because "already impossible"
@@ -144,11 +133,11 @@ def test_guarded_tables_are_actually_in_the_migration():
     """GUARDED is a claim about migration 260. Hold it to the file, so removing
     a table from the migration cannot leave this test asserting protection that
     no longer exists."""
-    src = MIGRATION.read_text(encoding="utf-8")
+    src = "\n".join(m.read_text(encoding="utf-8") for m in MIGRATION_SOURCES)
 
     for table in sorted(GUARDED):
         assert re.search(rf"\[\s*'{table}'\s*,", src), (
-            f"{table} is listed as guarded but migration 260 does not cover it"
+            f"{table} is listed as guarded but no migration covers it"
         )
 
 

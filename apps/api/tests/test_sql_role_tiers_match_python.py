@@ -25,8 +25,10 @@ import pytest
 
 from core.permissions import PERMISSIONS, ROLE_HIERARCHY, Role
 
-MIGRATION = (Path(__file__).resolve().parents[1]
-             / "migrations" / "260_role_aware_write_policies.sql")
+MIGRATIONS = [
+    Path(__file__).resolve().parents[1] / "migrations" / "260_role_aware_write_policies.sql",
+    Path(__file__).resolve().parents[1] / "migrations" / "261_role_aware_write_policies_part2.sql",
+]
 
 # table -> (resource, write_action, delete_action_or_None)
 #
@@ -43,12 +45,27 @@ OWNERS = {
     "fee_engagements":   ("billing",    "write", None),
     "mca_filings":       ("mca",        "write", None),
     "firms":             ("firm",       "write", None),
+    # Added by migration 261. Where a resource has no `write` action, the column
+    # names the action standing in for it, and the migration's header argues why.
+    "attendance":             ("payroll",    "write",   None),
+    "leave_balances":         ("payroll",    "write",   None),
+    "compliance_calendar":    ("compliance", "write",   "delete"),
+    "it_notices":             ("income_tax", "compute", "approve"),
+    "tax_audits":             ("income_tax", "compute", "approve"),
+    "tax_planning_records":   ("income_tax", "compute", "approve"),
+    "shared_reports":         ("report",     "write",   None),
+    "scheduled_reports":      ("report",     "write",   None),
+    "client_documents":       ("document",   "write",   "delete"),
+    "document_requests":      ("portal",     "write",   None),
+    "suppliers":              ("accounting", "write",   None),
+    "msme_payments":          ("accounting", "write",   None),
+    "client_timeline_events": ("timeline",   "write",   "delete"),
 }
 
 
 def _declared() -> dict[str, tuple[str, str]]:
     """table -> (min_role_for_write, min_role_for_delete), read out of the SQL."""
-    src = MIGRATION.read_text(encoding="utf-8")
+    src = "\n".join(m.read_text(encoding="utf-8") for m in MIGRATIONS)
     rows = re.findall(
         r"\[\s*'([a-z_]+)'\s*,\s*'([A-Za-z]+)'\s*,\s*'([A-Za-z]+)'\s*\]", src)
     return {t: (w, d) for t, w, d in rows}
@@ -88,9 +105,9 @@ def test_delete_tier_matches_the_matrix_or_falls_back_to_write(table):
     _, declared_delete = _declared()[table]
 
     if delete_action is None:
-        assert delete_action not in PERMISSIONS[resource], (
-            f"{resource} now HAS a delete action — migration 260 is still using "
-            f"the write tier for deleting {table}"
+        assert "delete" not in PERMISSIONS[resource], (
+            f"{resource} now HAS a delete action — the migration is still using "
+            f"the {write_action} tier for deleting {table}"
         )
         expected = _minimum_role(resource, write_action)
     else:
@@ -137,7 +154,7 @@ def test_the_sql_legacy_role_map_matches_python():
     failing test rather than a Partner locked out of their own firm."""
     from core.permissions import LEGACY_ROLE_MAP
 
-    src = MIGRATION.read_text(encoding="utf-8")
+    src = MIGRATIONS[0].read_text(encoding="utf-8")
     ranks = dict(re.findall(r"WHEN '([a-z]+)'\s+THEN (-?\d+)", src))
 
     for legacy, canonical in LEGACY_ROLE_MAP.items():
@@ -149,7 +166,7 @@ def test_the_sql_legacy_role_map_matches_python():
 
 
 def test_every_canonical_role_is_ranked():
-    src = MIGRATION.read_text(encoding="utf-8")
+    src = MIGRATIONS[0].read_text(encoding="utf-8")
     ranks = dict(re.findall(r"WHEN '([a-z]+)'\s+THEN (-?\d+)", src))
 
     for role in Role:

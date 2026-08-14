@@ -121,6 +121,22 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "approve": {Role.PARTNER, Role.MANAGER, Role.REVIEWER},
         "delete": _PARTNER_ONLY,
     },
+    # ── Client activity timeline ─────────────────────────────────────────────
+    # An append-only record of work that ALREADY happened: a journal posted, a
+    # document uploaded, a compliance record updated. Each of those actions has
+    # its own guard, and the least privileged of them (document:approve) admits
+    # Reviewer — so gating the LOG more tightly than the action it records would
+    # simply break logging for work the person was entitled to do.
+    # Write only: `client_timeline_events` has no UPDATE or DELETE grant for
+    # `authenticated` at all, so history cannot be rewritten from a browser.
+    "timeline": {
+        "write":  _ALL_STAFF,
+        # No DELETE grant exists for `authenticated` on client_timeline_events,
+        # so this is belt-and-braces — but if one is ever added, erasing a
+        # client's activity history should be the most restricted act on the
+        # table, not inherit the permissive write tier above.
+        "delete": _PARTNER_ONLY,
+    },
     # ── Team management ──────────────────────────────────────────────────────
     "team": {
         "read":   _AT_LEAST_MANAGER,

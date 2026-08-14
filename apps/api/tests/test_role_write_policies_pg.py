@@ -40,6 +40,7 @@ pytestmark = pytest.mark.skipif(
 
 FIRM = "11111111-1111-1111-1111-111111111111"
 CLIENT = "22222222-2222-2222-2222-222222222222"
+EMPLOYEE = "55555555-5555-5555-5555-555555555555"
 # auth_user_id per role; the last hex digit is the rank, purely for readability.
 UID = {
     "Partner":   "a0000000-0000-0000-0000-000000000001",
@@ -101,9 +102,10 @@ def db(pg_template):
         pytest.skip("could not create throwaway db")
     dsn = f"{admin} dbname={name}"
     try:
-        assert "260_role_aware_write_policies.sql" not in pg_template.failed, (
-            "migration 260 did not apply — everything below would pass vacuously"
-        )
+        for mig in ("260_role_aware_write_policies.sql",
+                    "261_role_aware_write_policies_part2.sql"):
+            assert mig not in pg_template.failed, (
+                f"{mig} did not apply — everything below would pass vacuously")
         rows = [
             f"INSERT INTO auth.users (id, email) VALUES "
             + ", ".join(f"('{u}', '{r}@t.com')" for r, u in UID.items()) + ";",
@@ -119,6 +121,12 @@ def db(pg_template):
             "INSERT INTO user_client_assignments (user_id, client_id, firm_id) VALUES "
             + ", ".join(f"('{UID[r]}', '{CLIENT}', '{FIRM}')"
                         for r in ("Manager", "Executive", "Reviewer")) + ";",
+            # attendance FKs to payroll_employees. Seeded so the insert below is
+            # valid in every respect EXCEPT the role rule — otherwise a foreign
+            # key error would masquerade as a policy denial and the test would
+            # "pass" while proving nothing.
+            f"INSERT INTO payroll_employees (id, firm_id, client_id, name) "
+            f"VALUES ('{EMPLOYEE}', '{FIRM}', '{CLIENT}', 'E');",
         ]
         for sql in rows:
             r = _psql(dsn, sql)
@@ -291,8 +299,16 @@ def test_an_unknown_minimum_denies_rather_than_admits(db):
 
 # ── Catalogue wiring ─────────────────────────────────────────────────────────
 
-GUARDED = ["chart_of_accounts", "clients", "customers", "tasks", "documents",
-           "fee_invoices", "fee_engagements", "mca_filings", "firms"]
+GUARDED = [
+    # migration 260
+    "chart_of_accounts", "clients", "customers", "tasks", "documents",
+    "fee_invoices", "fee_engagements", "mca_filings", "firms",
+    # migration 261
+    "attendance", "leave_balances", "compliance_calendar", "it_notices",
+    "tax_audits", "tax_planning_records", "shared_reports", "scheduled_reports",
+    "client_documents", "document_requests", "suppliers", "msme_payments",
+    "client_timeline_events",
+]
 
 
 def test_every_guarded_table_has_three_restrictive_policies(db):
@@ -322,3 +338,56 @@ def test_no_guarded_table_gained_a_for_all_role_policy(db):
     )
     assert r.returncode == 0, r.stderr
     assert int(r.stdout.strip()) == 0
+
+
+# ── Migration 261: the tiers that had no endpoint to copy ────────────────────
+
+def test_executive_cannot_write_payroll_attendance(db):
+    """attendance looked like it might be staff self-service, which would make
+    payroll's Manager+ tier wrong. It is not: the employee portal only SELECTs
+    it, and every write comes from the staff payroll screen. Pinned here because
+    the argument is the whole basis for the tier."""
+    stmt = (f"INSERT INTO attendance (firm_id, employee_id, month, year) "
+            f"VALUES ('{FIRM}', '{EMPLOYEE}', 4, 2026);")
+    r = _as(db, "Executive", stmt)
+    # Require the RLS failure specifically. A constraint violation would also be
+    # a non-zero exit, and accepting that would let this pass for the wrong
+    # reason — which is how the first draft of this test failed.
+    assert _denied(r), f"expected an RLS denial, got: {r.stderr[:200]}"
+
+
+def test_manager_can_write_payroll_attendance(db):
+    """The control: payroll:write admits Manager, so the tier must not block the
+    people who actually run payroll."""
+    stmt = (f"INSERT INTO attendance (firm_id, employee_id, month, year) "
+            f"VALUES ('{FIRM}', '{EMPLOYEE}', 4, 2026);")
+    r = _as(db, "Manager", stmt)
+    assert r.returncode == 0, r.stderr
+
+
+def test_reviewer_can_append_to_the_client_timeline(db):
+    """timeline:write is _ALL_STAFF on purpose. Every action that writes a
+    timeline row carries its own guard, and the least privileged of those
+    (document:approve) admits Reviewer — so a stricter rule here would break
+    logging for work the person was entitled to do."""
+    stmt = (f"INSERT INTO client_timeline_events "
+            f"(firm_id, client_id, financial_year, category, event_type, title) "
+            f"VALUES ('{FIRM}', '{CLIENT}', '2026-27', 'accounting', 'note', 'x');")
+    r = _as(db, "Reviewer", stmt)
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_portal_client_cannot_append_to_the_client_timeline(db):
+    """_ALL_STAFF stops at staff. The Client role is external and must not be
+    able to write into a firm's activity history."""
+    r = _psql(
+        db,
+        f"BEGIN; SET LOCAL ROLE authenticated; "
+        f"SET LOCAL request.jwt.claims = '{{\"sub\":\"{UID['Reviewer']}\"}}'; "
+        f"SELECT public.my_role_at_least('Reviewer'), public.role_rank('Client'); ROLLBACK;",
+        tuples=True,
+    )
+    assert r.returncode == 0, r.stderr
+    allowed, client_rank = r.stdout.strip().split("|")
+    assert allowed == "t"          # Reviewer clears the bar
+    assert int(client_rank) == 0   # Client sits below it
