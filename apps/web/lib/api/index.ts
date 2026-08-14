@@ -15,6 +15,29 @@ export type PortalContact = {
   invited_at?: string | null; activated_at?: string | null; deactivated_at?: string | null;
 };
 
+// Row shape of GET /api/reports/transactions. Mirrored (not imported) from
+// lib/data/transactions.ts so this module stays free of app-layer imports;
+// that file re-exports it as `Transaction` for its callers.
+export type ReportTransaction = {
+  id: string; client_id: string; transaction_type: string; transaction_date: string;
+  reference_no?: string; party_name: string;
+  taxable_amount_paise: number; cgst_paise: number; sgst_paise: number; igst_paise: number;
+  tds_paise: number; tds_section?: string | null;
+  total_paise: number; paid_paise: number; outstanding_paise: number;
+  is_interstate: boolean; place_of_supply?: string | null; status: string;
+};
+
+export type ReportGSTSummary = {
+  period: string;
+  gstr1: { taxable: number; cgst: number; sgst: number; igst: number;
+           total: number; lines: ReportTransaction[] };
+  gstr3b: { output_cgst: number; output_sgst: number; output_igst: number;
+            itc_cgst: number; itc_sgst: number; itc_igst: number;
+            net_cgst: number; net_sgst: number; net_igst: number };
+  tds_deducted: number;
+  ca_review_required: true;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1112,6 +1135,25 @@ export const api = {
       request(`/api/settings/email-templates/${id}`, { method: "DELETE" }),
   },
   // M6: identity administration (audited, server-side; Partner-only writes).
+  // The unified transaction feed replacing the `transactions` table migration
+  // 139 dropped. Guarded by accounting:read server-side — the same permission
+  // the sales-invoice and purchase-bill list endpoints use, so this is not a
+  // looser route to the same rows.
+  reports: {
+    transactions: (clientId?: string, dateFrom?: string, dateTo?: string) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (dateFrom) q.set("date_from", dateFrom);
+      if (dateTo) q.set("date_to", dateTo);
+      const qs = q.toString();
+      return request<ApiResp<{ transactions: ReportTransaction[] }>>(
+        `/api/reports/transactions${qs ? `?${qs}` : ""}`);
+    },
+    gstSummary: (clientId: string, month: string) =>
+      request<ApiResp<ReportGSTSummary>>(
+        `/api/reports/gst-summary?client_id=${encodeURIComponent(clientId)}` +
+        `&month=${encodeURIComponent(month)}`),
+  },
   identity: {
     listUsers: () => request<ApiResp<{
       users: Array<{

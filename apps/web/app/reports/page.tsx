@@ -667,14 +667,23 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         const allClients = await getClients();
         const clientMap = new Map(allClients.map((c) => [c.id, c.client_name]));
         const txns = await getTransactions();
-        const draft = txns.filter((t) => t.status === "draft");
-        const rows: OutstandingRow[] = draft.map((t) => ({
+        // Was `status === "draft"`. Under the old `transactions` table draft
+        // meant unposted, which was never what "outstanding" asks — and against
+        // the live tables it would now match nothing at all, leaving the report
+        // permanently empty. Outstanding is money still owed: a sale that has
+        // been issued and not fully paid. `outstanding_paise` is total − paid,
+        // computed server-side and floored at zero so an advance applied against
+        // a smaller invoice cannot show as a negative debt.
+        const unpaid = txns.filter(
+          (t) => t.transaction_type === "sales_invoice" && t.outstanding_paise > 0
+        );
+        const rows: OutstandingRow[] = unpaid.map((t) => ({
           id: t.id,
           clientId: t.client_id,
           clientName: clientMap.get(t.client_id),
           transactionDate: t.transaction_date,
           partyName: t.party_name,
-          totalPaise: t.total_paise,
+          totalPaise: t.outstanding_paise,
           daysOutstanding: daysBetween(t.transaction_date),
         }));
         // Sort by days outstanding desc

@@ -32,20 +32,18 @@ WEB = API_ROOT.parents[1] / "apps" / "web"
 # Each entry is a promise to come back, not permission to forget: the test still
 # fails for any dropped table referenced from a file not listed here.
 #
-# The GSTR-1 and GSTR-3B screens were repaired by moving to the API's from-books
-# endpoints, which read the live tables server-side. These two need more than a
-# rewire — `getTransactions` has no single live equivalent, and deciding what it
-# should return (posted sales invoices? plus purchase bills? which statuses?) is
-# a product question about what those screens show, not a mechanical swap. Doing
-# it by guess would put wrong figures on a financial report, which is worse than
-# the current honest failure.
-KNOWN_BROKEN = {
-    "lib/data/transactions.ts": "getTransactions / getGSTSummary still read the "
-                                "dropped `transactions` table; they feed /reports "
-                                "and /client-portal, which need a decision about "
-                                "what a 'transaction' is now that the live model "
-                                "is client_sales_invoices + purchase_bills",
-}
+# Empty: nothing in apps/web queries a dropped table any more.
+#
+#   * The GSTR-1 and GSTR-3B screens moved to /api/gst/*/from-books.
+#   * lib/data/transactions.ts — which fed /reports and /client-portal — now
+#     calls /api/reports/transactions and /api/reports/gst-summary. The question
+#     that blocked it ("what IS a transaction now?") is answered in
+#     services/report_transactions_service.py: issued sales invoices and
+#     received purchase bills, never drafts, cancellations or soft-deletes.
+#
+# The category stays. test_known_broken_entries_still_apply fails on a stale
+# entry, so this list cannot quietly outlive the problem it describes.
+KNOWN_BROKEN: dict[str, str] = {}
 
 _DROP = re.compile(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?([a-z_]+)", re.I)
 _CREATE = re.compile(

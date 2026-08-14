@@ -49,6 +49,7 @@ from routers import risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
 from routers import time_tracking, workload, analytics, engagements, invoices
+from routers import reports  # unified transaction feed for /reports + /client-portal
 from routers import intelligence
 from routers import scheduler_status, audit, onboarding, reconciliation
 from routers import search
@@ -216,6 +217,7 @@ app.include_router(task_recurring.router, dependencies=_CLIENT_GUARD)
 app.include_router(time_tracking.router, dependencies=_CLIENT_GUARD)
 app.include_router(workload.router)
 app.include_router(analytics.router, dependencies=_CLIENT_GUARD)
+app.include_router(reports.router, dependencies=_CLIENT_GUARD)
 app.include_router(engagements.router, dependencies=_CLIENT_GUARD)
 app.include_router(engagement_letters.router, dependencies=_CLIENT_GUARD)
 app.include_router(invoices.router, dependencies=_CLIENT_GUARD)
