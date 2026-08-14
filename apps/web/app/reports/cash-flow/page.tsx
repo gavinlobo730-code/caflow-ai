@@ -78,7 +78,7 @@ export default function CashFlowForecastPage() {
       const sixMonthsLater = new Date(baseYear, baseMonth + 6, 1).toISOString();
       const today = new Date().toISOString();
 
-      const [invRes, loanRes, compRes] = await Promise.all([
+      const [invRes, loanRes] = await Promise.all([
         // Inflows: unpaid invoices due in next 6 months
         supabase
           .from("fee_invoices")
@@ -87,30 +87,24 @@ export default function CashFlowForecastPage() {
           .eq("status", "unpaid")
           .gte("due_date", today)
           .lt("due_date", sixMonthsLater),
-        // Outflows: loan EMIs
+        // Outflows: loan EMIs.
+        // `next_emi_date` does not exist on loans and never has, so this query
+        // used to 400 and — because the handler below rethrows — took the whole
+        // forecast down. An active loan pays its EMI monthly between
+        // disbursement and maturity, which is what the real columns describe.
         supabase
           .from("loans")
-          .select("emi_paise, next_emi_date")
+          .select("emi_paise, disbursement_date, maturity_date")
           .eq("client_id", selectedClientId)
           .eq("status", "active"),
-        // Outflows: GST payments from compliance calendar
-        supabase
-          .from("compliance_calendar")
-          .select("tax_amount_paise, due_date")
-          .eq("client_id", selectedClientId)
-          .in("filing_type", ["GSTR-3B", "TDS"])
-          .gte("due_date", today)
-          .lt("due_date", sixMonthsLater),
       ]);
       // A non-null PostgREST error is a real failure, not "no rows" — silently
       // proceeding with partial data (e.g. loan EMIs missing) would render a
       // falsely rosy forecast with no indication anything went wrong.
       if (invRes.error) throw invRes.error;
       if (loanRes.error) throw loanRes.error;
-      if (compRes.error) throw compRes.error;
       const invoices = invRes.data;
       const loans = loanRes.data;
-      const compliance = compRes.data;
 
       // Aggregate by month
       const inflowByMonth: Record<string, number> = {};
@@ -124,26 +118,40 @@ export default function CashFlowForecastPage() {
         inflowByMonth[key] = (inflowByMonth[key] ?? 0) + (inv.amount_paise ?? 0);
       }
 
+      // An EMI falls in a forecast month when the loan is live for that month:
+      // disbursed on or before it, and not yet matured. Walking the WINDOWS and
+      // testing each is also what makes maturity actually bind — the previous
+      // version spread the EMI over six months unconditionally, so a loan
+      // maturing next month still showed five more payments.
       for (const loan of (loans ?? [])) {
-        if (!loan.next_emi_date) continue;
-        const d = new Date(loan.next_emi_date);
-        // Spread EMI across all 6 months from next_emi_date
-        for (let i = 0; i < 6; i++) {
-          const m = addMonths(d.getFullYear(), d.getMonth(), i);
-          const key = `${m.year}-${m.month}`;
-          const inWindow = windows.some(w => w.year === m.year && w.month === m.month);
-          if (inWindow) {
-            outflowByMonth[key] = (outflowByMonth[key] ?? 0) + (loan.emi_paise ?? 0);
-          }
+        if (!loan.disbursement_date) continue;
+        const start = new Date(loan.disbursement_date);
+        const end = loan.maturity_date ? new Date(loan.maturity_date) : null;
+        for (const w of windows) {
+          // Compare on year*12+month so a mid-month disbursement still counts
+          // for its own month rather than being pushed to the next one.
+          const wIdx = w.year * 12 + w.month;
+          if (wIdx < start.getFullYear() * 12 + start.getMonth()) continue;
+          if (end && wIdx > end.getFullYear() * 12 + end.getMonth()) continue;
+          const key = `${w.year}-${w.month}`;
+          outflowByMonth[key] = (outflowByMonth[key] ?? 0) + (loan.emi_paise ?? 0);
         }
       }
 
-      for (const c of (compliance ?? [])) {
-        if (!c.due_date) continue;
-        const d = new Date(c.due_date);
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        outflowByMonth[key] = (outflowByMonth[key] ?? 0) + (c.tax_amount_paise ?? 0);
-      }
+      // TAX OUTFLOWS ARE NOT INCLUDED — see the notice rendered below.
+      //
+      // This used to read compliance_calendar.tax_amount_paise. That column
+      // does not exist and no equivalent does: compliance_calendar carries the
+      // SCHEDULE (compliance_type, due_date) and no amount at all. The amounts
+      // live on `filings` (tax_payable_paise), which in turn has no due date,
+      // and there is no foreign key joining the two.
+      //
+      // Pricing the leg would mean deriving GST/TDS due dates in the browser —
+      // business logic that belongs in the backend (services/compliance_engine.py
+      // is the authority on due dates). Rather than guess, or silently add zero
+      // and present it as a complete forecast, the leg is omitted and the
+      // omission is stated on screen. A CA must not read a fabricated tax
+      // number in a cash-flow projection.
 
       // Build rows — integer paise arithmetic, no floats
       let runningBalance = openingPaise;
@@ -186,7 +194,7 @@ export default function CashFlowForecastPage() {
         </Link>
         <div>
           <h1 className="text-xl font-semibold text-[#0F172A]">Cash Flow Forecast</h1>
-          <p className="text-sm text-[#94A3B8] mt-0.5">6-month projection based on unpaid invoices, loans, and GST dues</p>
+          <p className="text-sm text-[#94A3B8] mt-0.5">6-month projection based on unpaid invoices and loan EMIs</p>
         </div>
       </div>
 
@@ -228,6 +236,19 @@ export default function CashFlowForecastPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-xs text-red-700">{error}</div>
+      )}
+
+      {/* What this forecast does NOT contain. Shown with the results rather
+          than buried in a tooltip: a CA reading a closing balance needs to know
+          tax payments are missing from it before acting on the number. */}
+      {rows.length > 0 && (
+        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-800">
+          <span className="font-semibold">Excludes tax outflows.</span>{" "}
+          GST and TDS payments are not included in these figures. The compliance
+          calendar records when a filing is due but not how much is payable, so
+          the amounts cannot be projected here yet. Treat the closing balances
+          as before-tax.
+        </div>
       )}
 
       {/* Table */}

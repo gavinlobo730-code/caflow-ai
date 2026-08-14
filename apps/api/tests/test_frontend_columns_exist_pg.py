@@ -30,11 +30,13 @@ WHY IT USES A REAL DATABASE
 
 WHAT IT DOES NOT CHECK
     Only `.select()`. Column names inside `.eq()`, `.order()`, `.in()` and
-    friends are not verified, and /reports/cash-flow is known to have at least
-    one (`filing_type` on compliance_calendar, which is compliance_type). That
-    is a real gap, left deliberately: those calls take dotted and computed
-    forms that need a different parser, and half a check that works is worth
-    more than none. Widening it is a good next change.
+    friends are not verified. That gap is real and has already bitten once:
+    /reports/cash-flow filtered `.in("filing_type", ...)` on compliance_calendar,
+    where the column is compliance_type — a third bad name on a query this file
+    had already flagged for two others, found only by reading the code. It is
+    left deliberately, because those calls take dotted and computed forms that
+    need a different parser and half a check that works beats none. Widening it
+    is the obvious next change, and would have caught that one.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
@@ -62,33 +64,33 @@ pytestmark = pytest.mark.skipif(
     reason="frontend column check requires HARNESS_PG + psql + apps/web",
 )
 
-# Pre-existing breakage this change did not cause and did not fix. Each entry
-# is a page that is ALREADY broken in production — PostgREST rejects the whole
-# select, so the query fails at runtime. They are listed rather than exempted
-# so the debt is visible and so a NEW mistake still fails the build.
+# Selects that name a non-existent column ON PURPOSE. Not debt — each is a
+# deliberate probe, and "fixing" it would break the thing it protects.
 #
-# test_no_known_breakage_is_stale below makes this a ratchet: fix one and the
-# test tells you to delete its line. The list can only shrink.
-KNOWN_BROKEN: dict[str, str] = {
-    "ai_insights.type":
-        "app/clients/[id]/ai-insights/page.tsx — the column is insight_type. "
-        "The page's whole insights fetch fails.",
+# Keep this list tiny and make each entry earn its place: it is a hole in the
+# check, so an accidental typo added here stops being caught.
+INTENTIONAL: dict[str, str] = {
     "chart_of_accounts.opening_balance_dr_paise":
-        "app/accounting/trial-balance-import/page.tsx — no such column on "
-        "chart_of_accounts; opening balances live in the journal, not here.",
-    "client_documents.file_size_bytes":
-        "app/client-portal/page.tsx — client_documents has no size column.",
-    "client_documents.label":
-        "app/client-portal/page.tsx — the column is document_name.",
-    "client_documents.storage_path":
-        "app/client-portal/page.tsx — the column is file_url.",
-    "compliance_calendar.tax_amount_paise":
-        "app/reports/cash-flow/page.tsx — compliance_calendar carries no "
-        "amount at all, so the GST outflow leg of the forecast cannot be "
-        "computed from it. Needs a source, not a rename.",
-    "loans.next_emi_date":
-        "app/reports/cash-flow/page.tsx — loans has emi_paise, "
-        "disbursement_date and maturity_date, but no next-EMI date.",
+        "app/accounting/trial-balance-import/page.tsx:46 — a CAPABILITY PROBE, "
+        "not a bug. The page deliberately selects this column and reads the "
+        "error to decide whether the Trial Balance Import wizard can run at "
+        "all ('C4: gate the entire wizard on whether the required schema "
+        "exists, rather than letting every row's write silently fail'). The "
+        "column genuinely does not exist, so the wizard correctly shows its "
+        "unavailable banner. Making this query succeed is the job of a "
+        "migration adding opening_balance_dr_paise/_cr_paise, not of a rename.",
+}
+
+# Columns that DID NOT EXIST and were fixed in this change, kept as a named
+# regression pin. Every one made PostgREST reject the entire select, so the
+# query 400'd and took the page's load() with it.
+FIXED_HERE: dict[str, str] = {
+    "ai_insights.type": "insight_type",
+    "client_documents.label": "description",
+    "client_documents.storage_path": "file_path",
+    "client_documents.file_size_bytes": "file_size",
+    "loans.next_emi_date": "disbursement_date + maturity_date",
+    "compliance_calendar.tax_amount_paise": "(no equivalent — leg removed)",
 }
 
 
@@ -140,16 +142,48 @@ def test_the_scan_finds_enough_to_be_meaningful(schema):
 
 
 def test_no_frontend_select_names_a_column_that_does_not_exist(schema):
-    new = {k: v for k, v in _offenders(schema).items() if k not in KNOWN_BROKEN}
+    new = {k: v for k, v in _offenders(schema).items() if k not in INTENTIONAL}
     lines = [f"{col}  ({', '.join(sorted(files))})" for col, files in sorted(new.items())]
     assert not new, (
         "these selects name columns that do not exist. PostgREST rejects the "
         "ENTIRE select on one bad column, so the query fails at runtime and "
         "takes the page's load() with it:\n  "
         + "\n  ".join(lines)
-        + "\n\nFix the name, or add it to KNOWN_BROKEN with what the real "
-          "column is."
+        + "\n\nFix the name. Only add to INTENTIONAL if the query is a probe "
+          "that MEANS to fail — every entry there is a hole in this check."
     )
+
+
+def test_the_columns_fixed_here_stay_fixed(schema):
+    """Names the specific regressions, so a revert reports itself instead of
+    arriving as an anonymous line in the list above."""
+    for col, real in FIXED_HERE.items():
+        assert col not in schema, (
+            f"{col} now exists in the schema — this pin assumed it did not. "
+            f"If a migration added it, delete the entry; do not weaken the test.")
+    found, _ = scan(WEB)
+    selected = {f"{rel}.{col}" for _, rel, col in found}
+    still_wrong = sorted(set(FIXED_HERE) & selected)
+    assert not still_wrong, (
+        "these column names came back into the frontend: "
+        + ", ".join(f"{c} (should be {FIXED_HERE[c]})" for c in still_wrong))
+
+
+def test_both_client_documents_pages_use_the_real_columns(schema):
+    """client_documents has TWO consumers, and the first pass at this fix
+    reported only one of them — the offender map printed a single file per
+    column. Both are pinned so a partial fix cannot look complete."""
+    for col in ("client_documents.description", "client_documents.file_path",
+                "client_documents.file_size"):
+        assert col in schema
+
+    found, _ = scan(WEB)
+    pages = {"app/client-portal/page.tsx", "app/clients/[id]/documents/page.tsx"}
+    for page in pages:
+        cols = {c for f, rel, c in found if f == page and rel == "client_documents"}
+        assert cols, f"{page} no longer selects client_documents — update this test"
+        for c in cols:
+            assert f"client_documents.{c}" in schema, f"{page} selects bogus {c}"
 
 
 def test_the_employee_portal_columns_are_right(schema):
@@ -172,16 +206,18 @@ def test_the_employee_portal_columns_are_right(schema):
         assert f"{rel}.{col}" in schema, f"employee portal still selects {rel}.{col}"
 
 
-def test_no_known_breakage_is_stale(schema):
-    """Makes KNOWN_BROKEN a ratchet. Fixing a page must delete its line, so the
-    list can only shrink and cannot quietly become a permanent exemption."""
-    stale = sorted(set(KNOWN_BROKEN) - set(_offenders(schema)))
+def test_no_intentional_entry_is_stale(schema):
+    """An exemption for a query that now resolves is a hole: the name can come
+    back into use later and skip the check entirely."""
+    stale = sorted(set(INTENTIONAL) - set(_offenders(schema)))
     assert not stale, (
-        "these are listed as known-broken but the column now resolves — delete "
-        f"them from KNOWN_BROKEN: {stale}")
+        "these are exempted as deliberate probes but the column now resolves — "
+        f"delete them from INTENTIONAL: {stale}")
 
 
-def test_every_known_breakage_says_which_page_and_why():
-    for col, why in KNOWN_BROKEN.items():
-        assert "app/" in why, f"{col}: name the page it breaks"
-        assert len(why) > 50, f"{col}: say what the real column is, or that there is none"
+def test_every_intentional_entry_says_which_page_and_why():
+    for col, why in INTENTIONAL.items():
+        assert "app/" in why, f"{col}: name the page"
+        assert len(why) > 120, (
+            f"{col}: an exemption is a hole in this check — explain why the "
+            f"query means to fail, or fix the name instead")

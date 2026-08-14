@@ -51,12 +51,20 @@ interface DocumentRequest {
   created_at: string;
 }
 
+// Mirrors client_documents as it actually is. Migration 023 defines this table
+// with label/storage_path/file_size_bytes — but 014 had already created it with
+// file_path/file_size and no label, and 023 uses CREATE TABLE IF NOT EXISTS, so
+// 023's definition was a silent no-op. The live table is 014's. This page was
+// written against 023's shape, so every query and insert here failed.
+//
+// NOTE: SharedReport below keeps storage_path/file_size_bytes — shared_reports
+// is a different table and genuinely has those columns. Do not "fix" them.
 interface SharedDocument {
   id: string;
   file_name: string;
-  label: string;
-  storage_path: string;
-  file_size_bytes: number | null;
+  description: string | null;   // the user-supplied label
+  file_path: string;            // Supabase Storage path
+  file_size: number | null;     // bytes
   created_at: string;
 }
 
@@ -231,7 +239,7 @@ export default function ClientPortalPage() {
       // alone failed).
       const [docsRes, reportsRes] = await Promise.all([
         sb.from("client_documents")
-          .select("id, file_name, label, storage_path, file_size_bytes, created_at")
+          .select("id, file_name, description, file_path, file_size, created_at")
           .eq("client_id", clientId)
           .order("created_at", { ascending: false }),
         sb.from("shared_reports")
@@ -362,9 +370,9 @@ export default function ClientPortalPage() {
         client_id: selectedClientId,
         uploaded_by: userSession?.session?.user?.id ?? null,
         file_name: file.name,
-        label,
-        storage_path: storagePath,
-        file_size_bytes: file.size,
+        description: label,
+        file_path: storagePath,
+        file_size: file.size,
         mime_type: file.type || null,
       });
 
@@ -378,9 +386,9 @@ export default function ClientPortalPage() {
   }
 
   async function handleDeleteSharedDoc(doc: SharedDocument) {
-    if (!confirm(`Delete "${doc.label}"?`)) return;
+    if (!confirm(`Delete "${doc.description ?? doc.file_name}"?`)) return;
     const sb = getSupabaseClient();
-    await sb.storage.from("Documents").remove([doc.storage_path]);
+    await sb.storage.from("Documents").remove([doc.file_path]);
     await sb.from("client_documents").delete().eq("id", doc.id);
     setSharedDocs((prev) => prev.filter((d) => d.id !== doc.id));
   }
@@ -389,7 +397,7 @@ export default function ClientPortalPage() {
     const sb = getSupabaseClient();
     const { data, error: err } = await sb.storage
       .from("Documents")
-      .createSignedUrl(doc.storage_path, 3600);
+      .createSignedUrl(doc.file_path, 3600);
     if (err || !data) {
       alert("Could not generate download link.");
       return;
@@ -677,10 +685,12 @@ export default function ClientPortalPage() {
                               <FolderOpen size={14} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-[#0F172A] truncate">{doc.label}</p>
+                              {/* description is the user-supplied label and is nullable; the file name
+                                  is the only always-present identifier. */}
+                              <p className="text-sm font-medium text-[#0F172A] truncate">{doc.description ?? doc.file_name}</p>
                               <p className="text-xs text-[#94A3B8] mt-0.5">
                                 {doc.file_name}
-                                {doc.file_size_bytes ? ` · ${formatFileSize(doc.file_size_bytes)}` : ""}
+                                {doc.file_size ? ` · ${formatFileSize(doc.file_size)}` : ""}
                                 {" · "}{formatDate(doc.created_at)}
                               </p>
                             </div>

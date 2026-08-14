@@ -8,7 +8,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 interface AiInsight {
   id: string;
-  type: string;
+  insight_type: string;
   title: string;
   description: string;
   severity: "info" | "warning" | "critical";
@@ -31,7 +31,10 @@ export default function AiInsightsPage() {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from("ai_insights")
-        .select("id, type, title, description, severity, created_at")
+        // insight_type, not "type" — PostgREST rejects the WHOLE select on one
+        // unknown column, so this query used to 400 and the page rendered its
+        // error state instead of any insights at all.
+        .select("id, insight_type, title, description, severity, created_at")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false })
         .limit(20);

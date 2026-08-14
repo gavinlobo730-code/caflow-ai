@@ -12,13 +12,27 @@ import { writeTimelineEvent } from "@/lib/services/timeline";
 interface ClientDocument {
   id: string;
   file_name: string;
-  label: string;
-  storage_path: string;
-  file_size_bytes: number | null;
+  // client_documents as it actually is: migration 023 declares
+  // label/storage_path/file_size_bytes, but 014 created the table first and
+  // 023 uses CREATE TABLE IF NOT EXISTS, so 023 was a silent no-op. The live
+  // columns are description/file_path/file_size.
+  description: string | null;
+  file_path: string;
+  file_size: number | null;
   mime_type: string | null;
   created_at: string;
   version: number | null;
   parent_document_id: string | null;
+}
+
+/** The document's display name, and the key version history groups on.
+ *
+ * `description` holds the user-supplied label — this page's upload form makes
+ * it required, so anything uploaded here has one. Rows created elsewhere may
+ * not, and a null would crash the .toLowerCase() comparisons below and take the
+ * page with it, so the file name is the fallback. */
+function docLabel(doc: ClientDocument): string {
+  return doc.description ?? doc.file_name;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -53,7 +67,7 @@ export default function DocumentsPage() {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from("client_documents")
-        .select("id, file_name, label, storage_path, file_size_bytes, mime_type, created_at, version, parent_document_id")
+        .select("id, file_name, description, file_path, file_size, mime_type, created_at, version, parent_document_id")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -78,7 +92,7 @@ export default function DocumentsPage() {
 
     if (!asNewVersion && !parentDoc) {
       const existing = documents.find(
-        (d) => d.label.toLowerCase() === uploadLabel.trim().toLowerCase() && !d.parent_document_id
+        (d) => docLabel(d).toLowerCase() === uploadLabel.trim().toLowerCase() && !d.parent_document_id
       );
       if (existing) { setVersionPromptDoc(existing); return; }
     }
@@ -102,9 +116,9 @@ export default function DocumentsPage() {
         firm_id: firmId,
         client_id: clientId,
         file_name: uploadFile.name,
-        label: uploadLabel.trim(),
-        storage_path: storagePath,
-        file_size_bytes: uploadFile.size,
+        description: uploadLabel.trim(),
+        file_path: storagePath,
+        file_size: uploadFile.size,
         mime_type: uploadFile.type || null,
         version: versionNum,
         parent_document_id: parentDoc?.id ?? null,
@@ -144,16 +158,16 @@ export default function DocumentsPage() {
 
   async function handleDownloadDocument(doc: ClientDocument) {
     const supabase = getSupabaseClient();
-    const { data } = await supabase.storage.from("Documents").createSignedUrl(doc.storage_path, 60);
+    const { data } = await supabase.storage.from("Documents").createSignedUrl(doc.file_path, 60);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank");
   }
 
   async function handleDeleteDocument(doc: ClientDocument) {
-    if (!confirm(`Delete "${doc.label}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${docLabel(doc)}"? This cannot be undone.`)) return;
     setDeletingDocId(doc.id);
     try {
       const supabase = getSupabaseClient();
-      await supabase.storage.from("Documents").remove([doc.storage_path]);
+      await supabase.storage.from("Documents").remove([doc.file_path]);
       await supabase.from("client_documents").delete().eq("id", doc.id);
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
 
@@ -167,7 +181,7 @@ export default function DocumentsPage() {
           category: "document",
           event_type: "document_deleted",
           severity: "warning",
-          title: `Document deleted: ${doc.label}`,
+          title: `Document deleted: ${docLabel(doc)}`,
           actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
@@ -177,7 +191,7 @@ export default function DocumentsPage() {
   }
 
   async function handleViewVersionHistory(label: string) {
-    const history = documents.filter((d) => d.label.toLowerCase() === label.toLowerCase());
+    const history = documents.filter((d) => docLabel(d).toLowerCase() === label.toLowerCase());
     setVersionHistory(history);
     setShowVersionHistory(label);
   }
@@ -225,13 +239,13 @@ export default function DocumentsPage() {
               <tbody className="divide-y divide-[#F8FAFC]">
                 {documents.map((doc) => {
                   const versionCount = documents.filter(
-                    (d) => d.label.toLowerCase() === doc.label.toLowerCase()
+                    (d) => docLabel(d).toLowerCase() === docLabel(doc).toLowerCase()
                   ).length;
                   return (
                     <tr key={doc.id} className="hover:bg-[#F8FAFC]">
                       <td className="px-5 py-3 text-sm font-medium text-[#0F172A]">
                         <div className="flex items-center gap-2">
-                          {doc.label}
+                          {docLabel(doc)}
                           {(doc.version ?? 1) > 1 && (
                             <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono">
                               v{doc.version}
@@ -242,7 +256,7 @@ export default function DocumentsPage() {
                       <td className="px-3 py-3 text-xs text-[#64748B] font-mono max-w-[200px] truncate">
                         {doc.file_name}
                       </td>
-                      <td className="px-3 py-3 text-xs text-[#64748B]">{formatFileSize(doc.file_size_bytes)}</td>
+                      <td className="px-3 py-3 text-xs text-[#64748B]">{formatFileSize(doc.file_size)}</td>
                       <td className="px-3 py-3 text-xs text-[#64748B] whitespace-nowrap">
                         {new Date(doc.created_at).toLocaleDateString("en-IN", {
                           day: "numeric", month: "short", year: "numeric",
@@ -258,7 +272,7 @@ export default function DocumentsPage() {
                           </button>
                           {versionCount > 1 && (
                             <button
-                              onClick={() => handleViewVersionHistory(doc.label)}
+                              onClick={() => handleViewVersionHistory(docLabel(doc))}
                               className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
                             >
                               History
@@ -346,7 +360,7 @@ export default function DocumentsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <h3 className="text-sm font-semibold text-[#0F172A]">Document already exists</h3>
             <p className="text-xs text-[#475569]">
-              A document with the label <strong>{versionPromptDoc.label}</strong> already exists (v{versionPromptDoc.version ?? 1}).
+              A document with the label <strong>{docLabel(versionPromptDoc)}</strong> already exists (v{versionPromptDoc.version ?? 1}).
               Upload as a new version?
             </p>
             <div className="flex gap-3 justify-end">
