@@ -219,13 +219,15 @@ export default function SettingsPage() {
     }
     setSavingPersonal(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) throw new Error("Not authenticated");
-      const { error } = await supabase
-        .from("users")
-        .update({ full_name: personalName.trim() })
-        .eq("auth_user_id", session.user.id);
-      if (error) throw error;
+      // Was a direct `supabase.from("users").update(...)`, which has failed with
+      // "permission denied for table users" since migration 153 revoked UPDATE
+      // on `users` from the `authenticated` role. The revoke was correct — a
+      // browser should not be able to write user rows — but nothing replaced the
+      // write, so saving a name has been impossible. PATCH /api/identity/me does
+      // it server-side, addressing the caller's own row from the verified token.
+      const { api } = await import("@/lib/api");
+      const res = await api.identity.updateMyProfile(personalName.trim());
+      if (!res.success) throw new Error(res.error ?? "Failed to save");
       await refreshUserContext();
       setToast({ message: "Personal profile saved", type: "success" });
     } catch (err) {

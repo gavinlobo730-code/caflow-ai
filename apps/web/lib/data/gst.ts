@@ -2,9 +2,21 @@
  * GST Engine data layer — GSTR-1 and GSTR-3B payload generation.
  *
  * Architecture:
- *   1. Fetch raw data from Supabase (transactions, gstr2a_records)
- *   2. POST to FastAPI /api/gst/* for computation (pure Python, testable)
- *   3. Store result in gstr1_returns / gstr3b_returns in Supabase
+ *   1. POST to FastAPI /api/gst/{gstr1,gstr3b}/from-books, which reads the
+ *      POSTED BOOKS server-side and reconciles the return to the General Ledger
+ *   2. Store the result in gstr1_returns / gstr3b_returns in Supabase
+ *
+ * It used to work differently: the browser read a `transactions` table, sent the
+ * rows to the API, and got a computed return back. Migration 139 dropped that
+ * table as "an abandoned alternate transaction model ... no code reads or writes
+ * it" — which was true of the backend and false of this file. Both screens have
+ * been failing on a missing relation ever since, so the fetch-then-compute path
+ * is gone and these functions now call the from-books endpoints, which read the
+ * live tables (client_sales_invoices, purchase_bills, the credit/debit note
+ * tables) and reconcile against journal_entries/journal_lines.
+ *
+ * That also honours CLAUDE.md's "zero business logic in the frontend": deciding
+ * which rows belong in a return is the backend's job, not this file's.
  *
  * CGST Act Section 37 — GSTR-1 (outward supplies)
  * CGST Act Section 39 — GSTR-3B (summary return)
@@ -103,6 +115,14 @@ export interface GSTR3BComputeResult {
   ca_review_required: true;
 }
 
+/** Books-vs-ledger agreement, returned by every from-books computation. The
+ *  whole point of computing from posted books is that the answer can be proved
+ *  against the General Ledger, so the proof travels with the result. */
+export interface GLReconciliation {
+  reconciled: boolean;
+  [block: string]: unknown;
+}
+
 export interface GSTR1BuildResult {
   payload: Record<string, unknown>;
   summary: {
@@ -112,11 +132,35 @@ export interface GSTR1BuildResult {
     totals_rupees: Record<string, number>;
   };
   invoice_count: number;
-  taxable_total_rupees: number;
-  tax_total_rupees: number;
-  validation_errors: ValidationError[];
+  // PAISE, renamed from the previous *_rupees fields rather than converted. The
+  // rename is deliberate: a silent unit change behind the same name is how a
+  // GST total ends up 100x wrong, and the compiler now catches every reader.
+  taxable_total_paise: number;
+  tax_total_paise: number;
+  reconciliation: GLReconciliation;
   validation_warnings: ValidationError[];
   ca_review_required: true;
+}
+
+/** Raw shape of POST /api/gst/gstr1/from-books. */
+interface FromBooksGSTR1 {
+  period: string;
+  gstin: string;
+  payload: Record<string, unknown>;
+  summary: GSTR1BuildResult["summary"];
+  invoice_count: number;
+  taxable_total_paise: number;
+  tax_total_paise: number;
+  reconciliation: GLReconciliation;
+}
+
+/** Raw shape of POST /api/gst/gstr3b/from-books. */
+interface FromBooksGSTR3B {
+  period: string;
+  gstin: string;
+  payload: Record<string, unknown>;
+  working: GSTR3BWorking;
+  reconciliation: GLReconciliation;
 }
 
 export interface ClassifyResult {
@@ -141,73 +185,18 @@ export function fromPeriod(period: string): string {
 }
 
 /** Get the last day of a month for date range queries. */
-function lastDayOfMonth(yearMonth: string): string {
-  const [yyyy, mm] = yearMonth.split("-").map(Number);
-  const last = new Date(yyyy, mm, 0).getDate();
-  return `${yearMonth}-${String(last).padStart(2, "0")}`;
-}
+// lastDayOfMonth() lived here — it built the date range for the deleted
+// transaction fetchers. The from-books endpoints derive the period bounds
+// server-side (_period_bounds in services/gst_return_service.py), so the
+// browser no longer needs to know how long a month is.
 
 // ── Data Fetchers ──────────────────────────────────────────────────────────
 
 /** Fetch all posted sales and credit/debit note transactions for a period. */
-export async function fetchSalesTransactions(
-  clientId: string,
-  yearMonth: string,  // YYYY-MM
-): Promise<GSTTransaction[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const from = `${yearMonth}-01`;
-  const to = lastDayOfMonth(yearMonth);
-
-  const { data, error } = await sb
-    .from("transactions")
-    .select(
-      "id,transaction_type,transaction_date,reference_no,party_name,party_gstin," +
-      "place_of_supply,is_interstate,taxable_amount_paise,cgst_paise,sgst_paise," +
-      "igst_paise,cess_paise,is_reverse_charge,supply_type,invoice_type," +
-      "gst_invoice_category,original_invoice_id,status"
-    )
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("status", "posted")
-    .in("transaction_type", ["sales_invoice", "credit_note", "debit_note"])
-    .gte("transaction_date", from)
-    .lte("transaction_date", to)
-    .is("deleted_at", null)
-    .order("transaction_date");
-
-  if (error) throw new Error(`Failed to fetch sales transactions: ${error.message}`);
-  return (data ?? []) as unknown as GSTTransaction[];
-}
-
-/** Fetch posted purchase transactions for ITC computation. */
-export async function fetchPurchaseTransactions(
-  clientId: string,
-  yearMonth: string,
-): Promise<GSTTransaction[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const from = `${yearMonth}-01`;
-  const to = lastDayOfMonth(yearMonth);
-
-  const { data, error } = await sb
-    .from("transactions")
-    .select(
-      "id,transaction_type,transaction_date,reference_no,party_name,party_gstin," +
-      "taxable_amount_paise,cgst_paise,sgst_paise,igst_paise,cess_paise," +
-      "is_reverse_charge,supply_type,invoice_type,status"
-    )
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("status", "posted")
-    .eq("transaction_type", "purchase_invoice")
-    .gte("transaction_date", from)
-    .lte("transaction_date", to)
-    .is("deleted_at", null);
-
-  if (error) throw new Error(`Failed to fetch purchase transactions: ${error.message}`);
-  return (data ?? []) as unknown as GSTTransaction[];
-}
+// fetchSalesTransactions / fetchPurchaseTransactions lived here. Both read
+// `transactions`, dropped by migration 139. The from-books endpoints select the
+// same supplies server-side from the live invoice/bill/note tables, so there is
+// nothing for a replacement to do here.
 
 /** Fetch GSTR-2A records for the period. Period format: MMYYYY. */
 export async function fetchGSTR2ARecords(
@@ -228,28 +217,8 @@ export async function fetchGSTR2ARecords(
   return (data ?? []) as GSTR2ARecord[];
 }
 
-/** Fetch transaction line items for a set of transaction IDs. */
-export async function fetchTransactionLines(
-  transactionIds: string[],
-): Promise<Record<string, unknown[]>> {
-  if (transactionIds.length === 0) return {};
-  const sb = getSupabaseClient();
-
-  const { data, error } = await sb
-    .from("transaction_lines")
-    .select("transaction_id,description,hsn_sac_code,quantity,unit,rate_paise,taxable_paise,gst_rate,cgst_paise,sgst_paise,igst_paise,cess_paise")
-    .in("transaction_id", transactionIds);
-
-  if (error) throw new Error(`Failed to fetch transaction lines: ${error.message}`);
-
-  const byTxn: Record<string, unknown[]> = {};
-  for (const line of data ?? []) {
-    const txnId = (line as Record<string, unknown>).transaction_id as string;
-    if (!byTxn[txnId]) byTxn[txnId] = [];
-    byTxn[txnId].push(line);
-  }
-  return byTxn;
-}
+// fetchTransactionLines lived here. It read `transaction_lines`, dropped by the
+// same migration 139; GSTR-1 line detail now comes from the from-books payload.
 
 /** Get client GSTIN from clients table. */
 export async function getClientGSTIN(clientId: string): Promise<string> {
@@ -269,9 +238,16 @@ export async function getClientGSTIN(clientId: string): Promise<string> {
 // ── API Calls ──────────────────────────────────────────────────────────────
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  // Every /api/gst/* route is guarded by rbac("gst", "compute"), so an
+  // unauthenticated POST is a 401 — which this helper omitted entirely. Alongside
+  // the dropped `transactions` table that made this path doubly non-functional.
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -284,22 +260,10 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** Classify transactions and persist gst_invoice_category back to Supabase. */
-export async function classifyAndPersistTransactions(
-  transactions: GSTTransaction[],
-): Promise<ClassifyResult> {
-  const result = await apiPost<ClassifyResult>("/api/gst/classify", {
-    transactions,
-  });
-
-  // Persist classification back to Supabase in batches
-  const sb = getSupabaseClient();
-  const updates = Object.entries(result.results).map(([id, category]) =>
-    sb.from("transactions").update({ gst_invoice_category: category }).eq("id", id)
-  );
-  await Promise.all(updates);
-
-  return result;
-}
+// classifyAndPersistTransactions lived here. It POSTed to /api/gst/classify and
+// wrote the answer back to `transactions` — a table migration 139 dropped. The
+// from-books builder classifies each supply as it reads it (domain/gst/
+// classifier.py), so nothing needs to be persisted client-side first.
 
 // ── GSTR-3B ────────────────────────────────────────────────────────────────
 
@@ -314,25 +278,25 @@ export async function computeGSTR3B(
   yearMonth: string,  // YYYY-MM
 ): Promise<GSTR3BComputeResult> {
   const period = toPeriod(yearMonth);
-  const [gstin, sales, purchases, gstr2a] = await Promise.all([
-    getClientGSTIN(clientId),
-    fetchSalesTransactions(clientId, yearMonth),
-    fetchPurchaseTransactions(clientId, yearMonth),
-    fetchGSTR2ARecords(clientId, period),
-  ]);
-
-  const result = await apiPost<GSTR3BComputeResult>("/api/gst/gstr3b/compute", {
-    gstin,
+  const result = await apiPost<FromBooksGSTR3B>("/api/gst/gstr3b/from-books", {
+    client_id: clientId,
     period,
-    sales,
-    purchases,
-    gstr2a_records: gstr2a,
   });
 
-  // Persist to Supabase
-  await saveGSTR3BReturn(clientId, period, gstin, result);
+  // The from-books endpoint reports no validation_warnings: a GSTIN or period it
+  // cannot accept is a 422 raised before any computation, which apiPost turns
+  // into a thrown error. An empty list is therefore accurate, not a placeholder.
+  const shaped: GSTR3BComputeResult = {
+    payload: result.payload,
+    working: result.working,
+    validation_warnings: [],
+    period: result.period,
+    gstin: result.gstin,
+    ca_review_required: true,
+  };
 
-  return result;
+  await saveGSTR3BReturn(clientId, period, result.gstin, shaped);
+  return shaped;
 }
 
 export async function saveGSTR3BReturn(
@@ -409,43 +373,28 @@ export async function buildGSTR1(
   yearMonth: string,
 ): Promise<GSTR1BuildResult> {
   const period = toPeriod(yearMonth);
-  const [gstin, invoices] = await Promise.all([
-    getClientGSTIN(clientId),
-    fetchSalesTransactions(clientId, yearMonth),
-  ]);
-
-  // Classify any unclassified transactions
-  const unclassified = invoices.filter(i => !i.gst_invoice_category);
-  if (unclassified.length > 0) {
-    await classifyAndPersistTransactions(unclassified);
-    // Re-fetch with classifications applied
-    const reclassified = await fetchSalesTransactions(clientId, yearMonth);
-    return _buildGSTR1FromInvoices(clientId, yearMonth, period, gstin, reclassified);
-  }
-
-  return _buildGSTR1FromInvoices(clientId, yearMonth, period, gstin, invoices);
-}
-
-async function _buildGSTR1FromInvoices(
-  clientId: string,
-  yearMonth: string,
-  period: string,
-  gstin: string,
-  invoices: GSTTransaction[],
-): Promise<GSTR1BuildResult> {
-  const invoiceIds = invoices.map(i => i.id);
-  const linesMap = await fetchTransactionLines(invoiceIds);
-
-  const result = await apiPost<GSTR1BuildResult>("/api/gst/gstr1/build", {
-    gstin,
+  const result = await apiPost<FromBooksGSTR1>("/api/gst/gstr1/from-books", {
+    client_id: clientId,
     period,
-    invoices,
-    invoice_lines: linesMap,
-    aggregate_turnover_paise: 0,  // CA can override if needed
+    aggregate_turnover_paise: 0,   // CA can override on the client GST screen
   });
 
-  await saveGSTR1Return(clientId, period, gstin, result);
-  return result;
+  const shaped: GSTR1BuildResult = {
+    payload: result.payload,
+    summary: result.summary,
+    invoice_count: result.invoice_count,
+    // Paise straight through — NOT divided by 100 here. Converting to rupees in
+    // the browser is exactly the float rounding CLAUDE.md forbids, and the
+    // callers now format paise (see the `r()` helper in the GSTR-1 page).
+    taxable_total_paise: result.taxable_total_paise,
+    tax_total_paise: result.tax_total_paise,
+    reconciliation: result.reconciliation,
+    validation_warnings: [],
+    ca_review_required: true,
+  };
+
+  await saveGSTR1Return(clientId, period, result.gstin, shaped);
+  return shaped;
 }
 
 export async function saveGSTR1Return(
@@ -464,9 +413,13 @@ export async function saveGSTR1Return(
     gstin,
     payload_json: result.payload,
     summary_json: result.summary,
-    validation_errors: [...result.validation_errors, ...result.validation_warnings],
-    status: result.validation_errors.length === 0 ? "validated" : "draft",
-    validated_at: result.validation_errors.length === 0 ? new Date().toISOString() : null,
+    validation_errors: result.validation_warnings,
+    // The from-books builder raises on anything it will not compute, so a result
+    // in hand is a validated one. The old "draft unless errors" branch could not
+    // fire any more and would have pinned every return to "validated" implicitly
+    // — stated outright instead.
+    status: "validated",
+    validated_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }, { onConflict: "client_id,period" });
 }

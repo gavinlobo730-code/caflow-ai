@@ -220,6 +220,42 @@ def my_permissions(current_user: dict = Depends(get_current_user)):
     return api_response(True, {"role": role, "permissions": get_accessible_resources(role)})
 
 
+class MyProfileBody(BaseModel):
+    full_name: str
+
+
+# Self-service profile edit. Previously the Settings page did this itself, with
+# `supabase.from("users").update({ full_name })` straight from the browser —
+# which has silently failed for everyone since migration 153 revoked UPDATE on
+# `users` from `authenticated`. The revoke was right; the missing half was an
+# endpoint to do the write instead.
+#
+# identity:write (_ALL_STAFF) is the correct guard for the same reason
+# login-event uses it: this is a caller acting on the caller. It is NOT
+# team:write — that is Partner-only and governs editing OTHER people's accounts,
+# which this endpoint deliberately cannot do.
+@router.patch("/me")
+def update_my_profile(body: MyProfileBody,
+                      current_user: dict = Depends(rbac("identity", "write"))):
+    """Update the CALLER's own display name. No user_id parameter exists, by
+    design — the row is addressed from the verified token, so there is no id for
+    a caller to substitute and no scope check that could be forgotten."""
+    name = (body.full_name or "").strip()
+    if not name:
+        raise HTTPException(400, "full_name cannot be empty")
+    if len(name) > 120:
+        raise HTTPException(400, "full_name must be 120 characters or fewer")
+
+    updated = user_repo.update(current_user["id"], {"full_name": name})
+    # Audited like every other mutation in this router: a display name is how a
+    # person is identified in approvals and audit trails, so a change to it is
+    # worth a record.
+    log_event(current_user.get("firm_id"), "user", str(current_user["id"]), "profile_update",
+              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              new_data={"full_name": name})
+    return api_response(True, updated)
+
+
 class LoginEventBody(BaseModel):
     event: str  # 'login' | 'logout'
 

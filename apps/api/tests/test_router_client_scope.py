@@ -1252,6 +1252,10 @@ EXEMPT: dict[str, str] = {
         "never a client_id.",
     "/api/identity/login-event":
         "records the CALLER's own sign-in/sign-out event. No client_id.",
+    "/api/identity/me":
+        "the caller's own display name, addressed from the verified token — "
+        "there is no user_id parameter, let alone a client_id. `users` has a "
+        "firm_id and no client_id column (migration 003).",
     "/api/identity/permissions":
         "returns the caller's own role and its resource:action map from the "
         "static PERMISSIONS matrix in core/permissions.py. Reads no table at "
@@ -1511,7 +1515,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 9,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
-              "/api/identity": 12, "/api/tally-migration": 7,
+              "/api/identity": 13, "/api/tally-migration": 7,
               "/api/accounting": 19, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 10, "/api/compliance": 12,
               "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
