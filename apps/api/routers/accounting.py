@@ -186,6 +186,77 @@ def post_opening_balances_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
 
 
+class TrialBalanceRowIn(BaseModel):
+    account_name: str
+    account_type: str
+    debit_paise: int
+    credit_paise: int
+    account_code: Optional[str] = None
+
+
+class TrialBalanceImportIn(BaseModel):
+    client_id: str
+    rows: list[TrialBalanceRowIn]
+    opening_date: Optional[str] = None   # defaults to the client's FY start
+    preview: bool = False                # validate only; post nothing
+
+
+def _tb_rows(data: "TrialBalanceImportIn"):
+    from domain.accounting.trial_balance import TrialBalanceRow
+    return [TrialBalanceRow(account_name=r.account_name, account_type=r.account_type,
+                            debit_paise=r.debit_paise, credit_paise=r.credit_paise,
+                            account_code=r.account_code) for r in data.rows]
+
+
+@router.post("/trial-balance/import")
+def import_trial_balance_endpoint(
+    data: TrialBalanceImportIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bring an imported trial balance into the client's ledger as ONE balanced
+    opening journal entry.
+
+    A trial balance only means anything once it is in the General Ledger — the
+    reporting engine reads journals, not account-master fields. Refuses an
+    unbalanced trial balance rather than posting lopsided lines, and refuses to
+    write into a locked financial year. Idempotent: re-importing an unchanged
+    trial balance posts nothing.
+
+    preview=true validates and returns the totals without touching the database,
+    so the wizard can show what is wrong before anything is committed."""
+    assert_client_access(current_user, data.client_id)
+    from domain.accounting.trial_balance import TrialBalanceError
+    from services.trial_balance_import_service import (
+        import_trial_balance, preview_trial_balance,
+    )
+    try:
+        if data.preview:
+            return api_response(True, preview_trial_balance(_tb_rows(data)))
+        result = import_trial_balance(
+            firm_id=current_user["firm_id"],
+            client_id=data.client_id,
+            rows=_tb_rows(data),
+            opening_date=data.opening_date,
+            # created_by FKs to public.users.id (internal), not the Supabase auth id.
+            created_by=current_user.get("id"),
+        )
+        if result.get("posted") and result.get("journal_entry_id"):
+            log_event(
+                current_user["firm_id"], "journal_entry", result["journal_entry_id"],
+                "trial_balance_import", actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"), new_data=result,
+            )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except TrialBalanceError as e:
+        # The trial balance itself is inadmissible — the message names the row
+        # and the problem, and is meant to be shown to the CA verbatim.
+        raise HTTPException(status_code=422, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 class YearLockIn(BaseModel):
     financial_year: str           # e.g. "2025-26"
     lock: bool                    # True = lock, False = unlock

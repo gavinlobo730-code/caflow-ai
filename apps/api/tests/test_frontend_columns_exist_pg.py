@@ -70,15 +70,14 @@ pytestmark = pytest.mark.skipif(
 # Keep this list tiny and make each entry earn its place: it is a hole in the
 # check, so an accidental typo added here stops being caught.
 INTENTIONAL: dict[str, str] = {
-    "chart_of_accounts.opening_balance_dr_paise":
-        "app/accounting/trial-balance-import/page.tsx:46 — a CAPABILITY PROBE, "
-        "not a bug. The page deliberately selects this column and reads the "
-        "error to decide whether the Trial Balance Import wizard can run at "
-        "all ('C4: gate the entire wizard on whether the required schema "
-        "exists, rather than letting every row's write silently fail'). The "
-        "column genuinely does not exist, so the wizard correctly shows its "
-        "unavailable banner. Making this query succeed is the job of a "
-        "migration adding opening_balance_dr_paise/_cr_paise, not of a rename.",
+    # Empty, and that is the point. The one entry this list ever held —
+    # chart_of_accounts.opening_balance_dr_paise, the trial-balance import's
+    # capability probe — is gone because the wizard no longer needs a probe:
+    # it posts a real opening journal through /api/accounting/trial-balance/import
+    # instead of writing to a column that was never going to exist.
+    #
+    # Adding anything here is a hole in the check below. An entry must be a
+    # query that MEANS to fail, never a typo someone did not want to fix.
 }
 
 # Columns that DID NOT EXIST and were fixed in this change, kept as a named
