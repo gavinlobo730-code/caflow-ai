@@ -504,10 +504,17 @@ class TestAiCopilotFirmContextScoping:
         ctx_a = mod._build_firm_context(FIRM_A, USER_A)
         ctx_b = mod._build_firm_context(FIRM_B, USER_B)
 
-        assert "Firm A Client" in ctx_a
+        assert "Clients: 1" in [ln.strip() for ln in ctx_a.splitlines()]
+        assert "Firm A Client" not in ctx_a
         assert "Firm B Client" not in ctx_a
-        assert "Firm B Client" in ctx_b
+        # Cross-firm isolation is still the point, but it is now observable as
+        # a COUNT rather than a name: no client identifier reaches the Groq
+        # prompt for any caller (see test_copilot_no_client_data.py). Firm B has
+        # exactly one client in ALL_CLIENTS, so a leak of firm A's row would
+        # show up as "Clients: 2".
+        assert "Clients: 1" in [ln.strip() for ln in ctx_b.splitlines()]
         assert "Firm A Client" not in ctx_b
+        assert "Firm B Client" not in ctx_b
 
 
 # ─── 4. GET /api/ai-copilot/firm-context: sibling handler, same tenancy fix ──

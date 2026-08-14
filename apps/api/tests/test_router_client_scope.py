@@ -1446,6 +1446,17 @@ EXEMPT: dict[str, str] = {
         "accounts.",
     "/api/onboarding/status":
         "which onboarding steps this firm has completed.",
+    # ai_copilot.py — the client-level copilot, WITHDRAWN.
+    "/api/ai-copilot/client/{client_id}/chat":
+        "withdrawn — returns 410 unconditionally and reads nothing. It used to "
+        "post one client's name, entity type, GSTIN, PAN, task titles and "
+        "compliance records to Groq, a third-party model provider. There was no "
+        "reduced version worth keeping (unlike the firm-level copilot, which "
+        "now sends counts only), so the endpoint refuses before touching any "
+        "client data. It names no scope guard because it resolves no client — "
+        "asserting scope on a 410 would be theatre. See "
+        "test_copilot_no_client_data.py, which pins the 410 in both the "
+        "in-scope and out-of-scope directions.",
     # currencies.py — the ISO 4217 master.
     "/api/currencies":
         "the global ISO 4217 currency master (currency_service.list_currencies "
@@ -1651,6 +1662,16 @@ def test_no_exemption_covers_a_resource_that_does_carry_a_client():
     by_path = {p: e for _prefix, p, _m, e in ROUTES}
     for path in EXEMPT:
         src = inspect.getsource(by_path[path])
+        # Strip the @router decorator lines before checking. The decorator
+        # carries the URL, and a URL may legitimately contain {client_id} while
+        # the handler reads nothing — a withdrawn endpoint that 410s on its
+        # historical path is the case that forced this. What the guard is for is
+        # a HANDLER that still resolves a client while claiming it has none, and
+        # any such handler names client_id in its signature or body, so this
+        # narrowing costs the check nothing. (Mutation-tested: reinstating a
+        # client_id read in an exempt handler still fails this test.)
+        src = "\n".join(ln for ln in src.splitlines()
+                        if not ln.lstrip().startswith("@"))
         assert "client_id" not in src, (
             f"{path} is exempt on the grounds that its resource has no client, "
             f"but its handler now mentions client_id — re-check the exemption.")

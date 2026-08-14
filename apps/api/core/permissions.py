@@ -56,6 +56,15 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write":  _PARTNER_ONLY,
         "admin":  _PARTNER_ONLY,
     },
+    # ── Identity (self-service) ──────────────────────────────────────────────
+    # login/logout events the frontend records for the CALLER, about the caller.
+    # Every staff role must be able to write its own, so this is _ALL_STAFF —
+    # it is telemetry, not a privilege. Modelled as its own resource rather than
+    # borrowed from "team" (Partner-only write) or left on "ai" (read, and the
+    # wrong subject entirely), so the guard states what it actually protects.
+    "identity": {
+        "write":  _ALL_STAFF,
+    },
     # ── Clients ──────────────────────────────────────────────────────────────
     "client": {
         "read":   _ALL_STAFF,

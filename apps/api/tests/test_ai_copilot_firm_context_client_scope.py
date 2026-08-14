@@ -57,9 +57,16 @@ def scoped(monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def test_the_groq_prompt_does_not_name_clients_outside_your_book(scoped):
+    """Superseded by a stronger rule and kept as the narrower guarantee.
+
+    This originally asserted the prompt names YOUR clients but not other
+    people's. The prompt now names NO clients at all — client identifiers are
+    not sent to Groq, whoever is asking — so the out-of-book half is what still
+    has meaning here. test_copilot_no_client_data.py owns the stronger claim.
+    """
     ctx = cp._build_firm_context(FIRM, USER)
-    assert "My Client Ltd" in ctx
     assert "Someone Elses Client Ltd" not in ctx
+    assert "My Client Ltd" not in ctx
 
 
 def test_the_compliance_summary_is_narrowed_to_your_book(scoped, monkeypatch):
@@ -91,8 +98,12 @@ def test_a_firmwide_caller_still_sees_every_client(monkeypatch):
 
     monkeypatch.setattr(client_mod, "client_repo", _Repo())
     ctx = cp._build_firm_context(FIRM, {**USER, "role": "Partner"})
-    assert "My Client Ltd" in ctx
-    assert "Someone Elses Client Ltd" in ctx
+    # The pass-through is still the thing under test — a Partner must be counted
+    # against the whole book, not an empty set — but it is now observable as a
+    # COUNT, because no name reaches the prompt for any role.
+    assert "Clients: 2" in [ln.strip() for ln in ctx.splitlines()]
+    assert "My Client Ltd" not in ctx
+    assert "Someone Elses Client Ltd" not in ctx
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -139,13 +150,14 @@ def test_chatting_about_another_clients_book_is_refused(monkeypatch):
     monkeypatch.setattr(cp, "_build_client_context",
                         lambda firm_id, cid: built.append(cid) or "ctx")
 
-    with pytest.raises(HTTPException) as e:
-        asyncio.run(cp.client_copilot_chat(
-            THEIRS, cp.CopilotRequest(message="hi"), current_user=USER))
-    assert e.value.status_code == 404
-    assert not built   # refused before any client context was assembled
-
-    # …and the in-scope case still reaches the context builder.
-    asyncio.run(cp.client_copilot_chat(
-        MINE, cp.CopilotRequest(message="hi"), current_user=USER))
-    assert built == [MINE]
+    # The endpoint is now withdrawn (410) for EVERY caller, in scope or not:
+    # it used to post a single client's name, GSTIN and PAN to Groq. So the
+    # cross-client refusal this test was written for is subsumed — nobody
+    # reaches a client context at all. Both directions asserted, because
+    # "refused" would otherwise be indistinguishable from "still working".
+    for cid in (THEIRS, MINE):
+        with pytest.raises(HTTPException) as e:
+            asyncio.run(cp.client_copilot_chat(
+                cp.CopilotRequest(message="hi"), current_user=USER))
+        assert e.value.status_code == 410, cid
+    assert not built   # no client context assembled for anyone
