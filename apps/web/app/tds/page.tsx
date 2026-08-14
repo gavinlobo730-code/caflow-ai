@@ -39,6 +39,8 @@ const TDS_IMPORT_COLUMNS = [
 const PAN_RE_TDS = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -70,20 +72,25 @@ const STATUS_STYLE: Record<string, string> = {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+// tds_deductions as it actually is. The page previously used a different name
+// for almost every field (party_name, gross_amount_paise, tds_rate,
+// tds_amount_paise, payment_date, fy), so every read filtered on a column that
+// did not exist and every write was rejected. financial_year is new in
+// migration 263 — the backend's tds_repository already filtered by it.
 interface TDSDeduction {
   id: string;
   firm_id: string;
-  client_id: string | null;
-  party_name: string;
-  party_pan: string;
+  client_id: string;          // NOT NULL — a deduction belongs to a client
+  deductee_name: string;
+  deductee_pan: string | null;
   section: string;
-  gross_amount_paise: number;
-  tds_rate: number;
-  tds_amount_paise: number;
-  payment_date: string;
+  payment_amount_paise: number;
+  tds_rate_pct: number;
+  tds_paise: number;
+  transaction_date: string;
   challan_no: string | null;
-  fy: string;
-  quarter: string;
+  financial_year: string | null;
+  quarter: string | null;
   created_at: string;
 }
 
@@ -126,8 +133,11 @@ const TABS = ["Deductions", "Challans", "Returns", "Certificates"];
 
 // ─── Add Deduction Modal ─────────────────────────────────────────────────────
 
-function AddDeductionModal({ firmId, onClose, onAdded }: {
+function AddDeductionModal({ firmId, clientId, onClose, onAdded }: {
   firmId: string;
+  // tds_deductions.client_id is NOT NULL. This page used to insert null, so
+  // every deduction ever entered on this form was rejected by the database.
+  clientId: string;
   onClose: () => void;
   onAdded: (d: TDSDeduction) => void;
 }) {
@@ -167,16 +177,16 @@ function AddDeductionModal({ firmId, onClose, onAdded }: {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const { data, error } = await sb.from("tds_deductions").insert({
         firm_id: firmId,
-        client_id: null,
-        party_name: partyName.trim(),
-        party_pan: partyPan.trim().toUpperCase(),
+        client_id: clientId,
+        deductee_name: partyName.trim(),
+        deductee_pan: partyPan.trim().toUpperCase() || null,
         section,
-        gross_amount_paise: grossPaise,
-        tds_rate: tdsRate,
-        tds_amount_paise: tdsPaise,
-        payment_date: paymentDate,
+        payment_amount_paise: grossPaise,
+        tds_rate_pct: tdsRate,
+        tds_paise: tdsPaise,
+        transaction_date: paymentDate,
         challan_no: challanNo.trim() || null,
-        fy,
+        financial_year: fy,
         quarter,
       }).select().single();
       if (error) throw new Error(error.message);
@@ -354,6 +364,9 @@ function AddChallanModal({ onClose, onAdded }: {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function TDSPage() {
+  // A TDS deduction belongs to one client — tds_deductions.client_id is NOT
+  // NULL, and the backend's tds_repository scopes every read by firm + client.
+  const { clients, clientId: selectedClientId, setClientId: setSelectedClientId } = useClientPicker();
   const [activeTab, setActiveTab] = useState(0);
   const [firmId, setFirmId] = useState("");
   const [deductions, setDeductions] = useState<TDSDeduction[]>([]);
@@ -383,12 +396,16 @@ export default function TDSPage() {
         }
         setFirmId(fid);
         if (!fid) return;
+        // client_id is required by the query below; an empty string would be
+        // sent as `client_id=eq.` and rejected.
+        if (!selectedClientId) { setDeductions([]); setLoading(false); return; }
         const sb = getSupabaseClient();
         const { data, error } = await sb
           .from("tds_deductions")
           .select("*")
           .eq("firm_id", fid)
-          .order("payment_date", { ascending: false });
+          .eq("client_id", selectedClientId)
+          .order("transaction_date", { ascending: false });
         if (error) {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
@@ -418,10 +435,10 @@ export default function TDSPage() {
       }
     }
     load();
-  }, []);
+  }, [selectedClientId]);
 
   // Summary stats — all integer paise arithmetic
-  const totalTDSPaise = deductions.reduce((s, d) => s + d.tds_amount_paise, 0);
+  const totalTDSPaise = deductions.reduce((s, d) => s + d.tds_paise, 0);
   const pendingChallans = challans.filter(c => !c.bsr_code).length;
   const pendingReturns = returns.filter(r => r.status !== "Filed").length;
   const pendingCerts = certificates.filter(c => c.status === "Pending").length;
@@ -429,13 +446,13 @@ export default function TDSPage() {
   // ── Deductions DataTable columns — money in integer paise, aligned right ────
   const deductionColumns: Column<TDSDeduction>[] = useMemo(() => [
     {
-      key: "party_name", header: "Party Name", accessor: (d) => d.party_name,
+      key: "party_name", header: "Party Name", accessor: (d) => d.deductee_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (d) => <span className="font-medium text-[#0F172A]">{d.party_name}</span>,
+      render: (d) => <span className="font-medium text-[#0F172A]">{d.deductee_name}</span>,
     },
     {
-      key: "party_pan", header: "PAN", accessor: (d) => d.party_pan ?? "", searchable: true,
-      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.party_pan || "—"}</span>,
+      key: "party_pan", header: "PAN", accessor: (d) => d.deductee_pan ?? "", searchable: true,
+      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.deductee_pan || "—"}</span>,
     },
     {
       key: "section", header: "Section", accessor: (d) => d.section, sortable: true,
@@ -447,22 +464,22 @@ export default function TDSPage() {
       ),
     },
     {
-      key: "payment_date", header: "Payment Date", accessor: (d) => d.payment_date, sortable: true,
-      render: (d) => <span className="text-xs text-[#475569]">{d.payment_date ? new Date(d.payment_date).toLocaleDateString("en-IN") : "—"}</span>,
+      key: "transaction_date", header: "Payment Date", accessor: (d) => d.transaction_date, sortable: true,
+      render: (d) => <span className="text-xs text-[#475569]">{d.transaction_date ? new Date(d.transaction_date).toLocaleDateString("en-IN") : "—"}</span>,
     },
     {
-      key: "gross_amount_paise", header: "Gross Amount", accessor: (d) => d.gross_amount_paise,
-      sortable: true, align: "right", exportValue: (d) => d.gross_amount_paise / 100,
-      render: (d) => <span className="text-[#0F172A]">{formatPaise(d.gross_amount_paise)}</span>,
+      key: "gross_amount_paise", header: "Gross Amount", accessor: (d) => d.payment_amount_paise,
+      sortable: true, align: "right", exportValue: (d) => d.payment_amount_paise / 100,
+      render: (d) => <span className="text-[#0F172A]">{formatPaise(d.payment_amount_paise)}</span>,
     },
     {
-      key: "tds_rate", header: "TDS Rate", accessor: (d) => d.tds_rate, sortable: true, align: "right",
-      render: (d) => <span className="text-xs text-[#475569]">{d.tds_rate}%</span>,
+      key: "tds_rate", header: "TDS Rate", accessor: (d) => d.tds_rate_pct, sortable: true, align: "right",
+      render: (d) => <span className="text-xs text-[#475569]">{d.tds_rate_pct}%</span>,
     },
     {
-      key: "tds_amount_paise", header: "TDS Amount", accessor: (d) => d.tds_amount_paise,
-      sortable: true, align: "right", exportValue: (d) => d.tds_amount_paise / 100,
-      render: (d) => <span className="font-medium text-[#0F172A]">{formatPaise(d.tds_amount_paise)}</span>,
+      key: "tds_amount_paise", header: "TDS Amount", accessor: (d) => d.tds_paise,
+      sortable: true, align: "right", exportValue: (d) => d.tds_paise / 100,
+      render: (d) => <span className="font-medium text-[#0F172A]">{formatPaise(d.tds_paise)}</span>,
     },
     {
       key: "challan_no", header: "Challan No", accessor: (d) => d.challan_no ?? "",
@@ -483,10 +500,24 @@ export default function TDSPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">TDS Module</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-[#0F172A]">TDS Module</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
+        </div>
+        {/* Deductions are per client, so the client is chosen before anything
+            can be recorded or listed. */}
+        <div className="min-w-[240px]">
+          <label className="block text-xs font-medium text-[#475569] mb-1">Client *</label>
+          <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
+        </div>
       </div>
+
+      {!selectedClientId && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-800">
+          Select a client to view and record their TDS deductions.
+        </div>
+      )}
 
       {tableError && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
@@ -555,7 +586,7 @@ export default function TDSPage() {
             getRowId={(d) => d.id}
             loading={loading}
             searchPlaceholder="Search by party name or PAN…"
-            initialSort={{ key: "payment_date", dir: "desc" }}
+            initialSort={{ key: "transaction_date", dir: "desc" }}
             exportFilename="tds-deductions"
             persistKey="tds.deductions"
             emptyTitle="No deductions recorded yet"
@@ -564,7 +595,7 @@ export default function TDSPage() {
 
           {deductions.length > 0 && (
             <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-[#64748B]">
-              <span>Total Gross: <span className="font-semibold text-[#0F172A]">{formatPaise(deductions.reduce((s, d) => s + d.gross_amount_paise, 0))}</span></span>
+              <span>Total Gross: <span className="font-semibold text-[#0F172A]">{formatPaise(deductions.reduce((s, d) => s + d.payment_amount_paise, 0))}</span></span>
               <span>Total TDS: <span className="font-semibold text-[#0F172A]">{formatPaise(totalTDSPaise)}</span></span>
             </div>
           )}
@@ -688,7 +719,7 @@ export default function TDSPage() {
       )}
 
       {showAddDeduction && firmId && (
-        <AddDeductionModal firmId={firmId} onClose={() => setShowAddDeduction(false)} onAdded={d => setDeductions(prev => [d, ...prev])} />
+        <AddDeductionModal firmId={firmId} clientId={selectedClientId} onClose={() => setShowAddDeduction(false)} onAdded={d => setDeductions(prev => [d, ...prev])} />
       )}
       {showAddChallan && (
         <AddChallanModal onClose={() => setShowAddChallan(false)} onAdded={c => setChallans(prev => [c, ...prev])} />
@@ -710,16 +741,16 @@ export default function TDSPage() {
               const tdsPaise = Math.round(grossPaise * rate / 100);
               const { error } = await sb.from("tds_deductions").insert({
                 firm_id: firmId,
-                client_id: null,
-                party_name: row.party_name,
-                party_pan: row.party_pan.toUpperCase(),
+                client_id: selectedClientId,
+                deductee_name: row.party_name,
+                deductee_pan: row.party_pan.toUpperCase() || null,
                 section: row.section,
-                gross_amount_paise: grossPaise,
-                tds_rate: rate,
-                tds_amount_paise: tdsPaise,
-                payment_date: row.payment_date,
+                payment_amount_paise: grossPaise,
+                tds_rate_pct: rate,
+                tds_paise: tdsPaise,
+                transaction_date: row.payment_date,
                 challan_no: row.challan_no || null,
-                fy: row.fy,
+                financial_year: row.fy,
                 quarter: row.quarter,
               });
               if (error) errors.push(`${row.party_name}: ${error.message}`);
@@ -727,7 +758,7 @@ export default function TDSPage() {
             }
             if (imported > 0) {
               const sb2 = getSupabaseClient();
-              const { data } = await sb2.from("tds_deductions").select("*").eq("firm_id", firmId).order("payment_date", { ascending: false });
+              const { data } = await sb2.from("tds_deductions").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("transaction_date", { ascending: false });
               if (data) setDeductions(data as TDSDeduction[]);
             }
             return { imported, errors };

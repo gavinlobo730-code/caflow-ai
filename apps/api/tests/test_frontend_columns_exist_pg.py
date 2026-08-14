@@ -95,27 +95,14 @@ INTENTIONAL: dict[str, str] = {
 
 # Filter/write offenders NOT fixed yet, because fixing them needs a decision
 # rather than a rename. A ratchet, not an exemption: test_no_unfixed_entry_is_stale
-# below fails once one is fixed, so the list can only shrink.
+# fails once one is fixed, so the list can only shrink.
 #
-# /tds records a TDS deduction against a tds_deductions table that does not
-# exist as the page imagines it. Seven names are wrong AND two things cannot be
-# renamed at all:
-#   * client_id is NOT NULL, but the page inserts client_id: null — it has no
-#     client picker, so every deduction ever entered on that form failed.
-#   * There is NO financial-year column on tds_deductions, so the form's `fy`
-#     has nowhere to go. Dropping it loses data the CA typed; deriving it in the
-#     browser is business logic the frontend must not hold (CLAUDE.md).
-# Both need a product call — a client picker, and either a financial_year column
-# or an agreed derivation in the backend.
-UNFIXED: dict[str, str] = {
-    "tds_deductions.party_name":         "deductee_name",
-    "tds_deductions.party_pan":          "deductee_pan",
-    "tds_deductions.gross_amount_paise": "payment_amount_paise",
-    "tds_deductions.tds_rate":           "tds_rate_pct",
-    "tds_deductions.tds_amount_paise":   "tds_paise",
-    "tds_deductions.payment_date":       "transaction_date",
-    "tds_deductions.fy":                 "NO EQUIVALENT — needs a column or a backend derivation",
-}
+# Empty. It held the whole /tds cluster — seven wrong column names, an insert of
+# client_id: null into a NOT NULL column, and an `fy` with nowhere to go. All
+# three are resolved: migration 263 adds tds_deductions.financial_year (which
+# repositories/tds_repository.py had always filtered by), the page now has a
+# client picker, and the names are corrected.
+UNFIXED: dict[str, str] = {}
 
 # Columns that DID NOT EXIST and were fixed in this change, kept as a named
 # regression pin. Every one made PostgREST reject the entire select, so the
