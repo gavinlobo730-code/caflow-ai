@@ -45,9 +45,22 @@ export default function NotesPage() {
       // routers/year_end_notes.py::list_notes (same table, engagement_id
       // filter, sequence_no ordering). Note *generation* is a separate,
       // button-gated write (generateAll below) and stays backend-routed.
+      // `year_end_notes`, NOT `notes_to_accounts`. Migration 067 named the table
+      // notes_to_accounts; production was built by a divergent Studio migration
+      // that called it year_end_notes, and migration 252's audit resolved the
+      // split by repointing the ROUTERS at the real name rather than creating a
+      // duplicate table. This query was missed in that pass, so it has been
+      // asking PostgREST for a table production does not have — the Notes tab
+      // could not load for anyone.
+      //
+      // The repository's migrations still describe notes_to_accounts, so the
+      // schema replay in CI builds it and every static check here passes. That
+      // is exactly the blind spot migration 252's header warns about: CI
+      // validates the schema the repository DESCRIBES, not the one production
+      // HAS.
       const supabase = getSupabaseClient();
       const { data, error: sbError } = await supabase
-        .from("notes_to_accounts")
+        .from("year_end_notes")
         .select("*")
         .eq("engagement_id", engagementId)
         .order("sequence_no");
