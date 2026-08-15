@@ -307,7 +307,8 @@ class SupabaseLedgerSource(LedgerSource):
         )
         raise last_err
 
-    def _fetch_all(self, make_query, key: str = "id", max_retries: int = 3) -> list[dict]:
+    def _fetch_all(self, make_query, key: str = "id", max_retries: int = 3,
+                   stats: Optional[dict] = None) -> list[dict]:
         """Fetch EVERY matching row via KEYSET (cursor) paging over a query ordered
         ascending by `key`, so results are never silently capped at PostgREST's
         ~1000-row limit (audit C6). `make_query` must return a fresh builder
@@ -331,19 +332,33 @@ class SupabaseLedgerSource(LedgerSource):
         added to the contention. End-of-data is a short page (< _PAGE) — the
         genuine signal, NEVER an assumed PostgREST row count, which can be
         unreliable alongside an embedded relation and would silently truncate a
-        financial report rather than just be slow."""
+        financial report rather than just be slow.
+
+        `stats`: optional out-parameter, filled with {"pages", "rows", "seconds"}.
+        Page COUNT is the number that matters when a report is slow — this pages
+        sequentially by design (see above), so wall-clock is roughly pages ×
+        round-trip, and "is it a big query or a lot of small ones?" is otherwise
+        unanswerable from the outside. Costs nothing when not passed."""
         out: list[dict] = []
         cursor = None
+        pages = 0
+        started = time.monotonic()
         while True:
             page = self._fetch_page(make_query, cursor, key, max_retries)
+            pages += 1
             out.extend(page)
             if len(page) < self._PAGE:
                 break                                    # genuine end-of-data
             cursor = page[-1][key]                        # next page starts after this row
+        if stats is not None:
+            stats["pages"] = pages
+            stats["rows"] = len(out)
+            stats["seconds"] = time.monotonic() - started
         return out
 
     def _entries(self, firm_id, client_id, date_from: Optional[str] = None,
-                 date_to: Optional[str] = None, account_id: Optional[str] = None) -> dict[str, JournalEntry]:
+                 date_to: Optional[str] = None, account_id: Optional[str] = None,
+                 stats: Optional[dict] = None) -> dict[str, JournalEntry]:
         """Posted, non-deleted entries for a tenant. date_from/date_to (inclusive
         entry_date bounds) are used by the passbook read path to pull only the one
         or two partial edge months it needs; unbounded (the default) is the full
@@ -385,7 +400,7 @@ class SupabaseLedgerSource(LedgerSource):
         rows = None
         while rows is None:
             try:
-                rows = self._fetch_all(lambda: make_q(want_rev, want_ccy))
+                rows = self._fetch_all(lambda: make_q(want_rev, want_ccy), stats=stats)
                 if want_rev:
                     self._has_reversal_of = True
                 if want_ccy:
@@ -431,10 +446,17 @@ class SupabaseLedgerSource(LedgerSource):
                 reference_no=r.get("reference_no"), narration=r.get("narration"),
                 created_at=r.get("created_at"),
             )
+        if stats is not None:
+            # journal_lines rides along EMBEDDED in each entry row, so the line
+            # count — not the entry count — is what the response actually
+            # carried. A client with few entries but many lines each costs the
+            # same as one with many entries, and only this number shows it.
+            stats["lines"] = sum(len(e.lines) for e in out.values())
         return out
 
     # ── Passbook read path (reporting perf) ────────────────────────────────────
-    def fetch_buckets(self, firm_id, client_id) -> dict[tuple[str, str], tuple[int, int]]:
+    def fetch_buckets(self, firm_id, client_id,
+                      stats: Optional[dict] = None) -> dict[tuple[str, str], tuple[int, int]]:
         """Read a client's monthly buckets from account_period_balances — the
         small, time-bounded table that replaces replaying all history. Keys are
         ('account_id', 'YYYY-MM-01') to match balance_cache.build_buckets."""
@@ -442,7 +464,7 @@ class SupabaseLedgerSource(LedgerSource):
             self.db.table("account_period_balances")
             .select("id, account_id, period_month, debit_paise, credit_paise")
             .eq("firm_id", firm_id).eq("client_id", client_id).order("id")
-        ))
+        ), stats=stats)
         return {
             (r["account_id"], str(r["period_month"])[:10]):
                 (int(r.get("debit_paise", 0) or 0), int(r.get("credit_paise", 0) or 0))

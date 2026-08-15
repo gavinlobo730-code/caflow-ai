@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from contextlib import contextmanager
 from datetime import date
-from typing import Optional
+from typing import Iterator, Optional
 
 from core.ist_clock import ist_today
 
@@ -76,6 +78,18 @@ def _fy_start(today: date | None = None) -> str:
 def _day_before(iso: str) -> str:
     from datetime import timedelta
     return (date.fromisoformat(iso[:10]) - timedelta(days=1)).isoformat()
+
+
+@contextmanager
+def _timed(sink: dict, name: str) -> Iterator[None]:
+    """Record a phase's wall-clock into `sink`. `finally`, so a phase that raises
+    still records what it spent before failing — a timing that vanishes on the
+    error path is missing exactly when it is most wanted."""
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        sink[name] = time.monotonic() - started
 
 
 def _bank_total(lines, bank_ids) -> int:
@@ -321,9 +335,23 @@ class ReportingService:
             return legacy()
 
         def fast():
-            accounts = self.source._accounts(firm_id, client_id)
+            # Timed per phase because "cash flow takes 14 seconds" is not a
+            # diagnosis, and guessing at which phase owns those seconds is how
+            # three wrong models got built. The first two blamed fetches that
+            # turned out to be cached; the third blamed the full-history replay
+            # and produced a change worth about one second, because the period
+            # entries fetch — the one thing this statement genuinely cannot
+            # avoid — was always the cost. This line settles it with numbers.
+            t: dict[str, float] = {}
+            entry_stats: dict[str, int] = {}
+            bucket_stats: dict[str, int] = {}
+            overall = time.monotonic()
+
+            with _timed(t, "accounts"):
+                accounts = self.source._accounts(firm_id, client_id)
             bank_ids = AccountResolver(accounts).bank_ids
-            buckets = self.source.fetch_buckets(firm_id, client_id)
+            with _timed(t, "buckets"):
+                buckets = self.source.fetch_buckets(firm_id, client_id, stats=bucket_stats)
 
             def cash_as_of(as_of: str) -> int:
                 return _bank_total(
@@ -331,14 +359,40 @@ class ReportingService:
 
             # Sorted by entry_date over an id-ordered fetch, which is what the
             # legacy snapshot does — same list, same order, from a bounded read.
-            entries = sorted(
-                self.source._entries(firm_id, client_id, date_from=start, date_to=end).values(),
-                key=lambda e: e.entry_date,
+            with _timed(t, "entries"):
+                entries = sorted(
+                    self.source._entries(firm_id, client_id, date_from=start, date_to=end,
+                                         stats=entry_stats).values(),
+                    key=lambda e: e.entry_date,
+                )
+            # Separately timed: these replay at most two partial edge months, so
+            # on a month-aligned window (a financial year — what the dashboard
+            # asks for) they should be pure arithmetic over already-fetched
+            # buckets and cost nothing. If they ever do not, the window is ragged
+            # or the passbook is being re-read, and this says which.
+            with _timed(t, "opening"):
+                opening_cash = cash_as_of(_day_before(start))
+            with _timed(t, "closing"):
+                closing_cash = cash_as_of(end)
+            with _timed(t, "build"):
+                out = builders.cash_flow(
+                    entries, accounts, bank_ids, start, end,
+                    opening_cash, closing_cash, basis,
+                )
+
+            _logger.info(
+                "reporting.cash_flow firm=%s client=%s window=%s..%s took=%.2fs — "
+                "accounts=%.2fs(%d) buckets=%.2fs(%d rows/%d pages) "
+                "entries=%.2fs(%d entries/%d lines/%d pages) "
+                "opening=%.2fs closing=%.2fs build=%.2fs",
+                firm_id, client_id, start, end, time.monotonic() - overall,
+                t["accounts"], len(accounts),
+                t["buckets"], bucket_stats.get("rows", 0), bucket_stats.get("pages", 0),
+                t["entries"], entry_stats.get("rows", 0), entry_stats.get("lines", 0),
+                entry_stats.get("pages", 0),
+                t["opening"], t["closing"], t["build"],
             )
-            return builders.cash_flow(
-                entries, accounts, bank_ids, start, end,
-                cash_as_of(_day_before(start)), cash_as_of(end), basis,
-            )
+            return out
 
         return self._serve(("cash_flow", firm_id, client_id, start, end), fast, legacy)
 
