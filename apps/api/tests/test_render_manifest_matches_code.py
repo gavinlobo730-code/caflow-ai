@@ -204,6 +204,46 @@ def test_every_exemption_states_a_reason():
         assert len(why) > 60, f"{name}: say why it stays undeclared, not just that it does"
 
 
+# Render's regions, ordered by distance from the Supabase project's ap-south-1
+# (Mumbai). Only these are close enough for the manifest to accept.
+_REGIONS_NEAR_THE_DATABASE = {"singapore"}
+_REGION = re.compile(r"^\s*region:\s*([a-z-]+)\s*$", re.M)
+
+
+def test_the_service_is_declared_in_a_region_near_the_database():
+    """The single largest performance fact about this deployment, and the one
+    least visible from the code.
+
+    The service ran in Oregon while its database ran in ap-south-1 (Mumbai) —
+    about 13,000 km apart — so every query paid an intercontinental round trip.
+    On /api/accounting/cash-flow for a client with 12,836 posted entries: 13.01s
+    total, 12.39s of it the entries fetch, of which Postgres itself accounted for
+    0.55s per page under EXPLAIN ANALYZE. Roughly 86% of the slowest endpoint in
+    the product was distance, not work. Trivial endpoints paid it too —
+    /api/currencies/policy took 1.47s to read almost nothing.
+
+    Three separate attempts to locate that cost in application code failed,
+    because it was never in the code. This test exists so the answer is not
+    re-derived the hard way: it fails if the region is dropped, or set back to
+    somewhere far from the data.
+
+    Changing regions on Render means recreating the service, so a wrong value
+    here is expensive to discover late — which is exactly why it is asserted
+    rather than left to whoever next runs the blueprint.
+    """
+    declared = _REGION.findall(MANIFEST.read_text(encoding="utf-8"))
+
+    assert declared, (
+        "render.yaml declares no region. Render then picks its default (Oregon), "
+        "which put the service 13,000 km from its own database — see this test's "
+        "docstring for what that cost.")
+    assert len(declared) == 1, f"expected one service region, found {declared}"
+    assert declared[0] in _REGIONS_NEAR_THE_DATABASE, (
+        f"region '{declared[0]}' is not near the database (ap-south-1 / Mumbai). "
+        f"Acceptable: {sorted(_REGIONS_NEAR_THE_DATABASE)}. If the DATABASE moved, "
+        f"update this set and say where it went.")
+
+
 def test_the_scheduler_flag_is_declared():
     """Called out by name because its failure is the quietest one here: unset,
     jobs/scheduler.py logs a warning and every recurring job stops, while the
