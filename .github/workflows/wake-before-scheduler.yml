@@ -58,7 +58,12 @@ jobs:
       - name: Wake the instance and hold it awake
         env:
           # Not a secret — this is the public API origin.
-          API: https://practicesync-ai.onrender.com
+          #
+          # practicesync-API (Singapore), not practicesync-AI (Oregon, deleted
+          # 2026-08-15). One character apart, and getting it wrong here is
+          # silent: the ping fails, nobody is watching this workflow, and the
+          # instance is simply asleep when the 06:00 IST timer would have fired.
+          API: https://practicesync-api.onrender.com
         run: |
           set -uo pipefail
           ok=0
