@@ -157,8 +157,12 @@ export default function YearEndDashboardPage() {
         // "recent_events"-shaped source for this engagement; the general
         // audit_log table (services/audit_service.log_event) was considered
         // but rejected — see note below.
+        // `year_end_review_events`, NOT `year_end_reviews` — same repository-vs-
+        // production name split as the Notes tab above; see migration 252's
+        // header. The routers were repointed; this query was not, so the
+        // dashboard's recent-activity list has been failing in production.
         supabase
-          .from("year_end_reviews")
+          .from("year_end_review_events")
           .select("id, engagement_id, event_type, comment, actor_id, created_at")
           .eq("engagement_id", engagementId)
           .order("created_at", { ascending: false })
