@@ -24,6 +24,31 @@ services:
     # a trivial read. Three attempts to find the cost in application code all
     # failed, because it was never in the code.
     #
+    # WHAT IT ACTUALLY BOUGHT, measured after the cutover on the same client,
+    # both deployments running as `authenticated` with RLS enforced:
+    #
+    #                           Oregon    Singapore
+    #     cash-flow             13.51 s     10.41 s
+    #     clients/obligations    2.81 s      1.01 s
+    #     currencies/policy      2.29 s      1.14 s
+    #     trial-balance          1.99 s      1.31 s
+    #     profit-loss            2.09 s      1.50 s
+    #     identity/permissions   1.00 s      0.89 s
+    #     total                 23.69 s     16.26 s     ~1.46x
+    #
+    # "Both running as `authenticated`" is the whole caveat. The first
+    # post-cutover run showed cash-flow at 2.82 s and was reported as a 4.8x
+    # win — measured while USE_USER_JWT was unset, so that instance was querying
+    # as `service_role` with RLS BYPASSED while Oregon was paying for it. It was
+    # a comparison between a deployment doing less work and one doing more.
+    # Evaluating RLS across ~7,490 journal lines is real work and is correct to
+    # pay for. Any future region or infrastructure comparison must hold the DB
+    # role fixed, or it is measuring the security posture, not the change.
+    #
+    # Distance is no longer cash-flow's dominant cost. The next levers are
+    # narrowing the entries projection to the three fields builders.cash_flow
+    # reads, and a composite index on (firm_id, client_id, entry_date).
+    #
     # Render cannot move a service between regions, so changing this means
     # recreating the service. Anyone tempted to drop it: the cost is not a
     # constant factor on one endpoint, it is a floor under every request.
@@ -109,10 +134,33 @@ services:
       - key: REPORTING_PASSBOOK_MODE
         value: "on"
 
-      # --- Security flags (M6, staged rollout — default OFF) ---------------
-      # Declared rather than left implicit: these change who can reach what, so
-      # their state should be visible in the manifest even while they are off.
-      # See core/security_config.py.
+      # --- Security flags (M6) ---------------------------------------------
+      # BOTH OF THESE ARE "true" IN PRODUCTION. The code defaults them to false
+      # (core/security_config.py::_flag), and this block used to be captioned
+      # "staged rollout — default OFF", which read as "leave blank". That cost
+      # an outage on 2026-08-15 when the service was recreated in Singapore and
+      # both were left unset.
+      #
+      # USE_USER_JWT decides WHICH POSTGRES ROLE the backend queries as:
+      #   true  -> the caller's JWT, i.e. `authenticated`, and RLS is enforced
+      #   unset -> `service_role`, which BYPASSES RLS
+      # It is not a feature toggle, it is the security posture. Leaving it unset
+      # fails in both directions at once. Quietly, it drops RLS on every request.
+      # Loudly, 57 tables that live code reads — bank_accounts,
+      # bank_matching_rules, payroll_*, loans, fixed_deposits,
+      # inventory_stock_ledger, the note tables, task_templates — were never
+      # granted to `service_role`, only to `authenticated`. Postgres checks
+      # GRANT before RLS, so those reads raise, and main.py's catch-all returns
+      # a bare 500. The Bank page died on exactly that.
+      #
+      # REQUIRE_MFA is likewise on: core/auth.py is the only source of
+      # "Multi-factor authentication required for this action.", and production
+      # returns that string verbatim.
+      #
+      # Neither is verifiable from code — `sync: false` means the value lives in
+      # the dashboard, and no test can see it (see the header of
+      # tests/test_render_manifest_matches_code.py). This comment is the only
+      # record that the answer is "true". Do not soften it back to a default.
       - key: USE_USER_JWT
         sync: false
       - key: REQUIRE_MFA
