@@ -64,6 +64,14 @@ from typing import Optional
 import httpx
 
 
+# core/auth.py::mfa_guard raises this verbatim. Duplicated as a literal because
+# this script runs standalone in CI with only httpx installed and cannot import
+# the app; tests/test_smoke_api_script.py asserts the two stay identical, so
+# rewording the message breaks a test rather than silently making this check red
+# forever.
+MFA_REQUIRED_DETAIL = "Multi-factor authentication required for this action."
+
+
 @dataclass(frozen=True)
 class Check:
     name: str
@@ -72,6 +80,9 @@ class Check:
     # badly wrong", not a performance benchmark. A budget tight enough to flap
     # is a budget that gets ignored, and an ignored check is worse than none.
     budget_s: float
+    # True when main.py mounts this router behind _MFA_GUARD (assignments,
+    # identity, practice, billing). See run_check for why it matters.
+    mfa_guarded: bool = False
 
 
 def checks(client_id: str, start: str, end: str) -> list[Check]:
@@ -85,7 +96,8 @@ def checks(client_id: str, start: str, end: str) -> list[Check]:
     period = f"{q}&start_date={start}&end_date={end}"
     return [
         Check("health",                "/health",                                    5),
-        Check("identity/permissions",  "/api/identity/permissions",                  8),
+        Check("identity/permissions",  "/api/identity/permissions",                  8,
+              mfa_guarded=True),
         Check("clients/obligations",   f"/api/compliance/obligations{q}",           15),
         Check("accounting/profit-loss", f"/api/accounting/profit-loss{period}",      20),
         Check("accounting/cash-flow",  f"/api/accounting/cash-flow{period}",        20),
@@ -154,8 +166,31 @@ def run_check(client: httpx.Client, base: str, c: Check, token: str) -> tuple[bo
 
     over = elapsed > c.budget_s
     bad = status is None or not (200 <= status < 300)
+
     if bad:
         why = failure_reason(r)
+        # An MFA-guarded route refusing an aal1 token is the POLICY WORKING, not
+        # an outage. This script signs in with a password grant, which yields
+        # aal1 by construction and can never satisfy an aal2 requirement — so
+        # once REQUIRE_MFA is on for the smoke account's role, that 403 is
+        # permanent and correct. Failing on it would leave a red check nobody
+        # can ever make green, which is precisely the state /health was in for
+        # weeks and the reason nobody could see real drift behind it.
+        #
+        # What it still proves: the route is mounted, the token was accepted,
+        # and the guard ran. What it CANNOT prove is the authorised response —
+        # so it is reported distinctly rather than as a plain pass, and only for
+        # this exact status and reason. A 403 for any other reason (no user row,
+        # disabled account, suspended firm) still fails, as does a 500.
+        #
+        # To cover the authorised path instead, point SMOKE_EMAIL at an account
+        # whose role is not in MFA_REQUIRED_ROLES (default "Partner"); the
+        # endpoint then answers 200 and is checked normally, with no code change.
+        if c.mfa_guarded and status == 403 and why == MFA_REQUIRED_DETAIL:
+            if over:
+                return False, f"{c.name:28s} {elapsed:7.2f}s  OVER BUDGET of {c.budget_s:.0f}s"
+            return True, (f"{c.name:28s} {elapsed:7.2f}s  ok (MFA-guarded: policy "
+                          f"enforced; authorised response not covered)")
         return False, (f"{c.name:28s} {elapsed:7.2f}s  HTTP {status}  (expected 2xx)"
                        + (f"  — {why}" if why else ""))
     if over:
