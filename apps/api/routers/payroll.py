@@ -13,11 +13,14 @@ from datetime import datetime, timezone, date
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
+from pydantic import BaseModel, EmailStr
+
 from models.common import api_response
 from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn, PayrollDisburseIn
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.timeline_service import timeline_service
+from services import employee_portal_service
 from services.internal_client_service import assert_not_internal_for_payroll
 from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
@@ -1028,3 +1031,55 @@ def statutory_summary(
         "net_paise":      r.get("total_net_paise", 0),
         "headcount":      r.get("headcount", 0),
     })
+
+
+# ─── Employee portal provisioning ────────────────────────────────────────────
+# Migration 262 made the employee portal readable; migration 264 + these three
+# endpoints are what actually links an employee to a login. Guarded by
+# rbac("payroll", "write") — Manager and up, the same tier that edits salaries,
+# because handing someone access to salary data is a payroll decision.
+
+class EmployeePortalInviteIn(BaseModel):
+    email: EmailStr
+
+
+@router.post("/employees/{employee_id}/portal-invite")
+def invite_employee_portal(
+    employee_id: str,
+    data: EmployeePortalInviteIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Issue a single-use activation link for one employee.
+
+    The plaintext token is returned ONCE, here — only its sha256 is stored — so
+    the caller can deliver the link if the email does not arrive. It is not
+    retrievable afterwards; re-inviting mints a new one and invalidates this.
+    """
+    _assert_employee_scope(_db(), current_user, employee_id)
+    result = employee_portal_service.invite_employee(
+        current_user["firm_id"], employee_id, str(data.email), actor=current_user)
+    return api_response(True, result)
+
+
+@router.post("/employees/{employee_id}/portal-revoke")
+def revoke_employee_portal(
+    employee_id: str,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Withdraw portal access. Clears the identity binding as well as the flag,
+    so re-enabling later cannot silently restore an ex-employee's access."""
+    _assert_employee_scope(_db(), current_user, employee_id)
+    return api_response(True, employee_portal_service.revoke_employee_portal(
+        current_user["firm_id"], employee_id, actor=current_user))
+
+
+@router.get("/employees/{employee_id}/portal-status")
+def employee_portal_status(
+    employee_id: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Whether this employee has been invited / activated. Never returns the
+    token hash."""
+    _assert_employee_scope(_db(), current_user, employee_id)
+    return api_response(True, employee_portal_service.portal_status(
+        current_user["firm_id"], employee_id, actor=current_user))

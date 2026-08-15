@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.auth import get_jwt_user
 from core.portal_auth import get_current_portal_client
-from services import portal_access_service
+from services import portal_access_service, employee_portal_service
 
 router = APIRouter(prefix="/api/portal", tags=["portal_self"])
 
@@ -77,3 +77,30 @@ def portal_dashboard(portal: dict = Depends(get_current_portal_client)):
         "contact": {"email": portal["email"], "name": portal["name"]},
         "sections": _DASHBOARD_SECTIONS,
     })
+
+
+# ─── Employee portal activation ──────────────────────────────────────────────
+
+class AcceptEmployeeInviteBody(BaseModel):
+    token: str
+
+
+@router.post("/employee/accept-invite")
+def accept_employee_invite(body: AcceptEmployeeInviteBody,
+                           jwt_user: dict = Depends(get_jwt_user)):
+    """Bind the caller's Supabase identity to the employee they were invited as.
+
+    Deliberately guarded by get_jwt_user ONLY — not rbac, and not
+    get_current_portal_client. An employee is neither firm staff nor a client
+    portal contact: before this call succeeds they have no row in `users` and no
+    client_portal_users membership, so every other dependency in this codebase
+    would reject them. The invite token is what authorises the bind; the JWT
+    only says which identity to bind it to.
+
+    Runs through the backend's service-role client because RLS cannot help here:
+    migration 262 scopes an employee's own row on auth_user_id AND
+    portal_enabled, and at this moment neither is set yet.
+    """
+    result = employee_portal_service.accept_employee_invite(
+        body.token, jwt_user.get("auth_user_id"), jwt_user.get("email"))
+    return api_response(True, result)
