@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: caflow-api
+    name: practicesync-api
     runtime: docker
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: ./apps/api

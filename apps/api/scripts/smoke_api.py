@@ -37,7 +37,7 @@ WHAT IT IS NOT
     deployment rather than a seeded test database.
 
 RUNNING IT
-    SMOKE_BASE_URL=https://practicesync-ai.onrender.com \
+    SMOKE_BASE_URL=https://practicesync-api.onrender.com \
     SUPABASE_URL=https://<project>.supabase.co \
     SUPABASE_ANON_KEY=<anon key> \
     SMOKE_EMAIL=<user> SMOKE_PASSWORD=<password> \
