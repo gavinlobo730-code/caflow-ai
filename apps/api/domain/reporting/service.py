@@ -38,8 +38,15 @@ def _passbook_mode() -> str:
                user-facing risk before flipping.
       on     — serve the fast passbook result (falling back to legacy if the fast
                path errors, so a missing/stale cache degrades to slow, never wrong).
-    Applies to ACCRUAL Trial Balance / P&L / Balance Sheet only; cash basis,
-    Cash Flow and the ledger drill-down always use the legacy engine.
+    Applies to ACCRUAL Trial Balance / P&L / Balance Sheet AND the Cash Flow
+    Statement, and only when the report is scoped to ONE client (the buckets are
+    per-client — see _passbook_applicable). Cash basis and the ledger drill-down
+    always use the legacy engine.
+
+    Cash Flow joined the list later than the other three: it uses the buckets
+    only for opening and closing cash (cumulative per-account sums as of a date,
+    which is exactly what a bucket is), while the statement body still reads raw
+    posted entries — now bounded to the reporting window instead of all history.
 
     DEFAULTS TO "on": the buckets are backfilled + trigger-maintained and were
     verified paise-identical to the raw ledger, and the legacy fall-back makes
@@ -95,8 +102,31 @@ class ReportingService:
         ]
 
     # ── Passbook (fast accrual) plumbing ───────────────────────────────────────
-    def _passbook_applicable(self, basis: str) -> bool:
-        return (basis == "accrual" and _passbook_mode() != "off"
+    def _passbook_applicable(self, basis: str, client_id: Optional[str]) -> bool:
+        """
+        client_id is REQUIRED, and its absence is not a detail — it was a
+        wrong-numbers bug.
+
+        account_period_balances.client_id is NOT NULL, so the buckets are
+        strictly per-client, and fetch_buckets filters .eq("client_id", ...).
+        A firm-wide report (client_id=None — every router here treats that as
+        "all clients", and _entries/_accounts honour it by simply not filtering)
+        therefore matched NO buckets and produced a report of ZEROES, while the
+        legacy replay for the same request returned the real figures.
+
+        Silently, too: an empty bucket set raises nothing, so _serve's fallback
+        never fired and "on" mode served the empty result as if it were the
+        answer. Found by testing firm-wide Trial Balance against its own legacy
+        path — 0 versus 138000 on the fixtures.
+
+        Serving a firm-wide report from per-client buckets would mean summing
+        every client's buckets, which is a different query and a different
+        correctness argument. Until someone needs it, the honest gate is to fall
+        back to the replay: slower for a report nothing in the app currently
+        asks for, and right.
+        """
+        return (basis == "accrual" and client_id is not None
+                and _passbook_mode() != "off"
                 and isinstance(self.source, SupabaseLedgerSource))
 
     def _passbook_lines(self, firm_id, client_id, start, end, buckets):
@@ -144,7 +174,7 @@ class ReportingService:
             snap = self.source.snapshot(firm_id, client_id, None, as_of)
             return builders.trial_balance(self._lines(snap, basis), snap.accounts, as_of, basis)
 
-        if not self._passbook_applicable(basis):
+        if not self._passbook_applicable(basis, client_id):
             return legacy()
 
         def fast():
@@ -183,7 +213,7 @@ class ReportingService:
             snap = self.source.snapshot(firm_id, client_id, start, end)
             return builders.profit_loss(self._lines(snap, basis), snap.accounts, start, end, basis)
 
-        if not self._passbook_applicable(basis):
+        if not self._passbook_applicable(basis, client_id):
             return legacy()
 
         def fast():
@@ -200,7 +230,7 @@ class ReportingService:
             snap = self.source.snapshot(firm_id, client_id, None, as_of)
             return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
 
-        if not self._passbook_applicable(basis):
+        if not self._passbook_applicable(basis, client_id):
             return legacy()
 
         def fast():
@@ -287,7 +317,7 @@ class ReportingService:
         # same numbers either way (see the docstring) — legacy reads raw posted
         # entries and hardcodes "accrual" for both cash balances — so the
         # accrual-only passbook is applicable whatever the caller asked for.
-        if not self._passbook_applicable("accrual"):
+        if not self._passbook_applicable("accrual", client_id):
             return legacy()
 
         def fast():

@@ -36,9 +36,18 @@ EXACTNESS
     months of raw data regardless of how deep the history is.
 
     Scope: accrual basis only (the default + statutory view, and the one that was
-    slow). Cash basis and the Cash Flow statement need entry-level detail that a
-    per-account monthly sum cannot reconstruct, so they stay on the existing
-    engine. Integer paise throughout — never float.
+    slow), and only for a report scoped to ONE client — the rows are keyed by
+    client_id NOT NULL, so a firm-wide report cannot be answered from them at all
+    (ReportingService._passbook_applicable enforces that). Cash basis stays on the
+    existing engine: it needs entry-level detail a per-account monthly sum cannot
+    reconstruct. Integer paise throughout — never float.
+
+    The Cash Flow statement is a PARTIAL user, and the distinction matters. Its
+    body genuinely needs entry-level detail, so it still replays raw posted
+    entries — but bounded to the reporting window rather than all history. What it
+    takes from here is opening and closing cash, which are cumulative per-account
+    sums as of a date: precisely what a bucket is, and the same quantity Trial
+    Balance is already served from.
 """
 from __future__ import annotations
 
