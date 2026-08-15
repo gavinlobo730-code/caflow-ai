@@ -24,6 +24,31 @@ services:
     # a trivial read. Three attempts to find the cost in application code all
     # failed, because it was never in the code.
     #
+    # WHAT IT ACTUALLY BOUGHT, measured after the cutover on the same client,
+    # both deployments running as `authenticated` with RLS enforced:
+    #
+    #                           Oregon    Singapore
+    #     cash-flow             13.51 s     10.41 s
+    #     clients/obligations    2.81 s      1.01 s
+    #     currencies/policy      2.29 s      1.14 s
+    #     trial-balance          1.99 s      1.31 s
+    #     profit-loss            2.09 s      1.50 s
+    #     identity/permissions   1.00 s      0.89 s
+    #     total                 23.69 s     16.26 s     ~1.46x
+    #
+    # "Both running as `authenticated`" is the whole caveat. The first
+    # post-cutover run showed cash-flow at 2.82 s and was reported as a 4.8x
+    # win — measured while USE_USER_JWT was unset, so that instance was querying
+    # as `service_role` with RLS BYPASSED while Oregon was paying for it. It was
+    # a comparison between a deployment doing less work and one doing more.
+    # Evaluating RLS across ~7,490 journal lines is real work and is correct to
+    # pay for. Any future region or infrastructure comparison must hold the DB
+    # role fixed, or it is measuring the security posture, not the change.
+    #
+    # Distance is no longer cash-flow's dominant cost. The next levers are
+    # narrowing the entries projection to the three fields builders.cash_flow
+    # reads, and a composite index on (firm_id, client_id, entry_date).
+    #
     # Render cannot move a service between regions, so changing this means
     # recreating the service. Anyone tempted to drop it: the cost is not a
     # constant factor on one endpoint, it is a floor under every request.
