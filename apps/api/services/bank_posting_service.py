@@ -15,6 +15,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_paging import fetch_all
+
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -696,11 +698,24 @@ class BankPostingService:
         }
 
     # ── B.3.1 queues ──────────────────────────────────────────────────────────
+    def _all_txns(self, db, firm_id, client_id: Optional[str], *, label: str) -> list[dict]:
+        """Every transaction for the scope, PAGED, sorted by date here.
+
+        The three queues below each read the whole set and filter in Python, so
+        an unpaged read did not make them slow — it made them WRONG. Past
+        PostgREST's ~1000-row cap the rows simply were not there to filter, so
+        "Ready to Post" quietly stopped listing work that was ready, and nothing
+        distinguished that from having none.
+        """
+        def _page():
+            q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
+            return q.eq("client_id", client_id) if client_id else q
+        rows = fetch_all(_page, label=label)
+        rows.sort(key=lambda t: (str(t.get("transaction_date") or ""), str(t.get("id"))))
+        return rows
+
     def ready_to_post(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
-        q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.order("transaction_date").execute().data or []
+        rows = self._all_txns(db, firm_id, client_id, label="posting.ready_to_post")
         out = [t for t in rows
                if t.get("category") and not t.get("posted_journal_id")
                and t.get("match_status") not in ("posted", "ignored")
@@ -745,20 +760,15 @@ class BankPostingService:
 
     def pending(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
         """Draft journal created, awaiting approval (linked journal but not yet posted)."""
-        q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.order("transaction_date").execute().data or []
+        rows = self._all_txns(db, firm_id, client_id, label="posting.pending")
         return [t for t in rows
                 if t.get("posted_journal_id") and not t.get("posted_at")
                 and t.get("match_status") != "posted"]
 
     def posted(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
         """Truly posted — the draft was approved (posted_at set)."""
-        q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.order("transaction_date", desc=True).execute().data or []
+        rows = self._all_txns(db, firm_id, client_id, label="posting.posted")
+        rows.reverse()  # newest first, as before
         return [t for t in rows if t.get("posted_at")]
 
 

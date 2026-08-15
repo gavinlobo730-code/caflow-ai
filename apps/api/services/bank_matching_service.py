@@ -15,6 +15,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_paging import fetch_all
+
 from domain.banking import (
     Candidate, rank_suggestions, match_rule, is_valid_category, CATEGORIES,
     NEAR_MATCH_BAND_BPS, parse_narration, describe_narration,
@@ -264,10 +266,14 @@ class BankMatchingService:
     def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched") -> list[dict]:
         if status not in self._QUEUE_STATUSES:
             raise HTTPException(status_code=422, detail="Invalid queue status.")
-        q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
-        if client_id:
-            q = q.eq("client_id", client_id)
-        txns = q.order("transaction_date").execute().data or []
+        def _page():
+            q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
+            return q.eq("client_id", client_id) if client_id else q
+        # PAGED, then sorted here. Unpaged, a client with more than ~1000
+        # statement lines saw a queue that silently stopped at 1000 — work that
+        # simply was not on screen to be done.
+        txns = fetch_all(_page, label="matching.queue")
+        txns.sort(key=lambda t: (str(t.get("transaction_date") or ""), str(t.get("id"))))
 
         # View filter (Python-side — avoids NULL-filter quirks; bounded per client).
         def keep(t: dict) -> bool:
