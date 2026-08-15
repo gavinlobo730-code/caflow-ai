@@ -71,6 +71,14 @@ def _day_before(iso: str) -> str:
     return (date.fromisoformat(iso[:10]) - timedelta(days=1)).isoformat()
 
 
+def _bank_total(lines, bank_ids) -> int:
+    """Cash/bank balance (integer paise — never float) from a projected line
+    stream. One function so the legacy replay and the passbook path cannot drift
+    on the summation itself; only the line SOURCE differs between them, which is
+    what test_cash_flow_passbook_equivalence pins."""
+    return sum(l.debit_paise - l.credit_paise for l in lines if l.account_id in bank_ids)
+
+
 class ReportingService:
     def __init__(self, source: LedgerSource):
         self.source = source
@@ -91,15 +99,22 @@ class ReportingService:
         return (basis == "accrual" and _passbook_mode() != "off"
                 and isinstance(self.source, SupabaseLedgerSource))
 
+    def _passbook_lines(self, firm_id, client_id, start, end, buckets):
+        """ProjectedLines for [start, end] from ALREADY-FETCHED buckets plus at
+        most two partial edge months. Split out from _passbook_accrual_lines so a
+        caller needing two different windows (cash flow: opening and closing cash)
+        pays for the bucket read once — and, more importantly, so both windows go
+        through exactly the same arithmetic."""
+        edge = self.source.fetch_edge_month_entries(firm_id, client_id, start, end)
+        return balance_cache.project_lines(buckets, start, end, edge)
+
     def _passbook_accrual_lines(self, firm_id, client_id, start, end):
         """Accrual accounts + ProjectedLines for [start, end] read from the
         passbook (small buckets + at most two edge months) instead of the full
         posted history."""
         accounts = self.source._accounts(firm_id, client_id)
         buckets = self.source.fetch_buckets(firm_id, client_id)
-        edge = self.source.fetch_edge_month_entries(firm_id, client_id, start, end)
-        lines = balance_cache.project_lines(buckets, start, end, edge)
-        return accounts, lines
+        return accounts, self._passbook_lines(firm_id, client_id, start, end, buckets)
 
     def _serve(self, ctx: tuple, fast, legacy):
         """Route a report through the passbook according to the rollout mode.
@@ -225,18 +240,77 @@ class ReportingService:
         the accrual P&L. `basis` is accepted for API symmetry and echoed only.
         Opening and closing cash are computed INDEPENDENTLY from the ledger, so the
         reconciliation is a real check, not a tautology.
+
+        WHY THIS ONE HAS A PASSBOOK PATH TOO (reporting perf)
+            Everything above computes what it needs from the ledger; only the
+            SHAPE of the read differs. Trial Balance, P&L and Balance Sheet have
+            been served from the passbook since it was turned on, so they stopped
+            calling source.snapshot() — and this statement was left as the only
+            report still doing an UNBOUNDED full-history fetch. Measured in
+            production on a client with 12,836 entries / 32,936 lines:
+            profit-loss 2.15s, trial-balance 2.06s, cash-flow 54.34s. Same
+            client, same request, same nominal code path.
+
+            What this needs is narrower than what that fetch returns:
+              * entries only within [start, end] — the classification of cash
+                legs and the indirect reconciliation are period quantities, so
+                the fetch can be date-bounded instead of "all history";
+              * opening and closing cash — cumulative per-account sums as of a
+                date, which is precisely what the passbook's monthly buckets
+                hold, and exactly the quantity Trial Balance already serves from
+                them;
+              * nothing at all from invoices / bills / receipts / payments /
+                credit notes / allocations. Six of _base()'s seven fetches (and
+                its chunked, serial allocations tail) are dead weight here: the
+                statement reads raw posted entries, never the cash-basis
+                projector, on either basis.
+
+            Opening and closing cash stay INDEPENDENT of the statement body, so
+            the reconciliation remains a real check rather than a tautology.
+            _serve() keeps the same safety as the other three: a fast path that
+            errors degrades to the legacy replay, never to a wrong number.
         """
         start = start_date or _fy_start()
         end = end_date or ist_today().isoformat()
-        period_snap = self.source.snapshot(firm_id, client_id, start, end)
-        bank_ids = AccountResolver(period_snap.accounts).bank_ids
-        entries = period_snap.entries_in_range
-        opening_cash = self._cash_balance(firm_id, client_id, _day_before(start), "accrual")
-        closing_cash = self._cash_balance(firm_id, client_id, end, "accrual")
-        return builders.cash_flow(
-            entries, period_snap.accounts, bank_ids,
-            start, end, opening_cash, closing_cash, basis,
-        )
+
+        def legacy():
+            period_snap = self.source.snapshot(firm_id, client_id, start, end)
+            bank_ids = AccountResolver(period_snap.accounts).bank_ids
+            opening_cash = self._cash_balance(firm_id, client_id, _day_before(start), "accrual")
+            closing_cash = self._cash_balance(firm_id, client_id, end, "accrual")
+            return builders.cash_flow(
+                period_snap.entries_in_range, period_snap.accounts, bank_ids,
+                start, end, opening_cash, closing_cash, basis,
+            )
+
+        # "accrual" is passed literally, not `basis`: this statement computes the
+        # same numbers either way (see the docstring) — legacy reads raw posted
+        # entries and hardcodes "accrual" for both cash balances — so the
+        # accrual-only passbook is applicable whatever the caller asked for.
+        if not self._passbook_applicable("accrual"):
+            return legacy()
+
+        def fast():
+            accounts = self.source._accounts(firm_id, client_id)
+            bank_ids = AccountResolver(accounts).bank_ids
+            buckets = self.source.fetch_buckets(firm_id, client_id)
+
+            def cash_as_of(as_of: str) -> int:
+                return _bank_total(
+                    self._passbook_lines(firm_id, client_id, None, as_of, buckets), bank_ids)
+
+            # Sorted by entry_date over an id-ordered fetch, which is what the
+            # legacy snapshot does — same list, same order, from a bounded read.
+            entries = sorted(
+                self.source._entries(firm_id, client_id, date_from=start, date_to=end).values(),
+                key=lambda e: e.entry_date,
+            )
+            return builders.cash_flow(
+                entries, accounts, bank_ids, start, end,
+                cash_as_of(_day_before(start)), cash_as_of(end), basis,
+            )
+
+        return self._serve(("cash_flow", firm_id, client_id, start, end), fast, legacy)
 
     def _cash_balance(self, firm_id: str, client_id: Optional[str],
                       as_of: str, basis: str) -> int:
@@ -244,12 +318,7 @@ class ReportingService:
         stream as the report. Cash legs are basis-invariant, so accrual and cash
         agree; computing on the requested basis keeps the tie-out exact."""
         snap = self.source.snapshot(firm_id, client_id, None, as_of)
-        bank_ids = AccountResolver(snap.accounts).bank_ids
-        total = 0
-        for ln in self._lines(snap, basis):
-            if ln.account_id in bank_ids:
-                total += ln.debit_paise - ln.credit_paise
-        return total
+        return _bank_total(self._lines(snap, basis), AccountResolver(snap.accounts).bank_ids)
 
 
 def mock_ledger_source() -> InMemoryLedgerSource:

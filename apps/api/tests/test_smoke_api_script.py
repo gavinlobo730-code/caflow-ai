@@ -48,6 +48,60 @@ def test_every_non_2xx_fails(status):
     assert str(status) in line
 
 
+def test_a_failure_reports_the_reason_not_just_the_status():
+    """The status code alone is not a diagnosis. /api/identity/permissions can
+    403 because the user row is missing, the account is disabled, the firm is
+    suspended, or MFA is unsatisfied — four different problems, one number. The
+    server names which; printing it is the whole difference."""
+    body = {"detail": "Multi-factor authentication required for this action."}
+    with _client(lambda req: httpx.Response(403, json=body)) as c:
+        ok, line = smoke_api.run_check(
+            c, "http://x", smoke_api.Check("perms", "/api/identity/permissions", 8), "t")
+    assert not ok
+    assert "Multi-factor authentication required" in line
+
+
+def test_the_reason_comes_from_this_repos_response_contract_too():
+    """All API responses are {success, data, error} — the failure text lives in
+    `error`, not `detail`, for everything that goes through api_response()."""
+    body = {"success": False, "data": None, "error": "Deployed code depends on columns"}
+    with _client(lambda req: httpx.Response(503, json=body)) as c:
+        _ok, line = smoke_api.run_check(c, "http://x", smoke_api.Check("h", "/health", 5), "t")
+    assert "Deployed code depends on columns" in line
+
+
+@pytest.mark.parametrize("payload", [
+    {"kwargs": {"text": "<html>502 Bad Gateway</html>"}},          # not JSON at all
+    {"kwargs": {"json": ["a", "list"]}},                            # JSON, not an object
+    {"kwargs": {"json": {"error": None, "detail": ""}}},            # present but empty
+    {"kwargs": {"json": {}}},                                       # no fields
+])
+def test_an_unreadable_error_body_still_fails_cleanly(payload):
+    """A proxy's HTML error page must not turn a reported failure into a crash —
+    the check still has to say 502, which is the thing worth knowing."""
+    with _client(lambda req: httpx.Response(502, **payload["kwargs"])) as c:
+        ok, line = smoke_api.run_check(c, "http://x", smoke_api.Check("h", "/health", 5), "t")
+    assert not ok
+    assert "502" in line
+
+
+def test_a_successful_response_body_is_never_read():
+    """The reason field is for failures only. A 200 body is a client's ledger,
+    and this script's output goes to a CI log."""
+    ledger = {"success": True, "data": {"detail": "PRIVATE", "error": "PRIVATE"}, "error": None}
+    with _client(lambda req: httpx.Response(200, json=ledger)) as c:
+        ok, line = smoke_api.run_check(c, "http://x", smoke_api.Check("h", "/health", 5), "t")
+    assert ok
+    assert "PRIVATE" not in line
+
+
+def test_the_reason_is_truncated():
+    """A stack trace rendered into `detail` should not become the CI log."""
+    with _client(lambda req: httpx.Response(500, json={"detail": "x" * 5000})) as c:
+        _ok, line = smoke_api.run_check(c, "http://x", smoke_api.Check("h", "/health", 5), "t")
+    assert len(line) < 400, "an unbounded error body reached the output"
+
+
 def test_a_2xx_that_took_too_long_fails(monkeypatch):
     """The whole point. HTTP 200 in 57 seconds is a broken page, and nothing
     else in this repo can see it."""
