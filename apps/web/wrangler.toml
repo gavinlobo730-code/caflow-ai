@@ -5,4 +5,7 @@ pages_build_output_dir = "out"
 [vars]
 NEXT_PUBLIC_SUPABASE_URL = "https://pbgoeyjvmllrafzavkgx.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZ29leWp2bWxscmFmemF2a2d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyOTU5MDIsImV4cCI6MjA5NTg3MTkwMn0.FdSrP-N175EXIwxYFc2Ahl5peeKSf8L6tiIZA15-aZ8"
-NEXT_PUBLIC_API_URL = "https://practicesync-ai.onrender.com"
+# The FastAPI backend. Beware the near-collision: the Render service is
+# practicesync-API (Singapore, current) and the retired one was
+# practicesync-AI (Oregon) — one character apart. Copy, do not retype.
+NEXT_PUBLIC_API_URL = "https://practicesync-api.onrender.com"

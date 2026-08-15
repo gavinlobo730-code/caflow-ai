@@ -28,6 +28,30 @@ on:
     # infrequent enough that a free-tier instance is not kept awake by CI.
     - cron: "17 */6 * * *"
   workflow_dispatch:
+    inputs:
+      base_url:
+        # WHY THIS OVERRIDE EXISTS
+        #     Render cannot move a service between regions, so changing region
+        #     means standing up a SECOND service and cutting over to it. The
+        #     whole point of that window is to measure the candidate BEFORE any
+        #     user traffic reaches it — and the only instrument that measures it
+        #     is this workflow.
+        #
+        #     Without an override the only way to point the smoke check at the
+        #     candidate is to edit the SMOKE_BASE_URL secret, which silently
+        #     re-aims the SCHEDULED runs too. The deployment users are actually
+        #     on then stops being watched, during the exact window when someone
+        #     is changing infrastructure around it. That is backwards.
+        #
+        #     With the override, scheduled runs keep watching the live
+        #     deployment and a human can smoke a candidate on demand. The secret
+        #     changes once, at cutover, when the candidate has earned it.
+        description: >-
+          API to smoke, e.g. https://practicesync-api.onrender.com. Leave blank
+          to use the SMOKE_BASE_URL secret (the live deployment). Set it to test
+          a candidate deployment before cutting over to it.
+        required: false
+        type: string
 
 jobs:
   smoke:
@@ -46,7 +70,10 @@ jobs:
       - name: Smoke the API
         working-directory: apps/api
         env:
-          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          # `inputs.base_url` is empty on a scheduled run, so the secret — the
+          # live deployment — is what the schedule keeps watching. Only an
+          # explicit dispatch input re-aims it.
+          SMOKE_BASE_URL: ${{ inputs.base_url || secrets.SMOKE_BASE_URL }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
