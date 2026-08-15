@@ -318,23 +318,66 @@ function AccountingDashboard({
   });
   const [recentEntries, setRecentEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "the fetch failed" from "this client genuinely has no
+  // activity yet". Both used to render as ₹0 across every tile, which is the
+  // worst possible way to be wrong on an accounting dashboard.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     async function load() {
       setLoading(true);
+      setLoadFailed(false);
       const supabase = getSupabaseClient();
       const { start, end } = fyDateRange(financialYear);
 
       // Headline figures come from the SINGLE backend reporting engine — never
       // recomputed in the browser (Phase 3: frontend renders only).
+      //
+      // All five requests go out together. They used to be four sequential
+      // steps — P&L + cash flow, then the unmatched-bank count, then recent
+      // entries, then the FY journal count — and none of the last three needs
+      // anything the others return, so the dashboard sat through four round
+      // trips to paint one screen. This is the page a CA lands on first.
+      //
+      // The two report calls keep a .catch each, which is what the try/catch
+      // that used to wrap only them gave them: a reporting engine that is
+      // briefly unavailable leaves its own tiles at zero and lets the rest of
+      // the dashboard load. Merging them into the shared Promise.all without
+      // that would have made an unrelated P&L timeout blank the journal list
+      // too. The Supabase calls report failure through `error` instead of
+      // rejecting, so they need no equivalent — hence the explicit check below.
       let revenue = 0, expenses = 0, cash = 0;
       try {
-        const [plRes, cfRes] = await Promise.all([
-          api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>,
-          api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>,
+        const [plRes, cfRes, unmatched, recentRes, journalCount] = await Promise.all([
+          (api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>).catch(() => null),
+          (api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>).catch(() => null),
+          // Unmatched bank transactions
+          supabase
+            .from("bank_transactions")
+            .select("id", { count: "exact", head: true })
+            .eq("client_id", clientId)
+            .eq("match_status", "unmatched"),
+          // Recent journal entries
+          supabase
+            .from("journal_entries")
+            .select("id, entry_date, reference_no, narration, entry_type, is_posted")
+            .eq("client_id", clientId)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false })
+            .limit(5),
+          // Journal count for FY
+          supabase
+            .from("journal_entries")
+            .select("id", { count: "exact", head: true })
+            .eq("client_id", clientId)
+            .eq("is_posted", true)
+            .is("deleted_at", null)
+            .gte("entry_date", start)
+            .lte("entry_date", end),
         ]);
-        if (plRes.success) {
+
+        if (plRes?.success) {
           revenue = plRes.data.revenue?.total_paise ?? 0;
           // Cost of Goods Sold lives in its own section, separate from
           // operating_expenses (see PLApiData above) — must be added in or the
@@ -342,43 +385,34 @@ function AccountingDashboard({
           // P&L tab did.
           expenses = (plRes.data.cost_of_sales?.total_paise ?? 0) + (plRes.data.operating_expenses?.total_paise ?? 0);
         }
-        if (cfRes.success) cash = cfRes.data.closing_cash_paise ?? 0;
-      } catch { /* transient API error — leave zeros rather than recomputing client-side */ }
+        if (cfRes?.success) cash = cfRes.data.closing_cash_paise ?? 0;
 
-      // Unmatched bank transactions
-      const { count: unmatchedCount } = await supabase
-        .from("bank_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", clientId)
-        .eq("match_status", "unmatched");
+        if (unmatched.error || recentRes.error || journalCount.error) throw new Error("dashboard query failed");
 
-      // Recent journal entries
-      const { data: recent } = await supabase
-        .from("journal_entries")
-        .select("id, entry_date, reference_no, narration, entry_type, is_posted")
-        .eq("client_id", clientId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      // Journal count for FY
-      const { count: jCount } = await supabase
-        .from("journal_entries")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", clientId)
-        .eq("is_posted", true)
-        .is("deleted_at", null)
-        .gte("entry_date", start)
-        .lte("entry_date", end);
-
-      setStats({ revenue_paise: revenue, expenses_paise: expenses, cash_paise: cash, unmatched_bank: unmatchedCount ?? 0, journal_count: jCount ?? 0 });
-      setRecentEntries((recent as JournalEntry[]) ?? []);
-      setLoading(false);
+        setStats({
+          revenue_paise: revenue, expenses_paise: expenses, cash_paise: cash,
+          unmatched_bank: unmatched.count ?? 0, journal_count: journalCount.count ?? 0,
+        });
+        setRecentEntries((recentRes.data as JournalEntry[]) ?? []);
+      } catch {
+        setStats({ revenue_paise: 0, expenses_paise: 0, cash_paise: 0, unmatched_bank: 0, journal_count: 0 });
+        setRecentEntries([]);
+        setLoadFailed(true);
+      } finally {
+        // In a finally, not on the happy path: this loader had no error
+        // handling at all, so a rejected request left it with setLoading(true)
+        // still in effect and the skeleton spun for as long as the CA cared to
+        // wait. 28 other loaders across the app are still written that way —
+        // see the note in the commit; they are a separate pass, not this one.
+        setLoading(false);
+      }
     }
     load();
   }, [clientId, financialYear]);
 
   const netPL = stats.revenue_paise - stats.expenses_paise;
+  /** A figure, or "—" when the load failed. Never a zero we cannot stand behind. */
+  const unknownIfFailed = (value: string) => (loadFailed ? "—" : value);
 
   if (loading) return (
     <div className="space-y-3 max-w-4xl mx-auto">
@@ -393,22 +427,34 @@ function AccountingDashboard({
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
+      {/* Say so, rather than presenting a failed load as a client with no
+          activity. Zeros on an accounting dashboard are a claim about the
+          books, and this one would be false. */}
+      {loadFailed && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          These figures could not be loaded, so they are not shown. Check your
+          connection and reopen this tab.
+        </div>
+      )}
+
       {/* Stat strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashCard label="Revenue" value={fmt(stats.revenue_paise)} accent="green" action={() => onNavigate("pl")} />
-        <DashCard label="Expenses" value={fmt(stats.expenses_paise)} accent="red" action={() => onNavigate("pl")} />
+        <DashCard label="Revenue" value={unknownIfFailed(fmt(stats.revenue_paise))} accent="green" action={() => onNavigate("pl")} />
+        <DashCard label="Expenses" value={unknownIfFailed(fmt(stats.expenses_paise))} accent="red" action={() => onNavigate("pl")} />
         <DashCard
           label={netPL >= 0 ? "Net Profit" : "Net Loss"}
-          value={fmt(Math.abs(netPL))}
+          value={unknownIfFailed(fmt(Math.abs(netPL)))}
           accent={netPL >= 0 ? "emerald" : "orange"}
           action={() => onNavigate("pl")}
         />
-        <DashCard label="Cash & Bank" value={fmt(stats.cash_paise)} accent="blue" action={() => onNavigate("balance-sheet")} />
+        <DashCard label="Cash & Bank" value={unknownIfFailed(fmt(stats.cash_paise))} accent="blue" action={() => onNavigate("balance-sheet")} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <DashCard label="Posted Entries (FY)" value={String(stats.journal_count)} accent="gray" action={() => onNavigate("journal")} />
-        <DashCard label="Unmatched Bank Txns" value={String(stats.unmatched_bank)} accent={stats.unmatched_bank > 0 ? "amber" : "gray"} action={() => router.push(`/clients/${clientId}/bank/`)} />
+        <DashCard label="Posted Entries (FY)" value={unknownIfFailed(String(stats.journal_count))} accent="gray" action={() => onNavigate("journal")} />
+        <DashCard label="Unmatched Bank Txns" value={unknownIfFailed(String(stats.unmatched_bank))} accent={!loadFailed && stats.unmatched_bank > 0 ? "amber" : "gray"} action={() => router.push(`/clients/${clientId}/bank/`)} />
+        {/* Not behind the placeholder: the chart of accounts has its own loader
+            and its own error, so it is still trustworthy when this one failed. */}
         <DashCard label="Accounts" value={String(accounts.length)} accent="gray" action={() => onNavigate("coa")} />
       </div>
 
