@@ -20,7 +20,7 @@ import {
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
-import { splitPeriodColumns, periodSplitNotice, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 
@@ -602,6 +602,19 @@ function JournalEntryForm({
   // still one click away via this toggle, or always visible per-account in
   // the Trial Balance / Ledger drill-down.
   const [showSystemEntries, setShowSystemEntries] = useState(false);
+
+  // The date window that SCOPES THE SERVER QUERY — which entries load at all —
+  // exactly as Sales Invoices and Purchase Bills do it. Search, sort and
+  // pagination over what loaded stay with the DataTable below. Before this the
+  // tab pulled a client's ENTIRE ledger every visit; 12,836 entries with their
+  // lines embedded is not a page load, it is a report.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const journalRange = useMemo(
+    () => resolvePeriodRange(periodMode, financialYear, { from: customFrom, to: customTo }),
+    [periodMode, customFrom, customTo, financialYear],
+  );
   const visibleEntries = useMemo(
     () => (showSystemEntries ? entries : entries.filter((e) => e.source_type === "manual")),
     [entries, showSystemEntries]
@@ -629,7 +642,9 @@ function JournalEntryForm({
         // amount column, which sums debit_paise across the entry's lines).
         .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
         .eq("client_id", clientId)
-        .is("deleted_at", null));
+        .is("deleted_at", null)
+        .gte("entry_date", journalRange.start)
+        .lte("entry_date", journalRange.end));
       if (fetchErr) throw fetchErr;
       // Display order, applied after the walk: keyset pages by id, so the
       // newest-first ordering the table wants is restored here.
@@ -644,7 +659,7 @@ function JournalEntryForm({
     } finally {
       setEntriesLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, journalRange.start, journalRange.end]);
 
   useEffect(() => { loadEntries(); }, [loadEntries, success]);
 
@@ -836,6 +851,18 @@ function JournalEntryForm({
           onRetry={loadEntries}
           onRefresh={loadEntries}
           searchPlaceholder="Search by reference or narration…"
+          toolbarExtra={
+            <PeriodPicker
+              mode={periodMode}
+              onModeChange={setPeriodMode}
+              financialYear={financialYear}
+              customFrom={customFrom}
+              customTo={customTo}
+              onCustomFromChange={setCustomFrom}
+              onCustomToChange={setCustomTo}
+              ariaLabel="Date range"
+            />
+          }
           initialSort={{ key: "entry_date", dir: "desc" }}
           exportFilename="journal"
           persistKey="accounting.journal"
