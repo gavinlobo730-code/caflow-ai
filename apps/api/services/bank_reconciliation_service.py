@@ -18,6 +18,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_paging import fetch_all
+
 from domain.banking import reconciliation as recon
 from services.timeline_service import timeline_service
 
@@ -60,8 +62,12 @@ class BankReconciliationService:
         stmt_ids = self._account_statement_ids(db, firm_id, bank_account_id)
         if not stmt_ids:
             return []
-        rows = (db.table("bank_transactions").select("*")
-                .eq("firm_id", firm_id).in_("statement_id", stmt_ids).execute().data or [])
+        # PAGED: a reconciliation that only saw the first 1000 lines would tie
+        # out against part of the statement and call the rest a difference.
+        rows = fetch_all(
+            lambda: (db.table("bank_transactions").select("*")
+                     .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
+            label="reconciliation._posted_account_txns")
         return [t for t in rows if t.get("posted_journal_id")]
 
     def _validate_bank_account(self, db, firm_id: str, client_id: str, bank_account_id: str) -> dict:

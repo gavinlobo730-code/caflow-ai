@@ -25,6 +25,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_paging import fetch_all
 from domain.banking.register import (
     build_register, first_divergence, summarise, RegisterLine,
     CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
@@ -64,6 +65,12 @@ class BankRegisterService:
         disagree with the statement, which is the one thing a register must
         never do. (The reconciliation service filters to posted for a different
         and correct reason — it ties out the BOOKS.)
+
+        PAGED, because "ALL of them" has to be true for the running balance to
+        mean anything. Unpaged this stopped at PostgREST's ~1000-row cap without
+        saying so, and the balance was then computed over part of the account —
+        every figure in the register wrong, and wrong quietly, on any client
+        with more than about two years of statement lines.
         """
         stmts = (db.table("bank_statements").select("id")
                  .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id)
@@ -71,9 +78,11 @@ class BankRegisterService:
         stmt_ids = [s["id"] for s in stmts]
         if not stmt_ids:
             return []
-        return (db.table("bank_transactions").select("*")
-                .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
-                .execute().data) or []
+        return fetch_all(
+            lambda: (db.table("bank_transactions").select("*")
+                     .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
+            label="register._txns",
+        )
 
     def _reconciliation_statuses(self, db, firm_id: str, txns: list[dict]) -> dict:
         """reconciliation_id -> status, for the cleared column.
