@@ -572,6 +572,26 @@ export const api = {
       request(`/api/payroll/runs/${runId}/disburse`, { method: "POST", body: JSON.stringify(body) }),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
+
+    // ── Employee portal provisioning ──────────────────────────────────────
+    // The activation link is returned ONCE, here. Only its sha256 is stored,
+    // so it cannot be fetched again — a caller that needs to re-send must
+    // re-invite, which mints a fresh token and invalidates this one.
+    invitePortal: (employeeId: string, email: string) =>
+      request<ApiResp<{ employee_id: string; email: string;
+                        token: string; activation_url: string }>>(
+        `/api/payroll/employees/${employeeId}/portal-invite`,
+        { method: "POST", body: JSON.stringify({ email }) }),
+    revokePortal: (employeeId: string) =>
+      request<ApiResp<{ employee_id: string; portal_enabled: boolean }>>(
+        `/api/payroll/employees/${employeeId}/portal-revoke`, { method: "POST" }),
+    portalStatus: (employeeId: string) =>
+      request<ApiResp<{ employee_id: string; email: string | null;
+                        portal_enabled: boolean; activated: boolean;
+                        invite_pending: boolean; invited_at: string | null;
+                        invite_expires_at: string | null;
+                        activated_at: string | null }>>(
+        `/api/payroll/employees/${employeeId}/portal-status`),
   },
   invoices: {
     downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),
@@ -744,6 +764,13 @@ export const api = {
     acceptInvite: (token: string) =>
       request<ApiResp<{ client_id: string; name?: string }>>(
         "/api/portal/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
+    // The EMPLOYEE equivalent. A separate endpoint, not a variant of the one
+    // above: an employee is neither firm staff nor a client contact, so it is
+    // guarded by the JWT alone and the token is what authorises the bind.
+    acceptEmployeeInvite: (token: string) =>
+      request<ApiResp<{ employee_id: string; name?: string; client_id?: string }>>(
+        "/api/portal/employee/accept-invite",
+        { method: "POST", body: JSON.stringify({ token }) }),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).
     me: (clientId?: string) =>

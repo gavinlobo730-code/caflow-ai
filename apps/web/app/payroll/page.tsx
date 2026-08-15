@@ -43,6 +43,8 @@ import { api, type ApiResp } from "@/lib/api";
 type Client = { id: string; client_name: string };
 
 type Employee = {
+  // Set by the portal invite flow (migration 264); absent on older rows.
+  portal_enabled?: boolean;
   id: string;
   firm_id: string;
   client_id: string;
@@ -362,6 +364,126 @@ function getTdsQuarterLabel(month: string): string {
   if (m >= 7 && m <= 9) return `Q2 Jul–Sep ${y}`;
   if (m >= 10 && m <= 12) return `Q3 Oct–Dec ${y}`;
   return `Q4 Jan–Mar ${y}`;
+}
+
+// ── Employee Portal access modal ───────────────────────────────────────────
+// The activation link comes back ONCE, from this call. Only its sha256 is
+// stored server-side, so it can never be fetched again — which is why the link
+// is shown here for copying, not just emailed and forgotten. Re-inviting mints
+// a fresh link and invalidates this one.
+function PortalAccessModal({ employee, onClose, onChanged }: {
+  employee: Employee;
+  onClose: () => void;
+  onChanged: (msg: string) => void;
+}) {
+  const [status, setStatus] = useState<{ activated: boolean; invite_pending: boolean;
+                                         email: string | null } | null>(null);
+  const [email, setEmail] = useState("");
+  const [link, setLink] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.payroll.portalStatus(employee.id);
+        const d = res.data;
+        if (d) { setStatus(d); setEmail(d.email ?? ""); }
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Couldn't read portal status.");
+      }
+    })();
+  }, [employee.id]);
+
+  async function invite() {
+    setBusy(true); setErr(null);
+    try {
+      const res = await api.payroll.invitePortal(employee.id, email.trim());
+      setLink(res.data?.activation_url ?? null);
+      onChanged(`Invitation sent to ${email.trim()}.`);
+      setStatus((s) => s ? { ...s, invite_pending: true, email: email.trim() } : s);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't send the invitation.");
+    } finally { setBusy(false); }
+  }
+
+  async function revoke() {
+    if (!confirm(`Remove portal access for ${employee.name}? They will no longer be able to sign in and view their payslips. You can invite them again later.`)) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.payroll.revokePortal(employee.id);
+      onChanged(`Portal access removed for ${employee.name}.`);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't remove access.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-lg p-5">
+        <h2 className="font-semibold text-[#0F172A]">Payslip portal — {employee.name}</h2>
+        <p className="text-sm text-[#64748B] mt-1 mb-4">
+          Lets this employee sign in and see their own payslips and leave
+          balance. They see nothing else.
+        </p>
+
+        {err && <p className="text-sm text-red-600 mb-3">{err}</p>}
+
+        {status?.activated ? (
+          <div>
+            <p className="text-sm text-green-700 mb-4">Portal access is active.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>Close</Button>
+              <Button onClick={revoke} disabled={busy}
+                      className="bg-red-600 hover:bg-red-700 text-white">
+                {busy ? "Removing…" : "Remove access"}
+              </Button>
+            </div>
+          </div>
+        ) : link ? (
+          <div>
+            <p className="text-sm text-[#475569] mb-2">
+              Invitation sent. If the email does not arrive, share this link —
+              it works once and expires in 14 days.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <input readOnly value={link}
+                     className="flex-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs font-mono" />
+              <Button variant="outline" onClick={() => {
+                navigator.clipboard?.writeText(link);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}>{copied ? "Copied" : "Copy"}</Button>
+            </div>
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">
+              Their email address *
+            </label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)}
+                   placeholder="name@example.com" type="email"
+                   className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm mb-1" />
+            {status?.invite_pending && (
+              <p className="text-xs text-amber-700 mb-2">
+                An invitation is already pending. Sending again replaces it —
+                the earlier link stops working.
+              </p>
+            )}
+            <div className="flex gap-2 mt-3">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button onClick={invite} disabled={busy || !email.trim().includes("@")}>
+                {busy ? "Sending…" : status?.invite_pending ? "Send a new invitation" : "Send invitation"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Add Employee Modal ────────────────────────────────────────────────────
@@ -1014,6 +1136,8 @@ export default function PayrollPage() {
 
   // ── Employee roster CRUD (edit / deactivate / delete + bulk) ────────────────
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
+  // Which employee's portal access is being managed, if any.
+  const [portalEmployee, setPortalEmployee] = useState<Employee | null>(null);
   const [empActionMsg, setEmpActionMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const setEmployeeStatus = useCallback(async (emp: Employee, status: "active" | "resigned") => {
@@ -1130,6 +1254,21 @@ export default function PayrollPage() {
           {e.esi_applicable ? "Yes" : "No"}
         </span>
       ) },
+    // Reads portal_enabled straight off the employee row rather than calling
+    // portal-status per row — one request per employee would be N requests for
+    // a column most firms will not use. The modal fetches the detail on open.
+    { key: "portal", header: "Payslip portal", accessor: (e) => (e.portal_enabled ? "on" : "off"),
+      sortable: true, align: "center",
+      render: (e) => (
+        <button
+          onClick={() => setPortalEmployee(e)}
+          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium hover:ring-1 hover:ring-blue-300 ${
+            e.portal_enabled ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}
+          title={e.portal_enabled ? "Portal access is on — click to manage" : "Give this employee portal access"}
+        >
+          {e.portal_enabled ? "Active" : "Give access"}
+        </button>
+      ) },
     { key: "status", header: "Status", accessor: (e) => e.status ?? "active", sortable: true, align: "center",
       render: (e) => {
         const s = e.status ?? "active";
@@ -1209,6 +1348,18 @@ export default function PayrollPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-8">
+      {portalEmployee && (
+        <PortalAccessModal
+          employee={portalEmployee}
+          onClose={() => setPortalEmployee(null)}
+          onChanged={(msg) => {
+            setEmpActionMsg({ type: "ok", text: msg });
+            // portal_enabled changed on the server; refetch so the column and
+            // any later modal open reflect it rather than a stale row.
+            load();
+          }}
+        />
+      )}
       {showAdd && (
         <AddEmployeeModal
           clients={clients}
