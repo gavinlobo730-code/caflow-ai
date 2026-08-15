@@ -115,6 +115,33 @@ def sign_in(supabase_url: str, anon_key: str, email: str, password: str) -> str:
     return token
 
 
+def failure_reason(r: httpx.Response) -> str:
+    """The API's own explanation for a non-2xx, or "" when there isn't one.
+
+    "HTTP 403 (expected 2xx)" names a symptom and leaves the cause to guesswork —
+    /api/identity/permissions can 403 for at least four unrelated reasons (no user
+    row, disabled account, suspended firm, MFA not satisfied) and the status code
+    cannot tell them apart. The server already writes which one it is; not
+    printing it was the difference between a diagnosis and an afternoon.
+
+    Reads ONLY the two known string fields — this repo's {success, data, error}
+    contract and FastAPI's HTTPException {"detail": ...} — never the whole body,
+    which on a 200 would be a client's ledger. Truncated, and 2xx bodies are
+    never touched at all.
+    """
+    try:
+        body = r.json()
+    except Exception:  # noqa: BLE001 — a non-JSON error page is not a reason to crash
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    for field in ("error", "detail"):
+        value = body.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:200]
+    return ""
+
+
 def run_check(client: httpx.Client, base: str, c: Check, token: str) -> tuple[bool, str]:
     started = time.monotonic()
     try:
@@ -128,7 +155,9 @@ def run_check(client: httpx.Client, base: str, c: Check, token: str) -> tuple[bo
     over = elapsed > c.budget_s
     bad = status is None or not (200 <= status < 300)
     if bad:
-        return False, f"{c.name:28s} {elapsed:7.2f}s  HTTP {status}  (expected 2xx)"
+        why = failure_reason(r)
+        return False, (f"{c.name:28s} {elapsed:7.2f}s  HTTP {status}  (expected 2xx)"
+                       + (f"  — {why}" if why else ""))
     if over:
         return False, f"{c.name:28s} {elapsed:7.2f}s  OVER BUDGET of {c.budget_s:.0f}s"
     return True, f"{c.name:28s} {elapsed:7.2f}s  ok"
