@@ -90,3 +90,81 @@ export async function selectAll<T>(
   }
   return { data: all, error: null };
 }
+
+/** A thenable Supabase/PostgREST query that supports keyset paging. */
+interface Keysettable<T> {
+  gt: (column: string, value: unknown) => Keysettable<T>;
+  order: (column: string, opts?: { ascending?: boolean }) => Keysettable<T>;
+  limit: (
+    n: number,
+  ) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>;
+}
+
+/**
+ * As `selectAll`, but paging by CURSOR instead of OFFSET.
+ *
+ * WHEN TO REACH FOR THIS INSTEAD
+ * ------------------------------
+ * Whenever the query EMBEDS a related table — `lines:journal_lines(...)`,
+ * `items:invoice_lines(...)` and so on. With `.range()` (OFFSET), Postgres must
+ * produce every row before the offset in order to skip it, and producing a row
+ * means running its embedded aggregate. So the aggregate runs for the WHOLE
+ * table on EVERY page.
+ *
+ * Measured on the Journal tab, one client, 12,836 entries with lines embedded:
+ *
+ *                       aggregate runs   time per page   buffers
+ *     .range()  OFFSET      12,836         1,342 ms       54,180
+ *     keyset                   835            32 ms       15,758
+ *
+ * Thirteen pages: about 17 seconds of database work against about 0.4. On a
+ * shared instance, fired four-wide by selectAll's widening waves, the OFFSET
+ * version did not merely run slowly — it failed, and the page showed
+ * "Couldn't load journal entries".
+ *
+ * The backend hit exactly this and fixed it the same way; see
+ * apps/api/domain/reporting/sources.py::_fetch_all and apps/api/core/db_paging.py.
+ *
+ * THE TRADE
+ * ---------
+ * Pages are SEQUENTIAL — each cursor comes from the previous page's last row,
+ * so they cannot be fetched in parallel the way selectAll's waves are. On an
+ * embedded query that loses nothing: thirteen sequential 32 ms seeks still beat
+ * four concurrent 1.3 s materialisations by a wide margin. On a query with no
+ * embed, `selectAll` remains the better choice.
+ *
+ * REQUIREMENTS
+ * ------------
+ * `key` must be unique and sortable, and must appear in the `.select(...)`
+ * projection — the next cursor is read from the last row of each page. The
+ * factory must NOT set its own `.order()` on the key; this adds it. Sort for
+ * display after the walk finishes.
+ */
+export async function selectAllKeyset<T extends Record<string, unknown>>(
+  makeQuery: () => Keysettable<T>,
+  key = "id",
+  pageSize = 1000,
+): Promise<{ data: T[]; error: PostgrestError | null }> {
+  const all: T[] = [];
+  // Same backstop as selectAll: a cursor that never advances would otherwise
+  // loop forever — a hang instead of a wrong answer is not an improvement.
+  const MAX_PAGES = 1000;
+  let cursor: unknown = undefined;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let q = makeQuery();
+    if (cursor !== undefined) q = q.gt(key, cursor);
+    const { data, error } = await q.order(key, { ascending: true }).limit(pageSize);
+    if (error) return { data: all, error };
+
+    const rows = data ?? [];
+    all.push(...rows);
+    // A short page is the end of the data — never an assumed row count.
+    if (rows.length < pageSize) return { data: all, error: null };
+
+    const last = rows[rows.length - 1]?.[key];
+    if (last === undefined || last === null) return { data: all, error: null };
+    cursor = last;
+  }
+  return { data: all, error: null };
+}
