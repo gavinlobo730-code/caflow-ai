@@ -288,8 +288,17 @@ export default function ClientsPage() {
     const failed = results.filter((r) => r.error !== null);
     const succeeded = targets.length - failed.length;
 
-    if (succeeded > 0) await load();
-    setBulkBusy(false);
+    try {
+      if (succeeded > 0) await load();
+    } catch (e) {
+      // The archives went through; only the refresh failed, so the roster on
+      // screen still lists rows that are no longer active. Say which it is
+      // rather than leaving the bulk bar disabled.
+      setBulkError(e instanceof Error ? e.message : "Archived, but the client list could not be refreshed.");
+      return;
+    } finally {
+      setBulkBusy(false);
+    }
 
     if (failed.length > 0) {
       // The action completed with partial failures — report them, but still

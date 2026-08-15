@@ -110,33 +110,42 @@ export default function ReceivablesAgingPage() {
     const sb = getSupabaseClient();
     const today = todayLocalISO();
 
-    let query = sb.from("fee_invoices").select("id, invoice_no, invoice_date, due_date, client_id, total_paise, status").eq("firm_id", firmId).neq("status", "Paid").neq("status", "paid");
-    if (selectedClientId !== "all") query = query.eq("client_id", selectedClientId);
-    const { data, error: err } = await query.order("invoice_date", { ascending: false });
+    try {
+      let query = sb.from("fee_invoices").select("id, invoice_no, invoice_date, due_date, client_id, total_paise, status").eq("firm_id", firmId).neq("status", "Paid").neq("status", "paid");
+      if (selectedClientId !== "all") query = query.eq("client_id", selectedClientId);
+      const { data, error: err } = await query.order("invoice_date", { ascending: false });
 
-    if (err) { setError(err.message); setLoading(false); return; }
-    const invoices = (data ?? []) as FeeInvoice[];
+      if (err) throw new Error(err.message);
+      const invoices = (data ?? []) as FeeInvoice[];
 
-    // Build client map
-    const clientMap: Record<string, string> = {};
-    clients.forEach(c => { clientMap[c.id] = c.client_name; });
+      // Build client map
+      const clientMap: Record<string, string> = {};
+      clients.forEach(c => { clientMap[c.id] = c.client_name; });
 
-    const result: AgingRow[] = invoices.map(inv => {
-      const dueDateStr = inv.due_date ?? inv.invoice_date;
-      const daysOverdue = daysBetweenLocalISO(dueDateStr, today) ?? 0;
-      const bucket = getBucket(daysOverdue);
-      return {
-        invoice: inv,
-        clientName: clientMap[inv.client_id] ?? "Unknown",
-        outstandingPaise: inv.total_paise,
-        daysOverdue,
-        bucket,
-      };
-    });
+      const result: AgingRow[] = invoices.map(inv => {
+        const dueDateStr = inv.due_date ?? inv.invoice_date;
+        const daysOverdue = daysBetweenLocalISO(dueDateStr, today) ?? 0;
+        const bucket = getBucket(daysOverdue);
+        return {
+          invoice: inv,
+          clientName: clientMap[inv.client_id] ?? "Unknown",
+          outstandingPaise: inv.total_paise,
+          daysOverdue,
+          bucket,
+        };
+      });
 
-    setRows(result);
-    setGenerated(true);
-    setLoading(false);
+      setRows(result);
+      setGenerated(true);
+    } catch (e) {
+      // A rejected query used to escape here, leaving setLoading(true) set and
+      // the button spinning with nothing to click. The report is not marked
+      // generated, so the screen keeps its prompt instead of claiming an empty
+      // ageing report.
+      setError(e instanceof Error ? e.message : "Couldn't build the ageing report.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function sendReminder(invNo: string) {

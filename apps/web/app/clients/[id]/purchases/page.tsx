@@ -957,6 +957,10 @@ function DeleteBillModal({
       await onConfirm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete purchase bill");
+    } finally {
+      // The success path never lowered it, which only worked because
+      // onConfirm() closes this dialog. If it ever stops doing that, Delete
+      // stays disabled with no way to tell why.
       setDeleting(false);
     }
   }
@@ -1019,6 +1023,10 @@ interface VendorDependencies {
 function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // See PurchaseBills.loadFailed (audit M17): a failed fetch must not render as
+  // "no vendors yet", which on this tab reads as an invitation to re-create
+  // vendors that already exist.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1048,17 +1056,27 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    // Fetch active AND inactive vendors — active/inactive scoping is a
-    // client-side DataTable filter (mirrors Customers) so a deactivated
-    // vendor stays visible (and reactivatable) instead of vanishing.
-    const { data } = await selectAll(() => supabase
-      .from("vendors")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("name")
-      .order("id"));
-    setVendors((data as VendorRow[]) ?? []);
-    setLoading(false);
+    try {
+      // Fetch active AND inactive vendors — active/inactive scoping is a
+      // client-side DataTable filter (mirrors Customers) so a deactivated
+      // vendor stays visible (and reactivatable) instead of vanishing.
+      const { data, error } = await selectAll(() => supabase
+        .from("vendors")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("name")
+        .order("id"));
+      if (error) throw error;
+      setVendors((data as VendorRow[]) ?? []);
+      setLoadFailed(false);
+    } catch {
+      // Was swallowed entirely: a failed fetch rendered as "no vendors yet",
+      // which on this tab is an invitation to re-create vendors that exist.
+      setVendors([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -1179,17 +1197,22 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleteBusy(true);
-    const token = await getAuthToken();
-    const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
-    setDeleteBusy(false);
-    if (!res.success) {
-      setMsg({ type: "err", text: res.error ?? "Failed to delete vendor" });
-      return;
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+      if (!res.success) {
+        setMsg({ type: "err", text: res.error ?? "Failed to delete vendor" });
+        return;
+      }
+      setMsg({ type: "ok", text: "Vendor deleted." });
+      setDeleteTarget(null);
+      setDeleteDeps(null);
+      load();
+    } catch (e) {
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "Failed to delete vendor" });
+    } finally {
+      setDeleteBusy(false);
     }
-    setMsg({ type: "ok", text: "Vendor deleted." });
-    setDeleteTarget(null);
-    setDeleteDeps(null);
-    load();
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
@@ -1563,6 +1586,7 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
         filters={vendorFilters}
         getRowId={(v) => v.id}
         loading={loading}
+        error={loadFailed ? "Couldn't load vendors — the request failed or timed out." : null}
         onRefresh={load}
         searchPlaceholder="Search by name, GSTIN, email, or phone…"
         initialSort={{ key: "name", dir: "asc" }}

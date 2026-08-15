@@ -62,36 +62,42 @@ function TDSDashboard({ clientId }: { clientId: string }) {
     (async () => {
       setLoading(true);
       const supabase = getSupabaseClient();
-      const [
-        { data: challans, error: e1 },
-        { data: returns, error: e2 },
-        { data: certs, error: e3 },
-      ] = await Promise.all([
-        selectAll(() => supabase.from("tds_challans").select("id, total_paise").eq("client_id", clientId)),
-        selectAll(() => supabase.from("tds_returns").select("id").eq("client_id", clientId)),
-        selectAll(() => supabase.from("tds_certificates").select("id").eq("client_id", clientId)),
-      ]);
-      if (cancelled) return;
-      if (e1 || e2 || e3) {
-        setSummary(null);
-        setLoading(false);
-        return;
-      }
+      try {
+        const [
+          { data: challans, error: e1 },
+          { data: returns, error: e2 },
+          { data: certs, error: e3 },
+        ] = await Promise.all([
+          selectAll(() => supabase.from("tds_challans").select("id, total_paise").eq("client_id", clientId)),
+          selectAll(() => supabase.from("tds_returns").select("id").eq("client_id", clientId)),
+          selectAll(() => supabase.from("tds_certificates").select("id").eq("client_id", clientId)),
+        ]);
+        if (cancelled) return;
+        if (e1 || e2 || e3) {
+          setSummary(null);
+          return;
+        }
 
-      // Mirrors tds_workspace.py::tds_dashboard's summary math exactly:
-      // counts of each table's rows plus a plain sum of challan amounts.
-      // total_paise (not amount_paise, which tds_challans has never had —
-      // migration 037) is the challan's grand-total column.
-      const total_deposited_paise = (challans ?? []).reduce(
-        (sum, c) => sum + ((c as { total_paise: number | null }).total_paise ?? 0), 0,
-      );
-      setSummary({
-        total_challans: (challans ?? []).length,
-        total_deposited_paise,
-        total_returns: (returns ?? []).length,
-        total_certificates: (certs ?? []).length,
-      });
-      setLoading(false);
+        // Mirrors tds_workspace.py::tds_dashboard's summary math exactly:
+        // counts of each table's rows plus a plain sum of challan amounts.
+        // total_paise (not amount_paise, which tds_challans has never had —
+        // migration 037) is the challan's grand-total column.
+        const total_deposited_paise = (challans ?? []).reduce(
+          (sum, c) => sum + ((c as { total_paise: number | null }).total_paise ?? 0), 0,
+        );
+        setSummary({
+          total_challans: (challans ?? []).length,
+          total_deposited_paise,
+          total_returns: (returns ?? []).length,
+          total_certificates: (certs ?? []).length,
+        });
+      } catch {
+        if (!cancelled) setSummary(null);   // renders "Failed to load TDS dashboard."
+      } finally {
+        // Guarded by `cancelled` so a superseded effect does not lower the flag
+        // the effect that replaced it has just raised.
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [clientId]);

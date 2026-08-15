@@ -90,15 +90,27 @@ export default function MigrationPage() {
   const [step, setStep] = useState<"create" | "parse" | "preview" | "import">("create");
   const [jobId, setJobId] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  // "The job list could not be loaded" vs "no migrations run yet" — the same
+  // empty screen otherwise.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isDryRun, setIsDryRun] = useState(true);
 
   async function load() {
     setLoading(true);
-    const res = await apiFetch("/api/tally-migration/jobs");
-    setJobs(res.data ?? []);
-    setLoading(false);
+    try {
+      const res = await apiFetch("/api/tally-migration/jobs");
+      setJobs(res.data ?? []);
+      setLoadFailed(false);
+    } catch {
+      // Was unguarded, so a failed fetch left this page on its skeleton with
+      // no way forward but a reload.
+      setJobs([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -330,6 +342,12 @@ export default function MigrationPage() {
       {/* Job List */}
       {loading ? (
         <TransactionListSkeleton rows={3} />
+      ) : loadFailed ? (
+        <div className="bg-white rounded-xl border border-red-100 text-center py-16 space-y-2">
+          <Database size={28} className="text-red-200 mx-auto" />
+          <p className="text-sm text-[#64748B]">Couldn&apos;t load your migration jobs.</p>
+          <button onClick={load} className="text-xs text-blue-600 hover:underline">Try again</button>
+        </div>
       ) : jobs.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
           <Database size={28} className="text-gray-200 mx-auto" />

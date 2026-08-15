@@ -171,8 +171,9 @@ export default function CapitalGainsPage() {
     } catch (e) {
       setRecords([]);
       setRegLoadError(e instanceof Error ? e.message : "Couldn't load the capital gains register.");
+    } finally {
+      setRegLoading(false);
     }
-    setRegLoading(false);
   }, [selectedClientId]);
 
   useEffect(() => {

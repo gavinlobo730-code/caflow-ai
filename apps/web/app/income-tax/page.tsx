@@ -221,28 +221,35 @@ function BulkMarkFiledModal({
       }),
     );
 
-    setLoading(false);
-
     const failed = results.filter((r) => !r.ok);
     const newlySucceeded = results.filter((r) => r.ok).map((r) => r.id);
 
-    if (failed.length > 0) {
-      // Keep the modal open — list which rows failed so the CA can fix and retry.
-      setSucceededIds((prev) => new Set([...Array.from(prev), ...newlySucceeded]));
-      setRowErrors(Object.fromEntries(failed.map((f) => [f.id, f.message])));
-      setError(
-        `${failed.length} of ${remaining.length} filing${remaining.length === 1 ? "" : "s"} ` +
-          `could not be updated. Fix the row(s) below and submit again.`,
-      );
-      await onFiled();
-      return;
-    }
+    try {
+      if (failed.length > 0) {
+        // Keep the modal open — list which rows failed so the CA can fix and retry.
+        setSucceededIds((prev) => new Set([...Array.from(prev), ...newlySucceeded]));
+        setRowErrors(Object.fromEntries(failed.map((f) => [f.id, f.message])));
+        setError(
+          `${failed.length} of ${remaining.length} filing${remaining.length === 1 ? "" : "s"} ` +
+            `could not be updated. Fix the row(s) below and submit again.`,
+        );
+        await onFiled();
+        return;
+      }
 
-    await onFiled();
-    toast({
-      title: `Marked ${pending.length} ITR filing${pending.length === 1 ? "" : "s"} as filed`,
-    });
-    onClose();
+      await onFiled();
+      toast({
+        title: `Marked ${pending.length} ITR filing${pending.length === 1 ? "" : "s"} as filed`,
+      });
+      onClose();
+    } catch (e) {
+      // Each row reports its own failure above, so reaching here means the
+      // parent's refresh threw after the updates landed: the filings ARE marked,
+      // the list behind this modal is stale. Keep the modal open and say so.
+      setError(e instanceof Error ? e.message : "Marked as filed, but the list could not be refreshed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

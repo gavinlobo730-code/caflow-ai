@@ -1553,51 +1553,59 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    const results = await Promise.all(columnDefs.map(async (col): Promise<PLColumnResult> => {
-      try {
-        const res = (await cachedReport(
-          reportKey([clientId, col.start, col.end, basis, "pl"]),
-          () => api.accounting.profitLoss({ basis, start_date: col.start, end_date: col.end, client_id: clientId }),
-          { force },
-        )) as { success: boolean; data: PLApiData | null };
-        // res.success===false only ever comes from a backend error path (see
-        // api_response(False, ...) call sites) — a genuinely empty period still
-        // returns success=true with empty line arrays. So this branch is always
-        // a real failure, never legitimate emptiness; tag it as such.
-        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 }, error: true };
-        const d = res.data;
-        // Cash-basis lines carry no account_code/account_subtype (the cash
-        // engine doesn't classify by Schedule III subtype) — they default
-        // to "" / null and fall into that bucket's catch-all below, same
-        // shape as accrual otherwise, so both bases share one renderer.
-        const toBal = (l: PLApiLine, type: string): AccountBalance => ({
-          account_id: l.account_id, account_code: l.account_code ?? "",
-          account_name: l.account_name, account_type: type,
-          account_subtype: l.account_subtype ?? null,
-          schedule_iii_caption: l.schedule_iii_caption ?? null,
-          net_paise: l.amount_paise,
-        });
-        const balances = [
-          ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
-          ...(d.cost_of_sales?.lines ?? []).map((l) => toBal(l, "Expense")),
-          ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
-        ];
-        const expensesTotal = (d.cost_of_sales?.total_paise ?? 0) + (d.operating_expenses?.total_paise ?? 0);
-        return {
-          label: col.label,
-          balances,
-          totals: { revenue: d.revenue?.total_paise ?? 0, expenses: expensesTotal, net: d.net_profit_paise ?? 0 },
-        };
-      } catch {
-        // Backend error/timeout for this column — degrade the COLUMN to empty
-        // rather than an infinite skeleton (audit M17), but tag it as a failure
-        // (not silently-empty) so the UI can show a retry banner instead of
-        // rendering a large ledger's report as if it had no transactions.
-        return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 }, error: true };
-      }
-    }));
-    setColumns(results);
-    setLoading(false); setLoaded(true);
+    try {
+      const results = await Promise.all(columnDefs.map(async (col): Promise<PLColumnResult> => {
+        try {
+          const res = (await cachedReport(
+            reportKey([clientId, col.start, col.end, basis, "pl"]),
+            () => api.accounting.profitLoss({ basis, start_date: col.start, end_date: col.end, client_id: clientId }),
+            { force },
+          )) as { success: boolean; data: PLApiData | null };
+          // res.success===false only ever comes from a backend error path (see
+          // api_response(False, ...) call sites) — a genuinely empty period still
+          // returns success=true with empty line arrays. So this branch is always
+          // a real failure, never legitimate emptiness; tag it as such.
+          if (!res.success || !res.data) return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 }, error: true };
+          const d = res.data;
+          // Cash-basis lines carry no account_code/account_subtype (the cash
+          // engine doesn't classify by Schedule III subtype) — they default
+          // to "" / null and fall into that bucket's catch-all below, same
+          // shape as accrual otherwise, so both bases share one renderer.
+          const toBal = (l: PLApiLine, type: string): AccountBalance => ({
+            account_id: l.account_id, account_code: l.account_code ?? "",
+            account_name: l.account_name, account_type: type,
+            account_subtype: l.account_subtype ?? null,
+            schedule_iii_caption: l.schedule_iii_caption ?? null,
+            net_paise: l.amount_paise,
+          });
+          const balances = [
+            ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
+            ...(d.cost_of_sales?.lines ?? []).map((l) => toBal(l, "Expense")),
+            ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
+          ];
+          const expensesTotal = (d.cost_of_sales?.total_paise ?? 0) + (d.operating_expenses?.total_paise ?? 0);
+          return {
+            label: col.label,
+            balances,
+            totals: { revenue: d.revenue?.total_paise ?? 0, expenses: expensesTotal, net: d.net_profit_paise ?? 0 },
+          };
+        } catch {
+          // Backend error/timeout for this column — degrade the COLUMN to empty
+          // rather than an infinite skeleton (audit M17), but tag it as a failure
+          // (not silently-empty) so the UI can show a retry banner instead of
+          // rendering a large ledger's report as if it had no transactions.
+          return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 }, error: true };
+        }
+      }));
+      setColumns(results);
+        setLoaded(true);
+    } finally {
+      // Each column already degrades to a tagged-failed column of its own, so
+      // Promise.all is not expected to reject — but "not expected" is not a
+      // guarantee, and a rejection escaping here leaves the report as a
+      // skeleton with no way out but a page reload.
+      setLoading(false);
+    }
   }, [clientId, basis, columnDefs]);
 
   useEffect(() => { load(); }, [load]);
@@ -1867,48 +1875,53 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    const results = await Promise.all(columnDefs.map(async (col): Promise<BSColumnResult> => {
-      try {
-        const res = (await cachedReport(
-          reportKey([clientId, col.end, basis, "bs"]),
-          () => api.accounting.balanceSheet({ basis, as_of_date: col.end, client_id: clientId }),
-          { force },
-        )) as { success: boolean; data: BSApiData | null };
-        // See ProfitAndLoss.load — res.success===false is always a real backend
-        // failure, never legitimate emptiness.
-        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true }, error: true };
-        const d = res.data;
-        const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
-          (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
-            account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
-            account_name: l.account_name, account_type: type,
-            account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
-          })));
-        const balances = [
-          ...fromSection(d.assets, "Asset"),
-          ...fromSection(d.liabilities, "Liability"),
-          ...fromSection(d.equity, "Equity"),
-        ];
-        return {
-          label: col.label,
-          balances,
-          totals: {
-            assets: d.total_assets_paise ?? 0,
-            liab: d.liabilities?.[0]?.total_paise ?? 0,
-            equity: d.equity?.[0]?.total_paise ?? 0,
-            liabEquity: d.total_liabilities_equity_paise ?? 0,
-            balanced: d.is_balanced ?? false,
-          },
-        };
-      } catch {
-        // Backend error/timeout for this column — degrade the COLUMN to empty
-        // (audit M17), tagged as a failure so the UI never renders it as a
-        // bookless client.
-        return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true }, error: true };
-      }
-    }));
-    setColumns(results);
-    setLoading(false); setLoaded(true);
+    try {
+      const results = await Promise.all(columnDefs.map(async (col): Promise<BSColumnResult> => {
+        try {
+          const res = (await cachedReport(
+            reportKey([clientId, col.end, basis, "bs"]),
+            () => api.accounting.balanceSheet({ basis, as_of_date: col.end, client_id: clientId }),
+            { force },
+          )) as { success: boolean; data: BSApiData | null };
+          // See ProfitAndLoss.load — res.success===false is always a real backend
+          // failure, never legitimate emptiness.
+          if (!res.success || !res.data) return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true }, error: true };
+          const d = res.data;
+          const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
+            (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
+              account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
+              account_name: l.account_name, account_type: type,
+              account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
+            })));
+          const balances = [
+            ...fromSection(d.assets, "Asset"),
+            ...fromSection(d.liabilities, "Liability"),
+            ...fromSection(d.equity, "Equity"),
+          ];
+          return {
+            label: col.label,
+            balances,
+            totals: {
+              assets: d.total_assets_paise ?? 0,
+              liab: d.liabilities?.[0]?.total_paise ?? 0,
+              equity: d.equity?.[0]?.total_paise ?? 0,
+              liabEquity: d.total_liabilities_equity_paise ?? 0,
+              balanced: d.is_balanced ?? false,
+            },
+          };
+        } catch {
+          // Backend error/timeout for this column — degrade the COLUMN to empty
+          // (audit M17), tagged as a failure so the UI never renders it as a
+          // bookless client.
+          return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true }, error: true };
+        }
+      }));
+      setColumns(results);
+        setLoaded(true);
+    } finally {
+      // Same as ProfitAndLoss.load above.
+      setLoading(false);
+    }
   }, [clientId, basis, columnDefs]);
 
   useEffect(() => { load(); }, [load]);

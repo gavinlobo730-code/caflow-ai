@@ -68,20 +68,21 @@ export default function XBRLPage() {
     // domain/income_tax/xbrl_service.py::list_xbrl_packages (same table,
     // client_id filter, created_at-desc ordering).
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("xbrl_packages")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("created_at", { ascending: false });
-    if (error) {
+    try {
+      const { data, error } = await supabase
+        .from("xbrl_packages")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message || "Couldn't load XBRL packages.");
+      setPackages((data as XBRLPackage[]) ?? []);
+      setLoadError(null);
+    } catch (e) {
       setPackages([]);
-      setLoadError(error.message || "Couldn't load XBRL packages.");
+      setLoadError(e instanceof Error ? e.message : "Couldn't load XBRL packages.");
+    } finally {
       setLoading(false);
-      return;
     }
-    setPackages((data as XBRLPackage[]) ?? []);
-    setLoadError(null);
-    setLoading(false);
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);

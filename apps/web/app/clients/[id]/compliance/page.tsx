@@ -308,34 +308,43 @@ export default function CompliancePage() {
     setBulkBusy(true);
     setBulkError(null);
     const ids = Array.from(selected);
-    const results = await Promise.all(
-      ids.map(async (id) => {
-        const entry = compliance.find((c) => c.id === id);
-        if (entry?.filing_status === "filed") return "skipped" as const;
-        try {
-          await markObligationFiled(id);
-          return "success" as const;
-        } catch (e) {
-          return e instanceof Error ? e.message : "Failed";
-        }
-      })
-    );
-    const successCount = results.filter((r) => r === "success").length;
-    const skipCount = results.filter((r) => r === "skipped").length;
-    const failCount = results.length - successCount - skipCount;
-
-    if (successCount > 0) {
-      await reloadCompliance();
-    }
-    setBulkBusy(false);
-
-    if (failCount > 0) {
-      setBulkError(
-        `Failed to mark ${failCount} of ${ids.length} filing${ids.length === 1 ? "" : "s"} as filed.` +
-          (skipCount > 0 ? ` ${skipCount} already filed (skipped).` : "")
+    try {
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          const entry = compliance.find((c) => c.id === id);
+          if (entry?.filing_status === "filed") return "skipped" as const;
+          try {
+            await markObligationFiled(id);
+            return "success" as const;
+          } catch (e) {
+            return e instanceof Error ? e.message : "Failed";
+          }
+        })
       );
-    } else {
-      clearSelection();
+      const successCount = results.filter((r) => r === "success").length;
+      const skipCount = results.filter((r) => r === "skipped").length;
+      const failCount = results.length - successCount - skipCount;
+
+      if (successCount > 0) {
+        await reloadCompliance();
+      }
+
+      if (failCount > 0) {
+        setBulkError(
+          `Failed to mark ${failCount} of ${ids.length} filing${ids.length === 1 ? "" : "s"} as filed.` +
+            (skipCount > 0 ? ` ${skipCount} already filed (skipped).` : "")
+        );
+      } else {
+        clearSelection();
+      }
+    } catch (e) {
+      // Each mark converts its own rejection into a result, so reaching here
+      // means reloadCompliance() failed after the filings went through: the
+      // work is done but the list on screen is stale. Selection is kept so the
+      // CA can see which rows were involved.
+      setBulkError(e instanceof Error ? e.message : "Marked as filed, but the list could not be refreshed.");
+    } finally {
+      setBulkBusy(false);
     }
   }
 

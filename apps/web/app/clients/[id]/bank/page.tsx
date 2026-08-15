@@ -260,26 +260,35 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     setBulkBusy(true);
     setBulkError(null);
     const ids = Array.from(selected);
-    const results = await Promise.all(
-      ids.map((id) =>
-        api.banking.categorize(id, { category: bulkCategory }).then(
-          () => null,
-          (e) => (e instanceof Error ? e.message : "Failed"),
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          api.banking.categorize(id, { category: bulkCategory }).then(
+            () => null,
+            (e) => (e instanceof Error ? e.message : "Failed"),
+          ),
         ),
-      ),
-    );
-    const failCount = results.filter((r) => r !== null).length;
-    await load();
-    setBulkBusy(false);
-    // The action has completed — clear the selection regardless of partial
-    // failures (the error banner reports what didn't go through). Leaving the
-    // successfully-categorized rows selected is confusing: they've already left
-    // the match queue, so the count would just be counting ghosts. Mirrors the
-    // shared DataTable's bulk-action behavior (components/ui/data-table.tsx).
-    if (failCount > 0) {
-      setBulkError(`Failed to categorize ${failCount} of ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`);
+      );
+      const failCount = results.filter((r) => r !== null).length;
+      await load();
+      // The action has completed — clear the selection regardless of partial
+      // failures (the error banner reports what didn't go through). Leaving the
+      // successfully-categorized rows selected is confusing: they've already left
+      // the match queue, so the count would just be counting ghosts. Mirrors the
+      // shared DataTable's bulk-action behavior (components/ui/data-table.tsx).
+      if (failCount > 0) {
+        setBulkError(`Failed to categorize ${failCount} of ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`);
+      }
+      clearSelection();
+    } catch (e) {
+      // Each categorize call converts its own rejection to a message, so this
+      // is load() failing after the writes went through: the rows are
+      // categorized but the queue on screen is stale. Say so rather than
+      // leaving the bulk bar disabled with no explanation.
+      setBulkError(e instanceof Error ? e.message : "Categorized, but the queue could not be refreshed.");
+    } finally {
+      setBulkBusy(false);
     }
-    clearSelection();
   }
   async function loadSugg(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
@@ -1019,10 +1028,14 @@ function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone }: {
         currency: isForeign ? currency! : undefined,
         exchange_rate: isForeign ? exchangeRate : undefined,
       }) as { success: boolean; error?: string | null };
-      if (!res.success) { setError(res.error ?? `Could not settle these ${docLabel}s.`); setSaving(false); return; }
+      if (!res.success) { setError(res.error ?? `Could not settle these ${docLabel}s.`); return; }
       onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : `Could not settle these ${docLabel}s.`);
+    } finally {
+      // One release covering all three exits. The success path never lowered
+      // it at all, which was harmless only because onDone() unmounts this
+      // modal — a fact this function should not have to rely on.
       setSaving(false);
     }
   }
@@ -2131,8 +2144,13 @@ function BankAccounts({ clientId }: { clientId: string }) {
       ]);
       setStatements(stmts);
       setAccounts(accRes.success ? (accRes.data ?? []) : []);
-    } catch { /* skip */ }
-    setLoading(false);
+    } catch (e) {
+      // Was a bare `/* skip */`, which read as "an empty statement list" — the
+      // same screen a client with nothing imported yet gets. Say which it is.
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not load statements." });
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { loadStatements(); }, [loadStatements]);
@@ -2151,8 +2169,14 @@ function BankAccounts({ clientId }: { clientId: string }) {
 
   async function openStatement(id: string) {
     setSelectedStmt(id); setTxnsLoading(true);
-    try { setStmtTxns(await getBankTransactions(id)); } catch { setStmtTxns([]); }
-    setTxnsLoading(false);
+    try {
+      setStmtTxns(await getBankTransactions(id));
+    } catch (e) {
+      setStmtTxns([]);
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not load this statement." });
+    } finally {
+      setTxnsLoading(false);
+    }
   }
 
   const STATUS_COLORS: Record<string, string> = {
@@ -2371,9 +2395,13 @@ function BankAccountModal({ clientId, account, onClose, onSaved }: {
             coa_account_id: coaId || null,
           })
       ) as { success: boolean; error: string | null };
-      if (!res.success) { setError(res.error ?? "Could not save the bank account."); setSaving(false); return; }
+      if (!res.success) { setError(res.error ?? "Could not save the bank account."); return; }
       onSaved();
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not save the bank account."); setSaving(false); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the bank account.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const inputCls = "w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";

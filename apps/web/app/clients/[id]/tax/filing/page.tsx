@@ -92,19 +92,21 @@ export default function ITRFilingPage() {
     // apps/api/domain/income_tax/itr_workflow.py. Create/transition/acknowledge
     // remain backend-routed (workflow state-machine logic).
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("itr_filings")
-      .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at")
-      .eq("client_id", clientId)
-      .order("created_at", { ascending: false });
-    if (error) {
-      setFilings([]);
-      setLoadError(error.message || "Couldn't load ITR filings.");
-    } else {
+    try {
+      const { data, error } = await supabase
+        .from("itr_filings")
+        .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message || "Couldn't load ITR filings.");
       setFilings((data as Filing[]) ?? []);
       setLoadError(null);
+    } catch (e) {
+      setFilings([]);
+      setLoadError(e instanceof Error ? e.message : "Couldn't load ITR filings.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
