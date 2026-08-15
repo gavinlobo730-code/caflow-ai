@@ -34,6 +34,72 @@ def _supabase():
     return get_supabase()
 
 
+# PostgREST caps a response at ~1000 rows and says nothing about it. Every read
+# of tally_migration_items below goes through _all_items for that reason — see
+# its docstring for what the unpaged versions were doing.
+_ITEM_PAGE = 1000
+
+# Rows per insert when saving parsed items. A single insert of a whole Tally
+# export is one enormous request body; chunking keeps each round trip bounded
+# and gives a failure a much smaller blast radius.
+_INSERT_CHUNK = 500
+
+# How often a running import writes its progress back to the job row. Small
+# enough that the UI moves, large enough that the heartbeat is a rounding error
+# against the work itself.
+_PROGRESS_EVERY = 25
+
+
+def _all_items(sb, job_id: str, firm_id: str, columns: str = "*",
+               status: str | None = None) -> list[dict]:
+    """EVERY item on a job, via keyset paging over `id`.
+
+    THE BUG THIS EXISTS TO FIX
+        All three reads of tally_migration_items were a plain
+        `.select(...).eq("job_id", ...).execute()` with no paging, so PostgREST's
+        ~1000-row cap truncated each of them in silence. This is audit C6, the
+        same class that truncated the ledger for reporting and the column list
+        for the schema guard — the third and fourth time it has appeared in this
+        codebase.
+
+        On this path it was not a slow report, it was wrong books:
+
+          * execute_import      imported the first 1000 items and wrote
+                                status='completed'. Item 1001 onward were never
+                                touched, and nothing anywhere said so — the job
+                                row claimed success.
+          * rollback_migration  deleted the first 1000 created records, so a
+                                rollback could not fully undo an import it was
+                                the designated remedy for.
+          * get_migration_preview  showed the CA the first 1000 items to review
+                                and approve, presenting a partial list as whole.
+
+        A CA importing several years of a real practice is well past 1000 items,
+        so all three would have fired on first contact with real data.
+
+    Keyset rather than OFFSET for the reason documented at length in
+    domain/reporting/sources.py::_fetch_all: OFFSET re-scans every preceding row
+    on each page. End of data is a SHORT page, never an assumed row count.
+    """
+    out: list[dict] = []
+    cursor: str | None = None
+    # `id` must be in the projection or the next cursor cannot be read.
+    select = columns if columns == "*" or "id" in columns else f"id, {columns}"
+
+    while True:
+        q = (sb.table("tally_migration_items").select(select)
+             .eq("job_id", job_id).eq("firm_id", firm_id))
+        if status is not None:
+            q = q.eq("status", status)
+        if cursor is not None:
+            q = q.gt("id", cursor)
+        page = q.order("id").limit(_ITEM_PAGE).execute().data or []
+        out.extend(page)
+        if len(page) < _ITEM_PAGE:
+            return out
+        cursor = page[-1]["id"]
+
+
 # ── Job Management ────────────────────────────────────────────────────────────
 
 def create_migration_job(
@@ -323,8 +389,10 @@ def save_migration_items(
 
     sb = _supabase()
     rows = [{"firm_id": firm_id, "job_id": job_id, **item} for item in items]
-    if rows:
-        sb.table("tally_migration_items").insert(rows).execute()
+    # Chunked: one insert carrying a whole Tally export is a single very large
+    # request body, and a failure anywhere in it loses the lot.
+    for i in range(0, len(rows), _INSERT_CHUNK):
+        sb.table("tally_migration_items").insert(rows[i:i + _INSERT_CHUNK]).execute()
     sb.table("tally_migration_jobs").update({
         "total_items": len(items),
         "status": "previewing",
@@ -338,10 +406,9 @@ def get_migration_preview(firm_id: str, job_id: str) -> dict:
         items = _MOCK_ITEMS.get(job_id, [])
     else:
         sb = _supabase()
-        res = sb.table("tally_migration_items").select("*").eq("job_id", job_id).eq(
-            "firm_id", firm_id
-        ).execute()
-        items = res.data or []
+        # Paged: the CA approves what this returns, so a truncated preview is
+        # consent given to a list that was never shown in full.
+        items = _all_items(sb, job_id, firm_id)
 
     by_type: dict[str, list] = {}
     errors_count = 0
@@ -396,23 +463,39 @@ def execute_import(
         raise ValueError("Migration job not found")
     job_client_id = job_res[0].get("client_id")
 
-    items_res = sb.table("tally_migration_items").select("*").eq("job_id", job_id).eq(
-        "firm_id", firm_id
-    ).execute()
-    items = items_res.data or []
+    items = _all_items(sb, job_id, firm_id)
 
     imported = 0
     failed = 0
     skipped = 0
     audit_log = []
 
-    for item in items:
+    if not is_dry_run:
+        # Mark the job running BEFORE the first write, so a caller polling the
+        # job can tell "in progress" from "never started" — and so a crash
+        # leaves evidence rather than a job stuck looking pending.
+        sb.table("tally_migration_jobs").update({
+            "status": "importing",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", job_id).eq("firm_id", firm_id).execute()
+
+    for processed, item in enumerate(items, start=1):
         if item["status"] == "failed":
             failed += 1
             continue
 
         if is_dry_run:
             skipped += 1
+            continue
+
+        # ALREADY DONE — this is what makes the import resumable. Each item is
+        # marked the instant it lands, so a run killed by a deploy, an OOM or a
+        # free-tier spin-down can simply be started again: the finished items
+        # are skipped and the remainder proceeds. Without this, re-running after
+        # a partial import would duplicate every record it had already created,
+        # which on a CA's books is worse than the original failure.
+        if item["status"] == "imported":
+            imported += 1
             continue
 
         try:
@@ -435,6 +518,20 @@ def execute_import(
             failed += 1
             audit_log.append({"item_id": item["id"], "status": "failed", "error": str(e)})
 
+        # Heartbeat. A long import is otherwise indistinguishable from a hung
+        # one — the CA watching the screen sees the same thing either way, and
+        # so does anyone debugging it. Every _PROGRESS_EVERY items, not every
+        # item, so progress reporting cannot itself double the round trips.
+        if not is_dry_run and processed % _PROGRESS_EVERY == 0:
+            try:
+                sb.table("tally_migration_jobs").update({
+                    "imported_items": imported,
+                    "failed_items": failed,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", job_id).eq("firm_id", firm_id).execute()
+            except Exception as e:  # progress is not the job — never fail on it
+                _logger.warning("Import progress update failed (job %s): %s", job_id, e)
+
     final_status = "completed" if not is_dry_run else "previewing"
     sb.table("tally_migration_jobs").update({
         "status": final_status,
@@ -454,6 +551,58 @@ def execute_import(
         "is_dry_run": is_dry_run,
         "audit_log": audit_log,
     }
+
+
+def run_import_detached(firm_id: str, job_id: str, actor_id: str) -> None:
+    """execute_import for a caller that is no longer waiting — the background
+    entry point.
+
+    WHY THE IMPORT CANNOT RUN IN THE REQUEST
+        It used to. gunicorn runs with `--timeout 120`, and the import does two
+        round trips per item (insert the record, mark the item). At the ~50 ms
+        Singapore↔Mumbai round trip that is roughly 100 ms an item, so the
+        worker was killed somewhere past ~1,200 items — mid-write, with no
+        report and no explanation. A CA importing years of a real practice is
+        well past that on the first attempt, which made this the single most
+        likely thing to fail on first contact with a paying customer.
+
+        It also held the ONLY worker for its whole duration, so the app was
+        unresponsive to everyone else while one person imported.
+
+    WHICH DATABASE ROLE THIS RUNS AS
+        `service_role`, deliberately. A background task outlives the request, so
+        the caller's JWT is gone by the time this runs (core.supabase_client's
+        request token is reset when the response completes) and get_supabase()
+        falls back to the service client. That is the correct role here — there
+        is no user session to act on behalf of — and it is safe for THIS work
+        specifically: customers, vendors, tally_migration_jobs and
+        tally_migration_items all grant service_role full access. Many tables do
+        NOT (they are granted to `authenticated` only), so a future background
+        job touching anything else must check before assuming.
+
+        Authorization is not weakened by this. The endpoint has already run
+        rbac("accounting", "approve") and _assert_job_scope, and every query
+        below is still filtered by firm_id.
+
+    FAILURE
+        Any exception marks the job `failed` with the reason, because the
+        alternative is a job that sits at `importing` forever and tells nobody
+        why. The items already imported keep their own `imported` status, so
+        re-running resumes rather than duplicating.
+    """
+    try:
+        execute_import(firm_id=firm_id, job_id=job_id, actor_id=actor_id,
+                       is_dry_run=False)
+    except Exception as e:
+        _logger.exception("Detached import failed (job %s)", job_id)
+        try:
+            _supabase().table("tally_migration_jobs").update({
+                "status": "failed",
+                "import_audit_log": {"error": str(e)},
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", job_id).eq("firm_id", firm_id).execute()
+        except Exception:
+            _logger.exception("Could not even mark job %s failed", job_id)
 
 
 def _import_single_item(
@@ -524,17 +673,20 @@ def rollback_migration(firm_id: str, job_id: str, actor_id: str) -> dict:
     if not job:
         raise ValueError("Migration job not found")
 
-    # Get all created records — firm-scoped, matching every other item read.
-    items_res = sb.table("tally_migration_items").select(
-        "created_record_id, created_record_type"
-    ).eq("job_id", job_id).eq("firm_id", firm_id).eq("status", "imported").execute()
+    # Get all created records — firm-scoped and PAGED, matching every other item
+    # read. Unpaged, a rollback stopped after 1000 deletions and reported done,
+    # leaving the remainder of a bad import in the books permanently.
+    created = _all_items(
+        sb, job_id, firm_id,
+        columns="created_record_id, created_record_type", status="imported",
+    )
 
     # Deleting only from the tables the importer writes — never a
     # caller-influenced name (defence in depth around the dynamic .table()).
     _ROLLBACK_TABLES = {"customers", "vendors"}
 
     rolled_back = 0
-    for item in (items_res.data or []):
+    for item in created:
         rec_id = item.get("created_record_id")
         rec_type = item.get("created_record_type")
         if rec_id and rec_type in _ROLLBACK_TABLES:

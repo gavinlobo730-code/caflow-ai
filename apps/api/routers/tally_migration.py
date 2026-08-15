@@ -9,7 +9,7 @@ Never imports without explicit CA confirmation.
 from __future__ import annotations
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client
@@ -167,31 +167,74 @@ def preview_import(
 def execute_import(
     job_id: str,
     req: ExecuteImportRequest,
+    background: BackgroundTasks,
     current_user: dict = Depends(rbac("accounting", "approve")),
 ):
     """
     Execute Tally import. Defaults to dry-run.
     Set is_dry_run=false only after reviewing the preview.
     Never imports without explicit CA confirmation.
+
+    A DRY RUN IS SYNCHRONOUS, A REAL IMPORT IS NOT.
+
+    The dry run writes nothing and returns the report the CA has to read before
+    approving, so it stays inline — an answer that arrives later is no use to
+    someone deciding whether to proceed.
+
+    The real import is handed to a background task and this returns immediately
+    with `status: "importing"`. Poll GET /jobs/{job_id} for progress:
+    `imported_items` / `failed_items` / `total_items` advance as it runs, and
+    `status` settles on `completed` or `failed`.
+
+    Inline, it could not survive real data. gunicorn runs `--timeout 120` and the
+    import costs two round trips per item, so the worker was killed somewhere
+    past ~1,200 items — mid-write, with no report. It also occupied the single
+    worker throughout, freezing the app for every other user. See
+    domain/tally/migration_service.run_import_detached.
     """
-    from domain.tally.migration_service import execute_import as _execute
+    from domain.tally.migration_service import (
+        execute_import as _execute, run_import_detached,
+    )
     _assert_job_scope(current_user, job_id)
+
+    if not req.is_dry_run:
+        # Queued AFTER the scope check above, so an unauthorized caller never
+        # starts one. FastAPI runs a sync background task in its threadpool, so
+        # this does not block the event loop while it runs.
+        background.add_task(
+            run_import_detached,
+            firm_id=current_user["firm_id"],
+            job_id=job_id,
+            actor_id=current_user["id"],
+        )
+        timeline_service.log(
+            client_id="",
+            category="accounting",
+            action="tally_import_started",
+            description="Tally migration started",
+            severity="info",
+            metadata={"job_id": job_id},
+        )
+        return api_response(True, {
+            "job_id": job_id,
+            "status": "importing",
+            "is_dry_run": False,
+            "ca_review_required": True,
+            "poll": f"/api/tally-migration/jobs/{job_id}",
+            "message": (
+                "Import started. It runs in the background — poll the job for "
+                "progress. Safe to re-run if it stops partway: items already "
+                "imported are skipped, not duplicated."
+            ),
+        })
+
     try:
         result = _execute(
             firm_id=current_user["firm_id"],
             job_id=job_id,
             actor_id=current_user["id"],
-            is_dry_run=req.is_dry_run,
+            is_dry_run=True,
         )
-        if not req.is_dry_run:
-            timeline_service.log(
-                client_id="",
-                category="accounting",
-                action="tally_import_completed",
-                description=f"Tally migration completed: {result.get('imported', 0)} records imported",
-                severity="success",
-                metadata={"job_id": job_id, **result},
-            )
         return api_response(True, {
             **result,
             "ca_review_required": True,
@@ -201,7 +244,7 @@ def execute_import(
         # Job not found for THIS firm — cross-firm ids must 404, not 500.
         raise HTTPException(404, detail=str(e))
     except Exception as e:
-        _logger.exception("Import failed for job %s", job_id)
+        _logger.exception("Dry run failed for job %s", job_id)
         raise HTTPException(500, detail=str(e))
 
 
