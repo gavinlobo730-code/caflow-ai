@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 from models.common import api_response
-from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalReversalIn
+from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalEntryUpdateIn, JournalReversalIn
 from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from services.journal_posting_service import journal_posting_service
@@ -263,6 +263,68 @@ class YearLockIn(BaseModel):
     pin: Optional[str] = None     # firm lock PIN (verified server-side)
 
 
+@router.get("/journal/{entry_id}")
+def get_journal_entry(
+    entry_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """One entry with its lines, and whether it may still be edited.
+
+    The response carries `editable` and `lock_reason` so the editor can show the
+    CA why a period is closed instead of only refusing the save. Both come from
+    the same database function the write path enforces with, so the screen and
+    the ledger cannot disagree.
+    """
+    db = _prod_db()
+    if not db:
+        raise HTTPException(404, detail="Journal entry not found.")
+    _assert_journal_scope(db, current_user, entry_id)
+    from services.manual_journal_service import manual_journal_service
+    return api_response(True, manual_journal_service.get(
+        db, current_user["firm_id"], entry_id))
+
+
+@router.patch("/journal/{entry_id}")
+def update_journal_entry(
+    entry_id: str,
+    data: JournalEntryUpdateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Correct a journal entry — draft or posted.
+
+    A POSTED entry may be corrected until the CA locks the financial year or a
+    return covering the period has been filed. That is what the proviso to Rule
+    3(1) of the Companies (Accounts) Rules 2014 contemplates: an edit log of
+    each change made in books of account, not a book that cannot change. See
+    migration 266.
+
+    The correction goes through edit_posted_journal, which re-checks the period,
+    enforces Dr = Cr in integer paise, rewrites the lines, rebuilds the
+    reporting passbook and asserts no drift — atomically. Every change lands in
+    audit_log via the table triggers, header and lines alike.
+
+    Deleting a posted entry remains impossible; that is still a reversal.
+    """
+    db = _prod_db()
+    if not db:
+        raise HTTPException(404, detail="Journal entry not found.")
+    _assert_journal_scope(db, current_user, entry_id)
+    from services.manual_journal_service import manual_journal_service
+
+    before = manual_journal_service.get(db, current_user["firm_id"], entry_id)
+    entry = manual_journal_service.update(
+        db, current_user["firm_id"], entry_id,
+        data.model_dump(exclude_none=True), actor_id=current_user.get("id"),
+    )
+    # The DB triggers write the row-level edit log; this records the request
+    # that caused it, with the actor's email — the two together answer "who
+    # changed what, when" without joining across systems.
+    log_event(current_user["firm_id"], "journal_entry", entry_id, "update",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data=before, new_data=entry)
+    return api_response(True, entry)
+
+
 @router.get("/year-lock")
 def get_year_lock(current_user: dict = Depends(rbac("accounting", "read"))):
     """Current year-lock state for the firm: {locked_financial_years, pin_set}.
@@ -311,6 +373,20 @@ def list_journals_queue(
     return api_response(True, journal_posting_service.list_journals(
         db, current_user["firm_id"], client_id, status,
         allowed_client_ids=effective_client_ids(current_user)))
+
+
+def _assert_journal_scope(db, current_user: dict, entry_id: str) -> None:
+    """Row-addressed by entry_id, so M2 assignment scope has to be checked here.
+
+    ONE fixed message for missing-row, wrong-firm and right-firm-but-unassigned
+    alike — the same convention _assert_draft_scope uses, so a hidden entry and
+    a non-existent one are indistinguishable from outside.
+    """
+    row = (db.table("journal_entries").select("client_id")
+           .eq("id", entry_id).eq("firm_id", current_user["firm_id"])
+           .is_("deleted_at", None).limit(1).execute().data or [None])[0]
+    if not row or not can_access_client(current_user, row.get("client_id")):
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
 
 
 def _assert_draft_scope(db, current_user: dict, journal_id: str) -> None:

@@ -63,6 +63,35 @@ ALLOWED_JOURNAL_ENTRY_TYPES = {
 }
 
 
+class JournalEntryUpdateIn(BaseModel):
+    """A correction to an existing entry. Every field optional — a CA fixing a
+    narration should not have to resend the lines.
+
+    EXCEPT on a posted entry, where `lines` (if the amounts are changing at all)
+    must be the COMPLETE set. edit_posted_journal replaces the lines wholesale
+    so that the audit trigger records a clean before/after for every figure, and
+    so the Dr = Cr check runs against what the entry will actually be rather
+    than a fragment of it.
+
+    client_id is absent on purpose: moving an entry between clients is not a
+    correction, it is two entries.
+    """
+    entry_date: Optional[str] = None      # YYYY-MM-DD
+    reference_no: Optional[str] = None
+    narration: Optional[str] = None
+    entry_type: Optional[str] = None
+    lines: Optional[list[JournalLineIn]] = None
+
+    @field_validator("entry_type")
+    @classmethod
+    def entry_type_allowed(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ALLOWED_JOURNAL_ENTRY_TYPES:
+            raise ValueError(
+                f"Invalid entry_type '{v}'. Allowed: {', '.join(sorted(ALLOWED_JOURNAL_ENTRY_TYPES))}."
+            )
+        return v
+
+
 class JournalEntryIn(BaseModel):
     client_id: str
     entry_date: str  # YYYY-MM-DD
