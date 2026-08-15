@@ -20,7 +20,7 @@ five. can_access_client(user, None) is always True, so a client-less
 (firm-level) job is unaffected by any of this.
 """
 import pytest
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 import routers.tally_migration as tm
 import domain.tally.migration_service as svc
@@ -167,16 +167,22 @@ def test_previewing_an_own_clients_job_is_allowed(deny):
 
 def test_importing_a_hidden_clients_job_is_refused(deny):
     _job(THEIRS, "J1")
+    bg = BackgroundTasks()
     with pytest.raises(HTTPException) as exc:
-        tm.execute_import("J1", tm.ExecuteImportRequest(), current_user=MANAGER_USER)
+        tm.execute_import("J1", tm.ExecuteImportRequest(), bg,
+                          current_user=MANAGER_USER)
     assert exc.value.status_code == 404
     # Refused before the domain layer ever ran — status untouched.
     assert svc._MOCK_JOBS["J1"]["status"] == "uploaded"
+    # And nothing was queued: a scope failure must not leave an import to run
+    # after the 404 has already gone back to the caller.
+    assert bg.tasks == []
 
 
 def test_importing_an_own_clients_job_is_allowed(deny):
     _job(MINE, "J1")
-    resp = tm.execute_import("J1", tm.ExecuteImportRequest(), current_user=MANAGER_USER)
+    resp = tm.execute_import("J1", tm.ExecuteImportRequest(), BackgroundTasks(),
+                             current_user=MANAGER_USER)
     assert resp["success"] is True
 
 
