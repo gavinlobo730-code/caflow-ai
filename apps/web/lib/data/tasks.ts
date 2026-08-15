@@ -62,7 +62,6 @@ export interface CreateTaskInput {
   assigned_to?: string;
   assignee_id?: string;
   due_date?: string;
-  task_type?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +137,7 @@ export async function getTasks(options: TaskQueryOptions = {}): Promise<Task[]> 
     .from("tasks")
     .select(`
       id, title, status, priority, assigned_to, assignee_id,
-      due_date, client_id, task_type, description, created_at, updated_at,
+      due_date, client_id, description, created_at, updated_at,
       client:clients!client_id ( client_name )
     `)
     .eq("firm_id", firmId)

@@ -10,11 +10,32 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# `.from("x")` followed, within a short window, by `.select("...")`. The window
+# `.from("x")` followed, within a short window, by `.select(...)`. The window
 # exists because the two are almost always adjacent in a builder chain but are
 # usually on different lines, and occasionally have a comment between them.
 _FROM = re.compile(r'\.from\("([a-z_0-9]+)"\)')
-_SELECT_AFTER = re.compile(r'\A[\s\S]{0,400}?\.select\(\s*"([^"]*)"', re.M)
+
+# Double-quoted, single-quoted, and BACKTICK select lists.
+#
+# The backtick arm is here because it was missing, and that omission put a live
+# 400 in front of users: lib/data/tasks.ts selects a multi-line template literal
+# naming `task_type`, a column that has never existed in any migration.
+# PostgREST rejects the whole select, getTasks() throws, and the client Overview
+# page renders its error state instead of loading. The scanner DID notice it
+# could not read that select and counted it — into a budget of 120 that could
+# never fail (see test_frontend_columns_exist_pg.py). A signal nobody can act on
+# is not a signal.
+#
+# Interpolation is deliberately excluded: `${...}` inside the literal means the
+# column list is not knowable statically, so those still count as unparsed
+# rather than being half-read and half-checked.
+_SELECT_AFTER = re.compile(
+    r'\A[\s\S]{0,400}?\.select\(\s*(?:"([^"]*)"|\'([^\']*)\'|`([^`$]*)`)', re.M)
+
+
+def _select_text(match: "re.Match[str]") -> str:
+    """Whichever quoting style matched."""
+    return match.group(1) or match.group(2) or match.group(3) or ""
 
 SKIP_DIRS = {"node_modules", ".next", "out", ".vercel"}
 
@@ -340,9 +361,14 @@ def scan_filters(web_root: Path) -> list[tuple[str, str, str]]:
 
 def scan(web_root: Path) -> tuple[list[tuple[str, str, str]], int]:
     """Every (file, relation, column) the frontend selects, plus a count of
-    `.from()` calls whose select could not be read as a plain string literal
-    (template literals, variables) — reported so a parser that quietly stops
-    finding anything cannot masquerade as a clean result."""
+    `.from()` calls whose select could not be read — reported so a parser that
+    quietly stops finding anything cannot masquerade as a clean result.
+
+    The count is dominated by `.from()` calls that have no `.select()` at all
+    (inserts, updates, deletes — covered by scan_writes instead), so it is a
+    poor tripwire on its own. unreadable_selects() is the sharp one: it counts
+    only `.from()` calls that DO reach a `.select(` this parser could not read,
+    which is what a new unreadable shape actually looks like."""
     found: list[tuple[str, str, str]] = []
     unparsed = 0
     for path in sorted(web_root.rglob("*.ts*")):
@@ -360,7 +386,46 @@ def scan(web_root: Path) -> tuple[list[tuple[str, str, str]], int]:
             if not sel:
                 unparsed += 1
                 continue
-            cols, _ = parse_select(table, sel.group(1))
+            cols, _ = parse_select(table, _select_text(sel))
             for rel, col in cols:
                 found.append((rel_path, rel, col))
     return found, unparsed
+
+
+# A `.select(` this parser reached but could not read. Anything matching this
+# and NOT matching _SELECT_AFTER is a column list going unchecked.
+#
+# `.select()` with no argument is excluded: it names no columns (it is the
+# "return the row you just wrote" form after an insert/update), so there is
+# nothing for a column checker to verify. Five of those exist today and
+# counting them would put permanent noise in a number that has to stay at zero
+# to mean anything.
+_ANY_SELECT_AFTER = re.compile(r'\A[\s\S]{0,400}?\.select\(\s*(?!\))', re.M)
+
+
+def unreadable_selects(web_root: Path) -> list[tuple[str, int, str]]:
+    """(file, line, snippet) for every `.from(...).select(` whose column list
+    this parser cannot read.
+
+    Kept separate from scan()'s `unparsed` because that number counts writes
+    too and is therefore always large and always uninformative. This one is
+    zero today and is asserted to stay zero: a select nobody can read is a
+    select nobody is checking, which is exactly how `tasks.task_type` shipped."""
+    out: list[tuple[str, int, str]] = []
+    for path in sorted(web_root.rglob("*.ts*")):
+        if set(path.parts) & SKIP_DIRS:
+            continue
+        try:
+            src = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for m in _FROM.finditer(src):
+            tail = src[m.end():]
+            if _SELECT_AFTER.match(tail):
+                continue
+            if not _ANY_SELECT_AFTER.match(tail):
+                continue          # a write, or no select at all — not our business
+            line = src[:m.start()].count("\n") + 1
+            out.append((path.relative_to(web_root).as_posix(), line,
+                        tail[:120].replace("\n", " ")))
+    return out
