@@ -1,0 +1,58 @@
+# Calls the real API as a real user and fails on a non-2xx or an over-budget
+# response.
+#
+# WHY IT IS NOT ON PULL REQUESTS
+#     It needs credentials and a live deployment. Gating every PR on a
+#     third-party service that can be cold, rate-limited, or mid-deploy trains
+#     people to ignore red, and an ignored check is worse than no check. This
+#     runs on a schedule and on demand, where a failure means "go look" rather
+#     than "your diff is bad".
+#
+# WHY IT EXISTS AT ALL
+#     Every other check in this repo is static — source parsed against a schema,
+#     or against the TypeScript AST. All of them were green on a build where the
+#     client Overview page did not load, /health returned 503,
+#     /api/identity/permissions returned 403 five times, and
+#     /api/accounting/cash-flow took 57 seconds. Nothing in CI had ever called a
+#     running instance.
+#
+# IF THE SECRETS ARE NOT SET
+#     scripts/smoke_api.py prints which variables are missing and exits 0. The
+#     job goes green having done nothing, on purpose — see the "skipped" line in
+#     its output. Set the repository secrets below to turn it on.
+name: API smoke
+
+on:
+  schedule:
+    # Every 6 hours. Frequent enough to catch a regression the same day,
+    # infrequent enough that a free-tier instance is not kept awake by CI.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: real API — status + latency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install httpx
+        run: pip install --no-cache-dir httpx
+
+      - name: Smoke the API
+        working-directory: apps/api
+        env:
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          # A client with a REAL ledger. Pointing this at an empty client would
+          # make every check pass in milliseconds while proving nothing — the
+          # endpoint that took 57s was serving 12,836 entries.
+          SMOKE_CLIENT_ID: ${{ secrets.SMOKE_CLIENT_ID }}
+        run: python3 scripts/smoke_api.py

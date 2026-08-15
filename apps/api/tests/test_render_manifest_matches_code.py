@@ -41,6 +41,29 @@ MANIFEST = REPO_ROOT / "render.yaml"
 # reason, not a parking space — test_no_exempt_entry_is_stale fails once a name
 # stops being read, so this list cannot quietly outlive its justification.
 EXEMPT: dict[str, str] = {
+    # scripts/smoke_api.py runs in CI (.github/workflows/smoke.yml), never in
+    # the deployed service. Declaring these on Render would put a real user's
+    # password into the service's own environment — read by nothing, exposed to
+    # everything the process can reach. The script skips with exit 0 when they
+    # are unset, which is exactly what should happen anywhere but that workflow.
+    "SMOKE_BASE_URL":
+        "CI-only (scripts/smoke_api.py, run by .github/workflows/smoke.yml). The "
+        "deployed service never reads it; it names the deployment being tested.",
+    "SMOKE_EMAIL":
+        "CI-only (scripts/smoke_api.py). The account the smoke check signs in as, "
+        "which is a property of the test run and not of the running service.",
+    "SMOKE_PASSWORD":
+        "CI-only (scripts/smoke_api.py). A real account's password — it belongs "
+        "in a GitHub Actions secret and nowhere near the service environment.",
+    "SMOKE_CLIENT_ID":
+        "CI-only (scripts/smoke_api.py). Picks a client with a real ledger so the "
+        "latency budgets mean something; the service has no use for it.",
+    "SMOKE_START_DATE":
+        "CI-only (scripts/smoke_api.py), defaulted in the script. Overrides the "
+        "reporting window the smoke check asks for; not a service setting.",
+    "SMOKE_END_DATE":
+        "CI-only (scripts/smoke_api.py), defaulted in the script. Overrides the "
+        "reporting window the smoke check asks for; not a service setting.",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY":
         "Compatibility fallback only. core/supabase_client.py reads it when "
         "SUPABASE_ANON_KEY is unset, because the frontend spelling is what "
