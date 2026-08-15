@@ -188,6 +188,63 @@ BEGIN
 END;
 $$;
 
+-- The THIRD guard on the same table. journal_entries is protected twice over by
+-- two migrations that never knew about each other: 055 created
+-- trg_prevent_posted_journal_update -> prevent_posted_journal_modification(),
+-- and 058 then created trg_journal_immutability ->
+-- prevent_posted_journal_update() beside it. Both are still attached. Amending
+-- only one of them produces a carve-out that never fires: triggers run in name
+-- order, so trg_journal_immutability lets the edit through and
+-- trg_prevent_posted_journal_update rejects it a moment later. Dropping the
+-- older trigger instead would be the tidier change and the riskier one — it is
+-- the guard that has actually been standing since 055, and 251's history is
+-- what a missing journal guard costs. So both keep their carve-out, and this
+-- comment is here so the next person amending one goes looking for the other.
+--
+-- It also fixes a latent bug in 055/213: this trigger fires BEFORE UPDATE OR
+-- DELETE, and both prior versions ended in a bare `RETURN NEW`. NEW is NULL in
+-- a DELETE trigger, and returning NULL from a BEFORE DELETE row trigger
+-- silently cancels the delete. Deleting a DRAFT entry has therefore been a
+-- no-op that reports success since 055 — invisible because the product
+-- soft-deletes (deleted_at) and never issues the hard DELETE. Returning OLD on
+-- the delete path restores the intent.
+CREATE OR REPLACE FUNCTION public.prevent_posted_journal_modification()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = public, pg_catalog AS $$
+DECLARE
+    old_with_new_flag journal_entries;
+BEGIN
+    IF OLD.is_posted = TRUE THEN
+        -- Deletion of a posted entry stays forbidden, edit or no edit, exactly
+        -- as in prevent_posted_journal_delete above.
+        IF TG_OP = 'DELETE' THEN
+            RAISE EXCEPTION
+                'Cannot delete a posted journal entry (id: %). Create a reversal instead.',
+                OLD.id
+                USING ERRCODE = 'integrity_constraint_violation';
+        END IF;
+        IF public.journal_edit_in_progress() THEN
+            RETURN NEW;
+        END IF;
+        old_with_new_flag := OLD;
+        old_with_new_flag.is_reversed := NEW.is_reversed;
+        IF COALESCE(OLD.is_reversed, FALSE) = FALSE AND NEW.is_reversed IS TRUE
+           AND NEW IS NOT DISTINCT FROM old_with_new_flag THEN
+            RETURN NEW;
+        END IF;
+        RAISE EXCEPTION
+            'Cannot modify a posted journal entry (id: %) directly. Use the '
+            'edit endpoint, which checks the period lock and repairs the '
+            'reporting cache, or create a reversal.', OLD.id
+            USING ERRCODE = 'integrity_constraint_violation';
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 -- Lines. Deleting a line IS legitimate inside an edit — a three-leg entry
 -- corrected to two legs has to lose one — so the carve-out covers DELETE here,
 -- unlike the entry header above. The balance check in edit_posted_journal is
@@ -389,5 +446,19 @@ $$;
 -- fact about the database rather than a convention in the application.
 REVOKE ALL ON FUNCTION public.edit_posted_journal(uuid, uuid, uuid, jsonb, text, text, date, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.edit_posted_journal(uuid, uuid, uuid, jsonb, text, text, date, uuid) TO authenticated, service_role;
-REVOKE ALL ON FUNCTION public.journal_edit_in_progress() FROM PUBLIC;
+-- journal_edit_in_progress(), by contrast, must stay executable by everyone who
+-- can write these tables. The immutability triggers are not SECURITY DEFINER —
+-- they run as the role doing the write — so revoking EXECUTE here does not
+-- protect anything, it makes the guard raise "permission denied for function
+-- journal_edit_in_progress" and block LEGITIMATE writes. (Revoking it was the
+-- first version of this migration; it stopped service_role deleting a line off
+-- a DRAFT entry, which no rule in this file is meant to touch.)
+--
+-- Nothing is given away by allowing it. It reads one transaction-local GUC and
+-- returns a boolean about the caller's own transaction — no row, no amount, no
+-- other tenant. What keeps the carve-out honest is not who may READ the flag
+-- but who may SET it: set_config lives in pg_catalog, which PostgREST does not
+-- expose as an RPC, so a JWT-scoped caller has no way to turn it on. Only
+-- edit_posted_journal, above, can.
+GRANT EXECUTE ON FUNCTION public.journal_edit_in_progress() TO PUBLIC;
 GRANT EXECUTE ON FUNCTION public.journal_period_lock_reason(uuid, uuid, date) TO authenticated, service_role;
