@@ -159,6 +159,19 @@ class SupabaseLedgerSource(LedgerSource):
         if cached is not None:
             return cached
 
+        # Timed because a report that takes a minute in production is currently
+        # unattributable. /api/accounting/cash-flow was measured at 53-57s for a
+        # client with 12,836 entries and 32,936 lines, while
+        # /api/accounting/profit-loss on the same client and page took 2.35s —
+        # and both go through this same fetch, so the obvious explanation (this
+        # is the cost) does not actually account for the difference.
+        #
+        # Two models were built for that gap from reading the code, and neither
+        # survived the data. Rather than optimise on a third guess, log where
+        # the time goes: the next occurrence says which fetch, for how long, and
+        # over how many rows, instead of leaving it to inference.
+        started = time.monotonic()
+
         with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_FETCHES) as ex:
             f_accounts     = ex.submit(self._accounts, firm_id, client_id)
             f_entries      = ex.submit(self._entries, firm_id, client_id)
@@ -186,6 +199,16 @@ class SupabaseLedgerSource(LedgerSource):
             "bills": bills,
             "payments": payments,
         }
+        elapsed = time.monotonic() - started
+        # INFO, not DEBUG: this is the number anyone diagnosing a slow report
+        # needs first, and a level nobody enables in production is a measurement
+        # nobody has. One line per request, so it cannot become noise.
+        _logger.info(
+            "reporting._base firm=%s client=%s took=%.2fs entries=%d accounts=%d "
+            "invoices=%d bills=%d receipts=%d payments=%d",
+            firm_id, client_id, elapsed, len(entries_by_id), len(accounts),
+            len(invoices), len(bills), len(receipts), len(payments),
+        )
         self._base_cache[key] = data
         return data
 
