@@ -13,10 +13,16 @@ const nextConfig = {
     // (e.g. /platform's admin check) fail in the browser. An explicit
     // NEXT_PUBLIC_API_URL (Cloudflare build var / wrangler [vars]) always wins;
     // otherwise production gets the real backend and dev keeps localhost.
+    //
+    // KEEP THIS IN STEP WITH apps/web/wrangler.toml — scripts/api-url.test.ts
+    // fails if they disagree. They are not redundant: wrangler [vars] is what
+    // Cloudflare actually builds with, and this is the last line of defence if
+    // that var goes missing. If they drift, the fallback quietly aims the whole
+    // app at the wrong backend and the build still succeeds.
     NEXT_PUBLIC_API_URL:
       process.env.NEXT_PUBLIC_API_URL ||
       (process.env.NODE_ENV === "production"
-        ? "https://practicesync-ai.onrender.com"
+        ? "https://practicesync-api.onrender.com"
         : "http://localhost:8000"),
   },
 };
