@@ -145,15 +145,23 @@ def test_no_superseded_table_is_queried_by_live_code():
 # ── the guard still guards ────────────────────────────────────────────────────
 
 class _Rpc:
-    def __init__(self, rows): self._rows = rows
-    def execute(self): return type("R", (), {"data": self._rows})()
+    def __init__(self, payload): self._payload = payload
+    def execute(self): return type("R", (), {"data": self._payload})()
 
 
 class _Db:
-    def __init__(self, rows): self._rows = rows
+    """get_public_schema_columns() (migration 265): one row, carrying the map and
+    an independently-computed total so the caller can prove it got everything."""
+
+    def __init__(self, tables: dict[str, list[str]]):
+        self._payload = {
+            "total_columns": sum(len(c) for c in tables.values()),
+            "tables": tables,
+        }
+
     def rpc(self, name, params):
-        assert name == "get_public_columns"
-        return _Rpc(self._rows)
+        assert name == "get_public_schema_columns", f"unexpected RPC {name}"
+        return _Rpc(self._payload)
 
 
 def test_a_genuinely_missing_column_is_still_reported(monkeypatch):
@@ -163,7 +171,7 @@ def test_a_genuinely_missing_column_is_still_reported(monkeypatch):
         "core.schema_guard.expected_columns_from_migrations",
         lambda *a, **k: {"filings": {"firm_id", "acknowledgement_number"}},
     )
-    db = _Db([{"table_name": "filings", "column_name": "id"}])
+    db = _Db({"filings": ["id"]})
     result = check_schema_drift(db)
 
     assert result["missing"] == ["filings.acknowledgement_number"], result
@@ -175,7 +183,7 @@ def test_a_superseded_table_absent_entirely_does_not_fail_health(monkeypatch):
         "core.schema_guard.expected_columns_from_migrations",
         lambda *a, **k: {"transactions": {"supply_type", "cess_paise"}},
     )
-    db = _Db([{"table_name": "journal_entries", "column_name": "id"}])
+    db = _Db({"journal_entries": ["id"]})
     assert check_schema_drift(db) == {"checked": True, "missing": []}
 
 
@@ -200,12 +208,12 @@ def test_the_real_migration_history_against_the_real_production_shape(monkeypatc
     }
     assert len(observed_missing) == 17
 
-    rows = [
-        {"table_name": t, "column_name": c}
-        for t, cols in expected.items() for c in cols
-        if (t, c) not in observed_missing
-    ]
-    result = check_schema_drift(_Db(rows))
+    present: dict[str, list[str]] = {}
+    for t, cols in expected.items():
+        kept = [c for c in cols if (t, c) not in observed_missing]
+        if kept:
+            present[t] = kept
+    result = check_schema_drift(_Db(present))
 
     assert result == {"checked": True, "missing": []}, (
         "against production's observed schema the guard still reports drift: "

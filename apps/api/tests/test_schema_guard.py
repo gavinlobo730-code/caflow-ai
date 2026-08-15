@@ -66,20 +66,31 @@ class _FakeResp:
 
 
 class _FakeRpc:
-    def __init__(self, rows):
-        self._rows = rows
+    def __init__(self, payload):
+        self._payload = payload
 
     def execute(self):
-        return _FakeResp(self._rows)
+        return _FakeResp(self._payload)
 
 
 class _FakeDb:
-    def __init__(self, rows):
-        self._rows = rows
+    """Speaks get_public_schema_columns() (migration 265): ONE row carrying the
+    whole map plus an independently-computed total, so a caller can prove it
+    received everything."""
+
+    # Sentinel, not None: `raw=None` is a real case to test (the RPC returned
+    # nothing) and must not be confused with "raw wasn't supplied".
+    _UNSET = object()
+
+    def __init__(self, tables: dict, total=None, raw=_UNSET):
+        self._payload = raw if raw is not _FakeDb._UNSET else {
+            "total_columns": total if total is not None else sum(len(c) for c in tables.values()),
+            "tables": tables,
+        }
 
     def rpc(self, name, params):
-        assert name == "get_public_columns"
-        return _FakeRpc(self._rows)
+        assert name == "get_public_schema_columns", f"unexpected RPC {name}"
+        return _FakeRpc(self._payload)
 
 
 class _FailingDb:
@@ -92,7 +103,7 @@ def test_check_schema_drift_reports_missing_column(monkeypatch):
         "core.schema_guard.expected_columns_from_migrations",
         lambda *a, **k: {"service_catalogue": {"stock_version"}},
     )
-    db = _FakeDb(rows=[{"table_name": "service_catalogue", "column_name": "name"}])
+    db = _FakeDb({"service_catalogue": ["name"]})
     result = check_schema_drift(db)
     assert result == {"checked": True, "missing": ["service_catalogue.stock_version"]}
 
@@ -102,7 +113,7 @@ def test_check_schema_drift_clean_when_column_present(monkeypatch):
         "core.schema_guard.expected_columns_from_migrations",
         lambda *a, **k: {"service_catalogue": {"stock_version"}},
     )
-    db = _FakeDb(rows=[{"table_name": "service_catalogue", "column_name": "stock_version"}])
+    db = _FakeDb({"service_catalogue": ["stock_version"]})
     result = check_schema_drift(db)
     assert result == {"checked": True, "missing": []}
 

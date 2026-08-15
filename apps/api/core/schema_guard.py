@@ -50,6 +50,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 _logger = logging.getLogger("caflow.schema_guard")
 
@@ -150,31 +151,93 @@ def expected_columns_from_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> d
     return expected
 
 
+def live_columns(db) -> Optional[dict[str, set[str]]]:
+    """The live public schema as {table: {column, ...}}, or None when it could
+    not be read IN FULL.
+
+    None is the important return value, and the reason this function exists.
+
+    The previous read used get_public_columns() (migration 242), which returns
+    one row per column. This schema has 3531 of them and PostgREST caps a
+    response at 1000, so the guard received the first 1000 rows and treated them
+    as the whole schema — reporting 401 existing columns as missing, including
+    clients.firm_id, which every tenant-isolation policy is built on. The cut
+    landed mid-table (form_26as_uploads.parse_errors "present" at row 922,
+    parse_status "missing" at row 3073), which is what a row limit looks like and
+    what real drift does not.
+
+    So the failure was not the truncation itself — it was that a truncated read
+    was indistinguishable from a complete one, and the code stated a confident
+    conclusion from partial data. get_public_schema_columns() (migration 265)
+    returns a SINGLE row, which a row limit cannot cut, and reports
+    total_columns computed independently of the map so completeness can be
+    PROVEN rather than assumed. Anything that fails that proof returns None, and
+    the caller reports "not checked" instead of inventing drift.
+    """
+    try:
+        resp = db.rpc("get_public_schema_columns", {}).execute()
+    except Exception as e:  # noqa: BLE001 — unreachable RPC must never read as drift
+        _logger.warning(
+            "schema_guard: get_public_schema_columns() unavailable — skipping drift "
+            "check. Apply migration 265 if this persists. (%s)", e,
+        )
+        return None
+
+    # PostgREST hands back the scalar for a scalar-returning function; some
+    # client versions wrap it in a single-element list. Accept both, refuse
+    # anything else rather than guessing at a shape.
+    payload = resp.data
+    if isinstance(payload, list):
+        payload = payload[0] if len(payload) == 1 else None
+    if not isinstance(payload, dict):
+        _logger.warning("schema_guard: unexpected introspection payload — skipping drift check")
+        return None
+
+    tables = payload.get("tables")
+    declared_total = payload.get("total_columns")
+    if not isinstance(tables, dict) or not isinstance(declared_total, int):
+        _logger.warning("schema_guard: malformed introspection payload — skipping drift check")
+        return None
+
+    actual: dict[str, set[str]] = {}
+    for table, cols in tables.items():
+        if not isinstance(cols, list):
+            _logger.warning("schema_guard: malformed column list for %s — skipping", table)
+            return None
+        actual[str(table).lower()] = {str(c).lower() for c in cols}
+
+    # The completeness proof. Counted from the map we actually parsed, against a
+    # total the database computed separately. A mismatch means we did not receive
+    # what the database has, and the only honest answer then is "don't know".
+    received = sum(len(cols) for cols in actual.values())
+    if received != declared_total:
+        _logger.error(
+            "schema_guard: INCOMPLETE schema read — parsed %d column(s), database "
+            "reports %d. Refusing to report drift from a partial read.",
+            received, declared_total,
+        )
+        return None
+
+    return actual
+
+
 def check_schema_drift(db) -> dict:
     """Diffs expected_columns_from_migrations() against the live database's
-    actual public-schema columns (via the get_public_columns() RPC, migration
-    242).
+    actual public-schema columns.
 
     Returns {"checked": bool, "missing": ["table.column", ...]}. `checked` is
-    False whenever the RPC itself couldn't be reached (network hiccup, or the
-    RPC doesn't exist yet on a database older than migration 242) -- a
-    connectivity failure must never be misreported as confirmed drift.
+    False whenever the schema could not be read IN FULL -- an unreachable RPC, a
+    database older than migration 265, or a read that fails its own completeness
+    check. None of those is evidence of drift, and reporting them as drift is
+    exactly what made this guard useless for its first weeks of life.
     """
     expected = expected_columns_from_migrations()
     if not expected:
         return {"checked": True, "missing": []}
-    try:
-        resp = db.rpc("get_public_columns", {}).execute()
-        rows = resp.data or []
-    except Exception as e:
-        _logger.warning(
-            "schema_guard: could not reach get_public_columns() RPC — skipping drift check (%s)", e
-        )
-        return {"checked": False, "missing": []}
 
-    actual: dict[str, set[str]] = {}
-    for row in rows:
-        actual.setdefault(row["table_name"].lower(), set()).add(row["column_name"].lower())
+    actual = live_columns(db)
+    if actual is None:
+        return {"checked": False, "missing": []}
 
     missing: list[str] = []
     skipped: list[str] = []
