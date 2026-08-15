@@ -18,6 +18,17 @@ _CONFIG = [
     ("GROQ_API_KEY",              False, "AI chat/text features + PDF invoice extraction — disabled if unset"),
     ("GEMINI_API_KEY",            False, "AI image-based invoice extraction — disabled if unset"),
     ("SENTRY_DSN",                False, "error monitoring — disabled if unset"),
+    # Every outbound email goes through this one key: portal invites (client and
+    # employee), team invites, scheduled reports. services/email_service.py
+    # returns False and logs rather than raising when it is missing, which is
+    # right — a failed send must not break the action that triggered it — but it
+    # also means nothing surfaces until somebody notices an email that never
+    # arrived. Listing it here is what makes that visible at boot instead.
+    #
+    # EMAIL_FROM is deliberately NOT listed: it defaults to a real address in
+    # email_service, so its absence degrades the From header rather than
+    # stopping delivery.
+    ("RESEND_API_KEY",            False, "outbound email (invites, reports) — nothing is sent if unset"),
 ]
 
 
