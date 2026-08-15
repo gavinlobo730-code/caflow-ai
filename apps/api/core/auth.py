@@ -52,9 +52,27 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
             .execute()
         )
         user_data = result.data
-    except Exception:
+    except Exception as exc:
+        # The lookup itself broke — Supabase unreachable, rate-limited, a
+        # transient PostgREST error. That is NOT "this user has no account".
+        #
+        # It used to be reported as one: the except set user_data = None, the
+        # caller saw a falsy row and raised 403 "User not found in firm". A 403
+        # is a statement that the caller is permanently not allowed, so the
+        # frontend fails closed and its retries are pointless — which is exactly
+        # what was seen in production, five consecutive 403s on
+        # /api/identity/permissions while /health was returning 503. The firm's
+        # only user was active, in an active firm, with a valid auth_user_id
+        # link; nothing about authorization was wrong.
+        #
+        # Raise it as what it is. 503 tells the caller to try again, and the
+        # switch to maybe_single() above means reaching here really does mean
+        # the query failed rather than returned nothing.
         _logger.exception("user lookup failed for auth_user_id=%s", auth_user_id)
-        user_data = None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify your account just now. Please try again.",
+        ) from exc
 
     if not user_data:
         return None, None

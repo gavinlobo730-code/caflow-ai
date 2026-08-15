@@ -71,17 +71,33 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   try {
     res = await fetchWithTimeout(path, options, token);
   } catch (e) {
-    // A sleeping Render free-tier instance takes 30-60s to cold-start. The
-    // first request either times out (our own AbortError above) or the
+    // A sleeping Render free-tier instance takes 30-60s to cold-start, and the
     // connection fails outright before any response comes back (TypeError
     // "Failed to fetch" — the same underlying symptom the browser reports as
     // a misleading CORS error, since there's no response to carry a CORS
-    // header). Either way nothing was processed server-side, so one retry
-    // after a short delay is safe — by then the instance has usually
-    // finished waking up.
+    // header). Nothing was processed server-side, so one retry after a short
+    // delay is safe: by then the instance has usually finished waking up.
+    //
+    // A TIMEOUT IS NOT RETRIED, and that is a deliberate change.
+    //
+    // It used to be. In production /api/accounting/cash-flow takes 53-57s for a
+    // client with a 12,836-entry ledger, which is longer than the 45s budget
+    // above — so every call aborted at exactly 45.00s, slept 5s, and fired
+    // again. The network panel showed it plainly: one cancelled request at
+    // 45.00s followed by a successful one at 57.26s. The retry never had a
+    // chance of being faster; all it did was put a second copy of the slowest
+    // query in the app onto an already-struggling instance, which makes the
+    // next caller slower still.
+    //
+    // A connection that never opened and a server that answered too slowly are
+    // different failures. Only the first one is worth trying again.
     const isTimeout = e instanceof DOMException && e.name === "AbortError";
     const isNetworkFailure = e instanceof TypeError;
-    if (!isTimeout && !isNetworkFailure) throw e;
+    if (isTimeout) {
+      throw new Error(
+        "This is taking longer than expected — the server didn't respond in time. Please try again.");
+    }
+    if (!isNetworkFailure) throw e;
     await sleep(5_000);
     try {
       res = await fetchWithTimeout(path, options, token);

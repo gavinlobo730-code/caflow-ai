@@ -65,14 +65,20 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _frontend_select_parser import scan, scan_filters, scan_writes  # noqa: E402
+from _frontend_select_parser import (  # noqa: E402
+    scan, scan_filters, scan_writes, unreadable_selects,
+)
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 WEB = API_ROOT.parents[1] / "apps" / "web"
 _ADMIN = os.environ.get("HARNESS_PG")
 
-pytestmark = pytest.mark.skipif(
+# Applied per-test rather than as a module-level `pytestmark`, so that the one
+# check in this file which reads only source code is not silently skipped
+# everywhere Postgres is absent — that would make the check that catches an
+# invisible select itself invisible.
+_NEEDS_PG = pytest.mark.skipif(
     not _ADMIN or shutil.which("psql") is None or not RUNNER.exists() or not WEB.is_dir(),
     reason="frontend column check requires HARNESS_PG + psql + apps/web",
 )
@@ -114,6 +120,13 @@ FIXED_HERE: dict[str, str] = {
     "client_documents.file_size_bytes": "file_size",
     "loans.next_emi_date": "disbursement_date + maturity_date",
     "compliance_calendar.tax_amount_paise": "(no equivalent — leg removed)",
+    # Found in production, not by this file: the client Overview page rendered
+    # "Couldn't load this client's overview" and the console showed a 400 on
+    # /rest/v1/tasks. `task_type` has never existed in any migration. The select
+    # was the app's only template literal, which this parser could not read, and
+    # the "unreadable select" budget it landed in was set to 120 against an
+    # actual value of 73 — so it counted the miss and passed anyway.
+    "tasks.task_type": "(no equivalent — the concept does not exist on tasks)",
 }
 
 
@@ -152,18 +165,53 @@ def _offenders(schema: set[str]) -> dict[str, set[str]]:
     return bad
 
 
+@_NEEDS_PG
 def test_the_scan_finds_enough_to_be_meaningful(schema):
     """Vacuity guard. A parser that silently stops matching would make every
     assertion below pass while checking nothing — the most likely way this file
     rots, because it would look like a clean bill of health."""
     found, unparsed = scan(WEB)
-    assert len(found) >= 500, f"only {len(found)} select columns found — parser likely broke"
+    assert len(found) >= 800, f"only {len(found)} select columns found — parser likely broke"
     assert len(schema) >= 2000, f"only {len(schema)} columns in schema — migrations likely failed"
-    # Template-literal and variable selects cannot be read; that is expected and
-    # bounded. A jump means the codebase moved to a form this cannot see.
-    assert unparsed <= 120, f"{unparsed} .from() calls had an unreadable select"
+    # `unparsed` counts every .from() with no readable select, and MOST of those
+    # are inserts/updates/deletes that have no select at all (70 of 73 when this
+    # was written). So it is a weak tripwire, and it was set weaker still: the
+    # bound used to be 120 against an actual value of 73, which is to say it
+    # could not fail. It caught nothing when lib/data/tasks.ts moved its select
+    # to a template literal naming `task_type` — a column that has never existed
+    # — and shipped a 400 that blanked the client Overview page.
+    #
+    # Kept only as a coarse "did the parser stop working" signal, now bounded
+    # near the real value. The sharp check is the next test.
+    assert unparsed <= 80, f"{unparsed} .from() calls had an unreadable select"
 
 
+@pytest.mark.skipif(not WEB.is_dir(), reason="needs apps/web")
+def test_every_select_the_frontend_writes_can_actually_be_read():
+    """The check that would have caught `tasks.task_type`.
+
+    Deliberately NOT under this module's HARNESS_PG skip: it reads source, not a
+    database. Inheriting that skip would make the one check that catches an
+    invisible select itself invisible in every environment without Postgres —
+    the same shape of failure it exists to prevent.
+
+    A `.select(...)` this parser cannot read is a column list nobody is
+    verifying — it passes every assertion in this file by being invisible to
+    them. There is no acceptable number of those but zero, so unlike the count
+    above this has no budget to hide in.
+
+    If a legitimately dynamic select ever appears (`.select(cols)` where cols is
+    built at runtime), the answer is to make the column list static or to check
+    it another way — not to raise a threshold."""
+    unreadable = unreadable_selects(WEB)
+    lines = [f"{f}:{line}  {snippet}" for f, line, snippet in unreadable]
+    assert not unreadable, (
+        "these .select() calls name columns this checker cannot read, so none of "
+        "them are being verified against the schema:\n  " + "\n  ".join(lines)
+    )
+
+
+@_NEEDS_PG
 def test_no_frontend_select_names_a_column_that_does_not_exist(schema):
     new = {k: v for k, v in _offenders(schema).items() if k not in INTENTIONAL}
     lines = [f"{col}  ({', '.join(sorted(files))})" for col, files in sorted(new.items())]
@@ -177,6 +225,7 @@ def test_no_frontend_select_names_a_column_that_does_not_exist(schema):
     )
 
 
+@_NEEDS_PG
 def test_the_columns_fixed_here_stay_fixed(schema):
     """Names the specific regressions, so a revert reports itself instead of
     arriving as an anonymous line in the list above."""
@@ -192,6 +241,7 @@ def test_the_columns_fixed_here_stay_fixed(schema):
         + ", ".join(f"{c} (should be {FIXED_HERE[c]})" for c in still_wrong))
 
 
+@_NEEDS_PG
 def test_both_client_documents_pages_use_the_real_columns(schema):
     """client_documents has TWO consumers, and the first pass at this fix
     reported only one of them — the offender map printed a single file per
@@ -209,6 +259,7 @@ def test_both_client_documents_pages_use_the_real_columns(schema):
             assert f"client_documents.{c}" in schema, f"{page} selects bogus {c}"
 
 
+@_NEEDS_PG
 def test_the_employee_portal_columns_are_right(schema):
     """Pins the specific fix, so a revert names itself instead of arriving as
     one line in a generic list."""
@@ -229,6 +280,7 @@ def test_the_employee_portal_columns_are_right(schema):
         assert f"{rel}.{col}" in schema, f"employee portal still selects {rel}.{col}"
 
 
+@_NEEDS_PG
 def test_no_intentional_entry_is_stale(schema):
     """An exemption for a query that now resolves is a hole: the name can come
     back into use later and skip the check entirely."""
@@ -238,6 +290,7 @@ def test_no_intentional_entry_is_stale(schema):
         f"delete them from INTENTIONAL: {stale}")
 
 
+@_NEEDS_PG
 def test_every_intentional_entry_says_which_page_and_why():
     for col, why in INTENTIONAL.items():
         assert "app/" in why, f"{col}: name the page"
@@ -257,6 +310,7 @@ def _bad(refs, schema: set[str]) -> dict[str, set[str]]:
     return out
 
 
+@_NEEDS_PG
 def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     """Vacuity guards, one per scan. The filter walk once matched only its first
     chain step (a stray \\A anchored it to the start of the whole file) and so
@@ -266,6 +320,7 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     assert len(scan_writes(WEB)) >= 200, "write scan found too little — parser likely broke"
 
 
+@_NEEDS_PG
 def test_no_filter_names_a_column_that_does_not_exist(schema):
     new = {k: v for k, v in _bad(scan_filters(WEB), schema).items() if k not in UNFIXED}
     assert not new, (
@@ -275,6 +330,7 @@ def test_no_filter_names_a_column_that_does_not_exist(schema):
     )
 
 
+@_NEEDS_PG
 def test_no_write_payload_names_a_column_that_does_not_exist(schema):
     new = {k: v for k, v in _bad(scan_writes(WEB), schema).items() if k not in UNFIXED}
     assert not new, (
@@ -284,6 +340,7 @@ def test_no_write_payload_names_a_column_that_does_not_exist(schema):
     )
 
 
+@_NEEDS_PG
 def test_no_unfixed_entry_is_stale(schema):
     """Makes UNFIXED a ratchet. Fix one and this tells you to delete its line,
     so the list can only shrink and cannot become a silent permanent exemption."""
@@ -292,6 +349,7 @@ def test_no_unfixed_entry_is_stale(schema):
     assert not stale, f"these are listed as unfixed but no longer appear — delete them: {stale}"
 
 
+@_NEEDS_PG
 def test_every_unfixed_entry_names_its_real_column_or_says_there_is_none():
     for col, real in UNFIXED.items():
         assert real, f"{col}: say what the real column is"
