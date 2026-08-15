@@ -6,6 +6,29 @@ services:
     dockerContext: ./apps/api
     healthCheckPath: /health
 
+    # MUST stay near the database. Supabase project pbgoeyjvmllrafzavkgx lives in
+    # ap-south-1 (Mumbai); singapore is Render's closest region to it.
+    #
+    # This is not a preference. The service ran in Oregon (US West) until
+    # 2026-08-15, roughly 13,000 km from its own database, and every query paid
+    # that round trip. Measured on /api/accounting/cash-flow for a client with
+    # 12,836 posted entries:
+    #
+    #     total                                          13.01 s
+    #       the entries fetch                            12.39 s  (3 pages)
+    #       ...of which Postgres itself, per page         0.55 s  (EXPLAIN ANALYZE)
+    #
+    # So ~86% of the slowest endpoint was spent outside the database: the
+    # round trip plus dragging 7,490 embedded journal lines across the Pacific.
+    # The same tax showed on everything — /api/currencies/policy took 1.47 s for
+    # a trivial read. Three attempts to find the cost in application code all
+    # failed, because it was never in the code.
+    #
+    # Render cannot move a service between regions, so changing this means
+    # recreating the service. Anyone tempted to drop it: the cost is not a
+    # constant factor on one endpoint, it is a floor under every request.
+    region: singapore
+
     # ------------------------------------------------------------------------
     # This list is checked against the code by
     # apps/api/tests/test_render_manifest_matches_code.py — every environment
