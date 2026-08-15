@@ -154,6 +154,100 @@ def test_the_client_id_and_dates_reach_the_query_string():
     assert "start_date=2026-04-01" in cf and "end_date=2027-03-31" in cf
 
 
+# ── MFA-guarded routes ───────────────────────────────────────────────────────
+#
+# The smoke check signs in with a password grant, which yields an aal1 token by
+# construction. main.py mounts identity (and assignments/practice/billing)
+# behind _MFA_GUARD, so once REQUIRE_MFA is on for the smoke account's role that
+# 403 is PERMANENT and CORRECT. Failing on it would leave a check nobody can
+# ever make green — the state /health was in for weeks, which is exactly how
+# real drift stayed invisible behind it.
+
+def _perms_check():
+    return next(c for c in smoke_api.checks("CID", "2026-04-01", "2027-03-31")
+                if c.name == "identity/permissions")
+
+
+def test_the_mfa_detail_string_matches_the_one_the_backend_actually_raises():
+    """The script duplicates this literal because it runs standalone in CI with
+    only httpx installed and cannot import the app. That duplication is only
+    safe if something notices when the two drift — reword mfa_guard's detail and
+    the smoke check would silently go red forever with no explanation."""
+    source = (Path(__file__).resolve().parents[1] / "core" / "auth.py").read_text(encoding="utf-8")
+
+    assert f'detail="{smoke_api.MFA_REQUIRED_DETAIL}"' in source, (
+        "core/auth.py no longer raises smoke_api.MFA_REQUIRED_DETAIL verbatim — "
+        "update the literal in scripts/smoke_api.py to match")
+
+
+def test_the_identity_check_is_marked_mfa_guarded():
+    """Pins the fact against main.py rather than leaving it to memory: if the
+    identity router is ever taken out from behind _MFA_GUARD, this flag is wrong
+    and the check should go back to demanding a 2xx."""
+    main_py = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+
+    assert "app.include_router(identity.router, dependencies=_MFA_GUARD)" in main_py, (
+        "identity is no longer MFA-guarded — drop mfa_guarded=True from its Check")
+    assert _perms_check().mfa_guarded is True
+
+
+def test_an_mfa_guarded_route_refusing_an_aal1_token_is_not_a_failure():
+    """The fix. Policy working correctly must not read as an outage."""
+    body = {"detail": smoke_api.MFA_REQUIRED_DETAIL}
+    with _client(lambda req: httpx.Response(403, json=body)) as c:
+        ok, line = smoke_api.run_check(c, "http://x", _perms_check(), "t")
+
+    assert ok, line
+    assert "MFA-guarded" in line
+    assert "authorised response not covered" in line, (
+        "say what this did NOT verify — a pass that overstates its coverage is worse "
+        "than a failure")
+
+
+def test_a_403_for_any_other_reason_still_fails():
+    """The exemption is narrow on purpose. /api/identity/permissions can 403
+    because the user row is missing, the account is disabled, or the firm is
+    suspended — all real outages, none of them MFA."""
+    for detail in ("User not found in firm. Contact your firm administrator.",
+                   "Account disabled. Contact your firm administrator.",
+                   "Firm suspended", "Firm unavailable"):
+        with _client(lambda req, d=detail: httpx.Response(403, json={"detail": d})) as c:
+            ok, line = smoke_api.run_check(c, "http://x", _perms_check(), "t")
+        assert not ok, f"a {detail!r} 403 was waved through as MFA"
+        assert "403" in line
+
+
+@pytest.mark.parametrize("status", [200, 401, 500, 503])
+def test_the_exemption_applies_only_to_403(status):
+    body = {"detail": smoke_api.MFA_REQUIRED_DETAIL}
+    with _client(lambda req: httpx.Response(status, json=body)) as c:
+        ok, _line = smoke_api.run_check(c, "http://x", _perms_check(), "t")
+    assert ok is (200 <= status < 300)
+
+
+def test_a_non_guarded_route_never_gets_the_exemption():
+    """Only routes actually mounted behind _MFA_GUARD may use it. If /health
+    started answering 403-with-that-detail, something is very wrong and must
+    still fail."""
+    body = {"detail": smoke_api.MFA_REQUIRED_DETAIL}
+    with _client(lambda req: httpx.Response(403, json=body)) as c:
+        ok, _line = smoke_api.run_check(c, "http://x", smoke_api.Check("h", "/health", 5), "t")
+    assert not ok
+
+
+def test_an_mfa_403_that_took_too_long_still_fails(monkeypatch):
+    """The latency half of the check does not get waived along with the status.
+    A guard that takes 40 seconds to say no is still a broken page."""
+    ticks = iter([0.0, 40.0])
+    monkeypatch.setattr(smoke_api.time, "monotonic", lambda: next(ticks))
+    body = {"detail": smoke_api.MFA_REQUIRED_DETAIL}
+    with _client(lambda req: httpx.Response(403, json=body)) as c:
+        ok, line = smoke_api.run_check(c, "http://x", _perms_check(), "t")
+
+    assert not ok
+    assert "OVER BUDGET" in line
+
+
 def test_every_budget_is_set_and_sane():
     for c in smoke_api.checks("CID", "2026-04-01", "2027-03-31"):
         assert c.budget_s > 0, c.name
