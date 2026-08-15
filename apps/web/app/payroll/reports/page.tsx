@@ -1183,8 +1183,9 @@ export default function PayrollReportsPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load payroll data");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);

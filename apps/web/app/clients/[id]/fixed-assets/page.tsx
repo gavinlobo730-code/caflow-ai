@@ -168,8 +168,14 @@ function RegisterTab({ clientId }: { clientId: string }) {
       }));
       setAssets(rows);
       setLoadFailed(false);
-    } catch { setAssets([]); setLoadFailed(true); }
-    setLoading(false);
+    } catch {
+      setAssets([]); setLoadFailed(true);
+    } finally {
+      // In a finally rather than after the catch: a throw from inside the catch
+      // (or a `return` added inside the try later) would skip a trailing call
+      // and leave this tab as a permanent skeleton.
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -345,8 +351,9 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       onSaved(); onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   return (
@@ -453,8 +460,14 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
       setLoadFailed(false);
-    } catch { setAssets([]); setLoadFailed(true); }
-    setLoading(false);
+    } catch {
+      setAssets([]); setLoadFailed(true);
+    } finally {
+      // In a finally rather than after the catch: a throw from inside the catch
+      // (or a `return` added inside the try later) would skip a trailing call
+      // and leave this tab as a permanent skeleton.
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -627,8 +640,14 @@ function DisposalTab({ clientId }: { clientId: string }) {
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
       setLoadFailed(false);
-    } catch { setAssets([]); setLoadFailed(true); }
-    setLoading(false);
+    } catch {
+      setAssets([]); setLoadFailed(true);
+    } finally {
+      // In a finally rather than after the catch: a throw from inside the catch
+      // (or a `return` added inside the try later) would skip a trailing call
+      // and leave this tab as a permanent skeleton.
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -774,8 +793,14 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       const rows = ((j.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
       setAssets(rows);
       setLoadFailed(false);
-    } catch { setAssets([]); setLoadFailed(true); }
-    setLoading(false);
+    } catch {
+      setAssets([]); setLoadFailed(true);
+    } finally {
+      // In a finally rather than after the catch: a throw from inside the catch
+      // (or a `return` added inside the try later) would skip a trailing call
+      // and leave this tab as a permanent skeleton.
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);

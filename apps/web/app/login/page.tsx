@@ -43,13 +43,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { error } = await signIn(email, password);
-      if (error) { setError(error); setLoading(false); return; }
+      if (error) { setError(error); return; }
       // Do NOT navigate here. AuthContext recomputes MFA assurance: if a challenge
       // is owed, mfaPending flips true and the challenge form renders below; if not,
       // AuthGuard moves the user off /login. This avoids racing the redirect.
-      setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection error. Please try again.");
+    } finally {
+      // All three exits lowered this already; one release covers them and any
+      // added later. Sign in stays enabled whatever happens, which on a login
+      // screen is the difference between "try again" and "reload the page".
       setLoading(false);
     }
   }

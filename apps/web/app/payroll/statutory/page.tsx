@@ -167,8 +167,9 @@ export default function StatutoryPage() {
       if (cls.length > 0) setSelectedClientId(cls[0].id);
     } catch {
       setLoadFailed(true);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);

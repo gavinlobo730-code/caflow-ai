@@ -56,38 +56,45 @@ function GSTDashboard({ clientId }: { clientId: string }) {
     (async () => {
       setLoading(true);
       const supabase = getSupabaseClient();
-      const [{ data: g1, error: e1 }, { data: g3b, error: e2 }] = await Promise.all([
-        selectAll(() => supabase.from("gstr1_returns").select("id").eq("client_id", clientId)),
-        selectAll(() => supabase.from("gstr3b_returns").select("id").eq("client_id", clientId)),
-      ]);
-      if (cancelled) return;
-      if (e1 || e2) {
-        setData(null);
-        setLoading(false);
-        return;
-      }
+      try {
+        const [{ data: g1, error: e1 }, { data: g3b, error: e2 }] = await Promise.all([
+          selectAll(() => supabase.from("gstr1_returns").select("id").eq("client_id", clientId)),
+          selectAll(() => supabase.from("gstr3b_returns").select("id").eq("client_id", clientId)),
+        ]);
+        if (cancelled) return;
+        if (e1 || e2) {
+          setData(null);
+          return;
+        }
 
-      // Due-date math mirrors gst_workspace.py::gst_dashboard, which resolves
-      // the CURRENT calendar period (today's month/year) and computes:
-      //   CGST Act §37 — GSTR-1 due 11th of the month following the period
-      //   CGST Act §39 — GSTR-3B due 20th of the month following the period
-      // (services/compliance_engine.py::gstr1_due_date/gstr3b_due_date).
-      const today = new Date();
-      let nextMonth = today.getMonth() + 2; // getMonth() is 0-indexed; +1 for "next", +1 to 1-index
-      let nextYear = today.getFullYear();
-      if (nextMonth > 12) {
-        nextMonth -= 12;
-        nextYear += 1;
-      }
-      const dueDateOf = (day: number) => toLocalISO(new Date(nextYear, nextMonth - 1, day));
+        // Due-date math mirrors gst_workspace.py::gst_dashboard, which resolves
+        // the CURRENT calendar period (today's month/year) and computes:
+        //   CGST Act §37 — GSTR-1 due 11th of the month following the period
+        //   CGST Act §39 — GSTR-3B due 20th of the month following the period
+        // (services/compliance_engine.py::gstr1_due_date/gstr3b_due_date).
+        const today = new Date();
+        let nextMonth = today.getMonth() + 2; // getMonth() is 0-indexed; +1 for "next", +1 to 1-index
+        let nextYear = today.getFullYear();
+        if (nextMonth > 12) {
+          nextMonth -= 12;
+          nextYear += 1;
+        }
+        const dueDateOf = (day: number) => toLocalISO(new Date(nextYear, nextMonth - 1, day));
 
-      setData({
-        gstr1Count: (g1 ?? []).length,
-        gstr3bCount: (g3b ?? []).length,
-        gstr1Due: dueDateOf(11),
-        gstr3bDue: dueDateOf(20),
-      });
-      setLoading(false);
+        setData({
+          gstr1Count: (g1 ?? []).length,
+          gstr3bCount: (g3b ?? []).length,
+          gstr1Due: dueDateOf(11),
+          gstr3bDue: dueDateOf(20),
+        });
+      } catch {
+        if (!cancelled) setData(null);   // renders "Failed to load GST dashboard."
+      } finally {
+        // Guarded by `cancelled`: a superseded effect must not lower the flag
+        // the effect that replaced it has just raised, or the new load renders
+        // its empty state instead of a skeleton.
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [clientId]);
@@ -164,15 +171,22 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 
   async function saveNew() {
     setSaving(true);
-    await apiFetch("/api/gst-workspace/gstr1", {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, period, gstin }),
-    });
-    setShowNew(false);
-    setPeriod("");
-    setGstin("");
-    setSaving(false);
-    load();
+    try {
+      await apiFetch("/api/gst-workspace/gstr1", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, period, gstin }),
+      });
+      setShowNew(false);
+      setPeriod("");
+      setGstin("");
+      load();
+    } catch (e) {
+      // Keep the dialog open with what was typed still in it — closing on a
+      // failed save loses the period and GSTIN and reads as success.
+      setLoadError(e instanceof Error ? e.message : "Couldn't create the GSTR-1 return.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function updateStatus(id: string, status: string) {
@@ -405,15 +419,21 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
 
   async function saveNew() {
     setSaving(true);
-    await apiFetch("/api/gst-workspace/gstr3b", {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, period, gstin }),
-    });
-    setShowNew(false);
-    setPeriod("");
-    setGstin("");
-    setSaving(false);
-    load();
+    try {
+      await apiFetch("/api/gst-workspace/gstr3b", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, period, gstin }),
+      });
+      setShowNew(false);
+      setPeriod("");
+      setGstin("");
+      load();
+    } catch (e) {
+      // Same as GSTR1Tab.saveNew — the dialog stays open with its input.
+      setLoadError(e instanceof Error ? e.message : "Couldn't create the GSTR-3B return.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function updateStatus(id: string, status: string) {

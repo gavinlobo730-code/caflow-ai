@@ -165,8 +165,9 @@ export default function AttendancePage() {
       setAttendance(attMap);
     } catch {
       setLoadFailed(true);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [attMonth, attYear]);
 
   const loadLeaveBalances = useCallback(async () => {
@@ -239,9 +240,14 @@ export default function AttendancePage() {
       earned_leaves: row.earned_leaves,
       lop_days: calcLOP(row),
     }));
-    const { error } = await sb.from("attendance").upsert(rows, { onConflict: "employee_id,month,year" });
-    setSaving(false);
-    setSaveMsg(error ? `Error: ${error.message}` : "Attendance saved successfully.");
+    try {
+      const { error } = await sb.from("attendance").upsert(rows, { onConflict: "employee_id,month,year" });
+      setSaveMsg(error ? `Error: ${error.message}` : "Attendance saved successfully.");
+    } catch (e) {
+      setSaveMsg(`Error: ${e instanceof Error ? e.message : "the request failed"}`);
+    } finally {
+      setSaving(false);
+    }
     setTimeout(() => setSaveMsg(""), 3000);
   }
 

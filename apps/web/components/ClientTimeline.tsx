@@ -95,26 +95,33 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
     const offset = resetPage ? 0 : page * PAGE_SIZE;
     if (resetPage) setPage(0);
 
-    const result = await getClientTimeline({
-      clientId,
-      financialYear,
-      category: catFilter !== "all" ? catFilter : undefined,
-      limit: PAGE_SIZE + 1,
-      offset,
-    });
+    try {
+      const result = await getClientTimeline({
+        clientId,
+        financialYear,
+        category: catFilter !== "all" ? catFilter : undefined,
+        limit: PAGE_SIZE + 1,
+        offset,
+      });
 
-    if (!result.success) {
-      setLoadError(result.error ?? "Couldn't load timeline events.");
+      if (!result.success) {
+        setLoadError(result.error ?? "Couldn't load timeline events.");
+        setEvents([]);
+        setHasMore(false);
+      } else {
+        const data = result.data;
+        setLoadError(null);
+        setHasMore(data.length > PAGE_SIZE);
+        setEvents(data.slice(0, PAGE_SIZE));
+      }
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Couldn't load timeline events.");
       setEvents([]);
       setHasMore(false);
-    } else {
-      const data = result.data;
-      setLoadError(null);
-      setHasMore(data.length > PAGE_SIZE);
-      setEvents(data.slice(0, PAGE_SIZE));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
   }, [clientId, financialYear, catFilter, page]);
 
   useEffect(() => { load(false, true); }, [clientId, financialYear, catFilter, load]);

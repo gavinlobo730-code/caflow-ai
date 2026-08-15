@@ -270,6 +270,9 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update role");
+    } finally {
+      // The success path relied on onClose() unmounting this modal to retire
+      // the flag. One release covers both exits and does not depend on that.
       setSaving(false);
     }
   }

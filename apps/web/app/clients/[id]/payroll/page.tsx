@@ -129,14 +129,19 @@ function DashboardTab({ clientId }: { clientId: string }) {
     // so routing them through the FastAPI backend only adds a cold-start hit.
     // Mirrors routers/payroll.py's list_runs (order by month desc) and
     // list_employees (eq status=active, order by name).
-    const [r, e] = await Promise.all([
-      db.from("payroll_runs").select("*").eq("client_id", clientId).order("month", { ascending: false }),
-      db.from("payroll_employees").select("*").eq("client_id", clientId).eq("status", "active").order("name"),
-    ]);
-    if (r.error || e.error) { setLoadFailed(true); setLoading(false); return; }
-    setRuns((r.data as PayrollRun[]) ?? []);
-    setEmployees((e.data as Employee[]) ?? []);
-    setLoading(false);
+    try {
+      const [r, e] = await Promise.all([
+        db.from("payroll_runs").select("*").eq("client_id", clientId).order("month", { ascending: false }),
+        db.from("payroll_employees").select("*").eq("client_id", clientId).eq("status", "active").order("name"),
+      ]);
+      if (r.error || e.error) { setLoadFailed(true); return; }
+      setRuns((r.data as PayrollRun[]) ?? []);
+      setEmployees((e.data as Employee[]) ?? []);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -241,10 +246,15 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
-    const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`).catch(() => null);
-    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setLoading(false); return; }
-    setEmployees(res.data || []);
-    setLoading(false);
+    try {
+      const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`);
+      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); return; }
+      setEmployees(res.data || []);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -278,29 +288,36 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
     setAadhaarError(null);
     setSaveError(null);
     setSaving(true);
-    const res = await apiFetch("/api/payroll/employees", {
-      method: "POST",
-      body: JSON.stringify({
-        client_id: clientId,
-        firm_id: firmId,
-        ...rest,
-        aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
-        basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
-        hra_percent: parseFloat(form.hra_percent),
-      }),
-    }).catch(() => null) as { success?: boolean; error?: string | null } | null;
-    setSaving(false);
-    // task #229: this previously discarded the response and unconditionally
-    // closed the modal + reset the form — a rejected employee (RBAC, bad PAN,
-    // internal-client guardrail) looked identical to a successful add, and
-    // the employee was silently absent from every subsequent payroll run.
-    if (!res || res.success === false) {
-      setSaveError(res?.error ?? "Could not add employee — the request failed.");
-      return;
+    try {
+      const res = await apiFetch("/api/payroll/employees", {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: clientId,
+          firm_id: firmId,
+          ...rest,
+          aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
+          basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
+          hra_percent: parseFloat(form.hra_percent),
+        }),
+      }) as { success?: boolean; error?: string | null } | null;
+      // task #229: this previously discarded the response and unconditionally
+      // closed the modal + reset the form — a rejected employee (RBAC, bad PAN,
+      // internal-client guardrail) looked identical to a successful add, and
+      // the employee was silently absent from every subsequent payroll run.
+      if (!res || res.success === false) {
+        setSaveError(res?.error ?? "Could not add employee — the request failed.");
+        return;
+      }
+      await load();
+      setShowAdd(false);
+      setForm({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+    } catch {
+      // Replaces a .catch(() => null) on the request alone, which left the
+      // reload after it unguarded.
+      setSaveError("Could not add employee — the request failed.");
+    } finally {
+      setSaving(false);
     }
-    await load();
-    setShowAdd(false);
-    setForm({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
   }
 
   if (loading) return <div className="p-6"><TableSkeleton cols={7} rows={5} /></div>;
@@ -428,10 +445,15 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
-    const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`).catch(() => null);
-    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setLoading(false); return; }
-    setRuns(res.data || []);
-    setLoading(false);
+    try {
+      const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
+      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); return; }
+      setRuns(res.data || []);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -620,10 +642,15 @@ function StatutoryTab({ clientId }: { clientId: string }) {
   async function load() {
     setLoading(true);
     setLoadFailed(false);
-    const res = await apiFetch<StatutoryData>(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`).catch(() => null);
-    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); setLoading(false); return; }
-    setData(res.data);
-    setLoading(false);
+    try {
+      const res = await apiFetch<StatutoryData>(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`);
+      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); return; }
+      setData(res.data);
+    } catch {
+      setLoadFailed(true); setData(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -779,10 +806,15 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
-    const res = await apiFetch<SalaryStructure[]>(`/api/payroll/salary-structures?client_id=${clientId}`).catch(() => null);
-    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setLoading(false); return; }
-    setStructures(res.data || []);
-    setLoading(false);
+    try {
+      const res = await apiFetch<SalaryStructure[]>(`/api/payroll/salary-structures?client_id=${clientId}`);
+      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); return; }
+      setStructures(res.data || []);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -790,19 +822,24 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   async function addStructure() {
     setSaving(true);
     setSaveError(null);
-    const res = await apiFetch("/api/payroll/salary-structures", {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, firm_id: firmId, ...form, basic_percent: parseFloat(form.basic_percent), hra_percent: parseFloat(form.hra_percent) }),
-    }).catch(() => null) as { success?: boolean; error?: string | null } | null;
-    setSaving(false);
-    // task #229: previously discarded — a rejected structure looked identical
-    // to a saved one, and the modal closed as if it had worked.
-    if (!res || res.success === false) {
-      setSaveError(res?.error ?? "Could not save the salary structure — the request failed.");
-      return;
+    try {
+      const res = await apiFetch("/api/payroll/salary-structures", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, firm_id: firmId, ...form, basic_percent: parseFloat(form.basic_percent), hra_percent: parseFloat(form.hra_percent) }),
+      }) as { success?: boolean; error?: string | null } | null;
+      // task #229: previously discarded — a rejected structure looked identical
+      // to a saved one, and the modal closed as if it had worked.
+      if (!res || res.success === false) {
+        setSaveError(res?.error ?? "Could not save the salary structure — the request failed.");
+        return;
+      }
+      await load();
+      setShowAdd(false);
+    } catch {
+      setSaveError("Could not save the salary structure — the request failed.");
+    } finally {
+      setSaving(false);
     }
-    await load();
-    setShowAdd(false);
   }
 
   if (loading) return <div className="p-6"><CardGridSkeleton count={4} /></div>;
@@ -877,10 +914,15 @@ function ReportsTab({ clientId }: { clientId: string }) {
   async function load() {
     setLoading(true);
     setLoadFailed(false);
-    const res = await apiFetch<SalaryRegister>(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`).catch(() => null);
-    if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); setLoading(false); return; }
-    setData(res.data);
-    setLoading(false);
+    try {
+      const res = await apiFetch<SalaryRegister>(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`);
+      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); return; }
+      setData(res.data);
+    } catch {
+      setLoadFailed(true); setData(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

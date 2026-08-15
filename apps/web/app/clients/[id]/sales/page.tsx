@@ -375,26 +375,33 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
     ));
     if (eligible.length === 0) { showToast("No eligible templates in selection", "error"); return; }
     setBulkBusy(true);
-    const token = await getAuthToken();
-    let ok = 0;
-    const failures: string[] = [];
-    await Promise.all(eligible.map(async (t) => {
-      try {
-        const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
-        if (!res.success) throw new Error(res.error ?? "failed");
-        ok++;
-      } catch (e) {
-        failures.push(`${t.title}: ${e instanceof Error ? e.message : "failed"}`);
-      }
-    }));
-    setBulkBusy(false);
-    const skipped = selected.size - eligible.length;
-    const parts: string[] = [];
-    if (ok) parts.push(`${ok} ${action === "resume" ? "resumed" : action + "d"}`);
-    if (skipped) parts.push(`${skipped} not eligible`);
-    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
-    showToast(parts.join(", "), failures.length ? "error" : "success");
-    if (ok) { setSelected(new Set()); load(); }
+    try {
+      const token = await getAuthToken();
+      let ok = 0;
+      const failures: string[] = [];
+      await Promise.all(eligible.map(async (t) => {
+        try {
+          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
+          if (!res.success) throw new Error(res.error ?? "failed");
+          ok++;
+        } catch (e) {
+          failures.push(`${t.title}: ${e instanceof Error ? e.message : "failed"}`);
+        }
+      }));
+      const skipped = selected.size - eligible.length;
+      const parts: string[] = [];
+      if (ok) parts.push(`${ok} ${action === "resume" ? "resumed" : action + "d"}`);
+      if (skipped) parts.push(`${skipped} not eligible`);
+      if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+      showToast(parts.join(", "), failures.length ? "error" : "success");
+      if (ok) { setSelected(new Set()); load(); }
+    } catch (e) {
+      // Each template reports its own failure into `failures`, so reaching here
+      // means getAuthToken() failed — nothing was attempted at all.
+      showToast(e instanceof Error ? e.message : "Could not sign the request — nothing was changed.", "error");
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   return (
@@ -2378,6 +2385,10 @@ function DeleteInvoiceModal({
       await onConfirm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete invoice");
+    } finally {
+      // The success path never lowered it, which only worked because
+      // onConfirm() closes this dialog — a dependency this function should not
+      // have to rely on.
       setDeleting(false);
     }
   }
@@ -2430,6 +2441,9 @@ function Customers({
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  // See SalesInvoices.loadFailed (audit M17): a failed fetch must not render as
+  // an empty customer list.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
@@ -2446,19 +2460,29 @@ function Customers({
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    // Load all customers; active/inactive scoping is a client-side DataTable filter.
-    const { data } = await selectAll(() =>
-      supabase
-        .from("customers")
-        .select(
-          "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
-        )
-        .eq("client_id", clientId)
-        .order("name")
-        .order("id"),
-    );
-    setCustomers((data as Customer[]) ?? []);
-    setLoading(false);
+    try {
+      // Load all customers; active/inactive scoping is a client-side DataTable filter.
+      const { data, error } = await selectAll(() =>
+        supabase
+          .from("customers")
+          .select(
+            "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
+          )
+          .eq("client_id", clientId)
+          .order("name")
+          .order("id"),
+      );
+      if (error) throw error;
+      setCustomers((data as Customer[]) ?? []);
+      setLoadFailed(false);
+    } catch {
+      // Was swallowed: a failed fetch rendered as "no customers", which on this
+      // tab invites the CA to re-create customers that already exist.
+      setCustomers([]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
@@ -2517,17 +2541,22 @@ function Customers({
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleteBusy(true);
-    const token = await getAuthToken();
-    const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
-    setDeleteBusy(false);
-    if (!res.success) {
-      showToast(res.error ?? "Failed to delete customer", "error");
-      return;
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+      if (!res.success) {
+        showToast(res.error ?? "Failed to delete customer", "error");
+        return;
+      }
+      showToast("Customer deleted", "success");
+      setDeleteTarget(null);
+      setDeleteDeps(null);
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to delete customer", "error");
+    } finally {
+      setDeleteBusy(false);
     }
-    showToast("Customer deleted", "success");
-    setDeleteTarget(null);
-    setDeleteDeps(null);
-    load();
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
@@ -2936,6 +2965,7 @@ function Customers({
         filters={filters}
         getRowId={(c) => c.id}
         loading={loading}
+        error={loadFailed ? "Couldn't load customers — the request failed or timed out." : null}
         onRefresh={load}
         searchPlaceholder="Search by name, GSTIN, email, or phone…"
         initialSort={{ key: "name", dir: "asc" }}

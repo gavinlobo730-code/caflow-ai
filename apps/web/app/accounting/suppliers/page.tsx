@@ -208,16 +208,23 @@ export default function SuppliersPage() {
       payment_terms_days: parseInt(form.payment_terms_days || "30"),
       is_active: form.is_active,
     };
-    let err;
-    if (editingId) {
-      ({ error: err } = await sb.from("suppliers").update(payload).eq("id", editingId));
-    } else {
-      ({ error: err } = await sb.from("suppliers").insert(payload));
+    try {
+      let err;
+      if (editingId) {
+        ({ error: err } = await sb.from("suppliers").update(payload).eq("id", editingId));
+      } else {
+        ({ error: err } = await sb.from("suppliers").insert(payload));
+      }
+      if (err) throw new Error(err.message);
+      setShowModal(false);
+      await loadSuppliers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the supplier.");
+    } finally {
+      // In a finally: a rejected write used to leave Save disabled with no
+      // message, so the CA could neither tell it had failed nor try again.
+      setSaving(false);
     }
-    setSaving(false);
-    if (err) { setError(err.message); return; }
-    setShowModal(false);
-    await loadSuppliers();
   }
 
   async function toggleActive(id: string, cur: boolean) {

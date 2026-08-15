@@ -98,8 +98,14 @@ export default function TimeTrackingPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      await Promise.all([loadTimer(), loadEntries(), loadClients()]);
-      setLoading(false);
+      try {
+        await Promise.all([loadTimer(), loadEntries(), loadClients()]);
+      } finally {
+        // Each loader already catches its own failure, so this is a backstop —
+        // but it is the only thing standing between an unexpected rejection and
+        // a page that never leaves its skeleton.
+        setLoading(false);
+      }
     })();
   }, [loadTimer, loadEntries, loadClients]);
 

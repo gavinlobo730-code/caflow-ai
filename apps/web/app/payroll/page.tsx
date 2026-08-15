@@ -546,8 +546,9 @@ function AddEmployeeModal({
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : `Failed to ${isEdit ? "update" : "add"} employee.`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   return (
@@ -989,9 +990,13 @@ function DisburseModal({ run, onClose, onDone }: {
         payment_date: payDate || undefined,
         payment_reference: reference.trim() || undefined,
       }) as ApiResp<unknown>;
-      if (!res.success) { setError(res.error ?? "Could not record the disbursement."); setSaving(false); return; }
+      if (!res.success) { setError(res.error ?? "Could not record the disbursement."); return; }
       onDone(`Payroll for ${run.month} marked paid.`);
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not record the disbursement."); setSaving(false); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record the disbursement.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const netStr = run.total_net_paise != null ? fmtRs(run.total_net_paise) : "—";
@@ -1120,8 +1125,9 @@ export default function PayrollPage() {
       }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load payroll data.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -1227,8 +1233,9 @@ export default function PayrollPage() {
       await load();
     } catch (e) {
       setGenerateError(e instanceof Error ? e.message : "Failed to generate payslips.");
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   }
 
   // ── Employees table (shared DataTable) ─────────────────────────────────────

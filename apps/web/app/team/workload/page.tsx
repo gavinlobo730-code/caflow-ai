@@ -63,6 +63,7 @@ function CapacityModal({ member, onClose, onSaved }: {
       onSaved();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save capacity");
+    } finally {
       setSaving(false);
     }
   }

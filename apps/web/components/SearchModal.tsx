@@ -103,11 +103,17 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   const search = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); setSearchError(null); return; }
     setLoading(true);
-    const { results: res, error } = await runSearch(q);
-    setResults(res);
-    setSearchError(error);
-    setSelectedIndex(0);
-    setLoading(false);
+    try {
+      const { results: res, error } = await runSearch(q);
+      setResults(res);
+      setSearchError(error);
+      setSelectedIndex(0);
+    } catch (e) {
+      setResults([]);
+      setSearchError(e instanceof Error ? e.message : "The search could not be run.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
