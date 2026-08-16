@@ -101,6 +101,14 @@ export interface InvoiceDetail {
   reference_no?: string | null;
   supply_state_code: string | null;
   is_interstate: boolean;
+  // GSTR-1 classification (migration 268) — what the return is built from.
+  // domain/gst/classifier.py branches on these to pick the table; see
+  // lib/invoices/classification.ts for the vocabulary and its defaults.
+  // Optional here because a duplicate seed may be older JSON, not because the
+  // column is nullable — it is NOT NULL with a default.
+  supply_type?: string | null;
+  invoice_type?: string | null;
+  is_reverse_charge?: boolean | null;
   notes: string | null;
   // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247);
   // absent/false means the invoice carries its exact calculated amount.

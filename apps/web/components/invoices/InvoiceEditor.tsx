@@ -30,6 +30,10 @@ import {
 } from "@/lib/sales/paymentTerms";
 import { addDaysISO, diffDaysISO } from "@/lib/sales/dateMath";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import {
+  INVOICE_TYPES, SUPPLY_TYPES, classificationFrom, isNonStandard,
+  toClassificationPayload, type InvoiceType, type SupplyType,
+} from "@/lib/invoices/classification";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 import {
@@ -148,6 +152,15 @@ export function InvoiceEditor({
   );
   const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? duplicateSeed?.supply_state_code ?? "");
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
+  // GSTR-1 classification (migration 268). These three decide which table of the
+  // return the invoice lands in — nil-rated and exempt supplies belong in table 8
+  // rather than as taxable turnover, and an SEZ supply is zero-rated. The
+  // classifier that reads them (domain/gst/classifier.py) has always been right;
+  // until this form existed nothing ever told it anything but the defaults.
+  const initialClassification = classificationFrom(existing ?? duplicateSeed);
+  const [supplyType, setSupplyType] = useState<SupplyType>(initialClassification.supplyType);
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>(initialClassification.invoiceType);
+  const [isReverseCharge, setIsReverseCharge] = useState(initialClassification.isReverseCharge);
   // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247) — an
   // invoice shows its exact calculated amount unless the CA turns this on.
   const [roundOffEnabled, setRoundOffEnabled] = useState(
@@ -253,9 +266,14 @@ export function InvoiceEditor({
     isInterstate: existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false,
     notes: existing?.notes ?? duplicateSeed?.notes ?? "",
     roundOffEnabled: existing?.round_off_enabled ?? duplicateSeed?.round_off_enabled ?? false,
+    // Same source as the state above, so changing a dropdown registers as an
+    // unsaved change and navigating away warns instead of dropping it.
+    supplyType: initialClassification.supplyType,
+    invoiceType: initialClassification.invoiceType,
+    isReverseCharge: initialClassification.isReverseCharge,
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, roundOffEnabled, lines, currency, exchangeRate };
+  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, roundOffEnabled, supplyType, invoiceType, isReverseCharge, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null, undefined, confirmDialog);
 
@@ -455,6 +473,11 @@ export function InvoiceEditor({
           notes: notes.trim() || undefined,
           is_inter_state: isInterstate,
           round_off_enabled: roundOffEnabled,
+          // Draft only. The issued-invoice PATCH above deliberately omits these:
+          // the server's _SOFT_UPDATE_FIELDS rejects them once issued, because
+          // changing which GSTR-1 table an issued invoice belongs to needs a
+          // credit note (CGST §34), not a silent edit.
+          ...toClassificationPayload({ supplyType, invoiceType, isReverseCharge }),
           lines: linePayload,
         }, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
@@ -471,6 +494,7 @@ export function InvoiceEditor({
           is_inter_state: isInterstate,
           notes: notes.trim() || undefined,
           round_off_enabled: roundOffEnabled,
+          ...toClassificationPayload({ supplyType, invoiceType, isReverseCharge }),
           lines: linePayload,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
@@ -711,6 +735,56 @@ export function InvoiceEditor({
               </p>
             </div>
           </div>
+
+          {/* GSTR-1 classification (migration 268). These decide which table of
+              the return this invoice lands in. Frozen once issued, matching the
+              server's _SOFT_UPDATE_FIELDS — changing the table an issued invoice
+              belongs to needs a credit note (CGST §34), not a silent edit. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t border-[#F1F5F9]">
+            <div>
+              <label htmlFor="inv-supply-type" className="block text-xs font-medium text-[#475569] mb-1">Supply Type</label>
+              <select id="inv-supply-type" value={supplyType} disabled={isLocked}
+                onChange={(e) => setSupplyType(e.target.value as SupplyType)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p className="mt-1 text-[10px] text-[#94A3B8]">
+                {isLocked ? "Frozen once issued (CGST Act §34)." : SUPPLY_TYPES.find((o) => o.value === supplyType)?.note}
+              </p>
+            </div>
+            <div>
+              <label htmlFor="inv-invoice-type" className="block text-xs font-medium text-[#475569] mb-1">Invoice Type</label>
+              <select id="inv-invoice-type" value={invoiceType} disabled={isLocked}
+                onChange={(e) => setInvoiceType(e.target.value as InvoiceType)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p className="mt-1 text-[10px] text-[#94A3B8]">
+                {isLocked ? "Frozen once issued (CGST Act §34)." : INVOICE_TYPES.find((o) => o.value === invoiceType)?.note}
+              </p>
+            </div>
+            <div className="flex flex-col justify-end pb-1.5">
+              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
+                <input type="checkbox" checked={isReverseCharge} disabled={isLocked}
+                  onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
+                Reverse charge
+              </label>
+              <p className="mt-1 text-[10px] text-[#94A3B8]">
+                {isLocked ? "Frozen once issued (CGST Act §34)." : "The recipient pays the tax, not this client (CGST §9(3)/(4))."}
+              </p>
+            </div>
+          </div>
+
+          {/* Anything other than a plain domestic taxable sale is worth seeing
+              before issuing — these are the invoices that get filed in the wrong
+              GSTR-1 table when nobody looks. Presentational only. */}
+          {!isLocked && isNonStandard({ supplyType, invoiceType, isReverseCharge }) && (
+            <p className="mt-3 text-[11px] text-[#92400E] bg-[#FFFBEB] border border-[#FDE68A] rounded-lg px-3 py-2">
+              This invoice is not an ordinary domestic taxable sale, so it will be reported
+              in a different part of GSTR-1. Check the classification before issuing —
+              it cannot be changed afterwards without a credit note.
+            </p>
+          )}
 
           {/* Multi-currency (create-only) */}
           {!isEdit && mcActive && (
