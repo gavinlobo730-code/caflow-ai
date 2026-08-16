@@ -278,7 +278,7 @@ def get_journal_entry(
     db = _prod_db()
     if not db:
         raise HTTPException(404, detail="Journal entry not found.")
-    _assert_journal_scope(db, current_user, entry_id)
+    _assert_journal_scope_db(db, current_user, entry_id)
     from services.manual_journal_service import manual_journal_service
     return api_response(True, manual_journal_service.get(
         db, current_user["firm_id"], entry_id))
@@ -308,7 +308,7 @@ def update_journal_entry(
     db = _prod_db()
     if not db:
         raise HTTPException(404, detail="Journal entry not found.")
-    _assert_journal_scope(db, current_user, entry_id)
+    _assert_journal_scope_db(db, current_user, entry_id)
     from services.manual_journal_service import manual_journal_service
 
     before = manual_journal_service.get(db, current_user["firm_id"], entry_id)
@@ -375,12 +375,21 @@ def list_journals_queue(
         allowed_client_ids=effective_client_ids(current_user)))
 
 
-def _assert_journal_scope(db, current_user: dict, entry_id: str) -> None:
+def _assert_journal_scope_db(db, current_user: dict, entry_id: str) -> None:
     """Row-addressed by entry_id, so M2 assignment scope has to be checked here.
 
     ONE fixed message for missing-row, wrong-firm and right-firm-but-unassigned
     alike — the same convention _assert_draft_scope uses, so a hidden entry and
     a non-existent one are indistinguishable from outside.
+
+    The _db suffix is load-bearing. This module guards journal entries against
+    TWO different engines — this one reads the production Supabase ledger, while
+    _assert_journal_scope below reads the legacy in-memory accounting_service —
+    and they take different arguments. Both were briefly called
+    _assert_journal_scope; Python bound the name to whichever was defined last,
+    so GET and PATCH /journal/{entry_id} raised TypeError on every request while
+    the whole suite stayed green, because nothing exercised those two routes
+    through the router. Keep the names distinct.
     """
     row = (db.table("journal_entries").select("client_id")
            .eq("id", entry_id).eq("firm_id", current_user["firm_id"])
