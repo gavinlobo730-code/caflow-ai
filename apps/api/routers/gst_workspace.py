@@ -916,6 +916,40 @@ def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
+@router.get("/gstr1/exceptions")
+def gstr1_exception_report(
+    client_id: str = Query(..., description="Client whose filed period to check"),
+    period: str = Query(..., description="MMYYYY, e.g. 062025"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """What the books say now, against what the GSTR-1 actually said.
+
+    A filed GSTR-1 can never be revised (CGST Act §37). If an invoice in a filed
+    period is edited, raised late or cancelled, the books move and the return
+    cannot — and nothing connected the two until this. Each finding names the
+    amendment table the correction has to be declared in: 9A for an invoice, 9C
+    for a credit or debit note, 10 for B2C-others.
+
+    B2C-others is compared as totals rather than per invoice because that is all
+    GSTR-1 declares for it — no invoice number appears in table 7, and amendment
+    table 10 corrects it at the same aggregate grain.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports drift; it drafts no
+    # amendment, touches no invoice and alters no return.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "status": "not_filed", "period": period,
+            "message": "This period's GSTR-1 has not been filed, so there is nothing "
+                       "to compare the books against.",
+        })
+    from core.supabase_client import get_supabase
+    from services.gst_exception_service import gstr1_exceptions
+    return api_response(True, gstr1_exceptions(
+        get_supabase(), current_user["firm_id"], client_id, period))
+
+
 @router.get("/itc/rule37")
 def rule37_itc_reversal(
     client_id: str = Query(..., description="Client whose purchase ledger to check"),
