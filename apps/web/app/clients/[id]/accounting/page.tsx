@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
+import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable, downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
@@ -20,7 +20,7 @@ import {
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
-import { splitPeriodColumns, periodSplitNotice, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 
@@ -602,6 +602,19 @@ function JournalEntryForm({
   // still one click away via this toggle, or always visible per-account in
   // the Trial Balance / Ledger drill-down.
   const [showSystemEntries, setShowSystemEntries] = useState(false);
+
+  // The date window that SCOPES THE SERVER QUERY — which entries load at all —
+  // exactly as Sales Invoices and Purchase Bills do it. Search, sort and
+  // pagination over what loaded stay with the DataTable below. Before this the
+  // tab pulled a client's ENTIRE ledger every visit; 12,836 entries with their
+  // lines embedded is not a page load, it is a report.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const journalRange = useMemo(
+    () => resolvePeriodRange(periodMode, financialYear, { from: customFrom, to: customTo }),
+    [periodMode, customFrom, customTo, financialYear],
+  );
   const visibleEntries = useMemo(
     () => (showSystemEntries ? entries : entries.filter((e) => e.source_type === "manual")),
     [entries, showSystemEntries]
@@ -616,24 +629,37 @@ function JournalEntryForm({
     setEntriesLoading(true);
     try {
       const supabase = getSupabaseClient();
-      const { data, error: fetchErr } = await selectAll(() => supabase
+      // KEYSET, not .range(). This query embeds journal_lines, and with OFFSET
+      // paging Postgres re-runs the line aggregate for every entry in the
+      // client's ledger on every page — measured at 12,836 aggregate runs and
+      // 1,342 ms per page for a 12,836-entry client, thirteen pages deep, fired
+      // four-wide. It did not just run slowly, it failed, and this tab showed
+      // "Couldn't load journal entries". Keyset makes each page a bounded seek:
+      // 835 aggregate runs, ~32 ms. See selectAllKeyset for the full numbers.
+      const { data, error: fetchErr } = await selectAllKeyset(() => supabase
         .from("journal_entries")
         // Alias the embed to `lines` so it matches the JournalEntry type (and the
         // amount column, which sums debit_paise across the entry's lines).
         .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
         .eq("client_id", clientId)
         .is("deleted_at", null)
-        .order("entry_date", { ascending: false })
-        .order("id"));
+        .gte("entry_date", journalRange.start)
+        .lte("entry_date", journalRange.end));
       if (fetchErr) throw fetchErr;
-      setEntries((data as unknown as JournalEntry[]) ?? []);
+      // Display order, applied after the walk: keyset pages by id, so the
+      // newest-first ordering the table wants is restored here.
+      const sorted = ((data as unknown as JournalEntry[]) ?? []).slice().sort((a, b) =>
+        b.entry_date === a.entry_date
+          ? String(a.id).localeCompare(String(b.id))
+          : String(b.entry_date).localeCompare(String(a.entry_date)));
+      setEntries(sorted);
       setEntriesError(null);
     } catch (e) {
       setEntriesError(e instanceof Error ? e.message : "Couldn't load journal entries.");
     } finally {
       setEntriesLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, journalRange.start, journalRange.end]);
 
   useEffect(() => { loadEntries(); }, [loadEntries, success]);
 
@@ -825,6 +851,18 @@ function JournalEntryForm({
           onRetry={loadEntries}
           onRefresh={loadEntries}
           searchPlaceholder="Search by reference or narration…"
+          toolbarExtra={
+            <PeriodPicker
+              mode={periodMode}
+              onModeChange={setPeriodMode}
+              financialYear={financialYear}
+              customFrom={customFrom}
+              customTo={customTo}
+              onCustomFromChange={setCustomFrom}
+              onCustomToChange={setCustomTo}
+              ariaLabel="Date range"
+            />
+          }
           initialSort={{ key: "entry_date", dir: "desc" }}
           exportFilename="journal"
           persistKey="accounting.journal"
