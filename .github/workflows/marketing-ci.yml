@@ -12,6 +12,18 @@ on:
       - "apps/marketing/**"
       - ".github/workflows/marketing-ci.yml"
 
+# One run per branch. Pushing again to an open PR supersedes the previous run,
+# and without this the old one keeps going to completion — paying full price for
+# a result nobody will read. The account hit 100% of its 2,000 included Actions
+# minutes on 16 Aug 2026, and a busy PR branch re-running a ~6 minute real-
+# Postgres job for every intermediate push is a large part of why.
+#
+# main is excluded from cancellation: those runs gate what is already merged, so
+# they must finish even when several merges land together.
+concurrency:
+  group: marketing-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   ci:
     name: lint · typecheck · build (Node 22)

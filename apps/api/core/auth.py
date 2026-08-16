@@ -88,9 +88,35 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
                 .maybe_single()
                 .execute()
             ).data
-        except Exception:
+        except Exception as exc:
+            # Fail CLOSED, for the same reason the user lookup above does.
+            #
+            # This used to swallow the error and set firm_row = None — and the
+            # caller reads it as `if firm_row:`, so None SKIPS the suspended-firm
+            # and deleted-firm checks entirely and admits the request. A
+            # transient PostgREST error therefore did not deny access, it
+            # granted it; and because the result was written to the cache below,
+            # one glitch kept that check bypassed for the whole TTL.
+            #
+            # It was not hypothetical. A shared-client HTTP/2 concurrency bug
+            # (see core.supabase_client._force_http1) raised LocalProtocolError
+            # here in production, logged "firm lookup failed", and let the
+            # request through.
+            #
+            # 503 says "ask again", which is true and is what the user lookup
+            # already returns for the identical situation.
             _logger.exception("firm lookup failed for firm_id=%s", firm_id_for_status)
-            firm_row = None
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not verify your account just now. Please try again.",
+            ) from exc
+        if firm_row is None:
+            # Not an error — maybe_single() found no row. The user names a firm
+            # that does not exist, which is a data problem worth seeing rather
+            # than a reason to deny a working login, so behaviour is unchanged
+            # and this is only made visible.
+            _logger.warning(
+                "user %s names firm_id=%s, which has no row", auth_user_id, firm_id_for_status)
 
     _user_lookup_cache[auth_user_id] = (time.monotonic(), user_data, firm_row)
     return user_data, firm_row
