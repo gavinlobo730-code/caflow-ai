@@ -392,3 +392,96 @@ def test_live_listing_journals_with_a_hidden_client_id_is_refused(deny, monkeypa
     with pytest.raises(HTTPException) as exc:
         acct.list_journals_queue(client_id=THEIRS, status="draft", current_user=EXEC_USER)
     assert exc.value.status_code == 404
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# GET / PATCH /journal/{entry_id} — the editable-until-locked routes
+# (migration 266). These call the router FUNCTIONS, which is the whole point:
+# both endpoints shipped calling a scope helper that had been shadowed by a
+# same-named function defined later in the module, so every request raised
+# TypeError. 6982 tests passed anyway, because the suite exercised the
+# SERVICE and nothing walked these two routes.
+# ══════════════════════════════════════════════════════════════════════════
+
+def _seed_editable_entry(db, client_id=MINE):
+    """A posted entry with its lines. FakeDB does not resolve PostgREST
+    embeds, so the aliased `lines:journal_lines(...)` select is seeded as the
+    alias key directly, matching what the real embed returns."""
+    db.seed("journal_entries", {
+        "id": "J1", "firm_id": FIRM, "client_id": client_id,
+        "entry_date": "2025-06-15", "reference_no": "MJ-1", "narration": "Rent",
+        "entry_type": "Journal", "is_posted": True, "is_reversed": False,
+        "source_type": "manual", "deleted_at": None,
+        "lines": [
+            {"id": "L1", "account_id": "a1", "debit_paise": 500000, "credit_paise": 0, "narration": ""},
+            {"id": "L2", "account_id": "a2", "debit_paise": 0, "credit_paise": 500000, "narration": ""},
+        ],
+    })
+
+
+def test_live_reading_an_own_clients_journal_entry_is_allowed(deny, monkeypatch):
+    db = _e2e_setup(monkeypatch)
+    _seed_editable_entry(db)
+
+    resp = acct.get_journal_entry("J1", current_user=EXEC_USER)
+
+    assert resp["success"] is True
+    assert resp["data"]["id"] == "J1"
+    # Both halves of the editor's contract are present, not just the row.
+    assert "editable" in resp["data"] and "lock_reason" in resp["data"]
+    assert resp["data"]["total_debit_paise"] == 500000
+
+
+def test_live_reading_a_hidden_clients_journal_entry_is_refused(deny, monkeypatch):
+    db = _e2e_setup(monkeypatch)
+    _seed_editable_entry(db, client_id=THEIRS)
+
+    with pytest.raises(HTTPException) as exc:
+        acct.get_journal_entry("J1", current_user=EXEC_USER)
+    assert exc.value.status_code == 404
+
+
+def test_live_reading_a_missing_journal_entry_matches_the_hidden_message(deny, monkeypatch):
+    db = _e2e_setup(monkeypatch)
+    _seed_editable_entry(db, client_id=THEIRS)
+
+    with pytest.raises(HTTPException) as missing:
+        acct.get_journal_entry("J-does-not-exist", current_user=EXEC_USER)
+    with pytest.raises(HTTPException) as hidden:
+        acct.get_journal_entry("J1", current_user=EXEC_USER)
+    assert missing.value.status_code == hidden.value.status_code == 404
+    assert missing.value.detail == hidden.value.detail
+
+
+def test_live_editing_a_hidden_clients_journal_entry_is_refused(deny, monkeypatch):
+    db = _e2e_setup(monkeypatch)
+    _seed_editable_entry(db, client_id=THEIRS)
+
+    with pytest.raises(HTTPException) as exc:
+        acct.update_journal_entry(
+            "J1", acct.JournalEntryUpdateIn(narration="edited"), current_user=MANAGER_USER)
+    assert exc.value.status_code == 404
+    assert db.rows("journal_entries")[0]["narration"] == "Rent", "a refused edit still wrote"
+
+
+def test_live_editing_a_missing_journal_entry_is_refused(deny, monkeypatch):
+    _e2e_setup(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        acct.update_journal_entry(
+            "J-does-not-exist", acct.JournalEntryUpdateIn(narration="edited"),
+            current_user=MANAGER_USER)
+    assert exc.value.status_code == 404
+
+
+def test_both_journal_scope_helpers_survive_side_by_side():
+    """The two guards in this module read different engines and take different
+    arguments — the Supabase-backed one used by GET/PATCH /journal/{id}, and
+    the legacy in-memory one used by PATCH /journal/{id}/post. Naming them the
+    same silently bound BOTH call sites to whichever came last in the file.
+    """
+    import inspect
+    assert list(inspect.signature(acct._assert_journal_scope_db).parameters) == \
+        ["db", "current_user", "entry_id"]
+    assert list(inspect.signature(acct._assert_journal_scope).parameters) == \
+        ["current_user", "entry_id"]
