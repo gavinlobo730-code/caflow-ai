@@ -13,12 +13,10 @@ import type { Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api, type ReconciliationRun, type ReconciliationFinding } from "@/lib/api";
-import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
+import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
 } from "@/lib/accounting/scheduleIiiCaptions";
-import { writeTimelineEvent } from "@/lib/services/timeline";
-import { todayLocalISO } from "@/lib/dateMath";
 import PeriodPicker from "@/components/PeriodPicker";
 import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
@@ -61,13 +59,6 @@ interface Account {
   account_subtype: string | null;
   is_active: boolean;
   client_id: string | null;
-}
-
-interface JournalLine {
-  account_id: string;
-  debit_paise: number;
-  credit_paise: number;
-  narration: string;
 }
 
 interface JournalEntry {
@@ -171,7 +162,27 @@ function isDrillableAccount(id?: string): boolean {
 
 export default function AccountingPage() {
   const { clientId, financialYear } = useClientNav();
-  const [tab, setTab] = useState<AccountingTab>("dashboard");
+  // The tab lives in the URL, not only in state, so it survives leaving the
+  // page and coming back — which the journal editor does on every save. Before
+  // this, "Back to Journal" landed the CA on the Dashboard.
+  const tabParams = useSearchParams();
+  const tabRouter = useRouter();
+  const urlTab = tabParams.get("tab");
+  const [tab, setTabState] = useState<AccountingTab>(
+    () => (TABS.some((t) => t.id === urlTab) ? (urlTab as AccountingTab) : "dashboard"));
+  // Back/forward, and arriving from the editor, both change the URL without
+  // going through setTab.
+  useEffect(() => {
+    if (urlTab && TABS.some((t) => t.id === urlTab) && urlTab !== tab) {
+      setTabState(urlTab as AccountingTab);
+    }
+  }, [urlTab, tab]);
+  const setTab = useCallback((next: AccountingTab) => {
+    setTabState(next);
+    const params = new URLSearchParams(tabParams.toString());
+    params.set("tab", next);
+    tabRouter.replace(`?${params.toString()}`, { scroll: false });
+  }, [tabParams, tabRouter]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accsLoading, setAccsLoading] = useState(true);
   // Distinguishes "load failed" from "firm genuinely has zero accounts" — a
@@ -179,7 +190,6 @@ export default function AccountingPage() {
   // of accounts, which every tab on this page (dashboard, journal lines,
   // bank posting) treats as authoritative.
   const [accountsError, setAccountsError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
   // Multi-Currency Phase 5 — the FX Reports card (Reports tab) is shown ONLY when
   // multi-currency is active for this client, so an INR-only client sees no added
   // complexity (CLAUDE.md). Passed down to FinancialReports as `mcActive`.
@@ -248,7 +258,7 @@ export default function AccountingPage() {
         </div>
       </div>
 
-      <div key={reloadKey} className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
+      <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "dashboard" && (
           <AccountingDashboard clientId={clientId} financialYear={financialYear} accounts={accounts} onNavigate={setTab} />
         )}
@@ -256,12 +266,7 @@ export default function AccountingPage() {
           <ChartOfAccounts accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} />
         )}
         {tab === "journal" && (
-          <JournalEntryForm
-            accounts={accounts}
-            clientId={clientId}
-            financialYear={financialYear}
-            onPosted={() => { clearReports(clientId); loadAccounts(); setReloadKey((k) => k + 1); }}
-          />
+          <JournalList clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "trial" && (
           <TrialBalance clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
@@ -566,34 +571,24 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Ac
   );
 }
 
-// ── Journal Entry Form ─────────────────────────────────────────────────────
+// ── Journal List ───────────────────────────────────────────────────────────
+// The list only. Creating and correcting an entry happens on its own page
+// (accounting/journal/[entryId]/edit), the way Sales Invoices and Purchase
+// Bills already work — a journal is a document with many lines, and editing it
+// inline under the table it belongs to left no room for the lock reason, the
+// per-line errors, or the fact that correcting a POSTED entry is a different
+// act from typing a new one.
 
 const ENTRY_TYPES = ["Journal", "Sales", "Purchase", "Payment", "Receipt", "Contra", "Opening"] as const;
 
-function JournalEntryForm({
-  accounts, clientId, financialYear, onPosted,
-}: {
-  accounts: Account[]; clientId: string; financialYear: string; onPosted: () => void;
-}) {
-  const [entryDate, setEntryDate] = useState(todayLocalISO());
-  const [entryType, setEntryType] = useState<string>("Journal");
-  const [narration, setNarration] = useState("");
-  const [referenceNo, setReferenceNo] = useState("");
-  const [lines, setLines] = useState<JournalLine[]>([
-    { account_id: "", debit_paise: 0, credit_paise: 0, narration: "" },
-    { account_id: "", debit_paise: 0, credit_paise: 0, narration: "" },
-  ]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  // Full journal list (posted + draft, non-deleted) for this client — rendered via
-  // the shared DataTable below. Fetched with selectAll so large books are never
-  // silently truncated at PostgREST's row cap (mirrors the other accounting tabs).
+function journalEditorHref(clientId: string, entryId: string): string {
+  return `/clients/${clientId}/accounting/journal/${entryId}/edit`;
+}
+
+function JournalList({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const router = useRouter();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
-  // Separate from `error` above (which is the create/post-entry form's own
-  // validation/save error) — a failed list fetch must not be conflated with,
-  // or silently cleared by, an unrelated form action.
   const [entriesError, setEntriesError] = useState<string | null>(null);
   // Mirrors how QuickBooks/Xero/Zoho/Tally all scope their "Journal" screen to
   // manually-created entries by default, keeping every auto-posted GL entry
@@ -619,10 +614,6 @@ function JournalEntryForm({
     () => (showSystemEntries ? entries : entries.filter((e) => e.source_type === "manual")),
     [entries, showSystemEntries]
   );
-
-  const totalDebit = lines.reduce((s, l) => s + l.debit_paise, 0);
-  const totalCredit = lines.reduce((s, l) => s + l.credit_paise, 0);
-  const isBalanced = totalDebit > 0 && totalDebit === totalCredit;
 
   const loadEntries = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -661,7 +652,7 @@ function JournalEntryForm({
     }
   }, [clientId, journalRange.start, journalRange.end]);
 
-  useEffect(() => { loadEntries(); }, [loadEntries, success]);
+  useEffect(() => { loadEntries(); }, [loadEntries]);
 
   const journalColumns: Column<JournalEntry>[] = [
     { key: "entry_date", header: "Date", accessor: (e) => e.entry_date, sortable: true, sticky: true, hideable: false, width: "7rem",
@@ -685,149 +676,11 @@ function JournalEntryForm({
     { key: "entry_date", label: "Date", type: "dateRange", accessor: (e) => e.entry_date },
   ];
 
-  function setLine(idx: number, patch: Partial<JournalLine>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
-
-  function addLine() {
-    setLines((prev) => [...prev, { account_id: "", debit_paise: 0, credit_paise: 0, narration: "" }]);
-  }
-
-  function removeLine(idx: number) {
-    if (lines.length <= 2) return;
-    setLines((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  async function handleSave(post: boolean) {
-    if (!isBalanced) { setError("Debits must equal credits before saving."); return; }
-    if (!narration.trim()) { setError("Narration is required."); return; }
-    const validLines = lines.filter((l) => l.account_id && (l.debit_paise > 0 || l.credit_paise > 0));
-    if (validLines.length < 2) { setError("At least 2 lines with account and amount required."); return; }
-    setSaving(true); setError(null);
-    try {
-      // Posts through the backend's single posting kernel (manual_journal_service →
-      // phase2_journal_service._create_journal), which writes the header and every
-      // line in one DB transaction (post_journal_atomic) and authoritatively
-      // enforces the FY lock server-side — no separate client-side pre-check or
-      // direct-to-Supabase writes, so a failed second write can never leave a
-      // posted header with zero lines.
-      const firmId = await getFirmId();
-      const res = await api.accounting.createJournalEntry({
-        client_id: clientId,
-        entry_date: entryDate,
-        reference_no: referenceNo.trim() || undefined,
-        narration: narration.trim(),
-        entry_type: entryType,
-        status: post ? "posted" : "draft",
-        lines: validLines.map((l) => ({
-          account_id: l.account_id,
-          debit_paise: l.debit_paise,
-          credit_paise: l.credit_paise,
-          narration: l.narration.trim() || undefined,
-        })),
-      }) as { success: boolean; data: { id: string } };
-      try {
-        await writeTimelineEvent({ client_id: clientId, firm_id: firmId, financial_year: financialYear, category: "accounting", event_type: post ? "journal_entry_posted" : "journal_entry_saved", severity: "info", title: post ? "Journal entry posted" : "Journal entry saved (draft)", description: narration.trim(), entity_type: "journal_entry", entity_id: res.data.id, actor_type: "user" });
-      } catch { /* non-blocking */ }
-      setSuccess(true);
-      setNarration(""); setReferenceNo("");
-      setLines([{ account_id: "", debit_paise: 0, credit_paise: 0, narration: "" }, { account_id: "", debit_paise: 0, credit_paise: 0, narration: "" }]);
-      onPosted();
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
-    <div className="space-y-5 max-w-3xl mx-auto">
-      {success && <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 text-sm text-green-700 font-medium">Journal entry saved successfully.</div>}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-[#0F172A]">New Journal Entry</h3>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
-            <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Type</label>
-            <select value={entryType} onChange={(e) => setEntryType(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {ENTRY_TYPES.map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
-            <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Narration *</label>
-          <input value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Being goods sold to ABC Ltd..." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                <th className="pb-2 text-left font-semibold">Account</th>
-                <th className="pb-2 text-right font-semibold w-28">Debit (₹)</th>
-                <th className="pb-2 text-right font-semibold w-28">Credit (₹)</th>
-                <th className="pb-2 text-left font-semibold pl-3">Narration</th>
-                <th className="pb-2 w-6" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {lines.map((line, idx) => (
-                <tr key={idx}>
-                  <td className="py-1.5 pr-2">
-                    <AccountLookup
-                      accounts={accounts}
-                      value={line.account_id}
-                      onChange={(id) => setLine(idx, { account_id: id })}
-                      size="sm"
-                      placeholder="— Select account —"
-                      ariaLabel="Account"
-                    />
-                  </td>
-                  <td className="py-1.5 px-2">
-                    <input type="number" min="0" step="0.01" value={line.debit_paise === 0 ? "" : (line.debit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { debit_paise: v, credit_paise: v > 0 ? 0 : line.credit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
-                  </td>
-                  <td className="py-1.5 px-2">
-                    <input type="number" min="0" step="0.01" value={line.credit_paise === 0 ? "" : (line.credit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { credit_paise: v, debit_paise: v > 0 ? 0 : line.debit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
-                  </td>
-                  <td className="py-1.5 pl-3"><input value={line.narration} onChange={(e) => setLine(idx, { narration: e.target.value })} placeholder="optional" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" /></td>
-                  <td className="py-1.5 pl-1">{lines.length > 2 && <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600 font-bold">×</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-[#F1F5F9] text-xs font-semibold">
-                <td className="pt-2 text-[#64748B]">Total</td>
-                <td className="pt-2 text-right text-[#334155] px-2">{totalDebit > 0 ? `₹${(totalDebit/100).toFixed(2)}` : "—"}</td>
-                <td className="pt-2 text-right text-[#334155] px-2">{totalCredit > 0 ? `₹${(totalCredit/100).toFixed(2)}` : "—"}</td>
-                <td colSpan={2} className="pt-2 pl-3">
-                  {totalDebit > 0 && totalDebit !== totalCredit && <span className="text-red-500 text-[10px]">Difference: ₹{(Math.abs(totalDebit - totalCredit)/100).toFixed(2)}</span>}
-                  {isBalanced && <span className="text-green-600 text-[10px]">✓ Balanced</span>}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <button onClick={addLine} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
-        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
-        <div className="flex gap-3 justify-end pt-1">
-          <button onClick={() => handleSave(false)} disabled={saving || !isBalanced} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">Save Draft</button>
-          <button onClick={() => handleSave(true)} disabled={saving || !isBalanced} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Post Entry"}</button>
-        </div>
-      </div>
-
-      {/* Full journal list — shared DataTable (search, type/date filters, sort,
-          pagination, export). Replaces the old "recent 5" preview and is the
-          destination the Dashboard "View all" navigates to. */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
+        <div className="flex items-center gap-4">
           <label className="flex items-center gap-1.5 text-xs text-[#64748B] cursor-pointer select-none">
             <input
               type="checkbox"
@@ -840,40 +693,47 @@ function JournalEntryForm({
               ({entries.length - entries.filter((e) => e.source_type === "manual").length} auto-posted)
             </span>
           </label>
+          <button
+            onClick={() => router.push(journalEditorHref(clientId, "new"))}
+            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+          >
+            <Plus size={12} /> New Journal Entry
+          </button>
         </div>
-        <DataTable
-          data={visibleEntries}
-          columns={journalColumns}
-          filters={journalFilters}
-          getRowId={(e) => e.id}
-          loading={entriesLoading}
-          error={entriesError}
-          onRetry={loadEntries}
-          onRefresh={loadEntries}
-          searchPlaceholder="Search by reference or narration…"
-          toolbarExtra={
-            <PeriodPicker
-              mode={periodMode}
-              onModeChange={setPeriodMode}
-              financialYear={financialYear}
-              customFrom={customFrom}
-              customTo={customTo}
-              onCustomFromChange={setCustomFrom}
-              onCustomToChange={setCustomTo}
-              ariaLabel="Date range"
-            />
-          }
-          initialSort={{ key: "entry_date", dir: "desc" }}
-          exportFilename="journal"
-          persistKey="accounting.journal"
-          emptyTitle={!showSystemEntries && entries.length > 0 ? "No manual journal entries" : "No journal entries"}
-          emptyDescription={
-            !showSystemEntries && entries.length > 0
-              ? "This client has system-generated entries only — tick “Show system-generated entries” above to see them."
-              : "Post an entry above to see it listed here."
-          }
-        />
       </div>
+      <DataTable
+        data={visibleEntries}
+        columns={journalColumns}
+        filters={journalFilters}
+        getRowId={(e) => e.id}
+        loading={entriesLoading}
+        error={entriesError}
+        onRetry={loadEntries}
+        onRefresh={loadEntries}
+        onRowClick={(e) => router.push(journalEditorHref(clientId, e.id))}
+        searchPlaceholder="Search by reference or narration…"
+        toolbarExtra={
+          <PeriodPicker
+            mode={periodMode}
+            onModeChange={setPeriodMode}
+            financialYear={financialYear}
+            customFrom={customFrom}
+            customTo={customTo}
+            onCustomFromChange={setCustomFrom}
+            onCustomToChange={setCustomTo}
+            ariaLabel="Date range"
+          />
+        }
+        initialSort={{ key: "entry_date", dir: "desc" }}
+        exportFilename="journal"
+        persistKey="accounting.journal"
+        emptyTitle={!showSystemEntries && entries.length > 0 ? "No manual journal entries" : "No journal entries"}
+        emptyDescription={
+          !showSystemEntries && entries.length > 0
+            ? "This client has system-generated entries only — tick \u201CShow system-generated entries\u201D above to see them."
+            : "Use New Journal Entry to add one."
+        }
+      />
     </div>
   );
 }

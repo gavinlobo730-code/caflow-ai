@@ -16,6 +16,8 @@
 /clients/:id.txt                                     /clients/_placeholder/index.txt  200
 /clients/:id/accounting                              /clients/_placeholder/accounting/  200
 /clients/:id/accounting.txt                          /clients/_placeholder/accounting/index.txt  200
+/clients/:id/accounting/journal/:entryId/edit        /clients/_placeholder/accounting/journal/_placeholder/edit/  200
+/clients/:id/accounting/journal/:entryId/edit.txt    /clients/_placeholder/accounting/journal/_placeholder/edit/index.txt  200
 /clients/:id/ai-insights                             /clients/_placeholder/ai-insights/  200
 /clients/:id/ai-insights.txt                         /clients/_placeholder/ai-insights/index.txt  200
 /clients/:id/bank                                    /clients/_placeholder/bank/  200
@@ -87,6 +89,7 @@
 /relationships/:entity_id                            /relationships/_placeholder/  200
 /relationships/:entity_id.txt                        /relationships/_placeholder/index.txt  200
 
+/clients/:id/accounting/journal/:entryId/*           /clients/_placeholder/accounting/journal/_placeholder/:splat  200
 /clients/:id/purchases/bills/:billId/*               /clients/_placeholder/purchases/bills/_placeholder/:splat  200
 /clients/:id/purchases/credit-notes/:pcnId/*         /clients/_placeholder/purchases/credit-notes/_placeholder/:splat  200
 /clients/:id/purchases/debit-notes/:dnId/*           /clients/_placeholder/purchases/debit-notes/_placeholder/:splat  200

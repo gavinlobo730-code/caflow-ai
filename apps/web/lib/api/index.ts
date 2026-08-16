@@ -5,6 +5,53 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** A journal line as the editor reads and writes it. Integer paise only. */
+export type JournalLineIO = {
+  id?: string;
+  account_id: string;
+  debit_paise: number;
+  credit_paise: number;
+  narration?: string | null;
+};
+
+/**
+ * GET /api/accounting/journal/{id}. Beyond the row itself this carries the two
+ * fields the editor is built around:
+ *   `editable`    — may this be changed at all right now
+ *   `lock_reason` — null when open; otherwise the sentence to show the CA
+ *                   ("Financial year 2025-26 is locked…", "GSTR-3B covering
+ *                   this date was filed on 18 Jul 2026…")
+ * A reason beats a boolean because "locked year" and "return filed" call for
+ * different actions — unlock, versus reverse and amend in the next return.
+ */
+export type JournalEntryDetail = {
+  id: string;
+  client_id: string;
+  entry_date: string;
+  reference_no: string | null;
+  narration: string;
+  entry_type: string;
+  is_posted: boolean;
+  is_reversed: boolean;
+  source_type: string | null;
+  created_at?: string;
+  lines: JournalLineIO[];
+  total_debit_paise: number;
+  total_credit_paise: number;
+  status: "posted" | "draft";
+  editable: boolean;
+  lock_reason: string | null;
+};
+
+/** PATCH body. Every field optional; `lines` replaces the whole set. */
+export type JournalEntryUpdate = {
+  entry_date?: string;
+  reference_no?: string | null;
+  narration?: string;
+  entry_type?: string;
+  lines?: JournalLineIO[];
+};
+
 // Phase 4.5.1 — a client_portal_users row (F22 fix: invite_token is single-use,
 // never re-sent to the frontend once accepted — the field is present here only
 // because inviteContact()'s response carries it once, to build the invite link).
@@ -258,6 +305,19 @@ export const api = {
     journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
     postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
+    // One entry with its lines, plus whether it may still be edited. `editable`
+    // and `lock_reason` are resolved by the same database function the write
+    // path enforces with (journal_period_lock_reason, migration 266), so the
+    // editor cannot show "open" for a period the ledger will refuse.
+    getJournalEntry: (id: string) =>
+      request<ApiResp<JournalEntryDetail>>(`/api/accounting/journal/${id}`),
+    // Correct an entry, draft or posted. A POSTED entry must send its FULL set
+    // of lines — the backend rewrites them wholesale inside edit_posted_journal
+    // rather than diffing, so a partial line list would silently drop legs.
+    updateJournalEntry: (id: string, data: JournalEntryUpdate) =>
+      request<ApiResp<JournalEntryDetail>>(`/api/accounting/journal/${id}`, {
+        method: "PATCH", body: JSON.stringify(data),
+      }),
     ledger: (params: Record<string, string>) => request(`/api/accounting/ledger?${new URLSearchParams(params)}`),
     trialBalance: (params?: Record<string, string>) => request(`/api/accounting/trial-balance${params ? "?" + new URLSearchParams(params) : ""}`),
     // Bring an imported trial balance into a client's ledger as one balanced
