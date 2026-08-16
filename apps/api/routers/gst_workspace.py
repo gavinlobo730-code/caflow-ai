@@ -916,6 +916,49 @@ def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
+@router.get("/gstr1/amendments")
+def gstr1_outstanding_amendments(
+    client_id: str = Query(..., description="Client whose filed periods to check"),
+    period: str = Query(..., description="MMYYYY of the return being prepared"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """What this period's GSTR-1 must carry from earlier periods already filed.
+
+    CGST Act §37: a filed GSTR-1 cannot be revised, so a correction to it is
+    declared in a LATER return's amendment tables — 9A for invoices, 9C for
+    credit and debit notes, 10 for B2C-others. Every amended entry names the
+    original document (or, for B2C-others, the original month) so GSTN knows
+    which entry it supersedes.
+
+    Two things here are deliberately NOT amendments. An invoice raised after its
+    period was filed was never declared, so there is nothing to supersede — it
+    belongs in this period's ordinary table, and it is listed separately because
+    the date-range read would otherwise miss it entirely. A document cancelled
+    after filing has no single right answer (amend to nil, or raise a credit
+    note) and is surfaced for the CA rather than resolved.
+
+    The 30 November window (§37(3), Finance Act 2022) is not applied here —
+    dropping an out-of-time amendment silently would hide exactly what the CA
+    most needs to see.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This proposes; nothing reaches a
+    # return until the CA confirms it.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "period": period, "source_periods": [], "proposals": [], "sections": {},
+            "carry_forward": [], "needs_decision": [],
+            "counts": {"amendments": 0, "carry_forward": 0, "needs_decision": 0,
+                       "source_periods": 0},
+            "ca_review_required": True,
+        })
+    from core.supabase_client import get_supabase
+    from services.gst_amendment_service import outstanding_amendments
+    return api_response(True, outstanding_amendments(
+        get_supabase(), current_user["firm_id"], client_id, period))
+
+
 @router.get("/gstr1/exceptions")
 def gstr1_exception_report(
     client_id: str = Query(..., description="Client whose filed period to check"),
