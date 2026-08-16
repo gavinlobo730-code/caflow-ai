@@ -122,6 +122,13 @@ class SalesInvoiceIn(BaseModel):
     customer_gstin: Optional[str] = None
     place_of_supply: Optional[str] = None  # 2-digit state code
     supply_state_code: Optional[str] = None
+    # GSTR-1 classification (migration 268). The classifier in
+    # domain/gst/classifier.py branches on these to pick the return table; left
+    # unset an invoice is an ordinary domestic taxable sale, which is what every
+    # invoice was implicitly treated as before.
+    supply_type: Optional[str] = None       # taxable|zero_rated|nil_rated|exempt|non_gst
+    invoice_type: Optional[str] = None      # Regular|SEZ_with_payment|SEZ_without_payment|Deemed_export
+    is_reverse_charge: Optional[bool] = None
     # Multi-Currency (Phase 3) — omit / 'INR' for a normal INR invoice. When a
     # foreign currency is given, line rate_paise are that currency's minor units;
     # exchange_rate is an optional manual override (else resolved via the service).
@@ -166,6 +173,13 @@ class SalesInvoiceUpdateIn(BaseModel):
     credit_days: Optional[int] = None
     supply_state_code: Optional[str] = None
     lines: Optional[list[InvoiceLineIn]] = None
+    # GSTR-1 classification (migration 268). The classifier in
+    # domain/gst/classifier.py branches on these to pick the return table; left
+    # unset an invoice is an ordinary domestic taxable sale, which is what every
+    # invoice was implicitly treated as before.
+    supply_type: Optional[str] = None       # taxable|zero_rated|nil_rated|exempt|non_gst
+    invoice_type: Optional[str] = None      # Regular|SEZ_with_payment|SEZ_without_payment|Deemed_export
+    is_reverse_charge: Optional[bool] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None

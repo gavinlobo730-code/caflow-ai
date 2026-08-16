@@ -359,7 +359,11 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             is_interstate=bool(r.get("is_interstate", False)),
             taxable_amount_paise=int(r.get("taxable_amount_paise") or 0),
             supply_type=r.get("supply_type") or "taxable",
-            invoice_type="Regular",
+            # Was hardcoded "Regular", so an SEZ supply or a deemed export was
+            # declared as an ordinary B2B invoice and the recipient had nothing
+            # to match a CGST §16(3) refund claim against. Credit and debit
+            # notes have no such column and keep the default.
+            invoice_type=r.get("invoice_type") or "Regular",
             place_of_supply=pos,
         )
         return InvoiceForGSTR1(
@@ -380,7 +384,7 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # round_off column → .get None → 0.
             round_off_paise=int(r.get("round_off_paise") or 0),
             is_reverse_charge=bool(r.get("is_reverse_charge", False)),
-            invoice_type="Regular",
+            invoice_type=r.get("invoice_type") or "Regular",
             supply_type=r.get("supply_type") or "taxable",
             gst_invoice_category=classify_transaction(txn),
             original_invoice_ref=r.get("sales_invoice_id") if doc_type != "sales_invoice" else None,

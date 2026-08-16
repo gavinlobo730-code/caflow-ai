@@ -914,3 +914,38 @@ def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
+@router.get("/itc/rule37")
+def rule37_itc_reversal(
+    client_id: str = Query(..., description="Client whose purchase ledger to check"),
+    as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today (IST)"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """Purchase bills 180 days unpaid, and the input tax credit that reverses.
+
+    CGST Act §16(2) second proviso and Rule 37: credit taken on an inward supply
+    is reversed, proportionate to the amount not paid, when the supplier goes
+    unpaid for 180 days from the invoice date. It is not optional and it is not
+    a warning — the credit stops being available whether or not anyone noticed,
+    and interest under §50 runs from the date it was availed.
+
+    `as_of` because the CA asks this at a period end, not on the day they open
+    the screen: the reversal belongs in one specific return (Rule 37(1) — the
+    period immediately following the one the 180 days expired in).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports; it posts no journal
+    # and files nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "as_of": as_of or "", "rule": "CGST Act §16(2) second proviso; CGST Rule 37",
+            "bills": [], "bill_count": 0,
+            "totals": {"cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "total_paise": 0},
+            "ca_review_required": True,
+        })
+    from core.supabase_client import get_supabase
+    from services.itc_reversal_service import rule37_report
+    return api_response(True, rule37_report(
+        get_supabase(), current_user["firm_id"], client_id, as_of=as_of))

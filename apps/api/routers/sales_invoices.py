@@ -838,6 +838,12 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "credit_days":           eff_credit_days,
             "supply_state_code":     effective_supply_state,
             "is_interstate":         is_interstate,
+            # GSTR-1 classification (migration 268). Omitted means an
+            # ordinary domestic taxable sale — the column defaults say so,
+            # and that is what every invoice was treated as before.
+            "supply_type":           data.get("supply_type") or "taxable",
+            "invoice_type":          data.get("invoice_type") or "Regular",
+            "is_reverse_charge":     bool(data.get("is_reverse_charge") or False),
             "reference_no":          data.get("reference_no"),
             "taxable_amount_paise":  total_taxable_paise,
             "cgst_paise":            total_cgst_paise,
@@ -872,6 +878,12 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         "credit_days":           eff_credit_days,
         "supply_state_code":     effective_supply_state,
         "is_interstate":         is_interstate,
+        # GSTR-1 classification (migration 268). Omitted means an
+        # ordinary domestic taxable sale — the column defaults say so,
+        # and that is what every invoice was treated as before.
+        "supply_type":           data.get("supply_type") or "taxable",
+        "invoice_type":          data.get("invoice_type") or "Regular",
+        "is_reverse_charge":     bool(data.get("is_reverse_charge") or False),
         "reference_no":          data.get("reference_no"),
         "taxable_amount_paise":  total_taxable_paise,
         "cgst_paise":            total_cgst_paise,
