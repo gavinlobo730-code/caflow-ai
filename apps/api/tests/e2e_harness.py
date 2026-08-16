@@ -22,6 +22,7 @@ Integer paise only; the double never coerces to float.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 import re
 from typing import Any, Optional
 
@@ -270,6 +271,45 @@ class _Rpc:
         if handler is None:
             raise Exception(f"FakeDB: unsupported rpc {self.fn!r}")
         return _Result(handler())
+
+    def _fn_period_lock_reason(self):
+        """Mirror migration 267's period_lock_reason.
+
+        Faithful rather than stubbed, because it is now consulted on every
+        sales-invoice and purchase-bill write: a stub returning "open" would
+        make every lock test vacuous, and one returning "closed" would fail
+        every test that is not about locking. With no locked years and no
+        filings seeded — the state most tests are in — it returns None, which
+        is what a real database with those tables empty returns.
+        """
+        p_firm = self.params.get("p_firm")
+        p_client = self.params.get("p_client")
+        p_date = self.params.get("p_date")
+        if not p_date:
+            return None
+
+        year, month = int(str(p_date)[:4]), int(str(p_date)[5:7])
+        fy_start = year if month >= 4 else year - 1
+        fy_label = f"{fy_start}-{str(fy_start + 1)[-2:]}"
+
+        firm = next((f for f in self.db._tables.get("firms", [])
+                     if f.get("id") == p_firm), None)
+        if fy_label in ((firm or {}).get("locked_financial_years") or []):
+            return (f"Financial year {fy_label} is locked. Unlock it, or post a "
+                    "reversal in an open year.")
+
+        covering = [f for f in self.db._tables.get("filings", [])
+                    if f.get("client_id") == p_client
+                    and not f.get("deleted_at")
+                    and f.get("filed_date")
+                    and str(f.get("period_start") or "") <= str(p_date) <= str(f.get("period_end") or "")]
+        if covering:
+            covering.sort(key=lambda f: str(f.get("filed_date")))
+            hit = covering[0]
+            when = datetime.strptime(str(hit["filed_date"])[:10], "%Y-%m-%d").strftime("%d %b %Y")
+            return (f"{hit.get('filing_type')} covering this date was filed on {when}. "
+                    "Correct it with a reversal and an amendment in the next return.")
+        return None
 
     def _fn_post_journal_atomic(self):
         """Mirror migrations/152 post_journal_atomic: insert header + lines
