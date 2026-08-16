@@ -14,21 +14,26 @@ WHY IT LOOKS AT EVERY EARLIER PERIOD AND NOT JUST THE PREVIOUS ONE
     to look at April again. If this only checked the immediately preceding
     period, a correction missed once would be missed for ever.
 
-THE DEADLINE THIS DOES NOT ENFORCE
-    Amendments close on 30 November following the end of the financial year
-    (§37(3), as amended by the Finance Act 2022). After that the correction
-    cannot be declared at all. That cutoff is task #154's job; this reports what
-    is outstanding without deciding whether it is still in time, because
-    silently dropping an out-of-time amendment would hide the very thing the CA
-    most needs to see.
+THE DEADLINE, REPORTED AND NEVER ENFORCED
+    Amendments close on 30 November following the end of the financial year, or
+    on the annual return, whichever is earlier (§37(3), Finance Act 2022). After
+    that the correction cannot be declared at all.
+
+    Every proposal carries its window, and an out-of-time one is still listed —
+    dropping it would hide the single most important thing a CA can be told
+    about a period, which is that it can no longer be fixed. What closes is the
+    option, not the reporting.
 """
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Optional
 
+from core.ist_clock import ist_today
 from domain.gst.amendment_proposal import propose
 from domain.gst.amendments import group_amendments, merge_into_payload
+from domain.gst.correction_window import is_actionable, window_for
 from services.gst_exception_service import gstr1_exceptions
 
 _logger = logging.getLogger("caflow.gst_amendments")
@@ -61,18 +66,29 @@ def _earlier_filed_periods(db, firm_id: str, client_id: str, period: str) -> lis
     return sorted(set(periods), key=_sort_key)
 
 
-def outstanding_amendments(db, firm_id: str, client_id: str, period: str) -> dict:
+def outstanding_amendments(
+    db, firm_id: str, client_id: str, period: str, *,
+    as_of: Optional[date] = None,
+    annual_return_filed_on: Optional[date] = None,
+) -> dict:
     """Amendments a GSTR-1 for `period` should carry from earlier filed periods.
 
     Returns the proposals per source period, the grouped GSTN sections ready to
     merge, and the two things that are NOT amendments: documents to carry
     forward into this period's ordinary tables, and cancellations that need the
     CA to decide.
+
+    Each proposal carries the §37(3) / §16(4) correction window for its source
+    period. `as_of` so the question can be asked as at a period end rather than
+    only today, and so the answer is not a function of when it is asked.
     """
+    today = as_of or ist_today()
     proposals: list[dict] = []
     entries: list[dict] = []
     carry_forward: list[dict] = []
     needs_decision: list[dict] = []
+    expired: list[dict] = []
+    closing_soon: list[dict] = []
 
     for source in _earlier_filed_periods(db, firm_id, client_id, period):
         report = gstr1_exceptions(db, firm_id, client_id, source)
@@ -81,12 +97,29 @@ def outstanding_amendments(db, firm_id: str, client_id: str, period: str) -> dic
         proposal = propose(report, original_period=source)
         if not any(proposal["counts"].values()):
             continue
+
+        window = window_for(source, as_of=today,
+                            annual_return_filed_on=annual_return_filed_on)
+        proposal["window"] = window
         proposals.append(proposal)
+
+        # An out-of-time correction is REPORTED, never dropped. It is separated
+        # so the CA is not offered a fix that no longer exists, and so the fact
+        # that a period has passed beyond repair cannot be missed among the
+        # ones that are still actionable.
+        if not is_actionable(window):
+            expired.append({"period": source, "window": window,
+                            "counts": proposal["counts"]})
+            continue
+        if window and window.get("status") == "closing_soon":
+            closing_soon.append({"period": source, "window": window,
+                                 "counts": proposal["counts"]})
+
         entries.extend(proposal["entries"])
         for item in proposal["carry_forward"]:
-            carry_forward.append({**item, "from_period": source})
+            carry_forward.append({**item, "from_period": source, "window": window})
         for item in proposal["needs_decision"]:
-            needs_decision.append({**item, "from_period": source})
+            needs_decision.append({**item, "from_period": source, "window": window})
 
     sections = group_amendments(entries)
 
@@ -100,11 +133,21 @@ def outstanding_amendments(db, firm_id: str, client_id: str, period: str) -> dic
         "sections": sections,
         "carry_forward": carry_forward,
         "needs_decision": needs_decision,
+        # Periods whose §37(3) / §16(4) window has already closed. They carry
+        # real drift that can no longer be declared — the output tax stays
+        # understated or the credit is simply lost. Nothing here can fix them;
+        # they are surfaced because a CA needs to know what is beyond repair.
+        "expired": expired,
+        # Still fixable, but not for much longer.
+        "closing_soon": closing_soon,
+        "as_of": today.isoformat(),
         "counts": {
             "amendments": len(entries),
             "carry_forward": len(carry_forward),
             "needs_decision": len(needs_decision),
             "source_periods": len(proposals),
+            "expired_periods": len(expired),
+            "closing_soon_periods": len(closing_soon),
         },
         "rule": "CGST Act §37 — corrections to a filed GSTR-1 are declared in a "
                 "later period's amendment tables. The window closes on 30 November "

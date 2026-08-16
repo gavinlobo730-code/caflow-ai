@@ -8,6 +8,8 @@ end to end from a seeded invoice, not from a report the test wrote itself.
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 import routers.gst_workspace as gw
@@ -36,10 +38,13 @@ def db(monkeypatch):
     return d
 
 
-def _invoice(db, invoice_no, date, taxable, cgst=0, sgst=0):
+def _invoice(db, invoice_no, invoice_date, taxable, cgst=0, sgst=0):
+    # Not named `date` — that would shadow the datetime.date imported above,
+    # which is the same module-level shadowing that silently broke two
+    # endpoints earlier in this run of tasks.
     return db.seed("client_sales_invoices", {
         "firm_id": FIRM, "client_id": CLIENT, "customer_id": "CUST",
-        "invoice_no": invoice_no, "invoice_date": date, "status": "issued",
+        "invoice_no": invoice_no, "invoice_date": invoice_date, "status": "issued",
         "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
         "igst_paise": 0, "total_paise": taxable + cgst + sgst,
         "is_interstate": False, "supply_state_code": "27",
@@ -217,6 +222,102 @@ def test_a_cancelled_document_needs_a_decision_rather_than_an_amendment(db):
     assert out["counts"]["amendments"] == 0
     assert out["counts"]["needs_decision"] == 1
     assert out["needs_decision"][0]["from_period"] == "062025"
+
+
+# ── the 30 November window (#154) ────────────────────────────────────────────
+
+def _drifted_june(db):
+    """A June 2025 period, filed, with real drift in it. FY 2025-26, so its
+    correction window closes 30 November 2026."""
+    row = _invoice(db, "INV-1", "2025-06-10", 100_000, 9_000, 9_000)
+    _file(db, "062025")
+    db.table("client_sales_invoices").update(
+        {"taxable_amount_paise": 150_000}).eq("id", row["id"]).execute()
+
+
+def test_a_period_still_in_time_is_proposed_as_an_amendment(db):
+    _drifted_june(db)
+
+    out = svc.outstanding_amendments(db, FIRM, CLIENT, "072025", as_of=date(2026, 1, 1))
+
+    assert out["counts"]["amendments"] == 1
+    assert "b2ba" in out["sections"]
+    assert out["counts"]["expired_periods"] == 0
+    assert out["proposals"][0]["window"]["closes_on"] == "2026-11-30"
+
+
+def test_a_period_past_30_november_is_reported_but_not_proposed(db):
+    """The correction can no longer be declared at all — offering it would tell
+    the CA to do something the statute does not allow. It is still listed,
+    because "this can never be fixed" is the most important thing to know
+    about the period."""
+    _drifted_june(db)
+
+    out = svc.outstanding_amendments(db, FIRM, CLIENT, "072025", as_of=date(2026, 12, 1))
+
+    assert out["counts"]["amendments"] == 0
+    assert out["sections"] == {}
+    assert out["counts"]["expired_periods"] == 1
+    assert out["expired"][0]["period"] == "062025"
+    assert out["expired"][0]["window"]["status"] == "closed"
+
+
+def test_the_last_day_of_the_window_still_proposes_the_amendment(db):
+    """30 November is the last day it CAN be done, not the first day it cannot."""
+    _drifted_june(db)
+
+    out = svc.outstanding_amendments(db, FIRM, CLIENT, "072025", as_of=date(2026, 11, 30))
+
+    assert out["counts"]["amendments"] == 1
+    assert out["counts"]["expired_periods"] == 0
+
+
+def test_a_window_about_to_close_is_flagged_while_still_actionable(db):
+    _drifted_june(db)
+
+    out = svc.outstanding_amendments(db, FIRM, CLIENT, "072025", as_of=date(2026, 11, 10))
+
+    assert out["counts"]["amendments"] == 1, "still fixable"
+    assert out["counts"]["closing_soon_periods"] == 1
+    assert out["closing_soon"][0]["window"]["days_left"] == 20
+
+
+def test_an_early_annual_return_closes_the_window_early(db):
+    """§37(3): 30 November OR the annual return, whichever is earlier. A client
+    who filed GSTR-9 in August lost the ability to amend from August."""
+    _drifted_june(db)
+
+    out = svc.outstanding_amendments(
+        db, FIRM, CLIENT, "072025", as_of=date(2026, 9, 1),
+        annual_return_filed_on=date(2026, 8, 15))
+
+    assert out["counts"]["amendments"] == 0
+    assert out["counts"]["expired_periods"] == 1
+    assert out["expired"][0]["window"]["shortened_by_annual_return"] is True
+
+
+def test_without_the_annual_return_that_same_date_is_still_in_time(db):
+    """The other half of the pair above — proves the annual return is what
+    changed the answer, not the date."""
+    _drifted_june(db)
+
+    out = svc.outstanding_amendments(db, FIRM, CLIENT, "072025", as_of=date(2026, 9, 1))
+
+    assert out["counts"]["amendments"] == 1
+    assert out["counts"]["expired_periods"] == 0
+
+
+def test_carry_forward_and_decisions_from_an_expired_period_are_not_offered(db):
+    """A missed invoice from a closed year cannot be declared either — §16(4)
+    and §37(3) close together."""
+    _invoice(db, "INV-1", "2025-06-10", 100_000, 9_000, 9_000)
+    _file(db, "062025")
+    _invoice(db, "INV-LATE", "2025-06-28", 40_000, 3_600, 3_600)
+
+    out = svc.outstanding_amendments(db, FIRM, CLIENT, "072025", as_of=date(2026, 12, 1))
+
+    assert out["counts"]["carry_forward"] == 0
+    assert out["counts"]["expired_periods"] == 1
 
 
 # ── folding the amendments into a payload ────────────────────────────────────
