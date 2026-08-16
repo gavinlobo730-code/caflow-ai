@@ -20,6 +20,7 @@ from core.permissions import rbac
 from services.audit_service import log_event
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
 from services.timeline_service import timeline_service
 
 # IT Act §194C: 2% (companies/firms); §194I: 10%; §194J: 10%
@@ -1124,6 +1125,12 @@ def update_purchase_bill(
             period_validation_service.validate_posting_date(firm_id, existing_date)
         if data.get("bill_date"):
             period_validation_service.validate_posting_date(firm_id, data["bill_date"])
+        # Filed-return lock, same reasoning as the sales side. A purchase bill
+        # inside a filed period carries ITC already claimed in that GSTR-3B.
+        _client_id = resp.data[0].get("client_id")
+        period_lock_service.assert_open(db, firm_id, _client_id, existing_date)
+        if data.get("bill_date"):
+            period_lock_service.assert_open(db, firm_id, _client_id, data["bill_date"])
 
         # Keep due_date and credit_days in sync whichever one was edited
         # directly (credit_days -> due_date, or due_date -> credit_days), so

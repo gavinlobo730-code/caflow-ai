@@ -107,6 +107,19 @@ class _FakeDB:
     def table(self, name):
         return _Query(name, self._rec, self._ctl)
 
+    def rpc(self, fn, params=None):
+        """A real Supabase client has this; a fake without it is an incomplete
+        stand-in, not a smaller one. The period lock (migration 267) is now
+        consulted on every invoice write, and it fails CLOSED — so a fake that
+        cannot answer makes every period look shut. Nothing is seeded here, so
+        the honest answer is the one an empty database gives: open."""
+        return _Rpc()
+
+
+class _Rpc:
+    def execute(self):
+        return _Resp(data=None)
+
 
 _USER = {"firm_id": "F1", "auth_user_id": "u1", "email": "u@firm.test", "role": "Partner"}
 

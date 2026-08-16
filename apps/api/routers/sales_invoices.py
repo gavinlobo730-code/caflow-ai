@@ -19,6 +19,7 @@ from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
@@ -815,6 +816,14 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         firm_id or "", data["invoice_date"],
         bulk_cache.get("locked_fy_cache") if bulk_cache is not None else None,
     )
+    # ...and not inside a period whose return has already been filed. The FY
+    # lock above is the CA's own switch; this is the portal's. A new invoice
+    # dated inside a filed GSTR-1 belongs to a return that can no longer accept
+    # it (CGST §37 — corrections go in a later period's amendment tables).
+    if not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        period_lock_service.assert_open(
+            get_supabase(), firm_id or "", data.get("client_id"), data.get("invoice_date"))
 
     if _USE_MOCK:
         invoice_id = str(uuid.uuid4())
@@ -1224,6 +1233,13 @@ def update_invoice(
             period_validation_service.validate_posting_date(firm_id, existing_date)
         if data.get("invoice_date"):
             period_validation_service.validate_posting_date(firm_id, data["invoice_date"])
+        # Both dates again, against filed returns. Moving an invoice INTO a
+        # filed period changes that period's numbers as surely as editing one
+        # already there, which is why the new date is checked too.
+        _client_id = resp.data[0].get("client_id")
+        period_lock_service.assert_open(db, firm_id, _client_id, existing_date)
+        if data.get("invoice_date"):
+            period_lock_service.assert_open(db, firm_id, _client_id, data["invoice_date"])
 
         # Keep due_date and credit_days in sync whichever one was edited directly
         # (credit_days -> due_date, or due_date -> credit_days), so the derived
