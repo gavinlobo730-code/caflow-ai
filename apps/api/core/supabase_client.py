@@ -21,6 +21,56 @@ from supabase import create_client, Client
 _client: Client | None = None
 _logger = logging.getLogger("caflow.supabase")
 
+
+def _force_http1(client: Client) -> Client:
+    """Rebuild PostgREST's httpx session without HTTP/2.
+
+    WHY
+        postgrest 0.18's create_session hardcodes http2=True, and h2 is
+        installed, so every Supabase call multiplexes over ONE HTTP/2
+        connection. _service_client() below caches a single client in a module
+        global, and FastAPI runs our sync `def` endpoints in a threadpool — so
+        that one connection is driven by many threads at once. The h2 state
+        machine does not survive that: frames from different streams interleave
+        and it ends up parsing a REQUEST's pseudo-headers as a response
+        trailer. In production that surfaced as
+
+            LocalProtocolError: Received pseudo-header in trailer
+            {b':scheme', b':method', b':path', b':authority'}
+
+        on GET /api/accounting/profit-loss, raised out of core.auth's firm
+        lookup. It is load-dependent, which is why no test ever saw it.
+
+        HTTP/1.1 sidesteps the whole class: httpx's pool gives each request its
+        own connection for its duration, so there is no shared state machine to
+        corrupt. We lose multiplexing, which costs nothing at our request rate
+        against PostgREST.
+
+        Rebuilding the session is the available seam — supabase 2.10's
+        ClientOptions exposes timeouts and headers but not the httpx client, and
+        http2 cannot be changed after construction. Every argument below mirrors
+        postgrest's own create_session except http2.
+    """
+    session = getattr(getattr(client, "postgrest", None), "session", None)
+    if session is None:  # pragma: no cover — shape changed under us
+        _logger.warning("Supabase client exposes no postgrest session; leaving HTTP/2 as-is.")
+        return client
+    try:
+        from postgrest._sync.client import SyncClient
+        client.postgrest.session = SyncClient(
+            base_url=session.base_url,
+            headers=session.headers,
+            timeout=session.timeout,
+            follow_redirects=True,
+            http2=False,
+        )
+        session.close()
+    except Exception:
+        # A client on HTTP/2 still works; it just carries the concurrency bug.
+        # Failing to start because of this would be the worse outcome.
+        _logger.exception("Could not disable HTTP/2 on the Supabase session; continuing.")
+    return client
+
 # Per-request access token (set by middleware from the Authorization header).
 # None for background jobs / unauthenticated paths.
 _request_access_token: ContextVar[str | None] = ContextVar("request_access_token", default=None)
@@ -61,7 +111,7 @@ def _service_client() -> Client:
             url,
             key[:12],
         )
-        _client = create_client(url, key)
+        _client = _force_http1(create_client(url, key))
     return _client
 
 
@@ -103,7 +153,7 @@ def get_user_supabase(access_token: str) -> Client:
     ).strip()
     if not url or not anon:
         raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set for user-scoped access.")
-    client = create_client(url, anon)
+    client = _force_http1(create_client(url, anon))
     # Attach the user's JWT so PostgREST runs as the `authenticated` role and RLS
     # (auth.uid(), get_my_role(), can_access_client(), ...) applies.
     client.postgrest.auth(access_token)

@@ -112,3 +112,94 @@ def test_the_failure_is_not_cached():
     assert "auth-user-3" not in auth._user_lookup_cache, (
         "a transient failure was memoised — the next request would be told the "
         "same thing without even retrying the lookup")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# The SAME distinction, one lookup later — the firm status check.
+#
+# The users lookup above was fixed to fail closed. The firms lookup directly
+# below it in _get_user_and_firm was not: it swallowed the exception and set
+# firm_row = None. That is worse than a wrong status code, because the caller
+# reads it as `if firm_row:` — so None does not deny, it SKIPS the
+# suspended-firm and deleted-firm checks and lets the request through. And the
+# result was written to the cache, so one bad moment kept the check bypassed
+# for the whole TTL.
+#
+# This was not theoretical. A shared-client HTTP/2 concurrency bug (see
+# core.supabase_client._force_http1) raised LocalProtocolError in exactly this
+# spot in production, logged "firm lookup failed", and admitted the request.
+# ══════════════════════════════════════════════════════════════════════════
+
+class _FirmBoom:
+    """Users resolves fine; the firm status lookup is what breaks."""
+
+    def __init__(self):
+        self._table = None
+
+    def table(self, name):
+        self._table = name
+        return self
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def maybe_single(self):
+        return self
+
+    def execute(self):
+        if self._table == "firms":
+            raise RuntimeError("Received pseudo-header in trailer")
+        return type("R", (), {"data": {
+            "id": "u1", "firm_id": "f1", "role": "Partner",
+            "full_name": "CA", "is_active": True, "sessions_revoked_at": None,
+        }})()
+
+
+class _FirmMissing(_FirmBoom):
+    """A working firms query that genuinely finds no row — a data problem, not
+    an outage, and deliberately still allowed through."""
+
+    def execute(self):
+        if self._table == "firms":
+            return type("R", (), {"data": None})()
+        return super().execute()
+
+
+def test_a_failed_firm_lookup_does_not_silently_admit_the_request():
+    with pytest.raises(HTTPException) as e:
+        auth._get_user_and_firm(_FirmBoom(), "auth-user-4")
+    assert e.value.status_code == 503, (
+        "a broken firm lookup returned instead of raising — the caller's "
+        "`if firm_row:` then skips the suspended-firm and deleted-firm checks "
+        "entirely and the request is allowed")
+
+
+def test_the_failed_firm_lookup_is_not_cached():
+    """Caching it would keep the firm status check bypassed for the full TTL
+    on the strength of a single transient error."""
+    with pytest.raises(HTTPException):
+        auth._get_user_and_firm(_FirmBoom(), "auth-user-5")
+    assert "auth-user-5" not in auth._user_lookup_cache
+
+
+def test_the_firm_lookup_failure_reads_the_same_as_the_user_one():
+    """Both are the same event from the caller's side — the database could not
+    be asked. They should not produce two different explanations."""
+    with pytest.raises(HTTPException) as user_side:
+        auth._get_user_and_firm(_Boom(), "auth-user-6")
+    with pytest.raises(HTTPException) as firm_side:
+        auth._get_user_and_firm(_FirmBoom(), "auth-user-7")
+    assert user_side.value.status_code == firm_side.value.status_code
+    assert user_side.value.detail == firm_side.value.detail
+
+
+def test_a_firm_row_that_genuinely_does_not_exist_is_still_allowed_through():
+    """The other half of the distinction, exactly as for users: a working query
+    that finds nothing must not be turned into a retry loop. Behaviour here is
+    unchanged — it is only logged now."""
+    user, firm = auth._get_user_and_firm(_FirmMissing(), "auth-user-8")
+    assert user is not None
+    assert firm is None
