@@ -27,6 +27,9 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from services.compliance_engine import gstr1_due_date, gstr3b_due_date
+from services.gst_filing_record_service import (
+    FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, record_filing, return_status_patch,
+)
 
 router = APIRouter(prefix="/api/gst-workspace", tags=["gst_workspace"])
 _logger = logging.getLogger("caflow.gst_workspace")
@@ -85,6 +88,14 @@ class SaveGSTR3BRequest(BaseModel):
 class UpdateStatusRequest(BaseModel):
     status: str
     ca_approved: bool = False
+    # The acknowledgement the portal returns. Optional because the CA files on
+    # the GST portal and may not have it to hand when they mark it submitted
+    # here; recorded on both the return and the filings row when supplied.
+    arn: Optional[str] = None
+    # When the return was actually filed, if that is not today — marking it in
+    # this app can lag the portal by days, and the period lock keys on the real
+    # filing date, not on when someone got round to recording it.
+    filed_date: Optional[str] = None
 
 
 class GSTR2BUploadRequest(BaseModel):
@@ -117,6 +128,27 @@ def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
     if not can_access_client(current_user, rec.get("client_id")):
         return None
     return rec
+
+
+def _existing_return(current_user: dict, table: str, mock_store: dict,
+                     client_id: str, period: str) -> Optional[dict]:
+    """The return already on file for this (client, period), if any.
+
+    Both save endpoints need it for the same two reasons: to revise a draft in
+    place rather than colliding with the UNIQUE(client_id, period) constraint,
+    and to refuse a change to one that has been filed.
+    """
+    if _USE_MOCK:
+        for rec in mock_store.values():
+            if rec.get("client_id") == client_id and rec.get("period") == period:
+                return rec
+        return None
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table(table).select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .eq("client_id", client_id).eq("period", period)
+            .limit(1).execute().data) or []
+    return rows[0] if rows else None
 
 
 def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
@@ -242,11 +274,40 @@ def save_gstr1(
             "created_at": datetime.utcnow().isoformat(),
         }
 
+        # One return per (client, period) — the table says so (UNIQUE, migration
+        # 036), and so does the law: there is one GSTR-1 for a month. So a second
+        # save is a REVISION of the draft, not a new return, and the insert that
+        # used to happen here failed the unique constraint and surfaced as
+        # "Unable to complete GST operation. Please try again."
+        #
+        # Once submitted it freezes. A GST return cannot be revised (CGST §37);
+        # corrections are declared in a later period's amendment tables. A
+        # payload that could still change after filing would also make the
+        # exception report compare the books against a moving target.
+        existing = _existing_return(current_user, "gstr1_returns", _MOCK_GSTR1, body.client_id, body.period)
+        if existing:
+            if existing.get("status") == "submitted":
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"GSTR-1 for {body.period} has already been filed and cannot be "
+                           "changed. Corrections are declared as an amendment in a later return.")
+            record["id"] = existing["id"]
+            record["status"] = existing.get("status") or "draft"
+            record.pop("created_at", None)
+
         if _USE_MOCK:
-            _MOCK_GSTR1[record["id"]] = record
+            if existing:
+                _MOCK_GSTR1[record["id"]].update(record)
+                record = _MOCK_GSTR1[record["id"]]
+            else:
+                _MOCK_GSTR1[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("gstr1_returns").insert(record).execute()
+            sb = get_supabase()
+            if existing:
+                sb.table("gstr1_returns").update(record).eq("id", record["id"]).eq("firm_id", firm_id).execute()
+            else:
+                sb.table("gstr1_returns").insert(record).execute()
 
         log_event(firm_id, "gstr1_return", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
@@ -321,13 +382,44 @@ def update_gstr1_status(
         if _load_return_or_none(current_user, "gstr1_returns", _MOCK_GSTR1, return_id) is None:
             return api_response(False, None, "Not found")
 
+        # Record WHAT was filed, not merely that the status moved. submitted_at,
+        # the approver and the ARN are columns migration 036 created and nothing
+        # had ever written; the exception report and the period lock both read
+        # what lands here.
+        patch = return_status_patch(
+            body.status, actor_id=current_user.get("id"), arn=body.arn,
+            now_iso=datetime.utcnow().isoformat(),
+        )
         if _USE_MOCK:
-            _MOCK_GSTR1[return_id]["status"] = body.status
+            _MOCK_GSTR1[return_id].update(patch)
             rec = _MOCK_GSTR1[return_id]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("gstr1_returns").update({"status": body.status}).eq("id", return_id).eq("firm_id", firm_id).execute().data
+            rows = get_supabase().table("gstr1_returns").update(patch).eq("id", return_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else {}
+
+        # The filings row. This is what journal_period_lock_reason (migration
+        # 266) reads to refuse an edit inside a filed period — and until now
+        # nothing anywhere wrote that table, so the lock could never fire.
+        if body.status == "submitted" and not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            try:
+                record_filing(
+                    get_supabase(), firm_id=firm_id,
+                    client_id=rec.get("client_id") or "",
+                    filing_type=FILING_TYPE_GSTR1, period=rec.get("period") or "",
+                    filed_date=body.filed_date, arn=body.arn,
+                    tax_payable_paise=rec.get("total_taxable_paise"),
+                    summary=rec.get("summary_json"),
+                )
+            except Exception:
+                # The return IS filed; the CA marked it so. Failing the request
+                # now would leave them unable to record reality. Log loudly —
+                # the missing row means the period lock will not bite for this
+                # return until it is written.
+                _logger.exception(
+                    "filings row not written for %s %s/%s — the period lock will "
+                    "not cover this return", FILING_TYPE_GSTR1, rec.get("client_id"), rec.get("period"))
 
         log_event(firm_id, "gstr1_return", return_id, "status_change",
                   actor_id=current_user.get("id"), new_data={"status": body.status})
@@ -374,11 +466,40 @@ def save_gstr3b(
             "created_at": datetime.utcnow().isoformat(),
         }
 
+        # One return per (client, period) — the table says so (UNIQUE, migration
+        # 036), and so does the law: there is one GSTR-3B for a month. So a second
+        # save is a REVISION of the draft, not a new return, and the insert that
+        # used to happen here failed the unique constraint and surfaced as
+        # "Unable to complete GST operation. Please try again."
+        #
+        # Once submitted it freezes. A GST return cannot be revised (CGST §37);
+        # corrections are declared in a later period's amendment tables. A
+        # payload that could still change after filing would also make the
+        # exception report compare the books against a moving target.
+        existing = _existing_return(current_user, "gstr3b_returns", _MOCK_GSTR3B, body.client_id, body.period)
+        if existing:
+            if existing.get("status") == "submitted":
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"GSTR-3B for {body.period} has already been filed and cannot be "
+                           "changed. Corrections are declared as an amendment in a later return.")
+            record["id"] = existing["id"]
+            record["status"] = existing.get("status") or "draft"
+            record.pop("created_at", None)
+
         if _USE_MOCK:
-            _MOCK_GSTR3B[record["id"]] = record
+            if existing:
+                _MOCK_GSTR3B[record["id"]].update(record)
+                record = _MOCK_GSTR3B[record["id"]]
+            else:
+                _MOCK_GSTR3B[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("gstr3b_returns").insert(record).execute()
+            sb = get_supabase()
+            if existing:
+                sb.table("gstr3b_returns").update(record).eq("id", record["id"]).eq("firm_id", firm_id).execute()
+            else:
+                sb.table("gstr3b_returns").insert(record).execute()
 
         log_event(firm_id, "gstr3b_return", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
@@ -448,13 +569,44 @@ def update_gstr3b_status(
         if _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id) is None:
             return api_response(False, None, "Not found")
 
+        # Record WHAT was filed, not merely that the status moved. submitted_at,
+        # the approver and the ARN are columns migration 036 created and nothing
+        # had ever written; the exception report and the period lock both read
+        # what lands here.
+        patch = return_status_patch(
+            body.status, actor_id=current_user.get("id"), arn=body.arn,
+            now_iso=datetime.utcnow().isoformat(),
+        )
         if _USE_MOCK:
-            _MOCK_GSTR3B[return_id]["status"] = body.status
+            _MOCK_GSTR3B[return_id].update(patch)
             rec = _MOCK_GSTR3B[return_id]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("gstr3b_returns").update({"status": body.status}).eq("id", return_id).eq("firm_id", firm_id).execute().data
+            rows = get_supabase().table("gstr3b_returns").update(patch).eq("id", return_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else {}
+
+        # The filings row. This is what journal_period_lock_reason (migration
+        # 266) reads to refuse an edit inside a filed period — and until now
+        # nothing anywhere wrote that table, so the lock could never fire.
+        if body.status == "submitted" and not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            try:
+                record_filing(
+                    get_supabase(), firm_id=firm_id,
+                    client_id=rec.get("client_id") or "",
+                    filing_type=FILING_TYPE_GSTR3B, period=rec.get("period") or "",
+                    filed_date=body.filed_date, arn=body.arn,
+                    tax_payable_paise=rec.get("net_tax_paise"),
+                    summary=rec.get("summary_json"),
+                )
+            except Exception:
+                # The return IS filed; the CA marked it so. Failing the request
+                # now would leave them unable to record reality. Log loudly —
+                # the missing row means the period lock will not bite for this
+                # return until it is written.
+                _logger.exception(
+                    "filings row not written for %s %s/%s — the period lock will "
+                    "not cover this return", FILING_TYPE_GSTR3B, rec.get("client_id"), rec.get("period"))
 
         log_event(firm_id, "gstr3b_return", return_id, "status_change",
                   actor_id=current_user.get("id"), new_data={"status": body.status})
