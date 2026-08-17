@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/invoices/importMapping.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSalesInvoices, type CustomerRef, type ServiceRef } from "./importMapping.ts";
+import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS, type CustomerRef, type ServiceRef } from "./importMapping.ts";
 
 const CUSTOMERS: CustomerRef[] = [
   { id: "cust-1", name: "Acme Pvt Ltd" },
@@ -188,4 +188,111 @@ test("a product_service with no description of its own still requires a row-leve
     "client-1", CUSTOMERS, SERVICES);
   assert.equal(ok.errors.length, 0);
   assert.equal(ok.invoices[0].lines[0].description, "Custom line text");
+});
+
+// ── Task #157: the GSTR-1 classification survives the import ─────────────────
+//
+// Migration 268 gave client_sales_invoices supply_type / invoice_type /
+// is_reverse_charge because defaulting them mis-declares a return, and task
+// #156 put them on the invoice form. The import path — the one a firm uses to
+// onboard hundreds of historical invoices at once — still dropped them, so
+// every bulk-imported nil-rated, exempt or SEZ supply landed as an ordinary
+// domestic taxable B2B sale.
+
+const BASE = { invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Consulting", quantity: "1", rate: "1000", gst_rate: "18" };
+
+test("classification columns reach the payload", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ ...BASE, supply_type: "exempt", invoice_type: "SEZ_without_payment", reverse_charge: "yes" })],
+    "client-1", CUSTOMERS);
+  assert.equal(errors.length, 0);
+  assert.equal(invoices[0].supply_type, "exempt");
+  assert.equal(invoices[0].invoice_type, "SEZ_without_payment");
+  assert.equal(invoices[0].is_reverse_charge, true);
+});
+
+test("omitted classification falls to migration 268's defaults, explicitly", () => {
+  const { invoices } = buildSalesInvoices([row({ ...BASE })], "client-1", CUSTOMERS);
+  // Sent as resolved values rather than left absent — same reasoning as
+  // toClassificationPayload: never leave the server to fall back.
+  assert.equal(invoices[0].supply_type, "taxable");
+  assert.equal(invoices[0].invoice_type, "Regular");
+  assert.equal(invoices[0].is_reverse_charge, false);
+});
+
+// The whole point of the fix. Before it, this row imported as `taxable`.
+test("a typo'd supply_type is rejected, NOT silently defaulted to taxable", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ ...BASE, supply_type: "exemtp" })], "client-1", CUSTOMERS);
+  assert.equal(invoices.length, 0);
+  assert.match(errors[0], /unknown supply_type "exemtp"/);
+  assert.match(errors[0], /nil_rated/);   // the error lists what IS accepted
+});
+
+test("a typo'd invoice_type is rejected, NOT silently defaulted to Regular", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ ...BASE, invoice_type: "SEZ maybe" })], "client-1", CUSTOMERS);
+  assert.equal(invoices.length, 0);
+  assert.match(errors[0], /unknown invoice_type/);
+});
+
+test("an unparseable reverse_charge is rejected rather than read as no", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ ...BASE, reverse_charge: "N/A" })], "client-1", CUSTOMERS);
+  assert.equal(invoices.length, 0);
+  assert.match(errors[0], /reverse_charge must be yes or no/);
+});
+
+test("spreadsheet spellings are accepted — case and separators", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ ...BASE, supply_type: "Zero Rated", invoice_type: "sez with payment", reverse_charge: "TRUE" })],
+    "client-1", CUSTOMERS);
+  assert.equal(errors.length, 0);
+  assert.equal(invoices[0].supply_type, "zero_rated");
+  assert.equal(invoices[0].invoice_type, "SEZ_with_payment");
+  assert.equal(invoices[0].is_reverse_charge, true);
+});
+
+test("reverse_charge no / 0 / false all read as false", () => {
+  for (const spelling of ["no", "0", "false", "N"]) {
+    const { invoices, errors } = buildSalesInvoices(
+      [row({ ...BASE, reverse_charge: spelling })], "client-1", CUSTOMERS);
+    assert.equal(errors.length, 0, `"${spelling}" should parse`);
+    assert.equal(invoices[0].is_reverse_charge, false, `"${spelling}" should be false`);
+  }
+});
+
+// The classification belongs to the invoice, not the line — one invoice cannot
+// be both exempt and taxable, and keeping the first row's value would make the
+// CA's correction on row 2 disappear.
+test("rows of one invoice disagreeing on classification is an error, not a silent win for row 1", () => {
+  const { invoices, errors } = buildSalesInvoices([
+    row({ ...BASE, description: "Line A", supply_type: "exempt" }),
+    row({ ...BASE, description: "Line B", supply_type: "taxable" }),
+  ], "client-1", CUSTOMERS);
+  assert.equal(invoices[0].lines.length, 1);       // the disagreeing row is dropped
+  assert.match(errors[0], /different supply_type/);
+});
+
+test("consistent classification across rows still groups into one invoice", () => {
+  const { invoices, errors } = buildSalesInvoices([
+    row({ ...BASE, description: "Line A", supply_type: "nil_rated", reverse_charge: "yes" }),
+    row({ ...BASE, description: "Line B", supply_type: "nil_rated", reverse_charge: "yes" }),
+  ], "client-1", CUSTOMERS);
+  assert.equal(errors.length, 0);
+  assert.equal(invoices.length, 1);
+  assert.equal(invoices[0].lines.length, 2);
+  assert.equal(invoices[0].supply_type, "nil_rated");
+});
+
+test("the template offers all three classification columns", () => {
+  const keys = SALES_INVOICE_IMPORT_COLUMNS.map((c) => c.key);
+  for (const key of ["supply_type", "invoice_type", "reverse_charge"]) {
+    assert.ok(keys.includes(key), `import template is missing ${key}`);
+  }
+  // Optional: a firm importing only ordinary domestic sales must not be forced
+  // to fill three extra columns on every row.
+  for (const key of ["supply_type", "invoice_type", "reverse_charge"]) {
+    assert.equal(SALES_INVOICE_IMPORT_COLUMNS.find((c) => c.key === key)!.required, false);
+  }
 });

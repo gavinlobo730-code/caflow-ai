@@ -157,3 +157,63 @@ def test_bulk_create_intra_batch_duplicate_invoice_no(monkeypatch):
     assert len(resp["data"]["errors"]) == 1
     assert resp["data"]["errors"][0]["invoice_no"] == "BULK-SAME"
     assert "already exists" in resp["data"]["errors"][0]["error"]
+
+
+# ── Task #157: the CSV importer's classification survives the bulk endpoint ───
+#
+# The importer builds supply_type / invoice_type / is_reverse_charge per invoice
+# and posts them here. _BulkInvoicesIn declares `invoices: list[dict]`, so
+# nothing is stripped on the way in — but this file's own history is a warning
+# that a field can be silently dropped in transit (gst_rate_bps was, and every
+# imported line quietly took the model's 18% default). These pin the whole
+# path: what the importer sends is what lands on the row the GSTR-1 builder
+# later reads.
+
+def test_bulk_create_persists_the_gstr1_classification(monkeypatch):
+    si, db = _setup(monkeypatch)
+    inv = _invoice_dict("CLS-001")
+    inv["supply_type"] = "exempt"
+    inv["invoice_type"] = "SEZ_without_payment"
+    inv["is_reverse_charge"] = True
+
+    resp = si.bulk_create_invoices(_BulkPayload([inv]), CALLER)
+
+    assert resp["success"] is True, resp
+    assert resp["data"]["errors"] == []
+    row = db.rows("client_sales_invoices")[0]
+    assert row["supply_type"] == "exempt"
+    assert row["invoice_type"] == "SEZ_without_payment"
+    assert row["is_reverse_charge"] is True
+
+
+def test_bulk_create_without_classification_uses_migration_268_defaults(monkeypatch):
+    """An import file with no classification columns must still produce the
+    plain-domestic-taxable row the columns default to — not a null."""
+    si, db = _setup(monkeypatch)
+
+    resp = si.bulk_create_invoices(_BulkPayload([_invoice_dict("CLS-002")]), CALLER)
+
+    assert resp["success"] is True
+    row = db.rows("client_sales_invoices")[0]
+    assert row["supply_type"] == "taxable"
+    assert row["invoice_type"] == "Regular"
+    assert row["is_reverse_charge"] is False
+
+
+def test_classification_is_per_invoice_across_a_batch(monkeypatch):
+    """A batch mixing an exempt supply with an ordinary one must not smear one
+    invoice's classification across the rest — bulk_cache is shared state."""
+    si, db = _setup(monkeypatch)
+    exempt = _invoice_dict("CLS-010"); exempt["supply_type"] = "exempt"
+    plain = _invoice_dict("CLS-011")
+    zero = _invoice_dict("CLS-012"); zero["supply_type"] = "zero_rated"; zero["invoice_type"] = "Deemed_export"
+
+    resp = si.bulk_create_invoices(_BulkPayload([exempt, plain, zero]), CALLER)
+
+    assert resp["success"] is True
+    by_no = {r["invoice_no"]: r for r in db.rows("client_sales_invoices")}
+    assert by_no["CLS-010"]["supply_type"] == "exempt"
+    assert by_no["CLS-011"]["supply_type"] == "taxable"
+    assert by_no["CLS-011"]["invoice_type"] == "Regular"
+    assert by_no["CLS-012"]["supply_type"] == "zero_rated"
+    assert by_no["CLS-012"]["invoice_type"] == "Deemed_export"

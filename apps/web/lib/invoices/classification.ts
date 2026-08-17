@@ -120,6 +120,64 @@ export function toClassificationPayload(state: ClassificationState): Classificat
   };
 }
 
+// ── Reading the classification out of an import file ─────────────────────────
+//
+// WHY THESE DO NOT BEHAVE LIKE classificationFrom
+//     classificationFrom falls back to the default when it meets a value it
+//     does not recognise, which is right for a row loaded out of the database:
+//     the vocabulary may have moved on, and showing the default beats showing
+//     an error on an unrelated edit.
+//
+//     An import file is the opposite case. A cell reading "exemtp" is a typo a
+//     CA needs to see, and silently importing it as `taxable` would declare an
+//     exempt supply as taxable turnover — the exact mis-declaration migration
+//     268 exists to prevent, surfacing months later as a wrong GSTR-1 table 8
+//     and an overstated liability. So these return null and the caller rejects
+//     the row.
+
+/** Case and separator tolerant: "SEZ with payment" and "sez_with_payment" both
+ *  reach SEZ_with_payment. A CA typing a spreadsheet is not typing an enum. */
+function normaliseToken(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+/** An import cell → SupplyType, or null when it names nothing valid. */
+export function parseSupplyType(raw: string | undefined): SupplyType | null {
+  const token = normaliseToken(raw ?? "");
+  if (!token) return null;
+  return SUPPLY_TYPES.find((o) => normaliseToken(o.value) === token)?.value ?? null;
+}
+
+/** An import cell → InvoiceType, or null when it names nothing valid. */
+export function parseInvoiceType(raw: string | undefined): InvoiceType | null {
+  const token = normaliseToken(raw ?? "");
+  if (!token) return null;
+  return INVOICE_TYPES.find((o) => normaliseToken(o.value) === token)?.value ?? null;
+}
+
+const TRUE_TOKENS = new Set(["yes", "y", "true", "1"]);
+const FALSE_TOKENS = new Set(["no", "n", "false", "0"]);
+
+/**
+ * An import cell → reverse-charge flag, or null when it names neither.
+ *
+ * Spreadsheets spell a boolean many ways and Excel will happily hand over
+ * "TRUE", "Yes" or "1" for the same tick. Anything outside these two sets is
+ * rejected rather than coerced: "N/A" quietly becoming false would drop the
+ * §9(3)/§9(4) reverse-charge flag off a supply that carries it.
+ */
+export function parseReverseCharge(raw: string | undefined): boolean | null {
+  const token = normaliseToken(raw ?? "");
+  if (!token) return null;
+  if (TRUE_TOKENS.has(token)) return true;
+  if (FALSE_TOKENS.has(token)) return false;
+  return null;
+}
+
+/** The accepted spellings, for import hints and error messages. */
+export const SUPPLY_TYPE_VALUES = SUPPLY_TYPES.map((o) => o.value).join(", ");
+export const INVOICE_TYPE_VALUES = INVOICE_TYPES.map((o) => o.value).join(", ");
+
 /**
  * True when this invoice is anything other than a plain domestic taxable sale.
  *

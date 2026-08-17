@@ -39,6 +39,13 @@
  * not a value the CA has to think about).
  */
 
+import {
+  DEFAULT_INVOICE_TYPE, DEFAULT_SUPPLY_TYPE,
+  INVOICE_TYPE_VALUES, SUPPLY_TYPE_VALUES,
+  parseInvoiceType, parseReverseCharge, parseSupplyType,
+  type InvoiceType, type SupplyType,
+} from "./classification.ts";
+
 export interface CustomerRef { id: string; name: string; }
 
 /** The subset of ServiceCatalogueItem this mapper needs to pre-fill a line. */
@@ -71,6 +78,13 @@ export interface BuiltInvoice {
   invoice_date: string;
   due_date?: string;
   supply_state_code?: string;
+  // Always present, never optional. Sending the resolved value even at its
+  // default is what toClassificationPayload does for the form, and for the same
+  // reason: leaving the server to fall back is the behaviour that made every
+  // invoice look like a plain taxable sale in the first place.
+  supply_type: SupplyType;
+  invoice_type: InvoiceType;
+  is_reverse_charge: boolean;
   lines: BuiltLine[];
 }
 
@@ -100,6 +114,12 @@ export const SALES_INVOICE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "quantity", label: "Quantity", required: true, hint: "e.g. 1" },
   { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees, e.g. 1500.00 — required unless Product/Service is given" },
   { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless Product/Service is given" },
+  // GSTR-1 classification (task #157). Header-level, like invoice_date — the
+  // classifier branches on the invoice, not the line. Left blank, each falls to
+  // migration 268's column default, which is a plain domestic taxable sale.
+  { key: "supply_type", label: "Supply Type", required: false, hint: `How the supply is taxed — one of: ${SUPPLY_TYPE_VALUES}. Blank = ${DEFAULT_SUPPLY_TYPE}. Must match across rows sharing an invoice number.` },
+  { key: "invoice_type", label: "Invoice Type", required: false, hint: `One of: ${INVOICE_TYPE_VALUES}. Blank = ${DEFAULT_INVOICE_TYPE}. Must match across rows sharing an invoice number.` },
+  { key: "reverse_charge", label: "Reverse Charge", required: false, hint: "yes / no (blank = no) — CGST §9(3)/§9(4). Must match across rows sharing an invoice number." },
 ];
 
 /**
@@ -139,6 +159,22 @@ export function buildSalesInvoices(
     if (dueDate && !DATE_RE.test(dueDate)) { errors.push(`Row ${rowNo}: due_date must be YYYY-MM-DD`); return; }
     if (productName && !service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
 
+    // GSTR-1 classification. Blank means "the default", a value that is present
+    // but unrecognised is a typo the CA must see — importing "exemtp" as
+    // taxable would declare an exempt supply as taxable turnover.
+    const supplyRaw = (r.supply_type ?? "").trim();
+    const supplyType = supplyRaw ? parseSupplyType(supplyRaw) : DEFAULT_SUPPLY_TYPE;
+    if (!supplyType) { errors.push(`Row ${rowNo}: unknown supply_type "${supplyRaw}" — use one of: ${SUPPLY_TYPE_VALUES}`); return; }
+
+    const invoiceTypeRaw = (r.invoice_type ?? "").trim();
+    const invoiceType = invoiceTypeRaw ? parseInvoiceType(invoiceTypeRaw) : DEFAULT_INVOICE_TYPE;
+    if (!invoiceType) { errors.push(`Row ${rowNo}: unknown invoice_type "${invoiceTypeRaw}" — use one of: ${INVOICE_TYPE_VALUES}`); return; }
+
+    const reverseRaw = (r.reverse_charge ?? "").trim();
+    const parsedReverse = reverseRaw ? parseReverseCharge(reverseRaw) : false;
+    if (parsedReverse === null) { errors.push(`Row ${rowNo}: reverse_charge must be yes or no, not "${reverseRaw}"`); return; }
+    const isReverseCharge = parsedReverse;
+
     const description = (r.description ?? "").trim() || (service?.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
@@ -177,6 +213,19 @@ export function buildSalesInvoices(
       if ((existing.supply_state_code ?? "") !== supplyStateCode) {
         errors.push(`Row ${rowNo}: invoice_no "${invoiceNo}" is already used with a different supply_state_code`); return;
       }
+      // The classification is a property of the invoice, not the line, so two
+      // rows of one invoice disagreeing is a mistake in the file. Silently
+      // keeping the first row's value would mean the CA's correction on row 2
+      // vanished — and one invoice cannot be both exempt and taxable.
+      if (existing.supply_type !== supplyType) {
+        errors.push(`Row ${rowNo}: invoice_no "${invoiceNo}" is already used with a different supply_type`); return;
+      }
+      if (existing.invoice_type !== invoiceType) {
+        errors.push(`Row ${rowNo}: invoice_no "${invoiceNo}" is already used with a different invoice_type`); return;
+      }
+      if (existing.is_reverse_charge !== isReverseCharge) {
+        errors.push(`Row ${rowNo}: invoice_no "${invoiceNo}" is already used with a different reverse_charge`); return;
+      }
       existing.lines.push(line);
     } else {
       groups.set(invoiceNo, {
@@ -186,6 +235,9 @@ export function buildSalesInvoices(
         invoice_date: invoiceDate,
         due_date: dueDate || undefined,
         supply_state_code: supplyStateCode || undefined,
+        supply_type: supplyType,
+        invoice_type: invoiceType,
+        is_reverse_charge: isReverseCharge,
         lines: [line],
       });
     }

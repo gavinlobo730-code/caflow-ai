@@ -70,6 +70,33 @@ Unknown names are reported per-row and skipped, never silently created.
 
 ## Column reference
 
+### Sales Invoices (multi-line)
+`invoice_no`* · `customer`* · `invoice_date`* (YYYY-MM-DD) · `due_date` ·
+`supply_state_code` · `product_service` · `description`* · `hsn_sac` ·
+`quantity`* · `rate`* (₹) · `gst_rate`* (%) ·
+`supply_type` · `invoice_type` · `reverse_charge`.
+
+Rows sharing an `invoice_no` group into one multi-line invoice. `description`,
+`rate` and `gst_rate` are each required only when the row names no
+`product_service` to inherit them from.
+
+**The last three are the GSTR-1 classification** (task #157), and they decide
+which table of the return the supply lands in:
+
+| Column | Accepts | Blank means |
+|---|---|---|
+| `supply_type` | `taxable`, `zero_rated`, `nil_rated`, `exempt`, `non_gst` | `taxable` |
+| `invoice_type` | `Regular`, `SEZ_with_payment`, `SEZ_without_payment`, `Deemed_export` | `Regular` |
+| `reverse_charge` | `yes` / `no` (also y/n, true/false, 1/0) | `no` |
+
+Case and separators are forgiving — `Zero Rated` and `zero_rated` both work —
+but a value that matches nothing **rejects the row** rather than falling back to
+the default. Importing `exemtp` as `taxable` would declare an exempt supply as
+taxable turnover, which surfaces months later as a wrong GSTR-1 table 8.
+
+All three are header-level facts, so rows sharing an `invoice_no` must agree on
+them, exactly as they must agree on `invoice_date`.
+
 ### Customers
 `name`* · `gstin` · `state_code` (auto-derived from GSTIN if blank) · `pan` ·
 `email` · `phone` · `city` · `state` · `opening_balance` (₹) · `credit_days` (default 30).
