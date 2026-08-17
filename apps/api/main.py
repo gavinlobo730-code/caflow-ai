@@ -387,9 +387,10 @@ try:
 except Exception:
     _logger.exception("scheduler catch-up check failed")
 
-# Phase 13 — AI Memory Scheduler
-from jobs.memory_job import start_memory_scheduler
-start_memory_scheduler()
+# Phase 13 — the AI memory pipeline is job #11 of run_daily_jobs above, not a
+# thread started here (task #158). Its old 24-hour sleep loop ran the whole
+# pipeline again on every cold start and never once on the nightly schedule it
+# advertised. Do not re-add a start_memory_scheduler() call.
 
 
 @app.get("/")

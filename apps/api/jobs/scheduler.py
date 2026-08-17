@@ -47,6 +47,7 @@ KNOWN_JOBS = [
     "compliance_escalations",
     "balance_cache_audit",
     "reconciliation_audit",
+    "memory_pipeline",
 ]
 
 
@@ -320,6 +321,28 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 _log_run("reconciliation_audit", fid, "failed", {"error": str(e)})
         else:
             firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
+
+        # 11. Memory pipeline (Phase 13, task #158) — refresh every client's
+        #     profile, detect pattern anomalies, raise memory triggers. This used
+        #     to run from its own thread in jobs/memory_job.py: immediately on
+        #     startup, then time.sleep(86400). On the free tier that is a full
+        #     firm-wide recompute on every cold start and a 24-hour arm that never
+        #     comes round, with no run log to show either had happened. Folded in
+        #     here so it gets the same already-ran-today gate, run log, health
+        #     visibility and catch-up as the rest of the sweep. Last in the order
+        #     deliberately: it profiles the state the ten jobs above have settled.
+        if force or not _already_ran_today("memory_pipeline", fid):
+            try:
+                from jobs.memory_job import run_memory_pipeline_for_firm
+                outcome = run_memory_pipeline_for_firm(fid)
+                firm_result["memory_pipeline"] = outcome
+                _log_run("memory_pipeline", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Memory pipeline job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["memory_pipeline"] = {"error": str(e)}
+                _log_run("memory_pipeline", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["memory_pipeline"] = {"skipped": "already ran today"}
 
         results["firms"][fid] = firm_result
 
