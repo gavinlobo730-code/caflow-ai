@@ -375,6 +375,18 @@ try:
 except Exception:
     _logger.exception("scheduler startup health check failed")
 
+# task #155: H11 only ever LOGGED the stale state above. Act on it — if this
+# process is starting after 06:00 IST and today's jobs have not run, the timer
+# fired while the instance was asleep (GitHub's wake cron is best-effort and
+# runs late or not at all), and APScheduler will not catch up on its own. Runs
+# the outstanding jobs on a background thread; each is idempotent and skipped if
+# it already succeeded today. Non-fatal — never blocks app start.
+try:
+    from jobs.scheduler import run_catchup_if_stale
+    run_catchup_if_stale()
+except Exception:
+    _logger.exception("scheduler catch-up check failed")
+
 # Phase 13 — AI Memory Scheduler
 from jobs.memory_job import start_memory_scheduler
 start_memory_scheduler()

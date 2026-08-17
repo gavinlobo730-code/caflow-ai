@@ -370,13 +370,17 @@ _DISABLED_WARNING = (
 
 
 def _all_runs_today() -> list[dict]:
-    """Every scheduler_runs row for today (mock or DB). Defensive: [] on error."""
+    """Every scheduler_runs row for today (mock or DB). Defensive: [] on error.
+
+    firm_id is selected because _pending_jobs_today() needs to know WHICH firm a
+    success belongs to, not merely that some firm succeeded — see its docstring.
+    """
     today = date.today().isoformat()
     if _USE_MOCK:
         return [r for r in _MOCK_RUNS if r.get("run_date") == today]
     try:
         result = (
-            _get_db().table("scheduler_runs").select("job_name,status,run_date")
+            _get_db().table("scheduler_runs").select("job_name,status,run_date,firm_id")
             .eq("run_date", today).execute()
         )
         return result.data or []
@@ -502,6 +506,129 @@ def log_scheduler_startup_health() -> dict:
         logger.info("Scheduler health OK at startup (enabled=%s, running=%s)",
                     health.get("enabled"), health.get("running"))
     return health
+
+
+# ── Task #155 — catch up a 06:00 IST run the process was asleep for ───────────
+#
+# WHY THIS EXISTS
+#     run_daily_jobs fires from an in-process APScheduler timer (start_scheduler),
+#     so it can only run if the process is ALIVE at 06:00 IST. On Render's free
+#     tier it is asleep unless something wakes it, and the only thing that does is
+#     a GitHub Actions cron — which GitHub documents as best-effort: it starts
+#     late under load and drops runs entirely.
+#
+#     Miss that window and APScheduler does not catch up. It schedules tomorrow's
+#     06:00 and today's compliance reminders, recurring invoices, overdue
+#     transitions, collections, and reconciliation audit never run at all.
+#
+#     scheduler_health() already DETECTS this exact state (stale=True) and did
+#     nothing with it but write a warning into logs nobody reads. This acts on it.
+#
+# WHY IT IS SAFE TO CHECK ON EVERY BOOT
+#     Every job in run_daily_jobs is gated by _already_ran_today() and skipped if
+#     it already succeeded — which is why that function documents itself as safe
+#     to call repeatedly. Catch-up runs only what is actually still missing, so a
+#     boot after a healthy 06:00 run does no work beyond two reads.
+#
+# WHY IT DOES NOT REPLACE THE WAKE WORKFLOW
+#     Catch-up runs when the process next starts, which on a free-tier instance
+#     is the day's first visitor — 06:00 for a CA who opens the app at 06:00,
+#     11:00 for one who doesn't. .github/workflows/wake-before-scheduler.yml is
+#     what keeps the ordinary case punctual; this is what stops a late or dropped
+#     cron from costing a whole day.
+
+_catchup_started = False
+
+
+def _pending_jobs_today() -> list[tuple[Optional[str], str]]:
+    """(firm_id, job_name) pairs with no SUCCESSFUL run recorded today.
+
+    Per firm AND per job, rather than the cheaper "did anything succeed today":
+
+      - A catch-up can be killed part-way. The free-tier instance spins down
+        about fifteen minutes after the request that woke it, which can easily
+        be before ten jobs across every firm have finished. Treating one success
+        as proof the day is done would abandon the rest until tomorrow — exactly
+        the failure this function exists to prevent.
+      - A job that FAILED today has a row but no success, so it is retried on the
+        next boot. Deliberate: a transient failure at 06:00 otherwise waits a
+        full day. _catchup_started bounds the retries to one per process.
+    """
+    firm_ids = _list_firm_ids()
+    if not firm_ids:
+        return []
+    succeeded = {
+        (r.get("firm_id"), r.get("job_name"))
+        for r in _all_runs_today()
+        if r.get("status") == "success"
+    }
+    return [
+        (firm_id, job_name)
+        for firm_id in firm_ids
+        for job_name in KNOWN_JOBS
+        if (firm_id, job_name) not in succeeded
+    ]
+
+
+def _catchup_worker() -> None:
+    """Thread body — run_daily_jobs already logs per-job failures, so this only
+    has to make sure a raise cannot escape into a bare thread."""
+    try:
+        run_daily_jobs()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f"Scheduler catch-up run failed: {e}", exc_info=True)
+
+
+def run_catchup_if_stale(*, background: bool = True) -> dict:
+    """Run today's outstanding daily jobs if the 06:00 IST trigger was missed.
+
+    Called from app startup (main.py). Returns {"ran", "reason", "pending"} and
+    never raises — a catch-up that cannot decide must not stop the app booting.
+
+    background=True runs the jobs on a daemon thread so startup is not blocked.
+    The thread is a daemon deliberately: shutdown must not hang waiting on a
+    full sweep, and losing one mid-flight is cheap because every job records its
+    own scheduler_runs row as it completes — the next boot picks up where this
+    one was cut off.
+    """
+    global _catchup_started
+
+    if not _scheduler_enabled():
+        # Not our job to run: ENABLE_SCHEDULER is off precisely when something
+        # else (a dedicated worker, an external cron) owns the daily run, and on
+        # a multi-worker deploy every worker would otherwise catch up at once.
+        return {"ran": False, "reason": "scheduler disabled", "pending": 0}
+    if not _past_scheduled_hour():
+        return {"ran": False, "reason": "before the scheduled hour", "pending": 0}
+    if _catchup_started:
+        return {"ran": False, "reason": "already attempted in this process", "pending": 0}
+
+    try:
+        pending = _pending_jobs_today()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"Scheduler catch-up check failed: {e}")
+        return {"ran": False, "reason": f"check failed: {e}", "pending": 0}
+
+    if not pending:
+        return {"ran": False, "reason": "today's run is already complete", "pending": 0}
+
+    _catchup_started = True
+    logger.warning(
+        "Scheduler catch-up: %d job/firm pair(s) have not succeeded today — the "
+        "06:00 IST run was missed (instance asleep, or the wake cron ran late). "
+        "Running them now.",
+        len(pending),
+    )
+
+    if not background:
+        _catchup_worker()
+        return {"ran": True, "reason": "ran inline", "pending": len(pending)}
+
+    import threading
+    threading.Thread(
+        target=_catchup_worker, name="scheduler-catchup", daemon=True
+    ).start()
+    return {"ran": True, "reason": "started in background", "pending": len(pending)}
 
 
 # ── Phase 10B — Workflow Schedule Runner ──────────────────────────────────────

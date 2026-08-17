@@ -22,11 +22,36 @@
 #   already knows what to do once it is running.
 #
 # WHY A WINDOW AND NOT ONE PING
-#   GitHub's scheduled workflows are best-effort and routinely start 5-15
-#   minutes late under load. Render keeps an instance awake for roughly 15
-#   minutes after the last request. Three pings spread over ~6 minutes, from a
-#   05:45 IST start, keeps the service up across 06:00 IST even if GitHub runs
-#   this a quarter of an hour behind.
+#   GitHub's scheduled workflows are best-effort: they routinely start 5-15
+#   minutes late under load, and GitHub drops runs outright when load is high
+#   enough. Render keeps an instance awake for roughly 15 minutes after the last
+#   request. So a single run pinging for six minutes only covers 06:00 IST if
+#   GitHub is punctual to within about a quarter of an hour (task #155).
+#
+# WHY THREE RUNS AND A LONGER LOOP
+#   Each run now pings for 15 minutes, and three of them start 15 minutes apart
+#   at 00:00 / 00:15 / 00:30 UTC (05:30 / 05:45 / 06:00 IST). Two properties
+#   follow, and both matter:
+#
+#     - Each run's span equals the gap to the next, so consecutive runs ABUT.
+#       On time, that is continuous real traffic from 05:30 to 06:15 IST — the
+#       06:00 trigger sits in the middle of it, not at the ragged end of a
+#       keep-alive window.
+#     - GitHub delays each scheduled run independently, so a late or dropped run
+#       is covered by its neighbours rather than taking the day with it.
+#
+#   Runs are serialised by the concurrency group below, so a late one queues
+#   behind its predecessor and extends the window instead of doubling up on it.
+#   This repository is public, where GitHub Actions minutes are free — the extra
+#   runner time buys reliability at no cost.
+#
+# THIS IS BEST-EFFORT, NOT THE GUARANTEE
+#   Even three runs cannot promise the instance is awake at 06:00 IST, because
+#   nothing here is under our control. The actual guarantee lives in the API:
+#   jobs/scheduler.py::run_catchup_if_stale runs the day's outstanding jobs at
+#   startup when the 06:00 trigger was missed. This workflow makes the ordinary
+#   day PUNCTUAL; that function makes every day COMPLETE. Do not delete one
+#   believing the other covers it — they answer different questions.
 #
 # THIS IS A FREE-TIER WORKAROUND
 #   A paid Render instance does not spin down and makes this file unnecessary.
@@ -36,9 +61,16 @@ name: Wake API before scheduler
 
 on:
   schedule:
-    # 00:15 UTC = 05:45 IST, fifteen minutes before the 06:00 IST job.
     # Cron here is UTC and GitHub does not honour timezones.
+    # 00:00 UTC = 05:30 IST — thirty minutes before the job.
+    - cron: "0 0 * * *"
+    # 00:15 UTC = 05:45 IST — the original single entry.
     - cron: "15 0 * * *"
+    # 00:30 UTC = 06:00 IST — the job's own hour. Too late to keep an already
+    # asleep instance awake THROUGH the trigger, and deliberately kept anyway:
+    # if the first two were dropped, this wakes the process, and startup
+    # catch-up then runs the day's jobs minutes late instead of never.
+    - cron: "30 0 * * *"
   # So you can wake it by hand, and test this workflow without waiting a day.
   workflow_dispatch:
 
@@ -52,7 +84,9 @@ jobs:
   wake:
     name: ping /health across the scheduler window
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The ping loop spans 15 minutes; the margin covers a slow cold start on the
+    # first request. Must stay above the loop span or the job is killed mid-window.
+    timeout-minutes: 25
 
     steps:
       - name: Wake the instance and hold it awake
@@ -67,7 +101,10 @@ jobs:
         run: |
           set -uo pipefail
           ok=0
-          for attempt in 1 2 3; do
+          # Six pings, three minutes apart — a 15-minute span, which is both the
+          # gap to the next scheduled run (so the runs abut) and Render's
+          # keep-alive window (so no gap opens inside one run either).
+          for attempt in 1 2 3 4 5 6; do
             # --max-time 90: a cold start on the free tier takes up to ~50s,
             # so the FIRST request is expected to be slow. Failing it at the
             # default timeout would report a healthy service as down.
@@ -83,16 +120,19 @@ jobs:
             else
               echo "  body: $(head -c 300 /tmp/health.json 2>/dev/null)"
             fi
-            # No sleep after the last ping — it would just burn a minute.
-            [ "$attempt" -lt 3 ] && sleep 180
+            # No sleep after the last ping — it would just burn three minutes,
+            # and the bound must track the loop above or the span silently
+            # collapses to the first few pings.
+            [ "$attempt" -lt 6 ] && sleep 180
           done
 
-          echo "healthy responses: $ok/3"
-          # Fail only if EVERY ping failed. One bad response inside a 6-minute
-          # window is a blip; three is the service being down, and that is
-          # worth an email from GitHub — it means the scheduler will not run
-          # and the books will quietly go un-processed for the day.
+          echo "healthy responses: $ok/6"
+          # Fail only if EVERY ping failed. One bad response inside a 15-minute
+          # window is a blip; six is the service being down, and that is worth
+          # an email from GitHub — it means the 06:00 IST trigger will be missed
+          # and the day's jobs wait on startup catch-up (run_catchup_if_stale),
+          # which cannot help until something else wakes the instance.
           if [ "$ok" -eq 0 ]; then
-            echo "::error::API did not respond on any of 3 attempts — the 06:00 IST scheduler run will not happen."
+            echo "::error::API did not respond on any of 6 attempts — the 06:00 IST scheduler run will not happen."
             exit 1
           fi
