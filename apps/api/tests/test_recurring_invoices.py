@@ -248,3 +248,106 @@ def test_client_isolation_filter():
     res = rec.generate_due_recurring_invoices("F1", client_id="CL-1", as_of=date(2026, 6, 1), actor=ACTOR)
     assert res["generated_count"] == 1
     assert {i["client_id"] for i in MOCK_SALES_INVOICES} == {"CL-1"}
+
+
+# ── Task #160: the GSTR-1 classification reaches every generated invoice ──────
+#
+# Migration 268 gave client_sales_invoices supply_type / invoice_type /
+# is_reverse_charge; #156 put them on the invoice form; #157 carried them
+# through the CSV import. Templates were the last hole, and the worst one:
+# generation runs UNATTENDED as part of the daily sweep, so a recurring SEZ or
+# exempt engagement quietly produced one mis-declared invoice per period, every
+# period, with no CA present to catch it. Migration 270 stores the three on the
+# template and generate_for_occurrence copies them onto the draft.
+
+def _make_classified(supply="exempt", inv_type="SEZ_without_payment", rcm=True, **kw):
+    return rec.create_template("F1", {
+        "client_id": "CL-1", "customer_id": "CUST-1", "title": "SEZ retainer",
+        "frequency": kw.get("freq", "monthly"), "start_date": kw.get("start", "2026-06-01"),
+        "end_date": None,
+        "supply_type": supply, "invoice_type": inv_type, "is_reverse_charge": rcm,
+        "lines": [{"service_catalogue_id": "SVC-1", "description": "Retainer", "hsn_sac": "998222",
+                   "rate_paise": 100000, "gst_rate_percent": 18.0, "is_service": True}],
+    }, created_by="u1")
+
+
+def test_template_stores_the_classification():
+    t = _make_classified()
+    assert t["supply_type"] == "exempt"
+    assert t["invoice_type"] == "SEZ_without_payment"
+    assert t["is_reverse_charge"] is True
+
+
+def test_generated_invoice_carries_the_template_classification():
+    """The whole point. Before this, the draft was stamped taxable/Regular."""
+    _make_classified()
+    res = rec.generate_due_recurring_invoices("F1", as_of=date(2026, 6, 1), actor=ACTOR)
+    assert res["generated_count"] == 1
+    inv = MOCK_SALES_INVOICES[0]
+    assert inv["supply_type"] == "exempt"
+    assert inv["invoice_type"] == "SEZ_without_payment"
+    assert inv["is_reverse_charge"] is True
+
+
+def test_every_occurrence_inherits_it_not_just_the_first():
+    """An SEZ retainer is an SEZ supply in June and again in July — the unattended
+    runs are exactly where a first-occurrence-only fix would go unnoticed."""
+    _make_classified(start="2026-06-01")
+    rec.generate_due_recurring_invoices("F1", as_of=date(2026, 8, 1), actor=ACTOR)
+    assert len(MOCK_SALES_INVOICES) >= 3
+    for inv in MOCK_SALES_INVOICES:
+        assert inv["supply_type"] == "exempt", inv.get("recurring_occurrence")
+        assert inv["is_reverse_charge"] is True, inv.get("recurring_occurrence")
+
+
+def test_a_plain_template_still_generates_a_plain_taxable_invoice():
+    """Templates created before migration 270 keep the behaviour they had."""
+    _make()
+    rec.generate_due_recurring_invoices("F1", as_of=date(2026, 6, 1), actor=ACTOR)
+    inv = MOCK_SALES_INVOICES[0]
+    assert inv["supply_type"] == "taxable"
+    assert inv["invoice_type"] == "Regular"
+    assert inv["is_reverse_charge"] is False
+
+
+def test_a_template_row_missing_the_columns_falls_back_rather_than_crashing():
+    """A row written before migration 270 has no such keys. Generation must not
+    KeyError inside the unattended job."""
+    t = _make()
+    for key in ("supply_type", "invoice_type", "is_reverse_charge"):
+        t.pop(key, None)
+    rec.generate_due_recurring_invoices("F1", as_of=date(2026, 6, 1), actor=ACTOR)
+    inv = MOCK_SALES_INVOICES[0]
+    assert inv["supply_type"] == "taxable"
+    assert inv["invoice_type"] == "Regular"
+
+
+def test_classification_is_editable_after_the_fact():
+    """A CA who mis-set an engagement must be able to correct every future
+    occurrence — including setting reverse charge back OFF, which a truthiness
+    check on the update path would silently refuse."""
+    t = _make_classified(rcm=True)
+    rec.update_template("F1", t["id"], {"supply_type": "zero_rated", "is_reverse_charge": False})
+    updated = rec.get_template("F1", t["id"])
+    assert updated["supply_type"] == "zero_rated"
+    assert updated["is_reverse_charge"] is False
+
+
+def test_an_invalid_classification_is_rejected_at_save_time():
+    """Not left to migration 270's CHECK — a template the invoice table would
+    refuse fails inside the unattended job, the worst place to find out."""
+    import pytest as _pytest
+    from fastapi import HTTPException
+
+    with _pytest.raises(HTTPException) as e:
+        _make_classified(supply="exemtp")
+    assert e.value.status_code == 422
+    assert "supply_type" in str(e.value.detail)
+
+    with _pytest.raises(HTTPException) as e2:
+        _make_classified(inv_type="SEZ maybe")
+    assert e2.value.status_code == 422
+
+    t = _make()
+    with _pytest.raises(HTTPException):
+        rec.update_template("F1", t["id"], {"supply_type": "nonsense"})

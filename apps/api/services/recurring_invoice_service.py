@@ -37,6 +37,14 @@ _logger = logging.getLogger("caflow.recurring")
 
 DEFAULT_CREDIT_DAYS = 30          # firm default when customer.credit_days is absent (Decision 4)
 MAX_CATCHUP_PER_RUN = 120         # safety bound on back-dated catch-up per template per run
+# GSTR-1 classification vocabularies. Kept identical to migration 270's CHECK
+# constraints, which are identical to migration 268's on client_sales_invoices.
+# Validated HERE, at save time, rather than left to the database: a template
+# holding a value an invoice cannot would fail inside generate_for_occurrence —
+# an unattended 06:00 IST job, which is the worst place to discover it.
+_SUPPLY_TYPES = ("taxable", "zero_rated", "nil_rated", "exempt", "non_gst")
+_INVOICE_TYPES = ("Regular", "SEZ_with_payment", "SEZ_without_payment", "Deemed_export")
+
 _FREQUENCIES = ("weekly", "monthly", "quarterly", "half_yearly", "yearly")
 _MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
 
@@ -159,6 +167,20 @@ def _validate(data: dict) -> None:
         raise HTTPException(status_code=422, detail="A template needs at least one line item.")
     if data.get("end_date") and data.get("start_date") and _d(data["end_date"]) < _d(data["start_date"]):
         raise HTTPException(status_code=422, detail="end_date cannot be before start_date.")
+    _validate_classification(data)
+
+
+def _validate_classification(data: dict) -> None:
+    """Reject a classification the invoice table would refuse.
+
+    Only checks keys that are PRESENT, so it serves both create (where the
+    Pydantic defaults always supply them) and a partial update (where absent
+    means "leave alone").
+    """
+    if data.get("supply_type") is not None and data["supply_type"] not in _SUPPLY_TYPES:
+        raise HTTPException(status_code=422, detail=f"supply_type must be one of {_SUPPLY_TYPES}")
+    if data.get("invoice_type") is not None and data["invoice_type"] not in _INVOICE_TYPES:
+        raise HTTPException(status_code=422, detail=f"invoice_type must be one of {_INVOICE_TYPES}")
 
 
 def _line_rows(lines: list[dict]) -> list[dict]:
@@ -193,6 +215,11 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         "next_run_date": start,                      # first run = first occurrence
         "notes": data.get("notes"),
         "is_inter_state": bool(data.get("is_inter_state", False)),
+        # GSTR-1 classification (task #160, migration 270). Stamped on every
+        # invoice this template generates — see generate_for_occurrence.
+        "supply_type": data.get("supply_type") or "taxable",
+        "invoice_type": data.get("invoice_type") or "Regular",
+        "is_reverse_charge": bool(data.get("is_reverse_charge") or False),
         "status": "active",
         "created_by": created_by,
     }
@@ -214,11 +241,13 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
 
 
 def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict:
+    _validate_classification(data)
     existing = get_template(firm_id, template_id, db=db)
     if not existing:
         raise HTTPException(status_code=404, detail="Recurring template not found.")
     fields: dict = {}
-    for k in ("title", "description", "frequency", "notes", "is_inter_state"):
+    for k in ("title", "description", "frequency", "notes", "is_inter_state",
+              "supply_type", "invoice_type", "is_reverse_charge"):
         if data.get(k) is not None:
             fields[k] = data[k]
     if fields.get("frequency") and fields["frequency"] not in _FREQUENCIES:
@@ -451,6 +480,13 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
         due_date=due_date_for(occurrence_iso, customer),  # Decision 4: + credit_days (firm default fallback)
         lines=lines,
         is_inter_state=bool(template.get("is_inter_state", False)),
+        # GSTR-1 classification (task #160). Without this the generated invoice
+        # fell to migration 268's column defaults and every occurrence of an SEZ
+        # or exempt engagement went out as a plain domestic taxable sale — in an
+        # UNATTENDED job, so with no CA present to notice the mis-declaration.
+        supply_type=template.get("supply_type") or "taxable",
+        invoice_type=template.get("invoice_type") or "Regular",
+        is_reverse_charge=bool(template.get("is_reverse_charge") or False),
         notes=template.get("notes")
         or f"Auto-generated draft from recurring template '{template.get('title', '')}' for {occurrence_iso}",
     )

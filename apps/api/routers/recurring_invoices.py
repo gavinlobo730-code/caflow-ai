@@ -55,6 +55,12 @@ class RecurringTemplateIn(BaseModel):
     end_date: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: bool = False
+    # GSTR-1 classification (task #160) — stamped on every invoice this template
+    # generates. Defaults match migration 270, which match migration 268's on
+    # the invoice itself: an existing template keeps behaving exactly as it did.
+    supply_type: str = "taxable"
+    invoice_type: str = "Regular"
+    is_reverse_charge: bool = False
     lines: list[RecurringLineIn]
 
     @field_validator("frequency")
@@ -80,6 +86,9 @@ class RecurringTemplateUpdateIn(BaseModel):
     end_date: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
+    supply_type: Optional[str] = None
+    invoice_type: Optional[str] = None
+    is_reverse_charge: Optional[bool] = None
     lines: Optional[list[RecurringLineIn]] = None
 
     @field_validator("frequency")
