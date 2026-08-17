@@ -42,6 +42,42 @@ def gstr9_due_date(financial_year_end: int) -> date:
     return date(financial_year_end, 12, 31)
 
 
+# CGST Act §37(3) proviso and §39(9) proviso (rectifying GSTR-1 / GSTR-3B), and
+# §16(4) (taking input tax credit) — all three windows close on the SAME date,
+# amended to 30 November by the Finance Act 2022 (from the old "September
+# return" formulation).
+#
+# The statute reads: 30 November following the end of the financial year, OR
+# the furnishing of the relevant annual return, WHICHEVER IS EARLIER. Filing
+# GSTR-9 early therefore shuts the window early — see
+# correction_window_closes(), which is the function to use. This one is only the
+# statutory outer limit.
+def november_30_cutoff(financial_year_end: int) -> date:
+    """30 November following the FY that ended on 31 March of `financial_year_end`.
+
+    FY 2025-26 ends 31 Mar 2026, so its cutoff is 30 Nov 2026.
+    """
+    return date(financial_year_end, 11, 30)
+
+
+def correction_window_closes(
+    financial_year_end: int, annual_return_filed_on: Optional[date] = None
+) -> date:
+    """The date after which a period can no longer be corrected at all.
+
+    THE "WHICHEVER IS EARLIER" IS NOT A DETAIL. §37(3), §39(9) and §16(4) each
+    close on 30 November OR on the date the annual return is furnished,
+    whichever comes first. A client who files GSTR-9 in August has lost the
+    ability to amend that year from August — three months before the date
+    everyone quotes. Treating 30 November as the answer would tell a CA a
+    correction is still available when it is not.
+    """
+    statutory = november_30_cutoff(financial_year_end)
+    if annual_return_filed_on and annual_return_filed_on < statutory:
+        return annual_return_filed_on
+    return statutory
+
+
 # IT Act, Section 139 — ITR due date (non-audit: 31 July; audit: 31 Oct)
 def itr_due_date(financial_year_end: int, is_audit: bool = False) -> date:
     if is_audit:
