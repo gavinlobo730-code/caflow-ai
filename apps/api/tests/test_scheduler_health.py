@@ -177,3 +177,185 @@ def test_past_scheduled_hour_false_just_before_6am_ist(monkeypatch):
 def test_past_scheduled_hour_true_at_6am_ist(monkeypatch):
     _freeze_ist_clock(monkeypatch, "2026-04-01T00:30:00")  # 06:00 IST
     assert sched._past_scheduled_hour() is True
+
+
+# ── Task #155 — catch up a 06:00 IST run the process was asleep for ───────────
+# The in-process timer can only fire if the process is alive at 06:00 IST, and
+# on the free tier that depends on a GitHub cron GitHub itself runs late or
+# drops. These pin the decision to catch up; run_daily_jobs' own idempotency is
+# covered above.
+
+@pytest.fixture
+def _catchup_ready(monkeypatch):
+    """Enabled, past 06:00 IST, one firm, and no catch-up attempted yet."""
+    monkeypatch.setenv("ENABLE_SCHEDULER", "true")
+    monkeypatch.setattr(sched, "_catchup_started", False)
+    monkeypatch.setattr(sched, "_list_firm_ids", lambda: ["F1"])
+    _freeze_ist_clock(monkeypatch, "2026-04-01T01:00:00")  # 06:30 IST
+
+
+@pytest.fixture
+def _spy_daily_jobs(monkeypatch):
+    """Record calls to run_daily_jobs instead of running the real sweep."""
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        sched, "run_daily_jobs",
+        lambda firm_id=None, force=False: calls.append({"firm_id": firm_id, "force": force}) or {},
+    )
+    return calls
+
+
+def _record_success(job_name, firm_id="F1"):
+    """A successful scheduler_runs row for today, as _log_run would write it."""
+    from datetime import date
+    sched._MOCK_RUNS.append({
+        "job_name": job_name,
+        "run_date": date.today().isoformat(),
+        "firm_id": firm_id,
+        "status": "success",
+        "detail": {},
+    })
+
+
+# ── the three gates ───────────────────────────────────────────────────────────
+
+def test_catchup_skipped_when_scheduler_disabled(monkeypatch, _spy_daily_jobs):
+    # ENABLE_SCHEDULER unset (fixture): something else owns the daily run, and on
+    # a multi-worker deploy every worker would otherwise catch up at once.
+    monkeypatch.setattr(sched, "_catchup_started", False)
+    _freeze_ist_clock(monkeypatch, "2026-04-01T01:00:00")  # 06:30 IST
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is False
+    assert "disabled" in result["reason"]
+    assert _spy_daily_jobs == []
+
+
+def test_catchup_skipped_before_scheduled_hour(monkeypatch, _spy_daily_jobs):
+    monkeypatch.setenv("ENABLE_SCHEDULER", "true")
+    monkeypatch.setattr(sched, "_catchup_started", False)
+    monkeypatch.setattr(sched, "_list_firm_ids", lambda: ["F1"])
+    _freeze_ist_clock(monkeypatch, "2026-04-01T00:29:00")  # 05:59 IST
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is False
+    assert _spy_daily_jobs == [], "must not pre-empt the scheduled 06:00 IST run"
+
+
+def test_catchup_skipped_when_today_is_complete(_catchup_ready, _spy_daily_jobs):
+    for job_name in sched.KNOWN_JOBS:
+        _record_success(job_name)
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is False
+    assert _spy_daily_jobs == []
+
+
+# ── the case the task is about ────────────────────────────────────────────────
+
+def test_catchup_runs_when_nothing_ran_today(_catchup_ready, _spy_daily_jobs):
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is True
+    assert result["pending"] == len(sched.KNOWN_JOBS)
+    assert len(_spy_daily_jobs) == 1
+    # force must stay False — the point is to run what is MISSING, not to
+    # re-run jobs that already succeeded today.
+    assert _spy_daily_jobs[0]["force"] is False
+
+
+def test_catchup_runs_when_only_some_jobs_succeeded(_catchup_ready, _spy_daily_jobs):
+    """A catch-up killed part-way (the instance spins down ~15 min after the
+    request that woke it) must be resumed, not read as a finished day."""
+    _record_success(sched.KNOWN_JOBS[0])
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is True
+    assert result["pending"] == len(sched.KNOWN_JOBS) - 1
+    assert len(_spy_daily_jobs) == 1
+
+
+def test_catchup_runs_when_another_firm_is_complete(monkeypatch, _catchup_ready, _spy_daily_jobs):
+    """Success is per firm: F1 finishing does not mean F2 ran."""
+    monkeypatch.setattr(sched, "_list_firm_ids", lambda: ["F1", "F2"])
+    for job_name in sched.KNOWN_JOBS:
+        _record_success(job_name, firm_id="F1")
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is True
+    assert result["pending"] == len(sched.KNOWN_JOBS), "F2's jobs are all outstanding"
+
+
+def test_catchup_retries_a_job_that_failed_today(_catchup_ready, _spy_daily_jobs):
+    """A failed row is not a success — a transient 06:00 failure should not have
+    to wait a full day for the next trigger."""
+    from datetime import date
+    for job_name in sched.KNOWN_JOBS:
+        _record_success(job_name)
+    sched._MOCK_RUNS.append({
+        "job_name": sched.KNOWN_JOBS[0], "run_date": date.today().isoformat(),
+        "firm_id": "F1", "status": "failed", "detail": {"error": "boom"},
+    })
+    # KNOWN_JOBS[0] has BOTH a success and a failure — the success stands.
+    assert sched.run_catchup_if_stale(background=False)["ran"] is False
+
+    sched._MOCK_RUNS.clear()
+    sched._catchup_started = False
+    sched._MOCK_RUNS.append({
+        "job_name": sched.KNOWN_JOBS[0], "run_date": date.today().isoformat(),
+        "firm_id": "F1", "status": "failed", "detail": {"error": "boom"},
+    })
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is True
+    # The failed job must be counted as OUTSTANDING, not merely leave the other
+    # nine outstanding — "ran is True" alone passes even if a failed row is read
+    # as a success, which is exactly the bug this pins.
+    assert result["pending"] == len(sched.KNOWN_JOBS)
+
+
+# ── once per process ──────────────────────────────────────────────────────────
+
+def test_catchup_attempted_only_once_per_process(_catchup_ready, _spy_daily_jobs):
+    """Bounds the retries: a job failing all day must not re-run the sweep on
+    every one of the day's cold starts."""
+    assert sched.run_catchup_if_stale(background=False)["ran"] is True
+    second = sched.run_catchup_if_stale(background=False)
+    assert second["ran"] is False
+    assert "already attempted" in second["reason"]
+    assert len(_spy_daily_jobs) == 1
+
+
+# ── no firms, background thread, and never-raises ─────────────────────────────
+
+def test_catchup_no_firms_is_not_stale(monkeypatch, _catchup_ready, _spy_daily_jobs):
+    monkeypatch.setattr(sched, "_list_firm_ids", lambda: [])
+    assert sched.run_catchup_if_stale(background=False)["ran"] is False
+    assert _spy_daily_jobs == []
+
+
+def test_catchup_background_thread_runs_the_jobs(_catchup_ready, _spy_daily_jobs):
+    import threading
+    result = sched.run_catchup_if_stale()  # background=True (the startup path)
+    assert result["ran"] is True
+    for thread in threading.enumerate():
+        if thread.name == "scheduler-catchup":
+            thread.join(timeout=5)
+    assert len(_spy_daily_jobs) == 1
+
+
+def test_catchup_survives_a_failing_check(monkeypatch, _catchup_ready, _spy_daily_jobs):
+    """Startup must never be blocked by a catch-up that cannot decide."""
+    def _boom():
+        raise RuntimeError("db down")
+    monkeypatch.setattr(sched, "_list_firm_ids", _boom)
+    result = sched.run_catchup_if_stale(background=False)  # must not raise
+    assert result["ran"] is False
+    assert _spy_daily_jobs == []
+
+
+def test_catchup_worker_swallows_job_failures(monkeypatch):
+    """The thread body must not let an exception escape into a bare thread."""
+    def _boom(firm_id=None, force=False):
+        raise RuntimeError("sweep exploded")
+    monkeypatch.setattr(sched, "run_daily_jobs", _boom)
+    sched._catchup_worker()  # must not raise
+
+
+def test_catchup_real_sweep_does_not_raise(_catchup_ready):
+    """No spy — the real run_daily_jobs, in mock mode, end to end."""
+    result = sched.run_catchup_if_stale(background=False)
+    assert result["ran"] is True
