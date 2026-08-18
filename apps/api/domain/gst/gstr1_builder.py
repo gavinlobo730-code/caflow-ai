@@ -118,6 +118,7 @@ def build_gstr1(
     b2cl_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.B2CL]
     cdnr_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.CDNR]
     cdnur_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.CDNA]
+    nil_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.NIL_EXEMPT]
     exp_invoices = [i for i in invoices if i.gst_invoice_category in (
         GSTInvoiceCategory.EXP_WP, GSTInvoiceCategory.EXP_WOP
     )]
@@ -143,6 +144,10 @@ def build_gstr1(
     b2cl = _build_b2cl(b2cl_invoices)
     if b2cl:
         payload["b2cl"] = b2cl
+
+    nil = _build_nil(nil_invoices)
+    if nil:
+        payload["nil"] = {"inv": nil}
 
     cdnr = _build_cdnr(cdnr_invoices)
     if cdnr:
@@ -178,6 +183,11 @@ def build_gstr1(
             "credit_notes_registered": len(cdnr_invoices),
             "credit_notes_unregistered": len(cdnur_invoices),
             "exports": len(exp_invoices),
+            # Table 8. Counted so a CA reviewing the summary can see nil/exempt
+            # turnover was declared — it was absent from the payload entirely
+            # before, and absent from this summary too, so nothing on screen
+            # revealed that it had been dropped.
+            "nil_exempt": len(nil_invoices),
         },
         "totals_rupees": {
             "taxable": _paise_to_rupees(taxable_total),
@@ -346,6 +356,74 @@ def _build_b2cl(invoices: list[InvoiceForGSTR1]) -> list[dict]:
             ],
         }
         for pos, invs in by_pos.items()
+    ]
+
+
+# ── Table 8: Nil-rated, exempted and non-GST outward supplies ────────────────
+
+# GSTN sply_ty codes. The prefixes are genuinely confusable: INTR* is
+# INTER-state, INTRA* is INTRA-state. Getting them backwards silently files
+# every nil supply against the wrong half of table 8.
+_NIL_SPLY_TY = {
+    (True, True):   "INTRB2B",    # inter-state, registered buyer
+    (True, False):  "INTRB2C",    # inter-state, unregistered
+    (False, True):  "INTRAB2B",   # intra-state, registered
+    (False, False): "INTRAB2C",   # intra-state, unregistered
+}
+
+# supply_type → the table 8 amount column it belongs in. CGST §23 / §11:
+# nil-rated (taxable at 0%), exempted (notified exempt), and non-GST (outside
+# GST altogether, e.g. petrol, alcohol) are three distinct declarations, not
+# one bucket.
+_NIL_AMOUNT_FIELD = {
+    "nil_rated": "nil_amt",
+    "exempt":    "expt_amt",
+    "non_gst":   "ngsup_amt",
+}
+
+
+def _build_nil(invoices: list[InvoiceForGSTR1]) -> list[dict]:
+    """Table 8 — nil-rated, exempted and non-GST outward supplies.
+
+    GSTN format: [{sply_ty, nil_amt, expt_amt, ngsup_amt}]
+
+    WHY THIS EXISTS
+        classify_transaction routes nil_rated / exempt / non_gst to NIL_EXEMPT
+        ahead of every other check, and nothing here consumed that category —
+        so every such supply was computed, categorised, and then silently
+        dropped from the payload. A firm with exempt turnover filed a GSTR-1
+        that simply did not mention it.
+
+        That also blocked credit and debit notes from inheriting their
+        original invoice's classification (CGST §34): inheriting a nil supply
+        moved the note into a table that was not being built, turning a
+        wrong-table entry into no entry at all.
+
+    A credit note SUBTRACTS. Table 8 reports net values for the period, and a
+    note against a nil supply adjusts that supply — it is not a separate one.
+    """
+    by_key: dict[tuple, dict] = {}
+    for inv in invoices:
+        field = _NIL_AMOUNT_FIELD.get(inv.supply_type)
+        if field is None:
+            # Only the three §23/§11 categories belong in table 8. Anything
+            # else reaching here would be a classifier change, and silently
+            # folding it into nil_amt would misdeclare it.
+            continue
+        key = (inv.is_interstate, bool(inv.party_gstin))
+        if key not in by_key:
+            by_key[key] = {"nil_amt": 0, "expt_amt": 0, "ngsup_amt": 0}
+        sign = -1 if inv.transaction_type == "credit_note" else 1
+        by_key[key][field] += sign * inv.taxable_amount_paise
+
+    return [
+        {
+            "sply_ty": _NIL_SPLY_TY[key],
+            "nil_amt": _paise_to_rupees(totals["nil_amt"]),
+            "expt_amt": _paise_to_rupees(totals["expt_amt"]),
+            "ngsup_amt": _paise_to_rupees(totals["ngsup_amt"]),
+        }
+        for key, totals in by_key.items()
     ]
 
 

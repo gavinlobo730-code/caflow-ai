@@ -341,3 +341,101 @@ def test_an_unlinked_note_keeps_the_defaults_rather_than_guessing(db):
 
     assert _sup(out, "taxable_value_paise") == -7_000_00, \
         "an unlinked note should keep the taxable default, not vanish"
+
+
+# ── Task #164: table 8 exists, so nil/exempt supply is actually filed ────────
+#
+# classify_transaction routes nil_rated / exempt / non_gst to NIL_EXEMPT ahead
+# of every other check, and gstr1_builder consumed that category nowhere — so
+# the supply was computed, categorised, and then dropped. A firm with exempt
+# turnover filed a GSTR-1 that did not mention it, and nothing on the summary
+# said so either.
+#
+# GSTN table 8 shape: nil.inv[] of {sply_ty, nil_amt, expt_amt, ngsup_amt},
+# where sply_ty is INTRB2B / INTRB2C / INTRAB2B / INTRAB2C. Note the prefixes:
+# INTR* is INTER-state, INTRA* is INTRA-state.
+
+def _nil_rows(payload) -> list[dict]:
+    return ((payload.get("nil") or {}).get("inv")) or []
+
+
+def _nil_row(payload, sply_ty: str) -> dict:
+    rows = [r for r in _nil_rows(payload) if r["sply_ty"] == sply_ty]
+    assert rows, f"no table 8 row for {sply_ty}; got {[r['sply_ty'] for r in _nil_rows(payload)]}"
+    return rows[0]
+
+
+def test_a_nil_rated_supply_is_declared_in_table_8(db):
+    """It used to vanish from the payload entirely."""
+    _seed_invoice(db, invoice_no="INV-NIL", supply_type="nil_rated",
+                  taxable_amount_paise=100_000_00)
+
+    payload = _payload(db)
+
+    row = _nil_row(payload, "INTRAB2B")     # intra-state, registered buyer
+    assert row["nil_amt"] == 100_000.00
+    assert row["expt_amt"] == 0 and row["ngsup_amt"] == 0
+
+
+def test_exempt_and_non_gst_are_separate_columns_not_one_bucket(db):
+    """CGST §23 / §11 — three distinct declarations. Folding them together
+    would misdeclare exempt turnover as nil-rated."""
+    _seed_invoice(db, invoice_no="INV-EX", supply_type="exempt",
+                  taxable_amount_paise=40_000_00)
+    _seed_invoice(db, invoice_no="INV-NG", supply_type="non_gst",
+                  taxable_amount_paise=25_000_00)
+
+    row = _nil_row(_payload(db), "INTRAB2B")
+
+    assert row["expt_amt"] == 40_000.00
+    assert row["ngsup_amt"] == 25_000.00
+    assert row["nil_amt"] == 0
+
+
+def test_interstate_and_intrastate_are_different_rows(db):
+    """INTR* vs INTRA* — the confusable half of the GSTN schema."""
+    _seed_invoice(db, invoice_no="INV-INTRA", supply_type="nil_rated",
+                  is_interstate=False, taxable_amount_paise=10_000_00)
+    _seed_invoice(db, invoice_no="INV-INTER", supply_type="nil_rated",
+                  is_interstate=True, taxable_amount_paise=30_000_00)
+
+    payload = _payload(db)
+
+    assert _nil_row(payload, "INTRAB2B")["nil_amt"] == 10_000.00
+    assert _nil_row(payload, "INTRB2B")["nil_amt"] == 30_000.00
+
+
+def test_the_summary_counts_nil_supplies_so_a_reviewing_ca_can_see_them(db):
+    _seed_invoice(db, invoice_no="INV-NIL", supply_type="nil_rated")
+
+    out = grs.gstr1_from_books(db, FIRM, "CLI", "062025", GSTIN)
+
+    assert out["summary"]["counts"]["nil_exempt"] == 1
+
+
+def test_an_ordinary_taxable_invoice_creates_no_table_8_row(db):
+    """No-regression guard: table 8 must stay absent for a return with no
+    nil/exempt supply at all."""
+    _seed_invoice(db, invoice_no="INV-REG")
+
+    assert _nil_rows(_payload(db)) == []
+
+
+# ── #163 + #164 together: the note now lands somewhere real ─────────────────
+
+def test_a_credit_note_against_a_nil_invoice_nets_within_table_8(db):
+    """The whole point of doing these two together. Inheriting alone moved the
+    note into a table that did not exist; now it nets against the nil supply it
+    actually adjusts (CGST §34), instead of reducing taxable turnover."""
+    inv = _seed_invoice(db, invoice_no="INV-NIL", supply_type="nil_rated",
+                        taxable_amount_paise=100_000_00)
+    _seed_credit_note(db, credit_note_no="CN-NIL", sales_invoice_id=inv["id"],
+                      taxable_amount_paise=10_000_00)
+
+    payload = _payload(db)
+
+    assert _nil_row(payload, "INTRAB2B")["nil_amt"] == 90_000.00, \
+        "the credit note did not net against the nil supply it adjusts"
+    cdnr_notes = {n["nt_num"] for g in (payload.get("cdnr") or []) for n in g.get("nt", [])}
+    assert "CN-NIL" not in cdnr_notes, \
+        "a nil-rated credit note was still declared as an ordinary 9B adjustment"

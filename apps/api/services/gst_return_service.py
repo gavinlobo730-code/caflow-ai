@@ -456,9 +456,14 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # Credit/debit notes (credit_notes / sales_debit_notes tables) have no
             # round_off column → .get None → 0.
             round_off_paise=int(r.get("round_off_paise") or 0),
-            is_reverse_charge=bool(r.get("is_reverse_charge", False)),
-            invoice_type=r.get("invoice_type") or "Regular",
-            supply_type=r.get("supply_type") or "taxable",
+            # Same resolved classification the classifier was handed above —
+            # NOT r.get(...) again. _build_nil reads supply_type off this
+            # object to split table 8's nil/exempt/non-GST columns, so reading
+            # the note's own absent column here would classify it as nil and
+            # then report it as taxable.
+            is_reverse_charge=cls.get("is_reverse_charge", bool(r.get("is_reverse_charge", False))),
+            invoice_type=cls["invoice_type"],
+            supply_type=cls["supply_type"],
             gst_invoice_category=classify_transaction(txn),
             original_invoice_ref=r.get("sales_invoice_id") if doc_type != "sales_invoice" else None,
             original_invoice_date=None,
