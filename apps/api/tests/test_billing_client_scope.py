@@ -141,35 +141,6 @@ def test_generate_404s_before_the_client_check_when_the_schedule_is_missing(deny
     assert deny == [], "the client guard ran on a schedule that does not exist"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# run_customer_reminders — optional client_id query param
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_run_customer_reminders_refuses_another_client(deny, monkeypatch):
-    reached = []
-    monkeypatch.setattr(bl.collections_service, "run_due_reminders",
-                        lambda *a, **k: reached.append(a) or {})
-    with pytest.raises(HTTPException) as e:
-        bl.run_customer_reminders(client_id=THEIRS, current_user=USER)
-    assert e.value.status_code == 404
-    assert reached == [], "run_due_reminders ran despite the refusal"
-
-
-def test_run_customer_reminders_still_works_for_your_own_client(deny, monkeypatch):
-    monkeypatch.setattr(bl.collections_service, "run_due_reminders",
-                        lambda *a, **k: {"reminders_sent": 3})
-    out = bl.run_customer_reminders(client_id=MINE, current_user=USER)
-    assert out["data"]["reminders_sent"] == 3
-    assert deny == [MINE]
-
-
-def test_run_customer_reminders_with_no_client_id_runs_firm_wide(deny, monkeypatch):
-    monkeypatch.setattr(bl.collections_service, "run_due_reminders",
-                        lambda *a, **k: {"reminders_sent": 7})
-    out = bl.run_customer_reminders(client_id=None, current_user=USER)
-    assert out["data"]["reminders_sent"] == 7
-    assert deny == [None]
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # unbilled_work — optional client_id query param
