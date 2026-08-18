@@ -84,15 +84,38 @@ def _already_ran_today(job_name: str, firm_id: Optional[str]) -> bool:
         return False
 
 
-def _log_run(job_name: str, firm_id: Optional[str], status: str, detail: dict) -> None:
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _log_run(job_name: str, firm_id: Optional[str], status: str, detail: dict,
+             started_at: Optional[str] = None) -> None:
+    """Record one job/firm outcome.
+
+    started_at is passed in by the caller, captured BEFORE the job ran (task
+    #161). It used to be omitted entirely, which left scheduler_runs.started_at
+    to its `NOT NULL DEFAULT now()` — evaluated at INSERT, i.e. after the job
+    had already finished. Every row therefore claimed to have started a few
+    milliseconds AFTER it finished.
+
+    That was not only cosmetic: routers/scheduler_status.py orders the status
+    view by started_at, so it was really ordering by insert time, and the
+    duration of a job was unrecoverable from the row.
+
+    Left None it still falls back to the column default rather than failing,
+    because losing the whole run record would be a worse outcome than an
+    imprecise timestamp on it.
+    """
     record = {
         "job_name": job_name,
         "run_date": date.today().isoformat(),
         "firm_id": firm_id,
         "status": status,
         "detail": detail,
-        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": _now_iso(),
     }
+    if started_at:
+        record["started_at"] = started_at
     if _USE_MOCK:
         _MOCK_RUNS.append(record)
         return
@@ -137,45 +160,48 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
 
         # 1. Recurring task generation
         if force or not _already_ran_today("recurring_generation", fid):
+            t0 = _now_iso()
             try:
                 from jobs.recurring_task_job import run_recurring_generation_job
                 outcome = run_recurring_generation_job(firm_id=fid)
                 firm_result["recurring"] = {"count": outcome.get("count", 0), "error": outcome.get("error")}
                 _log_run("recurring_generation", fid,
                          "success" if outcome.get("success") else "failed",
-                         {"count": outcome.get("count", 0), "error": outcome.get("error")})
+                         {"count": outcome.get("count", 0), "error": outcome.get("error")}, started_at=t0)
             except Exception as e:
                 logger.error(f"Recurring job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["recurring"] = {"error": str(e)}
-                _log_run("recurring_generation", fid, "failed", {"error": str(e)})
+                _log_run("recurring_generation", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["recurring"] = {"skipped": "already ran today"}
 
         # 2. Escalation rules
         if force or not _already_ran_today("escalations", fid):
+            t0 = _now_iso()
             try:
                 from services.escalation_service import escalation_service
                 outcome = escalation_service.run_all_escalations(fid)
                 firm_result["escalations"] = outcome
-                _log_run("escalations", fid, "success", outcome)
+                _log_run("escalations", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Escalation job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["escalations"] = {"error": str(e)}
-                _log_run("escalations", fid, "failed", {"error": str(e)})
+                _log_run("escalations", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["escalations"] = {"skipped": "already ran today"}
 
         # 3. Invoice overdue transitions
         if force or not _already_ran_today("invoice_overdue", fid):
+            t0 = _now_iso()
             try:
                 from services.invoice_lifecycle_service import run_overdue_check
                 outcome = run_overdue_check(firm_id=fid)
                 firm_result["invoice_overdue"] = outcome
-                _log_run("invoice_overdue", fid, "success", outcome)
+                _log_run("invoice_overdue", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Invoice overdue job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["invoice_overdue"] = {"error": str(e)}
-                _log_run("invoice_overdue", fid, "failed", {"error": str(e)})
+                _log_run("invoice_overdue", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["invoice_overdue"] = {"skipped": "already ran today"}
 
@@ -183,17 +209,18 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    Operates on the firm's internal-client fee invoices. Sweep is
         #    idempotent; reminders are cadence-gated (anti-spam).
         if force or not _already_ran_today("collections", fid):
+            t0 = _now_iso()
             try:
                 from services.collections_service import sweep_overdue, send_overdue_reminders
                 swept = sweep_overdue(fid)
                 reminders = send_overdue_reminders(fid)
                 outcome = {**swept, **reminders}
                 firm_result["collections"] = outcome
-                _log_run("collections", fid, "success", outcome)
+                _log_run("collections", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Collections job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["collections"] = {"error": str(e)}
-                _log_run("collections", fid, "failed", {"error": str(e)})
+                _log_run("collections", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["collections"] = {"skipped": "already ran today"}
 
@@ -203,15 +230,16 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    flow. Cadence + anti-spam gated; also runnable manually via the API
         #    so it works whether or not the scheduler is enabled.
         if force or not _already_ran_today("customer_reminders", fid):
+            t0 = _now_iso()
             try:
                 from services.collections_service import run_due_reminders
                 outcome = run_due_reminders(fid)
                 firm_result["customer_reminders"] = outcome
-                _log_run("customer_reminders", fid, "success", outcome)
+                _log_run("customer_reminders", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Customer reminders job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["customer_reminders"] = {"error": str(e)}
-                _log_run("customer_reminders", fid, "failed", {"error": str(e)})
+                _log_run("customer_reminders", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["customer_reminders"] = {"skipped": "already ran today"}
 
@@ -221,15 +249,16 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    Idempotent (one invoice per template/occurrence); also runnable
         #    manually so it works whether or not the scheduler is enabled.
         if force or not _already_ran_today("recurring_invoices", fid):
+            t0 = _now_iso()
             try:
                 from services.recurring_invoice_service import generate_due_recurring_invoices
                 outcome = generate_due_recurring_invoices(fid)
                 firm_result["recurring_invoices"] = outcome
-                _log_run("recurring_invoices", fid, "success", outcome)
+                _log_run("recurring_invoices", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Recurring invoices job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["recurring_invoices"] = {"error": str(e)}
-                _log_run("recurring_invoices", fid, "failed", {"error": str(e)})
+                _log_run("recurring_invoices", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["recurring_invoices"] = {"skipped": "already ran today"}
 
@@ -243,6 +272,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    forward into the NEXT FY so April-onward periods exist before the year
         #    turns. Generation only — never files or emails anything.
         if force or not _already_ran_today("compliance_generation", fid):
+            t0 = _now_iso()
             try:
                 from services.compliance_obligation_service import generate_due, _current_fy
                 current_fy = _current_fy()
@@ -257,11 +287,11 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                     next_outcome = generate_due(fid, financial_year=next_fy)
                     gen_detail["next_fy"] = next_outcome
                 firm_result["compliance_generation"] = gen_detail
-                _log_run("compliance_generation", fid, "success", gen_detail)
+                _log_run("compliance_generation", fid, "success", gen_detail, started_at=t0)
             except Exception as e:
                 logger.error(f"Compliance generation job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["compliance_generation"] = {"error": str(e)}
-                _log_run("compliance_generation", fid, "failed", {"error": str(e)})
+                _log_run("compliance_generation", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["compliance_generation"] = {"skipped": "already ran today"}
 
@@ -269,15 +299,16 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    obligations due in 7/3/1 days or overdue. Internal only (never emails
         #    clients); idempotent per (obligation, tier, day). No filing.
         if force or not _already_ran_today("compliance_escalations", fid):
+            t0 = _now_iso()
             try:
                 from services.compliance_obligation_service import escalate
                 outcome = escalate(fid)
                 firm_result["compliance_escalations"] = outcome
-                _log_run("compliance_escalations", fid, "success", outcome)
+                _log_run("compliance_escalations", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Compliance escalations job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["compliance_escalations"] = {"error": str(e)}
-                _log_run("compliance_escalations", fid, "failed", {"error": str(e)})
+                _log_run("compliance_escalations", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["compliance_escalations"] = {"skipped": "already ran today"}
 
@@ -288,15 +319,16 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    account_period_balances cache); safe to run whether or not reports
         #    are yet reading the passbook.
         if force or not _already_ran_today("balance_cache_audit", fid):
+            t0 = _now_iso()
             try:
                 from services.balance_cache_service import audit_and_heal_firm
                 outcome = audit_and_heal_firm(_get_db(), fid)
                 firm_result["balance_cache_audit"] = outcome
-                _log_run("balance_cache_audit", fid, "success", outcome)
+                _log_run("balance_cache_audit", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Balance-cache audit job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["balance_cache_audit"] = {"error": str(e)}
-                _log_run("balance_cache_audit", fid, "failed", {"error": str(e)})
+                _log_run("balance_cache_audit", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["balance_cache_audit"] = {"skipped": "already ran today"}
 
@@ -310,15 +342,16 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     COGS gap on 2026-07-25 — it should never again take a human running
         #     ad hoc queries to notice a books-integrity break.
         if force or not _already_ran_today("reconciliation_audit", fid):
+            t0 = _now_iso()
             try:
                 from services.reconciliation_service import run_reconciliation_for_firm
                 outcome = run_reconciliation_for_firm(_get_db(), fid)
                 firm_result["reconciliation_audit"] = outcome
-                _log_run("reconciliation_audit", fid, "success", outcome)
+                _log_run("reconciliation_audit", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Reconciliation audit job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["reconciliation_audit"] = {"error": str(e)}
-                _log_run("reconciliation_audit", fid, "failed", {"error": str(e)})
+                _log_run("reconciliation_audit", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
 
@@ -332,15 +365,16 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     visibility and catch-up as the rest of the sweep. Last in the order
         #     deliberately: it profiles the state the ten jobs above have settled.
         if force or not _already_ran_today("memory_pipeline", fid):
+            t0 = _now_iso()
             try:
                 from jobs.memory_job import run_memory_pipeline_for_firm
                 outcome = run_memory_pipeline_for_firm(fid)
                 firm_result["memory_pipeline"] = outcome
-                _log_run("memory_pipeline", fid, "success", outcome)
+                _log_run("memory_pipeline", fid, "success", outcome, started_at=t0)
             except Exception as e:
                 logger.error(f"Memory pipeline job failed for firm {fid}: {e}", exc_info=True)
                 firm_result["memory_pipeline"] = {"error": str(e)}
-                _log_run("memory_pipeline", fid, "failed", {"error": str(e)})
+                _log_run("memory_pipeline", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["memory_pipeline"] = {"skipped": "already ran today"}
 
