@@ -5,11 +5,10 @@ Runs (per firm, once per day):
   1. Recurring task generation (assignment rules applied inside the service)
   2. Escalation rules (due-soon + overdue)
   3. Invoice overdue transitions (Issued -> Overdue)
-  4. Collections — AR overdue sweep + reminders
-  5. Customer payment reminders
-  6. Recurring invoices (DRAFT generation)
-  7. Compliance obligation generation (idempotent; rolls forward near FY end)
-  8. Compliance escalations (internal due-soon/overdue notifications)
+  4. Collections — AR overdue sweep + internal reminder logging (no email)
+  5. Recurring invoices (DRAFT generation)
+  6. Compliance obligation generation (idempotent; rolls forward near FY end)
+  7. Compliance escalations (internal due-soon/overdue notifications)
 
 Idempotency:
   - recurring generation is idempotent per-day inside the service
@@ -41,7 +40,6 @@ KNOWN_JOBS = [
     "escalations",
     "invoice_overdue",
     "collections",
-    "customer_reminders",
     "recurring_invoices",
     "compliance_generation",
     "compliance_escalations",
@@ -224,26 +222,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["collections"] = {"skipped": "already ran today"}
 
-        # 5. Customer payment reminders (Phase 4.2) — emails the firm's CUSTOMERS
-        #    an overdue-payment reminder on the 7/14/21-day cadence (capped).
-        #    Collections-only: posts no journal and touches no statement/GST/cash
-        #    flow. Cadence + anti-spam gated; also runnable manually via the API
-        #    so it works whether or not the scheduler is enabled.
-        if force or not _already_ran_today("customer_reminders", fid):
-            t0 = _now_iso()
-            try:
-                from services.collections_service import run_due_reminders
-                outcome = run_due_reminders(fid)
-                firm_result["customer_reminders"] = outcome
-                _log_run("customer_reminders", fid, "success", outcome, started_at=t0)
-            except Exception as e:
-                logger.error(f"Customer reminders job failed for firm {fid}: {e}", exc_info=True)
-                firm_result["customer_reminders"] = {"error": str(e)}
-                _log_run("customer_reminders", fid, "failed", {"error": str(e)}, started_at=t0)
-        else:
-            firm_result["customer_reminders"] = {"skipped": "already ran today"}
-
-        # 6. Recurring invoices (Phase 4.3) — generate DRAFT invoices for due
+        # 5. Recurring invoices (Phase 4.3) — generate DRAFT invoices for due
         #    templates via the existing invoice engine. Drafts only: never
         #    auto-issue, auto-post a journal, or auto-email (locked decisions).
         #    Idempotent (one invoice per template/occurrence); also runnable
@@ -262,7 +241,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["recurring_invoices"] = {"skipped": "already ran today"}
 
-        # 7. Compliance obligation generation (H7) — idempotently materialise the
+        # 6. Compliance obligation generation (H7) — idempotently materialise the
         #    statutory obligations (GST/TDS/ITR/ROC) for every active engagement so
         #    there is always something to escalate. Backed by the engine's unique
         #    index (firm_id, client_id, obligation_type, period_start), so repeated
@@ -295,7 +274,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["compliance_generation"] = {"skipped": "already ran today"}
 
-        # 8. Compliance escalations (Phase 4.4) — notify the internal team about
+        # 7. Compliance escalations (Phase 4.4) — notify the internal team about
         #    obligations due in 7/3/1 days or overdue. Internal only (never emails
         #    clients); idempotent per (obligation, tier, day). No filing.
         if force or not _already_ran_today("compliance_escalations", fid):
@@ -312,7 +291,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["compliance_escalations"] = {"skipped": "already ran today"}
 
-        # 9. Balance-cache audit (reporting passbook) — re-derive every client's
+        # 8. Balance-cache audit (reporting passbook) — re-derive every client's
         #    monthly buckets from scratch and self-heal any drift, so the
         #    incrementally-maintained passbook can never silently diverge from
         #    the ledger. Read-only for reports (it only touches the derived
@@ -332,7 +311,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["balance_cache_audit"] = {"skipped": "already ran today"}
 
-        # 10. Books-integrity reconciliation (task #244) — trial balance, missing
+        # 9. Books-integrity reconciliation (task #244) — trial balance, missing
         #     COGS/inventory-receipt journals, inventory cache-vs-ledger drift,
         #     AR/AP sub-ledger vs GL, for every client. REPORT-ONLY — findings are
         #     persisted (reconciliation_runs/reconciliation_findings, migration
@@ -355,7 +334,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
 
-        # 11. Memory pipeline (Phase 13, task #158) — refresh every client's
+        # 10. Memory pipeline (Phase 13, task #158) — refresh every client's
         #     profile, detect pattern anomalies, raise memory triggers. This used
         #     to run from its own thread in jobs/memory_job.py: immediately on
         #     startup, then time.sleep(86400). On the free tier that is a full

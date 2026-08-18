@@ -287,22 +287,25 @@ def send_overdue_reminders(firm_id: str, today: Optional[date] = None) -> dict:
 # send_overdue_reminders() above, which is the practice's internal fee-collections
 # sweep (timeline-only, Partner dashboard).
 
-REMINDER_DEFAULTS = {"enabled": True, "interval_days": 7, "max_reminders": 3, "attach_pdf": True}
+# Only attach_pdf remains. enabled/interval_days/max_reminders governed the
+# automatic bulk cadence run (run_due_reminders), removed entirely: it looped
+# every open invoice unbounded and, on any firm with a large enough overdue
+# backlog, could never finish in one pass — starving every job scheduled after
+# it in the nightly sweep, for that firm, every single day. The manual,
+# CA-initiated single-invoice send (send_invoice_reminder, below) is the only
+# way a reminder goes out now; attach_pdf is the one setting it still reads.
+REMINDER_DEFAULTS = {"attach_pdf": True}
 
 
 def reminder_settings(firm_id: str, db=None) -> dict:
-    """Per-firm reminder policy (cadence / cap / pdf). Falls back to defaults."""
+    """Per-firm reminder policy (currently just attach_pdf). Falls back to defaults."""
     if _USE_MOCK:
         return dict(REMINDER_DEFAULTS)
     db = db or _db()
     try:
         rows = db.table("reminder_settings").select("*").eq("firm_id", firm_id).limit(1).execute().data or []
         if rows:
-            r = rows[0]
-            return {"enabled": bool(r.get("enabled", True)),
-                    "interval_days": int(r.get("interval_days") or 7),
-                    "max_reminders": int(r.get("max_reminders") or 3),
-                    "attach_pdf": bool(r.get("attach_pdf", True))}
+            return {"attach_pdf": bool(rows[0].get("attach_pdf", True))}
     except Exception:  # pragma: no cover - settings are best-effort
         pass
     return dict(REMINDER_DEFAULTS)
@@ -310,24 +313,11 @@ def reminder_settings(firm_id: str, db=None) -> dict:
 
 def update_reminder_settings(firm_id: str, fields: dict, db=None) -> dict:
     db = db or _db()
-    payload = {k: v for k, v in fields.items()
-               if k in ("enabled", "interval_days", "max_reminders", "attach_pdf") and v is not None}
+    payload = {k: v for k, v in fields.items() if k == "attach_pdf" and v is not None}
     payload["firm_id"] = firm_id
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
     db.table("reminder_settings").upsert(payload, on_conflict="firm_id").execute()
     return reminder_settings(firm_id, db=db)
-
-
-def reminder_due_number(days_overdue: int, reminder_count: int,
-                        interval_days: int = 7, max_reminders: int = 3) -> Optional[int]:
-    """Which AUTOMATIC reminder is due now (1/2/3 at 7/14/21 days), or None.
-    Pure: never before `interval_days` overdue; stops after `max_reminders`."""
-    if days_overdue < interval_days:
-        return None
-    due = min(max_reminders, days_overdue // interval_days)
-    if reminder_count >= due or reminder_count >= max_reminders:
-        return None
-    return reminder_count + 1
 
 
 def _customer_for(db, firm_id: str, customer_id: Optional[str]) -> dict:
@@ -419,39 +409,6 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
         except Exception:  # pragma: no cover
             pass
     return success
-
-
-def run_due_reminders(firm_id: str, client_id: Optional[str] = None,
-                      today: Optional[date] = None, db=None) -> dict:
-    """Automatic cadence run (7/14/21, capped). client_id=None → all the firm's
-    clients. Respects reminder_settings.enabled and the anti-spam window. Safe from
-    the scheduler OR a manual 'run' — fully functional with the scheduler disabled."""
-    today = today or _today()
-    db = db or _db()
-    s = reminder_settings(firm_id, db=db)
-    if not s["enabled"]:
-        return {"reminders_sent": 0, "skipped": "reminders disabled"}
-    cutoff = datetime.now(timezone.utc) - timedelta(days=s["interval_days"])
-    sent = 0
-    for inv in _open_invoices(firm_id, client_id):
-        m = assess_invoice(inv, today)
-        if not m["is_overdue"]:
-            continue
-        n = reminder_due_number(m["days_overdue"], int(inv.get("reminder_count", 0)),
-                                s["interval_days"], s["max_reminders"])
-        if n is None:
-            continue
-        last = inv.get("last_reminded_at")
-        if last:
-            try:
-                if datetime.fromisoformat(str(last).replace("Z", "+00:00")) > cutoff:
-                    continue  # reminded within the cadence window — skip (anti-spam)
-            except ValueError:
-                pass
-        customer = _customer_for(db, firm_id, inv.get("customer_id"))
-        if _dispatch_invoice_reminder(db, firm_id, inv, customer, n, attach_pdf=s["attach_pdf"]):
-            sent += 1
-    return {"reminders_sent": sent}
 
 
 def send_invoice_reminder(firm_id: str, invoice_id: str, actor_id: Optional[str] = None,

@@ -177,43 +177,20 @@ def send_reminders(current_user: dict = Depends(rbac("billing", "write"))):
 # ── Phase 4.2 — Customer payment reminders (collections only) ────────────────
 # Emails the CUSTOMER an overdue-payment reminder (with the invoice PDF) and
 # records it in invoice_deliveries (kind='reminder'). Purely informational:
-# NO journal, NO statement, NO GST/cash-flow impact. Works whether the
-# scheduler is enabled or disabled (this manual run is always available).
+# NO journal, NO statement, NO GST/cash-flow impact. Manual and CA-initiated
+# ONLY — see send_invoice_reminder below, per-invoice.
+#
+# There used to also be an automatic bulk version here (POST
+# /collections/run-customer-reminders, plus a nightly scheduler job) that
+# looped every open invoice for the firm with no bound and no way to resume.
+# On a firm with a large overdue backlog it could never complete a single
+# pass, and every job scheduled after it in the nightly sweep silently never
+# ran for that firm, every day, indefinitely. Removed entirely rather than
+# fixed in place — automatic emails to a client's own customers should not
+# exist as a feature with no visible on/off switch anywhere in the product.
 
 class ReminderSettingsIn(BaseModel):
-    enabled: Optional[bool] = None
-    interval_days: Optional[int] = None
-    max_reminders: Optional[int] = None
     attach_pdf: Optional[bool] = None
-
-    @field_validator("interval_days")
-    @classmethod
-    def _interval(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v < 1:
-            raise ValueError("interval_days must be at least 1")
-        return v
-
-    @field_validator("max_reminders")
-    @classmethod
-    def _maxr(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v < 0:
-            raise ValueError("max_reminders must be non-negative")
-        return v
-
-
-@router.post("/collections/run-customer-reminders")
-def run_customer_reminders(client_id: Optional[str] = Query(None),
-                           current_user: dict = Depends(rbac("billing", "write"))):
-    """Run the automatic reminder cadence (7/14/21 days, capped) for the firm's
-    customers. client_id optional → restrict to one client. Manual trigger of the
-    same job the scheduler runs daily; idempotent via the anti-spam window."""
-    # M2 audit finding: client_id is caller-supplied. services/
-    # collections_service.py's _open_invoices() already ANDs it with firm_id
-    # (a foreign id just yields zero rows — no leak), but a silent empty
-    # result is not the same as an explicit refusal. Mirrors create_schedule's
-    # guard; a no-op when client_id is None.
-    assert_client_access(current_user, client_id)
-    return api_response(True, collections_service.run_due_reminders(current_user["firm_id"], client_id))
 
 
 @router.get("/collections/reminder-settings")
@@ -241,8 +218,8 @@ def unbilled_work(client_id: Optional[str] = Query(None),
                   current_user: dict = Depends(rbac("billing", "read"))):
     """Unbilled (billable, not-yet-billed) work grouped by client/work item with
     billable value. Capture/visibility only — no realization/margin/profitability."""
-    # M2 audit finding: same shape as run_customer_reminders above —
-    # client_id is caller-supplied and only ANDed into the query.
+    # M2 audit finding: client_id is caller-supplied and only ANDed into the
+    # query — a foreign id would silently yield zero rows without this guard.
     assert_client_access(current_user, client_id)
     return api_response(True, billing_service.unbilled_work(current_user["firm_id"], client_id))
 

@@ -4,10 +4,16 @@ Phase 4.2 — Payment Reminders (customer-facing collections).
 Reminders email the CUSTOMER an overdue-payment notice (+ the invoice PDF) and
 record the send in invoice_deliveries (kind='reminder'). They are purely a
 collections / informational feature: they post NO journal and change NO
-accounting figure (no statement / GST / cash-flow impact). These tests cover the
-pure cadence math, the dispatch + delivery recording, the automatic cadence run
-(incl. anti-spam + disabled), the manual single reminder (bypasses the cap), the
+accounting figure (no statement / GST / cash-flow impact). Manual and
+CA-initiated only — a CA opens one invoice and sends one reminder. These tests
+cover the dispatch + delivery recording, the manual single reminder, the
 reminder history, firm isolation, and the no-accounting-side-effects guarantee.
+
+There used to also be an automatic bulk cadence run (coll.run_due_reminders,
+plus a nightly scheduler job) covered here. It's removed: on a firm with a
+large overdue backlog it looped every open invoice with no bound, could never
+finish a pass, and silently starved every job scheduled after it in the
+nightly sweep for that firm, every day, indefinitely.
 """
 from datetime import date, datetime, timezone, timedelta
 from uuid import uuid4
@@ -173,33 +179,6 @@ def db(monkeypatch):
     return fake
 
 
-# ── Pure cadence math ────────────────────────────────────────────────────────
-
-def test_reminder_due_number_cadence():
-    f = coll.reminder_due_number
-    assert f(6, 0) is None           # before the 7-day interval → nothing
-    assert f(7, 0) == 1              # first reminder at 7 days
-    assert f(7, 1) is None           # already sent #1 at this stage
-    assert f(13, 1) is None          # not yet at the 14-day mark
-    assert f(14, 1) == 2             # second reminder at 14 days
-    assert f(21, 2) == 3             # third reminder at 21 days
-    assert f(28, 3) is None          # capped at max_reminders (3)
-    assert f(99, 3) is None          # cap holds no matter how overdue
-
-
-def test_reminder_due_number_never_before_interval_and_caps():
-    f = coll.reminder_due_number
-    # very overdue but none sent yet → still starts at #1 (one at a time)
-    assert f(100, 0) == 1
-    assert f(100, 2) == 3
-    assert f(100, 3) is None
-    # custom policy: 5-day interval, max 2
-    assert f(4, 0, interval_days=5, max_reminders=2) is None
-    assert f(5, 0, interval_days=5, max_reminders=2) == 1
-    assert f(10, 1, interval_days=5, max_reminders=2) == 2
-    assert f(15, 2, interval_days=5, max_reminders=2) is None
-
-
 # ── Dispatch one reminder ────────────────────────────────────────────────────
 
 def test_dispatch_records_delivery_and_bumps_counters(db, email_calls):
@@ -258,66 +237,6 @@ def test_dispatch_survives_pdf_failure(db, email_calls, monkeypatch):
     ok = coll._dispatch_invoice_reminder(db, FIRM, inv, customer, 1)
     assert ok is True                                   # reminder still sent (text only)
     assert email_calls["emails"][0]["pdf_bytes"] is None
-
-
-# ── Automatic cadence run ────────────────────────────────────────────────────
-
-def test_run_due_reminders_cadence(db, email_calls):
-    today = date(2026, 6, 22)
-    # 7d overdue, none sent → due #1
-    db.seed("client_sales_invoices", _inv("A", due="2026-06-15", reminder_count=0))
-    # 14d overdue, one sent → due #2
-    db.seed("client_sales_invoices", _inv("B", due="2026-06-08", reminder_count=1))
-    # only 5d overdue → not yet due
-    db.seed("client_sales_invoices", _inv("C", due="2026-06-17", reminder_count=0))
-    # already at the cap (3) → no more automatic reminders
-    db.seed("client_sales_invoices", _inv("D", due="2026-01-01", reminder_count=3))
-    for cid in ("CUST-1",):
-        db.seed("customers", {"id": cid, "firm_id": FIRM, "name": "Acme", "email": "ap@acme.test"})
-
-    res = coll.run_due_reminders(FIRM, today=today)
-    assert res["reminders_sent"] == 2                   # A and B only
-
-    by_id = {r["id"]: r for r in db.data["client_sales_invoices"]}
-    assert by_id["A"]["reminder_count"] == 1
-    assert by_id["B"]["reminder_count"] == 2
-    assert by_id["C"]["reminder_count"] == 0
-    assert by_id["D"]["reminder_count"] == 3
-
-
-def test_run_due_reminders_anti_spam(db, email_calls):
-    db.seed("client_sales_invoices", _inv("A", due="2026-06-15", reminder_count=0))
-    db.seed("customers", {"id": "CUST-1", "firm_id": FIRM, "name": "Acme", "email": "ap@acme.test"})
-
-    first = coll.run_due_reminders(FIRM, today=date(2026, 6, 22))   # 7d → #1
-    assert first["reminders_sent"] == 1
-    # even though by day 14 a #2 would be due, last_reminded_at is within the
-    # cadence window → suppressed (anti-spam)
-    second = coll.run_due_reminders(FIRM, today=date(2026, 6, 29))
-    assert second["reminders_sent"] == 0
-
-
-def test_run_due_reminders_respects_disabled_setting(db, email_calls):
-    db.seed("reminder_settings", {"firm_id": FIRM, "enabled": False,
-                                  "interval_days": 7, "max_reminders": 3, "attach_pdf": True})
-    db.seed("client_sales_invoices", _inv("A", due="2026-06-15"))
-    db.seed("customers", {"id": "CUST-1", "firm_id": FIRM, "name": "Acme", "email": "ap@acme.test"})
-
-    res = coll.run_due_reminders(FIRM, today=date(2026, 6, 22))
-    assert res["reminders_sent"] == 0 and res.get("skipped") == "reminders disabled"
-    assert email_calls["emails"] == []
-
-
-def test_run_due_reminders_custom_settings(db, email_calls):
-    # 5-day interval, max 2 — a row 5 days overdue becomes due immediately
-    db.seed("reminder_settings", {"firm_id": FIRM, "enabled": True,
-                                  "interval_days": 5, "max_reminders": 2, "attach_pdf": False})
-    db.seed("client_sales_invoices", _inv("A", due="2026-06-17", reminder_count=0))
-    db.seed("customers", {"id": "CUST-1", "firm_id": FIRM, "name": "Acme", "email": "ap@acme.test"})
-
-    res = coll.run_due_reminders(FIRM, today=date(2026, 6, 22))      # 5d overdue
-    assert res["reminders_sent"] == 1
-    assert email_calls["emails"][0]["pdf_bytes"] is None             # attach_pdf=False honoured
 
 
 # ── Manual single reminder ───────────────────────────────────────────────────
