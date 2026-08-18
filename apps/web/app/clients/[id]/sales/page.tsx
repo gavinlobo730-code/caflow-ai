@@ -19,6 +19,10 @@ import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import {
+  classificationFrom, toClassificationPayload, isNonStandard,
+  SUPPLY_TYPES, INVOICE_TYPES, type ClassificationState,
+} from "@/lib/invoices/classification";
+import {
   buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS,
   buildSalesCreditNotes, SALES_CREDIT_NOTE_IMPORT_COLUMNS,
   buildSalesDebitNotes, SALES_DEBIT_NOTE_IMPORT_COLUMNS,
@@ -276,6 +280,10 @@ interface RecurringTemplate {
   description: string | null; frequency: string; start_date: string;
   end_date: string | null; next_run_date: string | null; notes: string | null;
   is_inter_state: boolean; status: "active" | "paused" | "archived";
+  // GSTR-1 classification stamped on every invoice this template generates
+  // (task #160). Optional on the type so a template row fetched before
+  // migration 270 still parses; classificationFrom supplies the defaults.
+  supply_type?: string | null; invoice_type?: string | null; is_reverse_charge?: boolean | null;
   lines: RecurringLine[];
 }
 interface RecurringRun {
@@ -578,6 +586,9 @@ function RecurringEditor({
   const [startDate, setStartDate] = useState(existing?.start_date ?? new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   const [isInterState, setIsInterState] = useState(existing?.is_inter_state ?? false);
+  // Reuses the invoice form's vocabulary and its unknown-value fallback rather
+  // than a second copy of the option lists (task #156 / #157).
+  const [classification, setClassification] = useState<ClassificationState>(() => classificationFrom(existing));
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [lines, setLines] = useState<RecEditorLine[]>(
     existing?.lines?.length
@@ -629,6 +640,7 @@ function RecurringEditor({
         title: title.trim(), description: description.trim() || null, frequency,
         start_date: startDate, end_date: endDate || null, is_inter_state: isInterState,
         notes: notes.trim() || null, lines: payloadLines,
+        ...toClassificationPayload(classification),
       };
       let res;
       if (existing) {
@@ -750,6 +762,39 @@ function RecurringEditor({
             <input type="checkbox" checked={isInterState} onChange={(e) => setIsInterState(e.target.checked)} />
             Inter-state supply (IGST)
           </label>
+
+          {/* GSTR-1 classification (task #160). Set once here, inherited by
+              every occurrence — an SEZ retainer is an SEZ supply every month.
+              Without it the unattended job stamped each generated invoice as a
+              plain domestic taxable sale. */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Supply type</label>
+              <select value={classification.supplyType}
+                onChange={(e) => setClassification((c) => ({ ...c, supplyType: e.target.value as ClassificationState["supplyType"] }))}
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Invoice type</label>
+              <select value={classification.invoiceType}
+                onChange={(e) => setClassification((c) => ({ ...c, invoiceType: e.target.value as ClassificationState["invoiceType"] }))}
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-[#475569]">
+            <input type="checkbox" checked={classification.isReverseCharge}
+              onChange={(e) => setClassification((c) => ({ ...c, isReverseCharge: e.target.checked }))} />
+            Reverse charge (CGST §9(3)/§9(4))
+          </label>
+          {isNonStandard(classification) && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-3 py-2">
+              Every invoice this template generates will carry this classification.
+            </p>
+          )}
 
           <p className="text-[11px] text-[#94A3B8] bg-[#F8FAFC] rounded px-3 py-2">
             Each run creates a <strong>draft</strong> invoice for CA review — it is never issued or emailed automatically.
