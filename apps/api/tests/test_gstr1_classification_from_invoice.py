@@ -240,3 +240,104 @@ def test_the_classification_cannot_be_changed_on_an_issued_invoice():
     assert "supply_type" not in si._SOFT_UPDATE_FIELDS
     assert "invoice_type" not in si._SOFT_UPDATE_FIELDS
     assert "is_reverse_charge" not in si._SOFT_UPDATE_FIELDS
+
+
+
+# ── Task #163: a note declares what the invoice it adjusts declared ──────────
+#
+# CGST §34: a credit or debit note is always issued "in relation to" a specific
+# original tax invoice. It adjusts that invoice's value or tax and has no
+# standing to redeclare the supply — GSTR-1 table 9B (CDNR) requires the
+# original invoice number and date on every note for the same reason.
+#
+# The note tables carry none of migration 268's three columns, so every note
+# read back taxable / Regular / no-reverse-charge regardless of what it was
+# adjusting. In GSTR-3B that is a live misstatement: gstr3b_computer buckets
+# outward supply on supply_type (3.1(a) taxable vs 3.1(c) nil/exempt), so a
+# credit note against a nil-rated invoice reduced TAXABLE outward supply — a
+# figure it should never have touched.
+
+def _seed_credit_note(db, **fields):
+    return db.seed("credit_notes", {
+        "firm_id": FIRM, "client_id": "CLI", "customer_id": "CUST",
+        "credit_note_no": "CN-1", "credit_note_date": "2025-06-20", "status": "issued",
+        "taxable_amount_paise": 10_000_00, "cgst_paise": 0, "sgst_paise": 0,
+        "igst_paise": 0, "total_paise": 10_000_00, "is_interstate": False,
+        "supply_state_code": "27", "deleted_at": None,
+        **fields,
+    })
+
+
+def _3b(db) -> dict:
+    return grs.gstr3b_from_books(db, FIRM, "CLI", "062025", GSTIN)
+
+
+def _sup(out: dict, key: str) -> int:
+    """A table 3.1 outward bucket, in paise."""
+    return int((out["working"]["outward"] or {})[key] or 0)
+
+
+def test_a_credit_note_against_a_nil_rated_invoice_leaves_taxable_supply_alone(db):
+    """THE test for #163. Before the fix this note reduced 3.1(a) taxable
+    outward supply; it belongs against 3.1(c) nil/exempt (CGST §23)."""
+    inv = _seed_invoice(db, invoice_no="INV-NIL", supply_type="nil_rated",
+                        taxable_amount_paise=100_000_00)
+    _seed_credit_note(db, credit_note_no="CN-NIL", sales_invoice_id=inv["id"],
+                      taxable_amount_paise=10_000_00)
+
+    out = _3b(db)
+
+    assert _sup(out, "taxable_value_paise") == 0, \
+        "a nil-rated credit note reduced TAXABLE outward supply"
+    assert _sup(out, "nil_exempt_paise") == 100_000_00 - 10_000_00, \
+        "the credit did not net against nil/exempt supply"
+
+
+def test_a_credit_note_against_an_exempt_invoice_nets_against_exempt(db):
+    inv = _seed_invoice(db, invoice_no="INV-EX", supply_type="exempt",
+                        taxable_amount_paise=50_000_00)
+    _seed_credit_note(db, credit_note_no="CN-EX", sales_invoice_id=inv["id"],
+                      taxable_amount_paise=5_000_00)
+
+    out = _3b(db)
+
+    assert _sup(out, "taxable_value_paise") == 0
+    assert _sup(out, "nil_exempt_paise") == 45_000_00
+
+
+def test_an_ordinary_credit_note_still_reduces_taxable_supply(db):
+    """No-regression guard — must hold before and after. Inheriting must not
+    stop an ordinary credit note doing what it always did."""
+    inv = _seed_invoice(db, invoice_no="INV-REG", taxable_amount_paise=100_000_00)
+    _seed_credit_note(db, credit_note_no="CN-REG", sales_invoice_id=inv["id"],
+                      taxable_amount_paise=10_000_00)
+
+    out = _3b(db)
+
+    assert _sup(out, "taxable_value_paise") == 100_000_00 - 10_000_00
+
+
+def test_the_parent_invoice_may_predate_the_period_being_filed(db):
+    """A June note routinely adjusts an April invoice. Resolving the parent
+    from the period's own invoices would miss it — it is fetched by id."""
+    inv = _seed_invoice(db, invoice_no="INV-APR", invoice_date="2025-04-05",
+                        supply_type="nil_rated", taxable_amount_paise=80_000_00)
+    _seed_credit_note(db, credit_note_no="CN-CROSS", sales_invoice_id=inv["id"],
+                      taxable_amount_paise=8_000_00)
+
+    out = _3b(db)   # period 062025 — the parent invoice is outside it
+
+    assert _sup(out, "taxable_value_paise") == 0, \
+        "the out-of-period parent invoice was not resolved"
+
+
+def test_an_unlinked_note_keeps_the_defaults_rather_than_guessing(db):
+    """§34 expects a reference. A note without one is already an exception the
+    CA stands behind; inventing a classification would hide it."""
+    _seed_credit_note(db, credit_note_no="CN-ORPHAN", sales_invoice_id=None,
+                      taxable_amount_paise=7_000_00)
+
+    out = _3b(db)
+
+    assert _sup(out, "taxable_value_paise") == -7_000_00, \
+        "an unlinked note should keep the taxable default, not vanish"
