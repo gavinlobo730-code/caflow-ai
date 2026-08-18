@@ -152,6 +152,60 @@ def _issued_sales_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("debit_note_date", start).lte("debit_note_date", end))
 
 
+def _classification_by_parent_invoice(db, firm_id: str, note_rows: list[dict]) -> dict[str, dict]:
+    """{sales_invoice_id: {supply_type, invoice_type, is_reverse_charge}} for every
+    invoice referenced by these notes.
+
+    WHY NOTES INHERIT RATHER THAN CARRY THEIR OWN
+        CGST Act §34: a credit or debit note is always issued "in relation to" a
+        specific original tax invoice — it adjusts that invoice's value or tax
+        and has no standing to redeclare what kind of supply was made. GSTR-1
+        table 9B (CDNR) enforces the same shape, requiring the original invoice
+        number and date on every note. So a note against a nil-rated supply IS
+        nil-rated; there is nothing for a CA to choose.
+
+        The note tables therefore have no supply_type / invoice_type /
+        is_reverse_charge columns, and none are added here — inheriting at build
+        time cannot drift from the invoice the way a stored copy could.
+
+    THE BUG THIS CLOSES
+        Both builders below read those fields straight off the note row. Absent
+        on the note, every one fell back to taxable / Regular / no reverse
+        charge — so a credit note against an exempt, nil-rated, SEZ or
+        deemed-export invoice was declared as an ordinary taxable adjustment,
+        landing in the wrong GSTR-1 table and overstating the credit taken
+        against taxable turnover in GSTR-3B.
+
+    The parent invoice is fetched BY ID, not taken from the period's invoices:
+    a note issued in August routinely adjusts a June invoice, which no
+    period-bounded query would return.
+    """
+    parent_ids = {r.get("sales_invoice_id") for r in note_rows if r.get("sales_invoice_id")}
+    if not parent_ids:
+        return {}
+    rows = _paginate_all(lambda: db.table("client_sales_invoices")
+                         .select("id, supply_type, invoice_type, is_reverse_charge")
+                         .eq("firm_id", firm_id).in_("id", list(parent_ids)))
+    return {r["id"]: r for r in (rows or []) if r.get("id")}
+
+
+def _note_classification(row: dict, parents: dict[str, dict]) -> dict:
+    """The classification a note declares: its parent invoice's, or the
+    defaults when it is unlinked.
+
+    An unlinked note keeps the migration 268 column defaults rather than
+    guessing. §34 expects a reference; a note without one is already an
+    exception a CA has to stand behind, and inventing a classification for it
+    would hide that rather than surface it.
+    """
+    parent = parents.get(row.get("sales_invoice_id") or "") or {}
+    return {
+        "supply_type": parent.get("supply_type") or "taxable",
+        "invoice_type": parent.get("invoice_type") or "Regular",
+        "is_reverse_charge": bool(parent.get("is_reverse_charge") or False),
+    }
+
+
 def _issued_purchase_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
     return _paginate_all(lambda: db.table("purchase_credit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -175,7 +229,13 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             supply_type=inv.get("supply_type") or "taxable",
             is_reverse_charge=bool(inv.get("is_reverse_charge", False)),
         ))
-    for cn in _issued_credit_notes(db, firm_id, client_id, start, end):
+    # Notes inherit their classification from the invoice they adjust (CGST §34)
+    # — see _classification_by_parent_invoice.
+    cns_3b = _issued_credit_notes(db, firm_id, client_id, start, end)
+    sdns_3b = _issued_sales_debit_notes(db, firm_id, client_id, start, end)
+    note_parents = _classification_by_parent_invoice(db, firm_id, cns_3b + sdns_3b)
+    for cn in cns_3b:
+        cls = _note_classification(cn, note_parents)
         sales.append(SalesTransaction(
             transaction_type="credit_note",
             taxable_amount_paise=int(cn.get("taxable_amount_paise") or 0),
@@ -183,8 +243,8 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             sgst_paise=int(cn.get("sgst_paise") or 0),
             igst_paise=int(cn.get("igst_paise") or 0),
             cess_paise=int(cn.get("cess_paise") or 0),
-            supply_type=cn.get("supply_type") or "taxable",
-            is_reverse_charge=bool(cn.get("is_reverse_charge", False)),
+            supply_type=cls["supply_type"],
+            is_reverse_charge=cls["is_reverse_charge"],
         ))
     # Sales debit notes (sales_debit_notes table) INCREASE what the customer owes
     # (CGST Act §34(3)) — e.g. an undercharge correction — so they add to output
@@ -193,7 +253,8 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     # "debit_note", is added at sign +1. Omitting these previously understated
     # every from-books GSTR-3B's output tax whenever a sales debit note was
     # issued, and silently broke the GL reconciliation below (task, 2026-07-24).
-    for sdn in _issued_sales_debit_notes(db, firm_id, client_id, start, end):
+    for sdn in sdns_3b:
+        cls = _note_classification(sdn, note_parents)
         sales.append(SalesTransaction(
             transaction_type="debit_note",
             taxable_amount_paise=int(sdn.get("taxable_amount_paise") or 0),
@@ -201,8 +262,8 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             sgst_paise=int(sdn.get("sgst_paise") or 0),
             igst_paise=int(sdn.get("igst_paise") or 0),
             cess_paise=int(sdn.get("cess_paise") or 0),
-            supply_type=sdn.get("supply_type") or "taxable",
-            is_reverse_charge=bool(sdn.get("is_reverse_charge", False)),
+            supply_type=cls["supply_type"],
+            is_reverse_charge=cls["is_reverse_charge"],
         ))
 
     purchases: list[PurchaseTransaction] = []
@@ -348,22 +409,34 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     _REF_FIELD = {"sales_invoice": "invoice_no", "credit_note": "credit_note_no", "debit_note": "debit_note_no"}
     _DATE_FIELD = {"sales_invoice": "invoice_date", "credit_note": "credit_note_date", "debit_note": "debit_note_date"}
 
+    # A note declares the classification of the invoice it adjusts (CGST §34).
+    # Resolved once here; the parent may pre-date the period being filed.
+    note_parents = _classification_by_parent_invoice(db, firm_id, cns_raw + sdns_raw)
+
     def _to_gstr1(r: dict, doc_type: str) -> InvoiceForGSTR1:
         cust = cust_by_id.get(r.get("customer_id"), {})
         gstin_party = cust.get("gstin")
         pos = r.get("supply_state_code") or cust.get("state_code") or ""
+        # Was hardcoded "Regular", so an SEZ supply or a deemed export was
+        # declared as an ordinary B2B invoice and the recipient had nothing to
+        # match a CGST §16(3) refund claim against. Notes carry no such column
+        # of their own and used to keep the default outright — they now inherit
+        # from the original invoice instead.
+        if doc_type == "sales_invoice":
+            cls = {
+                "supply_type": r.get("supply_type") or "taxable",
+                "invoice_type": r.get("invoice_type") or "Regular",
+            }
+        else:
+            cls = _note_classification(r, note_parents)
         txn = TransactionForClassification(
             id=r.get("id", ""),
             transaction_type=doc_type,
             party_gstin=gstin_party,
             is_interstate=bool(r.get("is_interstate", False)),
             taxable_amount_paise=int(r.get("taxable_amount_paise") or 0),
-            supply_type=r.get("supply_type") or "taxable",
-            # Was hardcoded "Regular", so an SEZ supply or a deemed export was
-            # declared as an ordinary B2B invoice and the recipient had nothing
-            # to match a CGST §16(3) refund claim against. Credit and debit
-            # notes have no such column and keep the default.
-            invoice_type=r.get("invoice_type") or "Regular",
+            supply_type=cls["supply_type"],
+            invoice_type=cls["invoice_type"],
             place_of_supply=pos,
         )
         return InvoiceForGSTR1(
@@ -383,9 +456,14 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # Credit/debit notes (credit_notes / sales_debit_notes tables) have no
             # round_off column → .get None → 0.
             round_off_paise=int(r.get("round_off_paise") or 0),
-            is_reverse_charge=bool(r.get("is_reverse_charge", False)),
-            invoice_type=r.get("invoice_type") or "Regular",
-            supply_type=r.get("supply_type") or "taxable",
+            # Same resolved classification the classifier was handed above —
+            # NOT r.get(...) again. _build_nil reads supply_type off this
+            # object to split table 8's nil/exempt/non-GST columns, so reading
+            # the note's own absent column here would classify it as nil and
+            # then report it as taxable.
+            is_reverse_charge=cls.get("is_reverse_charge", bool(r.get("is_reverse_charge", False))),
+            invoice_type=cls["invoice_type"],
+            supply_type=cls["supply_type"],
             gst_invoice_category=classify_transaction(txn),
             original_invoice_ref=r.get("sales_invoice_id") if doc_type != "sales_invoice" else None,
             original_invoice_date=None,
