@@ -8,6 +8,7 @@ assert on real generated counts.
 """
 import os
 import sys
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -116,12 +117,62 @@ def test_status_endpoint_returns_new_keys():
 
 
 def test_status_endpoint_tolerates_runs_without_started_at():
-    # Mock run rows from run_daily_jobs lack started_at — the status sort must
-    # not crash on them.
-    sched.run_daily_jobs(firm_id="F1", force=True)
+    # The status sort must not crash on a row with no started_at.
+    #
+    # This used to lean on run_daily_jobs' own output, which lacked the field
+    # (task #161 — _log_run never sent it). Now that it does, relying on that
+    # would leave this test asserting nothing. So the row is constructed
+    # explicitly: rows written before #161, and any future writer that omits
+    # started_at, still exist and must not break the view.
+    sched._MOCK_RUNS.append({
+        "job_name": "legacy_row", "run_date": date.today().isoformat(),
+        "firm_id": "F1", "status": "success", "detail": {},
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    })
     r = _client(MANAGER).get("/api/scheduler/status")
     assert r.status_code == 200
     assert isinstance(r.json()["data"]["recent_runs"], list)
+
+
+# ── Task #161: started_at is the real start, not the INSERT time ─────────────
+
+def test_every_logged_run_carries_a_started_at():
+    sched._MOCK_RUNS.clear()
+    sched.run_daily_jobs(firm_id="F1", force=True)
+    assert sched._MOCK_RUNS, "no runs recorded"
+    missing = [r["job_name"] for r in sched._MOCK_RUNS if not r.get("started_at")]
+    assert not missing, f"jobs logged without started_at: {missing}"
+
+
+def test_started_at_precedes_finished_at():
+    """The defect this fixes. started_at was a NOT NULL DEFAULT now() evaluated
+    at INSERT — after finished_at had been computed in Python — so every row
+    claimed to start after it ended."""
+    sched._MOCK_RUNS.clear()
+    sched.run_daily_jobs(firm_id="F1", force=True)
+    for r in sched._MOCK_RUNS:
+        assert r["started_at"] <= r["finished_at"], (
+            f"{r['job_name']}: started_at {r['started_at']} is after "
+            f"finished_at {r['finished_at']}"
+        )
+
+
+def test_a_failing_job_still_records_when_it_started(monkeypatch):
+    """The failure path logs from inside `except`, a different call site — it
+    must carry the same start time, since a failed run's duration is exactly
+    what someone debugging the sweep wants."""
+    def _boom(*a, **k):
+        raise RuntimeError("job exploded")
+    monkeypatch.setattr("jobs.recurring_task_job.run_recurring_generation_job", _boom)
+
+    sched._MOCK_RUNS.clear()
+    sched.run_daily_jobs(firm_id="F1", force=True)
+
+    failed = [r for r in sched._MOCK_RUNS
+              if r["job_name"] == "recurring_generation" and r["status"] == "failed"]
+    assert failed, "expected the forced failure to be recorded"
+    assert failed[0].get("started_at"), "failure path lost started_at"
+    assert failed[0]["started_at"] <= failed[0]["finished_at"]
 
 
 def test_status_endpoint_requires_team_read():
