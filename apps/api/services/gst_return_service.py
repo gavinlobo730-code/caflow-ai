@@ -152,8 +152,12 @@ def _issued_sales_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("debit_note_date", start).lte("debit_note_date", end))
 
 
-def _invoice_lines_by_invoice(db, invoice_ids: list[str]) -> dict[str, list]:
-    """{sales_invoice_id: [InvoiceLine, ...]} for GSTR-1 table 12.
+def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, list]:
+    """{document_id: [InvoiceLine, ...]} for GSTR-1 table 12.
+
+    Serves sales invoices and both note types — client_sales_invoice_lines,
+    credit_note_lines and sales_debit_note_lines share a shape, differing only
+    in the owning foreign key.
 
     WHY THIS EXISTS
         gstr1_from_books built every InvoiceForGSTR1 with `lines=[]`, so
@@ -167,24 +171,21 @@ def _invoice_lines_by_invoice(db, invoice_ids: list[str]) -> dict[str, list]:
         4 above ₹1.5 crore (CGST Rule 59 / the CBIC HSN notifications). The
         digit count was computed correctly and then had nothing to truncate.
 
-    client_sales_invoice_lines has no cess column, so cess_paise is 0 here.
-    That is the line table's shape, not an assumption about cess: an invoice
-    carrying cess would need a line-level column before table 12 could
-    apportion it.
+    None of the three line tables has a cess column, so cess_paise is 0 here.
+    That is their shape, not an assumption about cess: a document carrying cess
+    would need a line-level column before table 12 could apportion it.
     """
-    if not invoice_ids:
+    if not doc_ids:
         return {}
     from domain.gst.gstr1_builder import InvoiceLine
 
-    rows = _paginate_all(lambda: db.table("client_sales_invoice_lines")
-                         .select("*").in_("sales_invoice_id", list(invoice_ids)))
-    by_invoice: dict[str, list] = {}
-    for r in sorted(rows or [], key=lambda x: (x.get("sales_invoice_id") or "",
-                                               x.get("sort_order") or 0)):
-        inv_id = r.get("sales_invoice_id")
-        if not inv_id:
+    rows = _paginate_all(lambda: db.table(table).select("*").in_(fk, list(doc_ids)))
+    by_doc: dict[str, list] = {}
+    for r in sorted(rows or [], key=lambda x: (x.get(fk) or "", x.get("sort_order") or 0)):
+        doc_id = r.get(fk)
+        if not doc_id:
             continue
-        by_invoice.setdefault(inv_id, []).append(InvoiceLine(
+        by_doc.setdefault(doc_id, []).append(InvoiceLine(
             hsn_sac_code=(r.get("hsn_sac") or "").strip(),
             description=r.get("description") or "",
             quantity=float(r.get("quantity") or 0),
@@ -198,7 +199,7 @@ def _invoice_lines_by_invoice(db, invoice_ids: list[str]) -> dict[str, list]:
             igst_paise=int(r.get("igst_paise") or 0),
             cess_paise=0,
         ))
-    return by_invoice
+    return by_doc
 
 
 def _classification_by_parent_invoice(db, firm_id: str, note_rows: list[dict]) -> dict[str, dict]:
@@ -462,12 +463,20 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # Resolved once here; the parent may pre-date the period being filed.
     note_parents = _classification_by_parent_invoice(db, firm_id, cns_raw + sdns_raw)
 
-    # Line items for table 12's HSN summary. Only sales invoices: _build_hsn_summary
-    # skips notes outright, so fetching note lines would be dead weight. Whether
-    # notes SHOULD net against the HSN summary is a real question, and a
-    # pre-existing one — left as it was rather than changed silently here.
-    lines_by_invoice = _invoice_lines_by_invoice(
-        db, [r["id"] for r in invoices_raw if r.get("id")])
+    # Line items for table 12's HSN summary — invoices AND both note types, so
+    # the summary can net (task #166). Each document type keeps its own map;
+    # ids are only unique within a table.
+    lines_by_doc = {
+        "sales_invoice": _document_lines(
+            db, "client_sales_invoice_lines", "sales_invoice_id",
+            [r["id"] for r in invoices_raw if r.get("id")]),
+        "credit_note": _document_lines(
+            db, "credit_note_lines", "credit_note_id",
+            [r["id"] for r in cns_raw if r.get("id")]),
+        "debit_note": _document_lines(
+            db, "sales_debit_note_lines", "debit_note_id",
+            [r["id"] for r in sdns_raw if r.get("id")]),
+    }
 
     def _to_gstr1(r: dict, doc_type: str) -> InvoiceForGSTR1:
         cust = cust_by_id.get(r.get("customer_id"), {})
@@ -524,9 +533,9 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             original_invoice_ref=r.get("sales_invoice_id") if doc_type != "sales_invoice" else None,
             original_invoice_date=None,
             # Real lines, so table 12 reports actual HSN/SAC codes instead of a
-            # single "OTH" row. Notes get [] — _build_hsn_summary skips them.
-            lines=(lines_by_invoice.get(r.get("id") or "", [])
-                   if doc_type == "sales_invoice" else []),
+            # single "OTH" row — for notes too, which _build_hsn_summary now
+            # nets rather than skipping.
+            lines=lines_by_doc.get(doc_type, {}).get(r.get("id") or "", []),
         )
 
     invoices = ([_to_gstr1(r, "sales_invoice") for r in invoices_raw]
