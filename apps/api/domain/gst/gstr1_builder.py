@@ -525,8 +525,19 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
 
     by_hsn: dict[str, dict] = {}
     for inv in invoices:
-        if inv.transaction_type not in ("sales_invoice",):
-            continue
+        # Notes NET against the summary rather than being skipped (task #166).
+        #
+        # Table 12 summarises the period's outward supplies HSN-wise, and every
+        # other table in the return already reports net of notes — a credit note
+        # reduces the supply it adjusts (CGST §34), a sales debit note increases
+        # it. Excluding them here left table 12 gross while tables 4-9 were net,
+        # so the two halves of one return disagreed on the same turnover. That
+        # mismatch is what GSTN's own totals validation flags.
+        #
+        # Quantity is signed too: goods returned under a credit note reduce the
+        # quantity supplied, and an unsigned qty would overstate it while the
+        # value beside it netted correctly.
+        sign = -1 if inv.transaction_type == "credit_note" else 1
         if inv.lines:
             for line in inv.lines:
                 code = (line.hsn_sac_code or "")[:max(required_digits, len(line.hsn_sac_code or ""))]
@@ -543,23 +554,23 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
                         "samt": 0,
                         "csamt": 0,
                     }
-                by_hsn[code]["qty"] += line.quantity
-                by_hsn[code]["txval"] += line.taxable_paise
-                by_hsn[code]["iamt"] += line.igst_paise
-                by_hsn[code]["camt"] += line.cgst_paise
-                by_hsn[code]["samt"] += line.sgst_paise
-                by_hsn[code]["csamt"] += line.cess_paise
+                by_hsn[code]["qty"] += sign * line.quantity
+                by_hsn[code]["txval"] += sign * line.taxable_paise
+                by_hsn[code]["iamt"] += sign * line.igst_paise
+                by_hsn[code]["camt"] += sign * line.cgst_paise
+                by_hsn[code]["samt"] += sign * line.sgst_paise
+                by_hsn[code]["csamt"] += sign * line.cess_paise
         else:
             # No line items — aggregate at invoice level (no HSN breakdown possible)
             code = "OTH"
             if code not in by_hsn:
                 by_hsn[code] = {"desc": "Other", "uqc": "OTH", "qty": 0.0,
                                  "txval": 0, "iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
-            by_hsn[code]["txval"] += inv.taxable_amount_paise
-            by_hsn[code]["iamt"] += inv.igst_paise
-            by_hsn[code]["camt"] += inv.cgst_paise
-            by_hsn[code]["samt"] += inv.sgst_paise
-            by_hsn[code]["csamt"] += inv.cess_paise
+            by_hsn[code]["txval"] += sign * inv.taxable_amount_paise
+            by_hsn[code]["iamt"] += sign * inv.igst_paise
+            by_hsn[code]["camt"] += sign * inv.cgst_paise
+            by_hsn[code]["samt"] += sign * inv.sgst_paise
+            by_hsn[code]["csamt"] += sign * inv.cess_paise
 
     return [
         {

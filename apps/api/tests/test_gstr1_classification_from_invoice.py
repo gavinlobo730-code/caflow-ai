@@ -550,3 +550,99 @@ def test_lines_are_matched_to_their_own_invoice(db):
 
     assert rows["72142090"]["txval"] == 100_000.00
     assert rows["998314"]["txval"] == 25_000.00
+
+
+# ── Task #166: notes NET into the HSN summary instead of being skipped ───────
+#
+# _build_hsn_summary skipped every non-sales_invoice, so table 12 reported the
+# period's outward supply GROSS while tables 4-9 reported it net of notes — the
+# two halves of one return disagreeing about the same turnover, which is
+# exactly what GSTN's totals validation flags.
+#
+# A credit note reduces the supply it adjusts and a sales debit note increases
+# it (CGST §34), so both now carry a sign — value, tax and quantity alike.
+
+def _seed_note_line(db, table, fk, note_id, **fields):
+    return db.seed(table, {
+        fk: note_id, "description": "Steel bars", "hsn_sac": "72142090",
+        "quantity": 1, "unit": "KGS", "rate_paise": 10_000_00,
+        "taxable_amount_paise": 10_000_00, "gst_rate_bps": 1800,
+        "cgst_paise": 900_00, "sgst_paise": 900_00, "igst_paise": 0,
+        "line_total_paise": 11_800_00, "sort_order": 0,
+        **fields,
+    })
+
+
+def test_a_credit_note_reduces_the_hsn_row_it_adjusts(db):
+    """THE test for #166. Table 12 used to ignore the note entirely and report
+    the full ₹1,00,000 as if nothing had been credited back."""
+    inv = _seed_invoice(db, invoice_no="INV-1", cgst_paise=9_000_00, sgst_paise=9_000_00)
+    _seed_line(db, inv["id"])
+    cn = _seed_credit_note(db, credit_note_no="CN-1", sales_invoice_id=inv["id"],
+                           taxable_amount_paise=10_000_00)
+    _seed_note_line(db, "credit_note_lines", "credit_note_id", cn["id"])
+
+    row = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}["72142090"]
+
+    assert row["txval"] == 90_000.00        # 100,000 - 10,000
+    assert row["camt"] == 8_100.00          # 9,000 - 900
+    assert row["samt"] == 8_100.00
+
+
+def test_the_credited_quantity_comes_off_too(db):
+    """Goods returned reduce the quantity supplied. An unsigned qty would
+    overstate it while the value beside it netted correctly."""
+    inv = _seed_invoice(db, invoice_no="INV-1")
+    _seed_line(db, inv["id"], quantity=5)
+    cn = _seed_credit_note(db, credit_note_no="CN-1", sales_invoice_id=inv["id"])
+    _seed_note_line(db, "credit_note_lines", "credit_note_id", cn["id"], quantity=2)
+
+    row = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}["72142090"]
+
+    assert row["qty"] == 3.0
+
+
+def test_a_sales_debit_note_adds_to_the_hsn_row(db):
+    """CGST §34(3) — an undercharge correction increases the supply, so it
+    moves table 12 the other way."""
+    inv = _seed_invoice(db, invoice_no="INV-1")
+    _seed_line(db, inv["id"])
+    dn = db.seed("sales_debit_notes", {
+        "firm_id": FIRM, "client_id": "CLI", "customer_id": "CUST",
+        "debit_note_no": "DN-1", "debit_note_date": "2025-06-20", "status": "issued",
+        "taxable_amount_paise": 5_000_00, "cgst_paise": 0, "sgst_paise": 0,
+        "igst_paise": 0, "total_paise": 5_000_00, "is_interstate": False,
+        "supply_state_code": "27", "sales_invoice_id": inv["id"], "deleted_at": None,
+    })
+    _seed_note_line(db, "sales_debit_note_lines", "debit_note_id", dn["id"],
+                    taxable_amount_paise=5_000_00)
+
+    row = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}["72142090"]
+
+    assert row["txval"] == 105_000.00
+
+
+def test_a_note_against_a_different_hsn_gets_its_own_row(db):
+    """A credit note need not adjust every line of its invoice. It nets against
+    the code it actually names."""
+    inv = _seed_invoice(db, invoice_no="INV-1")
+    _seed_line(db, inv["id"], hsn_sac="72142090", taxable_amount_paise=100_000_00)
+    cn = _seed_credit_note(db, credit_note_no="CN-1", sales_invoice_id=inv["id"])
+    _seed_note_line(db, "credit_note_lines", "credit_note_id", cn["id"],
+                    hsn_sac="998314", description="Consulting",
+                    taxable_amount_paise=4_000_00)
+
+    rows = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}
+
+    assert rows["72142090"]["txval"] == 100_000.00
+    assert rows["998314"]["txval"] == -4_000.00
+
+
+def test_an_invoice_with_no_note_is_unchanged(db):
+    """No-regression guard — netting must not disturb the ordinary case."""
+    inv = _seed_invoice(db, invoice_no="INV-1", cgst_paise=9_000_00, sgst_paise=9_000_00)
+    _seed_line(db, inv["id"])
+
+    row = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}["72142090"]
+
+    assert row["txval"] == 100_000.00 and row["qty"] == 2.0
