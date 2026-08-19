@@ -1,11 +1,35 @@
 # Migrations have moved
 
-All database migrations now live in a single authoritative directory:
+All database migrations live in a single authoritative directory:
 
     apps/api/migrations/
 
-They are numbered sequentially (001 through 071) and **must be applied in
-strict numeric order**. Do not add migrations here.
+They are numbered sequentially from 001 (`NNN_name.sql`) and **must be applied
+in strict numeric order**. Do not add migrations here.
+
+(The previous version of this note pinned the range as "001 through 071". Don't
+restore a number that has to be maintained by hand — `ls apps/api/migrations/`
+answers it, and being wrong here is worse than being silent.)
+
+`supabase/migrations/` is the Supabase CLI's conventional location, so it is the
+first place anyone looks — which is the only reason this note still exists. The
+project is not set up for the CLI at all (there is no `supabase/config.toml`),
+and the CLI is not how schema changes are applied here.
+
+## How migrations actually reach the database
+
+`apps/api/scripts/db/apply_migrations.py` applies anything not already recorded
+in production's `schema_migrations` table — idempotent, ordered, fails fast on
+the first error.
+
+It runs automatically: the `apply pending migrations — production` job in
+`.github/workflows/backend-ci.yml` executes it against the live Supabase project
+on every push to `main`, once the tests and the migration-apply ratchet pass.
+**Merging a migration to `main` applies it to production**, with no manual step
+in between. See `docs/deploy-migrations.md`.
+
+`apps/api/core/schema_guard.py` is the boot-time backstop for the case where
+code and schema still drift apart.
 
 ## History
 
