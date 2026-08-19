@@ -568,7 +568,12 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
             "desc": data["desc"],
             "uqc": data["uqc"],
             "qty": round(data["qty"], 3),
-            "val": _paise_to_rupees(data["txval"] + data["iamt"] + data["camt"] + data["samt"]),
+            # csamt was omitted here while every other table's `val` includes
+            # cess, so an HSN row's value understated a cess-bearing supply.
+            # Latent today — client_sales_invoice_lines has no cess column, so
+            # line cess is always 0 — but wrong the moment one is added.
+            "val": _paise_to_rupees(data["txval"] + data["iamt"] + data["camt"]
+                                    + data["samt"] + data["csamt"]),
             "txval": _paise_to_rupees(data["txval"]),
             "iamt": _paise_to_rupees(data["iamt"]),
             "camt": _paise_to_rupees(data["camt"]),

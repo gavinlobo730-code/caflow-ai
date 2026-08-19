@@ -439,3 +439,114 @@ def test_a_credit_note_against_a_nil_invoice_nets_within_table_8(db):
     cdnr_notes = {n["nt_num"] for g in (payload.get("cdnr") or []) for n in g.get("nt", [])}
     assert "CN-NIL" not in cdnr_notes, \
         "a nil-rated credit note was still declared as an ordinary 9B adjustment"
+
+
+# ── Task #165: table 12 reports real HSN codes, not one "OTH" row ────────────
+#
+# gstr1_from_books built every InvoiceForGSTR1 with lines=[], so
+# _build_hsn_summary always took its no-lines fallback and filed the whole
+# return as a single row — hsn_sc "OTH", desc "Other", qty 0 — while the line
+# rows behind it all carried an HSN/SAC code.
+#
+# _required_hsn_digits already encodes the rule (6 digits above ₹5 crore,
+# 4 above ₹1.5 crore, optional below). It was computing the right answer and
+# had nothing to truncate.
+
+def _seed_line(db, invoice_id, **fields):
+    return db.seed("client_sales_invoice_lines", {
+        "sales_invoice_id": invoice_id, "description": "Steel bars",
+        "hsn_sac": "72142090", "quantity": 2, "unit": "KGS",
+        "rate_paise": 50_000_00, "taxable_amount_paise": 100_000_00,
+        "gst_rate_bps": 1800, "cgst_paise": 9_000_00, "sgst_paise": 9_000_00,
+        "igst_paise": 0, "line_total_paise": 118_000_00, "sort_order": 0,
+        **fields,
+    })
+
+
+def _hsn_rows(payload) -> list[dict]:
+    return ((payload.get("hsn") or {}).get("data")) or []
+
+
+def test_the_hsn_summary_reports_the_real_code_not_OTH(db):
+    """THE test for #165. Before this, every return filed one 'OTH' row."""
+    inv = _seed_invoice(db, invoice_no="INV-1", cgst_paise=9_000_00, sgst_paise=9_000_00)
+    _seed_line(db, inv["id"])
+
+    rows = _hsn_rows(_payload(db))
+
+    codes = {r["hsn_sc"] for r in rows}
+    assert "OTH" not in codes, "the HSN summary still fell back to the OTH row"
+    assert codes == {"72142090"}
+    assert rows[0]["desc"] == "Steel bars"
+    assert rows[0]["uqc"] == "KGS"
+    assert rows[0]["qty"] == 2.0
+
+
+def test_line_tax_and_value_reach_the_hsn_row(db):
+    inv = _seed_invoice(db, invoice_no="INV-1", cgst_paise=9_000_00, sgst_paise=9_000_00)
+    _seed_line(db, inv["id"])
+
+    row = _hsn_rows(_payload(db))[0]
+
+    # Assert the CODE too. The no-lines fallback aggregates the same totals at
+    # invoice level, so checking only the money passes with or without the fix
+    # — it has to be pinned to the row the line actually produced.
+    assert row["hsn_sc"] == "72142090"
+    assert row["txval"] == 100_000.00
+    assert row["camt"] == 9_000.00 and row["samt"] == 9_000.00
+    assert row["val"] == 118_000.00     # txval + all tax heads, cess included
+
+
+def test_lines_sharing_an_hsn_code_aggregate_into_one_row(db):
+    inv = _seed_invoice(db, invoice_no="INV-1")
+    _seed_line(db, inv["id"], sort_order=0, taxable_amount_paise=100_000_00, quantity=2)
+    _seed_line(db, inv["id"], sort_order=1, taxable_amount_paise=40_000_00, quantity=1)
+    _seed_line(db, inv["id"], sort_order=2, hsn_sac="998314",
+               description="Consulting", unit="OTH",
+               taxable_amount_paise=25_000_00, quantity=1)
+
+    rows = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}
+
+    assert set(rows) == {"72142090", "998314"}
+    assert rows["72142090"]["txval"] == 140_000.00
+    assert rows["72142090"]["qty"] == 3.0
+    assert rows["998314"]["txval"] == 25_000.00
+
+
+def test_a_nil_rated_supply_still_appears_in_the_hsn_summary(db):
+    """Table 12 covers ALL outward supplies — a nil supply belongs here with
+    zero tax, as well as in table 8. It is not either/or."""
+    inv = _seed_invoice(db, invoice_no="INV-NIL", supply_type="nil_rated")
+    _seed_line(db, inv["id"], hsn_sac="10011000", description="Wheat",
+               gst_rate_bps=0, cgst_paise=0, sgst_paise=0)
+
+    payload = _payload(db)
+
+    row = {r["hsn_sc"]: r for r in _hsn_rows(payload)}["10011000"]
+    assert row["txval"] == 100_000.00
+    assert row["camt"] == 0 and row["samt"] == 0
+    assert (payload.get("nil") or {}).get("inv"), "table 8 lost the nil supply"
+
+
+def test_an_invoice_with_no_lines_still_falls_back_rather_than_vanishing(db):
+    """No-regression guard. Invoices predating line capture, and any row whose
+    lines failed to load, must still be reported — as OTH, not dropped."""
+    _seed_invoice(db, invoice_no="INV-NOLINES")
+
+    rows = _hsn_rows(_payload(db))
+
+    assert [r["hsn_sc"] for r in rows] == ["OTH"]
+    assert rows[0]["txval"] == 100_000.00
+
+
+def test_lines_are_matched_to_their_own_invoice(db):
+    """A line must not leak into another invoice's HSN aggregation."""
+    a = _seed_invoice(db, invoice_no="INV-A")
+    b = _seed_invoice(db, invoice_no="INV-B")
+    _seed_line(db, a["id"], hsn_sac="72142090", taxable_amount_paise=100_000_00)
+    _seed_line(db, b["id"], hsn_sac="998314", taxable_amount_paise=25_000_00)
+
+    rows = {r["hsn_sc"]: r for r in _hsn_rows(_payload(db))}
+
+    assert rows["72142090"]["txval"] == 100_000.00
+    assert rows["998314"]["txval"] == 25_000.00
