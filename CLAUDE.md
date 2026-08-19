@@ -157,7 +157,9 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
 
 ## Migrations
 
-- `apps/api/migrations/NNN_name.sql`, sequentially numbered. Highest is **270**.
+- `apps/api/migrations/NNN_name.sql`, sequentially numbered from 001. Check
+  `ls apps/api/migrations/` for the next free number rather than trusting a
+  figure written down anywhere — including here.
 - **Merging a migration to `main` applies it to the production database.** The
   `apply pending migrations — production` job runs `scripts/db/apply_migrations.py`
   against the live Supabase project on every push to `main`, once tests and the
