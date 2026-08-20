@@ -119,6 +119,18 @@ def _weighted_score(dimension_scores: dict[str, int]) -> int:
     return total_bp // 10000
 
 
+# The Product Bible scores this dimension on two tiers, "critical" and
+# "warning". ai_insights.severity has five values, and `warning` is not one of
+# them: CHECK (severity IN ('critical','high','medium','low','info')). The code
+# filtered on the literal 'warning', which no row can ever hold, so the -10
+# branch matched nothing even once the column bug below was fixed.
+#
+# `high` is the mapping: it is the only severity above `medium`, so in a
+# two-tier reading it is what sits directly under critical. This is the single
+# judgement call in this change — a wider reading (high AND medium) would score
+# clients lower, and that is a product decision, not a bug fix.
+_WARNING_SEVERITY = "high"
+
 # ─── Hard override detection ─────────────────────────────────────────────────
 
 HARD_OVERRIDE_REASONS = {
@@ -157,13 +169,40 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
 
     # 2. Advance tax missed 2+ consecutive instalments
     # Advance tax due dates per IT Act s.211: 15-Jun (15%), 15-Sep (45%), 15-Dec (75%), 15-Mar (100%)
+    #
+    # This read TWO columns that have never existed: `instalment_number` (the
+    # real one is `installment_number` — the schema spells it the American way,
+    # the code the British way) and `paid`, which is not a column at all. The
+    # table records `paid_amount_paise` and `paid_date`, so whether an
+    # instalment was missed has to be DERIVED, not read.
+    #
+    # PostgREST rejects an unknown column at parse time, so the whole select
+    # errored on every call and the `except` below swallowed it. This override
+    # has therefore never fired once, for any client, silently.
     try:
-        missed_instalments = db.table("advance_tax_payments").select("instalment_number, paid").eq("firm_id", firm_id).eq("client_id", client_id).eq("paid", False).order("instalment_number").execute().data or []
-        if len(missed_instalments) >= 2:
-            # Check consecutive
-            nums = sorted(r["instalment_number"] for r in missed_instalments)
-            for i in range(len(nums) - 1):
-                if nums[i + 1] == nums[i] + 1:
+        rows = db.table("advance_tax_payments").select(
+            "financial_year, installment_number, due_date, paid_amount_paise"
+        ).eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+
+        # Missed = the statutory due date has passed and nothing was paid
+        # against it. A part-paid instalment is a shortfall, not a miss — s.234C
+        # charges interest on it, which is a different signal from "ignored".
+        today_iso = today.isoformat()
+        by_fy: dict[str, list[int]] = {}
+        for r in rows:
+            due = r.get("due_date") or ""
+            if due and due < today_iso and not (r.get("paid_amount_paise") or 0):
+                by_fy.setdefault(r.get("financial_year") or "", []).append(
+                    int(r.get("installment_number") or 0))
+
+        # Grouped by financial year on purpose: instalment numbers restart at 1
+        # every year, so pooling them would read FY25-26 #1 and FY26-27 #2 as a
+        # consecutive pair and flag a client who missed one instalment in each
+        # of two different years.
+        for nums in by_fy.values():
+            ordered = sorted(set(nums))
+            for i in range(len(ordered) - 1):
+                if ordered[i + 1] == ordered[i] + 1:
                     return "advance_tax_2_consecutive"
     except Exception:
         pass
@@ -216,7 +255,7 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     # 6. Open critical AI insight unacknowledged > 14 days
     try:
         fourteen_days_ago = (today - timedelta(days=14)).isoformat()
-        critical_insight = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("acknowledged", False).lt("created_at", fourteen_days_ago).limit(1).execute().data or []
+        critical_insight = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("status", "open").lt("created_at", fourteen_days_ago).limit(1).execute().data or []
         if critical_insight:
             return "critical_ai_insight_14d"
     except Exception:
@@ -347,13 +386,13 @@ def _dim_ai_risk_signals_db(db, client_id: str, firm_id: str) -> int:
     score = 100
 
     try:
-        critical = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("acknowledged", False).execute().data or []
+        critical = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("status", "open").execute().data or []
         score -= len(critical) * 20
     except Exception:
         pass
 
     try:
-        warnings = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "warning").eq("acknowledged", False).execute().data or []
+        warnings = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", _WARNING_SEVERITY).eq("status", "open").execute().data or []
         score -= len(warnings) * 10
     except Exception:
         pass
@@ -631,10 +670,14 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 
     elif dimension == "document_health":
         try:
-            outstanding = db.table("document_requests").select("id, document_name, created_at").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").execute().data or []
+            # Two bugs on one line. `document_name` is not a column — the real
+            # one is `title` — and the status filter was "Pending" while the
+            # CHECK constraint only permits lowercase ('pending','fulfilled'),
+            # so even with the column fixed this matched nothing.
+            outstanding = db.table("document_requests").select("id, title, created_at").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").execute().data or []
             for d in outstanding[:5]:
                 factors.append({
-                    "label": f"Outstanding request: {d.get('document_name', 'Document')}",
+                    "label": f"Outstanding request: {d.get('title', 'Document')}",
                     "impact": -15,
                     "action_label": "Send Reminder",
                     "action_url": f"/clients/{client_id}/documents",
@@ -644,7 +687,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 
     elif dimension == "ai_risk_signals":
         try:
-            critical = db.table("ai_insights").select("id, title, created_at").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("acknowledged", False).execute().data or []
+            critical = db.table("ai_insights").select("id, title, created_at").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("status", "open").execute().data or []
             for i in critical[:5]:
                 factors.append({
                     "label": i.get("title", "Critical AI insight"),
@@ -656,7 +699,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
             pass
 
         try:
-            warnings = db.table("ai_insights").select("id, title").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "warning").eq("acknowledged", False).execute().data or []
+            warnings = db.table("ai_insights").select("id, title").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", _WARNING_SEVERITY).eq("status", "open").execute().data or []
             for i in warnings[:5]:
                 factors.append({
                     "label": i.get("title", "AI warning"),

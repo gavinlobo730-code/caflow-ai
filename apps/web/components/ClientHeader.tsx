@@ -37,6 +37,17 @@ export function ClientHeader() {
   useEffect(() => {
     setClient(null);
     setClientLoadFailed(false);
+    // clientId is empty on the first render after a route change, and is the
+    // literal "_placeholder" on the statically-exported shell before the real
+    // id is read from the URL. Sending either to PostgREST produced
+    // `id=eq.` against a uuid column — SQLSTATE 22P02, "invalid input syntax
+    // for type uuid", logged in production on every client page load. The
+    // request could never have succeeded, and its failure also tripped
+    // setClientLoadFailed, so the header flashed "Couldn't load client"
+    // before the real fetch replaced it.
+    //
+    // Same guard the journal editor already uses for exactly this reason.
+    if (!clientId || clientId === "_placeholder") return;
     const supabase = getSupabaseClient();
     supabase
       .from("clients")
