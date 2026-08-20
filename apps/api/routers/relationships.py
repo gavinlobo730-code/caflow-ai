@@ -10,7 +10,7 @@ All monetary values in integer paise — never float.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
@@ -73,6 +73,15 @@ _MOCK_CROSS_MATCHES:         list[dict] = []
 _MOCK_ENTITY_TO_ENTITY_RELS: list[dict] = []
 _MOCK_LOANS:                 list[dict] = []
 _MOCK_PROPERTIES:            list[dict] = []
+
+# Related-party loans live in their own table (migration 273). They are NOT
+# public.loans: that is a client's own borrowings register (lender_name,
+# account_number, emi_paise, outstanding_paise) which the browser reads and
+# writes directly from /accounting/loans. This router wrote to it for a long
+# time and never once succeeded -- it names entity_id, sanction_date and the
+# two section flags, none of which that table has, and loan_type values its
+# CHECK rejects.
+LOANS_TABLE = "related_party_loans"
 
 # Transfer pricing threshold: ₹1 crore = 1,00,00,000 paise (Sec 92 IT Act)
 TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00  # ₹1,00,00,000 in paise
@@ -154,11 +163,23 @@ class LoanIn(BaseModel):
     client_id: str
     entity_id: str          # borrower entity
     loan_type: str          # to_director | from_director | inter_company | other
-    principal_paise: int    # integer paise — CGST Act Sec 15 arithmetic rules apply
-    interest_rate: float    # annual % (stored as float, display only — not used in calculations)
+    # Bounded here so bad input is a 422 naming the field, not a 500 from the
+    # table's CHECK. related_party_loans requires principal_paise > 0.
+    principal_paise: int = Field(gt=0)   # integer paise — never float
+    interest_rate: float    # annual % (display only — not used in calculations)
     sanction_date: Optional[str] = None
     due_date: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("loan_type")
+    @classmethod
+    def loan_type_allowed(cls, v: str) -> str:
+        """Mirrors the table's CHECK. Without this a typo'd loan_type reached
+        Postgres and came back as an opaque 500 rather than a named field."""
+        allowed = {"to_director", "from_director", "inter_company", "other"}
+        if v not in allowed:
+            raise ValueError(f"Invalid loan_type {v!r}. Allowed: {', '.join(sorted(allowed))}.")
+        return v
 
 
 class PropertyIn(BaseModel):
@@ -800,6 +821,8 @@ def create_loan(
         "sanction_date":         data.sanction_date,
         "due_date":              data.due_date,
         "notes":                 data.notes,
+        # FKs to public.users.id (the internal id), never the Supabase auth id.
+        "created_by":            current_user.get("id"),
         "section_185_flagged":   section_185_flagged,
         "section_186_flagged":   section_186_flagged,
         "created_at":            now,
@@ -817,7 +840,7 @@ def create_loan(
             )
         return api_response(True, row)
 
-    res = db.table("loans").insert(row).execute()
+    res = db.table(LOANS_TABLE).insert(row).execute()
     created = (res.data or [row])[0]
 
     if section_185_flagged:
@@ -856,7 +879,7 @@ def list_loans(
             result = [l for l in result if l.get("section_185_flagged") or l.get("section_186_flagged")]
         return api_response(True, result)
 
-    q = db.table("loans").select("*").eq("firm_id", firm_id)
+    q = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id)
     if client_id:
         q = q.eq("client_id", client_id)
     if flagged_only:
@@ -891,7 +914,7 @@ def section_185_report(
             "total_principal_paise": total_paise,  # integer paise
         })
 
-    q = db.table("loans").select("*").eq("firm_id", firm_id).eq("section_185_flagged", True)
+    q = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id).eq("section_185_flagged", True)
     if client_id:
         q = q.eq("client_id", client_id)
     rows = q.execute().data or []
@@ -1066,10 +1089,10 @@ def related_party_report(
         ).execute().data or []
         e2e_rels.extend(rows)
 
-    sec185_loans = db.table("loans").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("section_185_flagged", True).execute().data or []
+    sec185_loans = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("section_185_flagged", True).execute().data or []
 
     # Transfer pricing threshold: Sec 92 IT Act — international related party > ₹1 crore
-    tp_rows = db.table("loans").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("loan_type", "inter_company").gte("principal_paise", TRANSFER_PRICING_THRESHOLD_PAISE).execute().data or []
+    tp_rows = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("loan_type", "inter_company").gte("principal_paise", TRANSFER_PRICING_THRESHOLD_PAISE).execute().data or []
 
     return api_response(True, {
         "client_id":              client_id,

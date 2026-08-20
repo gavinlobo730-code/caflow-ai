@@ -60,6 +60,11 @@ REAL_COLUMNS: dict[str, set[str]] = {
         "is_urgent", "status", "fulfilled_at", "storage_path", "file_name",
         "created_at",
     },
+    "entities": {
+        "id", "firm_id", "entity_type", "full_name", "pan", "gstin", "email",
+        "phone", "address", "notes", "is_active", "created_by", "created_at",
+        "updated_at", "date_of_birth",
+    },
     "notifications": {
         "id", "firm_id", "user_id", "client_id", "type", "title", "body",
         "severity", "is_read", "action_url", "created_at", "is_archived",
@@ -68,6 +73,24 @@ REAL_COLUMNS: dict[str, set[str]] = {
     "portal_messages": {
         "id", "firm_id", "client_id", "sender_type", "sender_name", "body",
         "is_read", "read_at", "created_at",
+    },
+    # Migration 273. NOT public.loans — that is a client's own borrowings
+    # register (lender_name, account_number, emi_paise) which the browser reads
+    # directly. relationships.py wrote its related-party loans there for a long
+    # time and never once succeeded.
+    "related_party_loans": {
+        "id", "firm_id", "client_id", "entity_id", "loan_type",
+        "principal_paise", "interest_rate", "sanction_date", "due_date",
+        "notes", "section_185_flagged", "section_186_flagged", "created_by",
+        "created_at", "updated_at",
+    },
+    # The borrowings register, listed so a test that confuses the two fails
+    # here rather than silently passing against a permissive double.
+    "loans": {
+        "id", "firm_id", "client_id", "loan_type", "lender_name",
+        "account_number", "principal_paise", "outstanding_paise",
+        "interest_rate_percent", "emi_paise", "disbursement_date",
+        "maturity_date", "status", "notes", "created_at",
     },
     "users": {
         "id", "firm_id", "full_name", "email", "role", "is_active",
@@ -92,6 +115,13 @@ REAL_CHECK_VALUES: dict[tuple[str, str], set[str]] = {
     },
     ("portal_messages", "sender_type"): {"ca", "client"},
     ("users", "role"): {"Partner", "Manager", "Executive", "Reviewer", "Client"},
+    ("related_party_loans", "loan_type"): {
+        "to_director", "from_director", "inter_company", "other"},
+    # The borrowings register permits an entirely different set — which is the
+    # whole reason these are two tables. `to_director` is not a bank product.
+    ("loans", "loan_type"): {
+        "term_loan", "overdraft", "cc", "home_loan", "vehicle_loan",
+        "personal_loan", "other"},
 }
 
 
@@ -155,7 +185,11 @@ class _Query:
         return self
 
     def single(self):
+        # supabase-py's .single() returns the ROW, not a one-element list.
+        # Returning a list here let a caller that indexes or .get()s the
+        # result pass against the double and fail against the real client.
         self._limit = 1
+        self._single = True
         return self
 
     # ── write ────────────────────────────────────────────────────────────────
@@ -215,7 +249,10 @@ class _Query:
             return _Result(hit)
         if getattr(self, "_pending", None) is not None:
             return _Result(self._pending)
-        return _Result(self._matching()[: self._limit])
+        rows = self._matching()[: self._limit]
+        if getattr(self, "_single", False):
+            return _Result(rows[0] if rows else None)
+        return _Result(rows)
 
 
 class _Result:
