@@ -90,7 +90,13 @@ def list_document_requests(
 
     res = (
         db.table("document_requests")
-        .select("id, firm_id, client_id, title, description, is_urgent, status, fulfilled_at, due_date, created_at")
+        # `due_date` is not a column on document_requests and never has been —
+        # the table carries is_urgent as its only urgency signal. PostgREST
+        # rejects the whole select at parse time, so this endpoint returned 500
+        # on every call rather than degrading to a missing field. No caller
+        # reads a due date off a document request, so it is dropped rather than
+        # inventing a column to satisfy a select nobody depended on.
+        .select("id, firm_id, client_id, title, description, is_urgent, status, fulfilled_at, created_at")
         .eq("firm_id", firm_id)
         .eq("client_id", client_id)
         .order("created_at", desc=True)
@@ -181,15 +187,31 @@ def list_messages(
         rows = portal_svc.list_messages(firm_id, client_id)
         return api_response(True, rows)
 
+    # The table stores `body` and `sender_type` ('ca'|'client'); this asked for
+    # `text` and `from_ca`, neither of which exists, so the select was rejected
+    # at parse time and the endpoint returned 500 on every call.
+    #
+    # The API shape is deliberately UNCHANGED. portal_service's mock path (the
+    # branch above) returns text/from_ca, so that is the contract callers were
+    # written against — the fix belongs at the database boundary, not in the
+    # response. Mapping here keeps both paths returning the same thing.
     res = (
         db.table("portal_messages")
-        .select("id, firm_id, client_id, text, from_ca, created_at")
+        .select("id, firm_id, client_id, body, sender_type, created_at")
         .eq("firm_id", firm_id)
         .eq("client_id", client_id)
         .order("created_at", desc=True)
         .execute()
     )
-    return api_response(True, res.data or [])
+    return api_response(True, [
+        {
+            "id": m["id"], "firm_id": m["firm_id"], "client_id": m["client_id"],
+            "text": m.get("body"),
+            "from_ca": m.get("sender_type") == "ca",
+            "created_at": m.get("created_at"),
+        }
+        for m in (res.data or [])
+    ])
 
 
 @router.post("/messages")
@@ -212,17 +234,28 @@ def send_message(
         return api_response(True, record)
 
     now = _now()
-    record = {
+    # Same column mismatch as the read above, and the same 500: this INSERT
+    # named `text` and `from_ca`, so no portal message has ever been written
+    # through this endpoint. sender_type is CHECKed to ('ca','client').
+    row = {
         "id": str(uuid.uuid4()),
         "firm_id": firm_id,
         "client_id": body.client_id,
-        "text": body.text,
-        "from_ca": body.from_ca,
+        "body": body.text,
+        "sender_type": "ca" if body.from_ca else "client",
         "created_at": now,
     }
 
-    res = db.table("portal_messages").insert(record).execute()
-    return api_response(True, res.data[0] if res.data else record)
+    res = db.table("portal_messages").insert(row).execute()
+    written = (res.data or [row])[0]
+    # Answer in the shape callers expect (see the read path's note).
+    return api_response(True, {
+        "id": written["id"], "firm_id": written["firm_id"],
+        "client_id": written["client_id"],
+        "text": written.get("body"),
+        "from_ca": written.get("sender_type") == "ca",
+        "created_at": written.get("created_at"),
+    })
 
 
 # ── Dues ──────────────────────────────────────────────────────────────────────
