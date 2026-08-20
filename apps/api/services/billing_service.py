@@ -184,7 +184,11 @@ def _stamp_billing_fields(firm_id: str, invoice: dict, schedule_id: str, period:
     except Exception as e:  # unique(billing_schedule_id, billing_period) race
         _logger.warning("duplicate billing run for schedule %s period %s: %s", schedule_id, period, e)
         # remove the orphan draft (no journal posted yet) and return the winner
-        _db().table("client_sales_invoice_lines").delete().eq("invoice_id", invoice_id).execute()
+        # The FK column is sales_invoice_id, not invoice_id. As written this
+        # raised 42703, so the recovery path never reached the two statements
+        # below it: the orphan draft invoice was left behind AND the caller got
+        # an "unknown column" error instead of the winning invoice.
+        _db().table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
         _db().table("client_sales_invoices").delete().eq("id", invoice_id).execute()
         winner = _find_generated(firm_id, schedule_id, period)
         if winner:

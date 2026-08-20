@@ -46,95 +46,16 @@ import pytest
 import routers.health as health
 
 
-# Real columns, read from production information_schema. If a migration adds
-# one, add it here — a double that lags the schema would reject a legitimate
-# new query and send someone hunting for a bug that is not there.
-REAL_COLUMNS = {
-    "advance_tax_payments": {
-        "id", "firm_id", "client_id", "financial_year", "installment_number",
-        "due_date", "required_percent", "estimated_tax_paise",
-        "paid_amount_paise", "paid_date", "challan_number", "created_at",
-    },
-    "ai_insights": {
-        "id", "client_id", "insight_type", "severity", "title", "description",
-        "recommended_action", "related_entity_type", "related_entity_id",
-        "status", "resolved_by", "resolved_at", "created_at", "updated_at",
-        "deleted_at", "firm_id", "category",
-    },
-    "document_requests": {
-        "id", "firm_id", "client_id", "requested_by", "title", "description",
-        "is_urgent", "status", "fulfilled_at", "storage_path", "file_name",
-        "created_at",
-    },
-}
+# The double and the real column lists live in tests/_schema_checked_db.py so
+# one place stays in step with the schema. See its docstring for why this
+# class of bug needs a checker at all.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _schema_checked_db import PhantomColumn, SchemaCheckedDB  # noqa: E402
 
 FIRM = "firm-1"
 CLIENT = "client-1"
-
-
-class PhantomColumn(Exception):
-    """Stands in for PostgREST's 42703, raised at parse time."""
-
-
-class _Query:
-    def __init__(self, db: "SchemaCheckedDB", table: str):
-        self.db, self.table = db, table
-        self._filters: list[tuple[str, str, object]] = []
-
-    def _check(self, col: str) -> None:
-        known = self.db.columns.get(self.table)
-        if known is None:
-            raise PhantomColumn(f"relation {self.table!r} does not exist")
-        if col not in known:
-            raise PhantomColumn(f"column {self.table}.{col} does not exist")
-
-    def select(self, expr: str):
-        for col in (c.strip() for c in expr.split(",")):
-            if col and col != "*":
-                self._check(col)
-        return self
-
-    def _filter(self, col: str, val, op: str):
-        self._check(col)
-        self._filters.append((op, col, val))
-        return self
-
-    def eq(self, col, val):   return self._filter(col, val, "eq")
-    def lt(self, col, val):   return self._filter(col, val, "lt")
-    def gt(self, col, val):   return self._filter(col, val, "gt")
-    def lte(self, col, val):  return self._filter(col, val, "lte")
-    def gte(self, col, val):  return self._filter(col, val, "gte")
-    def in_(self, col, val):  return self._filter(col, val, "in")
-    def order(self, col, **kw):
-        self._check(col)
-        return self
-    def limit(self, n):
-        self._limit = n
-        return self
-
-    def execute(self):
-        rows = list(self.db.rows.get(self.table, []))
-        for op, col, val in self._filters:
-            if op == "eq":
-                rows = [r for r in rows if r.get(col) == val]
-            elif op == "lt":
-                rows = [r for r in rows if str(r.get(col) or "") < str(val)]
-            elif op == "gt":
-                rows = [r for r in rows if str(r.get(col) or "") > str(val)]
-            elif op == "in":
-                rows = [r for r in rows if r.get(col) in val]
-        return type("Result", (), {"data": rows[: getattr(self, "_limit", None)]})()
-
-
-class SchemaCheckedDB:
-    """PostgREST-shaped double that refuses columns the real schema lacks."""
-
-    def __init__(self, rows=None):
-        self.columns = REAL_COLUMNS
-        self.rows = rows or {}
-
-    def table(self, name: str) -> _Query:
-        return _Query(self, name)
 
 
 def _atp(fy: str, number: int, due: str, paid_paise: int | None) -> dict:

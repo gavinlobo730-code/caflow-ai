@@ -226,17 +226,33 @@ def extract_notice(
                 from core.supabase_client import get_supabase
                 _db = get_supabase()
                 # Get all partners for this firm
-                partners = _db.table("team_members").select("user_id,email").eq("firm_id", firm_id).eq("role", "partner").execute()
+                # Three bugs on one line. `team_members` has no user_id column
+                # at all; notifications.user_id FKs to users(id), so `users` is
+                # the table this has to read. And users.role is CHECKed to
+                # capitalised values (Partner|Manager|Executive|Reviewer|
+                # Client), so the lowercase "partner" filter would have matched
+                # nothing even against the right table. No partner has ever
+                # been notified of a government notice.
+                partners = _db.table("users").select("id,email").eq("firm_id", firm_id).eq("role", "Partner").execute()
                 for partner in (partners.data or []):
+                    # The row shape was wrong in three more ways, none of which
+                    # a caller could see because the whole block is fail-soft:
+                    #   message      -> the column is `body`
+                    #   entity_type  -> not a column; entity_id is not either.
+                    #                   The table carries `metadata` (jsonb) and
+                    #                   `action_url` for this.
+                    #   type         -> "compliance_alert" is not in the CHECK.
+                    #                   A notice carrying a response deadline is
+                    #                   a compliance_due.
                     _db.table("notifications").insert({
                         "firm_id": firm_id,
-                        "user_id": partner["user_id"],
+                        "user_id": partner["id"],
                         "title": f"New Government Notice: {extracted.get('authority', 'Unknown')}",
-                        "message": f"Reference: {extracted.get('reference_no', 'N/A')}. Response due: {extracted.get('response_due_date', 'Unknown')}",
-                        "type": "compliance_alert",
+                        "body": f"Reference: {extracted.get('reference_no', 'N/A')}. Response due: {extracted.get('response_due_date', 'Unknown')}",
+                        "type": "compliance_due",
                         "severity": "high",
-                        "entity_type": "government_notice",
-                        "entity_id": notice_id,
+                        "action_url": "/income-tax/notices",
+                        "metadata": {"entity_type": "government_notice", "entity_id": notice_id},
                         "is_read": False,
                         "created_at": datetime.utcnow().isoformat(),
                     }).execute()
