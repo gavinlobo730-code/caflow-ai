@@ -13,6 +13,7 @@ from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from services.journal_posting_service import journal_posting_service
 from core.exceptions import NotFoundError, ValidationError
+from core.observability import capture_posting_failure
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
 from services.audit_service import log_event
@@ -129,14 +130,56 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
             entry = manual_journal_service.create(
                 db, current_user["firm_id"], payload, actor_id=current_user.get("id")
             )
-        log_event(current_user["firm_id"], "journal_entry", entry.get("id", ""), "create",
-                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-                  new_data=entry)
-        return api_response(True, entry)
     except HTTPException:
         raise
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except Exception as exc:
+        # Anything else is a server-side failure the CA cannot act on, and until
+        # now it reached them as a bare 500 "Internal server error" with nothing
+        # logged beyond the traceback. That is what made the 42501 permission
+        # error behind task #270 cost a database-log dive to identify: the API
+        # said nothing, and the one tool built to catch exactly this class of
+        # failure was never called.
+        #
+        # capture_posting_failure tags the Sentry event with the document, so
+        # the next one is traceable to the entry that caused it rather than to
+        # a stack trace alone.
+        capture_posting_failure(
+            exc, operation="create_journal_entry",
+            firm_id=current_user.get("firm_id"), client_id=data.client_id,
+            reference_no=data.reference_no, entry_date=data.entry_date,
+            status=data.status,
+        )
+        # MUST stay a non-2xx. lib/api/index.ts request() only throws on !res.ok,
+        # so the 200 + {"success": false} shape used elsewhere in this codebase
+        # would leave the journal editor reporting "Journal entry posted",
+        # writing a timeline event and navigating away, having posted nothing.
+        #
+        # "was not written" is safe to assert: the kernel's insert goes through
+        # post_journal_atomic, which is one transaction — it either wrote the
+        # entry and every line, or nothing at all.
+        raise HTTPException(
+            status_code=500,
+            detail="Could not post this journal entry — nothing was written to the "
+                   "ledger. The failure has been logged for the team.",
+        )
+
+    # Audit deliberately sits OUTSIDE the block above. It is not part of the
+    # posting transaction, and a failed audit write must never be reported to
+    # the CA as a failed post: the entry is on the books by this point, and
+    # telling them otherwise invites a retry of something that already happened.
+    try:
+        log_event(current_user["firm_id"], "journal_entry", entry.get("id", ""), "create",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data=entry)
+    except Exception as exc:  # noqa: BLE001 — never fail a completed post on its audit
+        capture_posting_failure(
+            exc, operation="create_journal_entry.audit",
+            firm_id=current_user.get("firm_id"), client_id=data.client_id,
+            journal_entry_id=entry.get("id"),
+        )
+    return api_response(True, entry)
 
 
 def _prod_db():
