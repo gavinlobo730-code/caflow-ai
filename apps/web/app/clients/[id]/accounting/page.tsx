@@ -680,26 +680,35 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
   ];
 
   // ── Bulk actions ───────────────────────────────────────────────────────────
-  // Selecting rows is one thing; what you may DO with them is two different
-  // things, because a draft and a posted entry are not the same object.
+  // Selecting rows is one thing; what you may DO with them is another.
   //
   //   Draft   off-books. is_posted = false, in no report, in no return.
-  //           Discarding one changes no balance, so it is a plain delete.
-  //   Posted  on the books. NEVER deletable — the ledger is append-only, the
-  //           database enforces it (trg_journal_immutability_delete), and the
-  //           correction is an equal-and-opposite REVERSAL that leaves the
-  //           original standing. That is the audit trail; a deletion is its
-  //           absence.
+  //           Deleting one changes no balance.
+  //   Posted  on the books, and deletable while its period is still open —
+  //           manual entries only, judged by the same gate that governs
+  //           editing one (migrations 275/276). This is TallyPrime's position,
+  //           not a loosening of it: Edit Log is mandatory and non-disableable
+  //           under the proviso to Rule 3(1), and Tally still lets you delete a
+  //           voucher. The LOG is what is immutable, not the entry. Ours keeps
+  //           the row, its lines and the account names.
   //
-  // So one "Delete" button over a mixed selection would be a lie. Each action
-  // states which rows it will touch and skips the rest by name, rather than
-  // failing halfway through and leaving the CA to work out what happened.
+  // Reversal stays, because it is a different act: an equal-and-opposite entry
+  // that leaves the original standing, which is what a real correction to a
+  // real transaction looks like. Deletion is for what was never a transaction.
+  //
+  // Neither action decides eligibility here. The server owns every rule, and a
+  // copy of it in the browser would drift from the one that matters.
   const runBulk = useCallback(async (
     rows: JournalEntry[],
     applies: (e: JournalEntry) => boolean,
     act: (e: JournalEntry) => Promise<unknown>,
-    verb: string,        // imperative, for "Nothing to discard"
-    pastTense: string,    // "discard" + "d" spelled "discardd"; not every verb takes a d
+    verb: string,        // imperative, for "Nothing to delete"
+    pastTense: string,    // "delete" + "d" spelled "deleted"; not every verb takes a d
+    // Ids the server removed BESIDES the one asked about — a reversed entry and
+    // its reversal go together, so one call can clear two rows. Without this the
+    // second row's turn comes round to a 404 reported as a failure, and the
+    // count says 1 while two entries left the screen.
+    collateral?: (result: unknown) => string[],
   ) => {
     const eligible = rows.filter(applies);
     const skipped = rows.length - eligible.length;
@@ -714,13 +723,27 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
     // kernel, and firing a dozen at once at a cold free-tier instance is how a
     // half-applied batch happens. A handful of entries is not worth the risk.
     const failed: string[] = [];
+    const gone = new Set<string>();
     for (const e of eligible) {
-      try { await act(e); }
+      if (gone.has(e.id)) continue;   // already taken by an earlier row's pair
+      try {
+        const result = await act(e);
+        gone.add(e.id);
+        collateral?.(result).forEach((id) => gone.add(id));
+      }
       catch (err) { failed.push(`${e.reference_no || e.id.slice(0, 8)}: ${err instanceof Error ? err.message : "failed"}`); }
     }
-    const done = eligible.length - failed.length;
+    // Counted from what the server says it REMOVED, not from the rows clicked —
+    // the two differ in both directions once a pair can go in one call. Removed
+    // and refused are reported as separate numbers rather than as "N of M",
+    // which would read "2 of 2 deleted" for a pair delete alongside a refusal.
+    const removed = gone.size;
     toast({
-      title: failed.length ? `${done} of ${eligible.length} ${pastTense}` : `${done} ${pastTense}`,
+      title: failed.length
+        ? `${removed} ${pastTense}, ${failed.length} refused`
+        : removed > eligible.length
+          ? `${removed} ${pastTense} (${eligible.length} selected, with reversals)`
+          : `${removed} ${pastTense}`,
       description: [
         skipped ? `${skipped} skipped (not eligible).` : "",
         failed.length ? failed.join(" · ") : "",
@@ -733,7 +756,10 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
   const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => [
     {
       id: "discard",
-      label: "Discard",
+      // "Delete", not "Discard". A CA arriving from Tally goes looking for
+      // Delete, finds a word the product invented, and concludes the feature
+      // does not exist. It does; only the label was in the way.
+      label: "Delete",
       icon: <Trash2 size={13} />,
       variant: "danger",
       // Drafts always; a MANUAL posted entry while its period is open
@@ -741,17 +767,26 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
       // decides — an auto-posted entry, a locked year or a filed return each
       // come back with a sentence naming the reason, which runBulk shows.
       confirm:
-        "Discard the selected entries? Drafts go immediately. A posted entry goes " +
+        "Delete the selected entries? Drafts go immediately. A posted entry goes " +
         "only if you typed it yourself and its period is still open — anything " +
-        "auto-posted, reversed, or covered by a filed return is refused and named.",
+        "auto-posted or covered by a filed return is refused and named. An entry " +
+        "you reversed is deleted together with its reversal; the pair nets to " +
+        "zero, so no balance moves. Deleted entries leave every screen and every " +
+        "report, and stay in Settings → Audit Log with their lines.",
       run: (rows) => runBulk(
         rows,
         // No client-side eligibility rule beyond "not already gone". Deciding
         // here which posted entries qualify would be a second copy of the
         // period gate, and the two would drift.
         () => true,
-        (e) => api.accounting.discardJournalEntry(e.id),
-        "discard", "discarded",
+        // with_pair, because the confirm above said so. Half a pair is still
+        // refused by the server either way round — it would strand the other.
+        (e) => api.accounting.discardJournalEntry(e.id, true),
+        "delete", "deleted",
+        (result) => {
+          const ids = (result as { data?: { deleted_ids?: unknown } } | null)?.data?.deleted_ids;
+          return Array.isArray(ids) ? ids.filter((i): i is string => typeof i === "string") : [];
+        },
       ),
     },
     {

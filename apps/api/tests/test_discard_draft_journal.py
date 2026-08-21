@@ -5,12 +5,13 @@ WHAT CHANGED, AND WHY
     A draft is off-books: is_posted = false, in no report, in no return.
     Discarding one changes no balance, so it is a plain soft delete here.
 
-    A POSTED entry now goes to discard_posted_journal (migration 275), which
-    holds the row FOR UPDATE, applies the three limits — manual only, period
-    open per journal_period_lock_reason, not entangled with a reversal — and
-    rebuilds the reporting passbook, all in one transaction. None of that can
-    be split across the API and the database without racing itself, so the
-    endpoint's job is to route and to surface the function's message.
+    A POSTED entry now goes to discard_posted_journal (migrations 275, 276),
+    which holds the row and its counterpart FOR UPDATE, applies the limits —
+    manual only, period open per journal_period_lock_reason for EACH date, and
+    never half a reversal pair — writes the deletion record, and rebuilds the
+    reporting passbook, all in one transaction. None of that can be split
+    across the API and the database without racing itself, so the endpoint's
+    job is to route, to pass the pair flag, and to surface the message.
 
     Migration 266 established the principle for editing: absolute immutability
     is stricter than Indian law, because Rule 3(1) of the Companies (Accounts)
@@ -93,6 +94,42 @@ def test_a_posted_entry_is_routed_to_the_sql_function(client):
     assert [c.fn for c in client.db.rpc_calls] == ["discard_posted_journal"]
 
 
+# ── The pair flag ────────────────────────────────────────────────────────────
+
+def test_the_pair_flag_defaults_to_off(client):
+    """Deleting two rows when the CA asked for one is a surprise, so the API
+    default is the conservative one and the caller opts in."""
+    client.delete(f"/api/accounting/journal/{POSTED}")
+    assert client.db.rpc_calls[0].params["p_with_pair"] is False
+
+
+def test_the_pair_flag_is_passed_through(client):
+    client.delete(f"/api/accounting/journal/{POSTED}?with_pair=true")
+    assert client.db.rpc_calls[0].params["p_with_pair"] is True
+
+
+def test_the_ids_the_function_actually_deleted_come_back(client, monkeypatch):
+    """One call can remove two rows. A caller told only "deleted: true" refreshes
+    the screen and sees a second entry gone with no explanation."""
+    db = client.db
+    real_rpc = db.rpc
+    mate = "00000000-0000-0000-0000-0000000000p2"
+    monkeypatch.setattr(db, "rpc", lambda fn, params=None: real_rpc(fn, params).returns(
+        {"id": POSTED, "discarded": True, "deleted_ids": [POSTED, mate], "pair": True}))
+
+    res = client.delete(f"/api/accounting/journal/{POSTED}?with_pair=true")
+    assert res.status_code == 200, res.text
+    assert res.json()["data"]["deleted_ids"] == [POSTED, mate]
+
+
+def test_a_single_deletion_still_reports_its_own_id(client):
+    """The double returns [] for an unstubbed rpc, which is what a real call
+    returns when PostgREST gives back nothing useful. The endpoint must fall
+    back to the entry it was asked about rather than reporting nothing."""
+    res = client.delete(f"/api/accounting/journal/{POSTED}")
+    assert res.json()["data"]["deleted_ids"] == [POSTED]
+
+
 def test_the_function_is_called_with_the_callers_firm_and_the_entrys_client(client):
     client.delete(f"/api/accounting/journal/{POSTED}")
     params = client.db.rpc_calls[0].params
@@ -128,6 +165,60 @@ def test_the_functions_refusal_reaches_the_ca_verbatim(client, monkeypatch):
     res = client.delete(f"/api/accounting/journal/{POSTED}")
     assert res.status_code == 422
     assert "GSTR-3B covering this date was filed on 18 Jul 2026." in res.json()["detail"]
+
+
+# ── The deletion record ──────────────────────────────────────────────────────
+# A soft delete is an UPDATE on journal_entries alone. trg_audit_capture fires
+# with the HEADER; trg_audit_capture_line does not fire at all, because the
+# lines are never touched. Without a snapshot the trail says an entry was
+# deleted and nothing about what was in it.
+
+def test_a_draft_deletion_snapshots_the_entry_first(client):
+    client.delete(f"/api/accounting/journal/{DRAFT}")
+    assert [c.fn for c in client.db.rpc_calls] == ["journal_entry_snapshot"]
+    assert client.db.rpc_calls[0].params["p_entry_id"] == DRAFT
+
+
+def test_the_snapshot_goes_into_the_audit_record(client, monkeypatch):
+    logged: list[dict] = []
+    monkeypatch.setattr(acct, "log_event",
+                        lambda *a, **k: logged.append({"args": a, "kw": k}))
+    db = client.db
+    real_rpc = db.rpc
+    full = {"id": DRAFT, "reference_no": "JNL-001",
+            "lines": [{"account_code": "1000", "debit_paise": 5000}]}
+    monkeypatch.setattr(db, "rpc",
+                        lambda fn, params=None: real_rpc(fn, params).returns(full))
+
+    client.delete(f"/api/accounting/journal/{DRAFT}")
+    assert logged, "a draft deletion must be logged"
+    assert logged[0]["kw"]["old_data"] == full, "the log got the thin row, not the snapshot"
+
+
+def test_a_failed_snapshot_does_not_refuse_the_draft_deletion(client, monkeypatch):
+    """A draft is in no report and no return. A thinner record is not worth
+    refusing over — but it is reported, not swallowed."""
+    seen: list[str] = []
+    monkeypatch.setattr(acct, "capture_soft_failure",
+                        lambda exc, **k: seen.append(k.get("operation", "")))
+    db = client.db
+    real_rpc = db.rpc
+    monkeypatch.setattr(db, "rpc", lambda fn, params=None: real_rpc(fn, params).raise_with(
+        RuntimeError("snapshot unavailable")))
+
+    res = client.delete(f"/api/accounting/journal/{DRAFT}")
+    assert res.status_code == 200, res.text
+    assert seen == ["accounting.draft_discard_snapshot"], seen
+
+
+def test_a_posted_deletion_is_not_logged_twice(client, monkeypatch):
+    """discard_posted_journal writes the record inside the transaction that
+    performs the deletion. A second log_event out here would put a thinner row
+    in the trail for the same action, under a different verb."""
+    logged: list[tuple] = []
+    monkeypatch.setattr(acct, "log_event", lambda *a, **k: logged.append(a))
+    client.delete(f"/api/accounting/journal/{POSTED}")
+    assert logged == [], "the endpoint logged a posted deletion the function already logged"
 
 
 def test_an_unknown_entry_is_a_404(client):

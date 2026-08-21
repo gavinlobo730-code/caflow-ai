@@ -47,7 +47,7 @@ frontend UI on the Purchases page.)*
 |---|---|
 | Integer paise only (no float) | Everywhere; kernel + models + reporting |
 | Double-entry (Σ debit = Σ credit) | `_create_journal` (asserts before insert) |
-| Posted entries are immutable | DB triggers `trg_journal_immutability` (update) / `trg_journal_immutability_delete` (delete) |
+| Posted entries are never hard-deleted or rewritten in place | DB triggers `trg_journal_immutability` (update) / `trg_journal_immutability_delete` (delete). A **manual** entry may be edited or soft-deleted while its period is open — `edit_posted_journal` / `discard_posted_journal`, both gated on `journal_period_lock_reason` (migrations 266, 275, 276) |
 | No posting into a locked FY | `period_validation_service.validate_posting_date` on every posting/edit path (see `03-financial-years.md`) |
 | Multi-tenant isolation | RLS + firm-scoped writes; `created_by` FKs to internal `users.id` |
 | Auditability | `trg_audit_capture` + `services/audit_service.log_event` |
