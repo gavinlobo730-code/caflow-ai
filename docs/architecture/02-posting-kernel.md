@@ -63,11 +63,20 @@ Callers reference accounts by intent, not id. `_find_account(db, firm_id, client
 ## Immutability (DB triggers)
 
 On `journal_entries`:
-- `trg_journal_immutability` → `prevent_posted_journal_update` (blocks UPDATE of a posted entry, except the draft→posted transition).
-- `trg_journal_immutability_delete` → `prevent_posted_journal_delete` (blocks DELETE of any `is_posted=TRUE` entry — "create a reversal instead").
+- `trg_journal_immutability` → `prevent_posted_journal_update` (blocks UPDATE of a posted entry, except the draft→posted transition, the `is_reversed` stamp a reversal sets on its original (migration 274), and a write inside `app.journal_edit`).
+- `trg_journal_immutability_delete` → `prevent_posted_journal_delete` (blocks hard DELETE of any `is_posted=TRUE` entry).
 - `trg_audit_capture` (audit) and `trg_journal_updated_at` (timestamps).
 
-A consequence: a posted entry can never be deleted or replaced in place. Workflows that keep derived GL state in sync (e.g. opening balances) therefore use **append-only adjusting entries**, never delete-and-recreate — see `04-opening-balances.md`.
+A consequence: a posted entry can never be **hard-deleted or rewritten in place**. Workflows that keep derived GL state in sync (e.g. opening balances) therefore use **append-only adjusting entries**, never delete-and-recreate — see `04-opening-balances.md`.
+
+That is narrower than "immutable", and deliberately so. `app.journal_edit` is a transaction-local GUC that only two SECURITY DEFINER functions may set, and both apply the same gate — `journal_period_lock_reason`, which returns a CA-facing sentence or nothing:
+
+- `edit_posted_journal` (migration 266) rewrites a **manual** entry's lines while its period is open.
+- `discard_posted_journal` (275, 276) soft-deletes one — `deleted_at`, which every read path and `apb_rebuild_client` already filter, so the entry leaves every screen, report and return at once while the row and its lines stay. On `p_with_pair` a reversed entry and its reversal go together: the pair strands nothing and nets to zero, so no balance moves. Half a pair alone is refused either way round.
+
+Both write to `audit_log` — the edit through `trg_audit_capture_line`, the deletion through an explicit in-transaction INSERT carrying the whole entry, every line, and the account codes and names resolved. That INSERT has **no exception handler**, unlike every audit trigger in the schema: those swallow so auditing can never break a user's write, which is the right trade only when the row survives the failure.
+
+The statutory basis is the proviso to Rule 3(1) of the Companies (Accounts) Rules 2014, which mandates an **edit log** of each change — presupposing that entries change. TallyPrime 3.0's Edit Log meets the same rule and still permits deleting a voucher. What must be immutable is the log.
 
 ## Attachments
 

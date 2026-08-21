@@ -371,9 +371,14 @@ def update_journal_entry(
 @router.delete("/journal/{entry_id}")
 def discard_journal_entry(
     entry_id: str,
+    with_pair: bool = Query(
+        False,
+        description="Delete a reversed entry together with its reversal. Without "
+                    "it either half alone is refused, naming the other.",
+    ),
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Discard a MANUAL journal entry — draft, or posted while its period is open.
+    """Delete a MANUAL journal entry — draft, or posted while its period is open.
 
     A DRAFT is off-books (is_posted = false, in no report, in no return), so
     discarding one changes no balance.
@@ -391,13 +396,16 @@ def discard_journal_entry(
         its document, or the document is left pointing at nothing;
       * the period must be open, judged by journal_period_lock_reason, the SAME
         function the edit path calls, so the two rules cannot drift apart;
-      * not entangled with a reversal, either direction.
+      * half a reversal pair, never. Migration 276 lets the PAIR go together on
+        with_pair, since a pair strands nothing and nets to zero; without it,
+        either half alone is refused by a message naming the other.
 
     Soft delete throughout: deleted_at is set and the row and its lines survive,
     which is what keeps the edit log meaningful — a deletion that records
     nothing of what was deleted is not an edit log. Every read path already
     filters deleted_at, including the passbook rebuild, so the entry leaves
-    every surface at once.
+    every surface at once. This is TallyPrime's shape too: Edit Log keeps the
+    deleted voucher, the books do not.
     """
     db = _prod_db()
     if not db:
@@ -411,40 +419,76 @@ def discard_journal_entry(
     if not row:
         raise HTTPException(status_code=404, detail="Journal entry not found.")
 
+    deleted: list[str] = [entry_id]
     if row.get("is_posted"):
-        # Every check lives in the SQL function: it holds FOR UPDATE on the row,
-        # consults the period gate, and rebuilds the passbook in one
-        # transaction. Doing any of it here would race the others.
+        # Every check lives in the SQL function: it holds FOR UPDATE on the row
+        # AND on its counterpart, consults the period gate for each date, writes
+        # the deletion record, and rebuilds the passbook in one transaction.
+        # Doing any of it here would race the others.
         try:
-            db.rpc("discard_posted_journal", {
+            res = db.rpc("discard_posted_journal", {
                 "p_firm": current_user["firm_id"],
                 "p_client": row.get("client_id"),
                 "p_entry_id": entry_id,
                 "p_actor": current_user.get("id"),
+                "p_with_pair": with_pair,
             }).execute()
+            # A pair deletes two rows from one call. The caller has to be told,
+            # or a screen refresh looks like a second entry vanished on its own.
+            payload = getattr(res, "data", None)
+            if isinstance(payload, dict) and isinstance(payload.get("deleted_ids"), list):
+                deleted = [str(i) for i in payload["deleted_ids"]]
         except HTTPException:
             raise
         except Exception as exc:
             # The function's messages are written FOR the CA — "GSTR-3B covering
-            # this date was filed on 18 Jul 2026", "this entry has been
-            # reversed" — so they are surfaced rather than replaced. That
-            # sentence is the difference between a rule that reads as
-            # protective and one that reads as broken.
-            # The function's messages are written FOR the CA. postgres_message
-            # unwraps the APIError so the sentence arrives on its own, rather
-            # than inside a dict repr behind a SQLSTATE.
+            # this date was filed on 18 Jul 2026", "This entry was reversed by
+            # REV-0007. Delete the two together." — so they are surfaced rather
+            # than replaced, and postgres_message unwraps the APIError so the
+            # sentence arrives on its own rather than inside a dict repr behind
+            # a SQLSTATE. That sentence is the difference between a rule that
+            # reads as protective and one that reads as broken.
             _logger.exception("discard_posted_journal failed for %s", entry_id)
             raise HTTPException(status_code=422, detail=postgres_message(exc))
     else:
+        # A draft is off-books, so nothing above applies — but the deletion
+        # record still has to hold the money. The same snapshot the posted path
+        # writes, taken BEFORE the row goes: trg_audit_capture would fire on
+        # this UPDATE with the header alone, and trg_audit_capture_line not at
+        # all, because a soft delete never touches journal_lines.
+        snapshot = row
+        try:
+            snap = db.rpc("journal_entry_snapshot", {
+                "p_firm": current_user["firm_id"],
+                "p_client": row.get("client_id"),
+                "p_entry_id": entry_id,
+            }).execute()
+            if isinstance(getattr(snap, "data", None), dict):
+                snapshot = snap.data
+        except Exception as exc:
+            # Fail soft, and say so. A draft is in no report and no return, so
+            # a thinner record is not worth refusing the deletion over — but it
+            # is worth knowing about, which is the lesson of the health engine.
+            capture_soft_failure(exc, operation="accounting.draft_discard_snapshot",
+                                 firm_id=current_user.get("firm_id"), entry_id=entry_id)
+
         db.table("journal_entries").update(
             {"deleted_at": datetime.now(timezone.utc).isoformat()}
         ).eq("id", entry_id).eq("firm_id", current_user["firm_id"]).execute()
 
-    log_event(current_user["firm_id"], "journal_entry", entry_id,
-              "discard_posted" if row.get("is_posted") else "discard_draft",
-              actor_id=current_user.get("auth_user_id"),
-              actor_email=current_user.get("email"), old_data=row)
-    return api_response(True, {"id": entry_id, "discarded": True})
+        # Posted deletions are logged by the RPC, inside the transaction that
+        # performs them — logging again here would put a second, thinner row in
+        # the trail for one action. Drafts have no such row, so this is theirs.
+        log_event(current_user["firm_id"], "journal_entry", entry_id, "delete",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"), old_data=snapshot,
+                  metadata={"source": "discard_journal_entry", "draft": True})
+
+    return api_response(True, {
+        "id": entry_id,
+        "discarded": True,
+        "deleted_ids": deleted,
+    })
 
 
 @router.get("/year-lock")

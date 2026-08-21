@@ -385,14 +385,21 @@ export const api = {
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
     /**
-     * Discard a manual journal entry — a draft always, a POSTED one while its
+     * Delete a manual journal entry — a draft always, a POSTED one while its
      * period is still open (migration 275, the same gate that governs editing
-     * one). The server refuses an auto-posted entry, a reversal, a reversed
-     * entry, or a period closed by a lock or a filed return, each with a
-     * sentence written for the CA. Surface that sentence; do not replace it.
+     * one). The server refuses an auto-posted entry, or a period closed by a
+     * lock or a filed return, each with a sentence written for the CA. Surface
+     * that sentence; do not replace it.
+     *
+     * withPair deletes a reversed entry together with its reversal (migration
+     * 276). The pair nets to zero, so no balance moves; half a pair alone is
+     * refused either way round, because it would strand the other half.
+     *
+     * Returns deleted_ids — one call can remove two rows.
      */
-    discardJournalEntry: (entryId: string) =>
-      request(`/api/accounting/journal/${entryId}`, { method: "DELETE" }),
+    discardJournalEntry: (entryId: string, withPair = false) =>
+      request(`/api/accounting/journal/${entryId}${withPair ? "?with_pair=true" : ""}`,
+              { method: "DELETE" }),
     /**
      * Post an equal-and-opposite entry against a POSTED one; the original is
      * never modified. Partner-only (rbac accounting.approve). Refuses a

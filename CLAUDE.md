@@ -55,8 +55,19 @@ change. The code is the authority; keep this file in step with it.
   inserting. Sales, purchases, receipts, payments, credit/debit notes, banking, payroll,
   fixed assets, opening balances, manual journals and reversals all route through it. Do
   not add a second write path.
-- The live GL is `journal_entries` + `journal_lines` only. Posted entries are immutable
-  (DB triggers); corrections are append-only reversals.
+- The live GL is `journal_entries` + `journal_lines` only. A posted entry can never be
+  hard-DELETEd or rewritten in place (DB triggers), and a correction to a real
+  transaction is an append-only reversal. But immutability is not absolute, and the
+  code is the authority on where the line falls: a **manual** entry may be edited
+  (migration 266) or soft-deleted (275, 276) while its period is open, judged by
+  `journal_period_lock_reason` — the CA locks the year, or a return covering the date is
+  filed. Migration 276 also lets a reversed entry and its reversal go together, since a
+  pair strands nothing and nets to zero. This tracks Indian law rather than exceeding it:
+  the proviso to Rule 3(1) of the Companies (Accounts) Rules 2014 requires an **edit
+  log**, which presumes entries can change, and TallyPrime's Edit Log — mandatory and
+  non-disableable — still lets a voucher be deleted. The log is what is immutable, not
+  the entry. Every deletion writes the whole entry, its lines and their account names to
+  `audit_log` in the same transaction, unswallowed.
 - `created_by` / `posted_by` FK to `public.users.id` (the internal user id), **not** the
   Supabase auth id.
 - Money crosses the API as raw integer `*_paise`. The frontend formats to ₹. Rupee

@@ -297,17 +297,23 @@ class SchemaCheckedDB:
 
 class _RpcCall:
     """A recorded db.rpc(fn, params). raise_with() makes the next execute()
-    raise, so a test can exercise the caller's error path."""
+    raise, so a test can exercise the caller's error path; returns() sets the
+    payload, for the functions whose RETURN VALUE the caller acts on."""
 
     def __init__(self, fn: str, params: dict):
         self.fn, self.params = fn, params
         self._raises: Exception | None = None
+        self._data: object = []
 
     def raise_with(self, exc: Exception) -> "_RpcCall":
         self._raises = exc
         return self
 
+    def returns(self, data: object) -> "_RpcCall":
+        self._data = data
+        return self
+
     def execute(self):
         if self._raises is not None:
             raise self._raises
-        return _Result([])
+        return _Result(self._data)
