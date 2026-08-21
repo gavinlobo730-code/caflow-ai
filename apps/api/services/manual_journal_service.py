@@ -268,7 +268,8 @@ class ManualJournalService:
                 # passbook drift alike. Its message is written for the CA, so it
                 # is surfaced rather than replaced with something vaguer.
                 _logger.exception("edit_posted_journal failed for %s", entry_id)
-                raise HTTPException(status_code=422, detail=str(e))
+                from core.exceptions import postgres_message
+                raise HTTPException(status_code=422, detail=postgres_message(e))
         else:
             header = {k: v for k, v in {
                 "entry_date": data.get("entry_date"),

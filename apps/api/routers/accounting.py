@@ -12,7 +12,7 @@ from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, Journa
 from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from services.journal_posting_service import journal_posting_service
-from core.exceptions import NotFoundError, ValidationError
+from core.exceptions import NotFoundError, ValidationError, postgres_message
 from core.observability import capture_posting_failure, capture_soft_failure
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
@@ -430,10 +430,11 @@ def discard_journal_entry(
             # reversed" — so they are surfaced rather than replaced. That
             # sentence is the difference between a rule that reads as
             # protective and one that reads as broken.
-            # str(exc), matching manual_journal_service's edit path — one
-            # convention for surfacing an RPC's message, not two.
+            # The function's messages are written FOR the CA. postgres_message
+            # unwraps the APIError so the sentence arrives on its own, rather
+            # than inside a dict repr behind a SQLSTATE.
             _logger.exception("discard_posted_journal failed for %s", entry_id)
-            raise HTTPException(status_code=422, detail=str(exc))
+            raise HTTPException(status_code=422, detail=postgres_message(exc))
     else:
         db.table("journal_entries").update(
             {"deleted_at": datetime.now(timezone.utc).isoformat()}

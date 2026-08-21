@@ -698,7 +698,8 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
     rows: JournalEntry[],
     applies: (e: JournalEntry) => boolean,
     act: (e: JournalEntry) => Promise<unknown>,
-    verb: string,
+    verb: string,        // imperative, for "Nothing to discard"
+    pastTense: string,    // "discard" + "d" spelled "discardd"; not every verb takes a d
   ) => {
     const eligible = rows.filter(applies);
     const skipped = rows.length - eligible.length;
@@ -719,7 +720,7 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
     }
     const done = eligible.length - failed.length;
     toast({
-      title: failed.length ? `${done} of ${eligible.length} ${verb}d` : `${done} ${verb}d`,
+      title: failed.length ? `${done} of ${eligible.length} ${pastTense}` : `${done} ${pastTense}`,
       description: [
         skipped ? `${skipped} skipped (not eligible).` : "",
         failed.length ? failed.join(" · ") : "",
@@ -750,7 +751,7 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
         // period gate, and the two would drift.
         () => true,
         (e) => api.accounting.discardJournalEntry(e.id),
-        "discard",
+        "discard", "discarded",
       ),
     },
     {
@@ -767,7 +768,7 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
           new Date().toISOString().slice(0, 10),
           `Reversal of ${e.reference_no || "journal entry"}`,
         ),
-        "reverse",
+        "reverse", "reversed",
       ),
     },
     exportSelectedAction("journal.csv", journalColumns),

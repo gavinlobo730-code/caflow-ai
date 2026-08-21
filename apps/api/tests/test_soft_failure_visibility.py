@@ -145,7 +145,14 @@ def test_every_health_swallow_names_the_operation_it_lost():
 # It is not a target to drive to zero mechanically — some swallows are correct
 # and want no report — but a new one should be a deliberate act that shows up
 # in a diff, not something that accretes.
-MAX_SILENT_SWALLOWS_ELSEWHERE = 171
+#
+# 171 -> 174: core.exceptions.postgres_message guards each of its three reads.
+# It runs INSIDE an error path, unwrapping the message from an exception raised
+# by code that was already failing, so a report about failing to read the report
+# is absurd recursion — and an earlier version of exactly this helper DID raise,
+# on an attribute whose getter threw. These three are the correct shape, and
+# they are the reason the budget moved rather than the check being ignored.
+MAX_SILENT_SWALLOWS_ELSEWHERE = 174
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 
