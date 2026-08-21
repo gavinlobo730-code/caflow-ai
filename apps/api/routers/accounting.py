@@ -13,7 +13,7 @@ from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from services.journal_posting_service import journal_posting_service
 from core.exceptions import NotFoundError, ValidationError
-from core.observability import capture_posting_failure
+from core.observability import capture_posting_failure, capture_soft_failure
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
 from services.audit_service import log_event
@@ -628,6 +628,19 @@ def reverse_journal_entry(
             narration=narration, created_by=current_user.get("id"),
         )
 
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("reverse_journal_entry failed for entry %s", entry_id)
+        raise HTTPException(status_code=500, detail="Unable to reverse journal entry. Please try again.")
+
+    # OUTSIDE the try, deliberately. The reversal is posted and committed by
+    # this point; an audit or timeline failure after it must not be reported to
+    # the CA as a failed reversal. That inversion is what made the 42501 on the
+    # is_reversed stamp look like "0 of 1 reversed" over a reversal that had in
+    # fact posted — and it invites a retry of something that already happened.
+    # Same fix as create_journal_entry (#271); this endpoint was missed.
+    try:
         log_event(
             firm_id, "journal_entry", rev_id,
             "reverse", actor_id=current_user.get("auth_user_id"),
@@ -642,12 +655,10 @@ def reverse_journal_entry(
                 entity_type="journal_entry", entity_id=rev_id,
                 actor_id=current_user.get("auth_user_id"),
             )
-        return api_response(True, {"id": rev_id, "reversal_of": entry_id})
-    except HTTPException:
-        raise
-    except Exception:
-        _logger.exception("reverse_journal_entry failed for entry %s", entry_id)
-        raise HTTPException(status_code=500, detail="Unable to reverse journal entry. Please try again.")
+    except Exception as exc:
+        capture_soft_failure(exc, operation="accounting.reverse_journal_audit",
+                             firm_id=firm_id, entry_id=entry_id, reversal_id=rev_id)
+    return api_response(True, {"id": rev_id, "reversal_of": entry_id})
 
 
 @router.get("/ledger")

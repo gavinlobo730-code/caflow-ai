@@ -1623,13 +1623,16 @@ class Phase2JournalService:
             # journal_for_purchase_payment).
             source_type=orig.get("source_type"), source_id=orig.get("source_id"),
         )
-        # Stamp the ORIGINAL as reversed so _create_journal's idempotency
-        # fast-path (firm+client+reference_no+entry_date) stops matching it —
-        # a reversed entry is dead and must not block a legitimate re-post of
-        # the same document. Append-only: the immutability triggers permit
-        # only this narrow is_reversed FALSE→TRUE flip on a posted row
-        # (migration 213).
-        db.table("journal_entries").update({"is_reversed": True}).eq("id", entry_id).execute()
+        # The ORIGINAL's is_reversed stamp is no longer issued here. It is done
+        # inside post_journal_atomic, in the SAME transaction as the reversal
+        # insert (migration 274).
+        #
+        # It used to be this line, a separate PostgREST UPDATE — which fails
+        # with 42501 whenever the API runs as `authenticated`, because
+        # journal_entries grants that role SELECT and nothing else. The reversal
+        # committed, the stamp did not, and the CA was shown a 500 over a
+        # reversal that had posted. Doing it in the RPC also makes the two facts
+        # — a reversal exists, its original is flagged — unable to diverge.
         return reversal_id
 
 
