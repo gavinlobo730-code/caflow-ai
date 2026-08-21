@@ -368,6 +368,62 @@ def update_journal_entry(
     return api_response(True, entry)
 
 
+@router.delete("/journal/{entry_id}")
+def discard_draft_journal_entry(
+    entry_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Discard a DRAFT journal entry.
+
+    A draft is off-books — is_posted = false, invisible to every report — so
+    discarding one changes no balance and is the right answer for an entry
+    typed in by mistake.
+
+    A POSTED entry is never deletable, and this refuses it rather than letting
+    the attempt reach Postgres. `trg_journal_immutability_delete` (migration
+    058) raises "Cannot delete a posted journal entry … Create a reversal
+    instead", which the CA would see as an opaque 500. The correct operation is
+    POST /journal/{id}/reverse, which posts an equal-and-opposite entry and
+    leaves the original standing — an audit trail a CA can defend, which a
+    deletion is not. Migration 266 made a posted entry EDITABLE until its
+    period locks or its return is filed; it did not make one deletable, and
+    deliberately so.
+
+    Soft delete, via deleted_at: the journal list, the approval queue and
+    _assert_journal_scope_db all filter on it already, so the row leaves every
+    surface at once while the record — and its lines — survive for audit.
+    """
+    db = _prod_db()
+    if not db:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    _assert_journal_scope_db(db, current_user, entry_id)
+
+    row = (db.table("journal_entries")
+           .select("id, is_posted, reference_no, client_id, narration")
+           .eq("id", entry_id).eq("firm_id", current_user["firm_id"])
+           .is_("deleted_at", "null").limit(1).execute().data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    if row.get("is_posted"):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A posted journal entry cannot be deleted — the ledger is "
+                "append-only. Reverse it instead: that posts an equal-and-"
+                "opposite entry and leaves the original on the books."
+            ),
+        )
+
+    db.table("journal_entries").update(
+        {"deleted_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", entry_id).eq("firm_id", current_user["firm_id"]).execute()
+
+    log_event(current_user["firm_id"], "journal_entry", entry_id, "discard_draft",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), old_data=row)
+    return api_response(True, {"id": entry_id, "discarded": True})
+
+
 @router.get("/year-lock")
 def get_year_lock(current_user: dict = Depends(rbac("accounting", "read"))):
     """Current year-lock state for the firm: {locked_financial_years, pin_set}.

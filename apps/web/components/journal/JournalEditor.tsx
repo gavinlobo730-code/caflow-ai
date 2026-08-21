@@ -232,7 +232,11 @@ export function JournalEditor({
           </div>
           <div>
             <label htmlFor="je-ref" className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
-            <input id="je-ref" value={referenceNo} disabled={readOnly} placeholder="INV-001"
+            {/* JNL-, not INV-: this is the journal editor, and an invoice
+                number here invites a CA to type one, which then collides with
+                the real invoice's reference in the kernel's dedup key
+                (client + reference_no + entry_date). */}
+            <input id="je-ref" value={referenceNo} disabled={readOnly} placeholder="JNL-001"
                    onChange={(e) => setReferenceNo(e.target.value)} className={field} />
           </div>
         </div>
