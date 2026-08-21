@@ -84,8 +84,15 @@ REAL_COLUMNS: dict[str, set[str]] = {
         "notes", "section_185_flagged", "section_186_flagged", "created_by",
         "created_at", "updated_at",
     },
-    # The borrowings register, listed so a test that confuses the two fails
-    # here rather than silently passing against a permissive double.
+    "journal_entries": {
+        "id", "firm_id", "client_id", "entry_date", "reference_no", "narration",
+        "entry_type", "is_posted", "posted_at", "created_by", "created_at",
+        "updated_at", "deleted_at", "status", "reversal_of", "posted_by",
+        "source_type", "source_id", "attachments", "rate_selected_by",
+        "rate_overridden", "rate_selected_at", "is_reversed",
+    },
+    # The borrowings register, listed so a test that confuses it with
+    # related_party_loans fails here rather than silently passing.
     "loans": {
         "id", "firm_id", "client_id", "loan_type", "lender_name",
         "account_number", "principal_paise", "outstanding_paise",
@@ -175,6 +182,7 @@ class _Query:
     def gt(self, col, val):  return self._filter(col, val, "gt")
     def gte(self, col, val): return self._filter(col, val, "gte")
     def in_(self, col, val): return self._filter(col, val, "in")
+    def is_(self, col, val): return self._filter(col, val, "is")
 
     def order(self, col: str, **kw):
         self._check_column(col)
@@ -234,6 +242,12 @@ class _Query:
                 rows = [r for r in rows if str(r.get(col) or "") >= str(val)]
             elif op == "in":
                 rows = [r for r in rows if r.get(col) in val]
+            elif op == "is":
+                # supabase-py spells IS NULL as .is_(col, "null"); None is
+                # accepted too so a caller using either reads the same.
+                want_null = val is None or str(val).lower() == "null"
+                rows = [r for r in rows
+                        if (r.get(col) is None) == want_null]
         return rows
 
     def execute(self):

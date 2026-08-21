@@ -348,6 +348,25 @@ export const api = {
     // Phase 3.5 — journal approval queue (Draft → Approve → Post)
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
+    /**
+     * Discard a DRAFT. The backend refuses a posted entry with a 422 naming
+     * the reversal instead — a posted entry is never deletable, because the
+     * ledger is append-only and a deletion is not an audit trail a CA can
+     * defend.
+     */
+    discardDraftJournal: (entryId: string) =>
+      request(`/api/accounting/journal/${entryId}`, { method: "DELETE" }),
+    /**
+     * Post an equal-and-opposite entry against a POSTED one; the original is
+     * never modified. Partner-only (rbac accounting.approve). Refuses a
+     * Receipt/Payment journal, which must be reversed through its own
+     * document's cascade so the allocations roll back too.
+     */
+    reverseJournalEntry: (entryId: string, reversalDate: string, narration?: string) =>
+      request(`/api/accounting/journal/${entryId}/reverse`, {
+        method: "POST",
+        body: JSON.stringify({ reversal_date: reversalDate, narration }),
+      }),
     // Multi-Currency Phase 5 — read-only FX reports (empty for INR-only clients).
     fxReports: {
       realized: (params: Record<string, string>) => request(`/api/fx-reports/realized?${new URLSearchParams(params)}`),

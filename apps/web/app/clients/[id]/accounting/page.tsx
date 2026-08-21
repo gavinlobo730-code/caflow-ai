@@ -2,14 +2,14 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2 } from "lucide-react";
+import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
-import { DataTable, downloadCsv } from "@/components/ui/data-table";
+import { DataTable, downloadCsv, exportSelectedAction } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
-import type { Column, FilterDef } from "@/lib/table/types";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api, type ReconciliationRun, type ReconciliationFinding } from "@/lib/api";
@@ -21,6 +21,7 @@ import PeriodPicker from "@/components/PeriodPicker";
 import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/use-toast";
 
 // ── Tab definitions ────────────────────────────────────────────────────────
 
@@ -654,7 +655,9 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
-  const journalColumns: Column<JournalEntry>[] = [
+  // Memoised: journalBulkActions depends on it, and a fresh array each render
+  // would rebuild the bulk actions on every keystroke in the table's search box.
+  const journalColumns: Column<JournalEntry>[] = useMemo(() => [
     { key: "entry_date", header: "Date", accessor: (e) => e.entry_date, sortable: true, sticky: true, hideable: false, width: "7rem",
       render: (e) => <span className="text-[#64748B] whitespace-nowrap">{e.entry_date}</span> },
     { key: "reference_no", header: "Ref", accessor: (e) => e.reference_no ?? "", searchable: true,
@@ -668,13 +671,97 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
       render: (e) => <span className="font-mono text-[#334155]">{fmt((e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0))}</span> },
     { key: "status", header: "Status", accessor: (e) => (e.is_posted ? "Posted" : "Draft"),
       render: (e) => <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>{e.is_posted ? "Posted" : "Draft"}</span> },
-  ];
+  ], []);
 
   const journalFilters: FilterDef<JournalEntry>[] = [
     { key: "entry_type", label: "Type", type: "select", accessor: (e) => e.entry_type,
       options: (ENTRY_TYPES as readonly string[]).map((t) => ({ value: t, label: t })) },
     { key: "entry_date", label: "Date", type: "dateRange", accessor: (e) => e.entry_date },
   ];
+
+  // ── Bulk actions ───────────────────────────────────────────────────────────
+  // Selecting rows is one thing; what you may DO with them is two different
+  // things, because a draft and a posted entry are not the same object.
+  //
+  //   Draft   off-books. is_posted = false, in no report, in no return.
+  //           Discarding one changes no balance, so it is a plain delete.
+  //   Posted  on the books. NEVER deletable — the ledger is append-only, the
+  //           database enforces it (trg_journal_immutability_delete), and the
+  //           correction is an equal-and-opposite REVERSAL that leaves the
+  //           original standing. That is the audit trail; a deletion is its
+  //           absence.
+  //
+  // So one "Delete" button over a mixed selection would be a lie. Each action
+  // states which rows it will touch and skips the rest by name, rather than
+  // failing halfway through and leaving the CA to work out what happened.
+  const runBulk = useCallback(async (
+    rows: JournalEntry[],
+    applies: (e: JournalEntry) => boolean,
+    act: (e: JournalEntry) => Promise<unknown>,
+    verb: string,
+  ) => {
+    const eligible = rows.filter(applies);
+    const skipped = rows.length - eligible.length;
+    if (!eligible.length) {
+      toast({
+        title: `Nothing to ${verb}`,
+        description: `None of the ${rows.length} selected ${rows.length === 1 ? "entry is" : "entries are"} eligible.`,
+      });
+      return;
+    }
+    // Sequential, not Promise.all: these post to the ledger through the single
+    // kernel, and firing a dozen at once at a cold free-tier instance is how a
+    // half-applied batch happens. A handful of entries is not worth the risk.
+    const failed: string[] = [];
+    for (const e of eligible) {
+      try { await act(e); }
+      catch (err) { failed.push(`${e.reference_no || e.id.slice(0, 8)}: ${err instanceof Error ? err.message : "failed"}`); }
+    }
+    const done = eligible.length - failed.length;
+    toast({
+      title: failed.length ? `${done} of ${eligible.length} ${verb}d` : `${done} ${verb}d`,
+      description: [
+        skipped ? `${skipped} skipped (not eligible).` : "",
+        failed.length ? failed.join(" · ") : "",
+      ].filter(Boolean).join(" ") || undefined,
+      variant: failed.length ? "destructive" : undefined,
+    });
+    await loadEntries();
+  }, [loadEntries]);
+
+  const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => [
+    {
+      id: "discard-drafts",
+      label: "Discard drafts",
+      icon: <Trash2 size={13} />,
+      variant: "danger",
+      confirm: "Discard the selected DRAFT entries? Posted entries in the selection are left untouched — they can only be reversed.",
+      run: (rows) => runBulk(
+        rows,
+        (e) => !e.is_posted,
+        (e) => api.accounting.discardDraftJournal(e.id),
+        "discard",
+      ),
+    },
+    {
+      id: "reverse-posted",
+      label: "Reverse posted",
+      icon: <Undo2 size={13} />,
+      variant: "danger",
+      confirm: "Reverse the selected POSTED entries? Each gets an equal-and-opposite entry dated today; the originals stay on the books. Drafts in the selection are left untouched.",
+      run: (rows) => runBulk(
+        rows,
+        (e) => e.is_posted,
+        (e) => api.accounting.reverseJournalEntry(
+          e.id,
+          new Date().toISOString().slice(0, 10),
+          `Reversal of ${e.reference_no || "journal entry"}`,
+        ),
+        "reverse",
+      ),
+    },
+    exportSelectedAction("journal.csv", journalColumns),
+  ], [runBulk, journalColumns]);
 
   return (
     <div className="space-y-2">
@@ -724,6 +811,7 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
             ariaLabel="Date range"
           />
         }
+        bulkActions={journalBulkActions}
         initialSort={{ key: "entry_date", dir: "desc" }}
         exportFilename="journal"
         persistKey="accounting.journal"
