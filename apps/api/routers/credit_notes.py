@@ -605,8 +605,14 @@ def issue_credit_note(
         # ── Mark the credit note issued and record how much was applied to invoices.
         now_iso = datetime.now(timezone.utc).isoformat()
         applied = cn_total if (inv_id and cn_total > 0) else 0
+        # No issued_at: credit_notes has never had that column, and PostgREST
+        # rejects the WHOLE update over one unknown name — so this statement
+        # failed every time, AFTER the GL journal above had already posted and
+        # committed. A credit note could not be issued: the ledger moved and
+        # the document stayed draft. The status flip is the fact, updated_at
+        # carries the time, and audit_log records who and when.
         upd = db.table("credit_notes").update({
-            "status": "issued", "issued_at": now_iso, "applied_paise": applied,
+            "status": "issued", "applied_paise": applied,
         }).eq("id", cn_id).eq("firm_id", firm_id).execute()
         updated_cn = upd.data[0] if upd.data else {**cn, "status": "issued", "applied_paise": applied}
 

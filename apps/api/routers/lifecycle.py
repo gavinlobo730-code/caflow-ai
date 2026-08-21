@@ -288,11 +288,11 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
             db.table("client_lifecycle_events").insert({
                 "id":          str(uuid.uuid4()),
                 "firm_id":     firm_id,
-                "entity_id":   lead_id,
-                "entity_type": "lead",
+                "lead_id":     lead_id,
                 "event_type":  "lead_stage_changed",
                 "description": f"Stage auto-advanced from '{old_stage}' to '{new_stage}' by engagement workflow",
-                "metadata":    {"from_stage": old_stage, "to_stage": new_stage, "automatic": True},
+                "from_stage":  old_stage,
+                "to_stage":    new_stage,
                 "created_at":  now,
             }).execute()
         except Exception:
@@ -429,12 +429,11 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
             db.table("client_lifecycle_events").insert({
                 "id":          str(uuid.uuid4()),
                 "firm_id":     firm_id,
-                "entity_id":   lead_id,
-                "entity_type": "lead",
+                "lead_id":     lead_id,
                 "event_type":  "lead_stage_changed",
                 "description": f"Stage reverted from '{old_stage}' to '{new_stage}' after an engagement was rejected/deleted",
-                "metadata":    {"from_stage": old_stage, "to_stage": new_stage,
-                                "automatic": True, "source": "engagement_closed"},
+                "from_stage":  old_stage,
+                "to_stage":    new_stage,
                 "created_at":  now,
             }).execute()
         except Exception:
@@ -753,8 +752,7 @@ def create_lead(
         db.table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     current_user["firm_id"],
-            "entity_id":   db_row["id"],
-            "entity_type": "lead",
+            "lead_id":     db_row["id"],
             "event_type":  "lead_created",
             "description": f"Lead created for {data.company_name}",
             "created_at":  now,
@@ -827,11 +825,11 @@ def update_lead(
             db.table("client_lifecycle_events").insert({
                 "id":          str(uuid.uuid4()),
                 "firm_id":     current_user["firm_id"],
-                "entity_id":   lead_id,
-                "entity_type": "lead",
+                "lead_id":     lead_id,
                 "event_type":  "lead_stage_changed",
                 "description": f"Stage changed from '{old_stage}' to '{data.stage}'",
-                "metadata":    {"from_stage": old_stage, "to_stage": data.stage},
+                "from_stage":  old_stage,
+                "to_stage":    data.stage,
                 "created_at":  now,
             }).execute()
         except Exception:
@@ -1145,8 +1143,7 @@ def convert_lead(
         db.table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     firm_id,
-            "entity_id":   client_id,
-            "entity_type": "client",
+            "client_id":   client_id,
             "event_type":  "client_created_from_lead",
             "description": f"Client created from lead",
             "created_at":  now,
@@ -1780,8 +1777,7 @@ def complete_onboarding_checklist(
         db.table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     current_user["firm_id"],
-            "entity_id":   wf["client_id"],
-            "entity_type": "client",
+            "client_id":   wf["client_id"],
             "event_type":  "client_activated",
             "description": "Client activated after completing onboarding checklist",
             "created_at":  now,

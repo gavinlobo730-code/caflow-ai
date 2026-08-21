@@ -42,6 +42,7 @@ import uuid
 
 from models.common import api_response
 from core.permissions import rbac
+from core.observability import capture_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
 
@@ -164,8 +165,8 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
         missed = db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).lt("response_due_date", today.isoformat()).limit(1).execute().data or []
         if missed:
             return "notice_deadline_missed"
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.detect_hard_override_db.1", firm_id=firm_id, client_id=client_id)
 
     # 2. Advance tax missed 2+ consecutive instalments
     # Advance tax due dates per IT Act s.211: 15-Jun (15%), 15-Sep (45%), 15-Dec (75%), 15-Mar (100%)
@@ -204,8 +205,8 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
             for i in range(len(ordered) - 1):
                 if ordered[i + 1] == ordered[i] + 1:
                     return "advance_tax_2_consecutive"
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.detect_hard_override_db.2", firm_id=firm_id, client_id=client_id)
 
     # 3. GSTR-3B overdue > 2 months (CGST Act s.39). F5 fix: this read a
     # nonexistent "gst_returns" table. The real gstr3b_returns (migration 036)
@@ -224,8 +225,8 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
             due_m, due_y = (m + 1, y) if m < 12 else (1, y + 1)
             if (today - date(due_y, due_m, 20)).days > 61:
                 return "gstr3b_overdue_2months"
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.detect_hard_override_db.3", firm_id=firm_id, client_id=client_id)
 
     # 4. Income tax return overdue > 6 months (IT Act s.139). R3.13d: reads
     # compliance_records (System A) — compliance_tasks (System B, the table
@@ -240,8 +241,8 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
                .lt("due_date", six_months_ago).limit(1).execute().data or [])
         if itr:
             return "itr_overdue_6months"
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.detect_hard_override_db.4", firm_id=firm_id, client_id=client_id)
 
     # 5. Bank reconciliation not done > 6 months
     try:
@@ -249,8 +250,8 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
         unreconciled = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", six_months_ago).limit(1).execute().data or []
         if unreconciled:
             return "bank_recon_6months"
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.detect_hard_override_db.5", firm_id=firm_id, client_id=client_id)
 
     # 6. Open critical AI insight unacknowledged > 14 days
     try:
@@ -258,8 +259,8 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
         critical_insight = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("status", "open").lt("created_at", fourteen_days_ago).limit(1).execute().data or []
         if critical_insight:
             return "critical_ai_insight_14d"
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.detect_hard_override_db.6", firm_id=firm_id, client_id=client_id)
 
     return None
 
@@ -285,8 +286,8 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
                            .not_.in_("status", ["Filed", "Completed"])
                            .lt("due_date", date.today().isoformat()).execute().data or [])
         score -= len(overdue_returns) * 25
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_compliance_health_db.1", firm_id=firm_id, client_id=client_id)
 
     try:
         filed = (db.table("compliance_records").select("due_date, filed_date")
@@ -297,14 +298,14 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
             if r.get("filed_date") and r.get("due_date") and r["filed_date"] > r["due_date"]
         ]
         score -= len(late_filings) * 8
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_compliance_health_db.2", firm_id=firm_id, client_id=client_id)
 
     try:
         pending_notices = db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
         score -= len(pending_notices) * 20
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_compliance_health_db.3", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -330,8 +331,8 @@ def _dim_accounting_quality_db(db, client_id: str, firm_id: str) -> int:
             old_30 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
             if old_30:
                 score -= 30
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_accounting_quality_db", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -350,14 +351,14 @@ def _dim_work_progress_db(db, client_id: str, firm_id: str) -> int:
     try:
         overdue = db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").lt("due_date", today.isoformat()).execute().data or []
         score -= len(overdue) * 15
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_work_progress_db.1", firm_id=firm_id, client_id=client_id)
 
     try:
         at_risk = db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").gte("due_date", today.isoformat()).lte("due_date", at_risk_cutoff).execute().data or []
         score -= len(at_risk) * 10
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_work_progress_db.2", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -372,8 +373,8 @@ def _dim_document_health_db(db, client_id: str, firm_id: str) -> int:
     try:
         outstanding = db.table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").execute().data or []
         score -= len(outstanding) * 15
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_document_health_db", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -388,14 +389,14 @@ def _dim_ai_risk_signals_db(db, client_id: str, firm_id: str) -> int:
     try:
         critical = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", "critical").eq("status", "open").execute().data or []
         score -= len(critical) * 20
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_ai_risk_signals_db.1", firm_id=firm_id, client_id=client_id)
 
     try:
         warnings = db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", _WARNING_SEVERITY).eq("status", "open").execute().data or []
         score -= len(warnings) * 10
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_ai_risk_signals_db.2", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -429,8 +430,8 @@ def _dim_open_notices_db(db, client_id: str, firm_id: str) -> int:
                     score -= 15
             else:
                 score -= 15
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_open_notices_db", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -457,15 +458,15 @@ def _dim_client_responsiveness_db(db, client_id: str, firm_id: str) -> int:
                 score -= 30
             else:
                 score -= 20
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_client_responsiveness_db.1", firm_id=firm_id, client_id=client_id)
 
     try:
         stale_cutoff = (today - timedelta(days=7)).isoformat()
         stale_requests = db.table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("created_at", stale_cutoff).execute().data or []
         score -= len(stale_requests) * 10
-    except Exception:
-        pass
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.dim_client_responsiveness_db.2", firm_id=firm_id, client_id=client_id)
 
     return max(0, score)
 
@@ -626,8 +627,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "File Now",
                     "action_url": f"/clients/{client_id}/compliance",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.1", firm_id=firm_id, client_id=client_id)
 
         try:
             notices = db.table("government_notices").select("id, notice_type, issue_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
@@ -638,8 +639,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Respond",
                     "action_url": f"/clients/{client_id}/notices",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.2", firm_id=firm_id, client_id=client_id)
 
     elif dimension == "accounting_quality":
         try:
@@ -652,8 +653,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Reconcile",
                     "action_url": f"/clients/{client_id}/accounting",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.3", firm_id=firm_id, client_id=client_id)
 
     elif dimension == "work_progress":
         try:
@@ -665,8 +666,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Update Status",
                     "action_url": f"/clients/{client_id}/work",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.4", firm_id=firm_id, client_id=client_id)
 
     elif dimension == "document_health":
         try:
@@ -682,8 +683,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Send Reminder",
                     "action_url": f"/clients/{client_id}/documents",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.5", firm_id=firm_id, client_id=client_id)
 
     elif dimension == "ai_risk_signals":
         try:
@@ -695,8 +696,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Acknowledge",
                     "action_url": f"/clients/{client_id}/insights",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.6", firm_id=firm_id, client_id=client_id)
 
         try:
             warnings = db.table("ai_insights").select("id, title").eq("firm_id", firm_id).eq("client_id", client_id).eq("severity", _WARNING_SEVERITY).eq("status", "open").execute().data or []
@@ -707,8 +708,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Review",
                     "action_url": f"/clients/{client_id}/insights",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.7", firm_id=firm_id, client_id=client_id)
 
     elif dimension == "open_notices":
         try:
@@ -733,8 +734,8 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Respond",
                     "action_url": f"/clients/{client_id}/notices",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.8", firm_id=firm_id, client_id=client_id)
 
     elif dimension == "client_responsiveness":
         try:
@@ -747,21 +748,27 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
                     "action_label": "Send Access Link",
                     "action_url": f"/clients/{client_id}/portal",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.9", firm_id=firm_id, client_id=client_id)
 
         try:
             stale_cutoff = (today - timedelta(days=7)).isoformat()
-            stale = db.table("document_requests").select("id, document_name").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("created_at", stale_cutoff).execute().data or []
+            # The same two bugs the outstanding-requests query above carried,
+            # a second time: `document_name` is not a column (it is `title`)
+            # and the CHECK permits only lowercase 'pending'/'fulfilled', so
+            # "Pending" matched nothing even once the name was right. Fixed
+            # there and missed here because a one-off sweep found one and
+            # stopped — which is why the check now runs in CI.
+            stale = db.table("document_requests").select("id, title").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").lt("created_at", stale_cutoff).execute().data or []
             for d in stale[:5]:
                 factors.append({
-                    "label": f"Document pending > 7 days: {d.get('document_name', 'Document')}",
+                    "label": f"Document pending > 7 days: {d.get('title', 'Document')}",
                     "impact": -10,
                     "action_label": "Follow Up",
                     "action_url": f"/clients/{client_id}/documents",
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.dimension_detail_db.10", firm_id=firm_id, client_id=client_id)
 
     return factors
 
@@ -1007,8 +1014,8 @@ def calculate_score(
             "recorded_at":   now,
             "snapshot_data": {k: v for k, v in scores.items() if not isinstance(v, dict)},
         }).execute()
-    except Exception:
-        pass  # Non-fatal
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.calculate_score", client_id=client_id)
 
     if old_overall is not None and old_overall != scores["overall_score"]:
         timeline_service.log(
@@ -1121,8 +1128,8 @@ def recalculate_all(
                 "snapshot_data": {k: v for k, v in scores.items() if not isinstance(v, dict)},
             }).execute()
             updated += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.recalculate_all")
     return api_response(True, {"updated": updated})
 
 
