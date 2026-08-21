@@ -349,12 +349,13 @@ export const api = {
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
     /**
-     * Discard a DRAFT. The backend refuses a posted entry with a 422 naming
-     * the reversal instead — a posted entry is never deletable, because the
-     * ledger is append-only and a deletion is not an audit trail a CA can
-     * defend.
+     * Discard a manual journal entry — a draft always, a POSTED one while its
+     * period is still open (migration 275, the same gate that governs editing
+     * one). The server refuses an auto-posted entry, a reversal, a reversed
+     * entry, or a period closed by a lock or a filed return, each with a
+     * sentence written for the CA. Surface that sentence; do not replace it.
      */
-    discardDraftJournal: (entryId: string) =>
+    discardJournalEntry: (entryId: string) =>
       request(`/api/accounting/journal/${entryId}`, { method: "DELETE" }),
     /**
      * Post an equal-and-opposite entry against a POSTED one; the original is

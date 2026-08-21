@@ -731,15 +731,25 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
 
   const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => [
     {
-      id: "discard-drafts",
-      label: "Discard drafts",
+      id: "discard",
+      label: "Discard",
       icon: <Trash2 size={13} />,
       variant: "danger",
-      confirm: "Discard the selected DRAFT entries? Posted entries in the selection are left untouched — they can only be reversed.",
+      // Drafts always; a MANUAL posted entry while its period is open
+      // (migration 275, the same gate that governs editing one). The server
+      // decides — an auto-posted entry, a locked year or a filed return each
+      // come back with a sentence naming the reason, which runBulk shows.
+      confirm:
+        "Discard the selected entries? Drafts go immediately. A posted entry goes " +
+        "only if you typed it yourself and its period is still open — anything " +
+        "auto-posted, reversed, or covered by a filed return is refused and named.",
       run: (rows) => runBulk(
         rows,
-        (e) => !e.is_posted,
-        (e) => api.accounting.discardDraftJournal(e.id),
+        // No client-side eligibility rule beyond "not already gone". Deciding
+        // here which posted entries qualify would be a second copy of the
+        // period gate, and the two would drift.
+        () => true,
+        (e) => api.accounting.discardJournalEntry(e.id),
         "discard",
       ),
     },

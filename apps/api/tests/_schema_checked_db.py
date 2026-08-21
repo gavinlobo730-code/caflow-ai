@@ -278,8 +278,36 @@ class SchemaCheckedDB:
     """PostgREST-shaped double that refuses columns the real schema lacks."""
 
     def __init__(self, rows: dict[str, list[dict]] | None = None):
+        self.rpc_calls: list["_RpcCall"] = []
         self.columns = REAL_COLUMNS
         self.rows = rows or {}
 
+    def rpc(self, fn: str, params: dict | None = None) -> "_RpcCall":
+        """Record the call. This double proves COLUMN names, and a SQL
+        function's body is beyond what it can model — what a test can assert
+        here is that the right function was called with the right arguments,
+        and the behaviour itself belongs in a real-Postgres test."""
+        call = _RpcCall(fn, params or {})
+        self.rpc_calls.append(call)
+        return call
+
     def table(self, name: str) -> _Query:
         return _Query(self, name)
+
+
+class _RpcCall:
+    """A recorded db.rpc(fn, params). raise_with() makes the next execute()
+    raise, so a test can exercise the caller's error path."""
+
+    def __init__(self, fn: str, params: dict):
+        self.fn, self.params = fn, params
+        self._raises: Exception | None = None
+
+    def raise_with(self, exc: Exception) -> "_RpcCall":
+        self._raises = exc
+        return self
+
+    def execute(self):
+        if self._raises is not None:
+            raise self._raises
+        return _Result([])
