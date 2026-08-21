@@ -1,21 +1,26 @@
 """
-A draft journal can be discarded. A posted one can only be reversed.
+A manual journal can be discarded — draft always, posted while its period is open.
 
-WHY THE TWO ARE NOT THE SAME BUTTON
+WHAT CHANGED, AND WHY
     A draft is off-books: is_posted = false, in no report, in no return.
-    Discarding one changes no balance, so it is a plain delete.
+    Discarding one changes no balance, so it is a plain soft delete here.
 
-    A posted entry is on the books, and the ledger is append-only. The database
-    enforces it — trg_journal_immutability_delete (migration 058) raises
-    "Cannot delete a posted journal entry … Create a reversal instead" — and
-    that trigger is live in production today. Migration 266 made a posted entry
-    EDITABLE until its period locks or its return is filed; it did not make one
-    deletable, deliberately.
+    A POSTED entry now goes to discard_posted_journal (migration 275), which
+    holds the row FOR UPDATE, applies the three limits — manual only, period
+    open per journal_period_lock_reason, not entangled with a reversal — and
+    rebuilds the reporting passbook, all in one transaction. None of that can
+    be split across the API and the database without racing itself, so the
+    endpoint's job is to route and to surface the function's message.
 
-    So the endpoint refuses a posted entry ITSELF, with a message naming the
-    reversal, rather than letting the attempt reach Postgres and come back to
-    the CA as an opaque 500. That distinction is the whole point of this file:
-    the guard has to be reachable, not incidental.
+    Migration 266 established the principle for editing: absolute immutability
+    is stricter than Indian law, because Rule 3(1) of the Companies (Accounts)
+    Rules 2014 requires an EDIT LOG of each change, which presumes entries can
+    change. 275 gives discarding the same gate.
+
+WHAT THIS FILE ASSERTS
+    Routing and surfacing. The gate's BEHAVIOUR is proved against a real
+    database in test_discard_manual_journal_pg.py — a double cannot tell you
+    whether a SQL function refuses a locked period, only that it was called.
 """
 from __future__ import annotations
 
@@ -79,27 +84,50 @@ def test_discarding_a_draft_is_a_soft_delete(client):
     assert row in client.db.rows["journal_entries"], "the row itself must survive"
 
 
-def test_a_posted_entry_is_refused(client):
+def test_a_posted_entry_is_routed_to_the_sql_function(client):
+    """Every check lives in the function. The endpoint must not re-implement
+    any of them — two copies of a rule drift, and this one decides whether a
+    filed return can be edited out from under itself."""
     res = client.delete(f"/api/accounting/journal/{POSTED}")
-    assert res.status_code == 422, (
-        "a posted entry must be refused by the endpoint, not by the database — "
-        "the trigger's error reaches the CA as an opaque 500"
-    )
+    assert res.status_code == 200, res.text
+    assert [c.fn for c in client.db.rpc_calls] == ["discard_posted_journal"]
 
 
-def test_the_refusal_tells_the_ca_what_to_do_instead(client):
-    """A CA who is told 'no' and not 'reverse it' will go looking for a way to
-    force the delete."""
-    detail = client.delete(f"/api/accounting/journal/{POSTED}").json()["detail"]
-    assert "revers" in detail.lower(), detail
-    assert "append-only" in detail.lower() or "cannot be deleted" in detail.lower()
-
-
-def test_a_posted_entry_is_left_completely_untouched(client):
-    before = dict(next(r for r in client.db.rows["journal_entries"] if r["id"] == POSTED))
+def test_the_function_is_called_with_the_callers_firm_and_the_entrys_client(client):
     client.delete(f"/api/accounting/journal/{POSTED}")
-    after = next(r for r in client.db.rows["journal_entries"] if r["id"] == POSTED)
-    assert after == before, "the refusal must not have written anything"
+    params = client.db.rpc_calls[0].params
+    assert params["p_firm"] == FIRM
+    assert params["p_client"] == CLIENT
+    assert params["p_entry_id"] == POSTED
+    # journal_entries.created_by FKs to users.id, never the Supabase auth id.
+    assert params["p_actor"] == "u1"
+
+
+def test_a_posted_entry_is_not_soft_deleted_by_the_endpoint(client):
+    """The function owns the write, inside the same transaction as the passbook
+    rebuild. A deleted_at set out here would bypass that and leave
+    account_period_balances holding the discarded entry's figures."""
+    client.delete(f"/api/accounting/journal/{POSTED}")
+    row = next(r for r in client.db.rows["journal_entries"] if r["id"] == POSTED)
+    assert not row.get("deleted_at")
+
+
+def test_the_functions_refusal_reaches_the_ca_verbatim(client, monkeypatch):
+    """"GSTR-3B covering this date was filed on 18 Jul 2026" is the difference
+    between a rule that reads as protective and one that reads as broken. It
+    must not be replaced with something vaguer."""
+    import routers.accounting as acct
+    db = client.db
+    real_rpc = db.rpc
+
+    def failing_rpc(fn, params=None):
+        return real_rpc(fn, params).raise_with(
+            RuntimeError("GSTR-3B covering this date was filed on 18 Jul 2026."))
+
+    monkeypatch.setattr(db, "rpc", failing_rpc)
+    res = client.delete(f"/api/accounting/journal/{POSTED}")
+    assert res.status_code == 422
+    assert "GSTR-3B covering this date was filed on 18 Jul 2026." in res.json()["detail"]
 
 
 def test_an_unknown_entry_is_a_404(client):

@@ -369,29 +369,35 @@ def update_journal_entry(
 
 
 @router.delete("/journal/{entry_id}")
-def discard_draft_journal_entry(
+def discard_journal_entry(
     entry_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Discard a DRAFT journal entry.
+    """Discard a MANUAL journal entry — draft, or posted while its period is open.
 
-    A draft is off-books — is_posted = false, invisible to every report — so
-    discarding one changes no balance and is the right answer for an entry
-    typed in by mistake.
+    A DRAFT is off-books (is_posted = false, in no report, in no return), so
+    discarding one changes no balance.
 
-    A POSTED entry is never deletable, and this refuses it rather than letting
-    the attempt reach Postgres. `trg_journal_immutability_delete` (migration
-    058) raises "Cannot delete a posted journal entry … Create a reversal
-    instead", which the CA would see as an opaque 500. The correct operation is
-    POST /journal/{id}/reverse, which posts an equal-and-opposite entry and
-    leaves the original standing — an audit trail a CA can defend, which a
-    deletion is not. Migration 266 made a posted entry EDITABLE until its
-    period locks or its return is filed; it did not make one deletable, and
-    deliberately so.
+    A POSTED entry may also be discarded, but only while nothing downstream has
+    consumed it. Migration 266 established the principle for editing: absolute
+    immutability is stricter than Indian law, because the proviso to Rule 3(1)
+    of the Companies (Accounts) Rules 2014 requires an EDIT LOG of each change
+    — which presumes entries can change. What ends the right is a human act,
+    not the software's opinion: the CA locks the year, or a return covering the
+    period is filed. Migration 275 gives discarding that same gate.
 
-    Soft delete, via deleted_at: the journal list, the approval queue and
-    _assert_journal_scope_db all filter on it already, so the row leaves every
-    surface at once while the record — and its lines — survive for audit.
+    Three limits, enforced in discard_posted_journal:
+      * manual entries only — an auto-posted journal is corrected by correcting
+        its document, or the document is left pointing at nothing;
+      * the period must be open, judged by journal_period_lock_reason, the SAME
+        function the edit path calls, so the two rules cannot drift apart;
+      * not entangled with a reversal, either direction.
+
+    Soft delete throughout: deleted_at is set and the row and its lines survive,
+    which is what keeps the edit log meaningful — a deletion that records
+    nothing of what was deleted is not an edit log. Every read path already
+    filters deleted_at, including the passbook rebuild, so the entry leaves
+    every surface at once.
     """
     db = _prod_db()
     if not db:
@@ -399,26 +405,42 @@ def discard_draft_journal_entry(
     _assert_journal_scope_db(db, current_user, entry_id)
 
     row = (db.table("journal_entries")
-           .select("id, is_posted, reference_no, client_id, narration")
+           .select("id, is_posted, reference_no, client_id, narration, source_type")
            .eq("id", entry_id).eq("firm_id", current_user["firm_id"])
            .is_("deleted_at", "null").limit(1).execute().data or [None])[0]
     if not row:
         raise HTTPException(status_code=404, detail="Journal entry not found.")
+
     if row.get("is_posted"):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "A posted journal entry cannot be deleted — the ledger is "
-                "append-only. Reverse it instead: that posts an equal-and-"
-                "opposite entry and leaves the original on the books."
-            ),
-        )
+        # Every check lives in the SQL function: it holds FOR UPDATE on the row,
+        # consults the period gate, and rebuilds the passbook in one
+        # transaction. Doing any of it here would race the others.
+        try:
+            db.rpc("discard_posted_journal", {
+                "p_firm": current_user["firm_id"],
+                "p_client": row.get("client_id"),
+                "p_entry_id": entry_id,
+                "p_actor": current_user.get("id"),
+            }).execute()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            # The function's messages are written FOR the CA — "GSTR-3B covering
+            # this date was filed on 18 Jul 2026", "this entry has been
+            # reversed" — so they are surfaced rather than replaced. That
+            # sentence is the difference between a rule that reads as
+            # protective and one that reads as broken.
+            # str(exc), matching manual_journal_service's edit path — one
+            # convention for surfacing an RPC's message, not two.
+            _logger.exception("discard_posted_journal failed for %s", entry_id)
+            raise HTTPException(status_code=422, detail=str(exc))
+    else:
+        db.table("journal_entries").update(
+            {"deleted_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", entry_id).eq("firm_id", current_user["firm_id"]).execute()
 
-    db.table("journal_entries").update(
-        {"deleted_at": datetime.now(timezone.utc).isoformat()}
-    ).eq("id", entry_id).eq("firm_id", current_user["firm_id"]).execute()
-
-    log_event(current_user["firm_id"], "journal_entry", entry_id, "discard_draft",
+    log_event(current_user["firm_id"], "journal_entry", entry_id,
+              "discard_posted" if row.get("is_posted") else "discard_draft",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
     return api_response(True, {"id": entry_id, "discarded": True})
