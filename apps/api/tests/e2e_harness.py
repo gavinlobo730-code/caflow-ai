@@ -336,6 +336,25 @@ class _Rpc:
             lr["journal_entry_id"] = entry["id"]
             lr.setdefault("id", str(uuid.uuid4()))
             line_store.append(lr)
+
+        # Migration 274: when the entry IS a reversal, the real function stamps
+        # the original in the SAME transaction. It moved in there from a
+        # separate PostgREST UPDATE, which fails with 42501 whenever the API
+        # runs as `authenticated` — journal_entries grants that role SELECT and
+        # nothing else.
+        #
+        # Mirrored here rather than left out: the dedup loop above SKIPS a
+        # reversed entry, so a fake that never sets the flag would let a re-post
+        # match a dead entry and hand back its id — the exact production bug,
+        # invisible in mock mode. The guard matches the real UPDATE's
+        # COALESCE(is_reversed,false) = false predicate.
+        reversal_of = entry.get("reversal_of")
+        if reversal_of:
+            for r in entries:
+                if (r.get("id") == reversal_of
+                        and r.get("firm_id") == entry.get("firm_id")
+                        and not r.get("is_reversed")):
+                    r["is_reversed"] = True
         return entry["id"]
 
     def _fn_numbered_document_atomic(self):
