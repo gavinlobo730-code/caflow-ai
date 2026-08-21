@@ -165,10 +165,46 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     }
   }
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API error ${res.status}: ${err}`);
+    throw new Error(await errorMessage(res));
   }
   return res.json();
+}
+
+/**
+ * The sentence out of an error response, without the envelope.
+ *
+ * FastAPI answers a refusal as {"detail": "..."} and the backend writes those
+ * for the CA — "GSTR-3B covering this date was filed on 18 Jul 2026." Rendering
+ * the raw body instead put that sentence inside a JSON blob behind a status
+ * code, which is what a CA actually saw the first time a journal discard was
+ * refused. A message someone has to excavate is a message that did not get read.
+ *
+ * Falls back to the raw text, then to the status line: an ugly error beats a
+ * blank one, and this must never itself throw while reporting a failure.
+ */
+async function errorMessage(res: Response): Promise<string> {
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    return `API error ${res.status}`;
+  }
+  try {
+    const parsed = JSON.parse(body);
+    const detail = parsed?.detail ?? parsed?.error;
+    if (typeof detail === "string" && detail.trim()) return detail.trim();
+    // A validation error's detail is an array of {loc, msg, ...}.
+    if (Array.isArray(detail)) {
+      const msgs = detail.map((d) => d?.msg).filter((m) => typeof m === "string");
+      if (msgs.length) return msgs.join(" · ");
+    }
+    if (detail && typeof detail === "object" && typeof detail.message === "string") {
+      return detail.message;
+    }
+  } catch {
+    /* not JSON — fall through to the raw body */
+  }
+  return body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
 }
 
 /** Fetch a binary endpoint with auth and trigger a browser blob download. */
