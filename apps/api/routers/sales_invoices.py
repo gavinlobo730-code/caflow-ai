@@ -1632,9 +1632,16 @@ def cancel_invoice(
                 created_by=current_user.get("id"),
             )
 
+        # No cancelled_at: client_sales_invoices has never had that column, and
+        # PostgREST rejects the WHOLE update over one unknown name — so this
+        # statement failed every time, AFTER the reversal above had already
+        # posted. That left the worst possible state: the reversal on the books
+        # and the invoice still showing live, and unrecoverable by retrying,
+        # because the `already` check above then skips straight back to this
+        # same failing update. The status flip is the fact, updated_at carries
+        # the time, and audit_log records who and when.
         upd = db.table("client_sales_invoices").update({
-            "status":       "cancelled",
-            "cancelled_at": datetime.now(timezone.utc).isoformat(),
+            "status": "cancelled",
         }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
 
         updated = upd.data[0] if upd.data else {}
