@@ -131,8 +131,15 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
                 and (int(i.get("total_paise", 0)) + int(i.get("debit_note_paise", 0) or 0)
                      - int(i.get("paid_paise", 0)) - int(i.get("credited_paise", 0) or 0)) > 0]
     def make_q():
+        # outstanding_paise is a generated column (migration 278) carrying exactly
+        # the formula below — total + debit notes − paid − credited. Filtering on it
+        # here keeps the fetch proportional to the number of invoices still owing
+        # rather than to every issued/partially_paid invoice in the fee ledger
+        # (CLAUDE.md, "Reporting performance"). The Python filter after the fetch is
+        # retained: it is what mock mode and older test doubles run on.
         q = (_db().table("client_sales_invoices").select("*")
-             .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES)))
+             .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES))
+             .gt("outstanding_paise", 0))
         if internal_id:
             q = q.eq("client_id", internal_id)
         return q
