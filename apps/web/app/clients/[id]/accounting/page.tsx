@@ -1079,6 +1079,23 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
   // paginated fetch for a 12k-entry client; see domain/reporting/sources.py).
   const [loadFailed, setLoadFailed] = useState(false);
 
+  // A trial balance is a point-in-time statement, so the picker's END date is
+  // the whole of it — exactly how Balance Sheet uses the same control. Until
+  // now this tab read `const { end } = fyDateRange(financialYear)` and could
+  // only ever show the financial year end, so "where did the books stand at 30
+  // September" was unreachable while the endpoint took any as_of_date.
+  //
+  // No granularity: a trial balance is one column of accounts by definition.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const ledgerSpan = useLedgerSpan(clientId);
+  const period = useMemo(
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, "total", undefined, ledgerSpan)[0],
+    [periodMode, financialYear, customFrom, customTo, ledgerSpan],
+  );
+  const asOf = period.end;
+
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("basis", b);
@@ -1090,11 +1107,13 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
     setLoading(true);
     // Both bases are computed server-side from the same posted ledger, scoped to
     // this client (IT Act §145). The frontend only passes parameters (CLAUDE.md).
-    const { end } = fyDateRange(financialYear);
     try {
       const res = (await cachedReport(
-        reportKey([clientId, financialYear, basis, "tb"]),
-        () => api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId }),
+        // Keyed on the as-of DATE, not the financial year: two periods ending on
+        // different days are different statements, and an FY key would serve the
+        // first one back for the second.
+        reportKey([clientId, asOf, basis, "tb"]),
+        () => api.accounting.trialBalance({ basis, as_of_date: asOf, client_id: clientId }),
         { force },
       )) as { success: boolean; data: TBApiData | null };
       if (res.success && res.data) {
@@ -1122,7 +1141,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
     } finally {
       setLoading(false); setLoaded(true);
     }
-  }, [clientId, financialYear, basis]);
+  }, [clientId, asOf, basis]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1133,9 +1152,15 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">Trial Balance — FY {financialYear}</p>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs font-semibold text-[#334155]">Trial Balance — as at {asOf}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodPicker
+            mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            customFrom={customFrom} customTo={customTo}
+            onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
+            ariaLabel="As at"
+          />
           {/* Accrual | Cash toggle — IT Act Section 145 */}
           <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
             <button onClick={() => updateBasis("accrual")} className={`px-3 py-1 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Accrual</button>
@@ -1181,7 +1206,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
             <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
           </div>
         ) : (
-          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
+          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries as at {asOf}.</div>
         )
       ) : null}
     </div>
@@ -1250,10 +1275,28 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // Every view was locked to the financial year — exposure and open balances as
+  // of year end, realized and rate audit across the whole year — so a CA could
+  // not ask what the position was at any other date. One picker drives all five,
+  // because the split is in how each view CONSUMES the range, not in the range:
+  // the point-in-time views take its end, the flow views take both ends. That is
+  // the same division Balance Sheet and P&L already make.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const ledgerSpan = useLedgerSpan(clientId);
+  const period = useMemo(
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, "total", undefined, ledgerSpan)[0],
+    [periodMode, financialYear, customFrom, customTo, ledgerSpan],
+  );
+  // Which half of the picker a view actually uses — stated once, so the label
+  // under the toolbar cannot drift from what was requested.
+  const isPointInTime = view === "exposure" || view === "unrealized" || view === "open";
+
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true); setLoaded(false);
-    const { start, end } = fyDateRange(financialYear);
+    const { start, end } = period;
     type FXResp = { success: boolean; data: unknown };
     try {
       let res: FXResp;
@@ -1269,7 +1312,7 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
     } finally {
       setLoading(false); setLoaded(true);
     }
-  }, [clientId, financialYear, view]);
+  }, [clientId, period, view]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1287,7 +1330,13 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodPicker
+            mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            customFrom={customFrom} customTo={customTo}
+            onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
+            ariaLabel="Period"
+          />
           {currencyOptions.length > 0 && (
             <select value={ccy} onChange={(e) => setCcy(e.target.value)}
               className="text-xs rounded border border-[#E2E8F0] px-2 py-1 text-[#475569] bg-white">
@@ -1298,6 +1347,14 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
         </div>
       </div>
+
+      {/* Three of the five views are snapshots and silently ignore the start
+          date. Without saying which, "Last 3 Months" on Exposure reads as a
+          three-month window when it is a position at one instant. */}
+      <p className="text-xs text-[#94A3B8]">
+        {isPointInTime ? <>Position as at <span className="text-[#64748B]">{period.end}</span></>
+                       : <>{period.label} — <span className="text-[#64748B]">{period.start}</span> to <span className="text-[#64748B]">{period.end}</span></>}
+      </p>
 
       {loading ? <TableSkeleton cols={5} rows={5} /> : !loaded ? null : (
         <FXReportBody view={view} data={data} byC={byC} />
@@ -2382,7 +2439,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
             <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
           </div>
         ) : (
-          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
+          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for {period.label}.</div>
         )
       )}
 
