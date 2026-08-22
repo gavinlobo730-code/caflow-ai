@@ -30,6 +30,35 @@ from typing import Any, Optional
 # --------------------------------------------------------------------------- #
 #  Result envelope (mimics supabase-py's APIResponse: .data, .count)
 # --------------------------------------------------------------------------- #
+
+# ── Generated columns (migration 278) ────────────────────────────────────────
+# Postgres maintains these; an in-memory double has to, or every test that seeds
+# an invoice sees outstanding_paise missing and AR/AP aging — which now FILTERS
+# on it — reports the client owes nothing. The formulas are the column
+# definitions in migration 278, and they are here rather than in each test so
+# there is one place to keep in step with the schema.
+_GENERATED = {
+    "client_sales_invoices": lambda r: (
+        int(r.get("total_paise") or 0) + int(r.get("debit_note_paise") or 0)
+        - int(r.get("paid_paise") or 0) - int(r.get("credited_paise") or 0)),
+    "purchase_bills": lambda r: (
+        int(r.get("net_payable_paise") or 0) + int(r.get("credit_note_paise") or 0)
+        - int(r.get("paid_paise") or 0) - int(r.get("debited_paise") or 0)),
+}
+
+
+def _apply_generated(table: str, rows: list) -> None:
+    """Recompute the generated columns for a table's rows, in place."""
+    fn = _GENERATED.get(table)
+    if fn is None:
+        return
+    for r in rows:
+        try:
+            r["outstanding_paise"] = fn(r)
+        except (TypeError, ValueError):
+            r["outstanding_paise"] = 0
+
+
 class _Result:
     def __init__(self, data: Any, count: Optional[int] = None):
         self.data = data
@@ -187,6 +216,10 @@ class _Query:
 
     def execute(self) -> _Result:
         rows = self.db._tables.setdefault(self.table, [])
+        # Before anything reads or filters: rows seeded straight into
+        # _tables never went through insert(), and a stored generated column
+        # is not optional in Postgres.
+        _apply_generated(self.table, rows)
 
         if self._op in ("insert", "upsert"):
             payload = self._payload if isinstance(self._payload, list) else [self._payload]
@@ -195,13 +228,15 @@ class _Query:
                 r = dict(p)
                 r.setdefault("id", str(uuid.uuid4()))
                 rows.append(r)
-                inserted.append(dict(r))
-            return _Result(inserted)
+                inserted.append(r)
+            _apply_generated(self.table, rows)
+            return _Result([dict(r) for r in inserted])
 
         if self._op == "update":
             matched = [r for r in rows if self._match(r)]
             for r in matched:
                 r.update(self._payload)
+            _apply_generated(self.table, rows)   # a payment changes what is outstanding
             return _Result([dict(r) for r in matched])
 
         if self._op == "delete":

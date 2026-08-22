@@ -195,22 +195,52 @@ def test_vendor_statement_splits_payable_by_currency():
 
 # ── Task 2: AR/AP aging — dual-currency (service over a tiny fake DB) ──────────
 
+class _AgingNot:
+    def __init__(self, q): self.q = q
+    def in_(self, k, vals):
+        self.q.notin.append((k, set(vals)))
+        return self.q
+
+
 class _AgingQ:
     def __init__(self, rows):
         self.rows, self.f, self.nf = rows, [], []
+        self.gtf: list[tuple] = []      # .gt(col, val)
+        self.notin: list[tuple] = []    # .not_.in_(col, vals)
     def select(self, *_a, **_k): return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def neq(self, k, v): self.nf.append((k, v)); return self
     def is_(self, k, _v): self.f.append((k, None)); return self
+    def gt(self, k, v): self.gtf.append((k, v)); return self
+
+    @property
+    def not_(self):
+        """Aging now excludes draft/cancelled IN THE QUERY (migration 278), so
+        the double must apply the same exclusion — otherwise it hands the service
+        rows Postgres would never have returned."""
+        return _AgingNot(self)
+
     def execute(self):
         out = [r for r in self.rows
                if all((r.get(k) is None) if v is None else (r.get(k) == v) for k, v in self.f)
-               and all(r.get(k) != v for k, v in self.nf)]
+               and all(r.get(k) != v for k, v in self.nf)
+               and all((r.get(k) or 0) > v for k, v in self.gtf)
+               and all(r.get(k) not in vals for k, vals in self.notin)]
         return type("R", (), {"data": out})()
 
 
 class _AgingDB:
-    def __init__(self, tables): self.tables = tables
+    """Applies the generated columns the way Postgres does, so a fixture written
+    as plain invoice fields still has outstanding_paise — which AR/AP aging now
+    filters on (migration 278). Reusing e2e_harness's table means the formula has
+    one definition across every double in the suite."""
+
+    def __init__(self, tables):
+        from tests.e2e_harness import _apply_generated
+        self.tables = tables
+        for name, rows in tables.items():
+            _apply_generated(name, rows)
+
     def table(self, n): return _AgingQ(self.tables.get(n, []))
 
 

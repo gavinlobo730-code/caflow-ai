@@ -201,3 +201,109 @@ def test_cash_flow_reads_nothing_at_all(monkeypatch):
     monkeypatch.setenv("REPORTING_PASSBOOK_MODE", "on")
     rows, by_table = _rows_for(REPORTS["cash_flow"], LARGE)
     assert rows == 0, f"cash flow still reads tables: {by_table}"
+
+
+# ── Aging: the same rule, a different service ────────────────────────────────
+# AR and AP aging do not run through ReportingService, so they need their own
+# counter. They also differ from the four statements above in what the ANSWER is:
+# the screen lists every open document, so a row per open document is correct.
+# What is not correct is a row per document EVER RAISED, which is what these did
+# until migration 278 gave them a generated outstanding_paise to filter on.
+#
+# So the fixture holds the open set FIXED and grows the settled history. A report
+# proportional to the answer is flat; one proportional to the ledger is not.
+
+OPEN_DOCS = 20
+
+
+def _aging_store(settled: int) -> dict:
+    def inv(i, paid):
+        return {"id": f"inv{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
+                "customer_id": "cu1", "invoice_no": f"INV-{i:06d}",
+                "invoice_date": "2026-06-01", "due_date": "2026-06-30",
+                "total_paise": 10000, "paid_paise": paid, "credited_paise": 0,
+                "debit_note_paise": 0, "status": "issued", "deleted_at": None}
+
+    def bill(i, paid):
+        return {"id": f"bil{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
+                "vendor_id": "ve1", "bill_no": f"BILL-{i:06d}",
+                "bill_date": "2026-06-01", "due_date": "2026-06-30",
+                "net_payable_paise": 10000, "paid_paise": paid, "debited_paise": 0,
+                "credit_note_paise": 0, "status": "received", "deleted_at": None}
+
+    return {
+        "client_sales_invoices": [inv(i, 0) for i in range(OPEN_DOCS)]
+                                 + [inv(OPEN_DOCS + i, 10000) for i in range(settled)],
+        "purchase_bills": [bill(i, 0) for i in range(OPEN_DOCS)]
+                          + [bill(OPEN_DOCS + i, 10000) for i in range(settled)],
+        "customers": [{"id": "cu1", "firm_id": FIRM, "client_id": CLIENT, "name": "Buyer"}],
+        "vendors": [{"id": "ve1", "firm_id": FIRM, "client_id": CLIENT, "name": "Seller"}],
+    }
+
+
+def _aging_rows(report, settled: int) -> tuple[int, dict[str, int]]:
+    from tests.e2e_harness import FakeDB, _apply_generated
+    store = _aging_store(settled)
+    for name, rows in store.items():
+        _apply_generated(name, rows)
+    db = FakeDB()
+    db._tables.update(store)
+
+    counted = {"rows": 0, "by": {}}
+    real_table = db.table
+
+    def table(name):
+        q = real_table(name)
+        inner = q.execute
+
+        def execute():
+            res = inner()
+            counted["rows"] += len(res.data or [])
+            counted["by"][name] = counted["by"].get(name, 0) + len(res.data or [])
+            return res
+
+        q.execute = execute      # type: ignore[method-assign]
+        return q
+
+    db.table = table             # type: ignore[method-assign]
+    report(db)
+    return counted["rows"], counted["by"]
+
+
+AGING = {
+    "ar_aging": lambda db: __import__(
+        "services.customer_statement_service", fromlist=["customer_statement_service"]
+    ).customer_statement_service.ar_aging(db, FIRM, CLIENT, as_of="2026-08-01"),
+    "ap_aging": lambda db: __import__(
+        "services.vendor_statement_service", fromlist=["vendor_statement_service"]
+    ).vendor_statement_service.ap_aging(db, FIRM, CLIENT, as_of="2026-08-01"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(AGING))
+def test_aging_does_not_read_settled_history(name):
+    """20 open documents throughout; 10 settled ones, then 1,000. The answer is
+    the same size in both, so the read must be too."""
+    small, small_by = _aging_rows(AGING[name], 10)
+    large, large_by = _aging_rows(AGING[name], 1000)
+    assert large <= small + 50, (
+        f"{name} read {small} rows with 10 settled documents and {large} with 1,000 — "
+        f"it is paying for billing history rather than for what is outstanding.\n"
+        f"  small: {small_by}\n  large: {large_by}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(AGING))
+def test_aging_still_reports_every_open_document(name):
+    """The other half. A read that stopped growing because it stopped returning
+    the answer would pass the test above and be far worse than the bug."""
+    from tests.e2e_harness import FakeDB, _apply_generated
+    store = _aging_store(1000)
+    for tname, rows in store.items():
+        _apply_generated(tname, rows)
+    db = FakeDB()
+    db._tables.update(store)
+    out = AGING[name](db)
+    listed = out.get("invoices", out.get("bills", []))
+    assert len(listed) == OPEN_DOCS, f"{name} listed {len(listed)} of {OPEN_DOCS} open documents"
+    assert out["total_outstanding_paise"] == OPEN_DOCS * 10000

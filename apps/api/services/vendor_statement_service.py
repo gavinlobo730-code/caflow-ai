@@ -240,11 +240,17 @@ class VendorStatementService:
         """Accounts-payable aging: per non-cancelled bill, outstanding = net_payable −
         paid − debited, bucketed by age from due_date (or bill_date). Mirrors AR aging."""
         today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
+        # Filtered in the query, not in Python — see customer_statement_service
+        # .ar_aging for the reasoning; this is its mirror. outstanding_paise is a
+        # generated column (migration 278).
         bills = _paginate_all(lambda: db.table("purchase_bills")
                  .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, "
-                         "debited_paise, credit_note_paise, status, txn_currency, exchange_rate, txn_net_payable, paid_txn")
+                         "debited_paise, credit_note_paise, outstanding_paise, status, txn_currency, "
+                         "exchange_rate, txn_net_payable, paid_txn")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
-                 .is_("deleted_at", "null"))
+                 .is_("deleted_at", "null")
+                 .not_.in_("status", list(_DEAD_BILL))
+                 .gt("outstanding_paise", 0))
         vnames = {v["id"]: v.get("name") for v in _paginate_all(lambda: db.table("vendors").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id))}
 
@@ -252,12 +258,11 @@ class VendorStatementService:
         rows, total = [], 0
         ccy_entries: list[tuple] = []   # (currency, base_paise, foreign_minor) for the breakdown
         for b in bills:
-            if (b.get("status") or "") in _DEAD_BILL:
-                continue
-            # (net_payable + credit notes) − paid − debited (CGST Act §34).
-            outstanding = (int(b.get("net_payable_paise") or 0) + int(b.get("credit_note_paise") or 0)
-                           - int(b.get("paid_paise") or 0) - int(b.get("debited_paise") or 0))
-            if outstanding <= 0:
+            # (net_payable + credit notes) − paid − debited (CGST Act §34), read
+            # from the generated column rather than recomputed. The status and
+            # positive filters are in the query above.
+            outstanding = int(b.get("outstanding_paise") or 0)
+            if outstanding <= 0:                     # belt and braces: a stale fake DB
                 continue
             ref = b.get("due_date") or b.get("bill_date")
             try:
