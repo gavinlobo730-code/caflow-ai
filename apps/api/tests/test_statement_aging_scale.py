@@ -37,6 +37,13 @@ class _CapQuery:
     def is_(self, k, _v): self.f.append((k, "__null__")); return self
     def in_(self, k, vals): self.f.append((k, ("__in__", set(vals)))); return self
     def gt(self, k, v): self.f.append((k, ("__gt__", v))); return self
+
+    @property
+    def not_(self):
+        """PostgREST's negation: .not_.in_(col, vals). Aging excludes draft and
+        cancelled documents IN THE QUERY now, so the double has to understand
+        the filter or it returns rows the database never would."""
+        return _CapNot(self)
     def order(self, col=None, *_a, **_k): self._order = col; return self
     def range(self, a, b): self._range = (a, b); return self
     def limit(self, n): self._limit = n; return self
@@ -48,7 +55,16 @@ class _CapQuery:
             elif isinstance(v, tuple) and v[0] == "__in__":
                 if r.get(k) not in v[1]: return False
             elif isinstance(v, tuple) and v[0] == "__gt__":
-                if not (r.get(k) is not None and str(r.get(k)) > str(v[1])): return False
+                rv = r.get(k)
+                # Numeric columns compare numerically — outstanding_paise > 0
+                # must not be a string comparison, where "10000" > "0" is true
+                # by luck and "-500" > "0" is true by accident.
+                if rv is None: return False
+                if isinstance(rv, (int, float)) and isinstance(v[1], (int, float)):
+                    if not rv > v[1]: return False
+                elif not str(rv) > str(v[1]): return False
+            elif isinstance(v, tuple) and v[0] == "__not_in__":
+                if r.get(k) in v[1]: return False
             elif r.get(k) != v:
                 return False
         return True
@@ -65,6 +81,13 @@ class _CapQuery:
         return _Res(rows[:CAP])          # the silent cap (un-limited select)
 
 
+class _CapNot:
+    def __init__(self, q): self.q = q
+    def in_(self, k, vals):
+        self.q.f.append((k, ("__not_in__", set(vals))))
+        return self.q
+
+
 class _CapDB:
     def __init__(self, store): self.store = store
     def table(self, n): return _CapQuery(self.store, n)
@@ -75,6 +98,9 @@ def _invoice_row(i: int) -> dict:
         "id": f"inv{i:06d}", "customer_id": f"cust{i % 50:04d}", "invoice_no": f"INV-{i:06d}",
         "invoice_date": "2025-06-01", "due_date": "2025-06-15",
         "total_paise": 10_000, "paid_paise": 0, "credited_paise": 0, "debit_note_paise": 0,
+        # Generated in Postgres (migration 278); the double carries it because
+        # AR aging filters on it rather than subtracting in Python.
+        "outstanding_paise": 10_000,
         "status": "issued", "txn_currency": "INR", "exchange_rate": "1", "txn_total": 10_000,
         "paid_txn": 0, "firm_id": FIRM, "client_id": CLIENT, "deleted_at": None,
     }
@@ -85,6 +111,7 @@ def _bill_row(i: int) -> dict:
         "id": f"bill{i:06d}", "vendor_id": f"vend{i % 50:04d}", "bill_no": f"BILL-{i:06d}",
         "bill_date": "2025-06-01", "due_date": "2025-06-15",
         "net_payable_paise": 10_000, "paid_paise": 0, "debited_paise": 0, "credit_note_paise": 0,
+        "outstanding_paise": 10_000,
         "status": "received", "txn_currency": "INR", "exchange_rate": "1", "txn_net_payable": 10_000,
         "paid_txn": 0, "firm_id": FIRM, "client_id": CLIENT, "deleted_at": None,
     }

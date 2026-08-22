@@ -263,11 +263,20 @@ class CustomerStatementService:
         and a per-currency breakdown, so an INR-only client's aging is unchanged.
         Base amounts stay authoritative and reconcile with the AR sub-ledger / GL."""
         today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
+        # BOTH filters belong in the query (CLAUDE.md, "Reporting performance").
+        # This used to fetch every non-deleted invoice the client had ever raised
+        # and drop the settled ones in Python — 5,655 rows on the live client, to
+        # list the ones still open. outstanding_paise is a generated column
+        # (migration 278), which is what lets the arithmetic be a filter at all:
+        # PostgREST can compare a column, not a four-term expression.
         invs = _paginate_all(lambda: db.table("client_sales_invoices")
                 .select("id, customer_id, invoice_no, invoice_date, due_date, total_paise, paid_paise, "
-                        "credited_paise, debit_note_paise, status, txn_currency, exchange_rate, txn_total, paid_txn")
+                        "credited_paise, debit_note_paise, outstanding_paise, status, txn_currency, "
+                        "exchange_rate, txn_total, paid_txn")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                .is_("deleted_at", "null"))
+                .is_("deleted_at", "null")
+                .not_.in_("status", list(_DEAD_INVOICE))
+                .gt("outstanding_paise", 0))
         cnames = {c["id"]: c.get("name") for c in _paginate_all(lambda: db.table("customers").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id))}
 
@@ -275,12 +284,12 @@ class CustomerStatementService:
         rows, total = [], 0
         ccy_entries: list[tuple] = []
         for inv in invs:
-            if (inv.get("status") or "") in _DEAD_INVOICE:
-                continue
-            # (total + debit notes) − paid − credited (CGST Act §34).
-            outstanding = (int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
-                           - int(inv.get("paid_paise") or 0) - int(inv.get("credited_paise") or 0))
-            if outstanding <= 0:
+            # (total + debit notes) − paid − credited (CGST Act §34), read from
+            # the generated column rather than recomputed. One formula, in the
+            # schema, so an invoice's outstanding figure cannot depend on which
+            # code path asked. The status/positive filters are in the query above.
+            outstanding = int(inv.get("outstanding_paise") or 0)
+            if outstanding <= 0:                     # belt and braces: a stale fake DB
                 continue
             ref = inv.get("due_date") or inv.get("invoice_date")
             try:
