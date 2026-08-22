@@ -34,6 +34,8 @@ ACCOUNTS = [
     Account("loan",   "2500", "Term Loan",              "Liability", "Loan"),
     Account("cap",    "3000", "Partner Capital Account","Equity",    "Capital"),
     Account("retd",   "3100", "Retained Earnings",      "Equity",    "Retained"),
+    Account("inv",    "1200", "Inventory",              "Asset",     "Inventory"),
+    Account("obe",    "3050", "Opening Balance Equity", "Equity",    "Capital"),
 ]
 
 
@@ -215,6 +217,119 @@ def test_year_end_close_excluded_no_distortion():
     assert r["net_profit_paise"] == 10000          # earned profit, NOT zeroed by the close
     assert r["working_capital_change_paise"] == -10000  # offset by the A/R increase
     assert r["net_cash_operating_paise"] == 0
+    assert_reconciles(s)
+
+
+# ── Opening balances (the gap the year-end guard did not cover) ──────────────
+# Opening balances are the SAME shape as the year-end close — a non-cash entry
+# with an equity leg — but they carry no P&L leg, so a guard written as
+# `has_equity and has_pl` let them through.
+#
+# What that cost: the equity leg is classified financing, so working_capital
+# skips it; there is no bank leg, so financing_cash never sees it. The operating
+# counterpart legs ARE counted. The indirect reconciliation ends up short by
+# exactly the equity movement.
+#
+# Found on a live client: Q1 out by +₹40,54,000 and Q2 by −₹40,54,000, opening
+# balances posted 1 April and corrected in July. The full year netted to zero
+# and showed a green tick. Only splitting it into quarters made it visible —
+# and for a client whose opening balances are never reversed, the ANNUAL
+# statement is wrong too, with nothing to cancel it.
+
+# The production shape, at legible scale: an opening-balance batch that brings
+# in stock and payables against Opening Balance Equity, and the separate
+# opening-stock entry that offsets part of it. Net equity movement ₹400 debit.
+OB_BALANCE = je("ob-bal",   [("obe", 103000, 0), ("inv", 0, 99000), ("ap", 0, 4000)], "2026-04-01")
+OB_STOCK   = je("ob-stock", [("inv", 99000, 0), ("obe", 0, 99000)], "2026-04-01")
+CREDIT_SALE = je("sale", [("ar", 10000, 0), ("rev", 0, 10000)], "2026-06-01")
+
+
+def test_opening_balances_do_not_break_the_reconciliation():
+    """The regression. Without the fix the indirect breakdown is short by the
+    ₹400 equity movement and ties_out is false — which is what the CA sees as
+    'Cash flow does not reconcile to the change in cash balances'."""
+    s = cf(svc_for([OB_BALANCE, OB_STOCK, CREDIT_SALE]))
+    assert_reconciles(s)
+
+
+def test_opening_balances_are_excluded_whole_not_half():
+    """The precise defect: the equity leg was dropped while its INVENTORY and
+    PAYABLES counterparts were counted as working capital. Excluding one leg of
+    a balanced entry is what created the residual, so the assertion is that
+    working capital reflects the trading only."""
+    s = cf(svc_for([OB_BALANCE, OB_STOCK, CREDIT_SALE]))
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == 10000
+    assert r["working_capital_change_paise"] == -10000, (
+        "opening stock/payables leaked into working capital — they are an "
+        "opening position, not a movement of the period"
+    )
+    assert r["net_cash_operating_paise"] == 0
+
+
+def test_opening_balance_equity_is_not_reported_as_financing():
+    """It has no cash leg, so it is not a financing FLOW either. It must simply
+    be absent — not moved from one wrong place to another."""
+    s = cf(svc_for([OB_BALANCE, OB_STOCK, CREDIT_SALE]))
+    assert line_for(s, "financing", "obe") is None
+    assert total(s, "financing") == 0
+
+
+def test_a_sub_annual_window_reconciles_too():
+    """The live symptom. The annual view hid this because the client's opening
+    balances were later corrected and the two cancelled; a quarter does not get
+    that luck, and neither does an ordinary client's full year."""
+    svc = svc_for([OB_BALANCE, OB_STOCK, CREDIT_SALE])
+    q1 = svc.cash_flow_statement(FIRM, CLIENT, "2026-04-01", "2026-06-30")
+    assert_reconciles(q1)
+    assert q1["operating_reconciliation"]["net_profit_paise"] == 10000
+
+
+def test_every_quarter_of_the_year_reconciles_independently():
+    """Each window judged on its own, which is what the quarterly columns do."""
+    svc = svc_for([OB_BALANCE, OB_STOCK, CREDIT_SALE])
+    for start, end in (("2026-04-01", "2026-06-30"), ("2026-07-01", "2026-09-30"),
+                       ("2026-10-01", "2026-12-31"), ("2027-01-01", "2027-03-31")):
+        s = svc.cash_flow_statement(FIRM, CLIENT, start, end)
+        assert s["operating_reconciliation"]["ties_out"] is True, f"{start}..{end} does not tie out"
+
+
+def test_the_quarters_sum_to_the_year():
+    """Flows are period-additive. If a quarter double-counted or dropped an
+    entry at a boundary, the year would stop agreeing with its parts."""
+    svc = svc_for([OB_BALANCE, OB_STOCK, CREDIT_SALE])
+    quarters = [svc.cash_flow_statement(FIRM, CLIENT, a, b) for a, b in (
+        ("2026-04-01", "2026-06-30"), ("2026-07-01", "2026-09-30"),
+        ("2026-10-01", "2026-12-31"), ("2027-01-01", "2027-03-31"))]
+    year = cf(svc)
+    for key in ("net_profit_paise", "working_capital_change_paise", "net_cash_operating_paise"):
+        assert sum(q["operating_reconciliation"][key] for q in quarters) == \
+               year["operating_reconciliation"][key], key
+
+
+def test_depreciation_survives_the_wider_exclusion():
+    """The scoping decision, pinned. Excluding every non-cash entry that touches
+    a NON-OPERATING account — the broader rule — would take depreciation with
+    it, since Dr Depreciation / Cr Accumulated Depreciation is non-cash and its
+    credit leg is a fixed asset. The guard is scoped to EQUITY for this reason,
+    and this asserts the two coexist."""
+    s = cf(svc_for([
+        OB_BALANCE, OB_STOCK, CREDIT_SALE,
+        je("dep", [("depexp", 3000, 0), ("accdep", 0, 3000)], "2026-09-30"),
+    ]))
+    r = s["operating_reconciliation"]
+    assert r["depreciation_addback_paise"] == 3000, "the add-back was lost"
+    assert r["net_profit_paise"] == 10000 - 3000
+    assert_reconciles(s)
+
+
+def test_capital_introduced_in_cash_is_still_financing():
+    """The guard is for NON-cash equity entries only. Money actually put into
+    the business is a financing inflow and must not be swept up."""
+    s = cf(svc_for([OB_BALANCE, OB_STOCK,
+                    je("intro", [("bank", 50000, 0), ("cap", 0, 50000)], "2026-05-01")]))
+    assert total(s, "financing") == 50000
+    assert s["net_change_paise"] == 50000
     assert_reconciles(s)
 
 

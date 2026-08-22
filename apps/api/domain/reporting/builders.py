@@ -347,13 +347,40 @@ def cash_flow(entries: list, accounts: dict[str, Account],
             non_cash_excluded += 1           # MEDIUM-4/5: non-cash entry excluded from cash flow
 
         # ── Operating-reconciliation inputs (HIGH-1) ─────────────────────────
-        # Exclude year-end closing / equity reclassifications: a non-cash entry
-        # that moves P&L into equity (Dr Revenue / Cr Retained Earnings) is not
-        # period profit and must not pollute the indirect reconciliation (MEDIUM-5).
+        # A NON-CASH entry touching EQUITY is a position entry, not a flow of the
+        # period, and is excluded whole. AS-3 keeps non-cash transactions out of
+        # the statement entirely (they are disclosed separately), and every entry
+        # of this shape is one: opening balances brought forward, the year-end
+        # close moving P&L into retained earnings, reserve transfers, drawings
+        # taken in kind.
+        #
+        # This used to require a P&L leg as well — `has_equity and has_pl` — and
+        # so caught only the year-end close. OPENING BALANCES have no P&L leg and
+        # went straight through, with consequences that were invisible on an
+        # annual statement:
+        #
+        #   Dr Opening Balance Equity / Cr Inventory, dated 1 April. The equity
+        #   leg is classified FINANCING, so working_capital skips it; there is no
+        #   bank leg, so financing_cash never sees it either. The INVENTORY leg is
+        #   operating and IS counted. The indirect reconciliation is then short by
+        #   exactly the equity movement, and `operating_reconciles` is false.
+        #
+        # Found on a live client whose Q1 was out by ₹40,54,000 in one direction
+        # and Q2 by the same amount in the other — opening balances posted on
+        # 1 April and corrected in July. The full year netted to zero and showed
+        # a green tick; only splitting the year into quarters made it visible.
+        # For an ordinary client, whose opening balances are never reversed, the
+        # ANNUAL statement is wrong too and nothing cancels it.
+        #
+        # Scoped to equity deliberately. The broader rule — exclude any non-cash
+        # entry touching a non-operating account — would take depreciation with
+        # it: Dr Depreciation / Cr Accumulated Depreciation is non-cash and its
+        # credit leg is a fixed asset, so the add-back below would stop happening.
+        # Equity is the leg that has no home in either the cash sections or
+        # working capital; a fixed asset paid for in kind already nets out,
+        # because neither of its legs is counted.
         has_equity = any(_acc(accounts, l.account_id).type == "Equity" for l in nonbank)
-        has_pl = any(_acc(accounts, l.account_id).is_income or _acc(accounts, l.account_id).is_expense
-                     for l in nonbank)
-        if cash == 0 and has_equity and has_pl:
+        if cash == 0 and has_equity:
             continue
         for l in nonbank:
             a = _acc(accounts, l.account_id)
