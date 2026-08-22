@@ -72,8 +72,14 @@ def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
 
 def build_statement(vendor: dict, start: str, end: str,
                     bills: list[dict], payments: list[dict], debit_notes: list[dict],
-                    credit_notes: list[dict] | None = None) -> dict:
-    """Pure builder — opening, ordered transactions with running payable, closing."""
+                    credit_notes: list[dict] | None = None,
+                    opening_position: dict | None = None) -> dict:
+    """Pure builder — opening, ordered transactions with running payable, closing.
+
+    `opening_position` is the vendor's position before `start`, from
+    public.party_opening_position (migration 282). Supply it and the documents may
+    be just the window's; omit it and they must be the FULL history, because the
+    opening is then derived by replaying everything before `start`."""
     start, end = _d(start), _d(end)
     events: list[dict] = []
     for b in bills:
@@ -120,11 +126,15 @@ def build_statement(vendor: dict, start: str, end: str,
 
     events.sort(key=lambda e: (e["date"], e["rank"], str(e["reference"] or "")))
 
-    # Payable-positive running balance. Opening = seed + everything before the window.
-    opening = int(vendor.get("opening_balance_paise") or 0)
-    for e in events:
-        if e["date"] < start:
-            opening += e["credit_paise"] - e["debit_paise"]
+    # Payable-positive running balance. Opening = seed + everything before the
+    # window — asked of the database when the caller has one, replayed when not.
+    if opening_position is not None:
+        opening = int(opening_position.get("opening_balance_paise") or 0)
+    else:
+        opening = int(vendor.get("opening_balance_paise") or 0)
+        for e in events:
+            if e["date"] < start:
+                opening += e["credit_paise"] - e["debit_paise"]
 
     running = opening
     transactions, billed, paid, debited, credited = [], 0, 0, 0, 0
@@ -159,7 +169,8 @@ def build_statement(vendor: dict, start: str, end: str,
     # Multi-Currency Phase 5 — closing payable split by transaction currency (foreign
     # + base), reconciling to closing_balance_paise. Payable = credit-positive.
     # Emitted only when the vendor has foreign activity (INR vendors unchanged).
-    attach_currency_outstanding(result, vendor, events, end, credit_positive=True)
+    attach_currency_outstanding(result, vendor, events, end, credit_positive=True,
+                                opening_position=opening_position)
     return result
 
 
@@ -186,22 +197,57 @@ class VendorStatementService:
             raise HTTPException(status_code=404, detail="Vendor not found for this client.")
         return row
 
+    def _opening_position(self, db, firm_id, client_id, vendor_id, before) -> Optional[dict]:
+        """The vendor's position before `before`, computed in the database by
+        public.party_opening_position (migration 282), or None when there is no
+        database to ask. None keeps the old unbounded fetch, so a failure here
+        makes the statement slow, never wrong. The AR mirror of this lives in
+        customer_statement_service."""
+        if not hasattr(db, "rpc"):
+            return None
+        try:
+            res = db.rpc("party_opening_position", {
+                "p_firm": firm_id, "p_client": client_id, "p_party": vendor_id,
+                "p_kind": "vendor", "p_before": _d(before),
+            }).execute()
+            out = getattr(res, "data", None)
+            if not isinstance(out, dict) or "opening_balance_paise" not in out:
+                raise ValueError(
+                    f"party_opening_position returned {type(out).__name__}, not a position")
+            return out
+        except Exception as e:  # noqa: BLE001 — degrade to the full replay
+            _logger.error("party_opening_position failed (%s %s %s before %s) — falling back "
+                          "to replaying the whole history: %s",
+                          firm_id, client_id, vendor_id, before, e)
+            return None
+
     def generate(self, db, firm_id: str, client_id: str, vendor_id: str,
                  start_date: str, end_date: str) -> dict:
         if end_date < start_date:
             raise HTTPException(status_code=422, detail="end_date must not precede start_date.")
         vendor = self._vendor(db, firm_id, client_id, vendor_id)
 
-        b = _paginate_all(lambda: db.table("purchase_bills")
+        # See customer_statement_service.generate: the opening balance is what
+        # made this fetch unbounded, and with it answered in the database the
+        # documents can be bounded to the window the statement prints.
+        opening_position = self._opening_position(db, firm_id, client_id, vendor_id, start_date)
+
+        def _window(q, col):
+            if opening_position is None:
+                return q
+            return q.gte(col, _d(start_date)).lte(col, _d(end_date))
+
+        b = _paginate_all(lambda: _window(db.table("purchase_bills")
              .select("id, bill_no, bill_date, net_payable_paise, status, txn_currency, exchange_rate, txn_net_payable")
              .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
-             .is_("deleted_at", "null"))
+             .is_("deleted_at", "null"), "bill_date"))
         bills = [x for x in b if (x.get("status") or "") not in _DEAD_BILL]
 
-        _pay = _paginate_all(lambda: db.table("purchase_payments")
+        _pay = _paginate_all(lambda: _window(db.table("purchase_payments")
                 .select("id, payment_no, payment_date, amount_paise, is_reversed, "
                         "txn_currency, exchange_rate, txn_amount")
-                .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id))
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id),
+                "payment_date"))
         # A reversed payment no longer represents real money movement (task
         # #102) — filtered in Python, not .eq(), so a test double lacking the
         # key (impossible on the real NOT NULL DEFAULT false column) isn't
@@ -222,19 +268,20 @@ class VendorStatementService:
         for p in payments:
             p["ap_relief_paise"] = int(p.get("amount_paise") or 0) + fx_delta.get(p.get("id"), 0)
 
-        dn = _paginate_all(lambda: db.table("debit_notes")
+        dn = _paginate_all(lambda: _window(db.table("debit_notes")
               .select("id, debit_note_no, debit_note_date, total_paise, status")
               .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
-              .is_("deleted_at", "null"))
+              .is_("deleted_at", "null"), "debit_note_date"))
         debit_notes = [x for x in dn if (x.get("status") or "") not in _DEAD_DEBIT_NOTE]
 
-        cn = _paginate_all(lambda: db.table("purchase_credit_notes")
+        cn = _paginate_all(lambda: _window(db.table("purchase_credit_notes")
               .select("id, credit_note_no, credit_note_date, total_paise, status")
               .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
-              .is_("deleted_at", "null"))
+              .is_("deleted_at", "null"), "credit_note_date"))
         credit_notes = [x for x in cn if (x.get("status") or "") not in _DEAD_CREDIT_NOTE]
 
-        return build_statement(vendor, start_date, end_date, bills, payments, debit_notes, credit_notes)
+        return build_statement(vendor, start_date, end_date, bills, payments, debit_notes,
+                               credit_notes, opening_position=opening_position)
 
     def ap_aging(self, db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
         """Accounts-payable aging: per non-cancelled bill, outstanding = net_payable −

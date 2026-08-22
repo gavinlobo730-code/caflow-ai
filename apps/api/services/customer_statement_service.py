@@ -92,9 +92,17 @@ def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
 
 def build_statement(customer: dict, start: str, end: str,
                     invoices: list[dict], receipts: list[dict],
-                    credit_notes: list[dict], debit_notes: list[dict] | None = None) -> dict:
+                    credit_notes: list[dict], debit_notes: list[dict] | None = None,
+                    opening_position: dict | None = None) -> dict:
     """Pure builder — no DB. Computes opening, ordered transactions with running
-    balance, and closing outstanding from the supplied documents."""
+    balance, and closing outstanding from the supplied documents.
+
+    `opening_position` is the customer's position before `start`, from
+    public.party_opening_position (migration 282). Supply it and the documents may
+    be just the window's; omit it and the documents must be the FULL history,
+    because the opening balance is then derived by replaying everything before
+    `start` — which is what every caller without a database still does.
+    """
     start, end = _d(start), _d(end)
 
     events: list[dict] = []   # (date, rank, debit, credit, type, reference, particulars)
@@ -140,11 +148,15 @@ def build_statement(customer: dict, start: str, end: str,
 
     events.sort(key=lambda e: (e["date"], e["rank"], str(e["reference"] or "")))
 
-    # Opening = seed balance + everything strictly before the period start.
-    opening = int(customer.get("opening_balance_paise") or 0)
-    for e in events:
-        if e["date"] < start:
-            opening += e["debit_paise"] - e["credit_paise"]
+    # Opening = seed balance + everything strictly before the period start —
+    # asked of the database when the caller has one, replayed here when not.
+    if opening_position is not None:
+        opening = int(opening_position.get("opening_balance_paise") or 0)
+    else:
+        opening = int(customer.get("opening_balance_paise") or 0)
+        for e in events:
+            if e["date"] < start:
+                opening += e["debit_paise"] - e["credit_paise"]
 
     running = opening
     transactions: list[dict] = []
@@ -187,7 +199,8 @@ def build_statement(customer: dict, start: str, end: str,
     # Multi-Currency Phase 5 — closing outstanding split by transaction currency
     # (foreign + base), reconciling to closing_balance_paise. EMITTED ONLY when the
     # customer has foreign activity, so an INR-only statement is byte-for-byte today's.
-    attach_currency_outstanding(result, customer, events, end)
+    attach_currency_outstanding(result, customer, events, end,
+                                opening_position=opening_position)
     return result
 
 
@@ -202,22 +215,61 @@ class CustomerStatementService:
             raise HTTPException(status_code=404, detail="Customer not found for this client.")
         return row
 
+    def _opening_position(self, db, firm_id, client_id, customer_id, before) -> Optional[dict]:
+        """The customer's position before `before`, computed in the database by
+        public.party_opening_position (migration 282), or None when there is no
+        database to ask — mock mode, local dev, a test double without .rpc().
+
+        None is the signal to keep the old unbounded fetch, so a failure here
+        makes the statement slow, never wrong."""
+        if not hasattr(db, "rpc"):
+            return None
+        try:
+            res = db.rpc("party_opening_position", {
+                "p_firm": firm_id, "p_client": client_id, "p_party": customer_id,
+                "p_kind": "customer", "p_before": _d(before),
+            }).execute()
+            out = getattr(res, "data", None)
+            if not isinstance(out, dict) or "opening_balance_paise" not in out:
+                raise ValueError(
+                    f"party_opening_position returned {type(out).__name__}, not a position")
+            return out
+        except Exception as e:  # noqa: BLE001 — degrade to the full replay
+            _logger.error("party_opening_position failed (%s %s %s before %s) — falling back "
+                          "to replaying the whole history: %s",
+                          firm_id, client_id, customer_id, before, e)
+            return None
+
     def generate(self, db, firm_id: str, client_id: str, customer_id: str,
                  start_date: str, end_date: str) -> dict:
         if end_date < start_date:
             raise HTTPException(status_code=422, detail="end_date must not precede start_date.")
         customer = self._customer(db, firm_id, client_id, customer_id)
 
-        inv = _paginate_all(lambda: db.table("client_sales_invoices")
+        # The whole reason this used to fetch the customer's entire history was
+        # the opening balance. With that answered in the database, the documents
+        # can be bounded to the window the statement actually prints — five
+        # unbounded reads become five bounded ones (CLAUDE.md, "Reporting
+        # performance"). Without a database the fetch stays as it was and
+        # build_statement replays, so mock mode is byte-for-byte unchanged.
+        opening_position = self._opening_position(db, firm_id, client_id, customer_id, start_date)
+
+        def _window(q, col):
+            if opening_position is None:
+                return q
+            return q.gte(col, _d(start_date)).lte(col, _d(end_date))
+
+        inv = _paginate_all(lambda: _window(db.table("client_sales_invoices")
                .select("id, invoice_no, invoice_date, total_paise, status, txn_currency, exchange_rate, txn_total")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-               .is_("deleted_at", "null"))
+               .is_("deleted_at", "null"), "invoice_date"))
         invoices = [i for i in inv if (i.get("status") or "") not in _DEAD_INVOICE]
 
-        _rcpt = _paginate_all(lambda: db.table("receipts")
+        _rcpt = _paginate_all(lambda: _window(db.table("receipts")
                  .select("id, receipt_no, receipt_date, amount_paise, tds_paise, unallocated_paise, "
                          "is_reversed, txn_currency, exchange_rate, txn_amount")
-                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id))
+                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id),
+                 "receipt_date"))
         # A reversed receipt no longer represents real money movement (task
         # #102) — its journal was reversed and its allocations voided, so it
         # must not appear as a statement transaction. Filtered in Python (not
@@ -242,19 +294,20 @@ class CustomerStatementService:
         for r in receipts:
             r["ar_relief_paise"] = alloc_sum.get(r.get("id"), 0) + int(r.get("unallocated_paise") or 0)
 
-        cns = _paginate_all(lambda: db.table("credit_notes")
+        cns = _paginate_all(lambda: _window(db.table("credit_notes")
                .select("id, credit_note_no, credit_note_date, total_paise, status")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-               .is_("deleted_at", "null"))
+               .is_("deleted_at", "null"), "credit_note_date"))
         credit_notes = [c for c in cns if (c.get("status") or "") not in _DEAD_CREDIT_NOTE]
 
-        dns = _paginate_all(lambda: db.table("sales_debit_notes")
+        dns = _paginate_all(lambda: _window(db.table("sales_debit_notes")
                .select("id, debit_note_no, debit_note_date, total_paise, status")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-               .is_("deleted_at", "null"))
+               .is_("deleted_at", "null"), "debit_note_date"))
         debit_notes = [d for d in dns if (d.get("status") or "") not in _DEAD_DEBIT_NOTE]
 
-        return build_statement(customer, start_date, end_date, invoices, receipts, credit_notes, debit_notes)
+        return build_statement(customer, start_date, end_date, invoices, receipts,
+                               credit_notes, debit_notes, opening_position=opening_position)
 
     def ar_aging(self, db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
         """Client-scoped accounts-receivable aging (the AR mirror of ap_aging): per

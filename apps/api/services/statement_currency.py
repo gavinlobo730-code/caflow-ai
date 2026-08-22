@@ -17,25 +17,56 @@ from __future__ import annotations
 
 
 def attach_currency_outstanding(result: dict, party: dict, events: list[dict],
-                                end: str, *, credit_positive: bool = False) -> None:
+                                end: str, *, credit_positive: bool = False,
+                                opening_position: dict | None = None) -> None:
     """Attach `base_currency` + `outstanding_by_currency` to `result` when any event
     is non-INR. `credit_positive` selects the payable (vendor) sign convention; the
     default is the receivable (customer) convention.
 
     Each event must carry: date, debit_paise, credit_paise, txn_currency, txn_amount.
+
+    `opening_position` is the party's per-currency position BEFORE the statement
+    window — {"by_currency": [{currency, base_paise, foreign_minor}, ...]}, seed
+    included — as returned by public.party_opening_position (migration 282). Pass
+    it when `events` holds only the window's documents; the accumulation then
+    starts from that position instead of from the seed, and the reconciliation
+    guarantee above is preserved.
+
+    This is why the statement asks the database for a POSITION and not just an
+    opening balance. The guarantee holds because every movement on or before the
+    period end is accumulated, and a scalar balance has already summed the
+    currency dimension away — feed one in and a party with foreign activity before
+    the window gets a split that does not reconcile to its own closing balance.
+
+    Omit it and behaviour is exactly as before: `events` is taken to be the full
+    history and the seed opens the INR slot. That is what mock mode, local dev and
+    every pure-builder caller still do.
     """
-    if not any((e.get("txn_currency") or "INR").upper() != "INR" for e in events):
+    opening_ccy = list((opening_position or {}).get("by_currency") or [])
+    # A party whose ONLY foreign activity predates the window would look INR-only
+    # from the windowed events alone, and would silently lose the block it gets
+    # today. The position names every currency it ever saw, zero-valued or not,
+    # which is exactly the set the full replay would have found.
+    if not (any((e.get("txn_currency") or "INR").upper() != "INR" for e in events)
+            or any((r.get("currency") or "INR").upper() != "INR" for r in opening_ccy)):
         return
 
-    seed = int(party.get("opening_balance_paise") or 0)
     by: dict[str, dict] = {}
 
     def slot(cur: str) -> dict:
         return by.setdefault(cur, {"outstanding_foreign_minor": 0, "outstanding_base_paise": 0})
 
-    inr = slot("INR")
-    inr["outstanding_foreign_minor"] += seed
-    inr["outstanding_base_paise"] += seed
+    if opening_position is not None:
+        for row in opening_ccy:
+            s = slot((row.get("currency") or "INR").upper())
+            s["outstanding_base_paise"] += int(row.get("base_paise") or 0)
+            s["outstanding_foreign_minor"] += int(row.get("foreign_minor") or 0)
+        slot("INR")          # the INR row exists even for a purely foreign party
+    else:
+        seed = int(party.get("opening_balance_paise") or 0)
+        inr = slot("INR")
+        inr["outstanding_foreign_minor"] += seed
+        inr["outstanding_base_paise"] += seed
     for e in events:
         if e["date"] > end:
             continue
