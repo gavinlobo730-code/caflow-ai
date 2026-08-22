@@ -152,3 +152,42 @@ test("ties-out is exact, not approximate", () => {
   const cols = [col("Apr", data({ opening_cash_paise: 100, net_change_paise: 1, closing_cash_paise: 102 }))];
   assert.equal(cashFlowTiesOut(aggregateCashFlow(cols)), false);
 });
+
+// ── Bounded concurrency ──────────────────────────────────────────────────────
+// /api/accounting/cash-flow is the slowest endpoint in the product. Firing one
+// per column at once is what made two of four quarterly columns time out.
+
+test("never exceeds the limit in flight", async () => {
+  const { mapWithLimit } = await import("./cashFlowMatrix.ts");
+  let inFlight = 0, peak = 0;
+  const items = [1, 2, 3, 4, 5, 6, 7, 8];
+  await mapWithLimit(items, 2, async (n) => {
+    inFlight++; peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 5));
+    inFlight--;
+    return n * 2;
+  });
+  assert.ok(peak <= 2, `peaked at ${peak} concurrent requests, limit was 2`);
+});
+
+test("results come back in input order, not completion order", async () => {
+  // The columns are Apr, May, Jun… — a matrix whose columns arrive shuffled by
+  // whichever request happened to finish first is worse than no matrix.
+  const { mapWithLimit } = await import("./cashFlowMatrix.ts");
+  const out = await mapWithLimit([30, 5, 20, 1], 2, async (ms, i) => {
+    await new Promise((r) => setTimeout(r, ms));
+    return i;
+  });
+  assert.deepEqual(out, [0, 1, 2, 3]);
+});
+
+test("every item runs even when the limit exceeds the list", async () => {
+  const { mapWithLimit } = await import("./cashFlowMatrix.ts");
+  assert.deepEqual(await mapWithLimit([1, 2], 10, async (n) => n + 1), [2, 3]);
+  assert.deepEqual(await mapWithLimit([], 4, async (n) => n), []);
+});
+
+test("a limit of zero still makes progress rather than hanging", async () => {
+  const { mapWithLimit } = await import("./cashFlowMatrix.ts");
+  assert.deepEqual(await mapWithLimit([1, 2, 3], 0, async (n) => n * 10), [10, 20, 30]);
+});
