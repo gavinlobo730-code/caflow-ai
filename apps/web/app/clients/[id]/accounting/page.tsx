@@ -2345,9 +2345,12 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
             const accounts = cfUnion(columns, pick);
             return (
               <Fragment key={title}>
-                <tr className="bg-[#F8FAFC]/60">
-                  <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10" colSpan={1}>{title}</td>
-                  {columns.map((c) => <td key={c.label} />)}
+                {/* The row and its sticky first cell must carry the SAME
+                    background. A tinted row behind an opaque sticky cell reads
+                    as shading that stops halfway across the table. */}
+                <tr className="bg-[#F1F5F9]">
+                  <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F1F5F9] z-10">{title}</td>
+                  {columns.map((c) => <td key={c.label} className="bg-[#F1F5F9]" />)}
                 </tr>
                 {accounts.length === 0 ? (
                   <tr>
@@ -2355,8 +2358,8 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
                     {columns.map((c) => <td key={c.label} />)}
                   </tr>
                 ) : accounts.map((a) => (
-                  <tr key={a.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-5 py-2 pl-8 text-[#334155] sticky left-0 bg-white z-10">{a.name}</td>
+                  <tr key={a.id} className="group hover:bg-[#F8FAFC]">
+                    <td className="px-5 py-2 pl-8 text-[#334155] sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10">{a.name}</td>
                     {columns.map((c) => <CFCell key={c.label} paise={cfAmount(c.data, pick, a.id)} />)}
                   </tr>
                 ))}
@@ -2383,13 +2386,13 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
 
           {reconRows.length > 0 && (
             <>
-              <tr className="border-t-2 border-[#E2E8F0] bg-[#F8FAFC]/60">
-                <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10">Operating Reconciliation — Indirect Method</td>
-                {columns.map((c) => <td key={c.label} />)}
+              <tr className="border-t-2 border-[#E2E8F0] bg-[#F1F5F9]">
+                <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F1F5F9] z-10">Operating Reconciliation — Indirect Method</td>
+                {columns.map((c) => <td key={c.label} className="bg-[#F1F5F9]" />)}
               </tr>
               {reconRows.map(({ label, of }) => (
-                <tr key={label} className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-2 pl-8 text-[#334155] sticky left-0 bg-white z-10">{label}</td>
+                <tr key={label} className="group hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-2 pl-8 text-[#334155] sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10">{label}</td>
                   {columns.map((c) => (
                     <CFCell key={c.label} paise={c.data?.operating_reconciliation ? of(c.data.operating_reconciliation) : 0} />
                   ))}
