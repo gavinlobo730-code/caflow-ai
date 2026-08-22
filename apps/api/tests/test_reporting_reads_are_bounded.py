@@ -335,44 +335,64 @@ WINDOW = ("2026-04-01", "2027-03-31")
 
 
 def _fx_store(inr_history: int) -> dict:
-    """A fixed foreign answer set, and a growing INR ledger around it. The rate
-    audit's answer is the foreign documents alone, so its read must not move when
-    the INR history does."""
-    def inv(i, currency, status, when):
+    """A fixed foreign answer set, and a growing INR ledger around it. Both FX
+    reports answer about foreign documents only, so their reads must not move
+    when the base-currency ledger does.
+
+    The INR rows carry txn_total too, mirroring production — 5,659 of the live
+    client's 5,662 invoices have it populated at the base amount with paid_txn 0.
+    So `txn_outstanding > 0` is true for them as well, and it is the CURRENCY
+    filter that has to do the work. A fixture that left txn_total NULL on the INR
+    rows would pass while testing nothing."""
+    def inv(i, currency, status, when, txn_total=12000, paid_txn=0):
         return {"id": f"inv{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
-                "invoice_no": f"INV-{i:06d}", "invoice_date": when, "status": status,
+                "customer_id": "cu1", "invoice_no": f"INV-{i:06d}",
+                "invoice_date": when, "due_date": when, "status": status,
                 "txn_currency": currency, "exchange_rate": "83.5",
                 "rate_source": "rbi", "rate_type": "booking", "rate_date": when,
                 "rate_selected_by": "u1", "rate_overridden": False,
-                "total_paise": 10000, "paid_paise": 0, "credited_paise": 0,
-                "debit_note_paise": 0, "deleted_at": None}
+                "total_paise": 1_002_000, "paid_paise": 0, "credited_paise": 0,
+                "debit_note_paise": 0, "deleted_at": None,
+                "txn_total": txn_total, "paid_txn": paid_txn}
 
-    def bill(i, currency, status, when):
+    def bill(i, currency, status, when, txn_net=12000, paid_txn=0):
         return {"id": f"bil{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
-                "bill_no": f"BILL-{i:06d}", "bill_date": when, "status": status,
+                "vendor_id": "ve1", "bill_no": f"BILL-{i:06d}",
+                "bill_date": when, "due_date": when, "status": status,
                 "txn_currency": currency, "exchange_rate": "83.5",
                 "rate_source": "rbi", "rate_type": "booking", "rate_date": when,
                 "rate_selected_by": "u1", "rate_overridden": False,
-                "net_payable_paise": 10000, "paid_paise": 0, "debited_paise": 0,
-                "credit_note_paise": 0, "deleted_at": None}
+                "net_payable_paise": 1_002_000, "paid_paise": 0, "debited_paise": 0,
+                "credit_note_paise": 0, "deleted_at": None,
+                "txn_net_payable": txn_net, "paid_txn": paid_txn}
 
+    # The answer: foreign, issued, inside the window, still open.
     invoices = [inv(i, "USD", "issued", "2026-06-01") for i in range(FOREIGN_DOCS)]
     bills = [bill(i, "USD", "received", "2026-06-01") for i in range(FOREIGN_DOCS)]
-    # Everything below is history the report must not pay for: INR documents,
-    # foreign drafts (never issued, so their rate was never used for anything),
-    # and foreign documents outside the window.
+
+    # History the reports must not pay for. INR is the bulk and the part that
+    # grows; the rest is fixed and exists so each individual filter is exercised.
     for i in range(inr_history):
         n = FOREIGN_DOCS + i
         invoices.append(inv(n, "INR", "issued", "2026-06-01"))
         bills.append(bill(n, "INR", "received", "2026-06-01"))
     for i in range(10):
         n = FOREIGN_DOCS + inr_history + i
+        # Never issued: no journal posted, so the stamped rate was used for
+        # nothing and there is no balance. Excluded from both reports by status.
         invoices.append(inv(n, "USD", "draft", "2026-06-01"))
-        invoices.append(inv(n + 500_000, "USD", "issued", "2020-06-01"))
         bills.append(bill(n, "USD", "draft", "2026-06-01"))
-        bills.append(bill(n + 500_000, "USD", "issued", "2020-06-01"))
+        # Foreign, issued, fully settled, and years before the window. Excluded
+        # from the rate audit by its date and from open balances by having
+        # nothing left outstanding.
+        invoices.append(inv(n + 500_000, "USD", "issued", "2020-06-01",
+                            txn_total=12000, paid_txn=12000))
+        bills.append(bill(n + 500_000, "USD", "received", "2020-06-01",
+                          txn_net=12000, paid_txn=12000))
     return {"client_sales_invoices": invoices, "purchase_bills": bills,
-            "fx_adjustments": [], "journal_entries": []}
+            "fx_adjustments": [], "journal_entries": [], "bank_accounts": [],
+            "customers": [{"id": "cu1", "firm_id": FIRM, "client_id": CLIENT, "name": "Buyer"}],
+            "vendors": [{"id": "ve1", "firm_id": FIRM, "client_id": CLIENT, "name": "Seller"}]}
 
 
 def _rate_audit(db):
@@ -454,3 +474,34 @@ def test_firm_fee_aging_does_not_read_settled_invoices(monkeypatch):
     monkeypatch.setattr(CS, "_db", lambda: db)
     out = CS.ar_aging(FIRM, today=date(2026, 8, 1))
     assert out["total_outstanding_paise"] == OPEN_DOCS * 10000
+
+
+def _open_balances(db):
+    from services.fx_reporting_service import fx_reporting_service
+    return fx_reporting_service.open_foreign_balances(db, FIRM, CLIENT, as_of="2027-03-31")
+
+
+def test_open_foreign_balances_does_not_read_the_inr_ledger():
+    """The same measurement for the other FX report. This one used to fetch every
+    invoice and every bill for the client and decide four things in Python:
+    currency, status, as-of date, and whether anything was still outstanding.
+    Migration 280's txn_outstanding is what let the fourth become a filter."""
+    small, small_by = _count_reads(_fx_store(10), _open_balances)
+    large, large_by = _count_reads(_fx_store(1000), _open_balances)
+    assert large <= small + 50, (
+        f"open foreign balances read {small} rows against 10 INR documents and "
+        f"{large} against 1,000.\n  small: {small_by}\n  large: {large_by}"
+    )
+
+
+def test_open_foreign_balances_still_lists_every_open_foreign_document():
+    """And still answers: the 12 open foreign invoices and 12 open foreign bills,
+    with the drafts and the settled ones left out."""
+    out = _open_balances(_seeded_db(_fx_store(1000)))
+    assert len(out["receivables"]) == FOREIGN_DOCS, (
+        f"listed {len(out['receivables'])} receivables, expected {FOREIGN_DOCS}")
+    assert len(out["payables"]) == FOREIGN_DOCS, (
+        f"listed {len(out['payables'])} payables, expected {FOREIGN_DOCS}")
+    assert {d["currency"] for d in out["receivables"] + out["payables"]} == {"USD"}
+    assert all(d["foreign_outstanding_minor"] == 12000
+               for d in out["receivables"] + out["payables"])
