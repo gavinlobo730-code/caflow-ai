@@ -273,10 +273,11 @@ def create_customer(
         # roll back the just-created customer so the books never go partial.
         if int(data.get("opening_balance_paise") or 0) != 0:
             try:
-                from services.opening_balance_service import post_opening_balances
+                from services.opening_balance_service import post_opening_balances, AR
                 # journal_entries.created_by FKs to public.users.id (the INTERNAL id),
                 # NOT the Supabase auth id. current_user carries both — use "id".
-                post_opening_balances(firm_id, client_id, created_by=current_user.get("id"))
+                post_opening_balances(firm_id, client_id, created_by=current_user.get("id"),
+                                      scope=frozenset({AR}))
             except Exception as sync_err:
                 _logger.error("create_customer opening-balance sync failed; rolling back: %s", sync_err)
                 try:
@@ -457,9 +458,10 @@ def bulk_create_customers(
             cid = row.get("client_id")
             if int(row.get("opening_balance_paise") or 0) != 0:
                 try:
-                    from services.opening_balance_service import post_opening_balances
+                    from services.opening_balance_service import post_opening_balances, AR
                     # journal_entries.created_by FKs to public.users.id (INTERNAL id).
-                    post_opening_balances(firm_id, cid, created_by=current_user.get("id"))
+                    post_opening_balances(firm_id, cid, created_by=current_user.get("id"),
+                                          scope=frozenset({AR}))
                 except Exception as sync_err:
                     _logger.error(
                         "bulk_create_customers opening-balance sync failed for index %s; rolling back: %s",
@@ -634,9 +636,9 @@ def update_customer(
         # regenerate; on failure restore the prior values so no partial save lands.
         if int(updated.get("opening_balance_paise") or 0) != int(prior.get("opening_balance_paise") or 0):
             try:
-                from services.opening_balance_service import post_opening_balances
+                from services.opening_balance_service import post_opening_balances, AR
                 post_opening_balances(firm_id, updated.get("client_id") or prior.get("client_id"),
-                                      created_by=current_user.get("id"))
+                                      created_by=current_user.get("id"), scope=frozenset({AR}))
             except Exception as sync_err:
                 _logger.error("update_customer opening-balance sync failed; rolling back: %s", sync_err)
                 try:
