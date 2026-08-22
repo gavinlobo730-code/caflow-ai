@@ -257,10 +257,31 @@ class FXReportingService:
         documents = []
         for tbl, no_col, date_col in (("client_sales_invoices", "invoice_no", "invoice_date"),
                                       ("purchase_bills", "bill_no", "bill_date")):
-            rows = _paginate_all(lambda tbl=tbl, no_col=no_col, date_col=date_col: db.table(tbl)
-                                 .select(f"id, {no_col}, {date_col}, txn_currency, exchange_rate, rate_source, "
-                                         f"rate_type, rate_date, rate_selected_by, rate_overridden, status")
-                                 .eq("firm_id", firm_id).eq("client_id", client_id))
+            # Every one of these three conditions belongs in the query (CLAUDE.md,
+            # "Reporting performance"). This used to fetch every invoice and every
+            # bill the client had ever raised and drop the INR / unissued / out-of-
+            # window ones in Python: 6,421 rows on the live client to produce a
+            # report that, with no foreign activity booked, is EMPTY. The endpoint
+            # already took start/end and threw them away.
+            #
+            # txn_currency and status are both NOT NULL on both tables (verified
+            # against the live catalogue), so neq/not-in are exact here — no row
+            # goes missing to SQL's three-valued logic the way a nullable column
+            # would. The Python guard below stays as belt and braces for test
+            # doubles and for a lower-cased currency code.
+            def _doc_query(tbl=tbl, no_col=no_col, date_col=date_col):
+                q = (db.table(tbl)
+                     .select(f"id, {no_col}, {date_col}, txn_currency, exchange_rate, rate_source, "
+                             f"rate_type, rate_date, rate_selected_by, rate_overridden, status")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .neq("txn_currency", _BASE)
+                     .not_.in_("status", list(_DEAD_UNISSUED)))
+                if start:
+                    q = q.gte(date_col, _d(start))
+                if end:
+                    q = q.lte(date_col, _d(end))
+                return q
+            rows = _paginate_all(_doc_query)
             for r in rows:
                 cur = (r.get("txn_currency") or _BASE).upper()
                 if cur == _BASE or (r.get("status") or "") in _DEAD_UNISSUED or not _within(r.get(date_col), start, end):

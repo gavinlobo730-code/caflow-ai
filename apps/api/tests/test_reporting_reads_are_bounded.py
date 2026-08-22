@@ -32,6 +32,8 @@ HOW IT IS MEASURED
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from domain.reporting.balance_cache import build_buckets
@@ -241,14 +243,22 @@ def _aging_store(settled: int) -> dict:
     }
 
 
-def _aging_rows(report, settled: int) -> tuple[int, dict[str, int]]:
+def _seeded_db(store: dict):
+    """A FakeDB holding `store`, with the generated columns applied the way
+    Postgres would apply them (outstanding_paise, migration 278)."""
     from tests.e2e_harness import FakeDB, _apply_generated
-    store = _aging_store(settled)
     for name, rows in store.items():
         _apply_generated(name, rows)
     db = FakeDB()
     db._tables.update(store)
+    return db
 
+
+def _count_reads(store: dict, report) -> tuple[int, dict[str, int]]:
+    """Run `report` against `store` and count the rows every table read actually
+    returned — the same measurement _CountingDB makes for ReportingService, for
+    the services that don't go through it."""
+    db = _seeded_db(store)
     counted = {"rows": 0, "by": {}}
     real_table = db.table
 
@@ -268,6 +278,10 @@ def _aging_rows(report, settled: int) -> tuple[int, dict[str, int]]:
     db.table = table             # type: ignore[method-assign]
     report(db)
     return counted["rows"], counted["by"]
+
+
+def _aging_rows(report, settled: int) -> tuple[int, dict[str, int]]:
+    return _count_reads(_aging_store(settled), report)
 
 
 AGING = {
@@ -297,13 +311,146 @@ def test_aging_does_not_read_settled_history(name):
 def test_aging_still_reports_every_open_document(name):
     """The other half. A read that stopped growing because it stopped returning
     the answer would pass the test above and be far worse than the bug."""
-    from tests.e2e_harness import FakeDB, _apply_generated
-    store = _aging_store(1000)
-    for tname, rows in store.items():
-        _apply_generated(tname, rows)
-    db = FakeDB()
-    db._tables.update(store)
+    db = _seeded_db(_aging_store(1000))
     out = AGING[name](db)
     listed = out.get("invoices", out.get("bills", []))
     assert len(listed) == OPEN_DOCS, f"{name} listed {len(listed)} of {OPEN_DOCS} open documents"
+    assert out["total_outstanding_paise"] == OPEN_DOCS * 10000
+
+
+# ── FX: the same rule, and it was the same bug ───────────────────────────────
+# The exchange-rate audit lists every foreign document booked in a window, with
+# the provenance of the rate used. It was reading every invoice AND every bill
+# the client had ever raised and discarding the INR ones, the drafts and the
+# out-of-window ones in Python — 6,421 rows on the live client to produce a
+# report that, with no foreign activity booked there, is EMPTY.
+#
+# That is byte-for-byte the bug migration 278 fixed for AR/AP aging. It survived
+# in this file because the aging fix was applied where the bug was reported
+# rather than everywhere the pattern occurred. Hence a test: the FX reports now
+# live under the same ratchet as everything else.
+
+FOREIGN_DOCS = 12
+WINDOW = ("2026-04-01", "2027-03-31")
+
+
+def _fx_store(inr_history: int) -> dict:
+    """A fixed foreign answer set, and a growing INR ledger around it. The rate
+    audit's answer is the foreign documents alone, so its read must not move when
+    the INR history does."""
+    def inv(i, currency, status, when):
+        return {"id": f"inv{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
+                "invoice_no": f"INV-{i:06d}", "invoice_date": when, "status": status,
+                "txn_currency": currency, "exchange_rate": "83.5",
+                "rate_source": "rbi", "rate_type": "booking", "rate_date": when,
+                "rate_selected_by": "u1", "rate_overridden": False,
+                "total_paise": 10000, "paid_paise": 0, "credited_paise": 0,
+                "debit_note_paise": 0, "deleted_at": None}
+
+    def bill(i, currency, status, when):
+        return {"id": f"bil{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
+                "bill_no": f"BILL-{i:06d}", "bill_date": when, "status": status,
+                "txn_currency": currency, "exchange_rate": "83.5",
+                "rate_source": "rbi", "rate_type": "booking", "rate_date": when,
+                "rate_selected_by": "u1", "rate_overridden": False,
+                "net_payable_paise": 10000, "paid_paise": 0, "debited_paise": 0,
+                "credit_note_paise": 0, "deleted_at": None}
+
+    invoices = [inv(i, "USD", "issued", "2026-06-01") for i in range(FOREIGN_DOCS)]
+    bills = [bill(i, "USD", "received", "2026-06-01") for i in range(FOREIGN_DOCS)]
+    # Everything below is history the report must not pay for: INR documents,
+    # foreign drafts (never issued, so their rate was never used for anything),
+    # and foreign documents outside the window.
+    for i in range(inr_history):
+        n = FOREIGN_DOCS + i
+        invoices.append(inv(n, "INR", "issued", "2026-06-01"))
+        bills.append(bill(n, "INR", "received", "2026-06-01"))
+    for i in range(10):
+        n = FOREIGN_DOCS + inr_history + i
+        invoices.append(inv(n, "USD", "draft", "2026-06-01"))
+        invoices.append(inv(n + 500_000, "USD", "issued", "2020-06-01"))
+        bills.append(bill(n, "USD", "draft", "2026-06-01"))
+        bills.append(bill(n + 500_000, "USD", "issued", "2020-06-01"))
+    return {"client_sales_invoices": invoices, "purchase_bills": bills,
+            "fx_adjustments": [], "journal_entries": []}
+
+
+def _rate_audit(db):
+    from services.fx_reporting_service import fx_reporting_service
+    return fx_reporting_service.exchange_rate_audit(db, FIRM, CLIENT, *WINDOW)
+
+
+def test_rate_audit_does_not_read_the_inr_ledger():
+    """12 foreign documents throughout; 10 INR ones, then 1,000. Same answer,
+    so the same read."""
+    small, small_by = _count_reads(_fx_store(10), _rate_audit)
+    large, large_by = _count_reads(_fx_store(1000), _rate_audit)
+    assert large <= small + 50, (
+        f"the rate audit read {small} rows against 10 INR documents and {large} "
+        f"against 1,000 — it is paying for the base-currency ledger to report on "
+        f"foreign activity.\n  small: {small_by}\n  large: {large_by}"
+    )
+
+
+def test_rate_audit_still_reports_every_foreign_document():
+    """The other half, and the one that matters more: a read that stopped growing
+    because it stopped returning the answer would pass the test above while
+    hiding a CA's foreign bookings from the audit trail."""
+    out = _rate_audit(_seeded_db(_fx_store(1000)))
+    assert len(out["documents"]) == FOREIGN_DOCS * 2, (
+        f"listed {len(out['documents'])} documents, expected {FOREIGN_DOCS * 2} "
+        f"(foreign, issued, in window — across invoices and bills)"
+    )
+    assert {d["currency"] for d in out["documents"]} == {"USD"}
+    assert {d["document_type"] for d in out["documents"]} == {
+        "client_sales_invoices", "purchase_bills"}
+    assert all(WINDOW[0] <= d["date"] <= WINDOW[1] for d in out["documents"])
+
+
+# ── The firm's own fee AR ─────────────────────────────────────────────────────
+# collections_service serves the practice's own billing rather than a client's
+# books, so it has its own reader and was missed by migration 278. It filtered by
+# status in the query but computed "still owing" in Python, so every invoice ever
+# marked issued or partially_paid crossed the wire whether or not a rupee of it
+# was outstanding. Smaller stakes than a client ledger — one firm's fee invoices —
+# and the same shape, so it is held to the same rule.
+
+
+def test_firm_fee_aging_does_not_read_settled_invoices(monkeypatch):
+    from services import collections_service as CS
+
+    def fee_invoice(i, paid):
+        return {"id": f"fee{i:06d}", "firm_id": FIRM, "client_id": CLIENT,
+                "invoice_no": f"FEE-{i:06d}", "invoice_date": "2026-06-01",
+                "due_date": "2026-06-30", "total_paise": 10000, "paid_paise": paid,
+                "credited_paise": 0, "debit_note_paise": 0, "status": "issued",
+                "deleted_at": None}
+
+    def measure(settled: int) -> tuple[int, dict[str, int]]:
+        store = {"client_sales_invoices":
+                 [fee_invoice(i, 0) for i in range(OPEN_DOCS)]
+                 + [fee_invoice(OPEN_DOCS + i, 10000) for i in range(settled)]}
+        monkeypatch.setattr(CS, "get_internal_client_id", lambda _firm: CLIENT)
+        monkeypatch.setattr(CS, "_USE_MOCK", False)
+
+        def report(db):
+            monkeypatch.setattr(CS, "_db", lambda: db)
+            return CS.ar_aging(FIRM, today=date(2026, 8, 1))
+
+        return _count_reads(store, report)
+
+    small, small_by = measure(10)
+    large, large_by = measure(1000)
+    assert large <= small + 50, (
+        f"firm fee aging read {small} rows against 10 settled invoices and {large} "
+        f"against 1,000.\n  small: {small_by}\n  large: {large_by}"
+    )
+
+    # And it still answers. 20 open fee invoices at ₹100 each.
+    store = {"client_sales_invoices":
+             [fee_invoice(i, 0) for i in range(OPEN_DOCS)]
+             + [fee_invoice(OPEN_DOCS + i, 10000) for i in range(1000)]}
+    db = _seeded_db(store)
+    monkeypatch.setattr(CS, "_db", lambda: db)
+    out = CS.ar_aging(FIRM, today=date(2026, 8, 1))
     assert out["total_outstanding_paise"] == OPEN_DOCS * 10000

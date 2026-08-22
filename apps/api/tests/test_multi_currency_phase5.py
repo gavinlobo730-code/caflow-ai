@@ -207,11 +207,17 @@ class _AgingQ:
         self.rows, self.f, self.nf = rows, [], []
         self.gtf: list[tuple] = []      # .gt(col, val)
         self.notin: list[tuple] = []    # .not_.in_(col, vals)
+        self.rangef: list[tuple] = []   # .gte / .lte (col, op, val)
     def select(self, *_a, **_k): return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def neq(self, k, v): self.nf.append((k, v)); return self
     def is_(self, k, _v): self.f.append((k, None)); return self
     def gt(self, k, v): self.gtf.append((k, v)); return self
+    # The rate audit now date-bounds its document fetch in the query rather than
+    # calling _within() on every document the client ever raised, so the double
+    # has to honour the same bounds or it hands back rows Postgres filtered out.
+    def gte(self, k, v): self.rangef.append((k, "gte", v)); return self
+    def lte(self, k, v): self.rangef.append((k, "lte", v)); return self
 
     @property
     def not_(self):
@@ -225,7 +231,9 @@ class _AgingQ:
                if all((r.get(k) is None) if v is None else (r.get(k) == v) for k, v in self.f)
                and all(r.get(k) != v for k, v in self.nf)
                and all((r.get(k) or 0) > v for k, v in self.gtf)
-               and all(r.get(k) not in vals for k, vals in self.notin)]
+               and all(r.get(k) not in vals for k, vals in self.notin)
+               and all(r.get(k) is not None and (r.get(k) >= v if op == "gte" else r.get(k) <= v)
+                       for k, op, v in self.rangef)]
         return type("R", (), {"data": out})()
 
 
