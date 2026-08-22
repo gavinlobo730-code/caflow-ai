@@ -37,26 +37,41 @@ from typing import Any, Optional
 # on it — reports the client owes nothing. The formulas are the column
 # definitions in migration 278, and they are here rather than in each test so
 # there is one place to keep in step with the schema.
+# {table: {generated column: how Postgres computes it}}. Transcribed from the
+# migrations that define them, because the services now FILTER on these columns:
+# a double that does not carry them hands back an empty result where Postgres
+# would have returned the answer, which looks exactly like a broken report.
+#   outstanding_paise — migration 278 (base currency)
+#   txn_outstanding   — migration 280 (transaction currency, minor units)
 _GENERATED = {
-    "client_sales_invoices": lambda r: (
-        int(r.get("total_paise") or 0) + int(r.get("debit_note_paise") or 0)
-        - int(r.get("paid_paise") or 0) - int(r.get("credited_paise") or 0)),
-    "purchase_bills": lambda r: (
-        int(r.get("net_payable_paise") or 0) + int(r.get("credit_note_paise") or 0)
-        - int(r.get("paid_paise") or 0) - int(r.get("debited_paise") or 0)),
+    "client_sales_invoices": {
+        "outstanding_paise": lambda r: (
+            int(r.get("total_paise") or 0) + int(r.get("debit_note_paise") or 0)
+            - int(r.get("paid_paise") or 0) - int(r.get("credited_paise") or 0)),
+        "txn_outstanding": lambda r: (
+            int(r.get("txn_total") or 0) - int(r.get("paid_txn") or 0)),
+    },
+    "purchase_bills": {
+        "outstanding_paise": lambda r: (
+            int(r.get("net_payable_paise") or 0) + int(r.get("credit_note_paise") or 0)
+            - int(r.get("paid_paise") or 0) - int(r.get("debited_paise") or 0)),
+        "txn_outstanding": lambda r: (
+            int(r.get("txn_net_payable") or 0) - int(r.get("paid_txn") or 0)),
+    },
 }
 
 
 def _apply_generated(table: str, rows: list) -> None:
     """Recompute the generated columns for a table's rows, in place."""
-    fn = _GENERATED.get(table)
-    if fn is None:
+    cols = _GENERATED.get(table)
+    if not cols:
         return
     for r in rows:
-        try:
-            r["outstanding_paise"] = fn(r)
-        except (TypeError, ValueError):
-            r["outstanding_paise"] = 0
+        for name, fn in cols.items():
+            try:
+                r[name] = fn(r)
+            except (TypeError, ValueError):
+                r[name] = 0
 
 
 class _Result:

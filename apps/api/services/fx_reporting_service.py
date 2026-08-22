@@ -18,8 +18,11 @@ Sign convention (as written by the posting paths): base_delta_paise > 0 is a GAI
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
+
+_logger = logging.getLogger("caflow.fx_reporting")
 
 _BASE = "INR"
 # A document no longer contributes to an OPEN foreign balance once it is a draft,
@@ -78,10 +81,28 @@ def _within(when, start: Optional[str], end: Optional[str]) -> bool:
 class FXReportingService:
     # ── shared open-document readers (foreign only) ────────────────────────────
     def _open_foreign_invoices(self, db, firm_id, client_id, as_of: str) -> list[dict]:
-        rows = _paginate_all(lambda: db.table("client_sales_invoices")
-                             .select("id, invoice_no, invoice_date, customer_id, status, total_paise, paid_paise, "
-                                     "credited_paise, txn_currency, exchange_rate, txn_total, paid_txn")
-                             .eq("firm_id", firm_id).eq("client_id", client_id))
+        # All four conditions belong in the query (CLAUDE.md, "Reporting
+        # performance"). This used to fetch every invoice the client had ever
+        # raised — 5,662 on the live client — and drop the INR ones, the drafts,
+        # the settled ones and the future-dated ones in Python, to return the
+        # handful open in a foreign currency. On that client the answer is empty:
+        # every document there is INR.
+        #
+        # txn_outstanding is a generated column (migration 280), which is what
+        # lets the arithmetic be a filter at all — PostgREST compares a column,
+        # not a two-term expression. txn_currency and status are NOT NULL on this
+        # table, so neq and not-in are exact. The Python guards below stay as
+        # belt and braces for test doubles and for a lower-cased currency code.
+        def _q():
+            return (db.table("client_sales_invoices")
+                    .select("id, invoice_no, invoice_date, customer_id, status, total_paise, paid_paise, "
+                            "credited_paise, txn_currency, exchange_rate, txn_total, paid_txn")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .neq("txn_currency", _BASE)
+                    .not_.in_("status", list(_DEAD))
+                    .lte("invoice_date", _d(as_of))
+                    .gt("txn_outstanding", 0))
+        rows = _paginate_all(_q)
         out = []
         for r in rows:
             cur = (r.get("txn_currency") or _BASE).upper()
@@ -99,10 +120,18 @@ class FXReportingService:
         return out
 
     def _open_foreign_bills(self, db, firm_id, client_id, as_of: str) -> list[dict]:
-        rows = _paginate_all(lambda: db.table("purchase_bills")
-                             .select("id, bill_no, bill_date, vendor_id, status, net_payable_paise, paid_paise, "
-                                     "debited_paise, txn_currency, exchange_rate, txn_net_payable, paid_txn")
-                             .eq("firm_id", firm_id).eq("client_id", client_id))
+        # The AP mirror of _open_foreign_invoices above, filtered the same way and
+        # for the same reason. 759 bills on the live client, all of them INR.
+        def _q():
+            return (db.table("purchase_bills")
+                    .select("id, bill_no, bill_date, vendor_id, status, net_payable_paise, paid_paise, "
+                            "debited_paise, txn_currency, exchange_rate, txn_net_payable, paid_txn")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .neq("txn_currency", _BASE)
+                    .not_.in_("status", list(_DEAD))
+                    .lte("bill_date", _d(as_of))
+                    .gt("txn_outstanding", 0))
+        rows = _paginate_all(_q)
         out = []
         for r in rows:
             cur = (r.get("txn_currency") or _BASE).upper()
@@ -120,10 +149,39 @@ class FXReportingService:
         return out
 
     def _foreign_bank_balances(self, db, firm_id, client_id) -> list[dict]:
-        """Open foreign BANK balances from posted data (Task 5). A no-op until
-        bank_accounts.currency exists (the column is probed, so this is safe on any
-        schema). foreign balance = Σ(txn_debit − txn_credit) over the account's posted
-        journal lines; base carrying = Σ(debit − credit) in paise."""
+        """Open foreign BANK balances from posted data (Task 5).
+
+        Computed in the database by public.fx_foreign_bank_balances (migration
+        281). The Python below is the fallback and the mock-mode implementation;
+        tests/test_fx_reports_sql_parity_pg.py runs every scenario through both
+        and asserts they agree, so the two cannot drift.
+
+        WHY IT MOVED. The Python fetched EVERY posted journal_entry for the
+        client to build a set of ids — 12,838 on the live client — then every
+        journal_line for the account, and reconciled the two in memory. Once per
+        foreign bank account. That is the cash flow statement's disease verbatim
+        (migration 277): the answer is one row per bank, and the wire was
+        carrying the whole ledger to produce it. The passbook cannot help — it
+        holds base paise only, with no txn_ amounts and no currency split."""
+        if client_id and hasattr(db, "rpc"):
+            try:
+                res = db.rpc("fx_foreign_bank_balances",
+                             {"p_firm": firm_id, "p_client": client_id}).execute()
+                rows = getattr(res, "data", None)
+                if not isinstance(rows, list):
+                    raise ValueError(
+                        f"fx_foreign_bank_balances returned {type(rows).__name__}, not a list")
+                return rows
+            except Exception as e:  # noqa: BLE001 — degrade to the slow answer, never a wrong one
+                _logger.error("fx_foreign_bank_balances failed (%s %s) — falling back "
+                              "to the Python reconciliation: %s", firm_id, client_id, e)
+        return self._foreign_bank_balances_python(db, firm_id, client_id)
+
+    def _foreign_bank_balances_python(self, db, firm_id, client_id) -> list[dict]:
+        """The pre-281 implementation. A no-op until bank_accounts.currency exists
+        (the column is probed, so this is safe on any schema). foreign balance =
+        Σ(txn_debit − txn_credit) over the account's posted journal lines; base
+        carrying = Σ(debit − credit) in paise."""
         try:
             banks = (db.table("bank_accounts")
                      .select("id, bank_name, account_no, currency, coa_account_id")
@@ -151,19 +209,62 @@ class FXReportingService:
                              .eq("is_posted", True).is_("deleted_at", "null"))
         return {r["id"]: _d(r.get("entry_date")) for r in rows}
 
-    # ── 1. Realized FX gain/loss ───────────────────────────────────────────────
-    def realized_fx(self, db, firm_id, client_id, start=None, end=None) -> dict:
+    def _dated_adjustments(self, db, firm_id, client_id, start, end,
+                           kind: Optional[str] = None) -> list[dict]:
+        """FX adjustments in [start, end], each already carrying the date it is
+        reported under — its journal entry's SETTLEMENT date, falling back to the
+        audit row's own timestamp when no posted entry matches.
+
+        Computed in the database by public.fx_dated_adjustments (migration 281).
+        The Python below is the fallback and the mock-mode implementation, pinned
+        to it by tests/test_fx_reports_sql_parity_pg.py.
+
+        WHY IT MOVED. Resolving that date meant _entry_dates, a
+        {entry_id: entry_date} dict over EVERY posted entry the client has —
+        12,838 rows on the live client to date perhaps a dozen adjustments. Both
+        realized_fx and exchange_rate_audit built it, so a CA who opened the two
+        reports paid for it twice. Firm-wide (no client_id) still uses the Python
+        path: the function is per-client, exactly as the passbook is."""
+        if client_id and hasattr(db, "rpc"):
+            try:
+                res = db.rpc("fx_dated_adjustments", {
+                    "p_firm": firm_id, "p_client": client_id,
+                    "p_start": _d(start) if start else None,
+                    "p_end": _d(end) if end else None,
+                    "p_kind": kind,
+                }).execute()
+                rows = getattr(res, "data", None)
+                if not isinstance(rows, list):
+                    raise ValueError(
+                        f"fx_dated_adjustments returned {type(rows).__name__}, not a list")
+                return rows
+            except Exception as e:  # noqa: BLE001 — degrade to the slow answer, never a wrong one
+                _logger.error("fx_dated_adjustments failed (%s %s %s..%s) — falling back "
+                              "to the Python date resolution: %s", firm_id, client_id, start, end, e)
+
         def _adj_query():
-            qq = db.table("fx_adjustments").select("*").eq("firm_id", firm_id).eq("kind", "realized")
+            qq = db.table("fx_adjustments").select("*").eq("firm_id", firm_id)
             if client_id:
                 qq = qq.eq("client_id", client_id)
+            if kind:
+                qq = qq.eq("kind", kind)
             return qq
         entry_dates = self._entry_dates(db, firm_id, client_id)
-        lines, by_ccy, gain, loss = [], {}, 0, 0
+        out = []
         for r in _paginate_all(_adj_query):
             when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
             if not _within(when, start, end):
                 continue
+            row = dict(r)
+            row["date"] = _d(when)
+            out.append(row)
+        return out
+
+    # ── 1. Realized FX gain/loss ───────────────────────────────────────────────
+    def realized_fx(self, db, firm_id, client_id, start=None, end=None) -> dict:
+        lines, by_ccy, gain, loss = [], {}, 0, 0
+        for r in self._dated_adjustments(db, firm_id, client_id, start, end, kind="realized"):
+            when = r.get("date")
             delta = int(r.get("base_delta_paise") or 0)
             cur = (r.get("currency") or "").upper()
             gain += delta if delta > 0 else 0
@@ -293,19 +394,10 @@ class FXReportingService:
                     "rate_type": r.get("rate_type"), "rate_date": (_d(r["rate_date"]) if r.get("rate_date") else None),
                     "rate_selected_by": r.get("rate_selected_by"), "rate_overridden": bool(r.get("rate_overridden")),
                 })
-        def _adj_query():
-            qq = db.table("fx_adjustments").select("*").eq("firm_id", firm_id)
-            if client_id:
-                qq = qq.eq("client_id", client_id)
-            return qq
-        entry_dates = self._entry_dates(db, firm_id, client_id)
         adjustments = []
-        for r in _paginate_all(_adj_query):
-            when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
-            if not _within(when, start, end):
-                continue
+        for r in self._dated_adjustments(db, firm_id, client_id, start, end):
             adjustments.append({
-                "date": _d(when), "kind": r.get("kind"), "currency": (r.get("currency") or "").upper(),
+                "date": _d(r.get("date")), "kind": r.get("kind"), "currency": (r.get("currency") or "").upper(),
                 "document_type": r.get("document_type"), "document_id": r.get("document_id"),
                 "original_rate": (str(r["original_rate"]) if r.get("original_rate") is not None else None),
                 "settlement_rate": (str(r["settlement_rate"]) if r.get("settlement_rate") is not None else None),
