@@ -2255,17 +2255,49 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
   // "genuinely no cash flow data" so a large ledger never silently renders as bookless.
   const [loadFailed, setLoadFailed] = useState(false);
 
+  // Period picker, as on P&L and Balance Sheet. This tab used to take only the
+  // page-level FY and hardcode fyDateRange() off it, so "cash flow for Q2" or
+  // for a custom range was unreachable from the UI — while the endpoint had
+  // taken free start_date/end_date all along.
+  //
+  // NO granularity control, and no basis toggle. Monthly/quarterly COLUMNS
+  // would need the statement laid out as a matrix, which it is not — that is a
+  // separate piece of work, and offering the dropdown before it exists would
+  // be a control that silently does nothing. Accrual-vs-cash is meaningless
+  // here: a cash flow statement is actual cash by definition. The accrual
+  // stream below is requested because the operating RECONCILIATION works
+  // backwards from the accrual net profit, not because the basis is a choice.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  // "All Time" resolves to the client's real posted-ledger bounds rather than
+  // the 1900–2999 placeholder, so the heading and the CSV name read as dates a
+  // CA recognises. Reusing splitPeriodColumns at "total" gives the resolved
+  // range AND its label from the same helper P&L and Balance Sheet use, rather
+  // than a second copy of the FY maths here.
+  const ledgerSpan = useLedgerSpan(clientId);
+  const period = useMemo(
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, "total", undefined, ledgerSpan)[0],
+    [periodMode, financialYear, customFrom, customTo, ledgerSpan],
+  );
+  // A custom range typed end-first. periodSplitNotice only speaks for column
+  // splits, so this tab says it itself — silently fetching an impossible range
+  // and rendering zeroes would read as "no cash movements".
+  const rangeInverted = period.start > period.end;
+
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
+    if (rangeInverted) { setCf(null); setLoadFailed(false); setLoaded(true); return; }
     setLoading(true);
     // Scoped to THIS client (each client is a separate entity — never aggregated
-    // across the firm). A cash flow statement is intrinsically actual-cash; we
-    // request the accrual stream because the operating reconciliation uses the
-    // accrual P&L. All figures come from the backend AS-3 engine.
-    const { start, end } = fyDateRange(financialYear);
+    // across the firm). All figures come from the backend AS-3 engine.
+    const { start, end } = period;
     try {
       const res = (await cachedReport(
-        reportKey([clientId, financialYear, "accrual", "cf"]),
+        // The RANGE is in the key, not the financial year. Keyed on the FY, a
+        // switch to Last 3 Months served the FY's cached statement back under
+        // the new heading.
+        reportKey([clientId, start, end, "accrual", "cf"]),
         () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
         { force },
       )) as { success: boolean; data: CFData | null };
@@ -2280,7 +2312,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
     } finally {
       setLoading(false); setLoaded(true);
     }
-  }, [clientId, financialYear]);
+  }, [clientId, period, rangeInverted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2313,12 +2345,18 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — FY {financialYear}</p>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — {period.label}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodPicker
+            mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            customFrom={customFrom} customTo={customTo}
+            onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
+            ariaLabel="Period"
+          />
           <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`cash-flow-fy-${financialYear}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
+            onClick={() => downloadCsv(`cash-flow-${period.start}-to-${period.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
             disabled={!cf}
             className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
             title="Export CSV"
@@ -2328,6 +2366,12 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
+
+      {rangeInverted && (
+        <div role="status" className="bg-slate-50 border border-[#E2E8F0] rounded px-3 py-2 text-xs text-[#64748B]">
+          That date range ends before it starts.
+        </div>
+      )}
 
       {loading && <StatementSkeleton sections={3} rowsPerSection={2} />}
 
