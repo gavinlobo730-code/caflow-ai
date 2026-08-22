@@ -134,6 +134,43 @@ PostgREST. That is why:
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
 
+## Reporting performance — the rule, not a preference
+
+**No report may fetch rows proportional to transaction volume.** What crosses the
+wire must be proportional to the size of the ANSWER, not the size of the ledger.
+
+This is not style. Measured in production on one client with 12,836 entries /
+32,936 lines: profit-loss 2.15s, trial-balance 2.06s, **cash-flow 54.34s** —
+same client, same request. The three fast ones read `account_period_balances`,
+132 pre-aggregated monthly buckets. The slow one shipped every line to Python
+and looped. Over that client's full history it could not finish inside
+`lib/api`'s 45-second abort at all, and the abort is deliberately never retried.
+
+A report reads exactly one of:
+
+- **a pre-aggregated table maintained by triggers** — `account_period_balances`
+  (migrations 227/228) is the worked example. Right for running balances and
+  anything bucketable by month;
+- **a SQL function that aggregates server-side** and returns finished rows —
+  `public.cash_flow_report` (migration 277) is the worked example. Right where
+  the logic is per-row and cannot be pre-bucketed: AS-3 classification needs
+  each entry's legs TOGETHER, which a monthly per-account total has thrown away.
+
+Fetching raw rows and computing in Python is the third option and it is not
+available. `apps/api` runs on Render in Singapore and Postgres is in Mumbai, so
+every page is a cross-region round trip; the old cash-flow path made thirteen of
+them to produce a document about thirty rows long.
+
+**When a rule has to exist in SQL, MOVE it — do not copy it.** Two
+implementations drift. Where a Python one must survive for mock mode and local
+dev (there is no `DATABASE_URL`; the in-memory source has no SQL functions), the
+two are pinned by a parity test that runs every scenario through both and
+asserts they are identical — `tests/test_cash_flow_sql_parity_pg.py`. Adding the
+second implementation without the parity test is the thing not to do.
+
+Aged receivables and payables are the same shape and should be built this way
+from the start.
+
 ## Tests
 
 Backend, from `apps/api`:

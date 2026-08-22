@@ -331,10 +331,7 @@ class ReportingService:
         # same numbers either way (see the docstring) — legacy reads raw posted
         # entries and hardcodes "accrual" for both cash balances — so the
         # accrual-only passbook is applicable whatever the caller asked for.
-        if not self._passbook_applicable("accrual", client_id):
-            return legacy()
-
-        def fast():
+        def passbook():
             # Timed per phase because "cash flow takes 14 seconds" is not a
             # diagnosis, and guessing at which phase owns those seconds is how
             # three wrong models got built. The first two blamed fetches that
@@ -394,7 +391,71 @@ class ReportingService:
             )
             return out
 
-        return self._serve(("cash_flow", firm_id, client_id, start, end), fast, legacy)
+        def fallback():
+            """Exactly what ran before migration 277 — the bounded fetch and the
+            Python builder, or the full replay where the passbook does not
+            apply. Kept as the degradation target rather than deleted: this is a
+            statutory report, the SQL path is new, and _serve's contract is that
+            a fast path which errors produces a SLOW answer, never a wrong one.
+
+            The _serve call is kept INSIDE it, unchanged, so the passbook keeps
+            its own rollout modes and its own degrade-to-legacy guarantee. A
+            stale bucket still makes the report slow rather than making it
+            raise — which is what test_a_broken_fast_path_degrades_to_legacy_
+            not_to_a_wrong_number checks, and what moving the passbook out from
+            under _serve would have quietly broken."""
+            if not self._passbook_applicable("accrual", client_id):
+                return legacy()
+            return self._serve(("cash_flow", firm_id, client_id, start, end), passbook, legacy)
+
+        # ── The statement, computed in the database (migration 277) ───────────
+        # The passbook made the fetch narrower; it could not make it small,
+        # because AS-3 classification needs each entry's legs TOGETHER and a
+        # monthly per-account bucket has thrown that pairing away. So the fetch
+        # still scaled with the ledger: 32,936 line rows for a 12,836-entry
+        # client, in 13 sequential PostgREST pages from Mumbai to Singapore, to
+        # produce an answer about thirty rows long. Over that client's full
+        # history it could not finish inside lib/api's 45-second abort at all.
+        #
+        # public.cash_flow_report does the classification where the rows already
+        # are and returns the finished document. One row instead of 32,936.
+        #
+        # builders.cash_flow remains the implementation for anything without a
+        # database — mock mode, local dev, the in-memory source the unit suite
+        # runs on — and tests/test_cash_flow_sql_parity_pg.py runs every scenario
+        # through both and asserts they are identical, so the two cannot drift.
+        db = getattr(self.source, "db", None)
+        if db is None or not client_id:
+            # No database (in-memory source), or a firm-wide report: the function
+            # is per-client, exactly as the passbook is.
+            return fallback()
+
+        def sql():
+            res = db.rpc("cash_flow_report", {
+                "p_firm": firm_id, "p_client": client_id,
+                "p_start": start, "p_end": end,
+            }).execute()
+            out = getattr(res, "data", None)
+            if not isinstance(out, dict) or "operating_reconciliation" not in out:
+                # Anything but the whole document is a failure, not a thin
+                # answer to render. _serve turns this into the fallback.
+                raise ValueError(f"cash_flow_report returned {type(out).__name__}, not a statement")
+            if basis == "cash":
+                out["basis"] = "cash"   # echoed for API symmetry, as builders does
+            return out
+
+        # NOT routed through _serve: that is the passbook's rollout machinery,
+        # gated on REPORTING_PASSBOOK_MODE. Turning the passbook off — which the
+        # test suite does, because its fake databases have no buckets — must not
+        # also turn off the SQL statement, and shadow mode must keep comparing
+        # the two paths it was built to compare. This gets its own guard.
+        try:
+            return sql()
+        except Exception as e:
+            _logger.error(
+                "cash_flow_report failed (%s %s %s..%s) — falling back to the "
+                "Python builder: %s", firm_id, client_id, start, end, e)
+            return fallback()
 
     def _cash_balance(self, firm_id: str, client_id: Optional[str],
                       as_of: str, basis: str) -> int:

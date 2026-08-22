@@ -70,6 +70,14 @@ class _DB:
     def __init__(self, store): self.store = store
     def table(self, n): return _Q(self.store, n)
 
+    def rpc(self, fn, params=None):
+        """This double models PostgREST's TABLE surface, not the SQL functions
+        behind it. Cash Flow asks for public.cash_flow_report first (migration
+        277); refusing here is what routes these tests down the passbook path
+        they exist to exercise, and says so rather than failing on a missing
+        attribute."""
+        raise NotImplementedError(f"{fn}: this fake DB has no SQL functions")
+
 
 def _entry(eid, date, lines):
     return {

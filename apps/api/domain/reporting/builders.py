@@ -277,7 +277,13 @@ def _attribute(acc_totals: dict, nonbank, accounts: dict, activity: str, cash: i
                   if _classify_activity(_acc(accounts, l.account_id)) == activity] or list(nonbank)
     if not candidates:
         return
-    key = max(candidates, key=lambda l: l.debit_paise + l.credit_paise).account_id
+    # account_id is the tiebreak, not list position. max() returns the FIRST
+    # maximum, so on two legs of equal magnitude this used to depend on the order
+    # PostgREST happened to return embedded lines in — which is not a defined
+    # order, and differs from the one migration 277's SQL can produce. Both sides
+    # now sort on (magnitude, account_id) so they agree and neither depends on
+    # how the rows arrived. Nothing changes on an entry with no tie.
+    key = max(candidates, key=lambda l: (l.debit_paise + l.credit_paise, l.account_id)).account_id
     acc_totals[key] = acc_totals.get(key, 0) + cash
 
 
