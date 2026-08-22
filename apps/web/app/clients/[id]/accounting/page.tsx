@@ -18,9 +18,9 @@ import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
 } from "@/lib/accounting/scheduleIiiCaptions";
 import PeriodPicker from "@/components/PeriodPicker";
-import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity, type PeriodColumn } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
-import { cfUnion, cfAmount, aggregateCashFlow, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
+import { cfUnion, cfAmount, aggregateCashFlow, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
 
@@ -2451,6 +2451,26 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
   // and rendering zeroes would read as "no cash movements".
   const rangeInverted = overall.start > overall.end;
 
+  const fetchColumn = useCallback(async (col: PeriodColumn, force?: boolean): Promise<CFColumn> => {
+    try {
+      const res = (await cachedReport(
+        // The RANGE is in the key, not the financial year. Keyed on the FY,
+        // a switch to Last 3 Months served the FY's cached statement back
+        // under the new heading — and every monthly column would collide.
+        reportKey([clientId, col.start, col.end, "accrual", "cf"]),
+        () => api.accounting.cashFlow({ basis: "accrual", start_date: col.start, end_date: col.end, client_id: clientId }),
+        { force },
+      )) as { success: boolean; data: CFData | null };
+      // res.success===false only ever comes from a backend error path.
+      if (!res.success || !res.data) return { ...col, data: null, error: true };
+      return { ...col, data: res.data, error: false };
+    } catch {
+      // Degrade this COLUMN, never the statement: one slow month must not
+      // blank the other eleven (audit M17).
+      return { ...col, data: null, error: true };
+    }
+  }, [clientId]);
+
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     if (rangeInverted) { setColumns([]); setLoaded(true); return; }
@@ -2459,30 +2479,35 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
       // Scoped to THIS client (each client is a separate entity — never
       // aggregated across the firm). All figures come from the backend AS-3
       // engine; one call per column, each cached on its own range.
-      const results = await Promise.all(columnDefs.map(async (col): Promise<CFColumn> => {
-        try {
-          const res = (await cachedReport(
-            // The RANGE is in the key, not the financial year. Keyed on the FY,
-            // a switch to Last 3 Months served the FY's cached statement back
-            // under the new heading — and every monthly column would collide.
-            reportKey([clientId, col.start, col.end, "accrual", "cf"]),
-            () => api.accounting.cashFlow({ basis: "accrual", start_date: col.start, end_date: col.end, client_id: clientId }),
-            { force },
-          )) as { success: boolean; data: CFData | null };
-          // res.success===false only ever comes from a backend error path.
-          if (!res.success || !res.data) return { ...col, data: null, error: true };
-          return { ...col, data: res.data, error: false };
-        } catch {
-          // Degrade this COLUMN, never the statement: one slow month must not
-          // blank the other eleven (audit M17).
-          return { ...col, data: null, error: true };
-        }
-      }));
-      setColumns(results);
+      //
+      // TWO AT A TIME, not Promise.all. This is the slowest endpoint in the
+      // product — lib/api's request() records it at 53-57s for a 12,836-entry
+      // ledger against a 45s abort that is deliberately not retried — and
+      // twelve monthly columns fired together put twelve copies of it on one
+      // free-tier instance. Two of four quarterly columns timing out is exactly
+      // what that looks like, and the journal bulk action a few hundred lines
+      // up already carries the same warning.
+      setColumns(await mapWithLimit(columnDefs, 2, (col) => fetchColumn(col, force)));
     } finally {
       setLoading(false); setLoaded(true);
     }
-  }, [clientId, columnDefs, rangeInverted]);
+  }, [clientId, columnDefs, rangeInverted, fetchColumn]);
+
+  /** Re-fetch only the periods that failed, leaving the ones that loaded alone.
+   *  Reloading everything to recover two columns would re-run the queries that
+   *  already succeeded — the exact load that made these two miss the budget. */
+  const retryFailed = useCallback(async () => {
+    const failed = columns.filter((c) => c.error);
+    if (!failed.length) return;
+    setLoading(true);
+    try {
+      const fixed = await mapWithLimit(failed, 2, (col) => fetchColumn(col, true));
+      const byLabel = new Map(fixed.map((c) => [c.label, c]));
+      setColumns((prev) => prev.map((c) => byLabel.get(c.label) ?? c));
+    } finally {
+      setLoading(false);
+    }
+  }, [columns, fetchColumn]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2583,8 +2608,17 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
       {!loading && agg && (
         <>
           {!agg.complete && (
-            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
-              {columns.length - withData.length} of {columns.length} periods failed to load. The totals below cover only the periods that did — Opening + Net Change will not tie to Closing.
+            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700 flex items-center justify-between gap-3 flex-wrap">
+              <span>
+                {columns.length - withData.length} of {columns.length} periods failed to load. The totals below cover only the periods that did — Opening + Net Change will not tie to Closing.
+              </span>
+              <button
+                onClick={retryFailed}
+                disabled={loading}
+                className="shrink-0 text-xs px-2.5 py-1 border border-amber-300 rounded-lg hover:bg-amber-100 text-amber-800 disabled:opacity-50"
+              >
+                Retry {columns.length - withData.length} period{columns.length - withData.length === 1 ? "" : "s"}
+              </button>
             </div>
           )}
           {!agg.reconciles && (

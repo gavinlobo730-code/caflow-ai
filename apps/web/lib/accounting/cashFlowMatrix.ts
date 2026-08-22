@@ -123,3 +123,40 @@ export function cashFlowTiesOut(agg: CFAggregate | null): boolean {
   if (!agg) return true;
   return agg.opening + agg.netChange === agg.closing;
 }
+
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight, preserving input order.
+ *
+ * The matrix needs this because /api/accounting/cash-flow is the slowest
+ * endpoint in the product — lib/api's request() carries a note that it took
+ * 53-57s for a 12,836-entry ledger, against a 45s abort budget that is
+ * deliberately NOT retried on timeout. Promise.all over twelve monthly columns
+ * puts twelve copies of that query on one free-tier instance simultaneously,
+ * which is the fastest way to make all twelve miss the budget together.
+ *
+ * The same lesson is already written down one file over, on the journal bulk
+ * action: "Sequential, not Promise.all — firing a dozen at once at a cold
+ * free-tier instance is how a half-applied batch happens."
+ *
+ * Bounded rather than sequential: twelve columns one at a time would be minutes
+ * of staring at a skeleton, and a small window keeps the instance responsive
+ * without idling it.
+ */
+export async function mapWithLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return out;
+}
