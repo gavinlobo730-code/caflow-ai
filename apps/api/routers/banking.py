@@ -28,10 +28,16 @@ def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
     rolls back). The reporting engine is unchanged — only the trigger moved here.
 
     actor_id MUST be the internal public.users.id (journal_entries.created_by FKs
-    to users.id), never the Supabase auth id."""
+    to users.id), never the Supabase auth id.
+
+    SCOPED to the bank leg. Unscoped, saving a bank account recomputed AR and AP
+    too, and on a live client that silently reversed 40.54 lakh of opening Trade
+    Payables out of the GL because the vendor masters carried zero. A bank screen
+    has no business reconciling payables."""
     try:
-        from services.opening_balance_service import post_opening_balances
-        post_opening_balances(firm_id, client_id, created_by=actor_id)
+        from services.opening_balance_service import post_opening_balances, BANK
+        post_opening_balances(firm_id, client_id, created_by=actor_id,
+                              scope=frozenset({BANK}))
         return True
     except Exception as e:
         _logger.error("bank opening-balance sync failed: %s", e)
@@ -161,21 +167,115 @@ def _guard_foreign_bank_currency(db, firm_id: str, client_id: Optional[str], cur
         raise HTTPException(status_code=422, detail=f"Unsupported currency: {currency}.")
 
 
+def _bank_ledger_conflict(db, firm_id: str, client_id: str, coa_account_id: str,
+                          exclude_account_id: Optional[str] = None) -> Optional[str]:
+    """The bank account already using this ledger, if any.
+
+    Two bank accounts sharing one chart-of-accounts row makes per-bank
+    reconciliation meaningless — "does the ledger agree with the statement" has no
+    answer when the ledger is the sum of two statements — and collapses them into a
+    single balance-sheet line. Caught here rather than left to be discovered at
+    Reconcile."""
+    if not coa_account_id:
+        return None
+    q = (db.table("bank_accounts").select("id, bank_name, account_no")
+         .eq("firm_id", firm_id).eq("client_id", client_id)
+         .eq("coa_account_id", coa_account_id))
+    for row in (q.execute().data or []):
+        if exclude_account_id and row.get("id") == exclude_account_id:
+            continue
+        return f"{row.get('bank_name')} (····{str(row.get('account_no') or '')[-4:]})"
+    return None
+
+
+def _next_bank_account_code(db, firm_id: str) -> str:
+    """The next free 4-digit code in the bank block (1101 upwards).
+
+    Scanned across the WHOLE firm, not one client: chart_of_accounts is unique on
+    (firm_id, account_code), so a code already used by another client — or by the
+    shared client_id IS NULL chart — is not available here either."""
+    rows = (db.table("chart_of_accounts").select("account_code")
+            .eq("firm_id", firm_id).execute().data or [])
+    used = set()
+    for r in rows:
+        code = str(r.get("account_code") or "").strip()
+        if code.isdigit():
+            used.add(int(code))
+    n = 1101
+    while n in used:
+        n += 1
+    return str(n)
+
+
+def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
+                        account_no: str) -> Optional[str]:
+    """Create a chart-of-accounts row dedicated to one bank account, and return it.
+
+    Every bank account needs its own ledger. Left to the CA it is a step that gets
+    skipped — the Ledger Account field defaults to "not linked", and picking an
+    existing bank row silently merges two banks into one balance. So the account is
+    created here, named for the bank and the last four digits, the way QuickBooks
+    and Xero do it.
+
+    Returns None if creation fails; the caller then saves the bank account
+    unlinked rather than refusing the save outright. An unlinked account is
+    recoverable by editing it; a lost form is not.
+
+    Retried because chart_of_accounts carries TWO firm-wide unique indexes —
+    (firm_id, account_code) and (firm_id, account_name). Both are reachable in
+    ordinary use: a firm with two clients banking at the same branch produces the
+    same "HDFC Bank — 7890", and so does one client re-adding an account after
+    deactivating it. Each attempt re-reads the codes and disambiguates the name."""
+    last4 = str(account_no or "")[-4:]
+    base = f"{bank_name.strip()} — {last4}" if last4 else bank_name.strip()
+    for attempt in range(1, 6):
+        name = base if attempt == 1 else f"{base} ({attempt})"
+        try:
+            row = (db.table("chart_of_accounts").insert({
+                "firm_id": firm_id, "client_id": client_id,
+                "account_code": _next_bank_account_code(db, firm_id),
+                "account_name": name[:120],
+                "account_type": "Asset", "account_subtype": "Bank", "is_active": True,
+            }).execute().data or [{}])[0]
+            if row.get("id"):
+                return row["id"]
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("ledger account %r for bank %s not created (attempt %d): %s",
+                            name, bank_name, attempt, e)
+    _logger.error("could not create a ledger account for bank %s — saving it unlinked",
+                  bank_name)
+    return None
+
+
 # ─── Bank Accounts ────────────────────────────────────────────────────────────
 
 @router.get("/accounts")
 def list_bank_accounts(
     client_id: str = Query(...),
+    # A bare default, not Query(False, ...): the routers in this codebase are also
+    # called directly from tests, and a Query() instance is truthy — which would
+    # silently return deactivated accounts to every caller that omitted the flag.
+    include_inactive: bool = False,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    """The client's bank accounts, active only unless asked otherwise.
+
+    include_inactive exists because filtering unconditionally made a deactivated
+    account UNREACHABLE: the account list renders inactive rows (greyed, with an
+    "inactive" chip, Edit still offered) but never received one, and the
+    deactivation dialog promised "you can reactivate it later by editing it" —
+    which nothing in the UI could do. Worse, a deactivated account keeps its
+    opening balance in the GL, exactly as it should, so its money stayed on the
+    balance sheet with no visible account to attribute it to."""
     assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
-    res = (db.table("bank_accounts").select("*")
-           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
-           .eq("is_active", True).order("bank_name").execute())
-    return api_response(True, res.data or [])
+    q = (db.table("bank_accounts").select("*")
+         .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id))
+    if not include_inactive:
+        q = q.eq("is_active", True)
+    return api_response(True, q.order("bank_name").execute().data or [])
 
 
 @router.post("/accounts")
@@ -198,6 +298,22 @@ def create_bank_account(
         payload["currency"] = cur
     elif cur == "INR":
         payload["currency"] = "INR"
+    # One ledger per bank. A ledger already spoken for is refused; an unlinked
+    # account gets one created for it rather than defaulting to "not linked",
+    # which is how two banks ended up sharing 1101 and showing as one line.
+    chosen_coa = payload.get("coa_account_id")
+    if chosen_coa:
+        taken = _bank_ledger_conflict(db, firm_id, payload["client_id"], chosen_coa)
+        if taken:
+            raise HTTPException(
+                status_code=422,
+                detail=f"That ledger account is already linked to {taken}. Each bank "
+                       f"account needs its own ledger, or their balances merge into one "
+                       f"line and neither can be reconciled.")
+    else:
+        payload["coa_account_id"] = _ensure_bank_ledger(
+            db, firm_id, payload["client_id"], payload["bank_name"], payload["account_no"])
+
     row = db.table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]
     # Auto-sync opening balances to the GL (no manual post). Roll back on failure.
@@ -227,6 +343,15 @@ def update_bank_account(
     prior = (db.table("bank_accounts").select("*")
              .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
     assert_client_access(current_user, prior.get("client_id"))
+    if update.get("coa_account_id"):
+        taken = _bank_ledger_conflict(db, firm_id, prior.get("client_id"),
+                                      update["coa_account_id"], exclude_account_id=account_id)
+        if taken:
+            raise HTTPException(
+                status_code=422,
+                detail=f"That ledger account is already linked to {taken}. Each bank "
+                       f"account needs its own ledger, or their balances merge into one "
+                       f"line and neither can be reconciled.")
     row = (db.table("bank_accounts").update(update)
            .eq("id", account_id).eq("firm_id", firm_id).execute())
     account = (row.data or [{}])[0]

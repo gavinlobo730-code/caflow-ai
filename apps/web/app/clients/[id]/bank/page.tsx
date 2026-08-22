@@ -2140,7 +2140,11 @@ function BankAccounts({ clientId }: { clientId: string }) {
     try {
       const [stmts, accRes] = await Promise.all([
         getBankStatements(clientId),
-        api.banking.listBankAccounts({ client_id: clientId }) as Promise<{ success: boolean; data: BankAccount[] }>,
+        // include_inactive: this table is the only place a deactivated account can
+        // be seen or reactivated, and its opening balance stays in the GL, so
+        // hiding it left money on the balance sheet with no account to explain it.
+        // The pickers below filter to activeAccounts themselves.
+        api.banking.listBankAccounts({ client_id: clientId, include_inactive: "true" }) as Promise<{ success: boolean; data: BankAccount[] }>,
       ]);
       setStatements(stmts);
       setAccounts(accRes.success ? (accRes.data ?? []) : []);
@@ -2417,10 +2421,11 @@ function BankAccountModal({ clientId, account, onClose, onSaved }: {
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Bank Name *</label>
-            <input value={bankName} onChange={(e) => setBankName(e.target.value)} list="bank-name-options" className={inputCls} placeholder="HDFC Bank" />
-            <datalist id="bank-name-options">
-              {["HDFC Bank","SBI","ICICI Bank","Axis Bank","Kotak Mahindra Bank","IndusInd Bank","Yes Bank","IDFC First Bank","Punjab National Bank","Bank of Baroda"].map((b) => <option key={b} value={b} />)}
-            </datalist>
+            {/* Plain text, no datalist. The ten-bank suggestion list rendered a
+                dropdown arrow that read as a closed picker, and India has some
+                1,500 banks — co-operative and regional ones especially are what a
+                CA's smaller clients actually bank with. */}
+            <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={inputCls} placeholder="e.g. Saraswat Co-operative Bank" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

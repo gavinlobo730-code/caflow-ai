@@ -258,10 +258,10 @@ def create_vendor(
         # opening balance was entered. Idempotent regenerate; roll back on failure.
         if int(payload.get("opening_balance_paise") or 0) != 0:
             try:
-                from services.opening_balance_service import post_opening_balances
+                from services.opening_balance_service import post_opening_balances, AP
                 # created_by FKs to public.users.id (internal), not the Supabase auth id.
                 post_opening_balances(payload["firm_id"], payload.get("client_id"),
-                                      created_by=current_user.get("id"))
+                                      created_by=current_user.get("id"), scope=frozenset({AP}))
             except Exception as sync_err:
                 _logger.error("create_vendor opening-balance sync failed; rolling back: %s", sync_err)
                 try:
@@ -346,9 +346,9 @@ def _finish_vendor_creation(db, vendor: dict, payload: dict, current_user: dict)
 
     if int(payload.get("opening_balance_paise") or 0) != 0:
         try:
-            from services.opening_balance_service import post_opening_balances
+            from services.opening_balance_service import post_opening_balances, AP
             post_opening_balances(firm_id, payload.get("client_id"),
-                                  created_by=current_user.get("id"))
+                                  created_by=current_user.get("id"), scope=frozenset({AP}))
         except Exception as sync_err:
             _logger.error("create_vendors_bulk opening-balance sync failed; rolling back vendor %s: %s",
                           vendor_id, sync_err)
@@ -589,9 +589,9 @@ def update_vendor(
         # Auto-sync opening balances only when the opening balance actually changed.
         if int(updated.get("opening_balance_paise") or 0) != int(prior.get("opening_balance_paise") or 0):
             try:
-                from services.opening_balance_service import post_opening_balances
+                from services.opening_balance_service import post_opening_balances, AP
                 post_opening_balances(firm_id, updated.get("client_id") or prior.get("client_id"),
-                                      created_by=current_user.get("id"))
+                                      created_by=current_user.get("id"), scope=frozenset({AP}))
             except Exception as sync_err:
                 _logger.error("update_vendor opening-balance sync failed; rolling back: %s", sync_err)
                 try:

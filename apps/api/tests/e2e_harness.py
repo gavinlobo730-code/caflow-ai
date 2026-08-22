@@ -61,6 +61,31 @@ _GENERATED = {
 }
 
 
+# Unique indexes an INSERT would hit in Postgres. Only the ones production code
+# actually reaches: chart_of_accounts is firm-wide unique on BOTH code and name,
+# which is why creating a per-bank ledger has to disambiguate — two clients of one
+# firm banking at the same branch produce the same "HDFC Bank — 7890".
+#
+# Enforced on insert() only, NOT on seed(). Fixtures seed the same standard chart
+# for several clients of one firm, which real Postgres would reject; correcting
+# that is a much larger job than this, and seeding is not the path under test.
+_UNIQUE: dict[str, list[tuple[str, ...]]] = {
+    "chart_of_accounts": [("firm_id", "account_code"), ("firm_id", "account_name")],
+}
+
+
+def _enforce_unique(table: str, rows: list, new_row: dict) -> None:
+    """Raise the way Postgres would when an insert violates a unique index."""
+    for cols in _UNIQUE.get(table, []):
+        if any(new_row.get(c) is None for c in cols):
+            continue
+        key = tuple(new_row.get(c) for c in cols)
+        if any(tuple(r.get(c) for c in cols) == key for r in rows):
+            raise Exception(
+                f'duplicate key value violates unique constraint '
+                f'"{table}_{"_".join(cols)}_key" — key ({", ".join(cols)})=({key})')
+
+
 def _apply_generated(table: str, rows: list) -> None:
     """Recompute the generated columns for a table's rows, in place."""
     cols = _GENERATED.get(table)
@@ -242,6 +267,7 @@ class _Query:
             for p in payload:
                 r = dict(p)
                 r.setdefault("id", str(uuid.uuid4()))
+                _enforce_unique(self.table, rows, r)
                 rows.append(r)
                 inserted.append(r)
             _apply_generated(self.table, rows)
