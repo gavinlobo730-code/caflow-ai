@@ -158,32 +158,26 @@ function Second({ x }: P) {
 /**
  * Date-scoped components the user cannot re-date, with why each is still here.
  *
- * Two are real gaps, left because they are not the change that found them:
- *
- *   TrialBalance  the same omission Cash Flow had — `const { end } =
- *                 fyDateRange(financialYear)`, balances as of the financial
- *                 year end and nothing else. It is point-in-time, so the fix
- *                 is Balance Sheet's "as of" shape, not a start/end range.
- *   FXReports     every view locked to the FY: exposure and open balances as
- *                 of year end, realized and rate-audit over the whole year.
- *
- * Two are not reports and should not grow a picker:
+ * Both remaining entries are here because they are NOT reports, and giving
+ * either one a picker would make the page worse:
  *
  *   AccountingDashboard  KPI tiles for whatever the page header's FY dropdown
  *                        says. A second period control on the same screen,
  *                        disagreeing with the first, would be worse than none.
  *   FinancialReports     the export hub. It has no on-screen period — it
  *                        writes files for the selected FY. If it ever renders
- *                        a report, it belongs above instead.
+ *                        a report, it belongs in the picker set instead.
+ *
+ * TrialBalance and FXReports were here and have been cleared. Both were the
+ * same omission as Cash Flow: a report reading fyDateRange(financialYear) and
+ * offering no way to change it, while the endpoint took any date all along.
  *
  * To clear an entry: let the user change the dates and DELETE its line here.
  * Do not add to this list — a new date-scoped report is re-datable.
  */
 const KNOWN_UNCHANGEABLE = [
   "AccountingDashboard",
-  "FXReports",
   "FinancialReports",
-  "TrialBalance",
 ];
 
 test("no new date-scoped report ships without a period picker", () => {
@@ -208,7 +202,7 @@ test("no new date-scoped report ships without a period picker", () => {
 
 test("the reports that were given pickers still have them", () => {
   const reports = dateScopedReports(fs.readFileSync(PAGE, "utf8"));
-  for (const name of ["ProfitAndLoss", "BalanceSheet", "CashFlow"]) {
+  for (const name of ["ProfitAndLoss", "BalanceSheet", "CashFlow", "TrialBalance", "FXReports"]) {
     const r = reports.find((x) => x.name === name);
     assert.ok(r, `${name} is no longer a recognised date-scoped report`);
     assert.ok(r.hasPicker, `${name} lost its period picker`);
