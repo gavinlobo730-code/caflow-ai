@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -20,6 +20,7 @@ import {
 import PeriodPicker from "@/components/PeriodPicker";
 import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
+import { cfUnion, cfAmount, aggregateCashFlow, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
 
@@ -2243,28 +2244,9 @@ function BSSectionRows({
 // arithmetic are server-side (domain.reporting); this component only passes the
 // period + client_id and renders the authoritative response (CLAUDE.md).
 
-interface CFLine { account_id: string; account_name: string; amount_paise: number }
-interface CFSection { label: string; lines: CFLine[]; total_paise: number }
-interface CFData {
-  start_date: string;
-  end_date: string;
-  operating: CFSection;
-  investing: CFSection;
-  financing: CFSection;
-  net_change_paise: number;
-  opening_cash_paise: number;
-  closing_cash_paise: number;
-  reconciles: boolean;
-  non_cash_excluded_count: number;
-  operating_reconciliation: {
-    net_profit_paise: number;
-    non_operating_adjust_paise: number;
-    depreciation_addback_paise: number;
-    working_capital_change_paise: number;
-    net_cash_operating_paise: number;
-    ties_out: boolean;
-  };
-}
+// Types and the multi-period arithmetic live in lib/accounting/cashFlowMatrix —
+// summing a balance instead of taking an endpoint is a silent money bug, and it
+// belongs somewhere a unit test can reach it.
 
 // Sign-preserving money format (cash flow direction matters — inflow vs outflow).
 // The shared formatter already preserves the sign.
@@ -2304,117 +2286,261 @@ function CFSectionBlock({ title, section }: { title: string; section: CFSection 
   );
 }
 
+/** The reconciliation rows, in statement order — shared by both layouts so the
+ *  single-column and matrix views cannot drift into different statements. */
+const CF_RECON_ROWS: { label: string; of: (r: NonNullable<CFData["operating_reconciliation"]>) => number }[] = [
+  { label: "Net Profit for the Period", of: (r) => r.net_profit_paise },
+  { label: "Add: Depreciation & Non-cash Items", of: (r) => r.depreciation_addback_paise },
+  { label: "Non-operating Adjustments (Gain/Loss on Disposal)", of: (r) => r.non_operating_adjust_paise },
+  { label: "Changes in Working Capital", of: (r) => r.working_capital_change_paise },
+];
+
+/** Money cell shared by every matrix row — the sign colouring is the whole point
+ *  of a cash flow statement, so it must not be applied in some rows only. */
+function CFCell({ paise, bold }: { paise: number; bold?: boolean }) {
+  return (
+    <td className={`px-4 py-2 text-right font-mono tabular-nums whitespace-nowrap ${bold ? "font-bold" : "font-medium"} ${
+      paise > 0 ? "text-green-700" : paise < 0 ? "text-red-700" : "text-[#94A3B8]"}`}>
+      {paise === 0 ? "—" : fmtSigned(paise)}
+    </td>
+  );
+}
+
+/**
+ * The statement as a matrix: sections down, periods across.
+ *
+ * The single-column layout stays exactly as it was — stacked cards with the
+ * summary strip — because for one period that reads better than a table with
+ * one number column. This is the layout the "Display columns by" control was
+ * waiting for, and why that control was deliberately absent until now rather
+ * than shipped as a dropdown that changed nothing.
+ */
+function CFMatrix({ columns }: { columns: CFColumn[] }) {
+  const sections: { title: string; pick: (d: CFData) => CFSection }[] = [
+    { title: "A. Cash from Operating Activities", pick: (d) => d.operating },
+    { title: "B. Cash from Investing Activities", pick: (d) => d.investing },
+    { title: "C. Cash from Financing Activities", pick: (d) => d.financing },
+  ];
+  const reconRows = CF_RECON_ROWS.filter(({ of }) =>
+    columns.some((c) => c.data?.operating_reconciliation && of(c.data.operating_reconciliation) !== 0));
+
+  return (
+    // The table scrolls inside its own box: twelve monthly columns is wider than
+    // the page, and a body that scrolls sideways moves the whole app with it.
+    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-x-auto">
+      <table className="w-full text-xs min-w-max">
+        <thead>
+          <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+            <th className="px-5 py-2.5 text-left font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10">Particulars</th>
+            {columns.map((c) => (
+              <th key={c.label} className="px-4 py-2.5 text-right font-semibold text-[#334155] whitespace-nowrap">
+                {c.label}
+                {c.error && <span className="block text-[10px] font-normal text-red-600">failed to load</span>}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#F8FAFC]">
+          {sections.map(({ title, pick }) => {
+            const accounts = cfUnion(columns, pick);
+            return (
+              <Fragment key={title}>
+                <tr className="bg-[#F8FAFC]/60">
+                  <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10" colSpan={1}>{title}</td>
+                  {columns.map((c) => <td key={c.label} />)}
+                </tr>
+                {accounts.length === 0 ? (
+                  <tr>
+                    <td className="px-5 py-2 pl-8 text-[#94A3B8] sticky left-0 bg-white z-10">No transactions in this category</td>
+                    {columns.map((c) => <td key={c.label} />)}
+                  </tr>
+                ) : accounts.map((a) => (
+                  <tr key={a.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-5 py-2 pl-8 text-[#334155] sticky left-0 bg-white z-10">{a.name}</td>
+                    {columns.map((c) => <CFCell key={c.label} paise={cfAmount(c.data, pick, a.id)} />)}
+                  </tr>
+                ))}
+                <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+                  <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10">Net Cash</td>
+                  {columns.map((c) => <CFCell key={c.label} paise={c.data ? pick(c.data).total_paise : 0} bold />)}
+                </tr>
+              </Fragment>
+            );
+          })}
+
+          <tr className="border-t-2 border-[#E2E8F0]">
+            <td className="px-5 py-2 text-[#334155] sticky left-0 bg-white z-10">Opening Cash</td>
+            {columns.map((c) => <CFCell key={c.label} paise={c.data?.opening_cash_paise ?? 0} />)}
+          </tr>
+          <tr>
+            <td className="px-5 py-2 text-[#334155] sticky left-0 bg-white z-10">Net Change</td>
+            {columns.map((c) => <CFCell key={c.label} paise={c.data?.net_change_paise ?? 0} />)}
+          </tr>
+          <tr className="bg-[#F8FAFC] font-semibold">
+            <td className="px-5 py-2 text-[#334155] sticky left-0 bg-[#F8FAFC] z-10">Closing Cash</td>
+            {columns.map((c) => <CFCell key={c.label} paise={c.data?.closing_cash_paise ?? 0} bold />)}
+          </tr>
+
+          {reconRows.length > 0 && (
+            <>
+              <tr className="border-t-2 border-[#E2E8F0] bg-[#F8FAFC]/60">
+                <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10">Operating Reconciliation — Indirect Method</td>
+                {columns.map((c) => <td key={c.label} />)}
+              </tr>
+              {reconRows.map(({ label, of }) => (
+                <tr key={label} className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-2 pl-8 text-[#334155] sticky left-0 bg-white z-10">{label}</td>
+                  {columns.map((c) => (
+                    <CFCell key={c.label} paise={c.data?.operating_reconciliation ? of(c.data.operating_reconciliation) : 0} />
+                  ))}
+                </tr>
+              ))}
+              <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+                <td className="px-5 py-2 font-semibold text-[#334155] sticky left-0 bg-[#F8FAFC] z-10">Net Cash from Operations</td>
+                {columns.map((c) => (
+                  <CFCell key={c.label} paise={c.data?.operating_reconciliation?.net_cash_operating_paise ?? 0} bold />
+                ))}
+              </tr>
+            </>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function CashFlow({ clientId, financialYear }: { clientId: string; financialYear: string }) {
-  const [cf, setCf] = useState<CFData | null>(null);
+  const [columns, setColumns] = useState<CFColumn[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  // See TrialBalance.loadFailed — distinguishes "backend call failed" from
-  // "genuinely no cash flow data" so a large ledger never silently renders as bookless.
-  const [loadFailed, setLoadFailed] = useState(false);
 
-  // Period picker, as on P&L and Balance Sheet. This tab used to take only the
-  // page-level FY and hardcode fyDateRange() off it, so "cash flow for Q2" or
-  // for a custom range was unreachable from the UI — while the endpoint had
-  // taken free start_date/end_date all along.
+  // Period + "Display columns by", the same pair P&L and Balance Sheet carry.
+  // This tab used to take only the page-level FY and hardcode fyDateRange() off
+  // it, so neither control existed; #281 added the period, and the split needed
+  // the matrix layout above before its dropdown could mean anything.
   //
-  // NO granularity control, and no basis toggle. Monthly/quarterly COLUMNS
-  // would need the statement laid out as a matrix, which it is not — that is a
-  // separate piece of work, and offering the dropdown before it exists would
-  // be a control that silently does nothing. Accrual-vs-cash is meaningless
-  // here: a cash flow statement is actual cash by definition. The accrual
-  // stream below is requested because the operating RECONCILIATION works
-  // backwards from the accrual net profit, not because the basis is a choice.
+  // Still NO basis toggle. A cash flow statement is actual cash by definition.
+  // The accrual stream is requested because the operating RECONCILIATION works
+  // backwards from accrual net profit — an implementation detail of that
+  // reconciliation, not a basis the user picks.
   const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  // "All Time" resolves to the client's real posted-ledger bounds rather than
-  // the 1900–2999 placeholder, so the heading and the CSV name read as dates a
-  // CA recognises. Reusing splitPeriodColumns at "total" gives the resolved
-  // range AND its label from the same helper P&L and Balance Sheet use, rather
-  // than a second copy of the FY maths here.
+  const [granularity, setGranularity] = useState<Granularity>("total");
   const ledgerSpan = useLedgerSpan(clientId);
-  const period = useMemo(
+
+  const columnDefs = useMemo(
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
+    [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
+  );
+  const splitNotice = useMemo(
+    () => periodSplitNotice(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
+    [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
+  );
+  // The whole window regardless of how it was split — for the heading, the CSV
+  // filename and the inverted-range check, none of which are per column.
+  const overall = useMemo(
     () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, "total", undefined, ledgerSpan)[0],
     [periodMode, financialYear, customFrom, customTo, ledgerSpan],
   );
   // A custom range typed end-first. periodSplitNotice only speaks for column
   // splits, so this tab says it itself — silently fetching an impossible range
   // and rendering zeroes would read as "no cash movements".
-  const rangeInverted = period.start > period.end;
+  const rangeInverted = overall.start > overall.end;
 
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
-    if (rangeInverted) { setCf(null); setLoadFailed(false); setLoaded(true); return; }
+    if (rangeInverted) { setColumns([]); setLoaded(true); return; }
     setLoading(true);
-    // Scoped to THIS client (each client is a separate entity — never aggregated
-    // across the firm). All figures come from the backend AS-3 engine.
-    const { start, end } = period;
     try {
-      const res = (await cachedReport(
-        // The RANGE is in the key, not the financial year. Keyed on the FY, a
-        // switch to Last 3 Months served the FY's cached statement back under
-        // the new heading.
-        reportKey([clientId, start, end, "accrual", "cf"]),
-        () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
-        { force },
-      )) as { success: boolean; data: CFData | null };
-      // res.success===false only ever comes from a backend error path.
-      setCf(res.success && res.data ? res.data : null);
-      setLoadFailed(!res.success);
-    } catch {
-      // Backend error/timeout — degrade to empty, never an infinite skeleton
-      // (audit M17), flagged so the UI shows a retry banner, not a false "no data".
-      setCf(null);
-      setLoadFailed(true);
+      // Scoped to THIS client (each client is a separate entity — never
+      // aggregated across the firm). All figures come from the backend AS-3
+      // engine; one call per column, each cached on its own range.
+      const results = await Promise.all(columnDefs.map(async (col): Promise<CFColumn> => {
+        try {
+          const res = (await cachedReport(
+            // The RANGE is in the key, not the financial year. Keyed on the FY,
+            // a switch to Last 3 Months served the FY's cached statement back
+            // under the new heading — and every monthly column would collide.
+            reportKey([clientId, col.start, col.end, "accrual", "cf"]),
+            () => api.accounting.cashFlow({ basis: "accrual", start_date: col.start, end_date: col.end, client_id: clientId }),
+            { force },
+          )) as { success: boolean; data: CFData | null };
+          // res.success===false only ever comes from a backend error path.
+          if (!res.success || !res.data) return { ...col, data: null, error: true };
+          return { ...col, data: res.data, error: false };
+        } catch {
+          // Degrade this COLUMN, never the statement: one slow month must not
+          // blank the other eleven (audit M17).
+          return { ...col, data: null, error: true };
+        }
+      }));
+      setColumns(results);
     } finally {
       setLoading(false); setLoaded(true);
     }
-  }, [clientId, period, rangeInverted]);
+  }, [clientId, columnDefs, rangeInverted]);
 
   useEffect(() => { load(); }, [load]);
 
-  const r = cf?.operating_reconciliation;
+  const withData = useMemo(() => columns.filter((c) => c.data), [columns]);
+  const allFailed = loaded && columns.length > 0 && withData.length === 0;
+
+  // aggregateCashFlow, not an inline reduce: opening and closing are endpoints
+  // of the window, not sums across it, and getting that wrong counts the cash
+  // on hand once per column. lib/accounting/cashFlowMatrix.test.ts pins it.
+  const agg = useMemo(() => aggregateCashFlow(columns), [columns]);
+
+  const single = columns.length === 1 ? columns[0].data : null;
+  const r = single?.operating_reconciliation;
 
   // CSV export — plain rupee numbers (no ₹ prefix / comma grouping) so the
-  // amount column is directly usable as a spreadsheet number.
-  const buildCfExportRows = (): { section: string; particulars: string; amount: string }[] => {
-    if (!cf) return [];
-    const rows: { section: string; particulars: string; amount: string }[] = [];
-    const sections: { label: string; section: CFSection }[] = [
-      { label: "Operating Activities", section: cf.operating },
-      { label: "Investing Activities", section: cf.investing },
-      { label: "Financing Activities", section: cf.financing },
-    ];
-    sections.forEach(({ label, section }) => {
-      section.lines.forEach((l) => rows.push({ section: label, particulars: l.account_name, amount: (l.amount_paise / 100).toFixed(2) }));
-      rows.push({ section: label, particulars: "Net Cash", amount: (section.total_paise / 100).toFixed(2) });
+  // amount columns are directly usable as spreadsheet numbers. One column per
+  // displayed period, matching the screen.
+  const buildCfExportRows = (): Record<string, string>[] => {
+    const rows: Record<string, string>[] = [];
+    const push = (section: string, particulars: string, valueOf: (c: CFColumn) => number) => {
+      const row: Record<string, string> = { section, particulars };
+      columns.forEach((c) => { row[c.label] = (valueOf(c) / 100).toFixed(2); });
+      rows.push(row);
+    };
+    ([
+      { label: "Operating Activities", pick: (d: CFData) => d.operating },
+      { label: "Investing Activities", pick: (d: CFData) => d.investing },
+      { label: "Financing Activities", pick: (d: CFData) => d.financing },
+    ]).forEach(({ label, pick }) => {
+      cfUnion(columns, pick).forEach((a) => push(label, a.name, (c) => cfAmount(c.data, pick, a.id)));
+      push(label, "Net Cash", (c) => (c.data ? pick(c.data).total_paise : 0));
     });
-    rows.push({ section: "", particulars: "Opening Cash", amount: (cf.opening_cash_paise / 100).toFixed(2) });
-    rows.push({ section: "", particulars: "Net Change", amount: (cf.net_change_paise / 100).toFixed(2) });
-    rows.push({ section: "", particulars: "Closing Cash", amount: (cf.closing_cash_paise / 100).toFixed(2) });
+    push("", "Opening Cash", (c) => c.data?.opening_cash_paise ?? 0);
+    push("", "Net Change", (c) => c.data?.net_change_paise ?? 0);
+    push("", "Closing Cash", (c) => c.data?.closing_cash_paise ?? 0);
     return rows;
   };
-  const cfExportColumns: Column<{ section: string; particulars: string; amount: string }>[] = [
+  const cfExportColumns: Column<Record<string, string>>[] = [
     { key: "section", header: "Section", accessor: (row) => row.section },
     { key: "particulars", header: "Particulars", accessor: (row) => row.particulars },
-    { key: "amount", header: "Amount (₹)", accessor: (row) => row.amount },
+    ...columns.map((c, i): Column<Record<string, string>> => ({
+      key: `col${i}`, header: `${c.label} (₹)`, accessor: (row) => row[c.label] ?? "",
+    })),
   ];
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className={`space-y-4 mx-auto ${columns.length > 1 ? "max-w-6xl" : "max-w-3xl"}`}>
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — {period.label}</p>
+        <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — {overall.label}</p>
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
             customFrom={customFrom} customTo={customTo}
             onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
+            granularity={granularity} onGranularityChange={setGranularity}
             ariaLabel="Period"
           />
           <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`cash-flow-${period.start}-to-${period.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
-            disabled={!cf}
+            onClick={() => downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
+            disabled={!withData.length}
             className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
             title="Export CSV"
           >
@@ -2430,34 +2556,47 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
         </div>
       )}
 
-      {loading && <StatementSkeleton sections={3} rowsPerSection={2} />}
-
-      {!loading && loaded && !cf && (
-        loadFailed ? (
-          <div className="text-center py-12">
-            <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the cash flow statement — the request failed or timed out.</p>
-            <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
-          </div>
-        ) : (
-          <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for {period.label}.</div>
-        )
+      {/* Why a requested column split did not happen — as on P&L. Collapsing in
+          silence reads as a broken control rather than a deliberate limit. */}
+      {splitNotice && (
+        <div role="status" className="bg-slate-50 border border-[#E2E8F0] rounded px-3 py-2 text-xs text-[#64748B]">
+          {splitNotice}
+        </div>
       )}
 
-      {!loading && cf && (
+      {loading && <StatementSkeleton sections={3} rowsPerSection={2} />}
+
+      {!loading && allFailed && (
+        <div className="text-center py-12">
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the cash flow statement — the request failed or timed out.</p>
+          <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      )}
+
+      {!loading && loaded && !rangeInverted && columns.length > 0 && !allFailed && !withData.length && (
+        <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for {overall.label}.</div>
+      )}
+
+      {!loading && agg && (
         <>
-          {!cf.reconciles && (
+          {!agg.complete && (
+            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+              {columns.length - withData.length} of {columns.length} periods failed to load. The totals below cover only the periods that did — Opening + Net Change will not tie to Closing.
+            </div>
+          )}
+          {!agg.reconciles && (
             <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
               Cash flow does not reconcile to the change in cash balances for this period. Please review the ledger.
             </div>
           )}
 
-          {/* Summary strip */}
+          {/* Summary strip — the whole window, however it is split below. */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              { label: "Operating", paise: cf.operating.total_paise },
-              { label: "Investing", paise: cf.investing.total_paise },
-              { label: "Financing", paise: cf.financing.total_paise },
-              { label: "Net Change", paise: cf.net_change_paise },
+              { label: "Operating", paise: agg.operating },
+              { label: "Investing", paise: agg.investing },
+              { label: "Financing", paise: agg.financing },
+              { label: "Net Change", paise: agg.netChange },
             ].map((s) => (
               <div key={s.label} className="rounded-xl border border-[#F1F5F9] bg-white p-3 text-center">
                 <p className="text-[10px] font-medium text-[#64748B] mb-1">{s.label}</p>
@@ -2470,55 +2609,57 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
           <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 flex items-center gap-4 flex-wrap">
             <div>
               <p className="text-[10px] text-[#94A3B8]">Opening Cash</p>
-              <p className="text-sm font-semibold text-[#0F172A]">{fmtSigned(cf.opening_cash_paise)}</p>
+              <p className="text-sm font-semibold text-[#0F172A]">{fmtSigned(agg.opening)}</p>
             </div>
             <span className="text-[#CBD5E1] font-medium">+</span>
             <div>
               <p className="text-[10px] text-[#94A3B8]">Net Change</p>
-              <p className={`text-sm font-semibold ${cf.net_change_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(cf.net_change_paise)}</p>
+              <p className={`text-sm font-semibold ${agg.netChange >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(agg.netChange)}</p>
             </div>
             <span className="text-[#CBD5E1] font-medium">=</span>
             <div>
               <p className="text-[10px] text-[#94A3B8]">Closing Cash</p>
-              <p className="text-sm font-semibold text-[#0F172A]">{fmtSigned(cf.closing_cash_paise)}</p>
+              <p className="text-sm font-semibold text-[#0F172A]">{fmtSigned(agg.closing)}</p>
             </div>
-            {cf.reconciles && <CheckCircle size={16} className="text-green-500 ml-auto shrink-0" />}
+            {agg.reconciles && agg.complete && <CheckCircle size={16} className="text-green-500 ml-auto shrink-0" />}
           </div>
 
-          <CFSectionBlock title="A. Cash from Operating Activities" section={cf.operating} />
-          <CFSectionBlock title="B. Cash from Investing Activities" section={cf.investing} />
-          <CFSectionBlock title="C. Cash from Financing Activities" section={cf.financing} />
+          {single ? (
+            <>
+              <CFSectionBlock title="A. Cash from Operating Activities" section={single.operating} />
+              <CFSectionBlock title="B. Cash from Investing Activities" section={single.investing} />
+              <CFSectionBlock title="C. Cash from Financing Activities" section={single.financing} />
 
-          {/* Operating reconciliation (indirect method) */}
-          {r && (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-50 bg-[#F8FAFC]">
-                <h3 className="text-xs font-semibold text-[#334155]">Operating Reconciliation — Indirect Method</h3>
-              </div>
-              <table className="w-full text-xs">
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {([
-                    { label: "Net Profit for the Period", paise: r.net_profit_paise },
-                    { label: "Add: Depreciation & Non-cash Items", paise: r.depreciation_addback_paise },
-                    { label: "Non-operating Adjustments (Gain/Loss on Disposal)", paise: r.non_operating_adjust_paise },
-                    { label: "Changes in Working Capital", paise: r.working_capital_change_paise },
-                  ] as { label: string; paise: number }[]).map(({ label, paise }) =>
-                    paise !== 0 ? (
-                      <tr key={label} className="hover:bg-[#F8FAFC]">
-                        <td className="px-5 py-2 pl-8 text-[#334155]">{label}</td>
-                        <td className={`px-5 py-2 text-right font-mono font-medium ${paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(paise)}</td>
+              {/* Operating reconciliation (indirect method) */}
+              {r && (
+                <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-50 bg-[#F8FAFC]">
+                    <h3 className="text-xs font-semibold text-[#334155]">Operating Reconciliation — Indirect Method</h3>
+                  </div>
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y divide-[#F8FAFC]">
+                      {CF_RECON_ROWS.map(({ label, of }) => {
+                        const paise = of(r);
+                        return paise !== 0 ? (
+                          <tr key={label} className="hover:bg-[#F8FAFC]">
+                            <td className="px-5 py-2 pl-8 text-[#334155]">{label}</td>
+                            <td className={`px-5 py-2 text-right font-mono font-medium ${paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(paise)}</td>
+                          </tr>
+                        ) : null;
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+                        <td className="px-5 py-2 text-xs font-semibold text-[#334155]">Net Cash from Operations</td>
+                        <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${r.net_cash_operating_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(r.net_cash_operating_paise)}</td>
                       </tr>
-                    ) : null
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
-                    <td className="px-5 py-2 text-xs font-semibold text-[#334155]">Net Cash from Operations</td>
-                    <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${r.net_cash_operating_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(r.net_cash_operating_paise)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </>
+          ) : (
+            <CFMatrix columns={columns} />
           )}
 
           <p className="text-[10px] text-[#94A3B8] text-center">
