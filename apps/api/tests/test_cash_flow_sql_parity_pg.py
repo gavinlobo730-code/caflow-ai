@@ -316,11 +316,153 @@ def test_anon_cannot_execute_it(db):
     assert r.stdout.strip() == "f", "anon must not be able to read the ledger"
 
 
-def test_it_is_security_invoker(db):
-    """It only reads, and all three tables carry RLS. Running as the invoker is
-    what keeps a user JWT inside its own firm; SECURITY DEFINER would hand every
-    caller the owner's rights for no reason."""
+def test_it_is_security_definer(db):
+    """It was INVOKER in 277, and that is what made it fail in production.
+
+    journal_lines' policy is `journal_entry_id IN (SELECT je.id FROM
+    journal_entries WHERE firm_id = get_my_firm_id())`, and journal_entries
+    carries three more policies calling get_my_firm_id(), can_access_client(),
+    get_my_role() and my_internal_client_id(). Under INVOKER the planner cannot
+    hoist that out of the aggregate, so a set-based query becomes a per-row
+    cascade of function calls and dies on the statement timeout — the report was
+    SLOWER than the Python it replaced. Migration 279 restates those checks once,
+    in the body."""
     r = _psql(db, """
         SELECT p.prosecdef FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
          WHERE n.nspname='public' AND p.proname='cash_flow_report';""", tuples=True)
-    assert r.stdout.strip() == "f", "cash_flow_report should be SECURITY INVOKER"
+    assert r.stdout.strip() == "t", "cash_flow_report must be SECURITY DEFINER (migration 279)"
+
+
+# ── As a real caller ─────────────────────────────────────────────────────────
+# Everything above runs as the superuser, where RLS does not exist. That is what
+# let 277 ship: the statement was proved correct and never once executed the way
+# production executes it. These do.
+
+AUTH = "a7000000-0000-0000-0000-000000000001"
+USER = "b7000000-0000-0000-0000-000000000001"
+OTHER_FIRM = "f7000000-0000-0000-0000-0000000000ff"
+
+
+def _as_authenticated(dsn: str, sql: str, auth_uid: str = AUTH) -> subprocess.CompletedProcess:
+    return _psql(dsn, f"""
+        SET request.jwt.claims = '{{"sub": "{auth_uid}"}}';
+        SET ROLE authenticated;
+        {sql}""", tuples=True)
+
+
+def _seed_caller(dsn: str) -> None:
+    r = _psql(dsn, f"""
+        INSERT INTO auth.users (id) VALUES ('{AUTH}') ON CONFLICT DO NOTHING;
+        INSERT INTO users (id, firm_id, full_name, email, role, auth_user_id)
+          VALUES ('{USER}','{FIRM}','P','p@parity.in','Partner','{AUTH}');
+        INSERT INTO firms (id,name,email) VALUES ('{OTHER_FIRM}','Other','o@t.in');""")
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_real_caller_gets_the_statement(db):
+    """The regression in one line: as `authenticated`, over a ledger, it must
+    RETURN rather than be cancelled."""
+    assert _psql(db, _seed_sql(dict(SCENARIOS)["combined ledger"])).returncode == 0
+    _seed_caller(db)
+    r = _as_authenticated(db, f"""
+        SELECT public.cash_flow_report('{FIRM}'::uuid, '{CLIENT}'::uuid,
+                                       '{START}'::date, '{END}'::date) IS NOT NULL;""")
+    assert r.returncode == 0, f"the function failed for an authenticated caller: {r.stderr}"
+    assert r.stdout.strip().endswith("t")
+
+
+def test_a_real_caller_gets_the_same_numbers_as_the_superuser(db):
+    """SECURITY DEFINER must not change WHAT is computed — only who may ask."""
+    assert _psql(db, _seed_sql(dict(SCENARIOS)["combined ledger"])).returncode == 0
+    _seed_caller(db)
+    r = _as_authenticated(db, f"""
+        SELECT public.cash_flow_report('{FIRM}'::uuid, '{CLIENT}'::uuid,
+                                       '{START}'::date, '{END}'::date)::text;""")
+    assert r.returncode == 0, r.stderr
+    body = r.stdout.strip().splitlines()[-1]
+    assert _normalise(json.loads(body)) == _python_report(dict(SCENARIOS)["combined ledger"])
+
+
+def test_another_firm_is_refused_not_served(db):
+    """The isolation the policies would have enforced, now enforced once per call
+    in the body. DEFINER bypasses RLS, so this check IS the tenancy boundary."""
+    assert _psql(db, _seed_sql(SCENARIOS[1][1])).returncode == 0
+    _seed_caller(db)
+    r = _as_authenticated(db, f"""
+        SELECT public.cash_flow_report('{OTHER_FIRM}'::uuid, '{CLIENT}'::uuid,
+                                       '{START}'::date, '{END}'::date);""")
+    assert r.returncode != 0, "a caller read a statement for a firm that is not theirs"
+    assert "not the caller" in r.stderr, r.stderr
+
+
+def test_a_caller_with_no_user_record_is_refused(db):
+    """An auth uid with no row in users has no firm, and must not fall through
+    to reading everything."""
+    assert _psql(db, _seed_sql(SCENARIOS[1][1])).returncode == 0
+    _seed_caller(db)
+    stranger = "a7000000-0000-0000-0000-0000000000ff"
+    assert _psql(db, f"INSERT INTO auth.users (id) VALUES ('{stranger}') ON CONFLICT DO NOTHING;").returncode == 0
+    r = _as_authenticated(db, f"""
+        SELECT public.cash_flow_report('{FIRM}'::uuid, '{CLIENT}'::uuid,
+                                       '{START}'::date, '{END}'::date);""", auth_uid=stranger)
+    assert r.returncode != 0
+    assert "no user record" in r.stderr, r.stderr
+
+
+def test_it_survives_a_real_ledger_under_rls(db):
+    """The function works for a real caller over a real ledger.
+
+    WHAT THIS DOES AND DOES NOT PROVE — stated because I checked.
+    It does NOT reproduce the production timeout: with the fix reverted to
+    SECURITY INVOKER this test still passes, because 12,000 lines on CI hardware
+    finishes the per-row policy cascade inside any tolerance worth setting. A
+    threshold tuned to fail here would be tuned to this runner's speed, and the
+    repo already decided against clocks in CI for exactly that reason (see
+    apps/web/scripts/report-period-pickers and the reporting-reads ratchet, which
+    count rows rather than milliseconds).
+
+    test_it_is_security_definer is the guard that actually bites. What THIS adds
+    is the coverage 277 never had at all: the function executed the way
+    production executes it — as `authenticated`, with RLS live, over a ledger
+    rather than a handful of rows — returning a real statement. Every other
+    assertion in this file runs as the superuser, where RLS does not exist, and
+    that is precisely how a function that could not complete in production
+    passed 27 scenarios.
+    """
+    # Firm, client and chart first — _seed_caller only adds the user.
+    assert _psql(db, _seed_sql([])).returncode == 0
+    _seed_caller(db)
+    seed = _psql(db, f"""
+        INSERT INTO journal_entries
+          (id, firm_id, client_id, entry_date, reference_no, narration, entry_type,
+           is_posted, status)
+        SELECT gen_random_uuid(), '{FIRM}', '{CLIENT}',
+               DATE '2026-04-01' + (g % 300), 'BULK-' || g, 'n', 'Journal', true, 'posted'
+          FROM generate_series(1, 4000) g;
+
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise)
+        SELECT je.id, x.acct, x.dr, x.cr
+          FROM (SELECT id FROM journal_entries
+                 WHERE client_id = '{CLIENT}' AND reference_no LIKE 'BULK-%') je
+         CROSS JOIN LATERAL (VALUES
+             ('{AID["ar"]}'::uuid, 11800::bigint, 0::bigint),
+             ('{AID["rev"]}'::uuid, 0::bigint, 10000::bigint),
+             ('{AID["gstout"]}'::uuid, 0::bigint, 1800::bigint)
+         ) AS x(acct, dr, cr);""")
+    assert seed.returncode == 0, f"bulk seed failed: {seed.stderr}"
+
+    count = _psql(db, f"""
+        SELECT count(*) FROM journal_lines jl JOIN journal_entries je ON je.id = jl.journal_entry_id
+         WHERE je.client_id = '{CLIENT}';""", tuples=True).stdout.strip()
+    assert int(count) >= 12000, f"the fixture is too small to mean anything: {count} lines"
+
+    r = _as_authenticated(db, f"""
+        SET statement_timeout = '30s';
+        SELECT (public.cash_flow_report('{FIRM}'::uuid, '{CLIENT}'::uuid,
+                                        '{START}'::date, '{END}'::date)
+                ->> 'net_change_paise') IS NOT NULL;""")
+    assert r.returncode == 0, (
+        f"cash_flow_report did not complete for an authenticated caller over "
+        f"{count} lines — this is the production failure:\n{r.stderr}"
+    )
+    assert r.stdout.strip().endswith("t")
