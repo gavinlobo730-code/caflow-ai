@@ -748,18 +748,33 @@ def matching_queue(
     client_id: Optional[str] = Query(None),
     status: str = Query("for_review",
                         pattern="^(for_review|done|unmatched|categorized|matched|needs_review|ignored|all)$"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("banking", "read")),
 ):
-    """Work queue (B.2.4) with rule-based suggested categories inline.
+    """One page of the work queue (B.2.4), with rule-based suggested categories
+    inline.
 
-    The screen uses three: for_review (still to do), done (posted), ignored (set
-    aside). The finer-grained unmatched/categorized/matched/needs_review views
-    remain for callers that ask for them."""
+    The screen uses three views: for_review (still to do), done (posted),
+    ignored (set aside). The finer-grained unmatched/categorized/matched/
+    needs_review views remain for callers that ask for them.
+
+    PAGED, and it returns `total` alongside the page. A queue that renders
+    every line of every statement is a read proportional to transaction
+    volume — the shape CLAUDE.md rules out — and it also gave the CA an
+    endless scroll with no sense of how much work was left. The total is the
+    half that keeps paging honest: nothing is hidden if the screen can say
+    how many there are."""
     db = _db()
     if not db:
-        return api_response(True, [])
-    rows = bank_matching_service.queue(db, current_user["firm_id"], client_id, status)
-    return api_response(True, _scope_rows(current_user, client_id, rows))
+        return api_response(True, {"rows": [], "total": 0, "limit": limit, "offset": offset})
+    rows = bank_matching_service.queue(db, current_user["firm_id"], client_id, status,
+                                       limit=limit, offset=offset)
+    total = bank_matching_service.queue_total(db, current_user["firm_id"], client_id, status)
+    return api_response(True, {
+        "rows": _scope_rows(current_user, client_id, rows),
+        "total": total, "limit": limit, "offset": offset,
+    })
 
 
 @router.get("/transactions/{txn_id}/suggestions")

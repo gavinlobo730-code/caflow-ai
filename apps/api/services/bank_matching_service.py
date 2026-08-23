@@ -272,44 +272,92 @@ class BankMatchingService:
         "unmatched", "categorized", "matched", "needs_review", "ignored", "all",
     })
 
-    def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched") -> list[dict]:
+    @staticmethod
+    def _view_filter(q, status: str):
+        """The queue's view, expressed as SQL rather than as a Python predicate.
+
+        It used to fetch every transaction for the client and filter in
+        Python. That is a read proportional to statement volume — thirteen
+        cross-region round trips for a client with 12,836 lines, to render a
+        page of fifty — and it is the shape CLAUDE.md rules out. Pushing the
+        view down means the page is the only thing that crosses the wire.
+
+        Safe in SQL because `match_status` is NOT NULL DEFAULT 'unmatched':
+        the NULL-filter quirk the Python version was avoiding cannot arise on
+        the column every view keys off. Where a nullable column IS involved
+        the predicate says so explicitly — `category <> ''` keeps an empty
+        string out of "categorized", which `bool(t.get("category"))` did too.
+
+        An ignored row is out of the working views by definition; it shows in
+        its own view and in "all", and nowhere else.
+        """
+        if status == "all":
+            return q
+        if status == "ignored":
+            return q.eq("match_status", "ignored")
+        if status == "for_review":
+            # Everything still to do. Posted is done, ignored is set aside;
+            # anything else is work, however far through it already is.
+            return q.not_.in_("match_status", ["posted", "ignored"])
+        if status == "done":
+            return q.eq("match_status", "posted")
+        q = q.neq("match_status", "ignored")
+        if status == "unmatched":
+            return q.eq("match_status", "unmatched").is_("matched_entity_id", "null")
+        if status == "categorized":
+            return q.not_.is_("category", "null").neq("category", "")
+        if status == "matched":
+            return q.not_.is_("matched_entity_id", "null")
+        if status == "needs_review":
+            return q.eq("needs_review", True)
+        return q
+
+    def _queue_query(self, db, firm_id: str, client_id: Optional[str], status: str,
+                     cols: str = "*", count: Optional[str] = None):
+        q = db.table("bank_transactions").select(cols, count=count) if count \
+            else db.table("bank_transactions").select(cols)
+        q = q.eq("firm_id", firm_id)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        return self._view_filter(q, status)
+
+    def queue_total(self, db, firm_id: str, client_id: Optional[str],
+                    status: str = "unmatched") -> int:
+        """How many rows the view holds, whatever slice of it is on screen.
+
+        A paged queue that cannot say "50 of 312" hides the other 262 exactly
+        the way the un-paged 1000-row ceiling used to."""
         if status not in self._QUEUE_STATUSES:
             raise HTTPException(status_code=422, detail="Invalid queue status.")
-        def _page():
-            q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
-            return q.eq("client_id", client_id) if client_id else q
-        # PAGED, then sorted here. Unpaged, a client with more than ~1000
-        # statement lines saw a queue that silently stopped at 1000 — work that
-        # simply was not on screen to be done.
-        txns = fetch_all(_page, label="matching.queue")
-        txns.sort(key=lambda t: (str(t.get("transaction_date") or ""), str(t.get("id"))))
+        res = self._queue_query(db, firm_id, client_id, status,
+                                cols="id", count="exact").limit(1).execute()
+        return int(getattr(res, "count", None) or 0)
 
-        # View filter (Python-side — avoids NULL-filter quirks; bounded per client).
-        def keep(t: dict) -> bool:
-            # An ignored row is out of the working views by definition — it only
-            # shows in its own view and in "all". Without this, an ignored row
-            # that still carried a category or a link reappeared under
-            # "Categorized"/"Matched" as if it were live work.
-            if status not in ("ignored", "all") and t.get("match_status") == "ignored":
-                return False
-            if status == "for_review":
-                # Everything still to do. Posted is done, ignored is set aside;
-                # anything else is work, however far through it already is.
-                return t.get("match_status") not in ("posted", "ignored")
-            if status == "done":
-                return t.get("match_status") == "posted"
-            if status == "unmatched":
-                return t.get("match_status") == "unmatched" and not t.get("matched_entity_id")
-            if status == "categorized":
-                return bool(t.get("category"))
-            if status == "matched":
-                return bool(t.get("matched_entity_id"))
-            if status == "needs_review":
-                return bool(t.get("needs_review"))
-            if status == "ignored":
-                return t.get("match_status") == "ignored"
-            return True  # all
-        txns = [t for t in txns if keep(t)]
+    def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched",
+              limit: Optional[int] = None, offset: int = 0) -> list[dict]:
+        """One page of the work queue, enriched with rules and payee history.
+
+        limit=None returns the whole view, as this always did — the enrichment
+        below is per-row work, so a caller that wants everything still gets
+        everything. The screen passes a limit."""
+        if status not in self._QUEUE_STATUSES:
+            raise HTTPException(status_code=422, detail="Invalid queue status.")
+        if limit is None:
+            # fetch_all keyset-pages on `id` and imposes its own ORDER BY id,
+            # so this query must NOT carry a sort of its own — the cursor would
+            # walk a different order than the one it pages over. Sorted after.
+            txns = fetch_all(lambda: self._queue_query(db, firm_id, client_id, status),
+                             label="matching.queue")
+            txns.sort(key=lambda t: (str(t.get("transaction_date") or ""), str(t.get("id"))))
+        else:
+            # (transaction_date, id) — the id is the tiebreak, not decoration.
+            # Dates repeat constantly on a statement, and a paged sort with ties
+            # repeats rows on one page and drops them from the next.
+            start = max(int(offset), 0)
+            txns = (self._queue_query(db, firm_id, client_id, status)
+                    .order("transaction_date").order("id")
+                    .range(start, start + max(int(limit), 1) - 1)
+                    .execute().data or [])
 
         # Matching rules are always created per-client (MatchingRuleIn.client_id
         # is required) -- group by client_id and only apply a transaction's

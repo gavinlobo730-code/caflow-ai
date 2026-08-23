@@ -107,8 +107,9 @@ def test_categories_are_controlled():
 # ── Fake Supabase for service tests ───────────────────────────────────────────
 
 class _Resp:
-    def __init__(self, data):
+    def __init__(self, data, count=None):
         self.data = data
+        self.count = count
 
 
 class _Q:
@@ -119,8 +120,11 @@ class _Q:
         self._eq = []
         self._pred = []          # gte / lte / neq / is_ predicates
         self._single = False
-        self._order = None
+        self._order = []
         self._limit = None
+        self._range = None
+        self._count = None
+        self._negate = False
 
     def insert(self, p):
         self._op, self._payload = "insert", p
@@ -130,39 +134,59 @@ class _Q:
         self._op, self._payload = "update", p
         return self
 
-    def select(self, *_a, **_k):
+    def select(self, *_a, count=None, **_k):
         self._op = "select"
+        self._count = count
         return self
 
     def eq(self, k, v):
+        if self._negate:
+            return self._add(lambda r, k=k, v=v: r.get(k) != v)
         self._eq.append((k, v))
+        return self
+
+    # `.not_.in_(...)` / `.not_.is_(...)`: PostgREST's negation applies to the
+    # NEXT predicate only. The queue's view filter is SQL now, so the double
+    # has to model that — without it "for_review" silently matched everything.
+    @property
+    def not_(self):
+        self._negate = True
+        return self
+
+    def _add(self, pred):
+        neg, self._negate = self._negate, False
+        self._pred.append((lambda r: not pred(r)) if neg else pred)
+        return self
+
+    def in_(self, k, vals):
+        vals = list(vals)
+        return self._add(lambda r, k=k, vals=vals: r.get(k) in vals)
+
+    def range(self, a, b):
+        self._range = (a, b)
         return self
 
     # Range + null predicates. Without these the candidate-fetch path raised
     # AttributeError, was swallowed by _candidates()'s best-effort except, and
     # every suggestion test silently exercised an empty candidate list.
     def gte(self, k, v):
-        self._pred.append(lambda r, k=k, v=v: r.get(k) is not None and r[k] >= v)
-        return self
+        return self._add(lambda r, k=k, v=v: r.get(k) is not None and r[k] >= v)
 
     def lte(self, k, v):
-        self._pred.append(lambda r, k=k, v=v: r.get(k) is not None and r[k] <= v)
-        return self
+        return self._add(lambda r, k=k, v=v: r.get(k) is not None and r[k] <= v)
 
     def neq(self, k, v):
-        self._pred.append(lambda r, k=k, v=v: r.get(k) != v)
-        return self
+        return self._add(lambda r, k=k, v=v: r.get(k) != v)
 
     def is_(self, k, _null):
-        self._pred.append(lambda r, k=k: r.get(k) is None)
-        return self
+        return self._add(lambda r, k=k: r.get(k) is None)
 
     def delete(self):
         self._op = "delete"
         return self
 
     def order(self, col, **_k):
-        self._order = col
+        self._order.append(col)      # accumulates, as PostgREST does
         return self
 
     def limit(self, n):
@@ -198,13 +222,16 @@ class _Q:
             for r in matched:
                 rows.remove(r)
             return _Resp(matched)
-        if self._order:
-            matched = sorted(matched, key=lambda r: str(r.get(self._order)))
+        for col in reversed(self._order):
+            matched = sorted(matched, key=lambda r, c=col: str(r.get(c)))
+        total = len(matched)
+        if self._range is not None:
+            matched = matched[self._range[0]: self._range[1] + 1]
         if self._limit is not None:
             matched = matched[: self._limit]
         if self._single:
             return _Resp(matched[0] if matched else None)
-        return _Resp(matched)
+        return _Resp(matched, count=(total if self._count else None))
 
 
 class FakeDB:

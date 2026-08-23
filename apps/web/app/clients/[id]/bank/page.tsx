@@ -203,9 +203,18 @@ const QUEUE_FILTERS: { id: string; label: string }[] = [
 // can post, which is what decides whether the primary button is live.
 const AUTO_COUNTER_CATEGORIES = new Set(["Customer Payment", "Vendor Payment", "GST Payment"]);
 
+// Matches the Register tab's page size, and the API's default. Big enough that
+// a month of statement lines is one or two pages; small enough that the browser
+// is not laying out three hundred disclosure rows nobody opened.
+const QUEUE_PER_PAGE = 50;
+
 function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
   const [status, setStatus] = useState("for_review");
   const [rows, setRows] = useState<QueueTxn[]>([]);
+  // Paged. A statement is 300 lines a month and the queue used to render all of
+  // them in one scroll, with nothing on screen saying how many there were.
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [sugg, setSugg] = useState<Record<string, MatchSuggestion[]>>({});
   const [transfers, setTransfers] = useState<TransferSuggestion[]>([]);
@@ -264,19 +273,24 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     try {
-      const res = (await api.banking.queue({ client_id: clientId, status })) as { success: boolean; data: QueueTxn[] };
+      const res = (await api.banking.queue({
+        client_id: clientId, status,
+        limit: String(QUEUE_PER_PAGE), offset: String(page * QUEUE_PER_PAGE),
+      })) as { success: boolean; data: { rows: QueueTxn[]; total: number } };
       if (!res.success) throw new Error("Couldn't load the bank match queue.");
-      setRows(res.data ?? []);
+      setRows(res.data?.rows ?? []);
+      setTotal(res.data?.total ?? 0);
       setLoadError(null);
     } catch (e) {
-      setRows([]);
+      setRows([]); setTotal(0);
       setLoadError(e instanceof Error ? e.message : "Couldn't load the bank match queue.");
     } finally {
       setLoading(false);
     }
-  }, [clientId, status]);
+  }, [clientId, status, page]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setSelected(new Set()); setOpen(new Set()); }, [status]);
+  useEffect(() => { setPage(0); }, [status, clientId]);
+  useEffect(() => { setSelected(new Set()); setOpen(new Set()); }, [status, page]);
 
   // Candidates are fetched FOR the reader rather than on request. A row that
   // says "Match · INV-BULK-00073 · exact amount" needs no thought; a row with a
@@ -742,34 +756,28 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                     onChange={() => toggleRow(t.id)}
                     className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0"
                   />
-                  <div className="min-w-0">
-                    {/* Lead with the parsed counterparty when the bank gave us
-                        one — "RAMESH KUMAR" is the thing a CA is scanning for,
-                        not "TO TRANSFER-UPI/DR/412345678901/...". The raw
-                        narration stays underneath, in full, as the record. */}
-                    {t.parsed?.counterparty ? (
-                      <>
-                        <p className="text-xs font-medium text-[#1E293B] truncate">
-                          {t.parsed.counterparty}
-                          {t.parsed.channel && (
-                            <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] align-middle">
-                              {t.parsed.channel}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-[10px] text-[#94A3B8] mt-0.5 truncate" title={t.description}>
-                          {t.description}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
-                    )}
-                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
-                      {t.transaction_date}
-                      {t.parsed?.utr ? ` · UTR ${t.parsed.utr}` : (t.reference_no ? ` · ${t.reference_no}` : "")}
-                      {t.parsed?.vpa ? ` · ${t.parsed.vpa}` : ""}
+                  {/* TWO LINES, and the second is just the date.
+                      A statement line has a name, a date and an amount; the raw
+                      narration, the UTR and the VPA are evidence, wanted only
+                      when the name is not enough. Printed on every row they
+                      tripled its height and buried the name they were meant to
+                      support. They are behind the disclosure now, and the line
+                      itself opens it — clicking the description is the gesture
+                      a reader already tries. */}
+                  <button type="button" onClick={() => toggleOpen(t.id)}
+                    aria-expanded={open.has(t.id)}
+                    title="Show the full narration and reference"
+                    className="min-w-0 text-left group">
+                    <p className="text-xs font-medium text-[#1E293B] truncate group-hover:text-[#4338CA]">
+                      {t.parsed?.counterparty || t.description}
+                      {t.parsed?.channel && (
+                        <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] align-middle">
+                          {t.parsed.channel}
+                        </span>
+                      )}
                     </p>
-                  </div>
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{t.transaction_date}</p>
+                  </button>
                 </div>
                 <div className="shrink-0 text-right">
                   {t.debit_paise > 0 && <p className="text-xs font-mono text-red-700">{fmt(t.debit_paise)} Dr</p>}
@@ -877,6 +885,25 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
 
               {rowError[t.id] && (
                 <p className="text-[10px] text-red-600 ml-1">{rowError[t.id]}</p>
+              )}
+
+              {/* What the bank actually sent. Selectable, and wrapped rather
+                  than truncated — a UTR you cannot copy is no use when you are
+                  ringing the bank about it. */}
+              {open.has(t.id) && (
+                <div className="ml-6 rounded bg-[#F8FAFC] px-2.5 py-1.5 space-y-0.5">
+                  <p className="text-[10px] text-[#475569] break-words select-text font-mono leading-relaxed">
+                    {t.description}
+                  </p>
+                  {(t.parsed?.utr || t.reference_no || t.parsed?.vpa || t.parsed?.ifsc) && (
+                    <p className="text-[10px] text-[#94A3B8] break-words select-text">
+                      {[t.parsed?.utr ? `UTR ${t.parsed.utr}` : null,
+                        t.reference_no && t.reference_no !== t.parsed?.utr ? t.reference_no : null,
+                        t.parsed?.vpa, t.parsed?.ifsc]
+                        .filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </div>
               )}
 
               {/* ── Everything else, only when asked for ─────────────────── */}
@@ -1076,10 +1103,36 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             </div>
           ))}
         </div>
+
+        {/* The count is the point, not the arrows: a queue that only ever says
+            "here are fifty" cannot be told apart from a queue that is finished.
+            Shown even on a single page, so "12 of 12" is a fact the CA has
+            rather than an inference. */}
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[10px] text-[#94A3B8]">
+            {total === 0 ? "Nothing in this view"
+              : `${page * QUEUE_PER_PAGE + 1}–${Math.min((page + 1) * QUEUE_PER_PAGE, total)} of ${total}`}
+          </p>
+          {total > QUEUE_PER_PAGE && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage((n) => Math.max(n - 1, 0))}
+                disabled={page === 0 || loading}
+                className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed">
+                Previous
+              </button>
+              <button onClick={() => setPage((n) => n + 1)}
+                disabled={(page + 1) * QUEUE_PER_PAGE >= total || loading}
+                className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed">
+                Next
+              </button>
+            </div>
+          )}
+        </div>
         </>
       )}
       <p className="text-[10px] text-[#94A3B8] text-center">
         Match or Add posts the transaction and settles its document. Undo puts it back.
+        Click a line to see the bank&apos;s own narration.
       </p>
       {splitTxn && (
         <MultiInvoiceMatchModal

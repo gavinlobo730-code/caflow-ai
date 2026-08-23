@@ -38,8 +38,9 @@ from core.db_paging import PAGE, fetch_all
 # ── A stub that truncates exactly like PostgREST ─────────────────────────────
 
 class _Result:
-    def __init__(self, data):
+    def __init__(self, data, count=None):
         self.data = data
+        self.count = count
 
 
 class _Q:
@@ -48,35 +49,69 @@ class _Q:
     def __init__(self, rows, store, table):
         self._rows, self._store, self._table = rows, store, table
         self._limit = None
+        self._range = None
+        self._count = None
+        self._order = []
+        self._negate = False
 
-    def select(self, *_a, **_k):
+    def select(self, *_a, count=None, **_k):
+        self._count = count
+        return self
+
+    # `.not_` negates the NEXT predicate only, as PostgREST does.
+    @property
+    def not_(self):
+        self._negate = True
+        return self
+
+    def _keep(self, pred):
+        neg, self._negate = self._negate, False
+        keep = (lambda r: not pred(r)) if neg else pred
+        self._rows = [r for r in self._rows if keep(r)]
         return self
 
     def eq(self, c, v):
-        self._rows = [r for r in self._rows if r.get(c) == v]
-        return self
+        return self._keep(lambda r: r.get(c) == v)
+
+    def neq(self, c, v):
+        return self._keep(lambda r: r.get(c) != v)
+
+    def is_(self, c, _null):
+        return self._keep(lambda r: r.get(c) is None)
 
     def in_(self, c, vals):
         s = set(vals)
-        self._rows = [r for r in self._rows if r.get(c) in s]
-        return self
+        return self._keep(lambda r: r.get(c) in s)
 
     def gt(self, c, v):
-        self._rows = [r for r in self._rows if str(r.get(c)) > str(v)]
-        return self
+        return self._keep(lambda r: str(r.get(c)) > str(v))
 
     def order(self, c, desc=False):
-        self._rows = sorted(self._rows, key=lambda r: str(r.get(c)), reverse=desc)
+        # Deferred and ACCUMULATED. Sorting eagerly made `.order(a).order(b)`
+        # mean "sorted by b", which is the opposite of ORDER BY a, b — and the
+        # tiebreak is what makes a paged queue stable.
+        self._order.append((c, desc))
         return self
 
     def limit(self, n):
         self._limit = n
         return self
 
+    def range(self, a, b):
+        self._range = (a, b)
+        return self
+
     def execute(self):
+        rows = self._rows
+        for c, desc in reversed(self._order):
+            rows = sorted(rows, key=lambda r, c=c: str(r.get(c)), reverse=desc)
+        total = len(rows)
+        if self._range is not None:
+            rows = rows[self._range[0]: self._range[1] + 1]
         n = self._limit if self._limit is not None else self.CAP
-        self._store.pages.append((self._table, len(self._rows[:n])))
-        return _Result([dict(r) for r in self._rows[:n]])
+        rows = rows[:n]
+        self._store.pages.append((self._table, len(rows)))
+        return _Result([dict(r) for r in rows], count=(total if self._count else None))
 
 
 class _DB:
