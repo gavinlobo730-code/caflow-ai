@@ -333,6 +333,32 @@ def _ledger_is_disposable(db, firm_id: str, coa_account_id: str,
     return all(o.get("id") == bank_account_id for o in others)
 
 
+def _with_ledger_names(db, firm_id: str, rows: list[dict]) -> list[dict]:
+    """Stamp each bank account with the code and name of the ledger it posts to.
+
+    The account list used to say only "Linked", which answers the wrong question.
+    Now that every bank has its own ledger, WHICH ledger is what ties the row to
+    a line on the balance sheet — and it is what makes a refused delete
+    actionable, since "its ledger account carries posted journal entries" is only
+    useful if you can see which account that is.
+
+    One extra query for the whole list, keyed by the ids already in hand."""
+    coa_ids = list({r["coa_account_id"] for r in rows if r.get("coa_account_id")})
+    coa: dict[str, dict] = {}
+    if coa_ids:
+        try:
+            coa = {c["id"]: c for c in (
+                db.table("chart_of_accounts").select("id, account_code, account_name")
+                  .eq("firm_id", firm_id).in_("id", coa_ids).execute().data or [])}
+        except Exception as e:  # noqa: BLE001 — a name is a nicety, the list is not
+            _logger.warning("could not resolve bank ledger names: %s", e)
+    for r in rows:
+        c = coa.get(r.get("coa_account_id")) or {}
+        r["ledger_account_code"] = c.get("account_code")
+        r["ledger_account_name"] = c.get("account_name")
+    return rows
+
+
 # ─── Bank Accounts ────────────────────────────────────────────────────────────
 
 @router.get("/accounts")
@@ -361,7 +387,8 @@ def list_bank_accounts(
          .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id))
     if not include_inactive:
         q = q.eq("is_active", True)
-    return api_response(True, q.order("bank_name").execute().data or [])
+    rows = q.order("bank_name").execute().data or []
+    return api_response(True, _with_ledger_names(db, current_user["firm_id"], rows))
 
 
 @router.post("/accounts")

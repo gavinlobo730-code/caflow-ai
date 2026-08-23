@@ -2116,6 +2116,10 @@ interface BankAccount {
   opening_balance_paise: number;
   opening_balance_date: string | null;
   coa_account_id: string | null;
+  /** Resolved server-side so the row can name the ledger it posts to, not just
+   *  claim it is "Linked" — which is the balance-sheet line this account is. */
+  ledger_account_code?: string | null;
+  ledger_account_name?: string | null;
   currency: string;
   is_active: boolean;
 }
@@ -2173,6 +2177,15 @@ function BankAccounts({ clientId }: { clientId: string }) {
       setMsg({ type: "ok", text: "Bank account deactivated." });
       loadStatements();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not deactivate the account." }); }
+  }
+
+  async function reactivateAccount(a: BankAccount) {
+    try {
+      const res = await api.banking.updateBankAccount(a.id, { is_active: true }) as { success: boolean; error: string | null };
+      if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not reactivate the account." }); return; }
+      setMsg({ type: "ok", text: `${a.bank_name} reactivated.` });
+      loadStatements();
+    } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not reactivate the account." }); }
   }
 
   async function deleteAccount(a: BankAccount) {
@@ -2246,11 +2259,19 @@ function BankAccounts({ clientId }: { clientId: string }) {
                   </td>
                   <td className="px-3 py-2.5 font-mono text-[#64748B] text-[10px]">{a.account_no}</td>
                   <td className="px-3 py-2.5 text-[#64748B]">{a.account_type}</td>
-                  <td className="px-3 py-2.5 text-[#64748B]">{a.coa_account_id ? "Linked" : <span className="text-amber-600">Not linked</span>}</td>
+                  <td className="px-3 py-2.5 text-[#64748B]">
+                    {a.coa_account_id
+                      ? (a.ledger_account_code
+                          ? <span className="font-mono text-[11px]">{a.ledger_account_code} · {a.ledger_account_name}</span>
+                          : "Linked")
+                      : <span className="text-amber-600">Not linked</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(a.opening_balance_paise)}</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => setAccountModal(a)} className="text-[#4338CA] hover:text-[#3730A3] inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
-                    {a.is_active && <button onClick={() => deactivateAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Deactivate</button>}
+                    {a.is_active
+                      ? <button onClick={() => deactivateAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Deactivate</button>
+                      : <button onClick={() => reactivateAccount(a)} className="ml-3 text-[#059669] hover:text-[#047857]">Reactivate</button>}
                     {/* Delete is offered only for an account with no footprint.
                         When it is blocked the button stays, disabled, carrying the
                         reason — "why can't I delete this?" is the question a
