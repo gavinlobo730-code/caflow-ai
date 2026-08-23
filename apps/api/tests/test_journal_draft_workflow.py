@@ -237,27 +237,33 @@ def test_queue_filters_draft_vs_posted(db):
 
 # ── Banking: deferred settlement (Objective 3) ────────────────────────────────
 
-def test_bank_draft_does_not_settle_until_posted(db):
+def test_a_bank_transaction_posts_and_settles_in_one_action(db):
+    """This used to assert the opposite: that BP.post left a DRAFT which settled
+    nothing until a Partner approved it. That gate is gone — 300 statement lines
+    a month per client, times 50 clients, is not a review anyone performs — so
+    categorising a bank line now posts it and settles the invoice in the same
+    step. Manual journals still go through JP.post_draft; this path does not."""
     _bank_txn(db)
     res = BP.post(db, FIRM, "txn1", actor_id="maker")
-    assert res["status"] == "draft" and res["draft_journal_id"]
+    assert res["status"] == "posted" and res["posted_journal_id"]
 
     txn = db.store["bank_transactions"][0]
     inv = db.store["client_sales_invoices"][0]
-    je = next(r for r in db.store["journal_entries"] if r["id"] == res["draft_journal_id"])
-    # Draft only: not posted, not settled, not reconciled.
-    assert je["is_posted"] is False
-    assert txn["match_status"] != "posted" and txn["posted_at"] is None
-    assert inv["paid_paise"] == 0 and inv["status"] == "sent"
-    assert not txn.get("reconciled")
-
-    # Approve the draft → settlement + posting happen now.
-    out = JP.post_draft(db, FIRM, res["draft_journal_id"], actor_id="approver")
-    txn = db.store["bank_transactions"][0]
-    inv = db.store["client_sales_invoices"][0]
-    assert out["settlement"] and out["settlement"]["allocated_paise"] == 100000
+    je = next(r for r in db.store["journal_entries"] if r["id"] == res["posted_journal_id"])
+    assert je["is_posted"] is True
     assert txn["match_status"] == "posted" and txn["posted_at"]
     assert inv["paid_paise"] == 100000 and inv["status"] == "paid"
+    assert res["settled"] and res["settled"]["allocated_paise"] == 100000
+
+
+def test_a_posted_bank_transaction_has_no_draft_left_to_approve(db):
+    """The other half: nothing is waiting behind it. If post_draft still had
+    something to do here, the gate would have survived in a form nobody sees."""
+    _bank_txn(db)
+    res = BP.post(db, FIRM, "txn1", actor_id="maker")
+    with pytest.raises(HTTPException) as e:
+        JP.post_draft(db, FIRM, res["posted_journal_id"], actor_id="approver")
+    assert e.value.status_code == 409          # already posted
 
 
 def test_bank_post_is_idempotent_one_draft(db):
@@ -268,14 +274,13 @@ def test_bank_post_is_idempotent_one_draft(db):
     assert e.value.status_code == 409
 
 
-def test_bank_queues_reflect_draft_then_posted(db):
+def test_a_posted_transaction_goes_straight_from_ready_to_posted(db):
+    """There is no longer a queue in between. `pending` stays on the service for
+    drafts created before this change; nothing new ever lands in it."""
     _bank_txn(db)
     assert [t["id"] for t in BP.ready_to_post(db, FIRM, CLIENT)] == ["txn1"]
-    r = BP.post(db, FIRM, "txn1", actor_id="maker")
-    assert BP.ready_to_post(db, FIRM, CLIENT) == []          # left ready queue
-    assert [t["id"] for t in BP.pending(db, FIRM, CLIENT)] == ["txn1"]   # awaiting approval
-    assert BP.posted(db, FIRM, CLIENT) == []                 # not yet posted
-    JP.post_draft(db, FIRM, r["draft_journal_id"], actor_id="approver")
+    BP.post(db, FIRM, "txn1", actor_id="maker")
+    assert BP.ready_to_post(db, FIRM, CLIENT) == []
     assert BP.pending(db, FIRM, CLIENT) == []
     assert [t["id"] for t in BP.posted(db, FIRM, CLIENT)] == ["txn1"]
 

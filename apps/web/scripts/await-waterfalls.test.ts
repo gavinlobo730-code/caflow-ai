@@ -37,6 +37,12 @@ const ALLOWED: Record<string, string> = {
     "Same storage-then-row delete as app/client-portal/page.tsx.",
   "app/clients/documents/page.tsx":
     "Same storage-then-row delete as app/client-portal/page.tsx.",
+  "app/clients/[id]/bank/page.tsx":
+    "Match a bank line to its document, then post it. Causally ordered, not " +
+    "parallelisable: the journal is built from the match, so posting first " +
+    "would post the wrong thing. One click on one row, not a page load — and " +
+    "if the post half fails the row shows 'Matched' with a Post button, so " +
+    "the partial state is visible and recoverable rather than stranded.",
 };
 
 // ─── the analysis itself ────────────────────────────────────────────────────

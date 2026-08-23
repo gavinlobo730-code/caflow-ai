@@ -171,6 +171,33 @@ second implementation without the parity test is the thing not to do.
 Aged receivables and payables are the same shape and should be built this way
 from the start.
 
+## Bank data — the Account Aggregator is the only way in
+
+Statement upload (CSV/XLSX, parsed server-side in `domain/banking/normalizer.py`)
+is how bank data enters the platform today, and it is not going away. When a live
+bank feed is built, it goes through India's **Account Aggregator** framework and
+nothing else.
+
+- **Register as an FIU** (Financial Information User). Banks are FIPs; a licensed
+  AA — Finvu, OneMoney, CAMS Finserv, NADL, Anumati — brokers consent between
+  them under RBI regulation, on ReBIT schemas. Go via a TSP (Setu, Perfios,
+  Finbox, Digio) rather than building FIU plumbing directly.
+- **The consent is the CLIENT's, not the CA's.** The account holder consents, and
+  it is time-bound, purpose-bound and revocable. So the flow is "CA requests →
+  client approves → CA sees data", with a re-consent path when it lapses. That is
+  a different shape from every other screen in the app, where the CA acts alone.
+- **Never screen-scrape net banking.** No credential capture, no stored bank
+  logins, no third party that works that way. It breaches bank terms and RBI
+  moved the industry onto AA precisely to end it. This is not a performance or
+  cost trade-off to revisit.
+- **AA is additive, not a replacement.** Co-operative and smaller regional banks
+  are patchy as FIPs — Cosmos Bank, say — and plenty of clients will not consent.
+  Upload has to keep working, at parity, for years.
+
+Do not model the feed on QuickBooks or Xero: their bank feeds run on
+Plaid/Finicity/direct OFX, which do not serve Indian banks, and Intuit withdrew
+QuickBooks from India in 2023.
+
 ## Tests
 
 Backend, from `apps/api`:

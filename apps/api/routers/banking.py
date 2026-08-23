@@ -368,7 +368,7 @@ def list_bank_accounts(
     # called directly from tests, and a Query() instance is truthy — which would
     # silently return deactivated accounts to every caller that omitted the flag.
     include_inactive: bool = False,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """The client's bank accounts, active only unless asked otherwise.
 
@@ -394,7 +394,7 @@ def list_bank_accounts(
 @router.post("/accounts")
 def create_bank_account(
     data: BankAccountIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     assert_client_access(current_user, data.client_id)
     db = _db()
@@ -446,7 +446,7 @@ def create_bank_account(
 def update_bank_account(
     account_id: str,
     data: BankAccountUpdateIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     db = _db()
     update = data.model_dump(exclude_none=True)
@@ -483,7 +483,7 @@ def update_bank_account(
 @router.get("/accounts/deletable")
 def bank_accounts_deletable(
     client_id: str = Query(...),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Which of the client's bank accounts can be permanently deleted, and what
     is stopping the rest.
@@ -506,7 +506,7 @@ def bank_accounts_deletable(
 @router.delete("/accounts/{account_id}")
 def delete_bank_account(
     account_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Permanently delete a bank account that has no footprint.
 
@@ -567,7 +567,7 @@ def delete_bank_account(
 def bank_account_balance(
     account_id: str,
     client_id: str = Query(...),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Current balance of one bank account (Multi-Currency Phase 5). Always returns the
     authoritative base (INR) balance; for a foreign-currency account it also returns the
@@ -600,7 +600,7 @@ def bank_account_balance(
 @router.post("/statements/import")
 def import_statement(
     data: StatementImportIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Store an already-parsed statement and its lines. (File parsing is Phase B.1.)"""
     assert_client_access(current_user, data.client_id)
@@ -623,7 +623,7 @@ async def upload_statement(
     bank_name: str = Form("Bank"),
     account_number: Optional[str] = Form(None),
     bank_account_id: Optional[str] = Form(None),
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Upload a CSV/XLSX bank statement. Parsing + normalization + dedup happen
     SERVER-SIDE (Banking B.1) — the browser sends the raw file only. Returns the
@@ -659,7 +659,7 @@ async def upload_statement(
 @router.get("/statements")
 def list_statements(
     client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     db = _db()
     if not db:
@@ -679,7 +679,7 @@ def list_transactions(
     date_to: Optional[str] = Query(None),
     min_amount_paise: Optional[int] = Query(None),
     max_amount_paise: Optional[int] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """List bank transactions with date / amount / account filters (B.1, Part E)."""
     db = _db()
@@ -710,7 +710,7 @@ def bank_register(
     desc: bool = Query(False),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """The ledger view of ONE bank account: every line the bank sent, in bank
     order, with the running balance after each and its cleared status.
@@ -746,11 +746,15 @@ def bank_register(
 @router.get("/queue")
 def matching_queue(
     client_id: Optional[str] = Query(None),
-    status: str = Query("unmatched", pattern="^(unmatched|categorized|matched|needs_review|ignored|all)$"),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    status: str = Query("for_review",
+                        pattern="^(for_review|done|unmatched|categorized|matched|needs_review|ignored|all)$"),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
-    """Work queue (B.2.4) with rule-based suggested categories inline. status ∈
-    unmatched | categorized | matched | needs_review | all."""
+    """Work queue (B.2.4) with rule-based suggested categories inline.
+
+    The screen uses three: for_review (still to do), done (posted), ignored (set
+    aside). The finer-grained unmatched/categorized/matched/needs_review views
+    remain for callers that ask for them."""
     db = _db()
     if not db:
         return api_response(True, [])
@@ -761,7 +765,7 @@ def matching_queue(
 @router.get("/transactions/{txn_id}/suggestions")
 def transaction_suggestions(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Ranked match suggestions with confidence (B.2.1). Suggestions only — no posting."""
     db = _db()
@@ -783,7 +787,7 @@ def transaction_candidate_search(
     party_id: Optional[str] = Query(None, max_length=64),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Find other matches (B.1.6) — the candidate list with the amount band lifted.
 
@@ -807,7 +811,7 @@ def transaction_candidate_search(
 def categorize_transaction(
     txn_id: str,
     data: CategorizeIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Set a controlled category (B.2.2). No free-form categories."""
     db = _db()
@@ -822,7 +826,7 @@ def categorize_transaction(
 def match_transaction(
     txn_id: str,
     data: MatchIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Accept a suggestion / manually link a transaction to an entity (B.2.5).
     Linkage only — does NOT post a journal (that is Phase B.3)."""
@@ -839,7 +843,7 @@ def match_transaction(
 @router.post("/transactions/{txn_id}/unmatch")
 def unmatch_transaction(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Reject a suggestion / clear a manual match (B.2.5)."""
     db = _db()
@@ -853,7 +857,7 @@ def unmatch_transaction(
 def match_transaction_multi(
     txn_id: str,
     data: BankMatchMultiIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Multi-invoice bank allocation: match ONE bank transaction to MULTIPLE
     sales invoices (a credit transaction) or purchase bills (a debit
@@ -880,7 +884,7 @@ def match_transaction_multi(
 def set_transaction_account(
     txn_id: str,
     data: TransactionAccountIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Map a transaction to a GL account (status → matched). Does not post."""
     db = _db()
@@ -894,7 +898,7 @@ def set_transaction_account(
 @router.post("/transactions/{txn_id}/ignore")
 def ignore_transaction(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     db = _db()
     if not db:
@@ -906,7 +910,7 @@ def ignore_transaction(
 @router.post("/transactions/{txn_id}/unignore")
 def unignore_transaction(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Undo an ignore — the transaction returns to the work queue."""
     db = _db()
@@ -921,7 +925,7 @@ def unignore_transaction(
 @router.get("/ready-to-post")
 def ready_to_post_queue(
     client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Categorized/matched transactions awaiting an explicit post (B.3.1)."""
     db = _db()
@@ -934,7 +938,7 @@ def ready_to_post_queue(
 @router.get("/pending")
 def pending_queue(
     client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Phase 3.5: draft journal created from the transaction, awaiting approval in
     the journal review queue (not yet posted / settled / reconciled)."""
@@ -948,7 +952,7 @@ def pending_queue(
 @router.get("/posted")
 def posted_queue(
     client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Transactions already posted to the ledger (draft approved; journal id + who/when)."""
     db = _db()
@@ -961,7 +965,7 @@ def posted_queue(
 @router.post("/transactions/batch-accept")
 def batch_accept(
     data: BankBatchIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Apply each selected row's own strongest suggestion — a matching rule
     first, then how the payee was coded before (Tier 1.7).
@@ -984,7 +988,7 @@ def batch_accept(
 @router.post("/transactions/batch-exclude")
 def batch_exclude(
     data: BankBatchIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Exclude several transactions at once (Tier 1.7). Per-row outcomes.
     A posted transaction cannot be excluded — hiding a line that is on the books
@@ -1002,7 +1006,7 @@ def batch_exclude(
 @router.post("/transactions/batch-include")
 def batch_include(
     data: BankBatchIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Bring several excluded transactions back into the queue (Tier 1.7)."""
     db = _db()
@@ -1018,7 +1022,7 @@ def batch_include(
 @router.get("/transactions/{txn_id}/attachments")
 def list_transaction_attachments(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Supporting documents on a bank transaction (Tier 1.8)."""
     db = _db()
@@ -1033,7 +1037,7 @@ def list_transaction_attachments(
 def add_transaction_attachment(
     txn_id: str,
     data: BankAttachmentIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Attach a receipt, invoice or cheque image to a bank line (Tier 1.8).
 
@@ -1057,7 +1061,7 @@ def add_transaction_attachment(
 def remove_transaction_attachment(
     txn_id: str,
     data: BankAttachmentRemoveIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Detach a document. Removing one already gone is not an error — the list
     ends up in the state the caller asked for."""
@@ -1074,7 +1078,7 @@ def remove_transaction_attachment(
 def transfer_suggestions(
     client_id: str = Query(...),
     window_days: int = Query(4, ge=0, le=30),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Bank lines that look like the two halves of ONE movement between the
     client's own accounts (Tier 1.5).
@@ -1096,7 +1100,7 @@ def transfer_suggestions(
 def pair_transfer(
     txn_id: str,
     data: BankTransferPairIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Confirm that two bank lines are one transfer (Tier 1.5).
 
@@ -1116,7 +1120,7 @@ def pair_transfer(
 @router.delete("/transactions/{txn_id}/transfer-pair")
 def unpair_transfer(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Undo a transfer pairing. Refused once the transfer has been posted —
     reverse the journal first. Idempotent when nothing is paired."""
@@ -1133,7 +1137,7 @@ def unpair_transfer(
 def set_transaction_payee(
     txn_id: str,
     data: BankPayeeIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Name who the money went to or came from (Tier 1.3).
 
@@ -1155,7 +1159,7 @@ def set_transaction_payee(
 @router.get("/transactions/{txn_id}/splits")
 def get_transaction_splits(
     txn_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """A transaction's split allocation, plus what is still unallocated (Tier 1.2)."""
     db = _db()
@@ -1169,7 +1173,7 @@ def get_transaction_splits(
 def replace_transaction_splits(
     txn_id: str,
     data: BankSplitsIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Allocate one bank line across several GL accounts (Tier 1.2).
 
@@ -1197,7 +1201,7 @@ def replace_transaction_splits(
 def posting_preview(
     txn_id: str,
     data: PostBankTxnIn,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Proposed balanced journal + settlement effect — NO writes (review drawer)."""
     db = _db()
@@ -1214,7 +1218,7 @@ def posting_preview(
 def post_transaction(
     txn_id: str,
     data: PostBankTxnIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """
     Explicitly post a bank transaction to the ledger (B.3.2): category → balanced
@@ -1245,7 +1249,7 @@ def post_transaction(
 @router.post("/reconciliations")
 def create_reconciliation(
     data: ReconciliationCreateIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Open a reconciliation session for a bank account + statement period (B.4.1)."""
     assert_client_access(current_user, data.client_id)
@@ -1264,7 +1268,7 @@ def create_reconciliation(
 def list_reconciliations(
     client_id: Optional[str] = Query(None),
     bank_account_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     db = _db()
     if not db:
@@ -1280,7 +1284,7 @@ def list_reconciliations(
 def reconciliation_opening_suggestion(
     client_id: str = Query(...),
     bank_account_id: str = Query(...),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Where a new reconciliation for this account should start (B.4.1).
 
@@ -1304,7 +1308,7 @@ def reconciliation_opening_suggestion(
 @router.get("/reconciliations/{recon_id}")
 def get_reconciliation(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Session header + live tie-out summary + counts."""
     db = _db()
@@ -1319,7 +1323,7 @@ def get_reconciliation(
 def update_reconciliation(
     recon_id: str,
     data: ReconciliationUpdateIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Adjust opening/closing balance or adjustments (rejected once completed)."""
     db = _db()
@@ -1334,7 +1338,7 @@ def update_reconciliation(
 @router.get("/reconciliations/{recon_id}/items")
 def reconciliation_items(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Reconciled / unreconciled / exception transactions + summary (B.4.2/B.4.4)."""
     db = _db()
@@ -1349,7 +1353,7 @@ def reconciliation_items(
 def reconcile_items(
     recon_id: str,
     data: ReconcileItemsIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Manually reconcile posted transactions — explicit human confirmation (B.4.2).
     No automatic reconciliation."""
@@ -1366,7 +1370,7 @@ def reconcile_items(
 def unreconcile_items(
     recon_id: str,
     data: ReconcileItemsIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Manually unreconcile transactions (B.4.2)."""
     db = _db()
@@ -1381,7 +1385,7 @@ def unreconcile_items(
 @router.post("/reconciliations/{recon_id}/complete")
 def complete_reconciliation(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Finalize the reconciliation. Allowed only when the balance ties out; the
     session becomes immutable afterwards (B.4.1/B.4.3)."""
@@ -1397,7 +1401,7 @@ def complete_reconciliation(
 def preview_reconciliation(
     recon_id: str,
     data: ReconcileItemsIn,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """The tie-out as if these transactions were also reconciled (B.4 / 2.4).
 
@@ -1415,7 +1419,7 @@ def preview_reconciliation(
 @router.get("/reconciliations/{recon_id}/history")
 def reconciliation_history(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Every certification this session has carried, newest first (B.4 / 2.7).
 
@@ -1434,7 +1438,7 @@ def reconciliation_history(
 @router.get("/reconciliations/{recon_id}/report.pdf")
 def reconciliation_report_pdf(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """The reconciliation statement as a PDF (B.4 / 2.6).
 
@@ -1479,7 +1483,7 @@ def reopen_reconciliation(
 @router.get("/reconciliations/{recon_id}/report")
 def reconciliation_report(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Full backend-driven reconciliation report (B.4.4)."""
     db = _db()
@@ -1493,7 +1497,7 @@ def reconciliation_report(
 @router.get("/reconciliations/{recon_id}/report.csv")
 def reconciliation_report_csv(
     recon_id: str,
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """CSV export of the reconciliation report (B.4.4). Returns a file download."""
     db = _db()
@@ -1529,7 +1533,7 @@ def _rule_or_404(db, firm_id: str, rule_id: str) -> dict:
 @router.get("/rules")
 def list_rules(
     client_id: str = Query(...),
-    current_user: dict = Depends(rbac("accounting", "read")),
+    current_user: dict = Depends(rbac("banking", "read")),
 ):
     """Every rule for the client — INACTIVE ONES INCLUDED. The rules screen has
     to show a deactivated rule to let anyone reactivate it; the queue applies its
@@ -1548,7 +1552,7 @@ def list_rules(
 @router.post("/rules")
 def create_rule(
     data: MatchingRuleIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     assert_client_access(current_user, data.client_id)
     db = _db()
@@ -1564,7 +1568,7 @@ def create_rule(
 def update_rule(
     rule_id: str,
     data: MatchingRuleUpdateIn,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Edit a rule, or toggle it with {"is_active": false}. Only the supplied
     fields change. client_id is NOT editable — moving a rule between clients
@@ -1608,7 +1612,7 @@ def update_rule(
 @router.delete("/rules/{rule_id}")
 def delete_rule(
     rule_id: str,
-    current_user: dict = Depends(rbac("accounting", "write")),
+    current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Remove a rule outright. A rule is configuration, not a financial record —
     it has never written anything to the ledger, so there is nothing to preserve.

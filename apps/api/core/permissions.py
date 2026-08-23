@@ -168,6 +168,21 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write":  _AT_LEAST_MANAGER,
         "approve": _PARTNER_ONLY,   # post/approve journal entry
     },
+    # ── Banking — deliberately looser than `accounting`, and the reason matters.
+    # Categorising a bank statement is the work a practice HIRES someone to do:
+    # mechanical, high-volume, and reversible (a correction is an append-only
+    # reversal, and a transaction can be unmatched and re-posted). Routing it
+    # through accounting.write/approve meant a Partner personally approving every
+    # statement line — 15,000 a month across 50 clients — which is not review, it
+    # is rubber-stamping.
+    #
+    # A MANUAL journal stays Partner-only, because that is judgement rather than
+    # clerical. That distinction is the whole point of this resource existing.
+    "banking": {
+        "read":   _AT_LEAST_EXECUTIVE,
+        "write":  _AT_LEAST_EXECUTIVE,   # import, categorise, match, post, exclude
+        "approve": _AT_LEAST_MANAGER,    # sign off a reconciliation
+    },
     # ── GST (compute, validate, approve for filing) ──────────────────────────
     "gst": {
         "read":    _ALL_STAFF,

@@ -173,9 +173,15 @@ def _lines_for(db, je_id):
     return [l for l in db.store.get("journal_lines", []) if l["journal_entry_id"] == je_id]
 
 
-def _approve(db, draft_journal_id, actor="u1"):
-    """Phase 3.5: approve+post a draft (fires deferred bank settlement)."""
-    return journal_posting_service.post_draft(db, FIRM, draft_journal_id, actor_id=actor)
+def _approve(db, res, actor="u1"):
+    """There is no separate approval for a bank transaction any more — post()
+    posts the journal and settles the document in one action.
+
+    Kept as a helper, taking the post() result, so these tests still read as the
+    workflow rather than as plumbing, and so the shape of what settlement
+    returned stays asserted. Manual journals DO still go through
+    journal_posting_service.post_draft; bank categorisation no longer does."""
+    return {"settlement": res.get("settled")}
 
 
 # ── B.3.3 every category posts a balanced, correctly-directed journal ─────────
@@ -202,8 +208,8 @@ def test_post_each_category(name, category, credit, debit, account_id, counter):
     _seed_txn(db, credit=credit, debit=debit, category=category)
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
                                     account_id=account_id, actor_id="u1")
-    je = res["draft_journal_id"]
-    assert je and res["status"] == "draft"        # Phase 3.5: creates a draft
+    je = res["posted_journal_id"]
+    assert je and res["status"] == "posted"        # Phase 3.5: creates a draft
     lines = _lines_for(db, je)
     assert _balanced(lines)                       # integrity: balanced
     is_credit = credit > 0
@@ -221,7 +227,7 @@ def test_transfer_posts_between_banks():
     _seed_txn(db, debit=60000, category="Transfer")   # money out of acc-bank
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
                                     to_bank_account_id="acc-bank2", actor_id="u1")
-    lines = _lines_for(db, res["draft_journal_id"])
+    lines = _lines_for(db, res["posted_journal_id"])
     assert _balanced(lines)
     dr = next(l for l in lines if l["debit_paise"])
     assert dr["account_id"] == "acc-bank2"            # destination receives
@@ -246,8 +252,7 @@ def test_full_invoice_settlement():
     _seed_txn(db, credit=118000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    assert db.store["client_sales_invoices"][0]["paid_paise"] == 0   # draft: not settled yet
-    out = _approve(db, res["draft_journal_id"])                       # approve → settle
+    out = _approve(db, res)          # posting settled it; this reads what it did
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 118000 and inv["status"] == "paid"
     assert out["settlement"]["allocated_paise"] == 118000
@@ -258,7 +263,7 @@ def test_partial_invoice_settlement():
     _seed_txn(db, credit=50000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    _approve(db, res["draft_journal_id"])
+    _approve(db, res)
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 68000 and inv["status"] == "partially_paid"
 
@@ -269,7 +274,7 @@ def test_invoice_never_over_allocates():
     _seed_txn(db, credit=50000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    out = _approve(db, res["draft_journal_id"])
+    out = _approve(db, res)
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 100000 and inv["status"] == "paid"
     assert out["settlement"]["allocated_paise"] == 10000
@@ -288,7 +293,7 @@ def test_invoice_settlement_accounts_for_credit_and_debit_notes():
     _seed_txn(db, credit=200000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    out = _approve(db, res["draft_journal_id"])
+    out = _approve(db, res)
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 103000 and inv["status"] == "paid"
     assert out["settlement"]["allocated_paise"] == 103000   # NOT 118000 (old bug)
@@ -309,7 +314,7 @@ def test_bill_settlement_uses_tds_net_payable_not_gross_total():
     _seed_txn(db, debit=200000, category="Vendor Payment",
               matched_type="purchase_bill", matched_id="bill-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    out = _approve(db, res["draft_journal_id"])
+    out = _approve(db, res)
     bill = db.store["purchase_bills"][0]
     assert bill["paid_paise"] == 75000 and bill["status"] == "paid"
     assert out["settlement"]["allocated_paise"] == 75000   # NOT 100000 (old bug: gross total)
@@ -329,7 +334,7 @@ def test_settlement_excess_becomes_party_credit_not_lost():
     _seed_txn(db, credit=150000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    out = _approve(db, res["draft_journal_id"])
+    out = _approve(db, res)
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 100000 and inv["status"] == "paid"
     assert out["settlement"]["allocated_paise"] == 100000
@@ -342,7 +347,7 @@ def test_full_bill_settlement():
     _seed_txn(db, debit=59000, category="Vendor Payment",
               matched_type="purchase_bill", matched_id="bill-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    _approve(db, res["draft_journal_id"])
+    _approve(db, res)
     bill = db.store["purchase_bills"][0]
     assert bill["paid_paise"] == 59000 and bill["status"] == "paid"
 
@@ -352,7 +357,7 @@ def test_partial_bill_settlement():
     _seed_txn(db, debit=20000, category="Vendor Payment",
               matched_type="purchase_bill", matched_id="bill-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    _approve(db, res["draft_journal_id"])
+    _approve(db, res)
     bill = db.store["purchase_bills"][0]
     assert bill["paid_paise"] == 20000 and bill["status"] == "partially_paid"
 
@@ -367,18 +372,23 @@ def test_duplicate_post_rejected():
 
 
 def test_fy_locked_blocks_post(monkeypatch):
-    # Phase 3.5: the FY lock is enforced when the draft is APPROVED (books-hitting),
-    # not when the draft is created.
+    """The FY lock now has to hold at POST, because posting is the only step.
+
+    It used to be checked when a draft was approved, which was a second chance
+    the workflow no longer has: there is no draft, so if the lock does not stop
+    post() nothing else will, and a statement line lands in a closed year."""
     from fastapi import HTTPException
     db = _db_with_accounts(); _seed_txn(db, credit=100000, category="Customer Payment")
-    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+
     def _locked(*a, **k):
         raise HTTPException(status_code=403, detail="FY locked")
-    monkeypatch.setattr(jpsmod.period_validation_service, "validate_posting_date", _locked)
+    monkeypatch.setattr(bps.period_validation_service, "validate_posting_date", _locked)
+
     with pytest.raises(HTTPException):
-        _approve(db, res["draft_journal_id"])
+        bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
     txn = db.store["bank_transactions"][0]
-    assert txn.get("posted_at") is None and txn["match_status"] != "posted"  # never posted/settled
+    assert txn.get("posted_at") is None and txn["match_status"] != "posted"
+    assert not db.store.get("journal_entries"), "a locked year still got a journal"
 
 
 def test_missing_account_mapping_rejected():
@@ -416,7 +426,7 @@ def test_resolve_bank_ignores_cross_client_statement_link():
     db.store.setdefault("bank_accounts", []).append(
         {"id": "ba-other", "firm_id": FIRM, "client_id": "client-2", "coa_account_id": "acc-wrong"})
     res = bank_posting_service.post(db, FIRM, "t1", actor_id="u1")  # no bank_account_id passed
-    lines = _lines_for(db, res["draft_journal_id"])
+    lines = _lines_for(db, res["posted_journal_id"])
     dr = next(l for l in lines if l["debit_paise"])
     assert dr["account_id"] != "acc-wrong"
     assert dr["account_id"] == "acc-bank"   # falls back to the firm's master Bank account
@@ -430,7 +440,7 @@ def test_resolve_bank_uses_same_client_statement_link():
     db.store.setdefault("bank_accounts", []).append(
         {"id": "ba-1", "firm_id": FIRM, "client_id": CLIENT, "coa_account_id": "acc-bank2"})
     res = bank_posting_service.post(db, FIRM, "t1", actor_id="u1")  # no bank_account_id passed
-    lines = _lines_for(db, res["draft_journal_id"])
+    lines = _lines_for(db, res["posted_journal_id"])
     dr = next(l for l in lines if l["debit_paise"])
     assert dr["account_id"] == "acc-bank2"  # resolved via own-client statement link
 
@@ -452,6 +462,6 @@ def test_paise_precision_preserved():
     db = _db_with_accounts(); _seed_txn(db, debit=12345, category="Expense")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
                                     account_id="acc-exp", actor_id="u1")
-    lines = _lines_for(db, res["draft_journal_id"])
+    lines = _lines_for(db, res["posted_journal_id"])
     assert all(isinstance(l["debit_paise"], int) and isinstance(l["credit_paise"], int) for l in lines)
     assert sum(l["debit_paise"] for l in lines) == 12345

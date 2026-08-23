@@ -379,14 +379,29 @@ class BankPostingService:
         debited = int(bill.get("debited_paise") or 0)
         return max(net_payable - paid - debited, 0)
 
-    # ── B.3.2 post → Phase 3.5: create a DRAFT journal (no books impact yet) ───
+    # ── B.3.2 post — categorise and post in ONE action ────────────────────────
     def post(self, db, firm_id, txn_id, bank_account_id=None, account_id=None,
              to_bank_account_id=None, actor_id=None, gst_rate_bps=None,
              is_interstate=False) -> dict:
-        """Create a DRAFT journal for the bank transaction. The transaction is NOT
-        settled, NOT marked posted, and NOT reconciled — those happen only when a
-        human approves the draft (journal_posting_service.post_draft →
-        settle_on_post). One draft per transaction (idempotent)."""
+        """Post the bank transaction to the ledger and settle its document.
+
+        WHY THIS NO LONGER CREATES A DRAFT
+            It used to write an unposted journal that a Partner had to approve
+            before anything reached the books. For a firm with 50 clients at
+            ~300 statement lines a month that is 15,000 approvals — which nobody
+            performs, so what actually happens is rubber-stamping, and a
+            rubber-stamped queue is worse than none: it manufactures a record of
+            a review that did not happen.
+
+            Bank categorisation is also the wrong work to gate. It is mechanical,
+            it is reversible (a correction is an ordinary append-only reversal,
+            and the transaction can be unmatched and re-posted), and the person
+            hired to do it is the person doing it. Manual journals still route
+            through the draft/approve path in journal_posting_service, because
+            those are judgement rather than clerical — that distinction is the
+            reason `banking` has its own RBAC resource.
+
+        Idempotent: one journal per transaction, guarded on posted_journal_id."""
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("posted_journal_id") or txn.get("match_status") == "posted":
             raise HTTPException(status_code=409,
@@ -406,19 +421,18 @@ class BankPostingService:
             reference_no=f"BANK-{txn_id}",       # one journal per txn (dedup)
             narration=f"Bank: {txn.get('description', '')}".strip(),
             entry_type=entry_type, lines=lines,
-            is_posted=False, source_type="bank_transaction", source_id=txn_id,
+            is_posted=True, source_type="bank_transaction", source_id=txn_id,
             created_by=actor_id,
         )
 
-        # Link the DRAFT journal. Leave match_status / posted_at / settlement alone
-        # until the draft is approved — posted_at is the "truly posted" marker.
-        db.table("bank_transactions").update({
-            "posted_journal_id": journal_entry_id, "updated_at": _now(),
-        }).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        # Mark the transaction posted and settle its invoice/bill in the same
+        # action. settle_on_post carries the CAS guard that makes a double-click
+        # safe, so it is reused here rather than reimplemented.
+        settled = self.settle_on_post(db, firm_id, txn_id, journal_entry_id, actor_id=actor_id)
 
         try:
             from services.audit_service import log_event
-            new_data = {"draft_journal_id": journal_entry_id, "category": txn.get("category")}
+            new_data = {"posted_journal_id": journal_entry_id, "category": txn.get("category")}
             if gst_rate_bps is not None:
                 # Who decided this charge carried 18% IGST, and when. An input
                 # credit claimed under s.16 has to be defensible years later.
@@ -426,18 +440,14 @@ class BankPostingService:
                 new_data["gst_is_interstate"] = bool(is_interstate)
             log_event(firm_id, "bank_transaction", txn_id, "status_change", actor_id=actor_id,
                       new_data=new_data,
-                      metadata={"source": "bank_draft", "stage": "draft_created"})
+                      metadata={"source": "bank_post", "stage": "posted"})
         except Exception:  # pragma: no cover - audit must never block
             pass
-        try:
-            timeline_service.log(client_id, "accounting", "Draft Journal Created",
-                                 f"Draft created from bank transaction ({txn.get('category') or 'mapped'}) — awaiting approval",
-                                 "info", firm_id=firm_id, entity_type="bank_transaction",
-                                 entity_id=txn_id, actor_id=actor_id)
-        except Exception:  # pragma: no cover
-            pass
+        # settle_on_post already writes the timeline entry for a posted
+        # transaction, so there is no second one here.
 
-        return {"id": txn_id, "status": "draft", "draft_journal_id": journal_entry_id}
+        return {"id": txn_id, "status": "posted", "match_status": "posted",
+                "posted_journal_id": journal_entry_id, "settled": settled}
 
     # ── Deferred settlement — runs only when the draft journal is posted ───────
     def settle_on_post(self, db, firm_id, txn_id, journal_id, actor_id=None) -> Optional[dict]:

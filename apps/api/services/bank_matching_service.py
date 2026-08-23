@@ -261,7 +261,16 @@ class BankMatchingService:
     # "ignored" is a first-class view, not a hole: a row can only leave the queue
     # by being posted or ignored, and an ignored row that nobody can see again is
     # a statement line silently dropped from the books.
-    _QUEUE_STATUSES = frozenset({"unmatched", "categorized", "matched", "needs_review", "ignored", "all"})
+    # for_review / done / ignored are the three the screen uses; the rest are the
+    # older, finer-grained views kept for callers and tests that still ask for
+    # them. Five filters on one queue described the DATA's states rather than the
+    # WORK's: a line is either still to do, done, or set aside, and splitting
+    # "categorized" from "matched" made a reader classify their own queue before
+    # they could work it.
+    _QUEUE_STATUSES = frozenset({
+        "for_review", "done",
+        "unmatched", "categorized", "matched", "needs_review", "ignored", "all",
+    })
 
     def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched") -> list[dict]:
         if status not in self._QUEUE_STATUSES:
@@ -283,6 +292,12 @@ class BankMatchingService:
             # "Categorized"/"Matched" as if it were live work.
             if status not in ("ignored", "all") and t.get("match_status") == "ignored":
                 return False
+            if status == "for_review":
+                # Everything still to do. Posted is done, ignored is set aside;
+                # anything else is work, however far through it already is.
+                return t.get("match_status") not in ("posted", "ignored")
+            if status == "done":
+                return t.get("match_status") == "posted"
             if status == "unmatched":
                 return t.get("match_status") == "unmatched" and not t.get("matched_entity_id")
             if status == "categorized":

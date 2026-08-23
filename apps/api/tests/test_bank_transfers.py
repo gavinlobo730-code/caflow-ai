@@ -295,7 +295,7 @@ def test_the_paying_side_posts_one_balanced_contra():
     db = _db()
     bank_transfer_service.pair(db, FIRM, "out", "in")
     je = bank_posting_service.post(db, FIRM, "out", bank_account_id="coa-a",
-                                   actor_id="u1")["draft_journal_id"]
+                                   actor_id="u1")["posted_journal_id"]
     lines = _lines(db, je)
     assert len(lines) == 2
     assert sum(l["debit_paise"] for l in lines) == sum(l["credit_paise"] for l in lines) == 50000000
@@ -310,7 +310,7 @@ def test_the_destination_is_resolved_from_the_pair():
     db = _db()
     bank_transfer_service.pair(db, FIRM, "out", "in")
     je = bank_posting_service.post(db, FIRM, "out", bank_account_id="coa-a",
-                                   actor_id="u1")["draft_journal_id"]
+                                   actor_id="u1")["posted_journal_id"]
     assert any(l["account_id"] == "coa-b" for l in _lines(db, je))
 
 
