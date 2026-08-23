@@ -312,7 +312,7 @@ def test_a_split_transaction_posts_an_n_leg_journal():
     bank_split_service.replace(db, FIRM, "t1",
                                [_split(A1, 4000000, "April rent"), _split(A2, 720000, "Lift AMC")])
     je = bank_posting_service.post(db, FIRM, "t1", bank_account_id=BANK,
-                                   actor_id="u1")["draft_journal_id"]
+                                   actor_id="u1")["posted_journal_id"]
     lines = _lines(db, je)
     assert len(lines) == 3
     by_acc = {l["account_id"]: l for l in lines}
@@ -326,7 +326,7 @@ def test_a_split_receipt_credits_each_account_and_debits_the_bank_once():
     db = _db(); _txn(db, debit=0, credit=4720000, category="Other")
     bank_split_service.replace(db, FIRM, "t1", [_split(A1, 4000000), _split(A2, 720000)])
     je = bank_posting_service.post(db, FIRM, "t1", bank_account_id=BANK,
-                                   actor_id="u1")["draft_journal_id"]
+                                   actor_id="u1")["posted_journal_id"]
     lines = _lines(db, je)
     bank_lines = [l for l in lines if l["account_id"] == BANK]
     assert len(bank_lines) == 1 and bank_lines[0]["debit_paise"] == 4720000
@@ -338,14 +338,14 @@ def test_a_split_needs_no_counter_account_to_post():
     db = _db(); _txn(db, category="Expense")
     bank_split_service.replace(db, FIRM, "t1", [_split(A1, 4000000), _split(A2, 720000)])
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id=BANK, actor_id="u1")
-    assert res["draft_journal_id"]
+    assert res["posted_journal_id"]
 
 
 def test_an_unsplit_transaction_still_posts_two_legs():
     """Regression guard: everything that worked before must be untouched."""
     db = _db(); _txn(db)
     je = bank_posting_service.post(db, FIRM, "t1", bank_account_id=BANK,
-                                   account_id=A1, actor_id="u1")["draft_journal_id"]
+                                   account_id=A1, actor_id="u1")["posted_journal_id"]
     assert len(_lines(db, je)) == 2
 
 

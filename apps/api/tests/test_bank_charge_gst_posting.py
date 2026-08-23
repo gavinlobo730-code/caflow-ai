@@ -210,7 +210,7 @@ def test_an_intrastate_charge_posts_four_lines_with_the_tax_split_out():
     Before this feature the whole ₹590 hit Bank Charges and the credit was lost."""
     db = _db()
     _seed(db, debit=59000)
-    je = _post(db, gst_rate_bps=1800)["draft_journal_id"]
+    je = _post(db, gst_rate_bps=1800)["posted_journal_id"]
     by_acc = {l["account_id"]: l for l in _lines(db, je)}
     assert len(by_acc) == 4
     assert by_acc["acc-charges"]["debit_paise"] == 50000
@@ -226,7 +226,7 @@ def test_the_cgst_amount_lands_on_the_cgst_account_not_the_sgst_one():
     GSTR-3B table 4, where the heads are reported separately."""
     db = _db()
     _seed(db, debit=59001)                 # odd tax → the halves differ by a paise
-    je = _post(db, gst_rate_bps=1800)["draft_journal_id"]
+    je = _post(db, gst_rate_bps=1800)["posted_journal_id"]
     by_acc = {l["account_id"]: l["debit_paise"] for l in _lines(db, je)}
     assert by_acc["acc-in-sgst"] == by_acc["acc-in-cgst"] + 1   # odd paise to SGST
 
@@ -236,7 +236,7 @@ def test_an_interstate_charge_posts_igst_only():
     recipient's location, so a bank registered elsewhere supplies inter-state."""
     db = _db()
     _seed(db, debit=59000)
-    je = _post(db, gst_rate_bps=1800, is_interstate=True)["draft_journal_id"]
+    je = _post(db, gst_rate_bps=1800, is_interstate=True)["posted_journal_id"]
     by_acc = {l["account_id"]: l for l in _lines(db, je)}
     assert by_acc["acc-in-igst"]["debit_paise"] == 9000
     assert "acc-in-cgst" not in by_acc and "acc-in-sgst" not in by_acc
@@ -247,7 +247,7 @@ def test_a_zero_rate_books_the_whole_charge_but_says_so_deliberately():
     answer, so it posts the plain two-line entry without touching a tax head."""
     db = _db()
     _seed(db, debit=59000)
-    je = _post(db, gst_rate_bps=0)["draft_journal_id"]
+    je = _post(db, gst_rate_bps=0)["posted_journal_id"]
     by_acc = {l["account_id"]: l for l in _lines(db, je)}
     assert set(by_acc) == {"acc-charges", "acc-bank"}
     assert by_acc["acc-charges"]["debit_paise"] == 59000
@@ -258,7 +258,7 @@ def test_omitting_the_rate_posts_exactly_as_before():
     getting the ordinary two-line entry."""
     db = _db()
     _seed(db, debit=59000)
-    je = _post(db)["draft_journal_id"]
+    je = _post(db)["posted_journal_id"]
     lines = _lines(db, je)
     assert len(lines) == 2
     assert {l["account_id"] for l in lines} == {"acc-charges", "acc-bank"}
@@ -269,7 +269,7 @@ def test_omitting_the_rate_posts_exactly_as_before():
 def test_the_posted_journal_balances_at_every_amount(gross, interstate):
     db = _db()
     _seed(db, debit=gross)
-    je = _post(db, gst_rate_bps=1800, is_interstate=interstate)["draft_journal_id"]
+    je = _post(db, gst_rate_bps=1800, is_interstate=interstate)["posted_journal_id"]
     lines = _lines(db, je)
     assert sum(l["debit_paise"] for l in lines) == sum(l["credit_paise"] for l in lines) == gross
     assert all(isinstance(l["debit_paise"], int) and isinstance(l["credit_paise"], int)

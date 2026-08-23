@@ -22,12 +22,17 @@ WHAT IS IN HERE AND WHAT IS NOT
     services/bank_exception_service.py; deciding what to do with a flag belongs
     to the posting service.
 
-SEVERITY vs BLOCKING — they are different questions
-    `severity` orders the partner's list. `blocking` decides whether the
-    transaction posts. Most exceptions are worth a look and not worth stopping
-    the books for: they are raised AFTER posting, and a correction is an
-    ordinary reversal. Only the few where posting first is genuinely worse than
-    waiting are blocking, and each says why below.
+NOTHING HERE GATES A POSTING — that is a product decision, not an oversight
+    `blocking` is computed and, today, deliberately consumed by nobody. Bank
+    allocation is the junior's work and it posts on their click; the platform
+    does not hold a CA's books hostage to a threshold it invented. If a firm
+    ever asks for a hard stop it can opt in, but the default is advisory and
+    that is the whole point: this list exists so a partner can SEE what is
+    unusual, not so the software can decide what is allowed.
+
+    So `severity` — which orders the partner's list — is the field that matters.
+    Read `blocking` as "if anyone ever wanted a gate, this is where it would
+    reasonably sit", and do not wire it to the posting path without asking.
 
 ON THRESHOLDS
     Materiality is a judgement, not a constant, so every threshold is policy
@@ -301,6 +306,10 @@ def evaluate(txn: dict, ctx: Optional[TxnContext] = None,
 
 
 def blocks_posting(exceptions: Iterable[BankException]) -> bool:
-    """Whether this set holds the transaction back. See the module docstring: most
-    do not."""
+    """Whether this set WOULD hold the transaction back, if anything did.
+
+    No caller gates on this and none should without a decision to — see the
+    module docstring. Kept because the judgement of which flags are severe
+    enough to be worth stopping for is worth recording next to the rules that
+    make them, rather than rediscovered later."""
     return any(e.blocking for e in exceptions)
