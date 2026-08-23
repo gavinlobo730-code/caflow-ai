@@ -32,7 +32,7 @@
  *   docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md.
  */
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Download, Pencil, Landmark } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -446,6 +446,64 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     return best ?? null;
   }
 
+  /** Every row the screen already has an answer for. Deliberately the SAME
+   *  test that paints a row green, so "Record all 47" clears exactly the rows
+   *  the reader can see are ready — no hidden second rule about what counts. */
+  const confirmedRows = rows.filter(
+    (t) => t.match_status !== "posted" && t.match_status !== "ignored"
+        && (Boolean(confidentMatch(t)) || Boolean(t.matched_entity_id) || readyToAdd(t)));
+
+  /** Record them all. This walks the rows and does what a reader clicking each
+   *  green button would do, three at a time — it is not a second code path, and
+   *  no row is recorded that the screen was not already offering to record.
+   *  Server-side batching would be one request instead of N, but it would also
+   *  need its own copy of "which rows are confident", and two copies drift. */
+  async function addAllConfirmed() {
+    const targets = confirmedRows;
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    const results: BatchResult[] = [];
+    try {
+      await mapWithLimit(targets, 3, async (t) => {
+        try {
+          const best = confidentMatch(t);
+          if (best && !t.matched_entity_id) {
+            await api.banking.matchEntity(t.id, {
+              matched_entity_type: best.matched_entity_type,
+              matched_entity_id: best.matched_entity_id });
+          }
+          const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
+          const res = (await api.banking.postTransaction(t.id, {
+            account_id: draftAccount[t.id] ?? undefined,
+            ...(rate !== "" ? {
+              gst_rate_bps: Number(rate),
+              is_interstate: gstInterstate[t.id] ?? !!t.suggested_is_interstate,
+            } : {}),
+          })) as { success: boolean; error: string | null };
+          results.push({ transaction_id: t.id,
+            status: res.success ? "applied" : "failed",
+            reason: res.success ? "Recorded." : (res.error ?? "Could not record.") });
+        } catch (e) {
+          // Per-row, never all-or-nothing: one rejected line must not strand
+          // the other forty-six, and the reader has to be told WHICH failed.
+          results.push({ transaction_id: t.id, status: "failed",
+            reason: e instanceof Error ? e.message : "Could not record." });
+        }
+      });
+      setBatchOutcome({
+        results,
+        applied: results.filter((r) => r.status === "applied").length,
+        skipped: 0,
+        failed: results.filter((r) => r.status === "failed").length,
+        total: results.length,
+      });
+      await load();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Could not record the confirmed rows.");
+    } finally { setBulkBusy(false); }
+  }
+
   /** Whether Add can post this row as it stands. */
   function readyToAdd(t: QueueTxn): boolean {
     const cat = t.category;
@@ -591,7 +649,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const confColor = (l: string) => l === "high" ? "text-green-700 bg-green-50" : l === "medium" ? "text-amber-700 bg-amber-50" : "text-[#64748B] bg-[#F1F5F9]";
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-6xl mx-auto">
       <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
         {QUEUE_FILTERS.map((f) => (
           <button key={f.id} onClick={() => setStatus(f.id)}
@@ -656,17 +714,24 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No transactions in this view.</div>
       ) : (
         <>
-          <div className="flex items-center gap-2 px-1">
-            <input
-              type="checkbox"
-              aria-label="Select all visible transactions"
-              checked={rows.length > 0 && selected.size === rows.length}
-              ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < rows.length; }}
-              onChange={toggleSelectAll}
-              className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
-            />
-            <span className="text-[10px] text-[#94A3B8]">Select all visible</span>
-          </div>
+          {/* One click for everything the screen already answered. QuickBooks
+              makes you press Add on each recognised row and buries bulk accept
+              in a menu; a CA with fifty clients wants the confident ones gone
+              and only the judgement calls left on screen. */}
+          {confirmedRows.length > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2">
+              <CheckCircle size={14} className="text-[#15803D] shrink-0" />
+              <p className="text-xs text-[#166534]">
+                <span className="font-semibold">{confirmedRows.length}</span> row
+                {confirmedRows.length === 1 ? " is" : "s are"} ready — matched to a document, or
+                already coded.
+              </p>
+              <button onClick={addAllConfirmed} disabled={bulkBusy}
+                className="ml-auto text-xs px-3 py-1 bg-[#15803D] text-white rounded font-medium hover:bg-[#166534] disabled:opacity-50">
+                {bulkBusy ? "Recording…" : `Record all ${confirmedRows.length}`}
+              </button>
+            </div>
+          )}
 
           {/* ── Bulk categorize action bar ─────────────────────────────── */}
           {selected.size > 0 && (
@@ -692,8 +757,9 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                     some legitimately will not apply and a bare count would hide
                     exactly the ones needing attention. */}
                 <button onClick={() => runBatch("accept")} disabled={bulkBusy}
+                  title="Fills in each row's own suggested category and account. It does not record them — press Record all, or each row's own button, for that."
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
-                  Accept &amp; post
+                  Apply suggestions
                 </button>
                 <button onClick={() => runBatch("exclude")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5 font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50">
@@ -744,365 +810,397 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             </div>
           )}
 
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
-            {rows.map((t) => (
-              <div key={t.id} className="px-4 py-3 space-y-2">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-2 min-w-0">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+          <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            {/* A TABLE, not a list of cards. The cards put each row's button
+                wherever the preceding text happened to end, so it moved on every
+                line and the eye had to re-find it; a fixed Action column is a
+                strip you run straight down. It also triples what fits on screen
+                — six rows became about eighteen. */}
+            <thead>
+              <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[10px] uppercase tracking-wide text-[#64748B]">
+                <th className="w-8 px-3 py-2">
                   <input
                     type="checkbox"
-                    aria-label={`Select transaction ${t.description}`}
+                    aria-label="Select all visible transactions"
+                    checked={rows.length > 0 && selected.size === rows.length}
+                    ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < rows.length; }}
+                    onChange={toggleSelectAll}
+                    className="h-3.5 w-3.5 rounded border-[#CBD5E1] align-middle"
+                  />
+                </th>
+                <th className="px-2 py-2 text-left font-medium w-24">Date</th>
+                <th className="px-2 py-2 text-left font-medium">Description</th>
+                <th className="px-2 py-2 text-left font-medium w-36">Payee</th>
+                <th className="px-2 py-2 text-left font-medium w-64">Category or match</th>
+                <th className="px-2 py-2 text-right font-medium w-28">Spent</th>
+                <th className="px-2 py-2 text-right font-medium w-28">Received</th>
+                <th className="px-3 py-2 text-right font-medium w-28">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F1F5F9]">
+            {rows.map((t) => {
+              const best = confidentMatch(t);
+              const isOpen = open.has(t.id);
+              const posted = t.match_status === "posted";
+              const excluded = t.match_status === "ignored";
+              // Green means "the screen already has an answer for this" — a rule
+              // fired, an exact document was found, or it is coded. The same
+              // signal QuickBooks paints on a recognised row.
+              const ready = !posted && !excluded
+                && (Boolean(best) || Boolean(t.matched_entity_id) || readyToAdd(t));
+              // TWO verbs, not three. Match links this line to a document that
+              // already exists; Add creates the entry from a category. "Post"
+              // was our word for what happens next, not the reader's.
+              const isMatch = Boolean(t.matched_entity_id) || Boolean(best);
+              return (
+              <Fragment key={t.id}>
+              <tr
+                onClick={() => toggleOpen(t.id)}
+                className={`cursor-pointer align-middle ${
+                  isOpen ? "bg-[#F1F5F9]" : ready ? "bg-[#F0FDF4] hover:bg-[#DCFCE7]" : "hover:bg-[#F8FAFC]"}`}>
+                <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${t.parsed?.counterparty || t.description}`}
                     checked={selected.has(t.id)}
                     onChange={() => toggleRow(t.id)}
-                    className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0"
+                    className="h-3.5 w-3.5 rounded border-[#CBD5E1] align-middle"
                   />
-                  {/* TWO LINES, and the second is just the date.
-                      A statement line has a name, a date and an amount; the raw
-                      narration, the UTR and the VPA are evidence, wanted only
-                      when the name is not enough. Printed on every row they
-                      tripled its height and buried the name they were meant to
-                      support. They are behind the disclosure now, and the line
-                      itself opens it — clicking the description is the gesture
-                      a reader already tries. */}
-                  <button type="button" onClick={() => toggleOpen(t.id)}
-                    aria-expanded={open.has(t.id)}
-                    title="Show the full narration and reference"
-                    className="min-w-0 text-left group">
-                    <p className="text-xs font-medium text-[#1E293B] truncate group-hover:text-[#4338CA]">
+                </td>
+                <td className="px-2 py-1.5 text-[#64748B] whitespace-nowrap tabular-nums">
+                  {t.transaction_date}
+                </td>
+                {/* HOVER, not click. The full narration is a tooltip — what
+                    QuickBooks does, and less work than opening the row. */}
+                <td className="px-2 py-1.5 text-[#1E293B] max-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate font-medium" title={t.description}>
                       {t.parsed?.counterparty || t.description}
-                      {t.parsed?.channel && (
-                        <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] align-middle">
-                          {t.parsed.channel}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{t.transaction_date}</p>
-                  </button>
-                </div>
-                <div className="shrink-0 text-right">
-                  {t.debit_paise > 0 && <p className="text-xs font-mono text-red-700">{fmt(t.debit_paise)} Dr</p>}
-                  {t.credit_paise > 0 && <p className="text-xs font-mono text-green-700">{fmt(t.credit_paise)} Cr</p>}
-                </div>
-              </div>
-
-              {/* ── The one decision this row needs ───────────────────────
-                  A statement line asks one question — what is this? — and the
-                  answer is either "that invoice" or "this category". Everything
-                  else (payee, history, the other candidates, split, TDS,
-                  exclude) is behind the disclosure below, because a row that
-                  already knows its answer should show a button and nothing else.
-                  Nine controls on a line that matched at 100% is what this
-                  replaces. */}
-              {t.match_status === "posted" ? (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">
-                    Posted{t.category ? ` · ${t.category}` : ""}
-                  </span>
-                  <button onClick={() => undoRow(t)} disabled={busy[t.id]}
-                    className="text-[10px] text-[#64748B] hover:text-[#334155] hover:underline">
-                    Undo
-                  </button>
-                </div>
-              ) : t.match_status === "ignored" ? (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B]">Excluded</span>
-                  <button onClick={() => setIgnored(t.id, false)} disabled={busy[t.id]}
-                    className="text-[10px] text-[#64748B] hover:text-[#334155] hover:underline">
-                    Put back in the queue
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 flex-wrap">
-                  {(() => {
-                    const best = confidentMatch(t);
-                    // Already linked to a document: nothing left to decide.
-                    if (t.matched_entity_id) {
-                      return (
-                        <>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">
-                            Matched · {t.matched_entity_type}
-                          </span>
-                          <button onClick={() => postRow(t)} disabled={busy[t.id]}
-                            className="text-xs px-3 py-1 bg-[#059669] text-white rounded font-medium hover:bg-[#047857] disabled:opacity-50">
-                            {busy[t.id] ? "Posting…" : "Post"}
-                          </button>
-                        </>
-                      );
-                    }
-                    // An exact candidate: one click means "yes, that one".
-                    if (best) {
-                      return (
-                        <>
-                          <p className="text-[11px] text-[#334155] min-w-0 truncate">
-                            <span className="text-[#94A3B8]">Match</span>{" "}
-                            <span className="font-medium">{best.label}</span>
-                            <span className="text-[10px] text-[#94A3B8]"> · {best.reasons[0]}</span>
-                          </p>
-                          <button onClick={() => matchAndPost(t, best)} disabled={busy[t.id]}
-                            className="ml-auto text-xs px-3 py-1 bg-[#059669] text-white rounded font-medium hover:bg-[#047857] disabled:opacity-50">
-                            {busy[t.id] ? "Matching…" : "Match"}
-                          </button>
-                        </>
-                      );
-                    }
-                    // Otherwise: code it. Pre-filled by a rule or by what this
-                    // payee got last time, so most rows arrive answered.
-                    return (
-                      <>
-                        <select
-                          value={t.category ?? ""} disabled={busy[t.id]}
-                          onChange={(e) => categorize(t.id, e.target.value)}
-                          className="px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                          <option value="">{t.suggested_category ? `Suggested: ${t.suggested_category}` : "— Category —"}</option>
-                          {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        {t.category && !AUTO_COUNTER_CATEGORIES.has(t.category) && t.category !== "Transfer" && (
-                          <select
-                            value={draftAccount[t.id] ?? t.account_id ?? ""} disabled={busy[t.id]}
-                            onChange={(e) => setDraftAccount((d) => ({ ...d, [t.id]: e.target.value }))}
-                            className="px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[14rem]">
-                            <option value="">— Account —</option>
-                            {accounts.map((a) => (
-                              <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>
-                            ))}
-                          </select>
-                        )}
-                        <button onClick={() => postRow(t)} disabled={busy[t.id] || !readyToAdd(t)}
-                          title={readyToAdd(t) ? "" : "Choose a category — and an account, if the category needs one."}
-                          className="ml-auto text-xs px-3 py-1 bg-[#4338CA] text-white rounded font-medium hover:bg-[#3730A3] disabled:opacity-40 disabled:cursor-not-allowed">
-                          {busy[t.id] ? "Adding…" : "Add"}
-                        </button>
-                      </>
-                    );
-                  })()}
-                  <button onClick={() => toggleOpen(t.id)}
-                    aria-label={open.has(t.id) ? "Hide details" : "Show details"}
-                    className="text-[11px] px-1.5 text-[#94A3B8] hover:text-[#475569]">
-                    {open.has(t.id) ? "Less" : "More"}
-                  </button>
-                </div>
-              )}
+                    </span>
+                    {t.parsed?.channel && (
+                      <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">
+                        {t.parsed.channel}
+                      </span>
+                    )}
+                    {t.transfer_pair_id && (
+                      <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700"
+                        title={t.transfer_is_primary
+                          ? "Paying side — this one posts the journal"
+                          : "Receiving side — the paying side posts it"}>
+                        Transfer
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-2 py-1.5 max-w-0">
+                  {t.payee_name ? (
+                    <span className="truncate block text-[#334155]" title={t.payee_name}>{t.payee_name}</span>
+                  ) : t.suggested_payee ? (
+                    // A proposal, greyed and italic, so it never reads as a fact
+                    // the CA asserted. Confirming it is inside the row.
+                    <span className="truncate block text-[#94A3B8] italic"
+                      title={`Suggested from the ${t.suggested_payee.source === "narration" ? "narration" : "matched party"}`}>
+                      {t.suggested_payee.payee_name}
+                    </span>
+                  ) : <span className="text-[#CBD5E1]">—</span>}
+                </td>
+                <td className="px-2 py-1.5 max-w-0"
+                  onClick={(e) => { if (!posted && !excluded && !isMatch) e.stopPropagation(); }}>
+                  {posted ? (
+                    <span className="text-[#15803D]">Recorded{t.category ? ` · ${t.category}` : ""}</span>
+                  ) : excluded ? (
+                    <span className="text-[#94A3B8]">Excluded</span>
+                  ) : t.matched_entity_id ? (
+                    <span className="text-[#15803D] truncate block">Matched · {t.matched_entity_type}</span>
+                  ) : best ? (
+                    <span className="text-[#15803D] truncate block" title={best.reasons.join(" · ")}>
+                      {best.label}
+                    </span>
+                  ) : (
+                    <select
+                      value={t.category ?? ""} disabled={busy[t.id]}
+                      onChange={(e) => categorize(t.id, e.target.value)}
+                      className="w-full px-1.5 py-0.5 text-xs border border-[#E2E8F0] rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      <option value="">{t.suggested_category ? `Suggested: ${t.suggested_category}` : "— Category —"}</option>
+                      {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+                </td>
+                {/* Spent and Received, not one column with Dr/Cr. Money out and
+                    money in are the two things the eye separates first. */}
+                <td className="px-2 py-1.5 text-right font-mono text-red-700 whitespace-nowrap">
+                  {t.debit_paise > 0 ? fmt(t.debit_paise) : ""}
+                </td>
+                <td className="px-2 py-1.5 text-right font-mono text-green-700 whitespace-nowrap">
+                  {t.credit_paise > 0 ? fmt(t.credit_paise) : ""}
+                </td>
+                {/* The fixed strip. One button, always here, whatever the row. */}
+                <td className="px-3 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  {posted ? (
+                    <button onClick={() => undoRow(t)} disabled={busy[t.id]}
+                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] disabled:opacity-50">
+                      {busy[t.id] ? "…" : "Undo"}
+                    </button>
+                  ) : excluded ? (
+                    <button onClick={() => setIgnored(t.id, false)} disabled={busy[t.id]}
+                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] disabled:opacity-50">
+                      {busy[t.id] ? "…" : "Restore"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => (best && !t.matched_entity_id) ? matchAndPost(t, best) : postRow(t)}
+                      disabled={busy[t.id] || (!isMatch && !readyToAdd(t))}
+                      title={isMatch ? "Link this line to that document and record it"
+                        : readyToAdd(t) ? "Record this line on the books"
+                        : "Choose a category — and an account, if the category needs one."}
+                      className={`text-[11px] px-3 py-1 rounded font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isMatch ? "bg-[#059669] hover:bg-[#047857]" : "bg-[#4338CA] hover:bg-[#3730A3]"}`}>
+                      {busy[t.id] ? "…" : isMatch ? "Match" : "Add"}
+                    </button>
+                  )}
+                </td>
+              </tr>
 
               {rowError[t.id] && (
-                <p className="text-[10px] text-red-600 ml-1">{rowError[t.id]}</p>
+                <tr><td colSpan={8} className="px-3 pb-1.5 text-[10px] text-red-600">{rowError[t.id]}</td></tr>
               )}
 
-              {/* What the bank actually sent. Selectable, and wrapped rather
-                  than truncated — a UTR you cannot copy is no use when you are
-                  ringing the bank about it. */}
-              {open.has(t.id) && (
-                <div className="ml-6 rounded bg-[#F8FAFC] px-2.5 py-1.5 space-y-0.5">
+              {/* ── Expanded row ─────────────────────────────────────────
+                  Everything past the one decision the row needs. A reader happy
+                  with the answer on the line never opens it. */}
+              {isOpen && (
+              <tr className="bg-[#F8FAFC]">
+              <td colSpan={8} className="px-3 pb-3 pt-1">
+                <div className="space-y-2 border-l-2 border-[#E2E8F0] pl-3">
+
+                {/* What the bank actually sent. Selectable and wrapped rather
+                    than truncated — a UTR you cannot copy is no use when you are
+                    ringing the bank about it. */}
+                <div>
                   <p className="text-[10px] text-[#475569] break-words select-text font-mono leading-relaxed">
                     {t.description}
                   </p>
                   {(t.parsed?.utr || t.reference_no || t.parsed?.vpa || t.parsed?.ifsc) && (
-                    <p className="text-[10px] text-[#94A3B8] break-words select-text">
+                    <p className="text-[10px] text-[#94A3B8] break-words select-text mt-0.5">
                       {[t.parsed?.utr ? `UTR ${t.parsed.utr}` : null,
                         t.reference_no && t.reference_no !== t.parsed?.utr ? t.reference_no : null,
-                        t.parsed?.vpa, t.parsed?.ifsc]
-                        .filter(Boolean).join(" · ")}
+                        t.parsed?.vpa, t.parsed?.ifsc].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </div>
-              )}
 
-              {/* ── Everything else, only when asked for ─────────────────── */}
-              {open.has(t.id) && t.match_status !== "posted" && (
-                <div className="flex items-center gap-2 flex-wrap ml-1 pt-1">
-                  {t.matched_entity_id ? (
-                    <button onClick={() => reject(t.id)} disabled={busy[t.id]}
-                      className="text-[10px] text-red-600 hover:underline">Unmatch</button>
-                  ) : (
-                    <>
-                      <button onClick={() => setFindTxn(t)} disabled={busy[t.id]}
-                        className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                        Find other matches
-                      </button>
-                      <button onClick={() => openSettle(t)} disabled={busy[t.id]}
-                        className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                        Settle {t.credit_paise > 0 ? "invoices" : "bills"} / TDS
-                      </button>
-                    </>
-                  )}
-                  <button onClick={() => setIgnored(t.id, true)} disabled={busy[t.id]}
-                    className="text-[10px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto">
-                    Exclude
-                  </button>
-                </div>
-              )}
+                {/* A firing rule proposes a category AND often the counter
+                    account. The Category dropdown on the line can only carry
+                    the category, so applying the whole rule lives here. */}
+                {!posted && !excluded && !t.category && t.suggested_category && t.suggested_by_rule && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                      Rule <span className="text-[#334155]">{t.suggested_by_rule}</span> proposes{" "}
+                      <span className="text-[#334155]">{t.suggested_category}</span>
+                      {t.suggested_account_id ? ` · ${accountLabel(t.suggested_account_id)}` : ""}
+                    </p>
+                    <button onClick={() => applyRule(t)} disabled={busy[t.id]}
+                      className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
+                      Use the rule
+                    </button>
+                  </div>
+                )}
 
-              {/* Input GST on a tax-inclusive charge (CGST Act s.16). Offered on
-                  money going out, because that is what a bank charge is, and
-                  left blank by default — the rate is an assertion the person
-                  posting makes, not something the app decides for them. */}
-              {open.has(t.id) && t.debit_paise > 0 && t.match_status === "unmatched" && (
-                <div className="flex items-center gap-2 flex-wrap ml-1">
-                  <label className="text-[10px] text-[#94A3B8]">Input GST on this charge</label>
-                  <select
-                    value={gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "")}
-                    disabled={busy[t.id]}
-                    onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
-                    className="px-2 py-0.5 text-[10px] border border-[#E2E8F0] rounded">
-                    <option value="">Don&apos;t split</option>
-                    {GST_RATE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  <label className="flex items-center gap-1 text-[10px] text-[#64748B]">
-                    <input type="checkbox" disabled={busy[t.id]}
-                      checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
-                      onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
-                      className="h-3 w-3 rounded border-[#CBD5E1]" />
-                    IGST (inter-state)
-                  </label>
-                </div>
-              )}
+                {/* The counter account, when the chosen category needs one. */}
+                {!posted && !excluded && t.category && !AUTO_COUNTER_CATEGORIES.has(t.category)
+                  && t.category !== "Transfer" && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-[10px] text-[#94A3B8]">Account</label>
+                    <select
+                      value={draftAccount[t.id] ?? t.account_id ?? ""} disabled={busy[t.id]}
+                      onChange={(e) => setDraftAccount((d) => ({ ...d, [t.id]: e.target.value }))}
+                      className="px-2 py-0.5 text-[11px] border border-[#E2E8F0] rounded bg-white max-w-[18rem]">
+                      <option value="">— Account —</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-              {/* A confirmed transfer stays visible whatever the disclosure is
-                  doing: the receiving side saying "the paying side posts this"
-                  is the answer to "why has this row no button", and hiding it
-                  recreates the confusion it exists to prevent. */}
-              {t.transfer_pair_id && t.match_status !== "posted" && (
-                <div className="flex items-center gap-2 ml-1">
-                  <p className="text-[10px] text-[#64748B] min-w-0 truncate">
-                    <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 mr-1">
-                      Transfer
-                    </span>
-                    {t.transfer_is_primary
-                      ? "Paying side — this one posts the journal"
-                      : "Receiving side — the same money; the paying side posts it"}
-                  </p>
-                  <button onClick={() => undoTransfer(t)} disabled={busy[t.id]}
-                    className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] shrink-0">
-                    Not a transfer
-                  </button>
-                </div>
-              )}
+                {!posted && !excluded && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {t.matched_entity_id ? (
+                      <button onClick={() => reject(t.id)} disabled={busy[t.id]}
+                        className="text-[10px] text-red-600 hover:underline">Unmatch</button>
+                    ) : (
+                      <>
+                        <button onClick={() => setFindTxn(t)} disabled={busy[t.id]}
+                          className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569]">
+                          Find other matches
+                        </button>
+                        <button onClick={() => openSettle(t)} disabled={busy[t.id]}
+                          className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569]">
+                          Split / settle {t.credit_paise > 0 ? "invoices" : "bills"} / TDS
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => setIgnored(t.id, true)} disabled={busy[t.id]}
+                      className="text-[10px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto">
+                      Exclude
+                    </button>
+                  </div>
+                )}
 
-              {/* ── Behind the disclosure ─────────────────────────────────
-                  The evidence and the alternatives. A reader who is happy with
-                  the row's answer never opens this; a reader who is not finds
-                  everything here, including why the app proposed what it did. */}
-              {open.has(t.id) && (<>
+                {/* Input GST on a tax-inclusive charge (CGST Act s.16). Offered
+                    on money going out, because that is what a bank charge is,
+                    and left blank by default — the rate is an assertion the
+                    person recording it makes, not something the app decides. */}
+                {t.debit_paise > 0 && t.match_status === "unmatched" && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-[10px] text-[#94A3B8]">Input GST on this charge</label>
+                    <select
+                      value={gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "")}
+                      disabled={busy[t.id]}
+                      onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
+                      className="px-2 py-0.5 text-[10px] border border-[#E2E8F0] rounded bg-white">
+                      <option value="">Don&apos;t split</option>
+                      {GST_RATE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    <label className="flex items-center gap-1 text-[10px] text-[#64748B]">
+                      <input type="checkbox" disabled={busy[t.id]}
+                        checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
+                        onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
+                        className="h-3 w-3 rounded border-[#CBD5E1]" />
+                      IGST (inter-state)
+                    </label>
+                  </div>
+                )}
 
-              {/* What a matching rule proposes, with one click to take all of it
-                  — the category AND the account it named, which the dropdown
-                  alone cannot carry. */}
-              {t.suggested_by_rule && !t.category && t.match_status !== "ignored" && (
-                <div className="flex items-center gap-2 ml-1">
-                  <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
-                    Rule <span className="font-medium text-[#64748B]">{t.suggested_by_rule}</span>
-                    {t.suggested_category ? ` → ${t.suggested_category}` : ""}
-                    {t.suggested_account_id ? " + account" : ""}
-                    {t.suggested_narration ? ` · ${t.suggested_narration}` : ""}
-                  </p>
-                  <button onClick={() => applyRule(t)} disabled={busy[t.id]}
-                    className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
-                    Apply rule
-                  </button>
-                </div>
-              )}
+                {/* A confirmed transfer: the answer to "why has this row no
+                    button of its own". */}
+                {t.transfer_pair_id && !posted && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-[#64748B] min-w-0">
+                      {t.transfer_is_primary
+                        ? "Paying side — this one posts the journal"
+                        : "Receiving side — the same money; the paying side posts it"}
+                    </p>
+                    <button onClick={() => undoTransfer(t)} disabled={busy[t.id]}
+                      className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569] shrink-0">
+                      Not a transfer
+                    </button>
+                  </div>
+                )}
 
-              {/* Tier 1.3 — the payee. Shown when confirmed; offered when the
-                  narration parser found one and nobody has answered yet. */}
-              {t.match_status !== "ignored" && (t.payee_name || t.suggested_payee) && (
-                <div className="flex items-center gap-2 ml-1">
-                  {t.payee_name ? (
-                    <p className="text-[10px] text-[#64748B] min-w-0 truncate">
-                      Payee <span className="font-medium text-[#334155]">{t.payee_name}</span>
-                      {t.payee_type && t.payee_type !== "other" && (
-                        <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">
-                          {t.payee_type}
+                {/* A confirmed payee has to be removable: it feeds the history
+                    that codes future rows, so a wrong one keeps proposing
+                    itself until someone can take it off. */}
+                {t.payee_name && !posted && !excluded && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                      Payee <span className="text-[#334155]">{t.payee_name}</span>
+                      {t.payee_type ? <span className="text-[#CBD5E1]"> ({t.payee_type})</span> : null}
+                    </p>
+                    <button onClick={() => clearPayee(t)} disabled={busy[t.id]}
+                      className="text-[10px] text-[#94A3B8] hover:text-red-600 hover:underline shrink-0">
+                      Clear payee
+                    </button>
+                  </div>
+                )}
+
+                {/* Tier 1.3 — who the money went to, proposed from the narration
+                    or the matched party. Written only on a click. */}
+                {!t.payee_name && t.suggested_payee && !posted && !excluded && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                      Payee looks like{" "}
+                      <span className="text-[#334155] font-medium">{t.suggested_payee.payee_name}</span>
+                      <span className="text-[#CBD5E1]">
+                        {" "}({t.suggested_payee.source === "narration" ? "from the narration" : "from the matched party"})
+                      </span>
+                    </p>
+                    <button onClick={() => acceptPayee(t)} disabled={busy[t.id]}
+                      className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569] shrink-0">
+                      Confirm payee
+                    </button>
+                  </div>
+                )}
+
+                {/* Tier 1.4 — what was done with this payee before. Stated as
+                    evidence rather than a score, and applied only on a click. */}
+                {t.history && !t.category && !excluded && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                      <span className={t.history.is_unanimous ? "text-emerald-700" : "text-amber-700"}>
+                        {t.history.summary}
+                      </span>
+                      {t.history.category ? ` → ${t.history.category}` : ""}
+                      {t.history.account_id ? ` · ${accountLabel(t.history.account_id)}` : ""}
+                      {t.history.alternatives.length > 0 && (
+                        <span className="text-[#CBD5E1]">
+                          {" "}(also {t.history.alternatives
+                            .map((a) => `${accountLabel(a.account_id)} ×${a.times}`).join(", ")})
                         </span>
                       )}
-                      <button onClick={() => clearPayee(t)} disabled={busy[t.id]}
-                        className="ml-1.5 text-[#CBD5E1] hover:text-red-600">×</button>
                     </p>
-                  ) : (
-                    <>
-                      <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
-                        Payee looks like{" "}
-                        <span className="font-medium text-[#64748B]">{t.suggested_payee!.payee_name}</span>
-                        {t.suggested_payee!.source === "matched_party"
-                          && ` (${t.suggested_payee!.payee_type} on file)`}
-                      </p>
-                      <button onClick={() => acceptPayee(t)} disabled={busy[t.id]}
-                        className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] shrink-0">
-                        Confirm payee
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                    <button onClick={() => applyHistory(t)} disabled={busy[t.id]}
+                      className="text-[10px] px-2 py-0.5 border border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] rounded hover:bg-[#DCFCE7] shrink-0">
+                      Use last time&apos;s
+                    </button>
+                  </div>
+                )}
 
-              {/* Tier 1.4 — what was done with this payee before. Stated as
-                  evidence rather than a score, and applied only on a click. */}
-              {t.history && !t.category && t.match_status !== "ignored" && (
-                <div className="flex items-center gap-2 ml-1">
-                  <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
-                    <span className={t.history.is_unanimous ? "text-emerald-700" : "text-amber-700"}>
-                      {t.history.summary}
-                    </span>
-                    {t.history.category ? ` → ${t.history.category}` : ""}
-                    {t.history.account_id ? ` · ${accountLabel(t.history.account_id)}` : ""}
-                    {t.history.alternatives.length > 0 && (
-                      <span className="text-[#CBD5E1]">
-                        {" "}(also {t.history.alternatives
-                          .map((a) => `${accountLabel(a.account_id)} ×${a.times}`).join(", ")})
-                      </span>
-                    )}
+                {/* The other candidates, and why each was proposed. */}
+                {sugg[t.id] && sugg[t.id].length > 0 && (
+                  <div className="space-y-1">
+                    {sugg[t.id].map((s) => (
+                      <div key={s.matched_entity_id} className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] text-[#334155] truncate">{s.label}</p>
+                          <p className="text-[10px] text-[#94A3B8]">{s.reasons.join(" · ")}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${confColor(s.confidence_label)}`}>{s.confidence}%</span>
+                          {/* A SHORT match settles only what arrived, leaving the
+                              document partly open — which is wrong when the
+                              shortfall is withheld TDS. Send it to the settlement
+                              modal rather than let one click under-settle. */}
+                          {s.difference_paise > 0 ? (
+                            <button onClick={() => openSettle(t, s)} disabled={busy[t.id]}
+                              className="text-[10px] px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
+                              title={`Bank line is ${fmt(s.difference_paise)} short of this document`}>
+                              {s.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
+                            </button>
+                          ) : (
+                            <button onClick={() => accept(t.id, s)} disabled={busy[t.id]}
+                              className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Accept</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {sugg[t.id] && sugg[t.id].length === 0 && !t.matched_entity_id && !posted && (
+                  <p className="text-[10px] text-[#94A3B8]">
+                    No match suggestions — the ranked list only reaches documents close to this
+                    amount.{" "}
+                    <button onClick={() => setFindTxn(t)} className="text-blue-600 hover:underline">
+                      Search all documents
+                    </button>
                   </p>
-                  <button onClick={() => applyHistory(t)} disabled={busy[t.id]}
-                    className="text-[10px] px-2 py-0.5 border border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] rounded hover:bg-[#DCFCE7] shrink-0">
-                    Use last time&apos;s
-                  </button>
-                </div>
-              )}
+                )}
 
-              {/* Suggestion list */}
-              {sugg[t.id] && sugg[t.id].length > 0 && (
-                <div className="ml-1 border-l-2 border-[#F1F5F9] pl-3 space-y-1">
-                  {sugg[t.id].map((s) => (
-                    <div key={s.matched_entity_id} className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[11px] text-[#334155] truncate">{s.label}</p>
-                        <p className="text-[10px] text-[#94A3B8]">{s.reasons.join(" · ")}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${confColor(s.confidence_label)}`}>{s.confidence}%</span>
-                        {/* A SHORT match settles only what arrived, leaving the
-                            document partly open — which is wrong when the
-                            shortfall is withheld TDS. Send it to the settlement
-                            modal (party + document + TDS prefilled) rather than
-                            let one click quietly under-settle. */}
-                        {s.difference_paise > 0 ? (
-                          <button onClick={() => openSettle(t, s)} disabled={busy[t.id]}
-                            className="text-[10px] px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
-                            title={`Bank line is ${fmt(s.difference_paise)} short of this document`}>
-                            {s.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
-                          </button>
-                        ) : (
-                          <button onClick={() => accept(t.id, s)} disabled={busy[t.id]} className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Accept</button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
                 </div>
+              </td>
+              </tr>
               )}
-              {sugg[t.id] && sugg[t.id].length === 0 && (
-                <p className="text-[10px] text-[#94A3B8] ml-1">
-                  No match suggestions found — the ranked list only reaches documents close to
-                  this amount.{" "}
-                  <button onClick={() => setFindTxn(t)} className="text-blue-600 hover:underline">
-                    Search all documents
-                  </button>
-                </p>
-              )}
-
-              </>)}
-            </div>
-          ))}
-        </div>
+              </Fragment>
+              );
+            })}
+            </tbody>
+          </table>
+          </div>
+          </div>
 
         {/* The count is the point, not the arrows: a queue that only ever says
             "here are fifty" cannot be told apart from a queue that is finished.
