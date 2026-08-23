@@ -2123,6 +2123,9 @@ interface BankAccount {
 function BankAccounts({ clientId }: { clientId: string }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  // {id: {deletable, blocked_by}} — decides whether Delete is offered at all,
+  // and what the disabled one says when it is not.
+  const [deletability, setDeletability] = useState<Record<string, { deletable: boolean; blocked_by: string[] }>>({});
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   // null = closed, "new" = create form, BankAccount = edit that account.
@@ -2138,16 +2141,19 @@ function BankAccounts({ clientId }: { clientId: string }) {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     try {
-      const [stmts, accRes] = await Promise.all([
+      const [stmts, accRes, delRes] = await Promise.all([
         getBankStatements(clientId),
         // include_inactive: this table is the only place a deactivated account can
         // be seen or reactivated, and its opening balance stays in the GL, so
         // hiding it left money on the balance sheet with no account to explain it.
         // The pickers below filter to activeAccounts themselves.
         api.banking.listBankAccounts({ client_id: clientId, include_inactive: "true" }) as Promise<{ success: boolean; data: BankAccount[] }>,
+        (api.banking.bankAccountsDeletable({ client_id: clientId }) as Promise<{ success: boolean; data: Record<string, { deletable: boolean; blocked_by: string[] }> }>)
+          .catch(() => ({ success: false, data: {} })),
       ]);
       setStatements(stmts);
       setAccounts(accRes.success ? (accRes.data ?? []) : []);
+      setDeletability(delRes.success ? (delRes.data ?? {}) : {});
     } catch (e) {
       // Was a bare `/* skip */`, which read as "an empty statement list" — the
       // same screen a client with nothing imported yet gets. Say which it is.
@@ -2167,6 +2173,19 @@ function BankAccounts({ clientId }: { clientId: string }) {
       setMsg({ type: "ok", text: "Bank account deactivated." });
       loadStatements();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not deactivate the account." }); }
+  }
+
+  async function deleteAccount(a: BankAccount) {
+    if (!confirm(`Permanently delete ${a.bank_name} (····${a.account_no.slice(-4)})?\n\n`
+      + `This account has no statements, no reconciliations and nothing posted to its `
+      + `ledger, so there is no history to keep. Its ledger account goes with it if `
+      + `nothing else uses it. This cannot be undone.`)) return;
+    try {
+      const res = await api.banking.deleteBankAccount(a.id) as { success: boolean; error: string | null };
+      if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not delete the account." }); return; }
+      setMsg({ type: "ok", text: `${a.bank_name} deleted.` });
+      loadStatements();
+    } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not delete the account." }); }
   }
 
   const activeAccounts = accounts.filter((a) => a.is_active);
@@ -2232,6 +2251,16 @@ function BankAccounts({ clientId }: { clientId: string }) {
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => setAccountModal(a)} className="text-[#4338CA] hover:text-[#3730A3] inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
                     {a.is_active && <button onClick={() => deactivateAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Deactivate</button>}
+                    {/* Delete is offered only for an account with no footprint.
+                        When it is blocked the button stays, disabled, carrying the
+                        reason — "why can't I delete this?" is the question a
+                        missing button leaves unanswered. */}
+                    {deletability[a.id]?.deletable ? (
+                      <button onClick={() => deleteAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Delete</button>
+                    ) : deletability[a.id] ? (
+                      <span className="ml-3 text-[#CBD5E1] cursor-not-allowed"
+                            title={`Cannot be deleted because ${deletability[a.id].blocked_by.join("; ")}. Deactivate it instead — that keeps its history.`}>Delete</span>
+                    ) : null}
                   </td>
                 </tr>
               ))}

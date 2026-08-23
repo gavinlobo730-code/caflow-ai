@@ -247,6 +247,92 @@ def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
     return None
 
 
+# What stops a bank account being deleted outright, in the order a CA would care
+# about. bank_statements / bank_reconciliations / payroll_runs each FK to
+# bank_accounts with NO ACTION, so Postgres would refuse anyway — but refusing
+# with a 500 is not an answer, and the fourth condition has no FK behind it at
+# all: journal lines point at the CHART account, not the bank account, so a
+# delete would leave posted money in the GL with nothing to attribute it to.
+_DELETE_BLOCKERS = (
+    ("statements",      "bank statements have been imported for it"),
+    ("reconciliations", "it has been reconciled"),
+    ("payroll",         "payroll has been paid from it"),
+    ("ledger",          "its ledger account carries posted journal entries"),
+)
+
+
+def _delete_blockers(db, firm_id: str, client_id: str,
+                     accounts: list[dict]) -> dict[str, list[str]]:
+    """{bank_account_id: [reasons it cannot be permanently deleted]}.
+
+    A fixed four queries whatever the number of accounts (CLAUDE.md, "Reporting
+    performance") — the answer is one short list per account, so the reads are
+    keyed by the account ids rather than scanning what they point at.
+    """
+    ids = [a["id"] for a in accounts if a.get("id")]
+    coa_by_account = {a["id"]: a.get("coa_account_id") for a in accounts if a.get("id")}
+    coa_ids = [c for c in coa_by_account.values() if c]
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    if not ids:
+        return out
+
+    def _hit(table: str, col: str, values: list[str]) -> set:
+        if not values:
+            return set()
+        try:
+            rows = (db.table(table).select(col).in_(col, values).execute().data or [])
+            return {r.get(col) for r in rows}
+        except Exception as e:  # noqa: BLE001 — an unreadable table blocks the delete
+            _logger.error("delete-check on %s failed: %s", table, e)
+            return set(values)
+
+    hits = {
+        "statements":      _hit("bank_statements", "bank_account_id", ids),
+        "reconciliations": _hit("bank_reconciliations", "bank_account_id", ids),
+        "payroll":         _hit("payroll_runs", "paid_from_account_id", ids),
+        "ledger":          _hit("journal_lines", "account_id", coa_ids),
+    }
+    for aid in ids:
+        for key, reason in _DELETE_BLOCKERS:
+            probe = coa_by_account.get(aid) if key == "ledger" else aid
+            if probe and probe in hits[key]:
+                out[aid].append(reason)
+    return out
+
+
+def _ledger_is_disposable(db, firm_id: str, coa_account_id: str,
+                          bank_account_id: str) -> bool:
+    """Whether the bank's ledger account can go with it.
+
+    Only when nothing anywhere points at it and it looks like one this app
+    created for a bank — subtype Bank. A chart account a CA built by hand is
+    never removed as a side effect of deleting a bank account; it is simply left
+    where it is."""
+    if not coa_account_id:
+        return False
+    row = (db.table("chart_of_accounts").select("id, account_subtype")
+           .eq("id", coa_account_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
+    if (row.get("account_subtype") or "") != "Bank":
+        return False
+    for table, col in (("journal_lines", "account_id"),
+                       ("bank_transactions", "account_id"),
+                       ("bank_transaction_splits", "account_id"),
+                       ("bank_matching_rules", "suggested_account_id"),
+                       ("ledger_balances", "account_id"),
+                       ("chart_of_accounts", "parent_id")):
+        try:
+            if (db.table(table).select(col).eq(col, coa_account_id)
+                  .limit(1).execute().data or []):
+                return False
+        except Exception as e:  # noqa: BLE001 — cannot prove it is unused ⇒ keep it
+            _logger.warning("ledger-disposability check on %s failed: %s", table, e)
+            return False
+    others = (db.table("bank_accounts").select("id")
+              .eq("firm_id", firm_id).eq("coa_account_id", coa_account_id)
+              .execute().data or [])
+    return all(o.get("id") == bank_account_id for o in others)
+
+
 # ─── Bank Accounts ────────────────────────────────────────────────────────────
 
 @router.get("/accounts")
@@ -365,6 +451,89 @@ def update_bank_account(
                 pass
             return api_response(False, None, "Unable to save bank account. Please try again.")
     return api_response(True, account)
+
+
+@router.get("/accounts/deletable")
+def bank_accounts_deletable(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Which of the client's bank accounts can be permanently deleted, and what
+    is stopping the rest.
+
+    Separate from the account list so the pickers that call it stay one query.
+    The management table asks for this as well and uses it to decide whether to
+    offer Delete at all — an action that would fail is worse than no action."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {})
+    firm_id = current_user["firm_id"]
+    accounts = (db.table("bank_accounts").select("id, coa_account_id")
+                .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
+    blockers = _delete_blockers(db, firm_id, client_id, accounts)
+    return api_response(True, {aid: {"deletable": not reasons, "blocked_by": reasons}
+                               for aid, reasons in blockers.items()})
+
+
+@router.delete("/accounts/{account_id}")
+def delete_bank_account(
+    account_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Permanently delete a bank account that has no footprint.
+
+    WHY THIS EXISTS AND WHY IT IS NARROW
+        Deactivation is right for an account that was real and is now closed:
+        its statements, reconciliations and opening balance are the audit trail,
+        and removing the account they belong to would falsify it. It is the wrong
+        answer for an account created five minutes ago with a mistyped number,
+        which deactivation leaves greyed in the list forever.
+
+        So this deletes only what has no history at all — nothing imported,
+        nothing reconciled, no payroll, and not a single posted journal line on
+        its ledger. In that state there is no audit trail to protect, because
+        nothing ever happened.
+
+    Its ledger account goes with it when nothing anywhere references it and it
+    is one this app created for a bank. A chart account built by hand is left
+    alone; the response says which happened."""
+    db = _db()
+    if not db:
+        return api_response(True, {"deleted": True, "mock": True})
+    firm_id = current_user["firm_id"]
+    account = (db.table("bank_accounts").select("*")
+               .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found.")
+    assert_client_access(current_user, account.get("client_id"))
+
+    # Re-checked server-side. The client asked /deletable to decide what to show;
+    # it is not what decides whether the row goes.
+    reasons = _delete_blockers(db, firm_id, account.get("client_id"), [account]).get(account_id, [])
+    if reasons:
+        raise HTTPException(
+            status_code=409,
+            detail=("This bank account cannot be deleted because "
+                    + "; ".join(reasons)
+                    + ". Deactivate it instead — that keeps its history and takes "
+                      "it out of the pickers."))
+
+    coa_id = account.get("coa_account_id")
+    drop_ledger = _ledger_is_disposable(db, firm_id, coa_id, account_id)
+    db.table("bank_accounts").delete().eq("id", account_id).eq("firm_id", firm_id).execute()
+    ledger_removed = False
+    if drop_ledger:
+        try:
+            db.table("chart_of_accounts").delete().eq("id", coa_id).eq("firm_id", firm_id).execute()
+            ledger_removed = True
+        except Exception as e:  # noqa: BLE001 — the bank account is already gone
+            _logger.warning("bank ledger %s left in place after deleting account %s: %s",
+                            coa_id, account_id, e)
+    _logger.info("Deleted bank account %s (%s) for client %s; ledger %s",
+                 account_id, account.get("bank_name"), account.get("client_id"),
+                 "removed" if ledger_removed else "kept")
+    return api_response(True, {"deleted": True, "ledger_account_removed": ledger_removed})
 
 
 @router.get("/accounts/{account_id}/balance")

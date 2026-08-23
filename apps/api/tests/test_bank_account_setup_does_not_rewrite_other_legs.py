@@ -290,3 +290,123 @@ def test_a_second_client_banking_at_the_same_branch_still_gets_a_ledger(monkeypa
     names = [r["account_name"] for r in db.rows("chart_of_accounts")
              if str(r.get("account_name", "")).startswith("HDFC Bank — 7890")]
     assert len(names) == len(set(names)), f"duplicate ledger names: {names}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Permanent delete, and everything that must stop it
+# ══════════════════════════════════════════════════════════════════════════════
+# Deactivation is right for an account that was real and is now closed: its
+# statements, reconciliations and opening balance ARE the audit trail. It is the
+# wrong answer for an account created five minutes ago with a mistyped number,
+# which it leaves greyed in the list forever.
+#
+# So delete is offered only where there is no history to protect — and the four
+# conditions are checked server-side on the way in, not just used to decide what
+# the UI draws.
+
+
+def _deletable(db):
+    return banking.bank_accounts_deletable(client_id=CLIENT, current_user=CALLER)["data"]
+
+
+def test_a_fresh_mistyped_account_can_be_deleted(monkeypatch):
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
+    assert _deletable(db)[acc["id"]] == {"deletable": True, "blocked_by": []}
+
+    res = banking.delete_bank_account(acc["id"], CALLER)
+    assert res["success"] is True and res["data"]["deleted"] is True
+    assert [a["bank_name"] for a in db.rows("bank_accounts")] == []
+
+
+def test_deleting_takes_the_ledger_the_app_made_for_it(monkeypatch):
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
+    ledger = acc["coa_account_id"]
+    res = banking.delete_bank_account(acc["id"], CALLER)
+    assert res["data"]["ledger_account_removed"] is True
+    assert not [r for r in db.rows("chart_of_accounts") if r["id"] == ledger]
+
+
+def test_deleting_leaves_a_ledger_another_bank_still_uses(monkeypatch):
+    """Two banks should never share a ledger any more, but a pre-existing pair
+    must not have the survivor's ledger deleted out from under it."""
+    db = _setup(monkeypatch)
+    a = _add_bank(db, name="HDFC Bank", account_no="50100234567890")["data"]
+    b = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
+    for row in db.rows("bank_accounts"):          # force the old shared state
+        row["coa_account_id"] = a["coa_account_id"]
+
+    banking.delete_bank_account(b["id"], CALLER)
+    assert [r for r in db.rows("chart_of_accounts") if r["id"] == a["coa_account_id"]]
+
+
+def test_a_hand_built_ledger_is_never_removed_as_a_side_effect(monkeypatch):
+    """Subtype is the tell. A CA's own chart account is not this endpoint's to
+    delete, even when it happens to be linked to the account going away."""
+    db = _setup(monkeypatch)
+    mine = db.seed("chart_of_accounts", {
+        "firm_id": FIRM, "client_id": CLIENT, "account_code": "1190",
+        "account_name": "Cash at bank (my own)", "account_type": "Asset",
+        "account_subtype": "Cash", "is_active": True})
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899",
+                    coa=mine["id"])["data"]
+    res = banking.delete_bank_account(acc["id"], CALLER)
+    assert res["data"]["ledger_account_removed"] is False
+    assert [r for r in db.rows("chart_of_accounts") if r["id"] == mine["id"]]
+
+
+def test_an_opening_balance_in_the_gl_blocks_the_delete(monkeypatch):
+    """The condition with no foreign key behind it. Journal lines point at the
+    CHART account, so nothing in the database would stop this — the money would
+    simply stay in the GL with no account to attribute it to."""
+    from fastapi import HTTPException
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899", opening=50_000)["data"]
+    assert _deletable(db)[acc["id"]]["deletable"] is False
+
+    with pytest.raises(HTTPException) as e:
+        banking.delete_bank_account(acc["id"], CALLER)
+    assert e.value.status_code == 409
+    assert "posted journal entries" in str(e.value.detail)
+    assert "Deactivate it instead" in str(e.value.detail)
+    assert [a["bank_name"] for a in db.rows("bank_accounts")] == ["Cosmos Bank"]
+
+
+@pytest.mark.parametrize("table,column,reason", [
+    ("bank_statements", "bank_account_id", "bank statements have been imported for it"),
+    ("bank_reconciliations", "bank_account_id", "it has been reconciled"),
+    ("payroll_runs", "paid_from_account_id", "payroll has been paid from it"),
+])
+def test_history_blocks_the_delete(monkeypatch, table, column, reason):
+    from fastapi import HTTPException
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
+    db.seed(table, {"firm_id": FIRM, "client_id": CLIENT, column: acc["id"]})
+
+    assert _deletable(db)[acc["id"]]["blocked_by"] == [reason]
+    with pytest.raises(HTTPException) as e:
+        banking.delete_bank_account(acc["id"], CALLER)
+    assert e.value.status_code == 409 and reason in str(e.value.detail)
+    assert db.rows("bank_accounts"), "a blocked delete removed the account anyway"
+
+
+def test_every_blocking_reason_is_reported_not_just_the_first(monkeypatch):
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899", opening=50_000)["data"]
+    db.seed("bank_statements", {"firm_id": FIRM, "client_id": CLIENT,
+                                "bank_account_id": acc["id"]})
+    assert _deletable(db)[acc["id"]]["blocked_by"] == [
+        "bank statements have been imported for it",
+        "its ledger account carries posted journal entries",
+    ]
+
+
+def test_another_firms_account_cannot_be_deleted(monkeypatch):
+    from fastapi import HTTPException
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
+    with pytest.raises(HTTPException) as e:
+        banking.delete_bank_account(acc["id"], {**CALLER, "firm_id": "FIRM-OTHER"})
+    assert e.value.status_code == 404
+    assert db.rows("bank_accounts")

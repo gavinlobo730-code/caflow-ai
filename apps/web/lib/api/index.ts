@@ -442,6 +442,12 @@ export const api = {
     listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
     createBankAccount: (data: unknown) => request("/api/banking/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateBankAccount: (id: string, data: unknown) => request(`/api/banking/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    /** Which bank accounts have no footprint and can be permanently deleted, and
+     *  what is blocking the rest. Separate from the list so pickers stay cheap. */
+    bankAccountsDeletable: (params: Record<string, string>) => request(`/api/banking/accounts/deletable?${new URLSearchParams(params)}`),
+    /** Permanently delete a bank account. Refused (409) unless it has no
+     *  statements, no reconciliations, no payroll and no posted journal lines. */
+    deleteBankAccount: (id: string) => request(`/api/banking/accounts/${id}`, { method: "DELETE" }),
     /** Multi-Currency Phase 5 — derived base (+ foreign for FX accounts) balance. */
     accountBalance: (accountId: string, params: Record<string, string>) => request(`/api/banking/accounts/${accountId}/balance?${new URLSearchParams(params)}`),
     listStatements: (params?: Record<string, string>) => request(`/api/banking/statements${params ? "?" + new URLSearchParams(params) : ""}`),
