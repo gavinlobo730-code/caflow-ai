@@ -198,24 +198,72 @@ class ReportingService:
         return self._serve(("trial_balance", firm_id, client_id, as_of), fast, legacy)
 
     def ledger(self, firm_id: str, client_id: Optional[str], account_id: str,
-               start_date: Optional[str] = None, end_date: Optional[str] = None) -> dict:
-        """Per-account general ledger (accrual, posted-only) from the same engine
-        and scoped source as every other report. Opening balance carries forward
-        from before `start`; the snapshot's full posted history supplies it."""
+               start_date: Optional[str] = None, end_date: Optional[str] = None,
+               limit: Optional[int] = None, offset: int = 0) -> dict:
+        """Per-account general ledger (accrual, posted-only). Opening balance
+        carries forward from before `start`.
+
+        PAGED, when a limit is given and there is a database. Restricting the
+        fetch to one account already helped, but the drill-down still returned
+        every line of it: measured on production, Trade Receivables for one
+        client is 5,659 rows and 44 ms of Postgres. The database was never the
+        cost — moving 5,659 rows to Singapore, walking them in Python and
+        rendering them all was, to answer a question the reader satisfies with
+        twenty.
+
+        A ledger is the case CLAUDE.md's two prescribed shapes do not cover: its
+        answer genuinely IS one row per transaction, so account_period_balances
+        cannot serve it. What it can be is paged — and the running balance has
+        to survive that, since row 101's depends on rows 1..100. public.
+        account_ledger_page runs the window over the account's whole history and
+        slices afterwards.
+
+        builders.ledger remains the implementation for anything without a
+        database — mock mode, local dev, the in-memory source the unit suite
+        runs on — and tests/test_account_ledger_sql_parity_pg.py runs every
+        scenario through both and asserts they are identical, so the two cannot
+        drift.
+        """
         start = start_date or _fy_start()
         end = end_date or ist_today().isoformat()
-        # Read ONLY this account's posted entries (all dates — the opening balance
-        # needs history strictly before `start`), not the client's ENTIRE ledger.
-        # For a large client that is a fraction of the data and avoids the
-        # full-history fetch that made this drill-down slow and memory-heavy.
-        # builders.ledger already filters by account_id, so the result is identical.
-        # Non-Supabase sources (InMemory tests) keep the snapshot path.
-        if isinstance(self.source, SupabaseLedgerSource):
-            accounts = self.source._accounts(firm_id, client_id)
-            entries = self.source._entries(firm_id, client_id, account_id=account_id)
-            return builders.ledger(entries, accounts, account_id, start, end)
-        snap = self.source.snapshot(firm_id, client_id, start, end)
-        return builders.ledger(snap.entries_by_id, snap.accounts, account_id, start, end)
+
+        def fallback() -> dict:
+            # Read ONLY this account's posted entries (all dates — the opening
+            # balance needs history strictly before `start`), not the client's
+            # ENTIRE ledger. builders.ledger filters by account_id anyway, so the
+            # result is identical, just far cheaper.
+            if isinstance(self.source, SupabaseLedgerSource):
+                accounts = self.source._accounts(firm_id, client_id)
+                entries = self.source._entries(firm_id, client_id, account_id=account_id)
+                return builders.ledger(entries, accounts, account_id, start, end)
+            snap = self.source.snapshot(firm_id, client_id, start, end)
+            return builders.ledger(snap.entries_by_id, snap.accounts, account_id, start, end)
+
+        db = getattr(self.source, "db", None)
+        if db is None or not client_id or limit is None:
+            # No database (in-memory source), a firm-wide ledger, or a caller
+            # that wants the whole thing: the function is per-client and paged,
+            # and an unpaged caller is served by the builder exactly as before.
+            return fallback()
+
+        try:
+            res = db.rpc("account_ledger_page", {
+                "p_firm": firm_id, "p_client": client_id, "p_account": account_id,
+                "p_start": start, "p_end": end,
+                "p_limit": int(limit), "p_offset": int(offset),
+            }).execute()
+            out = getattr(res, "data", None)
+            if not isinstance(out, dict) or "lines" not in out:
+                # Anything but the whole document is a failure, not a thin
+                # answer to render.
+                raise ValueError(
+                    f"account_ledger_page returned {type(out).__name__}, not a ledger")
+            return out
+        except Exception as e:
+            _logger.error(
+                "account_ledger_page failed (%s %s %s %s..%s) — falling back to the "
+                "Python builder: %s", firm_id, client_id, account_id, start, end, e)
+            return fallback()
 
     def profit_loss(self, firm_id: str, client_id: Optional[str],
                     start_date: Optional[str], end_date: Optional[str],
