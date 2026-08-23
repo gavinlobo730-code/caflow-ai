@@ -82,6 +82,10 @@ _UNIQUE: dict[str, list[tuple[str, ...]]] = {
 # passed for the wrong reason, because the ACTIVE one was hidden too.
 _DEFAULTS: dict[str, dict] = {
     "bank_accounts": {"is_active": True},
+    # NOT NULL DEFAULT 'unmatched' / DEFAULT false in the real schema. The
+    # queue's view filter is SQL now, so a row inserted without them must land
+    # in the same view here as it would in Postgres.
+    "bank_transactions": {"match_status": "unmatched", "needs_review": False},
     "chart_of_accounts": {"is_active": True},
 }
 
@@ -132,7 +136,7 @@ class _Query:
         self._op = "select"
         self._payload: Any = None
         self._filters: list[tuple[str, Optional[str], Any]] = []
-        self._order: Optional[tuple[str, bool]] = None
+        self._order: list[tuple[str, bool]] = []
         self._limit: Optional[int] = None
         self._range: Optional[tuple[int, int]] = None
         self._single = False
@@ -186,7 +190,13 @@ class _Query:
 
     # -- modifiers -----------------------------------------------------------
     def order(self, col, desc: bool = False, **_k):
-        self._order = (col, desc); return self
+        # ACCUMULATES, as PostgREST does: `.order("a").order("b")` is
+        # `ORDER BY a, b`. It used to overwrite, which silently threw away the
+        # tiebreak — and a paged read whose sort key has ties cannot be paged
+        # correctly without one (rows repeat on one page and vanish from the
+        # next). The double has to have the tiebreak for the test to be able
+        # to catch its absence.
+        self._order.append((col, desc)); return self
 
     def limit(self, n): self._limit = n; return self
     def range(self, a, b): self._range = (a, b); return self
@@ -250,8 +260,12 @@ class _Query:
     def _apply_order(self, rows: list) -> list:
         if not self._order:
             return rows
-        col, desc = self._order
-        return sorted(rows, key=lambda r: (r.get(col) is None, r.get(col)), reverse=desc)
+        # Applied last key first — a stable sort then leaves the earlier keys
+        # dominant, which is what ORDER BY a, b means.
+        out = rows
+        for col, desc in reversed(self._order):
+            out = sorted(out, key=lambda r: (r.get(col) is None, r.get(col)), reverse=desc)
+        return out
 
     # -- execution -----------------------------------------------------------
     def _project(self, row: dict) -> dict:

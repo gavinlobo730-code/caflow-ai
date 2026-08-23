@@ -38,7 +38,7 @@ FIRM, CLIENT = "firm-1", "client-1"
 # ══════════════════════════════════════════════════════════════════════════════
 
 class _Resp:
-    def __init__(self, data): self.data = data
+    def __init__(self, data, count=None): self.data, self.count = data, count
 
 
 def _like_to_re(pattern: str) -> re.Pattern:
@@ -52,20 +52,37 @@ class _Q:
         self.s, self.t = store, table
         self.op, self.payload = "select", None
         self.eqs, self.likes, self.ors = [], [], []
+        self.preds = []
         self.single_ = False
-        self.order_, self.desc = None, False
+        self.orders = []
+        self.range_ = None
+        self.count_ = None
+        self.negate = False
 
     def insert(self, p): self.op, self.payload = "insert", p; return self
     def update(self, p): self.op, self.payload = "update", p; return self
-    def select(self, *_a, **_k): self.op = "select"; return self
-    def eq(self, k, v): self.eqs.append((k, v)); return self
+    def select(self, *_a, count=None, **_k): self.op = "select"; self.count_ = count; return self
+    def eq(self, k, v): return self._add(lambda r: r.get(k) == v)
+
+    # `.not_` negates the NEXT predicate only, as PostgREST does — the queue's
+    # view filter is SQL now and leans on it.
+    @property
+    def not_(self): self.negate = True; return self
+
+    def _add(self, pred):
+        neg, self.negate = self.negate, False
+        self.preds.append((lambda r: not pred(r)) if neg else pred)
+        return self
+
+    def neq(self, k, v): return self._add(lambda r: r.get(k) != v)
+    def range(self, a, b): self.range_ = (a, b); return self
     def ilike(self, col, pattern): self.likes.append((col, _like_to_re(pattern))); return self
     def limit(self, _n): return self
-    def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
+    def order(self, c, desc=False): self.orders.append((c, desc)); return self
     def single(self): self.single_ = True; return self
     def maybe_single(self): self.single_ = True; return self
-    def is_(self, k, _v): self.eqs.append((k, None)); return self
-    def in_(self, k, vals): self.ors.append(("__in__", k, list(vals))); return self
+    def is_(self, k, _v): return self._add(lambda r: r.get(k) is None)
+    def in_(self, k, vals): vals = list(vals); return self._add(lambda r: r.get(k) in vals)
 
     def or_(self, expr):
         """Only the one shape the code under test uses:
@@ -87,6 +104,8 @@ class _Q:
         out = []
         for r in self.s.setdefault(self.t, []):
             if any(r.get(k) != v for k, v in self.eqs):
+                continue
+            if any(not p(r) for p in self.preds):
                 continue
             if any(not rx.match(str(r.get(c) or "")) for c, rx in self.likes):
                 continue
@@ -116,11 +135,14 @@ class _Q:
             for r in m:
                 r.update(self.payload)
             return _Resp(m)
-        if self.order_:
-            m = sorted(m, key=lambda r: str(r.get(self.order_)), reverse=self.desc)
+        for c, desc in reversed(self.orders):   # accumulates, as PostgREST does
+            m = sorted(m, key=lambda r, c=c: str(r.get(c)), reverse=desc)
+        total = len(m)
+        if self.range_ is not None:
+            m = m[self.range_[0]: self.range_[1] + 1]
         if self.single_:
             return _Resp(m[0] if m else None)
-        return _Resp(m)
+        return _Resp(m, count=(total if self.count_ else None))
 
 
 class FakeDB:
