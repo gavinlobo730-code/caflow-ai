@@ -74,6 +74,23 @@ _UNIQUE: dict[str, list[tuple[str, ...]]] = {
 }
 
 
+# Column DEFAULTS the production schema applies and an insert therefore omits.
+# Only the ones a code path actually depends on. bank_accounts.is_active is the
+# worked example: BankAccountIn has no is_active field, so a created account
+# reaches the double without one — and `.eq("is_active", True)` then filtered out
+# every freshly created account. A test asserting a DEACTIVATED account is hidden
+# passed for the wrong reason, because the ACTIVE one was hidden too.
+_DEFAULTS: dict[str, dict] = {
+    "bank_accounts": {"is_active": True},
+    "chart_of_accounts": {"is_active": True},
+}
+
+
+def _apply_defaults(table: str, row: dict) -> None:
+    for col, val in _DEFAULTS.get(table, {}).items():
+        row.setdefault(col, val)
+
+
 def _enforce_unique(table: str, rows: list, new_row: dict) -> None:
     """Raise the way Postgres would when an insert violates a unique index."""
     for cols in _UNIQUE.get(table, []):
@@ -267,6 +284,7 @@ class _Query:
             for p in payload:
                 r = dict(p)
                 r.setdefault("id", str(uuid.uuid4()))
+                _apply_defaults(self.table, r)
                 _enforce_unique(self.table, rows, r)
                 rows.append(r)
                 inserted.append(r)

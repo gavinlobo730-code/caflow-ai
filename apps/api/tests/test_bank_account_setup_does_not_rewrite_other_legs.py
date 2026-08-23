@@ -240,6 +240,12 @@ def test_a_bank_may_keep_its_own_ledger_when_edited(monkeypatch):
 def test_a_deactivated_account_is_hidden_from_pickers_by_default(monkeypatch):
     db = _setup(monkeypatch)
     acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")
+    # Asserted BEFORE deactivating, because without it this passes for the wrong
+    # reason: the double did not apply bank_accounts.is_active's default, so a
+    # freshly created account was filtered out of the picker too.
+    assert [a["bank_name"] for a in
+            banking.list_bank_accounts(client_id=CLIENT, current_user=CALLER)["data"]] == ["Cosmos Bank"]
+
     banking.update_bank_account(acc["data"]["id"], BankAccountUpdateIn(is_active=False), CALLER)
     listed = banking.list_bank_accounts(client_id=CLIENT, current_user=CALLER)["data"]
     assert [a["bank_name"] for a in listed] == []
@@ -410,3 +416,57 @@ def test_another_firms_account_cannot_be_deleted(monkeypatch):
         banking.delete_bank_account(acc["id"], {**CALLER, "firm_id": "FIRM-OTHER"})
     assert e.value.status_code == 404
     assert db.rows("bank_accounts")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# The row says which ledger it posts to
+# ══════════════════════════════════════════════════════════════════════════════
+# "Linked" answers the wrong question. Which ledger is what ties a bank account
+# to a line on the balance sheet — and what makes a refused delete actionable,
+# since "its ledger account carries posted journal entries" is only useful if you
+# can see which account that is.
+
+
+def test_the_account_list_names_the_ledger_it_posts_to(monkeypatch):
+    db = _setup(monkeypatch)
+    _add_bank(db, name="HDFC Bank", account_no="50100234567890")
+    listed = banking.list_bank_accounts(client_id=CLIENT, current_user=CALLER)["data"]
+    assert len(listed) == 1
+    assert listed[0]["ledger_account_name"] == "HDFC Bank — 7890"
+    assert listed[0]["ledger_account_code"] == listed[0]["ledger_account_code"].strip()
+    assert listed[0]["ledger_account_code"].isdigit()
+
+
+def test_two_banks_name_two_different_ledgers(monkeypatch):
+    db = _setup(monkeypatch)
+    _add_bank(db, name="HDFC Bank", account_no="50100234567890")
+    _add_bank(db, name="Cosmos Bank", account_no="1234567899")
+    listed = banking.list_bank_accounts(client_id=CLIENT, current_user=CALLER)["data"]
+    names = {a["bank_name"]: a["ledger_account_name"] for a in listed}
+    assert names == {"HDFC Bank": "HDFC Bank — 7890", "Cosmos Bank": "Cosmos Bank — 7899"}
+    assert len(set(names.values())) == 2
+
+
+def test_an_unlinked_account_reports_no_ledger_rather_than_failing(monkeypatch):
+    """The ledger name is a nicety; the list is not. An account with no ledger —
+    only reachable now if creation could not make one — still lists."""
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
+    for row in db.rows("bank_accounts"):
+        if row["id"] == acc["id"]:
+            row["coa_account_id"] = None
+    listed = banking.list_bank_accounts(client_id=CLIENT, current_user=CALLER)["data"]
+    assert listed[0]["ledger_account_code"] is None
+    assert listed[0]["ledger_account_name"] is None
+
+
+def test_a_deactivated_account_still_names_its_ledger(monkeypatch):
+    """The row that most needs it: deactivated, its opening balance still in the
+    GL, and the only way to see which balance-sheet line that is."""
+    db = _setup(monkeypatch)
+    acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899", opening=50_000)["data"]
+    banking.update_bank_account(acc["id"], BankAccountUpdateIn(is_active=False), CALLER)
+    listed = banking.list_bank_accounts(client_id=CLIENT, include_inactive=True,
+                                        current_user=CALLER)["data"]
+    assert listed[0]["is_active"] is False
+    assert listed[0]["ledger_account_name"] == "Cosmos Bank — 7899"
