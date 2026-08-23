@@ -233,26 +233,63 @@ class _Query:
         if kind == "or":    return cls._or_expr(row, val)
         raise NotImplementedError(f"FakeDB filter not implemented: {kind}")
 
+    _OR_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "is", "ilike", "like"}
+
+    @staticmethod
+    def _split_top(expr: str) -> list[str]:
+        """Split on commas at paren depth 0.
+
+        `expr.split(",")` tore `and(a.gte.1,a.lte.9)` into `and(a.gte.1` and
+        `a.lte.9)`, whose column names are `and(a` and whose value is `9)` —
+        neither matches anything, so the group silently evaluated to False
+        instead of raising. A band filter that quietly matches nothing looks
+        exactly like "there were no candidates"."""
+        out, depth, cur = [], 0, []
+        for ch in expr:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            if ch == "," and depth == 0:
+                out.append("".join(cur)); cur = []
+            else:
+                cur.append(ch)
+        if cur:
+            out.append("".join(cur))
+        return [t.strip() for t in out if t.strip()]
+
+    @classmethod
+    def _coerce(cls, v: str) -> Any:
+        if v == "null":
+            return None
+        if v.lstrip("-").isdigit():
+            return int(v)
+        return v
+
+    @classmethod
+    def _or_term(cls, row: dict, term: str) -> bool:
+        """One disjunct: a `col.op.val`, or a nested and(…)/or(…) group."""
+        if term.startswith("and(") and term.endswith(")"):
+            inner = cls._split_top(term[4:-1])
+            return all(cls._or_term(row, t) for t in inner)
+        if term.startswith("or(") and term.endswith(")"):
+            inner = cls._split_top(term[3:-1])
+            return any(cls._or_term(row, t) for t in inner)
+        parts = term.split(".", 2)
+        if len(parts) != 3:
+            # Not a comparison and not a group we know — refuse rather than
+            # silently drop it, which is how a wrong filter passes as a pass.
+            raise NotImplementedError(f"FakeDB or() term not understood: {term!r}")
+        c, op, v = parts
+        if op not in cls._OR_OPS:
+            raise NotImplementedError(f"FakeDB or() operator not implemented: {op!r}")
+        return cls._term(row, op, c, cls._coerce(v))
+
     @classmethod
     def _or_expr(cls, row: dict, expr: str) -> bool:
-        """Parse a PostgREST or() expression: 'col.op.val,col.op.val'."""
-        for term in expr.split(","):
-            parts = term.strip().split(".", 2)
-            if len(parts) != 3:
-                continue
-            c, op, v = parts
-            if v == "null":
-                vv: Any = None
-            elif v.lstrip("-").isdigit():
-                vv = int(v)
-            else:
-                vv = v
-            op_map = {"eq": "eq", "neq": "neq", "gt": "gt", "gte": "gte",
-                      "lt": "lt", "lte": "lte", "is": "is", "ilike": "ilike",
-                      "like": "like"}
-            if op in op_map and cls._term(row, op_map[op], c, vv):
-                return True
-        return False
+        """A PostgREST or() expression: comma-separated disjuncts, each either
+        `col.op.val` or a nested and(…)/or(…) group."""
+        return any(cls._or_term(row, t) for t in cls._split_top(expr))
 
     def _match(self, row: dict) -> bool:
         return all(self._term(row, k, c, v) for (k, c, v) in self._filters)
