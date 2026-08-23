@@ -111,6 +111,10 @@ interface QueueTxn {
   debit_paise: number; credit_paise: number; balance_paise: number; match_status: string;
   category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
   suggested_category: string | null; needs_review: boolean;
+  /** Ranked match candidates, computed for the whole page server-side and
+   *  returned with the queue. Absent on a row that already has an answer
+   *  (posted, excluded, or linked), which is not given candidates. */
+  suggestions?: MatchSuggestion[];
   /** The counter GL account already chosen for this row, when one was. Categories
    *  in AUTO_COUNTER_CATEGORIES derive theirs and leave this null. */
   account_id?: string | null;
@@ -278,8 +282,16 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         limit: String(QUEUE_PER_PAGE), offset: String(page * QUEUE_PER_PAGE),
       })) as { success: boolean; data: { rows: QueueTxn[]; total: number } };
       if (!res.success) throw new Error("Couldn't load the bank match queue.");
-      setRows(res.data?.rows ?? []);
+      const got = res.data?.rows ?? [];
+      setRows(got);
       setTotal(res.data?.total ?? 0);
+      // Candidates arrive WITH the rows. They used to be fetched one request
+      // per row after the queue landed, three at a time — five Mumbai round
+      // trips each, so the matched rows lit up a few at a time over several
+      // seconds and the reader could see it happening. The ranking was never
+      // the slow part; the fetching was, and it re-read the same pool for
+      // every row.
+      setSugg(Object.fromEntries(got.map((t) => [t.id, t.suggestions ?? []])));
       setLoadError(null);
     } catch (e) {
       setRows([]); setTotal(0);
@@ -291,39 +303,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(0); }, [status, clientId]);
   useEffect(() => { setSelected(new Set()); setOpen(new Set()); }, [status, page]);
-
-  // Candidates are fetched FOR the reader rather than on request. A row that
-  // says "Match · INV-BULK-00073 · exact amount" needs no thought; a row with a
-  // "Suggest matches" button needs a click before it can even be judged, and
-  // 300 of those is the difference between clearing a statement and dreading it.
-  //
-  // Throttled to three at a time. This endpoint ranks candidates per row, and
-  // firing one per row at once is the fan-out that made the cash-flow matrix
-  // hammer the slowest thing in the app.
-  useEffect(() => {
-    let cancelled = false;
-    const need = rows.filter((t) => !t.matched_entity_id
-                                 && t.match_status !== "ignored"
-                                 && t.match_status !== "posted"
-                                 && sugg[t.id] === undefined);
-    if (need.length === 0) return;
-    (async () => {
-      await mapWithLimit(need, 3, async (t) => {
-        try {
-          const res = (await api.banking.suggestions(t.id)) as
-            { success: boolean; data: { suggestions: MatchSuggestion[] } };
-          if (!cancelled) {
-            setSugg((prev) => ({ ...prev, [t.id]: res.success ? (res.data.suggestions ?? []) : [] }));
-          }
-        } catch {
-          // A candidate lookup that fails must not block the row — it falls back
-          // to the category route, which is always available.
-          if (!cancelled) setSugg((prev) => ({ ...prev, [t.id]: [] }));
-        }
-      });
-    })();
-    return () => { cancelled = true; };
-  }, [rows, sugg]);
 
   async function categorize(id: string, category: string) {
     if (!category) return;

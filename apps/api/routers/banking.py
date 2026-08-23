@@ -768,8 +768,11 @@ def matching_queue(
     db = _db()
     if not db:
         return api_response(True, {"rows": [], "total": 0, "limit": limit, "offset": offset})
+    # with_suggestions: the page's match candidates come back WITH the rows.
+    # The screen used to fetch them one request per row afterwards, which is
+    # why the matched rows lit up a few at a time over several seconds.
     rows = bank_matching_service.queue(db, current_user["firm_id"], client_id, status,
-                                       limit=limit, offset=offset)
+                                       limit=limit, offset=offset, with_suggestions=True)
     total = bank_matching_service.queue_total(db, current_user["firm_id"], client_id, status)
     return api_response(True, {
         "rows": _scope_rows(current_user, client_id, rows),

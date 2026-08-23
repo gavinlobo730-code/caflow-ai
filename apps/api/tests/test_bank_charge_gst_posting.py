@@ -37,6 +37,65 @@ FIRM, CLIENT = "firm-1", "client-1"
 # A fake Supabase that honours ilike / or_
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── PostgREST or() ────────────────────────────────────────────────────────────
+# The banded candidate fetch sends `or(and(col.gte.LO,col.lte.HI),and(…))` — the
+# exact union of every row's amount band, in one query. A naive split on "," tears
+# the groups apart and quietly matches nothing, which is indistinguishable from
+# "no candidates", so this parses paren depth properly and REFUSES what it does
+# not understand.
+_OR_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "is"}
+
+
+def _split_top(expr):
+    out, depth, cur = [], 0, []
+    for ch in expr:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append("".join(cur)); cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        out.append("".join(cur))
+    return [t.strip() for t in out if t.strip()]
+
+
+def _coerce(v):
+    if v == "null":
+        return None
+    return int(v) if v.lstrip("-").isdigit() else v
+
+
+def _or_term(row, term):
+    if term.startswith("and(") and term.endswith(")"):
+        return all(_or_term(row, t) for t in _split_top(term[4:-1]))
+    if term.startswith("or(") and term.endswith(")"):
+        return any(_or_term(row, t) for t in _split_top(term[3:-1]))
+    parts = term.split(".", 2)
+    if len(parts) != 3:
+        raise NotImplementedError(f"fake or() term not understood: {term!r}")
+    c, op, v = parts
+    if op not in _OR_OPS:
+        raise NotImplementedError(f"fake or() operator not implemented: {op!r}")
+    got, want = row.get(c), _coerce(v)
+    if op == "is":
+        return got is want
+    if op == "eq":
+        return got == want
+    if op == "neq":
+        return got != want
+    if got is None:
+        return False
+    return {"gt": got > want, "gte": got >= want,
+            "lt": got < want, "lte": got <= want}[op]
+
+
+def _or_match(row, expr):
+    return any(_or_term(row, t) for t in _split_top(expr))
+
+
 class _Resp:
     def __init__(self, data, count=None): self.data, self.count = data, count
 
@@ -85,10 +144,16 @@ class _Q:
     def in_(self, k, vals): vals = list(vals); return self._add(lambda r: r.get(k) in vals)
 
     def or_(self, expr):
-        """Only the one shape the code under test uses:
-        "client_id.eq.<id>,client_id.is.null" — the client's own rows OR the
-        firm-wide ones. Anything else would silently pass everything, so it
-        raises rather than lying."""
+        """Two shapes now, and it still refuses anything else rather than
+        silently passing everything:
+
+          "client_id.eq.<id>,client_id.is.null"   — own rows OR firm-wide
+          "and(col.gte.LO,col.lte.HI),and(…)"     — the banded candidate fetch
+
+        The second arrived when the per-row candidate queries were collapsed
+        into one banded query for the whole page."""
+        if "and(" in expr or "or(" in expr:
+            return self._add(lambda r, e=expr: _or_match(r, e))
         parts = [p.strip() for p in expr.split(",")]
         col = parts[0].split(".")[0]
         allowed = set()

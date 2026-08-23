@@ -29,6 +29,10 @@ _logger = logging.getLogger("caflow.bank_matching")
 # the old equality filter, so this bounds the worst case; the ranker keeps only
 # `max_results` anyway.
 _CANDIDATE_FETCH_LIMIT = 50
+# Hard ceiling on a whole-page pool, however many bands it spans. This client
+# has 5,655 open invoices; the amount band is the only thing keeping the read
+# small, and an unbounded union would undo that.
+_POOL_FETCH_CEILING = 1000
 
 
 def _near_match_ceiling(amount_paise: int) -> int:
@@ -105,19 +109,154 @@ class BankMatchingService:
             "transaction_id": txn_id,
             "amount_paise": amount,
             "direction": "credit" if is_credit else "debit",
-            "suggestions": [{
-                "matched_entity_type": s.entity_type, "matched_entity_id": s.entity_id,
-                "label": s.label, "amount_paise": s.amount_paise,
-                "confidence": s.confidence, "confidence_label": s.confidence_label,
-                "reasons": s.reasons,
-                # >0 when the bank line is SHORT of the document (TDS withheld,
-                # bank charges). The UI must show this rather than let a partial
-                # settlement look like a full one.
-                "difference_paise": s.difference_paise,
-                "tds_rate_bps": s.tds_rate_bps,
-                "party_id": s.party_id,
-                "outstanding_paise": s.outstanding_paise,
-            } for s in ranked],
+            "suggestions": [self._suggestion_dict(s) for s in ranked],
+        }
+
+    def suggestions_for_many(self, db, firm_id: str, client_id: str, txns: list[dict],
+                             max_results: int = 5) -> dict[str, list[dict]]:
+        """Ranked candidates for a whole PAGE, in one pass over each pool.
+
+        Every row on a page searches the same pools. Doing it a row at a time
+        meant five sequential Mumbai round trips each — sixty-five for a page
+        of thirteen — and the reader watched the matches arrive one at a time
+        over several seconds. Here each pool is read ONCE:
+
+            credits present  → invoices + customer names + receipts   (3)
+            debits present   → bills    + vendor names   + payments   (3)
+            either           → journals                               (1)
+
+        Seven round trips for a mixed page of any size, against 5 x N. Same
+        candidates, same ranking — `_in_band` re-applies each row's own band to
+        the shared pool, so no row is offered a document it would not have been
+        offered on its own.
+        """
+        out: dict[str, list[dict]] = {}
+        credits: list[tuple[dict, int]] = []
+        debits: list[tuple[dict, int]] = []
+        for t in txns:
+            amount, is_credit = _txn_amount(t)
+            if amount <= 0:
+                out[str(t.get("id"))] = []
+                continue
+            (credits if is_credit else debits).append((t, amount))
+        if not credits and not debits:
+            return out
+
+        try:
+            # Shared by both directions, and unfiltered by amount either way.
+            journals = self._fetch_journal_pool(db, firm_id, client_id)
+        except Exception as e:  # pragma: no cover - best-effort, as per-row was
+            _logger.warning("journal pool fetch failed for client %s: %s", client_id, e)
+            journals = []
+
+        for items, is_credit in ((credits, True), (debits, False)):
+            if not items:
+                continue
+            amounts = [a for _t, a in items]
+            bands = self._bands(amounts)
+            try:
+                if is_credit:
+                    docs = self._fetch_invoice_pool(db, firm_id, client_id, bands)
+                    parties = self._party_names(db, "customers", firm_id, client_id)
+                    flat = self._fetch_receipt_pool(db, firm_id, client_id, amounts)
+                else:
+                    docs = self._fetch_bill_pool(db, firm_id, client_id, bands)
+                    parties = self._party_names(db, "vendors", firm_id, client_id)
+                    flat = self._fetch_payment_pool(db, firm_id, client_id, amounts)
+            except Exception as e:  # pragma: no cover - matches _candidates'
+                # Best-effort, exactly as the per-row path was: a pool that
+                # cannot be read costs suggestions, never the queue itself.
+                _logger.warning("candidate pool fetch failed for client %s: %s", client_id, e)
+                docs, parties, flat = [], {}, []
+
+            for t, amount in items:
+                if is_credit:
+                    cands = (self._invoices_from(docs, parties, amount)
+                             + self._receipts_from(flat, amount))
+                else:
+                    cands = (self._bills_from(docs, parties, amount)
+                             + self._payments_from(flat, amount))
+                cands += self._journals_from(journals, amount)
+                ranked = rank_suggestions(
+                    amount, str(t.get("transaction_date"))[:10], t.get("description"),
+                    cands, max_results=max_results)
+                out[str(t.get("id"))] = [self._suggestion_dict(x) for x in ranked]
+        return out
+
+    # ── Candidate pools ──────────────────────────────────────────────────────
+    # A page of statement lines all search the SAME pool. Fetching it once per
+    # ROW meant 5 sequential Mumbai round trips per line and 65 for a page of
+    # thirteen — the matches trickled in over seconds, one row lighting up at a
+    # time. These helpers fetch each pool ONCE for the whole page, so the cost
+    # is proportional to the number of POOLS, not the number of rows.
+
+    @staticmethod
+    def _bands(amounts) -> list[tuple[int, int]]:
+        """The per-row amount bands, overlaps merged.
+
+        Each row admits documents from its own amount up to
+        _near_match_ceiling(amount) — it may be short by the near-match band
+        (withheld TDS, bank charges). Merging overlaps keeps the OR filter
+        below as few disjuncts as possible; a page of similar amounts usually
+        collapses to one."""
+        raw = sorted((int(a), _near_match_ceiling(int(a))) for a in amounts if int(a) > 0)
+        merged: list[tuple[int, int]] = []
+        for lo, hi in raw:
+            if merged and lo <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+            else:
+                merged.append((lo, hi))
+        return merged
+
+    @staticmethod
+    def _in_band(value: int, amount: int) -> bool:
+        """This row's OWN band, re-applied in memory. The pool is the union of
+        every row's band, so without this a row would be offered a document
+        that only some OTHER row could have matched."""
+        return amount <= value <= _near_match_ceiling(amount)
+
+    def _banded(self, q, col: str, bands: list[tuple[int, int]], label: str):
+        """`col` within any of `bands`, as ONE query.
+
+        One band is a plain gte/lte — byte-for-byte the query this used to make
+        per row. Several become PostgREST's or(and(…),and(…)), which is the
+        exact union of what the separate queries would have returned: no wider,
+        so nothing irrelevant is pulled, and no narrower, so no row loses a
+        candidate it would have been offered on its own."""
+        if len(bands) == 1:
+            lo, hi = bands[0]
+            return q.gte(col, lo).lte(col, hi)
+        return q.or_(",".join(f"and({col}.gte.{lo},{col}.lte.{hi})" for lo, hi in bands))
+
+    @staticmethod
+    def _pool_limit(bands) -> int:
+        """Per-row this capped at 50. Scaling with the number of bands keeps a
+        paged fetch no more truncated than the per-row fetches it replaces."""
+        return min(_CANDIDATE_FETCH_LIMIT * max(len(bands), 1), _POOL_FETCH_CEILING)
+
+    def _warn_if_truncated(self, rows, bands, label) -> None:
+        if len(rows) >= self._pool_limit(bands):
+            # Loud, because a truncated pool silently costs a row its match and
+            # looks identical to "there was nothing to match".
+            _logger.warning(
+                "%s candidate pool hit its %d-row cap over %d band(s) — some rows "
+                "may be offered fewer candidates than they should be",
+                label, self._pool_limit(bands), len(bands))
+
+    @staticmethod
+    def _suggestion_dict(s) -> dict:
+        return {
+            "matched_entity_type": s.entity_type, "matched_entity_id": s.entity_id,
+            "label": s.label, "amount_paise": s.amount_paise,
+            "confidence": s.confidence, "confidence_label": s.confidence_label,
+            "reasons": s.reasons,
+            # >0 when the bank line is SHORT of the document (TDS withheld,
+            # bank charges). The UI must show this rather than let a partial
+            # settlement look like a full one.
+            "difference_paise": s.difference_paise,
+            "tds_rate_bps": s.tds_rate_bps,
+            "party_id": s.party_id,
+            "outstanding_paise": s.outstanding_paise,
         }
 
     def _candidates(self, db, firm_id, client_id, amount, is_credit) -> list[Candidate]:
@@ -144,25 +283,39 @@ class BankMatchingService:
         except Exception:
             return {}
 
+    def _fetch_invoice_pool(self, db, firm_id, client_id, bands) -> list[dict]:
+        """Open sales invoices within any of `bands`. ONE query.
+
+        deleted_at filter: a soft-deleted invoice is not a live receivable and
+        must never be suggested as the counterparty for a bank credit.
+
+        Amount band, not equality: the bank line may be SHORT of the invoice
+        (customer withheld TDS, or the bank took charges). rank_suggestions
+        scores those below exact matches and labels the shortfall; fetching
+        only exact-amount rows would leave it nothing to score. Upper bound
+        only — a receipt LARGER than the invoice isn't settling it."""
+        if not bands:
+            return []
+        q = (db.table("client_sales_invoices")
+             .select("id, invoice_no, invoice_date, total_paise, paid_paise, customer_id, status")
+             .eq("firm_id", firm_id).eq("client_id", client_id)
+             .is_("deleted_at", "null"))
+        rows = (self._banded(q, "total_paise", bands, "invoice")
+                .limit(self._pool_limit(bands)).execute().data or [])
+        self._warn_if_truncated(rows, bands, "invoice")
+        return rows
+
     def _invoice_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
-        # deleted_at filter: a soft-deleted invoice is not a live receivable and
-        # must never be suggested as the counterparty for a bank credit.
-        #
-        # Amount band, not equality: the bank line may be SHORT of the invoice
-        # (customer withheld TDS, or the bank took charges). rank_suggestions
-        # scores those below exact matches and labels the shortfall; fetching
-        # only exact-amount rows here would leave it nothing to score. Upper
-        # bound only — a receipt LARGER than the invoice isn't settling it.
-        rows = (db.table("client_sales_invoices")
-                .select("id, invoice_no, invoice_date, total_paise, paid_paise, customer_id, status")
-                .eq("firm_id", firm_id).eq("client_id", client_id)
-                .is_("deleted_at", "null")
-                .gte("total_paise", amount)
-                .lte("total_paise", _near_match_ceiling(amount))
-                .limit(_CANDIDATE_FETCH_LIMIT).execute().data or [])
+        bands = self._bands([amount])
+        rows = self._fetch_invoice_pool(db, firm_id, client_id, bands)
         customers = self._party_names(db, "customers", firm_id, client_id)
+        return self._invoices_from(rows, customers, amount)
+
+    def _invoices_from(self, rows, customers, amount) -> list[Candidate]:
         out = []
         for r in rows:
+            if not self._in_band(int(r.get("total_paise") or 0), amount):
+                continue
             # A draft invoice was never issued — no AR journal exists for a bank
             # transaction to settle against (task #222: same pattern as the
             # outstanding-balance functions excluding draft/cancelled).
@@ -182,27 +335,38 @@ class BankMatchingService:
             ))
         return out
 
+    def _fetch_bill_pool(self, db, firm_id, client_id, bands) -> list[dict]:
+        """Open purchase bills within any of `bands`. ONE query.
+
+        Match on net_payable_paise, not total_paise: the money that actually
+        leaves the bank for a vendor equals the bill's NET payable (total minus
+        any TDS withheld / debit-note / credit-note adjustment) — which is also
+        exactly what settlement relieves. Gating on total_paise meant any bill
+        with TDS never surfaced as a candidate for its own outgoing payment.
+        deleted_at filter: a soft-deleted bill is not a live payable."""
+        if not bands:
+            return []
+        q = (db.table("purchase_bills")
+             .select("id, bill_no, bill_date, total_paise, net_payable_paise, vendor_id, status")
+             .eq("firm_id", firm_id).eq("client_id", client_id)
+             .is_("deleted_at", "null"))
+        rows = (self._banded(q, "net_payable_paise", bands, "bill")
+                .limit(self._pool_limit(bands)).execute().data or [])
+        self._warn_if_truncated(rows, bands, "bill")
+        return rows
+
     def _bill_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
-        # Match on net_payable_paise, not total_paise: the money that actually
-        # leaves the bank for a vendor equals the bill's NET payable (total minus
-        # any TDS withheld / debit-note / credit-note adjustment) — which is also
-        # exactly what settlement relieves. Gating on total_paise meant any bill
-        # with TDS never surfaced as a candidate for its own outgoing payment.
-        # deleted_at filter: a soft-deleted bill is not a live payable.
-        # Amount band rather than equality — same reasoning as
-        # _invoice_candidates: a payment can fall short of the payable (bank
-        # charges on a remittance, a small withheld amount). rank_suggestions
-        # ranks and labels the difference.
-        rows = (db.table("purchase_bills")
-                .select("id, bill_no, bill_date, total_paise, net_payable_paise, vendor_id, status")
-                .eq("firm_id", firm_id).eq("client_id", client_id)
-                .is_("deleted_at", "null")
-                .gte("net_payable_paise", amount)
-                .lte("net_payable_paise", _near_match_ceiling(amount))
-                .limit(_CANDIDATE_FETCH_LIMIT).execute().data or [])
+        bands = self._bands([amount])
+        rows = self._fetch_bill_pool(db, firm_id, client_id, bands)
         vendors = self._party_names(db, "vendors", firm_id, client_id)
+        return self._bills_from(rows, vendors, amount)
+
+    def _bills_from(self, rows, vendors, amount) -> list[Candidate]:
         out = []
         for r in rows:
+            if not self._in_band(
+                    int(r.get("net_payable_paise") or r.get("total_paise") or 0), amount):
+                continue
             # A draft bill was never received — no AP journal exists for a bank
             # transaction to settle against (task #222: same pattern as the
             # outstanding-balance functions excluding draft/cancelled).
@@ -220,32 +384,63 @@ class BankMatchingService:
             ))
         return out
 
-    def _receipt_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
-        rows = (db.table("receipts").select("id, receipt_no, receipt_date, amount_paise")
+    def _fetch_receipt_pool(self, db, firm_id, client_id, amounts) -> list[dict]:
+        """Receipts at any of these exact amounts. ONE query — these match on
+        equality, so the union is a plain IN rather than banded ORs."""
+        if not amounts:
+            return []
+        return (db.table("receipts").select("id, receipt_no, receipt_date, amount_paise")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                .eq("amount_paise", amount).execute().data or [])
+                .in_("amount_paise", sorted(set(int(a) for a in amounts)))
+                .limit(self._pool_limit([(0, 0)] * len(set(amounts)))).execute().data or [])
+
+    def _receipt_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
+        return self._receipts_from(
+            self._fetch_receipt_pool(db, firm_id, client_id, [amount]), amount)
+
+    def _receipts_from(self, rows, amount) -> list[Candidate]:
+        rows = [r for r in rows if int(r.get("amount_paise") or 0) == int(amount)]
         return [Candidate(
             entity_type="receipt", entity_id=r["id"],
             label=f"Receipt {r.get('receipt_no', '')}", amount_paise=int(r.get("amount_paise") or 0),
             entity_date=str(r.get("receipt_date") or "")[:10],
         ) for r in rows]
 
-    def _payment_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
-        rows = (db.table("purchase_payments").select("id, payment_no, payment_date, amount_paise")
+    def _fetch_payment_pool(self, db, firm_id, client_id, amounts) -> list[dict]:
+        """Purchase payments at any of these exact amounts. ONE query."""
+        if not amounts:
+            return []
+        return (db.table("purchase_payments").select("id, payment_no, payment_date, amount_paise")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                .eq("amount_paise", amount).execute().data or [])
+                .in_("amount_paise", sorted(set(int(a) for a in amounts)))
+                .limit(self._pool_limit([(0, 0)] * len(set(amounts)))).execute().data or [])
+
+    def _payment_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
+        return self._payments_from(
+            self._fetch_payment_pool(db, firm_id, client_id, [amount]), amount)
+
+    def _payments_from(self, rows, amount) -> list[Candidate]:
+        rows = [r for r in rows if int(r.get("amount_paise") or 0) == int(amount)]
         return [Candidate(
             entity_type="purchase_payment", entity_id=r["id"],
             label=f"Payment {r.get('payment_no', '')}", amount_paise=int(r.get("amount_paise") or 0),
             entity_date=str(r.get("payment_date") or "")[:10],
         ) for r in rows]
 
-    def _journal_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
-        rows = (db.table("journal_entries")
+    def _fetch_journal_pool(self, db, firm_id, client_id) -> list[dict]:
+        """Posted journals for the client. This query never had an amount
+        filter — the amount test is done per line, in Python — so it was
+        always ONE query that happened to be re-issued once per row."""
+        return (db.table("journal_entries")
                 .select("id, entry_date, narration, reference_no, "
                         "journal_lines(debit_paise, credit_paise)")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("is_posted", True).limit(200).execute().data or [])
+
+    def _journal_candidates(self, db, firm_id, client_id, amount) -> list[Candidate]:
+        return self._journals_from(self._fetch_journal_pool(db, firm_id, client_id), amount)
+
+    def _journals_from(self, rows, amount) -> list[Candidate]:
         out = []
         for e in rows:
             if any(int(l.get("debit_paise") or 0) == amount or int(l.get("credit_paise") or 0) == amount
@@ -334,12 +529,19 @@ class BankMatchingService:
         return int(getattr(res, "count", None) or 0)
 
     def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched",
-              limit: Optional[int] = None, offset: int = 0) -> list[dict]:
+              limit: Optional[int] = None, offset: int = 0,
+              with_suggestions: bool = False) -> list[dict]:
         """One page of the work queue, enriched with rules and payee history.
 
         limit=None returns the whole view, as this always did — the enrichment
         below is per-row work, so a caller that wants everything still gets
-        everything. The screen passes a limit."""
+        everything. The screen passes a limit.
+
+        with_suggestions attaches each row's ranked match candidates, computed
+        for the whole page at once. The screen used to fetch them one request
+        per row after the queue arrived, which is why the green rows appeared a
+        few at a time; asking for them here makes the page ONE request. Off by
+        default so callers that only want the rows do not pay for the pools."""
         if status not in self._QUEUE_STATUSES:
             raise HTTPException(status_code=422, detail="Invalid queue status.")
         if limit is None:
@@ -428,6 +630,23 @@ class BankMatchingService:
             # Tier 1.4 — what was done with this payee before, WITH the evidence.
             t["history"] = bank_payee_service.as_dict(
                 bank_payee_service.suggest_for(t, history_by_client.get(cid, {})))
+        # Candidates for the WHOLE page in one pass over each pool — see
+        # suggestions_for_many. Never fatal: a pool that cannot be read costs
+        # the reader suggestions, not the queue.
+        if with_suggestions:
+            live = [t for t in txns
+                    if t.get("match_status") not in ("posted", "ignored")
+                    and not t.get("matched_entity_id")]
+            by_client: dict = {}
+            for t in live:
+                by_client.setdefault(t.get("client_id"), []).append(t)
+            found: dict = {}
+            for cid, group in by_client.items():
+                if cid:
+                    found.update(self.suggestions_for_many(db, firm_id, cid, group))
+            for t in txns:
+                t["suggestions"] = found.get(str(t.get("id")), [])
+
         return txns
 
     # ── B.2.2 — categorize (manual or accepting a rule suggestion) ───────────
