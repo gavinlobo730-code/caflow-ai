@@ -73,7 +73,14 @@ class JournalPostingService:
         }
 
     # ── Approve & post a draft ─────────────────────────────────────────────────
-    def post_draft(self, db, firm_id: str, journal_id: str, actor_id: Optional[str] = None) -> dict:
+    def post_draft(self, db, firm_id: str, journal_id: str, actor_id: Optional[str] = None,
+                   actor_auth_id: Optional[str] = None) -> dict:
+        """Approve a draft and put it on the books.
+
+        actor_id is the internal public.users.id — it lands in
+        journal_entries.posted_by, the same id space as created_by (which is
+        FK-enforced against users(id)). actor_auth_id is the Supabase auth id
+        and is used only for audit_log attribution; it falls back to actor_id."""
         res = (db.table("journal_entries").select(self._SELECT)
                .eq("id", journal_id).eq("firm_id", firm_id).single().execute())
         je = res.data
@@ -101,7 +108,7 @@ class JournalPostingService:
             "posted_by": actor_id, "updated_at": now,
         }).eq("id", journal_id).eq("firm_id", firm_id).execute()
 
-        self._audit(firm_id, journal_id, "approve", actor_id, {
+        self._audit(firm_id, journal_id, "approve", actor_auth_id or actor_id, {
             "is_posted": True, "source_type": je.get("source_type"),
             "source_id": je.get("source_id"),
         })

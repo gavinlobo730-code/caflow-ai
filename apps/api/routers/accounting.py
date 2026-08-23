@@ -588,8 +588,11 @@ def post_draft_journal(journal_id: str, current_user: dict = Depends(rbac("accou
     if not db:
         return api_response(True, {"id": journal_id, "is_posted": True})
     _assert_draft_scope(db, current_user, journal_id)
+    # journal_entries.posted_by holds a public.users.id (same id space as
+    # created_by, which is FK-enforced) — not the Supabase auth id.
     return api_response(True, journal_posting_service.post_draft(
-        db, current_user["firm_id"], journal_id, actor_id=current_user.get("auth_user_id")))
+        db, current_user["firm_id"], journal_id, actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id")))
 
 
 def _assert_journal_scope(current_user: dict, entry_id: str) -> dict:
