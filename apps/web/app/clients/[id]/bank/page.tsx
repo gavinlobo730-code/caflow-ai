@@ -43,6 +43,10 @@ import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { TableSkeleton, StatementSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
+// Throttles the per-row candidate lookups. Same helper, same reason, as the
+// cash-flow matrix: one request per visible row, fired at once, is a fan-out at
+// the slowest endpoint in the app.
+import { mapWithLimit } from "@/lib/accounting/cashFlowMatrix";
 import {
   getBankStatements,
   getBankTransactions,
@@ -52,7 +56,7 @@ import {
 
 // ── Tabs, in pipeline order ────────────────────────────────────────────────
 
-type BankTab = "accounts" | "register" | "categorize" | "post" | "reconcile" | "rules";
+type BankTab = "accounts" | "register" | "categorize" | "reconcile" | "rules";
 
 const TABS: { id: BankTab; label: string }[] = [
   { id: "accounts",   label: "Accounts" },
@@ -60,8 +64,11 @@ const TABS: { id: BankTab; label: string }[] = [
   // pipeline: it is where you go to LOOK something up, not a step you work
   // through. Same placement as QuickBooks.
   { id: "register",   label: "Register" },
+  // One screen, not two. Categorising and posting were never two decisions —
+  // they were one decision and its consequence, split across two tabs and eight
+  // sub-views, with a Partner approval in between that nobody could perform at
+  // 300 lines a client. The row posts.
   { id: "categorize", label: "Categorize" },
-  { id: "post",       label: "Post to Books" },
   { id: "reconcile",  label: "Reconcile" },
   // Setup for the Categorize step rather than a step of its own, so it sits
   // after the pipeline — the same place QuickBooks puts its Rules tab.
@@ -104,6 +111,15 @@ interface QueueTxn {
   debit_paise: number; credit_paise: number; balance_paise: number; match_status: string;
   category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
   suggested_category: string | null; needs_review: boolean;
+  /** The counter GL account already chosen for this row, when one was. Categories
+   *  in AUTO_COUNTER_CATEGORIES derive theirs and leave this null. */
+  account_id?: string | null;
+  /** Set once the row is on the books. Its presence is what "Categorized" means. */
+  posted_journal_id?: string | null;
+  /** What a rule proposed for a tax-INCLUSIVE bank charge (CGST Act s.16). A
+   *  proposal only — the person clicking Add is the one asserting the rate. */
+  suggested_gst_rate_bps?: number | null;
+  suggested_is_interstate?: boolean | null;
   // What a matching rule proposes for this row (Rules tab). The account and
   // narration are new: the rule engine used to return only a category.
   suggested_account_id: string | null;
@@ -170,18 +186,25 @@ interface MatchSuggestion {
   outstanding_paise: number | null;
 }
 
+// Three, because a statement line is in one of three states as far as the person
+// clearing it is concerned: still to do, done, or set aside. The five it replaced
+// — Unmatched / Categorized / Needs Review / Matched / Excluded — described the
+// DATA's states, and made a reader classify their own queue before they could
+// work it. Categorized and Matched were two roads to the same place; Needs Review
+// was a subset of Unmatched.
 const QUEUE_FILTERS: { id: string; label: string }[] = [
-  { id: "unmatched", label: "Unmatched" },
-  { id: "categorized", label: "Categorized" },
-  { id: "needs_review", label: "Needs Review" },
-  { id: "matched", label: "Matched" },
-  // Ignoring used to be one-way — no endpoint to undo it and no view that
-  // listed ignored rows, so a mis-click permanently hid a statement line.
-  { id: "ignored", label: "Excluded" },
+  { id: "for_review", label: "For review" },
+  { id: "done",       label: "Categorized" },
+  { id: "ignored",    label: "Excluded" },
 ];
 
+// Categories whose counter account the posting engine derives on its own
+// (posting_map.AUTO_COUNTER). Everything else needs one chosen before the row
+// can post, which is what decides whether the primary button is live.
+const AUTO_COUNTER_CATEGORIES = new Set(["Customer Payment", "Vendor Payment", "GST Payment"]);
+
 function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
-  const [status, setStatus] = useState("unmatched");
+  const [status, setStatus] = useState("for_review");
   const [rows, setRows] = useState<QueueTxn[]>([]);
   const [loading, setLoading] = useState(false);
   const [sugg, setSugg] = useState<Record<string, MatchSuggestion[]>>({});
@@ -204,6 +227,29 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   // B.1.6 — the searchable candidate picker, for the document the ranked list
   // could not reach.
   const [findTxn, setFindTxn] = useState<QueueTxn | null>(null);
+  // Which rows the reader has opened. Everything past the one decision a row
+  // needs lives behind this — payee, history, the other candidates, split,
+  // TDS, exclude. A row that already knows its answer shows a button and
+  // nothing else.
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  // The counter account chosen inline for a category that needs one, before it
+  // has been sent. Keyed by row so two open rows do not share a choice.
+  const [draftAccount, setDraftAccount] = useState<Record<string, string>>({});
+  const [rowError, setRowError] = useState<Record<string, string>>({});
+  // Input GST split out of a tax-inclusive bank charge, per row. Carried here
+  // rather than left in the posting drawer that used to own it: that drawer is
+  // gone, and losing the s.16 split with it would quietly cost every client the
+  // credit on their bank charges.
+  const [gstRate, setGstRate] = useState<Record<string, string>>({});
+  const [gstInterstate, setGstInterstate] = useState<Record<string, boolean>>({});
+
+  function toggleOpen(id: string) {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   function openSettle(t: QueueTxn, from?: { party_id: string | null; matched_entity_id: string; difference_paise: number }) {
     setPrefill(from && from.party_id ? {
@@ -230,7 +276,40 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     }
   }, [clientId, status]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setSelected(new Set()); }, [status]);
+  useEffect(() => { setSelected(new Set()); setOpen(new Set()); }, [status]);
+
+  // Candidates are fetched FOR the reader rather than on request. A row that
+  // says "Match · INV-BULK-00073 · exact amount" needs no thought; a row with a
+  // "Suggest matches" button needs a click before it can even be judged, and
+  // 300 of those is the difference between clearing a statement and dreading it.
+  //
+  // Throttled to three at a time. This endpoint ranks candidates per row, and
+  // firing one per row at once is the fan-out that made the cash-flow matrix
+  // hammer the slowest thing in the app.
+  useEffect(() => {
+    let cancelled = false;
+    const need = rows.filter((t) => !t.matched_entity_id
+                                 && t.match_status !== "ignored"
+                                 && t.match_status !== "posted"
+                                 && sugg[t.id] === undefined);
+    if (need.length === 0) return;
+    (async () => {
+      await mapWithLimit(need, 3, async (t) => {
+        try {
+          const res = (await api.banking.suggestions(t.id)) as
+            { success: boolean; data: { suggestions: MatchSuggestion[] } };
+          if (!cancelled) {
+            setSugg((prev) => ({ ...prev, [t.id]: res.success ? (res.data.suggestions ?? []) : [] }));
+          }
+        } catch {
+          // A candidate lookup that fails must not block the row — it falls back
+          // to the category route, which is always available.
+          if (!cancelled) setSugg((prev) => ({ ...prev, [t.id]: [] }));
+        }
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [rows, sugg]);
 
   async function categorize(id: string, category: string) {
     if (!category) return;
@@ -290,13 +369,78 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       setBulkBusy(false);
     }
   }
-  async function loadSugg(id: string) {
-    setBusy((b) => ({ ...b, [id]: true }));
+  /** The single action behind Match / Add: post the row and settle its document.
+   *  There is no approval step any more — posting is reversible, and a queue
+   *  nobody can get through is not a control. */
+  async function postRow(t: QueueTxn, opts?: { accountId?: string }) {
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    setRowError((e) => ({ ...e, [t.id]: "" }));
     try {
-      const res = (await api.banking.suggestions(id)) as { success: boolean; data: { suggestions: MatchSuggestion[] } };
-      setSugg((s) => ({ ...s, [id]: res.success ? (res.data.suggestions ?? []) : [] }));
-    } finally { setBusy((b) => ({ ...b, [id]: false })); }
+      const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
+      const res = (await api.banking.postTransaction(t.id, {
+        account_id: opts?.accountId ?? draftAccount[t.id] ?? undefined,
+        ...(rate !== "" ? {
+          gst_rate_bps: Number(rate),
+          is_interstate: gstInterstate[t.id] ?? !!t.suggested_is_interstate,
+        } : {}),
+      })) as { success: boolean; error: string | null };
+      if (!res.success) { setRowError((e) => ({ ...e, [t.id]: res.error ?? "Could not post." })); return; }
+      await load();
+    } catch (e) {
+      setRowError((x) => ({ ...x, [t.id]: e instanceof Error ? e.message : "Could not post." }));
+    } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
+
+  /** Accept a candidate and post it, in one click. Two requests, one decision —
+   *  which is the right unit here: "yes, that is the invoice this paid". */
+  async function matchAndPost(t: QueueTxn, sgg: MatchSuggestion) {
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    setRowError((e) => ({ ...e, [t.id]: "" }));
+    try {
+      await api.banking.matchEntity(t.id, {
+        matched_entity_type: sgg.matched_entity_type, matched_entity_id: sgg.matched_entity_id });
+      const res = (await api.banking.postTransaction(t.id, {})) as
+        { success: boolean; error: string | null };
+      if (!res.success) { setRowError((e) => ({ ...e, [t.id]: res.error ?? "Matched, but could not post." })); }
+      await load();
+    } catch (e) {
+      setRowError((x) => ({ ...x, [t.id]: e instanceof Error ? e.message : "Could not match." }));
+    } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+
+  /** Undo. The reason it is safe to go fast: a posted row is one click from
+   *  being back in the queue, so nothing needs approving in advance. */
+  async function undoRow(t: QueueTxn) {
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    setRowError((e) => ({ ...e, [t.id]: "" }));
+    try {
+      await api.banking.unmatch(t.id);
+      setSugg((x) => ({ ...x, [t.id]: undefined as unknown as MatchSuggestion[] }));
+      await load();
+    } catch (e) {
+      setRowError((x) => ({ ...x, [t.id]: e instanceof Error ? e.message : "Could not undo." }));
+    } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+
+  /** The candidate a row can be posted against without anyone thinking: exact
+   *  amount, nothing withheld. A short one goes to the settlement drawer
+   *  instead, because the shortfall is usually TDS and one click must not
+   *  quietly write it off. */
+  function confidentMatch(t: QueueTxn): MatchSuggestion | null {
+    const list = sugg[t.id] ?? [];
+    const best = list.find((x) => x.difference_paise === 0 && x.confidence >= 90);
+    return best ?? null;
+  }
+
+  /** Whether Add can post this row as it stands. */
+  function readyToAdd(t: QueueTxn): boolean {
+    const cat = t.category;
+    if (!cat) return false;
+    if (cat === "Transfer") return Boolean(t.transfer_pair_id);
+    if (AUTO_COUNTER_CATEGORIES.has(cat)) return true;
+    return Boolean(draftAccount[t.id] || t.account_id);
+  }
+
   async function accept(id: string, s: MatchSuggestion) {
     setBusy((b) => ({ ...b, [id]: true }));
     try { await api.banking.matchEntity(id, { matched_entity_type: s.matched_entity_type, matched_entity_id: s.matched_entity_id }); await load(); }
@@ -529,11 +673,13 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                   {bulkBusy ? "Applying…" : "Apply"}
                 </button>
                 <span className="text-[#C7D2FE]">|</span>
-                {/* Tier 1.7 — accept each row's OWN suggestion. One request, an
-                    outcome per row, because some will legitimately not apply. */}
+                {/* How 300 lines actually get cleared: take each row's OWN
+                    answer and post it. One request, an outcome per row, because
+                    some legitimately will not apply and a bare count would hide
+                    exactly the ones needing attention. */}
                 <button onClick={() => runBatch("accept")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
-                  Accept suggestions
+                  Accept &amp; post
                 </button>
                 <button onClick={() => runBatch("exclude")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5 font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50">
@@ -631,72 +777,165 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Categorize (B.2.2) */}
-                <select
-                  value={t.category ?? ""} disabled={busy[t.id]}
-                  onChange={(e) => categorize(t.id, e.target.value)}
-                  className="px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                  <option value="">{t.suggested_category ? `Suggested: ${t.suggested_category}` : "— Category —"}</option>
-                  {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                {t.category && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span>}
-
-                {/* Match (B.2.1 / B.2.5) */}
-                {t.match_status === "ignored" ? (
-                  <button onClick={() => setIgnored(t.id, false)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                    Restore to queue
+              {/* ── The one decision this row needs ───────────────────────
+                  A statement line asks one question — what is this? — and the
+                  answer is either "that invoice" or "this category". Everything
+                  else (payee, history, the other candidates, split, TDS,
+                  exclude) is behind the disclosure below, because a row that
+                  already knows its answer should show a button and nothing else.
+                  Nine controls on a line that matched at 100% is what this
+                  replaces. */}
+              {t.match_status === "posted" ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">
+                    Posted{t.category ? ` · ${t.category}` : ""}
+                  </span>
+                  <button onClick={() => undoRow(t)} disabled={busy[t.id]}
+                    className="text-[10px] text-[#64748B] hover:text-[#334155] hover:underline">
+                    Undo
                   </button>
-                ) : t.matched_entity_id ? (
-                  <>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">Matched · {t.matched_entity_type}</span>
-                    <button onClick={() => reject(t.id)} disabled={busy[t.id]} className="text-[10px] text-red-600 hover:underline">Unmatch</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => loadSugg(t.id)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                      Suggest matches
-                    </button>
-                    {/* B.1.6 — the way out when the ranked list has nothing. It
-                        searches past the amount band, so a part-payment or an
-                        older invoice is reachable by number. */}
-                    <button onClick={() => setFindTxn(t)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                      Find other matches
-                    </button>
-                    {/* Renamed from "Split across multiple invoices/bills": this
-                        is also how you settle ONE invoice paid net of TDS, and
-                        nobody looks under "split" for that. */}
-                    <button onClick={() => openSettle(t)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                      Settle {t.credit_paise > 0 ? "invoices" : "bills"} / TDS
-                    </button>
-                    <button onClick={() => setIgnored(t.id, true)} disabled={busy[t.id]} className="text-[10px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto">
-                      Exclude
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {/* What a matching rule proposes for this row, with one click to
-                  take it. Displaying the suggestion without a way to apply it
-                  would repeat the original defect one layer up. */}
-              {t.suggested_by_rule && !t.category && t.match_status !== "ignored" && (
-                <div className="flex items-center gap-2 ml-1">
-                  <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
-                    Rule <span className="font-medium text-[#64748B]">{t.suggested_by_rule}</span>
-                    {t.suggested_category ? ` → ${t.suggested_category}` : ""}
-                    {t.suggested_account_id ? " + account" : ""}
-                    {t.suggested_narration ? ` · ${t.suggested_narration}` : ""}
-                  </p>
-                  <button onClick={() => applyRule(t)} disabled={busy[t.id]}
-                    className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
-                    Apply rule
+                </div>
+              ) : t.match_status === "ignored" ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B]">Excluded</span>
+                  <button onClick={() => setIgnored(t.id, false)} disabled={busy[t.id]}
+                    className="text-[10px] text-[#64748B] hover:text-[#334155] hover:underline">
+                    Put back in the queue
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(() => {
+                    const best = confidentMatch(t);
+                    // Already linked to a document: nothing left to decide.
+                    if (t.matched_entity_id) {
+                      return (
+                        <>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">
+                            Matched · {t.matched_entity_type}
+                          </span>
+                          <button onClick={() => postRow(t)} disabled={busy[t.id]}
+                            className="text-xs px-3 py-1 bg-[#059669] text-white rounded font-medium hover:bg-[#047857] disabled:opacity-50">
+                            {busy[t.id] ? "Posting…" : "Post"}
+                          </button>
+                        </>
+                      );
+                    }
+                    // An exact candidate: one click means "yes, that one".
+                    if (best) {
+                      return (
+                        <>
+                          <p className="text-[11px] text-[#334155] min-w-0 truncate">
+                            <span className="text-[#94A3B8]">Match</span>{" "}
+                            <span className="font-medium">{best.label}</span>
+                            <span className="text-[10px] text-[#94A3B8]"> · {best.reasons[0]}</span>
+                          </p>
+                          <button onClick={() => matchAndPost(t, best)} disabled={busy[t.id]}
+                            className="ml-auto text-xs px-3 py-1 bg-[#059669] text-white rounded font-medium hover:bg-[#047857] disabled:opacity-50">
+                            {busy[t.id] ? "Matching…" : "Match"}
+                          </button>
+                        </>
+                      );
+                    }
+                    // Otherwise: code it. Pre-filled by a rule or by what this
+                    // payee got last time, so most rows arrive answered.
+                    return (
+                      <>
+                        <select
+                          value={t.category ?? ""} disabled={busy[t.id]}
+                          onChange={(e) => categorize(t.id, e.target.value)}
+                          className="px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                          <option value="">{t.suggested_category ? `Suggested: ${t.suggested_category}` : "— Category —"}</option>
+                          {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        {t.category && !AUTO_COUNTER_CATEGORIES.has(t.category) && t.category !== "Transfer" && (
+                          <select
+                            value={draftAccount[t.id] ?? t.account_id ?? ""} disabled={busy[t.id]}
+                            onChange={(e) => setDraftAccount((d) => ({ ...d, [t.id]: e.target.value }))}
+                            className="px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[14rem]">
+                            <option value="">— Account —</option>
+                            {accounts.map((a) => (
+                              <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>
+                            ))}
+                          </select>
+                        )}
+                        <button onClick={() => postRow(t)} disabled={busy[t.id] || !readyToAdd(t)}
+                          title={readyToAdd(t) ? "" : "Choose a category — and an account, if the category needs one."}
+                          className="ml-auto text-xs px-3 py-1 bg-[#4338CA] text-white rounded font-medium hover:bg-[#3730A3] disabled:opacity-40 disabled:cursor-not-allowed">
+                          {busy[t.id] ? "Adding…" : "Add"}
+                        </button>
+                      </>
+                    );
+                  })()}
+                  <button onClick={() => toggleOpen(t.id)}
+                    aria-label={open.has(t.id) ? "Hide details" : "Show details"}
+                    className="text-[11px] px-1.5 text-[#94A3B8] hover:text-[#475569]">
+                    {open.has(t.id) ? "Less" : "More"}
                   </button>
                 </div>
               )}
 
-              {/* An already-paired transfer. The receiving side says plainly that
-                  it will not post, so nobody goes looking for the missing button. */}
-              {t.transfer_pair_id && (
+              {rowError[t.id] && (
+                <p className="text-[10px] text-red-600 ml-1">{rowError[t.id]}</p>
+              )}
+
+              {/* ── Everything else, only when asked for ─────────────────── */}
+              {open.has(t.id) && t.match_status !== "posted" && (
+                <div className="flex items-center gap-2 flex-wrap ml-1 pt-1">
+                  {t.matched_entity_id ? (
+                    <button onClick={() => reject(t.id)} disabled={busy[t.id]}
+                      className="text-[10px] text-red-600 hover:underline">Unmatch</button>
+                  ) : (
+                    <>
+                      <button onClick={() => setFindTxn(t)} disabled={busy[t.id]}
+                        className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                        Find other matches
+                      </button>
+                      <button onClick={() => openSettle(t)} disabled={busy[t.id]}
+                        className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                        Settle {t.credit_paise > 0 ? "invoices" : "bills"} / TDS
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => setIgnored(t.id, true)} disabled={busy[t.id]}
+                    className="text-[10px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto">
+                    Exclude
+                  </button>
+                </div>
+              )}
+
+              {/* Input GST on a tax-inclusive charge (CGST Act s.16). Offered on
+                  money going out, because that is what a bank charge is, and
+                  left blank by default — the rate is an assertion the person
+                  posting makes, not something the app decides for them. */}
+              {open.has(t.id) && t.debit_paise > 0 && t.match_status === "unmatched" && (
+                <div className="flex items-center gap-2 flex-wrap ml-1">
+                  <label className="text-[10px] text-[#94A3B8]">Input GST on this charge</label>
+                  <select
+                    value={gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "")}
+                    disabled={busy[t.id]}
+                    onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
+                    className="px-2 py-0.5 text-[10px] border border-[#E2E8F0] rounded">
+                    <option value="">Don&apos;t split</option>
+                    {GST_RATE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1 text-[10px] text-[#64748B]">
+                    <input type="checkbox" disabled={busy[t.id]}
+                      checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
+                      onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
+                      className="h-3 w-3 rounded border-[#CBD5E1]" />
+                    IGST (inter-state)
+                  </label>
+                </div>
+              )}
+
+              {/* A confirmed transfer stays visible whatever the disclosure is
+                  doing: the receiving side saying "the paying side posts this"
+                  is the answer to "why has this row no button", and hiding it
+                  recreates the confusion it exists to prevent. */}
+              {t.transfer_pair_id && t.match_status !== "posted" && (
                 <div className="flex items-center gap-2 ml-1">
                   <p className="text-[10px] text-[#64748B] min-w-0 truncate">
                     <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 mr-1">
@@ -709,6 +948,30 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                   <button onClick={() => undoTransfer(t)} disabled={busy[t.id]}
                     className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] shrink-0">
                     Not a transfer
+                  </button>
+                </div>
+              )}
+
+              {/* ── Behind the disclosure ─────────────────────────────────
+                  The evidence and the alternatives. A reader who is happy with
+                  the row's answer never opens this; a reader who is not finds
+                  everything here, including why the app proposed what it did. */}
+              {open.has(t.id) && (<>
+
+              {/* What a matching rule proposes, with one click to take all of it
+                  — the category AND the account it named, which the dropdown
+                  alone cannot carry. */}
+              {t.suggested_by_rule && !t.category && t.match_status !== "ignored" && (
+                <div className="flex items-center gap-2 ml-1">
+                  <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
+                    Rule <span className="font-medium text-[#64748B]">{t.suggested_by_rule}</span>
+                    {t.suggested_category ? ` → ${t.suggested_category}` : ""}
+                    {t.suggested_account_id ? " + account" : ""}
+                    {t.suggested_narration ? ` · ${t.suggested_narration}` : ""}
+                  </p>
+                  <button onClick={() => applyRule(t)} disabled={busy[t.id]}
+                    className="text-[10px] px-2 py-0.5 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded hover:bg-[#E0E7FF] shrink-0">
+                    Apply rule
                   </button>
                 </div>
               )}
@@ -808,13 +1071,15 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                   </button>
                 </p>
               )}
+
+              </>)}
             </div>
           ))}
         </div>
         </>
       )}
       <p className="text-[10px] text-[#94A3B8] text-center">
-        Suggestions &amp; categorization only — accepting a match links the transaction; it does not post a journal (that is a later phase).
+        Match or Add posts the transaction and settles its document. Undo puts it back.
       </p>
       {splitTxn && (
         <MultiInvoiceMatchModal
@@ -1384,55 +1649,6 @@ function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
   );
 }
 
-// ── Bank Posting (B.3) — Ready to Post / Posted / Review drawer ────────────
-// Posting is EXPLICIT and human-initiated. The browser never builds journals;
-// it only previews the backend's proposed entry and asks the user to confirm.
-
-// Categories whose counter GL must be chosen explicitly (mirror of the backend
-// posting_map.EXPLICIT_COUNTER — display logic only; the API re-validates).
-const EXPLICIT_COUNTER_CATEGORIES = new Set([
-  "Expense", "Salary", "Loan", "Capital", "Interest", "Sales Receipt", "Other",
-]);
-const TRANSFER_CATEGORY = "Transfer";
-// Categories that settle a business document when matched (posting_map.
-// SETTLES_SALES_INVOICE). Such a transaction pays that document in full, so it
-// cannot also be split across accounts — the server refuses it, and the drawer
-// should not offer it.
-const SETTLING_CATEGORIES = new Set(["Customer Payment", "Sales Receipt"]);
-
-interface ReadyTxn {
-  id: string; transaction_date: string; description: string; reference_no: string | null;
-  debit_paise: number; credit_paise: number; match_status: string;
-  category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
-  // What a matching rule proposes for this transaction (bank_posting_service.
-  // _annotate_rule_suggestions). Prefills the drawer; nothing is applied until
-  // the CA clicks Post.
-  suggested_account_id?: string | null;
-  suggested_gst_rate_bps?: number | null;
-  suggested_is_interstate?: boolean;
-}
-interface PostedTxn extends ReadyTxn {
-  posted_journal_id: string; posted_at: string | null; posted_by: string | null;
-}
-interface PreviewLine { account_id: string; account_name: string; debit_paise: number; credit_paise: number; }
-interface SettlementPreview {
-  entity: string; label: string | null; allocate_paise: number;
-  new_paid_paise: number; total_paise: number;
-  credited_to_party_paise?: number;
-}
-interface ChargeGstPreview {
-  rate_bps: number; is_interstate: boolean; gross_paise: number; taxable_paise: number;
-  cgst_paise: number; sgst_paise: number; igst_paise: number; tax_paise: number;
-}
-interface PostingPreview {
-  transaction_id: string; category: string | null; entry_type: string; narration: string;
-  lines: PreviewLine[]; total_debit_paise: number; total_credit_paise: number;
-  settlement: SettlementPreview | null;
-  /** Present only when a GST split was requested — the server's arithmetic, so
-   *  the CA can check ₹590 → ₹500 + ₹90 rather than take the lines on trust. */
-  gst?: ChargeGstPreview;
-}
-
 // Label only — the split itself is computed server-side (CLAUDE.md: no business
 // logic in the frontend). "No GST" is 0 and is a real, deliberate answer;
 // "Don't split" is the absence of a rate, which posts the gross as before.
@@ -1443,669 +1659,6 @@ const GST_RATE_OPTIONS: { value: number; label: string }[] = [
   { value: 1800, label: "18% — standard for banking services" },
   { value: 2800, label: "28%" },
 ];
-
-const isBankish = (a: Account) =>
-  a.account_type === "Asset" && /bank|cash/i.test(`${a.account_subtype ?? ""} ${a.account_name}`);
-
-function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
-  const [view, setView] = useState<"ready" | "pending" | "posted">("ready");
-  const [ready, setReady] = useState<ReadyTxn[]>([]);
-  const [pending, setPending] = useState<ReadyTxn[]>([]);
-  const [posted, setPosted] = useState<PostedTxn[]>([]);
-  const [loading, setLoading] = useState(false);
-  // Distinguishes "fetch failed" from "nothing ready/pending/posted" — a masked
-  // failure here reads as a fully-caught-up posting queue, which it may not be.
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reviewing, setReviewing] = useState<ReadyTxn | null>(null);
-
-  const load = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
-    setLoading(true);
-    try {
-      const [r, pen, p] = await Promise.all([
-        api.banking.readyToPost({ client_id: clientId }) as Promise<{ success: boolean; data: ReadyTxn[] }>,
-        api.banking.pending({ client_id: clientId }) as Promise<{ success: boolean; data: ReadyTxn[] }>,
-        api.banking.posted({ client_id: clientId }) as Promise<{ success: boolean; data: PostedTxn[] }>,
-      ]);
-      if (!r.success || !pen.success || !p.success) throw new Error("Couldn't load the bank posting queue.");
-      setReady(r.data ?? []);
-      setPending(pen.data ?? []);
-      setPosted(p.data ?? []);
-      setLoadError(null);
-    } catch (e) {
-      setReady([]); setPending([]); setPosted([]);
-      setLoadError(e instanceof Error ? e.message : "Couldn't load the bank posting queue.");
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId]);
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div className="space-y-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
-          {([["ready", `Ready to Post (${ready.length})`], ["pending", `Pending Approval (${pending.length})`], ["posted", `Posted (${posted.length})`]] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setView(id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
-      </div>
-
-      {loading ? <TableSkeleton cols={6} rows={5} /> : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
-          <p className="text-sm text-red-600 font-medium mb-2">{loadError}</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
-        </div>
-      ) : view === "pending" ? (
-        pending.length === 0 ? (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
-            No drafts awaiting approval. Create one from “Ready to Post”, then approve it under the Approvals tab.
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-[#F8FAFC] text-[#64748B]"><tr>
-                <th className="px-3 py-2 text-left font-medium">Date</th>
-                <th className="px-3 py-2 text-right font-medium">Amount</th>
-                <th className="px-3 py-2 text-left font-medium">Narration</th>
-                <th className="px-3 py-2 text-left font-medium">Category</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-              </tr></thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {pending.map((t) => (
-                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{String(t.transaction_date).slice(0, 10)}</td>
-                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
-                      {t.credit_paise > 0 ? <span className="text-green-700">{fmt(t.credit_paise)} Cr</span> : <span className="text-red-700">{fmt(t.debit_paise)} Dr</span>}
-                    </td>
-                    <td className="px-3 py-2 max-w-[220px] truncate text-[#334155]" title={t.description}>{t.description}</td>
-                    <td className="px-3 py-2">{t.category ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span> : <span className="text-[#94A3B8]">—</span>}</td>
-                    <td className="px-3 py-2"><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">Draft — awaiting approval</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : view === "ready" ? (
-        ready.length === 0 ? (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
-            Nothing ready to post. Categorize transactions under the Categorize tab first.
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-[#F8FAFC] text-[#64748B]">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Date</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2 text-left font-medium">Narration</th>
-                  <th className="px-3 py-2 text-left font-medium">Category</th>
-                  <th className="px-3 py-2 text-left font-medium">Match</th>
-                  <th className="px-3 py-2 text-right font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {ready.map((t) => (
-                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{String(t.transaction_date).slice(0, 10)}</td>
-                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
-                      {t.credit_paise > 0
-                        ? <span className="text-green-700">{fmt(t.credit_paise)} Cr</span>
-                        : <span className="text-red-700">{fmt(t.debit_paise)} Dr</span>}
-                    </td>
-                    <td className="px-3 py-2 max-w-[220px] truncate text-[#334155]" title={t.description}>{t.description}</td>
-                    <td className="px-3 py-2">
-                      {t.category
-                        ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span>
-                        : <span className="text-[#94A3B8]">—</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      {t.matched_entity_id
-                        ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">{t.matched_entity_type}</span>
-                        : <span className="text-[#94A3B8]">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <button onClick={() => setReviewing(t)}
-                        className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-                        Review &amp; Create Draft
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : (
-        posted.length === 0 ? (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No posted transactions yet.</div>
-        ) : (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-[#F8FAFC] text-[#64748B]">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Date</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2 text-left font-medium">Journal #</th>
-                  <th className="px-3 py-2 text-left font-medium">Posted At</th>
-                  <th className="px-3 py-2 text-left font-medium">Posted By</th>
-                  <th className="px-3 py-2 text-left font-medium">Linked Entity</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {posted.map((t) => (
-                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{String(t.transaction_date).slice(0, 10)}</td>
-                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
-                      {t.credit_paise > 0
-                        ? <span className="text-green-700">{fmt(t.credit_paise)} Cr</span>
-                        : <span className="text-red-700">{fmt(t.debit_paise)} Dr</span>}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[#475569]" title={t.posted_journal_id}>{t.posted_journal_id.slice(0, 8)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{t.posted_at ? String(t.posted_at).slice(0, 16).replace("T", " ") : "—"}</td>
-                    <td className="px-3 py-2 font-mono text-[#94A3B8]" title={t.posted_by ?? ""}>{t.posted_by ? t.posted_by.slice(0, 8) : "—"}</td>
-                    <td className="px-3 py-2 text-[#475569]">{t.matched_entity_id ? t.matched_entity_type : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
-
-      <p className="text-[10px] text-[#94A3B8] text-center">
-        Reviewing creates a DRAFT journal — it does not hit the books. Approve it under the Approvals tab to post and settle. Nothing is posted automatically.
-      </p>
-
-      {reviewing && (
-        <PostingReviewDrawer
-          txn={reviewing} accounts={accounts}
-          onClose={() => setReviewing(null)}
-          onPosted={() => { setReviewing(null); load(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-function PostingReviewDrawer({
-  txn, accounts, onClose, onPosted,
-}: {
-  txn: ReadyTxn; accounts: Account[]; onClose: () => void; onPosted: () => void;
-}) {
-  const [bankAccountId, setBankAccountId] = useState("");      // "" = auto (from statement)
-  // The counter GL and the GST treatment start from whatever the client's
-  // matching rule proposed, so a recurring bank charge is one click rather than
-  // three fields re-typed every month. All still overridable here.
-  const [accountId, setAccountId] = useState(txn.suggested_account_id ?? "");
-  const [toBankAccountId, setToBankAccountId] = useState(""); // transfer destination
-  // "" = don't split (post the gross, as before). "0" is a DIFFERENT answer —
-  // "this charge carries no GST" — so the two must not share a representation.
-  const [gstRate, setGstRate] = useState<string>(
-    txn.suggested_gst_rate_bps === null || txn.suggested_gst_rate_bps === undefined
-      ? "" : String(txn.suggested_gst_rate_bps));
-  const [isInterstate, setIsInterstate] = useState(!!txn.suggested_is_interstate);
-  const [preview, setPreview] = useState<PostingPreview | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [posting, setPosting] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
-
-  // Tier 1.2 — split state. `splitRows` holds rupee STRINGS while editing (a
-  // half-typed "40." is not a number); paise conversion happens once, at the
-  // edge, and every comparison below is on integer paise.
-  const [splitRows, setSplitRows] = useState<{ account_id: string; amount: string }[]>([]);
-  const [isSplit, setIsSplit] = useState(false);
-  const [splitSaved, setSplitSaved] = useState(false);
-  const [savingSplit, setSavingSplit] = useState(false);
-  const [splitError, setSplitError] = useState<string | null>(null);
-
-  const category = txn.category ?? "";
-  const needsCounter = EXPLICIT_COUNTER_CATEGORIES.has(category);
-  const isTransfer = category === TRANSFER_CATEGORY;
-  const bankAccounts = accounts.filter(isBankish);
-
-  const txnAmountPaise = txn.credit_paise > 0 ? txn.credit_paise : txn.debit_paise;
-  // A transfer moves money between two of the client's own accounts, and a
-  // matched settling transaction settles that document in full — the server
-  // refuses a split on either, so don't offer one.
-  const settlesADocument = !!txn.matched_entity_id
-    && ((SETTLING_CATEGORIES.has(category) && txn.matched_entity_type === "sales_invoice")
-      || (category === "Vendor Payment" && txn.matched_entity_type === "purchase_bill"));
-  const canSplit = !isTransfer && !settlesADocument;
-  const allocatedPaise = splitRows.reduce(
-    (sum, r) => sum + rsToP(parseFloat(r.amount || "0") || 0), 0);
-  const unallocatedPaise = txnAmountPaise - allocatedPaise;
-
-  // Load any split already saved for this transaction.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = (await api.banking.splits.get(txn.id)) as {
-          success: boolean; data: { splits: { account_id: string; amount_paise: number }[] };
-        };
-        if (cancelled || !res.success || !res.data?.splits?.length) return;
-        setSplitRows(res.data.splits.map((s) => ({
-          account_id: s.account_id, amount: (s.amount_paise / 100).toFixed(2),
-        })));
-        setIsSplit(true);
-        setSplitSaved(true);
-      } catch {
-        // No split, or the read failed — either way the drawer works without one.
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [txn.id]);
-
-  function startSplit() {
-    // Seed with the whole amount on the first row, so the gap starts at zero and
-    // the CA subtracts rather than building up from nothing.
-    setSplitRows([
-      { account_id: accountId || "", amount: (txnAmountPaise / 100).toFixed(2) },
-      { account_id: "", amount: "" },
-    ]);
-    setIsSplit(true); setSplitSaved(false); setSplitError(null);
-  }
-
-  async function cancelSplit() {
-    setSplitError(null);
-    if (splitSaved) {
-      // Clear it server-side too, or the transaction stays split in the database
-      // while the drawer says otherwise.
-      setSavingSplit(true);
-      try {
-        await api.banking.splits.replace(txn.id, []);
-      } catch (e) {
-        setSplitError(e instanceof Error ? e.message : "Couldn't remove the split.");
-        setSavingSplit(false);
-        return;
-      }
-      setSavingSplit(false);
-    }
-    setSplitRows([]); setIsSplit(false); setSplitSaved(false);
-    loadPreview();
-  }
-
-  function updateSplit(i: number, patch: Partial<{ account_id: string; amount: string }>) {
-    setSplitRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-    setSplitSaved(false);
-  }
-  function addSplit() {
-    setSplitRows((rows) => [...rows, { account_id: "", amount: "" }]);
-    setSplitSaved(false);
-  }
-  function removeSplit(i: number) {
-    setSplitRows((rows) => rows.filter((_, idx) => idx !== i));
-    setSplitSaved(false);
-  }
-
-  async function saveSplit() {
-    setSavingSplit(true); setSplitError(null);
-    try {
-      const res = (await api.banking.splits.replace(txn.id, splitRows.map((r) => ({
-        account_id: r.account_id,
-        amount_paise: rsToP(parseFloat(r.amount || "0") || 0),
-      })))) as { success: boolean; error: string | null };
-      if (!res.success) throw new Error(res.error ?? "Couldn't save the split.");
-      setSplitSaved(true);
-      loadPreview();                       // the journal changes shape once split
-    } catch (e) {
-      setSplitError(e instanceof Error ? e.message : "Couldn't save the split.");
-    } finally {
-      setSavingSplit(false);
-    }
-  }
-  // A GST split only applies to money LEAVING the bank against an explicitly
-  // chosen expense account — the server refuses anything else, so don't offer it.
-  const canSplitGst = needsCounter && !isTransfer && txn.debit_paise > 0;
-  const gstRateBps = canSplitGst && gstRate !== "" ? Number(gstRate) : undefined;
-
-  // Can we even attempt a preview yet? (the API enforces this too)
-  // A SAVED split supplies the counter accounts itself, so the single-account
-  // requirement no longer applies. An unsaved one does not: the server builds
-  // the preview from what is stored, so previewing mid-edit would show the
-  // journal for the previous state and read as though the edit had taken.
-  const ready = (!needsCounter || !!accountId || splitSaved)
-    && (!isTransfer || !!toBankAccountId)
-    && (!isSplit || splitSaved);
-
-  const loadPreview = useCallback(async () => {
-    if (!ready) { setPreview(null); setPreviewError(null); return; }
-    setLoadingPreview(true); setPreviewError(null);
-    try {
-      const res = (await api.banking.postingPreview(txn.id, {
-        bank_account_id: bankAccountId || undefined,
-        account_id: accountId || undefined,
-        to_bank_account_id: toBankAccountId || undefined,
-        gst_rate_bps: gstRateBps,
-        is_interstate: isInterstate,
-      })) as { success: boolean; data: PostingPreview; error: string | null };
-      if (res.success) { setPreview(res.data); setPreviewError(null); }
-      else { setPreview(null); setPreviewError(res.error ?? "Could not build the journal."); }
-    } catch (e) {
-      setPreview(null);
-      setPreviewError(e instanceof Error ? e.message : "Could not build the journal.");
-    } finally { setLoadingPreview(false); }
-  }, [txn.id, bankAccountId, accountId, toBankAccountId, gstRateBps, isInterstate, ready]);
-  useEffect(() => { loadPreview(); }, [loadPreview]);
-
-  const balanced = !!preview && preview.total_debit_paise === preview.total_credit_paise && preview.lines.length > 0;
-
-  async function post() {
-    setPosting(true); setPostError(null);
-    try {
-      const res = (await api.banking.postTransaction(txn.id, {
-        bank_account_id: bankAccountId || undefined,
-        account_id: accountId || undefined,
-        to_bank_account_id: toBankAccountId || undefined,
-        gst_rate_bps: gstRateBps,
-        is_interstate: isInterstate,
-      })) as { success: boolean; error: string | null };
-      if (res.success) onPosted();
-      else setPostError(res.error ?? "Posting failed.");
-    } catch (e) {
-      setPostError(e instanceof Error ? e.message : "Posting failed.");
-    } finally { setPosting(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
-      <div className="w-full max-w-md h-full bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between sticky top-0 bg-white">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Review &amp; Create Draft Journal</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-lg leading-none">×</button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {/* Transaction summary */}
-          <div className="bg-[#F8FAFC] rounded-lg p-3 space-y-1">
-            <p className="text-xs font-medium text-[#1E293B]">{txn.description}</p>
-            <p className="text-[10px] text-[#94A3B8]">{String(txn.transaction_date).slice(0, 10)} · {txn.reference_no ?? "no ref"}</p>
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{category || "Uncategorized"}</span>
-              <span className="text-sm font-mono">
-                {txn.credit_paise > 0
-                  ? <span className="text-green-700">{fmt(txn.credit_paise)} Cr</span>
-                  : <span className="text-red-700">{fmt(txn.debit_paise)} Dr</span>}
-              </span>
-            </div>
-          </div>
-
-          {/* Account inputs (only where the engine needs an explicit choice) */}
-          <div className="space-y-3">
-            <label className="block">
-              <span className="text-[11px] font-medium text-[#475569]">Bank account</span>
-              <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
-                className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                <option value="">Auto — from statement</option>
-                {bankAccounts.map((a) => <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>)}
-              </select>
-            </label>
-
-            {needsCounter && !isSplit && (
-              <label className="block">
-                <span className="text-[11px] font-medium text-[#475569]">Counter account (GL) <span className="text-red-500">*</span></span>
-                <div className="mt-1">
-                  <AccountLookup
-                    accounts={accounts}
-                    value={accountId}
-                    onChange={setAccountId}
-                    size="sm"
-                    placeholder="— Select account —"
-                    ariaLabel="Counter account"
-                  />
-                </div>
-                <span className="text-[10px] text-[#94A3B8]">Required — the ledger account is never guessed.</span>
-              </label>
-            )}
-
-            {/* Tier 1.2 — one bank line across several GL accounts. Hidden for
-                transfers (a transfer moves money between two accounts) and for
-                a matched settling transaction (it settles that document in
-                full — the server refuses both). */}
-            {canSplit && (
-              <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-medium text-[#475569]">
-                    Split across accounts
-                  </span>
-                  {!isSplit ? (
-                    <button onClick={startSplit}
-                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                      Split this line
-                    </button>
-                  ) : (
-                    <button onClick={cancelSplit}
-                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
-                      Remove split
-                    </button>
-                  )}
-                </div>
-
-                {!isSplit ? (
-                  <p className="text-[10px] text-[#94A3B8]">
-                    One payment covering several things — rent plus maintenance, two cost
-                    centres — posts as one journal with a line per account.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {splitRows.map((row, i) => (
-                      <div key={i} className="flex items-start gap-1.5">
-                        <div className="flex-1 min-w-0">
-                          <AccountLookup
-                            accounts={accounts}
-                            value={row.account_id}
-                            onChange={(v) => updateSplit(i, { account_id: v })}
-                            size="sm"
-                            placeholder="— Account —"
-                            ariaLabel={`Split ${i + 1} account`}
-                          />
-                        </div>
-                        <input
-                          value={row.amount}
-                          onChange={(e) => updateSplit(i, { amount: e.target.value })}
-                          inputMode="decimal" placeholder="0.00"
-                          aria-label={`Split ${i + 1} amount`}
-                          className="w-24 shrink-0 px-2 py-1.5 text-xs text-right font-mono border border-[#E2E8F0] rounded" />
-                        <button onClick={() => removeSplit(i)} disabled={splitRows.length <= 2}
-                          aria-label={`Remove split ${i + 1}`}
-                          className="text-[#CBD5E1] hover:text-red-600 disabled:opacity-30 disabled:hover:text-[#CBD5E1] mt-1.5">
-                          <X size={13} />
-                        </button>
-                      </div>
-                    ))}
-
-                    <div className="flex items-center justify-between pt-1">
-                      <button onClick={addSplit} disabled={splitRows.length >= 50}
-                        className="text-[11px] text-blue-600 hover:text-blue-700 disabled:opacity-40">
-                        + Add a line
-                      </button>
-                      {/* The live gap. Shown as it closes rather than discovered
-                          at post time — the server refuses anything but zero. */}
-                      <span className={`text-[11px] font-mono ${
-                        unallocatedPaise === 0 ? "text-green-700"
-                          : unallocatedPaise > 0 ? "text-amber-700" : "text-red-700"}`}>
-                        {unallocatedPaise === 0 ? "Fully allocated"
-                          : unallocatedPaise > 0 ? `${fmt(unallocatedPaise)} left`
-                          : `${fmt(-unallocatedPaise)} over`}
-                      </span>
-                    </div>
-
-                    {splitError && (
-                      <p className="text-[11px] text-red-700 bg-red-50 border border-red-100 rounded p-2">{splitError}</p>
-                    )}
-                    <div className="flex justify-end gap-2">
-                      <button onClick={saveSplit} disabled={savingSplit || unallocatedPaise !== 0}
-                        className="text-[11px] px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                        {savingSplit ? "Saving…" : splitSaved ? "Saved — update" : "Save split"}
-                      </button>
-                    </div>
-                    {!splitSaved && (
-                      <p className="text-[10px] text-[#94A3B8]">
-                        Save the split to preview the journal it will produce.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {canSplitGst && (
-              <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
-                <label className="block">
-                  <span className="text-[11px] font-medium text-[#475569]">GST inside this charge</span>
-                  <select value={gstRate} onChange={(e) => setGstRate(e.target.value)}
-                    className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    <option value="">Don&apos;t split — post the full amount</option>
-                    {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <span className="text-[10px] text-[#94A3B8]">
-                    Bank charges are quoted inclusive of GST. Splitting them claims the
-                    input tax credit (CGST Act s.16) instead of expensing it.
-                  </span>
-                </label>
-
-                {gstRate !== "" && gstRate !== "0" && (
-                  <label className="flex items-start gap-2">
-                    <input type="checkbox" checked={isInterstate}
-                      onChange={(e) => setIsInterstate(e.target.checked)}
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] text-blue-600 focus:ring-blue-500" />
-                    <span className="text-[11px] text-[#475569]">
-                      Inter-state supply (IGST)
-                      <span className="block text-[10px] text-[#94A3B8]">
-                        Tick when the bank is registered outside the client&apos;s state.
-                        Place of supply for banking services is the client&apos;s location
-                        (IGST Act s.12(12)) — it can&apos;t be read off the IFSC.
-                      </span>
-                    </span>
-                  </label>
-                )}
-              </div>
-            )}
-
-            {isTransfer && (
-              <label className="block">
-                <span className="text-[11px] font-medium text-[#475569]">Transfer to (bank / cash) <span className="text-red-500">*</span></span>
-                <select value={toBankAccountId} onChange={(e) => setToBankAccountId(e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                  <option value="">— Select destination —</option>
-                  {accounts.filter((a) => a.account_type === "Asset").map((a) => <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>)}
-                </select>
-              </label>
-            )}
-          </div>
-
-          {/* The inclusive split, shown as arithmetic. A figure the CA cannot
-              check is a figure they cannot certify — and backing tax OUT of an
-              inclusive amount is exactly the step people get wrong. */}
-          {preview?.gst && preview.gst.tax_paise > 0 && (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-900">
-              <p className="font-medium">GST split at {(preview.gst.rate_bps / 100).toFixed(0)}%</p>
-              <dl className="mt-1 space-y-0.5">
-                <div className="flex justify-between">
-                  <dt>Charge (ex-GST)</dt><dd className="font-mono">{fmt(preview.gst.taxable_paise)}</dd>
-                </div>
-                {preview.gst.is_interstate ? (
-                  <div className="flex justify-between">
-                    <dt>Input IGST</dt><dd className="font-mono">{fmt(preview.gst.igst_paise)}</dd>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between">
-                      <dt>Input CGST</dt><dd className="font-mono">{fmt(preview.gst.cgst_paise)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt>Input SGST</dt><dd className="font-mono">{fmt(preview.gst.sgst_paise)}</dd>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between pt-0.5 border-t border-blue-200 font-medium">
-                  <dt>Debited by the bank</dt><dd className="font-mono">{fmt(preview.gst.gross_paise)}</dd>
-                </div>
-              </dl>
-              <p className="mt-1 text-[10px] text-blue-700">
-                {fmt(preview.gst.tax_paise)} is claimable input tax credit, not an expense.
-              </p>
-            </div>
-          )}
-
-          {/* Proposed journal (preview — no writes) */}
-          <div>
-            <p className="text-[11px] font-medium text-[#475569] mb-1">Proposed journal entry</p>
-            {!ready ? (
-              <p className="text-xs text-[#94A3B8] bg-[#F8FAFC] rounded-lg p-3">Select the required account(s) above to preview the entry.</p>
-            ) : loadingPreview ? (
-              <TableSkeleton cols={3} rows={2} bare className="rounded-lg border border-[#F1F5F9]" />
-            ) : previewError ? (
-              <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{previewError}</p>
-            ) : preview ? (
-              <div className="border border-[#F1F5F9] rounded-lg overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-[#F8FAFC] text-[#64748B]">
-                    <tr><th className="px-3 py-1.5 text-left font-medium">Account</th><th className="px-3 py-1.5 text-right font-medium">Dr</th><th className="px-3 py-1.5 text-right font-medium">Cr</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
-                    {preview.lines.map((l, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-1.5 text-[#334155]">{l.account_name}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-[#334155]">{l.debit_paise > 0 ? fmt(l.debit_paise) : "—"}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-[#334155]">{l.credit_paise > 0 ? fmt(l.credit_paise) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-[#F8FAFC] font-medium">
-                    <tr>
-                      <td className="px-3 py-1.5 text-[#475569]">Total ({preview.entry_type})</td>
-                      <td className="px-3 py-1.5 text-right font-mono">{fmt(preview.total_debit_paise)}</td>
-                      <td className="px-3 py-1.5 text-right font-mono">{fmt(preview.total_credit_paise)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-                {!balanced && <p className="text-[10px] text-red-600 px-3 py-1.5">Entry is not balanced — posting is blocked.</p>}
-              </div>
-            ) : null}
-          </div>
-
-          {/* Settlement effect */}
-          {preview?.settlement && (
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-900">
-              <p className="font-medium">Settlement</p>
-              <p className="mt-0.5">
-                {preview.settlement.entity === "purchase_bill" ? "Bill" : "Invoice"} {preview.settlement.label ?? ""}:
-                allocate <span className="font-mono">{fmt(preview.settlement.allocate_paise)}</span>
-                {" "}(<span className="font-mono">{fmt(preview.settlement.new_paid_paise)}</span> of <span className="font-mono">{fmt(preview.settlement.total_paise)}</span> paid)
-              </p>
-              {!!preview.settlement.credited_to_party_paise && (
-                <p className="mt-1 pt-1 border-t border-amber-200">
-                  This payment exceeds what&apos;s outstanding — the extra{" "}
-                  <span className="font-mono">{fmt(preview.settlement.credited_to_party_paise)}</span>{" "}
-                  will be credited to the {preview.settlement.entity === "purchase_bill" ? "vendor's" : "customer's"}{" "}
-                  account, applyable to a future {preview.settlement.entity === "purchase_bill" ? "bill" : "invoice"}.
-                </p>
-              )}
-            </div>
-          )}
-
-          {postError && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{postError}</p>}
-        </div>
-
-        <div className="px-5 py-4 border-t border-[#F1F5F9] flex items-center justify-end gap-2 sticky bottom-0 bg-white">
-          <button onClick={onClose} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
-          <button onClick={post} disabled={!balanced || posting || loadingPreview}
-            className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            {posting ? "Creating…" : "Create Draft Journal"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface BankAccount {
   id: string;
@@ -4081,7 +3634,6 @@ export default function BankPage() {
         {tab === "accounts"   && <BankAccounts clientId={clientId} />}
         {tab === "register"   && <BankRegister clientId={clientId} />}
         {tab === "categorize" && <BankMatchQueue clientId={clientId} accounts={accounts} />}
-        {tab === "post"       && <BankPostingQueue clientId={clientId} accounts={accounts} />}
         {tab === "reconcile"  && <BankReconciliation clientId={clientId} />}
         {tab === "rules"      && <BankRules clientId={clientId} accounts={accounts} />}
       </div>

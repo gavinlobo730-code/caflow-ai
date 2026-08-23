@@ -746,11 +746,15 @@ def bank_register(
 @router.get("/queue")
 def matching_queue(
     client_id: Optional[str] = Query(None),
-    status: str = Query("unmatched", pattern="^(unmatched|categorized|matched|needs_review|ignored|all)$"),
+    status: str = Query("for_review",
+                        pattern="^(for_review|done|unmatched|categorized|matched|needs_review|ignored|all)$"),
     current_user: dict = Depends(rbac("banking", "read")),
 ):
-    """Work queue (B.2.4) with rule-based suggested categories inline. status ∈
-    unmatched | categorized | matched | needs_review | all."""
+    """Work queue (B.2.4) with rule-based suggested categories inline.
+
+    The screen uses three: for_review (still to do), done (posted), ignored (set
+    aside). The finer-grained unmatched/categorized/matched/needs_review views
+    remain for callers that ask for them."""
     db = _db()
     if not db:
         return api_response(True, [])
