@@ -382,8 +382,14 @@ class BankPostingService:
     # ── B.3.2 post — categorise and post in ONE action ────────────────────────
     def post(self, db, firm_id, txn_id, bank_account_id=None, account_id=None,
              to_bank_account_id=None, actor_id=None, gst_rate_bps=None,
-             is_interstate=False) -> dict:
+             is_interstate=False, actor_auth_id=None) -> dict:
         """Post the bank transaction to the ledger and settle its document.
+
+        actor_id MUST be the internal public.users.id — it becomes
+        journal_entries.created_by, which FKs to users(id), NOT the Supabase
+        auth id. actor_auth_id is the Supabase auth id and is used only for
+        audit_log attribution, where every other router writes the auth id;
+        it defaults to actor_id when the caller has nothing better.
 
         WHY THIS NO LONGER CREATES A DRAFT
             It used to write an unposted journal that a Partner had to approve
@@ -438,8 +444,8 @@ class BankPostingService:
                 # credit claimed under s.16 has to be defensible years later.
                 new_data["gst_rate_bps"] = int(gst_rate_bps)
                 new_data["gst_is_interstate"] = bool(is_interstate)
-            log_event(firm_id, "bank_transaction", txn_id, "status_change", actor_id=actor_id,
-                      new_data=new_data,
+            log_event(firm_id, "bank_transaction", txn_id, "status_change",
+                      actor_id=actor_auth_id or actor_id, new_data=new_data,
                       metadata={"source": "bank_post", "stage": "posted"})
         except Exception:  # pragma: no cover - audit must never block
             pass
@@ -684,8 +690,8 @@ class BankPostingService:
         journal_id = result.get("journal_entry_id")
         db.table("bank_transactions").update({
             "matched_entity_type": new_entity_type, "matched_entity_id": result["id"],
-            "matched_by": (actor or {}).get("auth_user_id"), "matched_at": _now(),
-            "match_status": "posted", "posted_at": _now(), "posted_by": (actor or {}).get("auth_user_id"),
+            "matched_by": (actor or {}).get("id"), "matched_at": _now(),
+            "match_status": "posted", "posted_at": _now(), "posted_by": (actor or {}).get("id"),
             "posted_journal_id": journal_id, "category": category, "needs_review": False,
             "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()

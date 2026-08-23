@@ -1239,7 +1239,11 @@ def post_transaction(
         db, current_user["firm_id"], txn_id,
         bank_account_id=data.bank_account_id, account_id=data.account_id,
         to_bank_account_id=data.to_bank_account_id,
-        actor_id=current_user.get("auth_user_id"),
+        # journal_entries.created_by FKs to public.users.id, not the Supabase
+        # auth id — passing auth_user_id here made every bank post fail with
+        # journal_entries_created_by_fkey. The auth id goes to audit_log only.
+        actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id"),
         gst_rate_bps=data.gst_rate_bps, is_interstate=data.is_interstate,
     ))
 
