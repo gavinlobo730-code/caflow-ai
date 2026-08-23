@@ -737,11 +737,19 @@ def get_ledger(
     client_id: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Per-account general ledger from the single reporting engine — opening,
     running and closing balances are computed server-side (firm/client scoped,
     posted-only). The browser only renders the result.
+
+    PAGED, and it returns total_lines alongside the page. Trade Receivables for
+    one production client is 5,659 lines; the reader wants about twenty of them,
+    and the running balance still has to be the one that row would have had
+    unpaged — which is why the window is computed in SQL over the account's
+    whole history and only then sliced.
 
     client_id is checked when named; when omitted, every reporting endpoint
     below aggregates across the WHOLE FIRM rather than narrowing to the
@@ -756,7 +764,8 @@ def get_ledger(
     if client_id:
         assert_client_access(current_user, client_id)
     return api_response(True, _reporting_service().ledger(
-        current_user["firm_id"], client_id, account_id, start_date, end_date
+        current_user["firm_id"], client_id, account_id, start_date, end_date,
+        limit=limit, offset=offset,
     ))
 
 

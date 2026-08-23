@@ -99,6 +99,10 @@ interface LedgerView {
   total_debit_paise: number;
   total_credit_paise: number;
   lines: LedgerLine[];
+  /** Lines in the whole WINDOW, not on this page — the opening, closing and
+   *  totals above describe the window too, so the footer stays put as the
+   *  reader pages. Absent from the unpaged (no-database) fallback. */
+  total_lines?: number;
 }
 
 interface TrialRow {
@@ -880,6 +884,10 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
 // open from the report's FY — closing it never touches the tab, FY, or basis
 // toggle underneath, so the report is exactly as it was left.
 
+// Matches the API's default. Big enough that most windows are one page, small
+// enough that the browser is never laying out thousands of rows.
+const LEDGER_PAGE_SIZE = 100;
+
 function LedgerDrillDown({
   accounts, clientId, financialYear, initialAccountId, onClose,
 }: {
@@ -894,6 +902,12 @@ function LedgerDrillDown({
   const [startDate, setStartDate] = useState(fyRange.start);
   const [endDate, setEndDate] = useState(fyRange.end);
   const [ledger, setLedger] = useState<LedgerView | null>(null);
+  // PAGED. Trade Receivables for one production client is 5,659 lines; sending
+  // them all cost ~2 MB and a table nobody scrolls, to answer a question the
+  // reader satisfies with twenty. The running balance on a paged row is still
+  // the one it would have had unpaged — the window is computed in SQL over the
+  // account's whole history and only then sliced.
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   // Distinguishes "backend call failed" from "account genuinely has no posted
   // activity in this window" — matches TrialBalance/ProfitAndLoss/BalanceSheet
@@ -909,9 +923,12 @@ function LedgerDrillDown({
     setLoading(true);
     try {
       const res = (await cachedReport(
-        reportKey([clientId, "ledger", accountId, startDate, endDate]),
+        // The page is part of the key: without it every page would serve page
+        // one from the cache.
+        reportKey([clientId, "ledger", accountId, startDate, endDate, String(page)]),
         () => api.accounting.ledger({
           client_id: clientId, account_id: accountId, start_date: startDate, end_date: endDate,
+          limit: String(LEDGER_PAGE_SIZE), offset: String(page * LEDGER_PAGE_SIZE),
         }),
         { force },
       )) as { success: boolean; data: LedgerView | null };
@@ -928,9 +945,11 @@ function LedgerDrillDown({
       setLedger(null);
       setLoadFailed(true);
     } finally { setLoading(false); }
-  }, [clientId, accountId, startDate, endDate]);
+  }, [clientId, accountId, startDate, endDate, page]);
 
   useEffect(() => { load(); }, [load]);
+  // A different account or window is a different ledger — page one of it.
+  useEffect(() => { setPage(0); }, [accountId, startDate, endDate]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
@@ -1035,6 +1054,36 @@ function LedgerDrillDown({
                 emptyDescription="No posted transactions for this account in the selected range."
               />
 
+              {/* Server-side paging, distinct from the DataTable's own paging
+                  above — that one only slices what already arrived. The count
+                  is the important half: without it a ledger that always shows a
+                  hundred lines is indistinguishable from one that has a
+                  hundred. Hidden when the whole window fits on one page, and
+                  when the no-database fallback answered (no total_lines). */}
+              {ledger.total_lines != null && ledger.total_lines > LEDGER_PAGE_SIZE && (
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[11px] text-[#94A3B8]">
+                    {`${page * LEDGER_PAGE_SIZE + 1}–${Math.min((page + 1) * LEDGER_PAGE_SIZE, ledger.total_lines)} of ${ledger.total_lines}`}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setPage((n) => Math.max(n - 1, 0))}
+                      disabled={page === 0 || loading}
+                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed">
+                      Previous
+                    </button>
+                    <button onClick={() => setPage((n) => n + 1)}
+                      disabled={(page + 1) * LEDGER_PAGE_SIZE >= ledger.total_lines || loading}
+                      className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed">
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Opening, closing and both totals describe the WINDOW, not the
+                  page — a footer that summed only the visible rows would be a
+                  different document, and would change under the reader as they
+                  paged. */}
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2.5 text-xs font-semibold text-[#334155]">
                 <span>Closing Balance</span>
                 <span className="flex items-center gap-4 font-mono">
