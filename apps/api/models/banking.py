@@ -94,6 +94,13 @@ class StatementImportIn(BaseModel):
 class TransactionAccountIn(BaseModel):
     """Map a bank transaction to a GL (chart_of_accounts) account."""
     account_id: str
+    # Account-first coding: the caller is saying "this ledger IS the answer", so
+    # the category follows from it (domain/banking/account_category) instead of
+    # being asked for first. Off by default because the older callers — a rule
+    # proposing a category AND an account, a bulk category then an account —
+    # mean the opposite, and overwriting their category would discard a
+    # deliberate answer.
+    derive_category: bool = False
 
 
 class PostTransactionIn(BaseModel):

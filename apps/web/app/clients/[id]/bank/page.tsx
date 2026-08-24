@@ -32,12 +32,13 @@
  *   docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md.
  */
 
-import { useEffect, useState, useCallback, useRef, Fragment } from "react";
+import { useEffect, useState, useCallback, useRef, Fragment, type ReactNode } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Download, Pencil, Landmark, Search, Split } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise } from "@/lib/services/formatting";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
+import { SplitAcrossLedgersModal } from "@/components/banking/SplitAcrossLedgersModal";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -138,6 +139,13 @@ interface QueueTxn {
     channel: string | null; utr: string | null; vpa: string | null;
     counterparty: string | null; ifsc: string | null; summary: string;
   } | null;
+  /** Tier 1.2 — the ledgers this ONE line was allocated across. A split row
+   *  carries a null category and a null account_id exactly like an untouched
+   *  one, so without these the screen would offer a ledger picker over an
+   *  allocation that was already made and quietly replace it. */
+  is_split?: boolean;
+  split_count?: number;
+  splits?: { account_id: string; amount_paise: number; narration: string | null }[];
   /** Tier 1.5 — the other half of the same movement, once confirmed. Only the
    *  primary side carries a journal; the counterpart is the same cash. */
   transfer_pair_id?: string | null;
@@ -241,6 +249,12 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   // the modal is opened from a short suggestion, so the CA lands on the right
   // party and document instead of re-finding what we just showed them.
   const [splitTxn, setSplitTxn] = useState<QueueTxn | null>(null);
+  // WHICH split. One line can be split across LEDGERS (a landlord payment that
+  // is rent + maintenance + parking) or across DOCUMENTS (one receipt settling
+  // three invoices). Both are real; they used to be one button whose label said
+  // "several" and whose behaviour was always documents, so the ledger split —
+  // fully built in the backend since migration 256 — had no way in at all.
+  const [splitMode, setSplitMode] = useState<"ledgers" | "documents">("ledgers");
   const [prefill, setPrefill] = useState<SettlePrefill | null>(null);
   // B.1.6 — the searchable candidate picker, for the document the ranked list
   // could not reach.
@@ -250,9 +264,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   // TDS, exclude. A row that already knows its answer shows a button and
   // nothing else.
   const [open, setOpen] = useState<Set<string>>(new Set());
-  // The counter account chosen inline for a category that needs one, before it
-  // has been sent. Keyed by row so two open rows do not share a choice.
-  const [draftAccount, setDraftAccount] = useState<Record<string, string>>({});
   const [rowError, setRowError] = useState<Record<string, string>>({});
   // Input GST split out of a tax-inclusive bank charge, per row. Carried here
   // rather than left in the posting drawer that used to own it: that drawer is
@@ -269,7 +280,17 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     });
   }
 
+  /** The split editor, opened on the LEDGER side — the everyday case, and the
+   *  one that had no route through the UI. The mode switch inside reaches the
+   *  document side. */
+  function openSplit(t: QueueTxn) {
+    setPrefill(null);
+    setSplitMode("ledgers");
+    setSplitTxn(t);
+  }
+
   function openSettle(t: QueueTxn, from?: { party_id: string | null; matched_entity_id: string; difference_paise: number }) {
+    setSplitMode("documents");
     setPrefill(from && from.party_id ? {
       partyId: from.party_id,
       docId: from.matched_entity_id,
@@ -314,9 +335,31 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   async function categorize(id: string, category: string) {
     if (!category) return;
     setBusy((b) => ({ ...b, [id]: true }));
+    setRowError((e) => ({ ...e, [id]: "" }));
     try { await api.banking.categorize(id, { category }); await load(); }
-    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    catch (e) { setRowError((x) => ({ ...x, [id]: e instanceof Error ? e.message : "Failed" })); }
     finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+
+  /** Code a row by naming the LEDGER — the one field this screen asks for.
+   *
+   *  The category follows from the account server-side
+   *  (domain/banking/account_category); it is not a second question, and the
+   *  panel's Category control is only there to refine the word. Written
+   *  through on the click rather than held as a draft: a choice that sits in
+   *  the browser until someone presses Add is a choice that gets lost when
+   *  they page, search or reload. */
+  async function codeToAccount(t: QueueTxn, accountId: string) {
+    if (!accountId) return;
+    setBusy((b) => ({ ...b, [t.id]: true }));
+    setRowError((e) => ({ ...e, [t.id]: "" }));
+    try {
+      await api.banking.setTransactionAccount(t.id, {
+        account_id: accountId, derive_category: true });
+      await load();
+    } catch (e) {
+      setRowError((x) => ({ ...x, [t.id]: e instanceof Error ? e.message : "Could not set the ledger." }));
+    } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
 
   async function bulkCategorizeIds(ids: string[]) {
@@ -355,13 +398,15 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   /** The single action behind Match / Add: post the row and settle its document.
    *  There is no approval step any more — posting is reversible, and a queue
    *  nobody can get through is not a control. */
-  async function postRow(t: QueueTxn, opts?: { accountId?: string }) {
+  async function postRow(t: QueueTxn) {
     setBusy((b) => ({ ...b, [t.id]: true }));
     setRowError((e) => ({ ...e, [t.id]: "" }));
     try {
       const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
+      // No account_id: the ledger is already ON the row, written when it was
+      // picked, and the posting engine reads it from there. Sending a browser
+      // copy of it would be a second source of the same fact.
       const res = (await api.banking.postTransaction(t.id, {
-        account_id: opts?.accountId ?? draftAccount[t.id] ?? undefined,
         ...(rate !== "" ? {
           gst_rate_bps: Number(rate),
           is_interstate: gstInterstate[t.id] ?? !!t.suggested_is_interstate,
@@ -444,7 +489,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
           }
           const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
           const res = (await api.banking.postTransaction(t.id, {
-            account_id: draftAccount[t.id] ?? undefined,
             ...(rate !== "" ? {
               gst_rate_bps: Number(rate),
               is_interstate: gstInterstate[t.id] ?? !!t.suggested_is_interstate,
@@ -479,7 +523,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const readyRow = useCallback((t: QueueTxn) => (
     t.match_status !== "posted" && t.match_status !== "ignored"
     && (Boolean(confidentMatch(t)) || Boolean(t.matched_entity_id) || readyToAdd(t))
-  ), [sugg, draftAccount]); // eslint-disable-line react-hooks/exhaustive-deps
+  ), [sugg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** TWO verbs, not three. Match links this line to a document that already
    *  exists; Add creates the entry from a category. */
@@ -565,12 +609,25 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
           : <span className="text-[#CBD5E1]">—</span>,
     },
     {
-      key: "category", header: "Category or match", width: "16rem", searchable: true,
-      accessor: (t) => t.category ?? t.matched_entity_type ?? "",
+      // ONE field, and it is the ledger. It used to be a Category dropdown, with
+      // the account hidden inside the opened row and shown only AFTER a category
+      // had been chosen — so a reader who had not chosen one saw no way to name
+      // an account at all, and reported it as missing.
+      //
+      // The category is derived from the ledger server-side
+      // (domain/banking/account_category), which is honest about what the
+      // category was doing: for six of the eleven values it changed nothing in
+      // the journal at all, because posting_map.build_lines is direction-driven.
+      // The word is still shown, and still overridable, in the opened row.
+      key: "category", header: "Ledger or match", width: "18rem", searchable: true,
+      accessor: (t) => (t.account_id ? accountLabel(t.account_id) : "")
+        || t.category || t.matched_entity_type || "",
       render: (t) => {
         const best = confidentMatch(t);
         if (t.match_status === "posted") {
-          return <span className="text-[#15803D]">Recorded{t.category ? ` · ${t.category}` : ""}</span>;
+          return <span className="text-[#15803D] truncate block">
+            Recorded{t.account_id ? ` · ${accountLabel(t.account_id)}` : t.category ? ` · ${t.category}` : ""}
+          </span>;
         }
         if (t.match_status === "ignored") return <span className="text-[#94A3B8]">Excluded</span>;
         if (t.matched_entity_id) {
@@ -579,15 +636,28 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         if (best) {
           return <span className="text-[#15803D] truncate block" title={best.reasons.join(" · ")}>{best.label}</span>;
         }
+        if (t.is_split) {
+          return <span className="text-[#4338CA] truncate block"
+            title="Allocated across several ledgers — open the row to see them">
+            Split across {t.split_count ?? 0} ledgers
+          </span>;
+        }
         return (
-          <select
-            value={t.category ?? ""} disabled={busy[t.id]}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => categorize(t.id, e.target.value)}
-            className="w-full px-1.5 py-0.5 text-xs border border-[#E2E8F0] rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-            <option value="">{t.suggested_category ? `Suggested: ${t.suggested_category}` : "— Category —"}</option>
-            {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          // stopPropagation: the row toggles open on click, and a picker that
+          // collapsed the row it sits in would be unusable.
+          <div onClick={(e) => e.stopPropagation()}>
+            <AccountLookup
+              accounts={accounts}
+              value={t.account_id ?? ""}
+              onChange={(id) => codeToAccount(t, id)}
+              disabled={busy[t.id]}
+              size="sm"
+              ariaLabel="Ledger"
+              placeholder={t.suggested_account_id
+                ? `Suggested: ${accountLabel(t.suggested_account_id)}`
+                : "Choose a ledger…"}
+            />
+          </div>
         );
       },
     },
@@ -606,6 +676,30 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       render: (t) => <span className="font-mono text-green-700">{t.credit_paise > 0 ? fmt(t.credit_paise) : ""}</span>,
     },
   ];
+
+  /** Across LEDGERS or across DOCUMENTS. Rendered inside whichever split
+   *  editor is open, so the two are one control in one place rather than two
+   *  buttons on the row competing for the same word. Prefill forces the
+   *  document side — a short match arrived with an invoice already in hand. */
+  const splitModeSwitch = (
+    <div className="inline-flex rounded-lg border border-[#E2E8F0] overflow-hidden" role="tablist"
+      aria-label="What to split this line across">
+      {([
+        ["ledgers", "Across ledgers"],
+        ["documents", splitTxn && splitTxn.credit_paise > 0 ? "Across invoices" : "Across bills"],
+      ] as const).map(([mode, label]) => (
+        <button
+          key={mode} type="button" role="tab" aria-selected={splitMode === mode}
+          onClick={() => setSplitMode(mode as "ledgers" | "documents")}
+          className={`text-xs px-3 py-1.5 font-medium ${
+            splitMode === mode
+              ? "bg-[#4338CA] text-white"
+              : "bg-white text-[#475569] hover:bg-[#F8FAFC]"}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 
   /** The bulk category the picker below holds, applied by the bulk action. */
   const bulkCategoryPicker = (
@@ -648,13 +742,26 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     },
   ];
 
-  /** Whether Add can post this row as it stands. */
+  /** Whether Add can post this row as it stands.
+   *
+   *  Reads the SERVER's row and nothing else. It used to also consult a
+   *  browser-side draft of the account, which meant the button could be live
+   *  for a choice that existed only on this screen — and dead for one the row
+   *  already carried. The ledger is written when it is picked, so there is no
+   *  draft to consult any more. */
   function readyToAdd(t: QueueTxn): boolean {
+    // A split line already says where every paisa goes — that IS the answer,
+    // and it needs no category: bank_posting_service builds the n-leg journal
+    // from the splits and never consults one. Without this the allocation
+    // could be saved and then never posted, which is the worst of both.
+    if (t.is_split) return true;
     const cat = t.category;
     if (!cat) return false;
-    if (cat === "Transfer") return Boolean(t.transfer_pair_id);
+    // A transfer needs a destination: either the counterpart line, confirmed as
+    // a pair, or the other bank/cash ledger picked directly.
+    if (cat === "Transfer") return Boolean(t.transfer_pair_id || t.account_id);
     if (AUTO_COUNTER_CATEGORIES.has(cat)) return true;
-    return Boolean(draftAccount[t.id] || t.account_id);
+    return Boolean(t.account_id);
   }
 
   async function reject(id: string) {
@@ -946,10 +1053,13 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       )}
     </div>
 
-    {/* A firing rule proposes a category AND often the counter
-        account. The Category dropdown on the line can only carry
-        the category, so applying the whole rule lives here. */}
-    {!posted && !excluded && !t.category && t.suggested_category && t.suggested_by_rule && (
+    {/* A firing rule proposes a category AND often the ledger. The
+        picker on the line carries only the ledger — and applying a
+        rule is accepting BOTH of its answers, including the finer
+        category word the derivation deliberately will not guess — so
+        taking the whole rule lives here. Not offered on a split line:
+        the allocation already answers where the money goes. */}
+    {!posted && !excluded && !t.is_split && !t.category && t.suggested_category && t.suggested_by_rule && (
       <div className="flex items-center gap-2">
         <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
           Rule <span className="text-[#334155]">{t.suggested_by_rule}</span> proposes{" "}
@@ -963,20 +1073,44 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       </div>
     )}
 
-    {/* The counter account, when the chosen category needs one. */}
-    {!posted && !excluded && t.category && !AUTO_COUNTER_CATEGORIES.has(t.category)
-      && t.category !== "Transfer" && (
+    {/* The category, which now FOLLOWS the ledger rather than gating it. Kept
+        because the derivation deliberately refuses to guess from names: an
+        Expense ledger called Salaries derives "Expense", and a CA who wants the
+        finer word says so here. Changing it never moves the money — the ledger
+        on the line decides that. */}
+    {!posted && !excluded && t.category && !t.matched_entity_id && (
       <div className="flex items-center gap-2 flex-wrap">
-        <label className="text-[10px] text-[#94A3B8]">Account</label>
+        <label className="text-[10px] text-[#94A3B8]" htmlFor={`cat-${t.id}`}>Category</label>
         <select
-          value={draftAccount[t.id] ?? t.account_id ?? ""} disabled={busy[t.id]}
-          onChange={(e) => setDraftAccount((d) => ({ ...d, [t.id]: e.target.value }))}
-          className="px-2 py-0.5 text-[11px] border border-[#E2E8F0] rounded bg-white max-w-[18rem]">
-          <option value="">— Account —</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>
-          ))}
+          id={`cat-${t.id}`}
+          value={t.category} disabled={busy[t.id]}
+          onChange={(e) => categorize(t.id, e.target.value)}
+          className="px-2 py-0.5 text-[11px] border border-[#E2E8F0] rounded bg-white max-w-[14rem]">
+          {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <span className="text-[10px] text-[#CBD5E1]">
+          from {t.account_id ? accountLabel(t.account_id) : "this line"}
+        </span>
+      </div>
+    )}
+
+    {/* Tier 1.2 — the ledgers this one line was allocated across. Shown as the
+        allocation itself, not a count: "split 3 ways" tells a reviewer nothing
+        they can check. */}
+    {t.is_split && (
+      <div className="flex items-start gap-2 flex-wrap">
+        <p className="text-[10px] text-[#64748B] min-w-0">
+          Split across{" "}
+          <span className="text-[#334155]">
+            {(t.splits ?? []).map((s) => `${accountLabel(s.account_id)} ${fmt(s.amount_paise)}`).join(" · ")}
+          </span>
+        </p>
+        {!posted && (
+          <button onClick={() => openSplit(t)} disabled={busy[t.id]}
+            className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569] shrink-0">
+            Edit the split
+          </button>
+        )}
       </div>
     )}
 
@@ -998,9 +1132,9 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50">
               <Search size={13} /> Find the {t.credit_paise > 0 ? "invoice" : "bill"}
             </button>
-            <button onClick={() => openSettle(t)} disabled={busy[t.id]}
+            <button onClick={() => openSplit(t)} disabled={busy[t.id]}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50"
-              title={`Allocate this line across several ${t.credit_paise > 0 ? "invoices" : "bills"}, or record TDS withheld on it`}>
+              title={`Allocate this line across several ledgers, across several ${t.credit_paise > 0 ? "invoices" : "bills"}, or record TDS withheld on it`}>
               <Split size={13} /> Split across several
             </button>
           </>
@@ -1091,7 +1225,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
 
     {/* Tier 1.4 — what was done with this payee before. Stated as
         evidence rather than a score, and applied only on a click. */}
-    {t.history && !t.category && !excluded && (
+    {t.history && !t.category && !t.is_split && !excluded && (
       <div className="flex items-center gap-2">
         <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
           <span className={t.history.is_unanimous ? "text-emerald-700" : "text-amber-700"}>
@@ -1139,11 +1273,27 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         Match or Add posts the transaction and settles its document. Undo puts it back.
         Click a line to see the bank&apos;s own narration.
       </p>
-      {splitTxn && (
+      {/* ONE button, two kinds of split, chosen INSIDE the editor. Two
+          similarly-named buttons on the row is how the ledger split stayed
+          invisible for as long as it did. */}
+      {splitTxn && splitMode === "ledgers" && (
+        <SplitAcrossLedgersModal
+          txnId={splitTxn.id}
+          description={splitTxn.description}
+          amountPaise={splitTxn.credit_paise > 0 ? splitTxn.credit_paise : splitTxn.debit_paise}
+          isCredit={splitTxn.credit_paise > 0}
+          accounts={accounts}
+          modeSwitch={splitModeSwitch}
+          onClose={() => { setSplitTxn(null); setPrefill(null); }}
+          onDone={() => { setSplitTxn(null); setPrefill(null); load(); }}
+        />
+      )}
+      {splitTxn && splitMode === "documents" && (
         <MultiInvoiceMatchModal
           txn={splitTxn}
           clientId={clientId}
           prefill={prefill}
+          modeSwitch={splitModeSwitch}
           onClose={() => { setSplitTxn(null); setPrefill(null); }}
           onDone={() => { setSplitTxn(null); setPrefill(null); load(); }}
         />
@@ -1202,9 +1352,12 @@ interface SettlePrefill {
   tdsPaise: number;
 }
 
-function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone }: {
+function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone, modeSwitch }: {
   txn: QueueTxn; clientId: string; prefill?: SettlePrefill | null;
   onClose: () => void; onDone: () => void;
+  /** The across-ledgers / across-documents switch, owned by the caller so both
+   *  split editors show the same one in the same place. */
+  modeSwitch?: ReactNode;
 }) {
   const isCredit = txn.credit_paise > 0;
   const txnAmount = isCredit ? txn.credit_paise : txn.debit_paise;
@@ -1373,6 +1526,7 @@ function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone }: {
           </div>
           <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
         </div>
+        {modeSwitch && <div className="px-5 pt-3">{modeSwitch}</div>}
         <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
           <div>
             <label className="block text-xs font-medium text-[#475569] mb-1">{isCredit ? "Customer" : "Vendor"} *</label>

@@ -32,6 +32,8 @@ from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from domain.banking.dedup import transaction_hash
+from domain.banking.account_category import category_for_account
+from domain.banking.posting_map import AUTO_COUNTER
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -247,14 +249,88 @@ class BankingService:
                 "duplicates_skipped": duplicates, "total_rows": total_rows}
 
     # ── Account mapping ───────────────────────────────────────────────────────
-    def set_account(self, db, firm_id: str, txn_id: str, account_id: str) -> dict:
+    def _scoped_account(self, db, firm_id: str, client_id: str, account_id: str) -> dict:
+        """The chart_of_accounts row, proved to belong here before anything uses it.
+
+        The id arrives from the browser. Reading it back by id alone is the
+        unscoped-read-by-id pattern task #227/#228 fixed in the AR/AP and
+        bank-posting paths, and bank_split_service._validate_accounts guards for
+        the split path — this is the same check for the single-account path,
+        which had none: set_account wrote whatever id it was handed.
+        """
+        rows = (db.table("chart_of_accounts")
+                .select("id, account_code, account_name, account_type, "
+                        "account_subtype, system_account_key, is_active, client_id")
+                .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        if not rows:
+            raise HTTPException(status_code=422,
+                                detail="Selected account does not belong to this firm.")
+        account = rows[0]
+        if account.get("is_active") is False:
+            raise HTTPException(status_code=422,
+                                detail="That account is archived and cannot be posted to.")
+        if account.get("client_id") not in (None, client_id):
+            raise HTTPException(status_code=422,
+                                detail="That account belongs to a different client.")
+        return account
+
+    def _confirmed_category(self, db, firm_id: str, txn: dict, account: dict) -> str:
+        """The category implied by the account the CA picked (account-first coding).
+
+        The derivation itself is pure — domain/banking/account_category. What
+        needs the database is its ONE guarantee: an AUTO_COUNTER category
+        (Customer/Vendor/GST Payment) makes the posting engine re-resolve the
+        counter account from a control key and ignore account_id, so it may only
+        be stored when that key resolves back to this very account. On a chart
+        where it does not — a live client carries an unused "Accounts Receivable"
+        keyed 'ar' beside the "Trade Receivables" everything posts to — storing it
+        would send the money to an account the CA did not choose. There the
+        fallback is used instead, which is an EXPLICIT_COUNTER category and posts
+        to exactly what was picked.
+        """
+        derived = category_for_account(account, is_credit=int(txn.get("credit_paise") or 0) > 0)
+        if not derived.needs_confirmation:
+            return derived.category
+        try:
+            resolved = phase2_journal_service._find_account(
+                db, firm_id, txn["client_id"],
+                AUTO_COUNTER[derived.category][1], system_key=derived.auto_counter_key)
+        except Exception:
+            # _find_account raises when the control account is missing entirely.
+            # That is not a reason to refuse the coding — the fallback posts to
+            # the chosen account and needs no control account at all.
+            return derived.fallback
+        return derived.category if resolved == account["id"] else derived.fallback
+
+    def set_account(self, db, firm_id: str, txn_id: str, account_id: str,
+                    derive_category: bool = False) -> dict:
+        """Map a transaction to a GL account, optionally deriving its category.
+
+        `derive_category` is what makes the screen's ledger-first picker one
+        field instead of two: the caller is saying "this account IS the answer",
+        so the category follows from it rather than being asked for first. It is
+        opt-in because the older callers (a rule proposing both, a bulk category
+        followed by an account) mean the opposite — there the category is the
+        deliberate one and must not be overwritten.
+        """
         txn = self._get_txn(db, firm_id, txn_id)
         if txn["match_status"] == "posted":
             raise HTTPException(status_code=409, detail="Transaction already posted to the ledger.")
-        db.table("bank_transactions").update({
-            "account_id": account_id, "match_status": "matched", "updated_at": _now(),
-        }).eq("id", txn_id).eq("firm_id", firm_id).execute()
-        return {"id": txn_id, "match_status": "matched", "account_id": account_id}
+        account = self._scoped_account(db, firm_id, txn["client_id"], account_id)
+        update = {"account_id": account_id, "match_status": "matched", "updated_at": _now()}
+        if derive_category:
+            # The same guard categorize()/match()/unmatch() carry: a DRAFT
+            # journal was built from the category as it stood, and changing it
+            # underneath silently changes what settle_on_post will act on.
+            if txn.get("posted_journal_id"):
+                raise HTTPException(
+                    status_code=409,
+                    detail=("A journal has already been created for this transaction — its "
+                            "category cannot be changed until that draft is approved."))
+            update["category"] = self._confirmed_category(db, firm_id, txn, account)
+        db.table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        return {"id": txn_id, "match_status": "matched", "account_id": account_id,
+                "category": update.get("category", txn.get("category"))}
 
     def ignore(self, db, firm_id: str, txn_id: str) -> dict:
         txn = self._get_txn(db, firm_id, txn_id)

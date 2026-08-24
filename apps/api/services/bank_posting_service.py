@@ -117,13 +117,24 @@ class BankPostingService:
         if cat in pmap.AUTO_COUNTER:
             sk, pattern = pmap.AUTO_COUNTER[cat]
             return phase2_journal_service._find_account(db, firm_id, client_id, pattern, system_key=sk)
+        # The account the CA already chose, when the caller did not name one in
+        # this request. It was written by banking_service.set_account, which
+        # scope-checks it — so it is at least as trustworthy as the id in the
+        # request body, and it is what the screen SHOWS on the row.
+        #
+        # Without this fallback, coding a line to an account and then pressing
+        # Add failed with "Select a GL account", because only the post request's
+        # own account_id was consulted. That was reachable today through "Use the
+        # rule" and "Use last time's", both of which set the account through
+        # set_account and leave the post body empty.
+        chosen = account_id or txn.get("account_id")
         if cat in pmap.EXPLICIT_COUNTER:
-            if not account_id:
+            if not chosen:
                 raise HTTPException(status_code=422,
                                     detail=f"Select a GL account for '{cat}' before posting.")
-            return self._validate_account(db, firm_id, account_id)
-        if not cat and account_id:           # legacy account-mapping post (no category)
-            return self._validate_account(db, firm_id, account_id)
+            return self._validate_account(db, firm_id, chosen)
+        if not cat and chosen:               # legacy account-mapping post (no category)
+            return self._validate_account(db, firm_id, chosen)
         raise HTTPException(status_code=422,
                             detail="Categorize the transaction (or map an account) before posting.")
 
@@ -267,6 +278,15 @@ class BankPostingService:
                 # pair; making them pick it again invites a different answer.
                 to_bank_account_id = bank_transfer_service.counterpart_bank_account(
                     db, firm_id, txn)
+            if not to_bank_account_id:
+                # Account-first coding: picking the OTHER bank or cash ledger is
+                # what made this a Transfer in the first place, so that ledger is
+                # the destination. This is how a transfer with no counterpart
+                # line — cash withdrawn at a branch, a sweep the other statement
+                # has not arrived for — becomes postable at all. The paired case
+                # above still wins, because a confirmed pair is a stronger
+                # statement than a picked account.
+                to_bank_account_id = txn.get("account_id")
             if not to_bank_account_id:
                 raise HTTPException(status_code=422, detail="Transfer requires a destination bank/cash account.")
             to_id = self._validate_account(db, firm_id, to_bank_account_id)
