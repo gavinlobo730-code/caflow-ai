@@ -750,6 +750,7 @@ def matching_queue(
                         pattern="^(for_review|done|unmatched|categorized|matched|needs_review|ignored|all)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    q: Optional[str] = Query(None, max_length=200),
     current_user: dict = Depends(rbac("banking", "read")),
 ):
     """One page of the work queue (B.2.4), with rule-based suggested categories
@@ -771,9 +772,14 @@ def matching_queue(
     # with_suggestions: the page's match candidates come back WITH the rows.
     # The screen used to fetch them one request per row afterwards, which is
     # why the matched rows lit up a few at a time over several seconds.
+    # `q` is applied in SQL, so it searches the whole view rather than the page
+    # on screen — see _search_filter. total counts the SAME filtered view, or
+    # the pager would offer pages the search has emptied.
     rows = bank_matching_service.queue(db, current_user["firm_id"], client_id, status,
-                                       limit=limit, offset=offset, with_suggestions=True)
-    total = bank_matching_service.queue_total(db, current_user["firm_id"], client_id, status)
+                                       limit=limit, offset=offset, with_suggestions=True,
+                                       q_text=q)
+    total = bank_matching_service.queue_total(db, current_user["firm_id"], client_id,
+                                              status, q_text=q)
     return api_response(True, {
         "rows": _scope_rows(current_user, client_id, rows),
         "total": total, "limit": limit, "offset": offset,

@@ -177,3 +177,88 @@ def test_an_unknown_view_is_refused_by_both_entry_points():
                  lambda: svc.queue_total(db, FIRM, CLIENT, "excluded")):
         with pytest.raises(Exception):
             call()
+
+
+# ── Search ────────────────────────────────────────────────────────────────────
+# It is SQL, and that is the point: the screen shows one page, so a box that
+# filtered the rows already fetched would answer "no match" for a line sitting
+# on page four. A wrong answer, not a slow one.
+
+def _seed_named(db, n, desc, **kw):
+    for i in range(n):
+        _seed_txn(db, id=f"{desc[:4].lower()}{i:03d}", description=f"{desc} {i}", **kw)
+
+
+def test_search_matches_the_bank_narration():
+    db = FakeDB()
+    _seed_named(db, 3, "TECHTRON IT SOLUTIONS")
+    _seed_named(db, 5, "SILVER OAK INDUSTRIES")
+    got = svc.queue(db, FIRM, CLIENT, "for_review", q_text="techtron")
+    assert len(got) == 3, f"expected the three Techtron lines, got {len(got)}"
+    assert all("TECHTRON" in t["description"] for t in got)
+
+
+def test_search_is_case_insensitive_and_matches_a_substring():
+    db = FakeDB()
+    _seed_txn(db, id="a", description="NEFT DR-COSB0000003-SELF TRANSFER TO COSMOS")
+    assert len(svc.queue(db, FIRM, CLIENT, "for_review", q_text="cosmos")) == 1
+    assert len(svc.queue(db, FIRM, CLIENT, "for_review", q_text="CoSmOs")) == 1
+
+
+def test_search_also_looks_at_the_reference_and_the_confirmed_payee():
+    db = FakeDB()
+    _seed_txn(db, id="a", description="UPI/CR/604812345679", reference_no="UTR-777")
+    _seed_txn(db, id="b", description="NEFT", payee_name="Blue Horizon Exports")
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review", q_text="UTR-777")} == {"a"}
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review", q_text="horizon")} == {"b"}
+
+
+def test_the_total_counts_the_SEARCHED_view_not_the_whole_one():
+    """The pager is driven by this number. Counting unsearched rows would offer
+    pages the search has emptied."""
+    db = FakeDB()
+    _seed_named(db, 3, "TECHTRON IT SOLUTIONS")
+    _seed_named(db, 5, "SILVER OAK INDUSTRIES")
+    assert svc.queue_total(db, FIRM, CLIENT, "for_review") == 8
+    assert svc.queue_total(db, FIRM, CLIENT, "for_review", q_text="techtron") == 3
+
+
+def test_search_composes_with_the_view_filter():
+    """A search inside "Categorized" must not reach into "For review"."""
+    db = FakeDB()
+    _seed_txn(db, id="a", description="TECHTRON one", match_status="unmatched")
+    _seed_txn(db, id="b", description="TECHTRON two", match_status="posted")
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review", q_text="techtron")} == {"a"}
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "done", q_text="techtron")} == {"b"}
+
+
+def test_search_composes_with_paging():
+    db = FakeDB()
+    _seed_named(db, 12, "TECHTRON IT SOLUTIONS")
+    _seed_named(db, 9, "SILVER OAK INDUSTRIES")
+    seen = []
+    for off in (0, 5, 10):
+        seen += [t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review",
+                                            limit=5, offset=off, q_text="techtron")]
+    assert len(seen) == 12 and len(set(seen)) == 12, f"paged search lost rows: {seen}"
+
+
+def test_a_wildcard_in_the_search_term_is_a_character_not_a_wildcard():
+    """`%` and `_` are LIKE metacharacters. Unescaped, searching "50%" would
+    match every row — which reads as "found everything" rather than an error."""
+    db = FakeDB()
+    _seed_txn(db, id="a", description="BANK CHARGE 50% SURCHARGE")
+    _seed_txn(db, id="b", description="NOTHING RELEVANT HERE")
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review", q_text="50%")} == {"a"}
+    # A bare "%" finds the rows containing a literal percent sign — NOT every
+    # row, which is what an unescaped LIKE wildcard would have returned. My
+    # first version of this asserted [] and was simply wrong about the meaning.
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review", q_text="%")} == {"a"}
+    assert {t["id"] for t in svc.queue(db, FIRM, CLIENT, "for_review", q_text="_")} == set()
+
+
+def test_an_empty_or_blank_search_is_no_filter_at_all():
+    db = FakeDB()
+    _seed_named(db, 4, "ANYTHING")
+    for term in (None, "", "   "):
+        assert len(svc.queue(db, FIRM, CLIENT, "for_review", q_text=term)) == 4, term

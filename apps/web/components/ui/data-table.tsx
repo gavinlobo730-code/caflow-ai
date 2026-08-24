@@ -52,6 +52,18 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Extra toolbar controls (e.g. a financial-year selector). */
   toolbarExtra?: React.ReactNode;
+  /** Per-row classes — a status tint, say. Returning "" keeps the default. */
+  rowClassName?: (row: T) => string;
+  /**
+   * A full-width detail row rendered under `row` while it is expanded, and the
+   * predicate that says which rows are. Returning null renders nothing.
+   *
+   * Kept OUT of the row's own cells deliberately: a disclosure inside a <td>
+   * either stretches that column or clips, and a table whose row heights move
+   * with their content stops being a table you can run your eye down.
+   */
+  expandedRow?: (row: T) => React.ReactNode;
+  isExpanded?: (row: T) => boolean;
   /** Set when `data` is ONE SERVER PAGE rather than the whole set.
    *
    *  Without it a server-paged caller gets TWO pagers: this component's, which
@@ -74,6 +86,18 @@ export interface ServerPaging {
   onChange: (next: { offset: number; pageSize: number }) => void;
   /** Disables the controls while a page is in flight. */
   busy?: boolean;
+  /**
+   * The current server-side search term, and how to change it.
+   *
+   * REQUIRED for a searchable server-paged table, and the reason is the same
+   * one `serverPaged` exists for: this component's own search filters `data`,
+   * which here is ONE PAGE. A box that searched fifty of three hundred lines
+   * and returned nothing would look exactly like "no match" — a wrong answer,
+   * not a slow one. Given this, the box drives the server and the local
+   * filter is switched off.
+   */
+  search?: string;
+  onSearchChange?: (q: string) => void;
 }
 
 export function downloadCsv(filename: string, csv: string) {
@@ -133,6 +157,9 @@ export function DataTable<T>({
   rowActions,
   onRowClick,
   toolbarExtra,
+  rowClassName,
+  expandedRow,
+  isExpanded,
 }: DataTableProps<T>) {
   // A server page is shown WHOLE: pageSize 0 means "all rows, one page"
   // (lib/table/process.paginate), so the component never sub-slices a slice.
@@ -147,12 +174,20 @@ export function DataTable<T>({
   // so a second click can't fire mid-run, and shows a spinner on that button.
   const [runningActionId, setRunningActionId] = React.useState<string | null>(null);
 
-  // Debounced search box (kept in sync with persisted/cleared state).
-  const [q, setQ] = React.useState(t.prefs.search);
-  React.useEffect(() => setQ(t.prefs.search), [t.prefs.search]);
+  // Debounced search box. With serverPaged.onSearchChange it drives the SERVER
+  // — filtering `data` would search one page and call the rest "no match".
+  const serverSearch = serverPaged?.onSearchChange;
+  const [q, setQ] = React.useState(serverSearch ? (serverPaged?.search ?? "") : t.prefs.search);
+  React.useEffect(() => {
+    if (!serverSearch) setQ(t.prefs.search);
+  }, [t.prefs.search, serverSearch]);
   React.useEffect(() => {
     const id = setTimeout(() => {
-      if (q !== t.prefs.search) t.setSearch(q);
+      if (serverSearch) {
+        if (q !== (serverPaged?.search ?? "")) serverSearch(q);
+      } else if (q !== t.prefs.search) {
+        t.setSearch(q);
+      }
     }, 250);
     return () => clearTimeout(id);
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -333,10 +368,13 @@ export function DataTable<T>({
               {page.rows.map((row) => {
                 const id = getRowId(row);
                 const sel = t.isSelected(row);
+                const open = Boolean(expandedRow && isExpanded?.(row));
+                const detail = open ? expandedRow!(row) : null;
                 return (
+                  <React.Fragment key={id}>
                   <tr
-                    key={id}
-                    className={cn("hover:bg-[#F8FAFC]", sel && "bg-[#EEF2FF]", onRowClick && "cursor-pointer")}
+                    className={cn("hover:bg-[#F8FAFC]", rowClassName?.(row),
+                                  sel && "bg-[#EEF2FF]", onRowClick && "cursor-pointer")}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                   >
                     {hasBulk && (
@@ -364,6 +402,18 @@ export function DataTable<T>({
                       </td>
                     )}
                   </tr>
+                  {/* The detail row, full width beneath its own row. Clicks are
+                      stopped here: it holds controls of its own, and bubbling
+                      into onRowClick would collapse the thing being used. */}
+                  {detail != null && (
+                    <tr className={cn("bg-[#F8FAFC]", rowClassName?.(row))}>
+                      <td colSpan={colSpan} className="px-3 pb-3 pt-1"
+                          onClick={(e) => e.stopPropagation()}>
+                        {detail}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
