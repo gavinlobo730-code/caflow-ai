@@ -52,6 +52,28 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Extra toolbar controls (e.g. a financial-year selector). */
   toolbarExtra?: React.ReactNode;
+  /** Set when `data` is ONE SERVER PAGE rather than the whole set.
+   *
+   *  Without it a server-paged caller gets TWO pagers: this component's, which
+   *  can only re-slice the rows that already arrived, and the caller's own. The
+   *  inner "Rows per page" then silently does nothing — picking 1000 when the
+   *  server sent 100 re-slices 100 rows into one page of 100 and the screen
+   *  does not move. That is what shipped on the account-ledger drill-down.
+   *
+   *  Given this, the table stops sub-paginating (it cannot see the other pages
+   *  anyway) and its footer drives the SERVER instead, so there is exactly one
+   *  pager and its page-size control is real. */
+  serverPaged?: ServerPaging;
+}
+
+export interface ServerPaging {
+  /** Rows in the whole result, not on this page — what the count is drawn from. */
+  total: number;
+  offset: number;
+  pageSize: number;
+  onChange: (next: { offset: number; pageSize: number }) => void;
+  /** Disables the controls while a page is in flight. */
+  busy?: boolean;
 }
 
 export function downloadCsv(filename: string, csv: string) {
@@ -98,6 +120,7 @@ export function DataTable<T>({
   searchPlaceholder = "Search…",
   initialSort = null,
   initialPageSize = 50,
+  serverPaged,
   initialFilters,
   pageSizes = PAGE_SIZES,
   bulkActions,
@@ -111,7 +134,13 @@ export function DataTable<T>({
   onRowClick,
   toolbarExtra,
 }: DataTableProps<T>) {
-  const t = useDataTable<T>({ data, columns, filters, getRowId, initialSort, initialPageSize, initialFilters, persistKey });
+  // A server page is shown WHOLE: pageSize 0 means "all rows, one page"
+  // (lib/table/process.paginate), so the component never sub-slices a slice.
+  const t = useDataTable<T>({
+    data, columns, filters, getRowId, initialSort,
+    initialPageSize: serverPaged ? 0 : initialPageSize,
+    initialFilters, persistKey,
+  });
   const hasSearch = columns.some((c) => c.searchable);
   const hasBulk = Boolean(bulkActions && bulkActions.length);
   // Which bulk action (by id) is currently running — disables the whole bar
@@ -343,7 +372,59 @@ export function DataTable<T>({
       </AsyncBoundary>
 
       {/* ── Pagination footer ───────────────────────────────────────────── */}
-      {page.total > 0 && (
+      {/* SERVER-PAGED: one pager, and it moves the server. The rows on screen
+          are a slice the component cannot see past, so paging or resizing them
+          locally would be a control that does nothing. */}
+      {serverPaged ? (
+        serverPaged.total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748B]">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <select
+                value={serverPaged.pageSize}
+                disabled={serverPaged.busy}
+                onChange={(e) => serverPaged.onChange({
+                  // Back to the first page: the reader's current offset is
+                  // meaningless once the page size changes under it.
+                  offset: 0, pageSize: Number(e.target.value),
+                })}
+                className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1 text-[#475569] disabled:opacity-50"
+                aria-label="Rows per page"
+              >
+                {pageSizes.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <span>
+                {serverPaged.offset + 1}–
+                {Math.min(serverPaged.offset + serverPaged.pageSize, serverPaged.total)}
+                {" of "}{serverPaged.total}
+              </span>
+              <div className="flex items-center gap-1">
+                <button className={btn}
+                  disabled={serverPaged.busy || serverPaged.offset <= 0}
+                  onClick={() => serverPaged.onChange({
+                    offset: Math.max(serverPaged.offset - serverPaged.pageSize, 0),
+                    pageSize: serverPaged.pageSize,
+                  })}>Prev</button>
+                <span className="px-1">
+                  Page {Math.floor(serverPaged.offset / serverPaged.pageSize) + 1}
+                  {" / "}{Math.max(1, Math.ceil(serverPaged.total / serverPaged.pageSize))}
+                </span>
+                <button className={btn}
+                  disabled={serverPaged.busy
+                    || serverPaged.offset + serverPaged.pageSize >= serverPaged.total}
+                  onClick={() => serverPaged.onChange({
+                    offset: serverPaged.offset + serverPaged.pageSize,
+                    pageSize: serverPaged.pageSize,
+                  })}>Next</button>
+              </div>
+            </div>
+          </div>
+        )
+      ) : page.total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748B]">
           <div className="flex items-center gap-2">
             <span>Rows per page</span>
