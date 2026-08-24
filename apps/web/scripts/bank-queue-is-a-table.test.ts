@@ -15,6 +15,12 @@
 //     This file is what stops it drifting back, because "make the row a bit
 //     more flexible" is a change nobody would flag in review.
 //
+//     The queue was later migrated onto the shared DataTable, so it could have
+//     search, column visibility and a page-size control without a second
+//     implementation of each. The PROPERTIES below are unchanged; where they
+//     are asserted moved, from hand-written <table> markup to the `columns`
+//     array and `rowActions` that produce it.
+//
 // WHAT IS ASSERTED
 //     1. The queue renders a <table>, with the eight expected column headers in
 //        order — including Spent and Received as SEPARATE money columns.
@@ -57,54 +63,42 @@ test("the parse finds the queue component and it is not trivially short", () => 
 
 test("the queue is a table, not a list of cards", () => {
   const s = queueSource();
-  assert.match(s, /<table\b/, "the Categorize queue must render a <table>");
-  assert.match(s, /<thead>/, "a table with no header row has no columns to align to");
+  assert.match(s, /<DataTable\b/,
+    "the Categorize queue must render the shared DataTable — a hand-rolled " +
+    "list is what it replaced, and rebuilding one loses search, column " +
+    "visibility, export and the page-size control with it");
+  assert.match(s, /columns=\{queueColumns\}/, "it must pass the column set below");
 });
 
-test("the columns are the eight, in order, with Spent and Received separate", () => {
+test("the columns are the six, in order, with Spent and Received separate", () => {
   const s = queueSource();
-  const thead = s.slice(s.indexOf("<thead>"), s.indexOf("</thead>"));
-  assert.ok(thead.length > 100, "the <thead> slice came back empty");
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  assert.ok(decl.length > 500, "the queueColumns declaration came back empty");
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+  assert.ok(body.length > 400, "the queueColumns body came back empty");
 
-  // The text inside each <th>…</th>. The select-all cell holds JSX whose
-  // attribute values contain ">" (`selected.size > 0`), so a naive
-  // `<th[^>]*>` closes early on it — keep only cells whose content is a plain
-  // short label, which is exactly what a column heading is.
-  const headers = [...thead.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)]
-    .map((m) => m[1].replace(/<[^>]*>/g, "").trim())
-    .filter((h) => /^[A-Za-z][A-Za-z ]{1,24}$/.test(h));
-
-  assert.deepEqual(headers, [
-    "Date", "Description", "Payee", "Category or match", "Spent", "Received", "Action",
-  ], "the column set changed — the first <th> is the select-all checkbox and has no text");
+  const headers = [...body.matchAll(/header:\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(headers,
+    ["Date", "Description", "Payee", "Category or match", "Spent", "Received"],
+    "the column set changed. Spent and Received are SEPARATE on purpose — " +
+    "money out and money in are the two things the eye separates first. " +
+    "Action is not among them: it is rowActions, which DataTable always " +
+    "renders last, which is what keeps the button in a fixed strip.");
 });
 
-test("the action button is in the LAST cell of the row", () => {
+test("the action button is in the fixed trailing column, and nowhere else", () => {
   const s = queueSource();
-  const tbody = s.slice(s.indexOf("<tbody"), s.indexOf("</tbody>"));
-  assert.ok(tbody.length > 1_000, "the <tbody> slice came back empty");
+  assert.match(s, /rowActions=\{\(t\) => actionCell\(t\)\}/,
+    "the Add/Match button must be rowActions — DataTable renders that column " +
+    "last and at a fixed width, which is what stops the button moving from " +
+    "row to row the way it did when the table was hand-rolled");
 
-  // The first <tr> in the body is the transaction line itself; the expanded
-  // detail row follows it and is a single colSpan cell, so it is skipped.
-  const rowStart = tbody.indexOf("<tr");
-  const rowEnd = tbody.indexOf("</tr>", rowStart);
-  const row = tbody.slice(rowStart, rowEnd);
-  assert.ok(row.includes("<td"), "no cells found in the transaction row");
-
-  const cells = row.split(/<td\b/).slice(1);
-  assert.equal(cells.length, 8, `expected 8 cells in the row, found ${cells.length}`);
-
-  const actionCell = cells[cells.length - 1];
-  assert.match(actionCell, /isMatch \? "Match" : "Add"/,
-    "the primary Add/Match button must live in the last cell — a button in any " +
-    "earlier cell moves horizontally with the text beside it, which is the bug " +
-    "this layout exists to fix");
-
-  // And nowhere else. `Match`/`Add` appearing in an earlier cell would mean a
-  // second, differently-positioned primary action.
-  const earlier = cells.slice(0, -1).join("");
-  assert.doesNotMatch(earlier, /isMatch \? "Match" : "Add"/,
-    "a primary action button appears outside the Action column");
+  // And it must not ALSO be produced by a column's render, which would put a
+  // second primary action wherever that column happens to sit.
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+  assert.doesNotMatch(body, /isMatch \? "Match" : "Add"/,
+    "a primary action button is being rendered inside a column");
 });
 
 test("two verbs, not three — the queue no longer says Post", () => {

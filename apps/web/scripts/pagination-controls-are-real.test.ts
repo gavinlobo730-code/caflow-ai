@@ -46,6 +46,24 @@ function walk(dir: string, out: string[] = []): string[] {
 const FILES = ROOTS.flatMap((d) => (fs.existsSync(d) ? walk(d) : []))
   .map((f) => ({ path: path.relative(ROOT, f), src: fs.readFileSync(f, "utf8") }));
 
+/** One entry per top-level component, not per FILE.
+ *
+ *  A screen is a component. apps/web/app/clients/[id]/bank/page.tsx holds
+ *  several — the Categorize queue on a DataTable, and the Register and
+ *  passbook with pagers of their own — so a file-level check flags the file
+ *  the moment any one of them uses a DataTable, whether or not the same
+ *  component also draws a pager. That is a false positive, and a test that
+ *  cries wolf gets suppressed rather than heeded. */
+const UNITS = FILES.flatMap((f) => {
+  const bounds = [...f.src.matchAll(/^(?:export\s+)?(?:default\s+)?function\s+([A-Za-z0-9_]+)/gm)]
+    .map((m) => ({ name: m[1], at: m.index! }));
+  if (bounds.length === 0) return [{ path: f.path, src: f.src }];
+  return bounds.map((b, i) => ({
+    path: `${f.path} → ${b.name}()`,
+    src: f.src.slice(b.at, i + 1 < bounds.length ? bounds[i + 1].at : undefined),
+  }));
+});
+
 const usesDataTable = (s: string) => /<DataTable\b/.test(s);
 // Button text on its own line, which is how the pagers in this codebase are
 // written. `>Prev<` on one line would not match, so both shapes are covered.
@@ -56,22 +74,25 @@ const declaresServerPaged = (s: string) => /serverPaged\s*=?\s*[{:]/.test(s);
 const sendsOffset = (s: string) =>
   /offset:\s*String\(|offset=\$\{|[?&]offset=/.test(s);
 
-test("the scan finds the tables and pagers at all", () => {
+test("the scan finds the components, tables and pagers at all", () => {
   assert.ok(FILES.length > 100, `only ${FILES.length} source files scanned`);
-  const tables = FILES.filter((f) => usesDataTable(f.src));
+  assert.ok(UNITS.length > FILES.length,
+    `component slicing produced ${UNITS.length} units from ${FILES.length} files — ` +
+    "it is not splitting, so every assertion below is back to file granularity");
+  const tables = UNITS.filter((u) => usesDataTable(u.src));
   assert.ok(tables.length >= 15,
     `expected the DataTable callers, found ${tables.length}`);
-  const pagers = FILES.filter((f) => hasOwnPager(f.src));
+  const pagers = UNITS.filter((u) => hasOwnPager(u.src));
   assert.ok(pagers.length >= 2,
     `expected the hand-rolled pagers, found ${pagers.length}`);
 });
 
 test("no screen renders a DataTable and its own pager as well", () => {
-  const both = FILES
-    .filter((f) => usesDataTable(f.src) && hasOwnPager(f.src))
+  const both = UNITS
+    .filter((u) => usesDataTable(u.src) && hasOwnPager(u.src))
     // data-table.tsx itself legitimately contains both: it IS the pager.
-    .filter((f) => !f.path.endsWith(path.join("ui", "data-table.tsx")))
-    .map((f) => f.path);
+    .filter((u) => !u.path.includes(path.join("ui", "data-table.tsx")))
+    .map((u) => u.path);
 
   assert.deepEqual(both, [],
     "these render two pagers. DataTable always draws a footer, so a second " +
@@ -82,9 +103,9 @@ test("no screen renders a DataTable and its own pager as well", () => {
 });
 
 test("a server-paged fetch feeding a DataTable declares serverPaged", () => {
-  const offenders = FILES
-    .filter((f) => usesDataTable(f.src) && sendsOffset(f.src) && !declaresServerPaged(f.src))
-    .map((f) => f.path);
+  const offenders = UNITS
+    .filter((u) => usesDataTable(u.src) && sendsOffset(u.src) && !declaresServerPaged(u.src))
+    .map((u) => u.path);
 
   assert.deepEqual(offenders, [],
     "these ask the server for a slice and hand it to a DataTable without " +

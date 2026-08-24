@@ -5,6 +5,8 @@ Pure engine (match ranking, rule categorization, category vocabulary) plus the
 matching service (queue filters, manual match acceptance, duplicate prevention)
 against an in-memory fake Supabase client.
 """
+import re
+
 import pytest
 
 from domain.banking import (
@@ -117,7 +119,34 @@ class _Resp:
 # the groups apart and quietly matches nothing, which is indistinguishable from
 # "no candidates", so this parses paren depth properly and REFUSES what it does
 # not understand.
-_OR_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "is"}
+_OR_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "is", "ilike", "like"}
+
+
+def _pg_ilike(value, pattern) -> bool:
+    """PostgREST's or()-expression LIKE: `*` is the wildcard (not `%`), and a
+    backslash escapes a literal `%`, `_` or `*`.
+
+    Written out rather than reusing the plain ilike matcher, which translates
+    `%` and would re.escape a `*` into a literal — so `*foo*` matched nothing
+    and every search test would have passed by finding no rows."""
+    if value is None:
+        return False
+    out, i = [], 0
+    p = str(pattern)
+    while i < len(p):
+        ch = p[i]
+        if ch == "\\" and i + 1 < len(p):
+            out.append(re.escape(p[i + 1])); i += 2; continue
+        if ch == "*":
+            out.append(".*")
+        elif ch == "%":
+            out.append(".*")
+        elif ch == "_":
+            out.append(".")
+        else:
+            out.append(re.escape(ch))
+        i += 1
+    return re.match("^" + "".join(out) + "$", str(value), re.IGNORECASE) is not None
 
 
 def _split_top(expr):
@@ -154,6 +183,8 @@ def _or_term(row, term):
     if op not in _OR_OPS:
         raise NotImplementedError(f"fake or() operator not implemented: {op!r}")
     got, want = row.get(c), _coerce(v)
+    if op in ("ilike", "like"):
+        return _pg_ilike(got, want)
     if op == "is":
         return got is want
     if op == "eq":

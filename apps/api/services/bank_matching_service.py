@@ -507,17 +507,43 @@ class BankMatchingService:
             return q.eq("needs_review", True)
         return q
 
+    @staticmethod
+    def _search_filter(q, term: Optional[str]):
+        """Free-text search, IN SQL and therefore over the whole view.
+
+        It has to be server-side. The screen shows one page; a box that
+        filtered the fifty rows already fetched would answer "no match" for a
+        line sitting on page four — a wrong answer, not a slow one.
+
+        Searched: what the bank wrote (description), the reference, and the
+        payee once a human has confirmed one. Not the amount — a CA types
+        1,00,000 or 100000 or 1 lakh for the same figure and none of them is
+        the stored paise, so an amount box is a separate control, not this one.
+        `%` and `_` are escaped: a description search for "50%" must look for
+        the character, not match everything."""
+        term = (term or "").strip()
+        if not term:
+            return q
+        safe = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pat = f"*{safe}*"
+        return q.or_(",".join([
+            f"description.ilike.{pat}",
+            f"reference_no.ilike.{pat}",
+            f"payee_name.ilike.{pat}",
+        ]))
+
     def _queue_query(self, db, firm_id: str, client_id: Optional[str], status: str,
-                     cols: str = "*", count: Optional[str] = None):
+                     cols: str = "*", count: Optional[str] = None,
+                     q_text: Optional[str] = None):
         q = db.table("bank_transactions").select(cols, count=count) if count \
             else db.table("bank_transactions").select(cols)
         q = q.eq("firm_id", firm_id)
         if client_id:
             q = q.eq("client_id", client_id)
-        return self._view_filter(q, status)
+        return self._search_filter(self._view_filter(q, status), q_text)
 
     def queue_total(self, db, firm_id: str, client_id: Optional[str],
-                    status: str = "unmatched") -> int:
+                    status: str = "unmatched", q_text: Optional[str] = None) -> int:
         """How many rows the view holds, whatever slice of it is on screen.
 
         A paged queue that cannot say "50 of 312" hides the other 262 exactly
@@ -525,12 +551,12 @@ class BankMatchingService:
         if status not in self._QUEUE_STATUSES:
             raise HTTPException(status_code=422, detail="Invalid queue status.")
         res = self._queue_query(db, firm_id, client_id, status,
-                                cols="id", count="exact").limit(1).execute()
+                                cols="id", count="exact", q_text=q_text).limit(1).execute()
         return int(getattr(res, "count", None) or 0)
 
     def queue(self, db, firm_id: str, client_id: Optional[str], status: str = "unmatched",
               limit: Optional[int] = None, offset: int = 0,
-              with_suggestions: bool = False) -> list[dict]:
+              with_suggestions: bool = False, q_text: Optional[str] = None) -> list[dict]:
         """One page of the work queue, enriched with rules and payee history.
 
         limit=None returns the whole view, as this always did — the enrichment
@@ -548,15 +574,16 @@ class BankMatchingService:
             # fetch_all keyset-pages on `id` and imposes its own ORDER BY id,
             # so this query must NOT carry a sort of its own — the cursor would
             # walk a different order than the one it pages over. Sorted after.
-            txns = fetch_all(lambda: self._queue_query(db, firm_id, client_id, status),
-                             label="matching.queue")
+            txns = fetch_all(
+                lambda: self._queue_query(db, firm_id, client_id, status, q_text=q_text),
+                label="matching.queue")
             txns.sort(key=lambda t: (str(t.get("transaction_date") or ""), str(t.get("id"))))
         else:
             # (transaction_date, id) — the id is the tiebreak, not decoration.
             # Dates repeat constantly on a statement, and a paged sort with ties
             # repeats rows on one page and drops them from the next.
             start = max(int(offset), 0)
-            txns = (self._queue_query(db, firm_id, client_id, status)
+            txns = (self._queue_query(db, firm_id, client_id, status, q_text=q_text)
                     .order("transaction_date").order("id")
                     .range(start, start + max(int(limit), 1) - 1)
                     .execute().data or [])
