@@ -125,3 +125,56 @@ test("two verbs, not three — the queue no longer says Post", () => {
     "document that already exists; Add creates the entry from a category. " +
     '"Post" is what happens next, not a third thing the reader chooses.');
 });
+
+test("the queue offers ONE match, not a ranked list", () => {
+  const s = queueSource();
+
+  // WHY. A ₹1,00,000 payment on a client with ten open bills was offered five
+  // candidates, every one "short by" a five-figure sum at 40–50% confidence,
+  // each with its own orange button. That is not a suggestion, it is a wall —
+  // and it grows with the client's open documents, so it is worst exactly
+  // where a CA most needs the screen to be quiet.
+  //
+  // The ONE confident candidate (exact amount, >=90%) still surfaces, in the
+  // Category-or-match column with a single Match button. Anything else is
+  // reached deliberately, through "Find the invoice" or "Split across
+  // several" — which is a search, not a list the screen pushes at you.
+  // Asserted on the PANEL, and as "does not reach the suggestions at all"
+  // rather than "does not contain this exact expression". My first version
+  // matched `sugg[t.id].map(` literally and a re-added list written with
+  // optional chaining walked straight past it — verified by adding one back
+  // and watching the test stay green.
+  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
+  assert.ok(panel.length > 1_000, "the expanded-row panel came back empty");
+  assert.doesNotMatch(panel, /\bsugg\b/,
+    "the expanded row is reaching into the ranked candidates again — the one " +
+    "confident match belongs on the LINE, and everything else behind a search");
+  assert.doesNotMatch(s, /confidence_label|confColor/,
+    "confidence badges belong to the ranked list, which this screen no longer shows");
+
+  // And the one match is still offered — removing the list must not have
+  // removed the match with it.
+  assert.match(s, /confidentMatch\(t\)/,
+    "the single confident match must still be computed and offered");
+});
+
+test("the two ways out of an unanswerable row are the largest controls in the panel", () => {
+  const s = queueSource();
+  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
+  assert.ok(panel.length > 1_000, "the expanded-row panel came back empty");
+
+  // Reported as: "the split and the other option, it is so small I couldn't
+  // notice them". They were text-[10px] px-2 py-0.5 among a dozen other 10px
+  // things. A control nobody can find is a control that does not exist.
+  for (const label of ["Find the ", "Split across several"]) {
+    const at = panel.indexOf(label);
+    assert.ok(at > 0, `"${label}" is missing from the expanded row`);
+    // The button opening tag is the nearest one before the label.
+    const btn = panel.lastIndexOf("<button", at);
+    const cls = panel.slice(btn, at);
+    assert.match(cls, /text-xs/,
+      `"${label}" is back to a smaller type size than the rest of the panel`);
+    assert.match(cls, /px-3 py-1\.5/,
+      `"${label}" is back to a link-sized hit area`);
+  }
+});

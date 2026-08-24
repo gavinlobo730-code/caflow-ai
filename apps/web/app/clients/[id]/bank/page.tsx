@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
-import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Download, Pencil, Landmark } from "lucide-react";
+import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Download, Pencil, Landmark, Search, Split } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise } from "@/lib/services/formatting";
@@ -657,12 +657,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     return Boolean(draftAccount[t.id] || t.account_id);
   }
 
-  async function accept(id: string, s: MatchSuggestion) {
-    setBusy((b) => ({ ...b, [id]: true }));
-    try { await api.banking.matchEntity(id, { matched_entity_type: s.matched_entity_type, matched_entity_id: s.matched_entity_id }); await load(); }
-    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
-    finally { setBusy((b) => ({ ...b, [id]: false })); }
-  }
   async function reject(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
     try { await api.banking.unmatch(id); setSugg((s) => ({ ...s, [id]: [] })); await load(); }
@@ -788,7 +782,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     return a ? a.account_name : id.slice(0, 8);
   };
 
-  const confColor = (l: string) => l === "high" ? "text-green-700 bg-green-50" : l === "medium" ? "text-amber-700 bg-amber-50" : "text-[#64748B] bg-[#F1F5F9]";
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
@@ -987,25 +980,33 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       </div>
     )}
 
+    {/* THE two ways out of a line the row itself cannot answer: find the
+        document, or split it across several. They used to be 10px links among
+        a dozen other 10px things and went unnoticed — which left a reader
+        believing the row offered nothing but a category dropdown. They are the
+        largest controls in this panel now, deliberately. */}
     {!posted && !excluded && (
       <div className="flex items-center gap-2 flex-wrap">
         {t.matched_entity_id ? (
           <button onClick={() => reject(t.id)} disabled={busy[t.id]}
-            className="text-[10px] text-red-600 hover:underline">Unmatch</button>
+            className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 font-medium disabled:opacity-50">
+            Unmatch
+          </button>
         ) : (
           <>
             <button onClick={() => setFindTxn(t)} disabled={busy[t.id]}
-              className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569]">
-              Find other matches
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50">
+              <Search size={13} /> Find the {t.credit_paise > 0 ? "invoice" : "bill"}
             </button>
             <button onClick={() => openSettle(t)} disabled={busy[t.id]}
-              className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569]">
-              Split / settle {t.credit_paise > 0 ? "invoices" : "bills"} / TDS
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50"
+              title={`Allocate this line across several ${t.credit_paise > 0 ? "invoices" : "bills"}, or record TDS withheld on it`}>
+              <Split size={13} /> Split across several
             </button>
           </>
         )}
         <button onClick={() => setIgnored(t.id, true)} disabled={busy[t.id]}
-          className="text-[10px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto">
+          className="text-[11px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto disabled:opacity-50">
           Exclude
         </button>
       </div>
@@ -1110,46 +1111,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
           Use last time&apos;s
         </button>
       </div>
-    )}
-
-    {/* The other candidates, and why each was proposed. */}
-    {sugg[t.id] && sugg[t.id].length > 0 && (
-      <div className="space-y-1">
-        {sugg[t.id].map((s) => (
-          <div key={s.matched_entity_id} className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[11px] text-[#334155] truncate">{s.label}</p>
-              <p className="text-[10px] text-[#94A3B8]">{s.reasons.join(" · ")}</p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${confColor(s.confidence_label)}`}>{s.confidence}%</span>
-              {/* A SHORT match settles only what arrived, leaving the
-                  document partly open — which is wrong when the
-                  shortfall is withheld TDS. Send it to the settlement
-                  modal rather than let one click under-settle. */}
-              {s.difference_paise > 0 ? (
-                <button onClick={() => openSettle(t, s)} disabled={busy[t.id]}
-                  className="text-[10px] px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
-                  title={`Bank line is ${fmt(s.difference_paise)} short of this document`}>
-                  {s.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
-                </button>
-              ) : (
-                <button onClick={() => accept(t.id, s)} disabled={busy[t.id]}
-                  className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Accept</button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    )}
-    {sugg[t.id] && sugg[t.id].length === 0 && !t.matched_entity_id && !posted && (
-      <p className="text-[10px] text-[#94A3B8]">
-        No match suggestions — the ranked list only reaches documents close to this
-        amount.{" "}
-        <button onClick={() => setFindTxn(t)} className="text-blue-600 hover:underline">
-          Search all documents
-        </button>
-      </p>
     )}
 
     </div>
