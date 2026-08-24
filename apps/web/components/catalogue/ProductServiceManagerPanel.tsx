@@ -27,6 +27,10 @@ import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 
+// Generous, not enforced by the API — but a ceiling either way, so whether it
+// was reached has to be visible rather than silently shortening the table.
+const CATALOGUE_FETCH_LIMIT = 500;
+
 export function ProductServiceManagerPanel({
   clientId,
   onClose,
@@ -41,6 +45,7 @@ export function ProductServiceManagerPanel({
   onPick?: (item: ServiceCatalogueItem) => void;
 }) {
   const [items, setItems] = useState<ServiceCatalogueItem[]>([]);
+  const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [editing, setEditing] = useState<ServiceCatalogueItem | "new" | null>(null);
@@ -68,10 +73,13 @@ export function ProductServiceManagerPanel({
     try {
       const res = (await api.serviceCatalogue.list(clientId, {
         include_archived: true,
-        limit: 500,
+        limit: CATALOGUE_FETCH_LIMIT,
       })) as ApiResp<ServiceCatalogueItem[]>;
       if (!res.success) { setError(true); return; }
       setItems(res.data ?? []);
+      // A ceiling that is reached silently makes the table's "of N" the cap
+      // rather than the count. Same detection the Relationships registry uses.
+      setCapped((res.data ?? []).length >= CATALOGUE_FETCH_LIMIT);
     } catch {
       setError(true);
     } finally {
@@ -298,6 +306,15 @@ export function ProductServiceManagerPanel({
           </button>
         </div>
       </div>
+
+      {/* The ceiling was reached: the table below is a PREFIX of the catalogue
+          and its "of N" is the cap, not the count. */}
+      {capped && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Showing the first {CATALOGUE_FETCH_LIMIT} items — there may be more.
+          Search to narrow the list.
+        </div>
+      )}
 
       {/* Table — shared DataTable (search, sort, filters, pagination, export, bulk-select) */}
       <DataTable

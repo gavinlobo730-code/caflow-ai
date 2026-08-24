@@ -398,8 +398,13 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
+// Generous, not enforced — but a ceiling either way, so whether it was reached
+// has to be visible. See loadAll().
+const TASK_FETCH_LIMIT = 1000;
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksCapped, setTasksCapped] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [teamMembers, setTeamMembers] = useState<FirmUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -417,11 +422,17 @@ export default function TasksPage() {
         // Raised from 200 → 1000: the DataTable paginates client-side, so the old
         // 200-row ceiling silently hid tasks. Fetch the full working set and let
         // the table handle search/sort/filter/pagination in-browser.
-        getTasks({ limit: 1000 }),
+        //
+        // The ceiling is still a ceiling. A firm past it gets a table whose
+        // "of N" is the CAP, not the truth, and nothing on screen says so —
+        // which is how a task goes missing without anyone noticing. Detected
+        // below and stated, the way the Relationships registry already does it.
+        getTasks({ limit: TASK_FETCH_LIMIT }),
         getClients(),
         getTeamMembers().catch(() => [] as FirmUser[]),
       ]);
       // Enrich tasks with client names and assignee info
+      setTasksCapped(taskList.length >= TASK_FETCH_LIMIT);
       const clientMap = new Map(clientList.map(c => [c.id, c.client_name]));
       const memberMap = new Map(memberList.map(m => [m.id, m]));
       const enriched = taskList.map(t => ({
@@ -645,6 +656,17 @@ export default function TasksPage() {
         <SummaryCard label="Completed" value={stats.completed} color="bg-green-50 border-green-200 text-green-700" />
         <SummaryCard label="Overdue" value={stats.overdue} color="bg-red-50 border-red-200 text-red-700" />
       </div>
+
+      {/* The ceiling was reached, so the table below is a PREFIX of the tasks
+          and its "of N" is the cap. Said out loud rather than left for someone
+          to discover by missing a task. */}
+      {tasksCapped && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Showing the first {TASK_FETCH_LIMIT.toLocaleString("en-IN")} tasks — there
+          may be more. Narrow by client, status or assignee to be sure you are
+          seeing all of them.
+        </div>
+      )}
 
       {/* Task list — shared DataTable (global search, sort, filters, pagination, export, prefs) */}
       <DataTable
