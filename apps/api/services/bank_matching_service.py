@@ -674,7 +674,48 @@ class BankMatchingService:
             for t in txns:
                 t["suggestions"] = found.get(str(t.get("id")), [])
 
+        self._attach_splits(db, firm_id, txns)
         return txns
+
+    @staticmethod
+    def _attach_splits(db, firm_id: str, txns: list[dict]) -> None:
+        """Tier 1.2 — the ledgers a line was allocated across, for the WHOLE page.
+
+        One query for the page, not one per row: splits are rare, but a
+        per-row lookup would be fifty cross-region round trips to discover that
+        forty-eight of them have none.
+
+        Without this the queue could not tell a split row from an uncoded one —
+        both carry a NULL category and a NULL account_id — so the screen showed
+        a ledger picker over an allocation that was already made, and the first
+        thing the CA did with it silently replaced their split.
+
+        Never fatal: a split table that cannot be read costs the reader the
+        allocation summary, not the queue.
+        """
+        ids = [str(t.get("id")) for t in txns if t.get("id")]
+        by_txn: dict[str, list[dict]] = {}
+        for i in range(0, len(ids), 200):
+            chunk = ids[i:i + 200]
+            try:
+                rows = (db.table("bank_transaction_splits")
+                        .select("bank_transaction_id, account_id, amount_paise, narration, sequence_no")
+                        .eq("firm_id", firm_id).in_("bank_transaction_id", chunk)
+                        .order("sequence_no").execute().data) or []
+            except Exception as e:  # pragma: no cover - best effort, logged
+                _logger.warning("queue split lookup failed: %s", e)
+                rows = []
+            for r in rows:
+                by_txn.setdefault(str(r.get("bank_transaction_id")), []).append({
+                    "account_id": r.get("account_id"),
+                    "amount_paise": int(r.get("amount_paise") or 0),
+                    "narration": r.get("narration"),
+                })
+        for t in txns:
+            legs = by_txn.get(str(t.get("id")), [])
+            t["splits"] = legs
+            t["is_split"] = bool(legs)
+            t["split_count"] = len(legs)
 
     # ── B.2.2 — categorize (manual or accepting a rule suggestion) ───────────
     def categorize(self, db, firm_id: str, txn_id: str, category: str) -> dict:

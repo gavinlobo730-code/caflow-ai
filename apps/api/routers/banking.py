@@ -910,13 +910,21 @@ def set_transaction_account(
     data: TransactionAccountIn,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
-    """Map a transaction to a GL account (status → matched). Does not post."""
+    """Map a transaction to a GL account (status → matched). Does not post.
+
+    With `derive_category`, the category is derived from that account rather
+    than asked for separately — the ledger-first path the Categorize screen
+    uses. See domain/banking/account_category for what is derived and, more
+    importantly, for the guarantee that the counter leg still posts to exactly
+    the account chosen.
+    """
     db = _db()
     if not db:
         return api_response(True, {"id": txn_id, "match_status": "matched", "account_id": data.account_id})
     _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, banking_service.set_account(
-        db, current_user["firm_id"], txn_id, data.account_id))
+        db, current_user["firm_id"], txn_id, data.account_id,
+        derive_category=data.derive_category))
 
 
 @router.post("/transactions/{txn_id}/ignore")

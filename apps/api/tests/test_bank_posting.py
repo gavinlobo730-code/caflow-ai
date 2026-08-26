@@ -3,6 +3,7 @@ Banking B.3 — Posting Engine tests: category→journal mapping, settlement,
 duplicate/FY/account protection, and integrity (balanced, paise, audit).
 """
 import pytest
+from fastapi import HTTPException
 
 from domain.banking import posting_map as pmap
 import services.bank_posting_service as bps
@@ -231,6 +232,99 @@ def test_transfer_posts_between_banks():
     assert _balanced(lines)
     dr = next(l for l in lines if l["debit_paise"])
     assert dr["account_id"] == "acc-bank2"            # destination receives
+
+
+def test_the_account_already_on_the_row_is_used_when_the_post_names_none():
+    """Coding a line and then pressing Add has to work.
+
+    The counter account used to come ONLY from the post request. Anything that
+    set the account through banking_service.set_account and then posted with an
+    empty body — "Use the rule", "Use last time's", and now the ledger-first
+    picker on the queue — hit "Select a GL account for 'Expense'" with the
+    account plainly visible on the row.
+    """
+    db = _db_with_accounts()
+    _seed_txn(db, debit=60000, category="Expense", account_id="acc-exp")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
+                                    actor_id="u1")
+    lines = _lines_for(db, res["posted_journal_id"])
+    assert _balanced(lines)
+    dr = next(l for l in lines if l["debit_paise"])
+    assert dr["account_id"] == "acc-exp"
+
+
+def test_an_account_named_in_the_post_still_wins_over_the_row():
+    """The fallback must not become an override — a caller that names an
+    account is making a decision now, and the stored one may be stale."""
+    db = _db_with_accounts()
+    _seed_txn(db, debit=60000, category="Expense", account_id="acc-exp")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
+                                    account_id="acc-sal", actor_id="u1")
+    dr = next(l for l in _lines_for(db, res["posted_journal_id"]) if l["debit_paise"])
+    assert dr["account_id"] == "acc-sal"
+
+
+def test_a_category_with_no_account_anywhere_is_still_refused():
+    """The fallback must not make the requirement disappear. An Expense with no
+    account named and none on the row cannot be posted to anything."""
+    db = _db_with_accounts()
+    _seed_txn(db, debit=60000, category="Expense")
+    with pytest.raises(HTTPException) as e:
+        bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    assert e.value.status_code == 422
+    assert "GL account" in str(e.value.detail)
+
+
+def test_an_unpaired_transfer_uses_the_bank_ledger_the_ca_picked():
+    """Account-first coding: picking the other bank/cash ledger is what makes a
+    line a Transfer, so that ledger is the destination. Cash drawn at a branch
+    has no counterpart statement line to pair with, and used to be unpostable."""
+    db = _db_with_accounts()
+    _seed_txn(db, debit=60000, category="Transfer", account_id="acc-bank2")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
+                                    actor_id="u1")
+    lines = _lines_for(db, res["posted_journal_id"])
+    assert _balanced(lines)
+    dr = next(l for l in lines if l["debit_paise"])
+    assert dr["account_id"] == "acc-bank2"
+
+
+def test_a_split_line_posts_without_any_category_at_all():
+    """A split IS the answer to "where does this money go", so it needs no
+    category on top of it.
+
+    _plan checks the splits before it looks at the category, and builds the
+    n-leg journal from them. The screen relies on that: a split row enables Add
+    with a null category, and if this stopped being true the CA could save an
+    allocation that could then never be posted.
+    """
+    db = _db_with_accounts()
+    _seed_txn(db, debit=472000, category=None)
+    db.store["bank_transaction_splits"] = [
+        {"id": "s1", "firm_id": FIRM, "bank_transaction_id": "t1",
+         "account_id": "acc-exp", "amount_paise": 400000, "narration": "Rent", "sequence_no": 1},
+        {"id": "s2", "firm_id": FIRM, "bank_transaction_id": "t1",
+         "account_id": "acc-sal", "amount_paise": 72000, "narration": "Maintenance", "sequence_no": 2},
+    ]
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    lines = _lines_for(db, res["posted_journal_id"])
+    assert _balanced(lines)
+    # One bank leg for the whole movement, one leg per split — never one bank
+    # leg per split, which balances just as well and litters the bank ledger
+    # with fragments of a single statement line.
+    assert len(lines) == 3
+    assert sorted(l["account_id"] for l in lines if l["debit_paise"]) == ["acc-exp", "acc-sal"]
+    bank_leg = next(l for l in lines if l["credit_paise"])
+    assert bank_leg["account_id"] == "acc-bank" and bank_leg["credit_paise"] == 472000
+
+
+def test_a_transfer_with_no_destination_at_all_is_still_refused():
+    db = _db_with_accounts()
+    _seed_txn(db, debit=60000, category="Transfer")
+    with pytest.raises(HTTPException) as e:
+        bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    assert e.value.status_code == 422
+    assert "destination" in str(e.value.detail)
 
 
 # ── B.3.4 settlement ──────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@
 //     array and `rowActions` that produce it.
 //
 // WHAT IS ASSERTED
-//     1. The queue renders a <table>, with the eight expected column headers in
+//     1. The queue renders a <table>, with the expected column headers in
 //        order — including Spent and Received as SEPARATE money columns.
 //     2. The action button is in the LAST cell of the row. That is the whole
 //        point: a button in the Description or Category cell moves with the
@@ -79,7 +79,7 @@ test("the columns are the six, in order, with Spent and Received separate", () =
 
   const headers = [...body.matchAll(/header:\s*"([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(headers,
-    ["Date", "Description", "Payee", "Category or match", "Spent", "Received"],
+    ["Date", "Description", "Payee", "Ledger or match", "Spent", "Received"],
     "the column set changed. Spent and Received are SEPARATE on purpose — " +
     "money out and money in are the two things the eye separates first. " +
     "Action is not among them: it is rowActions, which DataTable always " +
@@ -177,4 +177,74 @@ test("the two ways out of an unanswerable row are the largest controls in the pa
     assert.match(cls, /px-3 py-1\.5/,
       `"${label}" is back to a link-sized hit area`);
   }
+});
+
+
+test("the ledger picker is on the ROW, and is not gated behind a category", () => {
+  const s = queueSource();
+
+  // WHY. The account picker DID exist — inside the opened row, rendered only
+  // once a Category had been chosen and only for categories that are not
+  // auto-counter. A reader who had not chosen a category saw no way to name an
+  // account at all, and reported it as missing. It was not missing; it was
+  // behind a gate nothing told them about.
+  //
+  // The column now holds the ledger itself, and the category is derived from it
+  // server-side (domain/banking/account_category). Asserted on the COLUMN, so
+  // that moving the picker back into the panel fails here.
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+  assert.ok(body.length > 400, "the queueColumns body came back empty");
+  // \b so a renamed near-namesake (<AccountLookupX …>) does not satisfy it —
+  // the first version of this assertion did, which made the control it defends
+  // removable without a failure.
+  assert.match(body, /<AccountLookup\b/,
+    "the Ledger column must render the chart-of-accounts picker on the line");
+  assert.match(body, /onChange=\{\(id\) => codeToAccount\(t, id\)\}/,
+    "picking a ledger must write it through — a draft held in the browser is " +
+    "lost the moment the reader pages, searches or reloads");
+
+  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
+  assert.ok(panel.length > 1_000, "the expanded-row panel came back empty");
+  assert.doesNotMatch(panel, /<AccountLookup|— Account —/,
+    "the ledger picker is back inside the opened row, where it cannot be seen " +
+    "until someone opens it");
+  assert.doesNotMatch(panel, /AUTO_COUNTER_CATEGORIES\.has/,
+    "the panel is gating a control on the category again — that ordering is " +
+    "the bug: the category now FOLLOWS the ledger, it does not unlock it");
+});
+
+test("a split line is shown as a split, not offered a ledger picker", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+
+  // A split row carries a null category and a null account_id, exactly like an
+  // untouched one. Without this branch the column would offer a picker over an
+  // allocation already made, and the first ledger chosen would replace it.
+  // The literal guard, not just a mention of the flag: `if (false && t.is_split)`
+  // contains the flag, sits in the right place, and reaches the picker anyway.
+  const at = body.indexOf("if (t.is_split) {");
+  assert.ok(at > 0, "the Ledger column must recognise an already-split row");
+  assert.ok(at < body.indexOf("<AccountLookup"),
+    "the split check must come BEFORE the picker, or the picker wins");
+});
+
+test("one Split button, with the choice of what to split across inside it", () => {
+  const s = queueSource();
+  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
+
+  // Splitting across LEDGERS and splitting across DOCUMENTS are both real. They
+  // were one button labelled "several" whose behaviour was always documents, so
+  // the ledger split — complete in the backend since migration 256 — had no
+  // route through the UI and zero call sites.
+  const opens = [...panel.matchAll(/onClick=\{\(\) => (openSplit|openSettle)\(t\)\}/g)]
+    .map((m) => m[1]);
+  assert.deepEqual([...new Set(opens)], ["openSplit"],
+    "the row must offer ONE split entry point; the ledger/document choice is a " +
+    "switch inside the editor, not a second button competing for the same word");
+  assert.match(s, /splitMode === "ledgers"[\s\S]{0,200}<SplitAcrossLedgersModal/,
+    "the ledger split editor must actually be rendered");
+  assert.match(s, /modeSwitch=\{splitModeSwitch\}/,
+    "both editors must show the same switch, in the same place");
 });

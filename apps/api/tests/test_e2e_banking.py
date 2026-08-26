@@ -69,11 +69,54 @@ def test_banking_account_and_import_lifecycle(monkeypatch):
 
 def test_banking_set_account_marks_matched(monkeypatch):
     bk, db = _setup(monkeypatch)
+    # The account has to EXIST in this firm's chart. It used not to be seeded —
+    # set_account wrote whatever id it was handed, so the test passed against a
+    # ledger that was not there. That is the hole _scoped_account closes.
+    db.seed("chart_of_accounts", {"id": "COA-RENT", "firm_id": FIRM, "client_id": "CLI",
+                                  "account_code": "5010", "account_name": "Rent",
+                                  "account_type": "Expense", "account_subtype": None,
+                                  "system_account_key": None, "is_active": True})
     _import_two(bk)
     txn_id = db.rows("bank_transactions")[0]["id"]
     resp = bk.set_transaction_account(txn_id, TransactionAccountIn(account_id="COA-RENT"), CALLER)
     assert resp["data"]["match_status"] == "matched"
     assert db.rows("bank_transactions")[0]["account_id"] == "COA-RENT"
+    # Without derive_category the row keeps whatever category it had — none here.
+    assert db.rows("bank_transactions")[0].get("category") is None
+
+
+def test_banking_set_account_rejects_an_account_from_another_firm(monkeypatch):
+    """The id comes from the browser. Before _scoped_account it was written to
+    bank_transactions.account_id unchecked, and the posting engine would then
+    post a client's rent to another firm's ledger."""
+    bk, db = _setup(monkeypatch)
+    db.seed("chart_of_accounts", {"id": "COA-THEIRS", "firm_id": "FIRM-B", "client_id": None,
+                                  "account_code": "5010", "account_name": "Rent",
+                                  "account_type": "Expense", "account_subtype": None,
+                                  "system_account_key": None, "is_active": True})
+    _import_two(bk)
+    txn_id = db.rows("bank_transactions")[0]["id"]
+    with pytest.raises(HTTPException) as e:
+        bk.set_transaction_account(txn_id, TransactionAccountIn(account_id="COA-THEIRS"), CALLER)
+    assert e.value.status_code == 422
+    assert db.rows("bank_transactions")[0].get("account_id") is None
+
+
+def test_banking_set_account_can_derive_the_category_from_the_ledger(monkeypatch):
+    """Account-first coding through the router: one field, and the category
+    follows. See tests/test_bank_account_first_coding.py for the derivation
+    itself and for the guarantee that the counter leg still posts here."""
+    bk, db = _setup(monkeypatch)
+    db.seed("chart_of_accounts", {"id": "COA-RENT", "firm_id": FIRM, "client_id": "CLI",
+                                  "account_code": "5010", "account_name": "Rent",
+                                  "account_type": "Expense", "account_subtype": None,
+                                  "system_account_key": None, "is_active": True})
+    _import_two(bk)
+    txn_id = db.rows("bank_transactions")[0]["id"]
+    resp = bk.set_transaction_account(
+        txn_id, TransactionAccountIn(account_id="COA-RENT", derive_category=True), CALLER)
+    assert resp["data"]["category"] == "Expense"
+    assert db.rows("bank_transactions")[0]["category"] == "Expense"
 
 
 def test_banking_empty_import_rejected(monkeypatch):
