@@ -618,6 +618,193 @@ class BankPostingService:
             result["credited_to_party_paise"] = excess
         return result
 
+    # ── Undo a posted transaction ────────────────────────────────────────────
+
+    def undo(self, db, firm_id: str, txn_id: str, actor_id: Optional[str] = None,
+             actor_auth_id: Optional[str] = None) -> dict:
+        """Put a POSTED bank transaction back in the queue.
+
+        WHAT WAS WRONG
+            The screen has shown an "Undo" button on every posted row since the
+            queue was built, wired to bank_matching_service.unmatch — which
+            begins by REFUSING a posted transaction. Every click was a 409. It
+            survived because the route has a mock-mode early return that claims
+            success without touching anything, so the whole suite exercised a
+            no-op.
+
+        WHY THIS IS NOT unmatch
+            Posting did three things, and all three have to come back:
+              1. a balanced journal on the books,
+              2. paid_paise and a status on the invoice or bill it settled,
+              3. possibly a party credit, when it settled MORE than was owed.
+
+        APPEND-ONLY, ALWAYS
+            The journal is REVERSED through phase2_journal_service.reverse_entry
+            — the one reversal path — never deleted or edited. CLAUDE.md: a
+            posted entry can never be hard-DELETEd, and a correction to a real
+            transaction is an append-only reversal.
+
+        THE REVERSAL DATE
+            The ORIGINAL entry date while that period is still open, so the
+            books read as if the mistake never happened — which is what "undo"
+            means for a same-period correction. Today's date when the original
+            period is locked, because a reversal must never reopen a filed or
+            locked year. The CA chose this rule; period_validation_service is
+            what decides which case applies.
+
+        WHAT IT REFUSES
+            A multi-invoice settlement. That path (match_and_settle_multi)
+            creates a whole receipt document with its own allocations through
+            receipt_service, and undoing it is cancelling that receipt — a
+            different operation with a different audit trail. Refusing is the
+            honest answer; half-undoing it would leave a receipt pointing at
+            allocations that no longer exist.
+        """
+        txn = self._get_txn(db, firm_id, txn_id)
+        journal_id = txn.get("posted_journal_id")
+        if txn.get("match_status") != "posted" or not journal_id:
+            raise HTTPException(status_code=409,
+                                detail="This transaction is not posted, so there is nothing to undo.")
+        client_id = txn["client_id"]
+
+        # A multi-invoice settlement is a receipt, not a bank journal. Told apart
+        # by the journal's own source_type: match_and_settle_multi books through
+        # receipt_service, so the entry it leaves behind is not ours to reverse.
+        je = (db.table("journal_entries").select("id, source_type, entry_date, reversal_of")
+              .eq("id", journal_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+        if je and je.get("source_type") not in (None, "bank_transaction"):
+            raise HTTPException(
+                status_code=422,
+                detail=("This line was settled across several documents, which created a receipt. "
+                        "Cancel that receipt to undo it — undoing only the bank line would leave "
+                        "the receipt's allocations pointing at nothing."))
+
+        # The original date while its period is open; today otherwise. Asking
+        # period_validation_service rather than reading a lock flag ourselves
+        # keeps ONE definition of "open" — it is fail-closed, so an unverifiable
+        # lock sends the reversal to today rather than into a possibly-locked year.
+        original_date = str((je or {}).get("entry_date") or txn["transaction_date"])[:10]
+        reversal_date = original_date
+        try:
+            period_validation_service.validate_posting_date(firm_id or "", original_date)
+        except HTTPException:
+            reversal_date = _now()[:10]
+            # Today has to be postable too, or there is nowhere to put the
+            # reversal — and that is a real answer, not something to paper over.
+            period_validation_service.validate_posting_date(firm_id or "", reversal_date)
+
+        reversal_id = phase2_journal_service.reverse_entry(
+            db, firm_id, journal_id, reversal_date,
+            narration=f"Undo of bank transaction {txn_id}", created_by=actor_id)
+
+        # 2 and 3, in that order: the credit was granted out of the settlement's
+        # excess, so it is unwound before the settlement that produced it.
+        revoked = self._revoke_overpayment_credit(db, firm_id, client_id, txn_id, actor_id)
+        unsettled = self._unsettle(db, firm_id, txn)
+
+        # Back to "matched" rather than "unmatched" when a document is still
+        # linked: the CA's identification of WHICH invoice this is was not the
+        # mistake, and making them find it again is a second job they did not ask
+        # for. Undo takes back the posting, not the matching.
+        back_to = "matched" if txn.get("matched_entity_id") else "unmatched"
+        db.table("bank_transactions").update({
+            "match_status": back_to, "posted_at": None, "posted_by": None,
+            "posted_journal_id": None, "updated_at": _now(),
+        }).eq("id", txn_id).eq("firm_id", firm_id).eq("match_status", "posted").execute()
+
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "bank_transaction", txn_id, "status_change",
+                      actor_id=actor_auth_id or actor_id,
+                      old_data={"match_status": "posted", "posted_journal_id": journal_id},
+                      new_data={"match_status": back_to, "reversal_journal_id": reversal_id},
+                      metadata={"source": "bank_undo", "reversal_date": reversal_date})
+        except Exception:  # pragma: no cover - audit must never block
+            pass
+        try:
+            timeline_service.log(client_id, "accounting", "Bank Transaction Undone",
+                                 f"Posting reversed ({reversal_date}); back in the queue", "warning",
+                                 firm_id=firm_id, entity_type="bank_transaction",
+                                 entity_id=txn_id, actor_id=actor_id)
+        except Exception:  # pragma: no cover
+            pass
+
+        return {"id": txn_id, "match_status": back_to, "reversal_journal_id": reversal_id,
+                "reversal_date": reversal_date, "unsettled": unsettled,
+                "credit_revoked": revoked}
+
+    @staticmethod
+    def _revoke_overpayment_credit(db, firm_id, client_id, txn_id, actor_id) -> Optional[dict]:
+        """Take back whatever credit THIS transaction's overpayment granted.
+
+        Found by source rather than recomputed: the excess depended on what was
+        outstanding at the moment of posting, and re-deriving it now — after
+        other payments may have landed — would revoke the wrong figure.
+
+        Netted by outstanding_for_source, because post → undo → post → undo is
+        an ordinary correction loop and each posting grants against the same
+        transaction id. Taking the raw grant rows made the second undo try to
+        revoke the first round's credit again.
+        """
+        from services.party_credit_service import party_credit_service
+        grants = party_credit_service.outstanding_for_source(
+            db, firm_id, client_id, "bank_overpayment", txn_id)
+        if not grants:
+            return None
+        out = []
+        for g in grants:
+            out.append(party_credit_service.revoke_credit(
+                db, firm_id, client_id, g["party_type"], g["party_id"],
+                int(g["amount_paise"]), source_type="bank_overpayment", source_id=txn_id,
+                created_by=actor_id, notes=f"Undo of bank transaction {txn_id}"))
+        return {"revocations": len(out), "paise": sum(int(g["amount_paise"]) for g in grants)}
+
+    def _unsettle(self, db, firm_id, txn) -> Optional[dict]:
+        """Give the invoice or bill back what this transaction paid off.
+
+        The allocation is NOT stored per transaction, so it is recovered as
+        `min(this line's amount, what the document currently shows as paid)`.
+        The clamp is the point: if part of that payment has already been
+        unwound, or another correction reduced paid_paise, subtracting the full
+        amount would drive it negative and make the document look overdue for
+        money nobody owes.
+        """
+        cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
+        client_id = txn.get("client_id")
+        if not pmap.settles_document(cat, mt, mid):
+            return None
+        if mt == "sales_invoice":
+            table, label_col = "client_sales_invoices", "invoice_no"
+            extra, outstanding_fn = "total_paise, debit_note_paise, credited_paise", self._invoice_outstanding
+        else:
+            table, label_col = "purchase_bills", "bill_no"
+            extra = "total_paise, net_payable_paise, credit_note_paise, debited_paise"
+            outstanding_fn = self._bill_outstanding
+
+        rows = (db.table(table).select(f"id, {label_col}, paid_paise, status, {extra}")
+                .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id)
+                .limit(1).execute().data) or []
+        if not rows:
+            return None
+        doc = rows[0]
+        paid = int(doc.get("paid_paise") or 0)
+        amount, _ = _amount(txn)
+        give_back = min(int(amount), paid)
+        if give_back <= 0:
+            return {"entity": table, "label": doc.get(label_col), "reversed_paise": 0,
+                    "status": doc.get("status"), "note": "nothing was allocated to this document"}
+        new_paid = paid - give_back
+        # Recomputed from the document's own figures, never assumed to be
+        # "unpaid": a partly-paid invoice that this line topped up must go back
+        # to partially_paid, not to a state saying nobody has paid anything.
+        probe = dict(doc); probe["paid_paise"] = new_paid
+        status = "unpaid" if new_paid <= 0 else (
+            "paid" if outstanding_fn(probe) <= 0 else "partially_paid")
+        db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
+            .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+        return {"entity": table, "label": doc.get(label_col), "reversed_paise": give_back,
+                "new_paid_paise": new_paid, "status": status}
+
     # ── Multi-invoice bank allocation ────────────────────────────────────────
     def match_and_settle_multi(
         self, db, firm_id: str, txn_id: str, entity_type: str, allocations: list[dict],
