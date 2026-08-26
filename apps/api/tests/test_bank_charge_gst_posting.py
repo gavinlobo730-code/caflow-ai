@@ -602,15 +602,60 @@ def test_the_queue_offers_the_rate_on_a_debit():
     assert row["suggested_is_interstate"] is False
 
 
-def test_the_queue_withholds_the_rate_on_a_credit():
-    """A rule set to 'any' can fire on a receipt too. Offering 18% there would
-    prefill the drawer with a split the posting engine then refuses."""
+def test_the_queue_says_per_row_whether_a_rate_may_go_on_it():
+    """Through queue() itself, not through the helper it calls.
+
+    The screen renders its GST control only where `gst_allowed` is true, so a
+    queue that stopped stamping the field would silently hide the control on
+    EVERY row — and a test that called the helper directly would not notice,
+    because the helper would still be right.
+    """
+    db = _db()
+    _seed(db, debit=59000, credit=0, category="Expense", id="row-expense")
+    _seed(db, debit=0, credit=100000, category="Customer Payment", id="row-control")
+    rows = {r["id"]: r for r in bank_matching_service.queue(db, FIRM, CLIENT, "unmatched")}
+    assert rows["row-expense"]["gst_allowed"] is True
+    assert rows["row-control"]["gst_allowed"] is False
+
+
+def test_a_split_row_is_marked_ineligible_which_means_ORDER_matters():
+    """`is_split` is attached by _attach_splits, and gst_split_allowed reads it.
+
+    So _mark_gst_eligibility has to run AFTER it. Run the other way round the
+    flag is computed against a row that does not know it is split yet, comes
+    back true, and the screen offers a rate the posting engine refuses because
+    a multi-ledger split would need one rate per leg. Nothing else in the suite
+    notices that ordering, which is why this test seeds a real split and goes
+    through queue().
+    """
+    db = _db()
+    _seed(db, debit=47200, credit=0, category="Expense", id="row-split")
+    db.store["bank_transaction_splits"] = [
+        {"id": "s1", "firm_id": FIRM, "bank_transaction_id": "row-split",
+         "account_id": "acc-charges", "amount_paise": 40000, "sequence_no": 1,
+         "narration": None},
+        {"id": "s2", "firm_id": FIRM, "bank_transaction_id": "row-split",
+         "account_id": "acc-charges", "amount_paise": 7200, "sequence_no": 2,
+         "narration": None},
+    ]
+    row = bank_matching_service.queue(db, FIRM, CLIENT, "unmatched")[0]
+    assert row["is_split"] is True, "the fake did not reach the splits table"
+    assert row["gst_allowed"] is False
+
+
+def test_the_queue_offers_the_rate_on_a_credit_too():
+    """It used to be withheld, because the posting engine refused a rate on any
+    money coming in. It no longer does: money arriving can be an outward supply
+    — a banked cash sale — whose tax is OUTPUT tax under CGST Act s.9 rather
+    than input credit under s.16. The direction picks the accounts; the rule
+    only states the rate, so a rule set to 'any' may legitimately prefill one
+    on a receipt."""
     db = _db()
     _seed(db, debit=0, credit=59000, category=None)
     db.store["bank_matching_rules"] = [
         _rule(txn_type="any", suggested_gst_rate_bps=1800, created_at="2026-01-01")]
     assert bank_matching_service.queue(db, FIRM, CLIENT, "unmatched")[0][
-        "suggested_gst_rate_bps"] is None
+        "suggested_gst_rate_bps"] == 1800
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -634,11 +679,21 @@ def test_a_rule_needs_an_account_to_carry_a_rate():
                        suggested_category="Expense", suggested_gst_rate_bps=1800)
 
 
-def test_a_credit_only_rule_cannot_carry_a_rate():
-    with pytest.raises(ValueError):
-        MatchingRuleIn(client_id=CLIENT, rule_name="R", description_pattern="CHG",
-                       txn_type="credit", suggested_account_id="acc-charges",
+def test_a_credit_only_rule_may_carry_a_rate():
+    """A recurring banked cash sale is a credit-only rule with a rate on it.
+    The ledger is still required — the split has to book the ex-tax amount
+    somewhere — but the direction is not restricted any more."""
+    r = MatchingRuleIn(client_id=CLIENT, rule_name="R", description_pattern="CASH SALE",
+                       txn_type="credit", suggested_account_id="acc-rev",
                        suggested_gst_rate_bps=1800)
+    assert r.suggested_gst_rate_bps == 1800
+
+
+def test_a_rate_without_a_ledger_is_still_refused_in_either_direction():
+    for direction in ("credit", "debit"):
+        with pytest.raises(ValueError):
+            MatchingRuleIn(client_id=CLIENT, rule_name="R", description_pattern="CHG",
+                           txn_type=direction, suggested_gst_rate_bps=1800)
 
 
 def test_a_debit_rule_with_an_account_is_accepted():
@@ -688,13 +743,17 @@ def test_patching_a_rate_onto_a_rule_with_no_account_is_refused(rules_db):
     assert ei.value.status_code == 422
 
 
-def test_patching_a_rule_to_credit_only_is_refused_while_it_carries_a_rate(rules_db):
+def test_patching_a_rule_to_credit_only_keeps_its_rate(rules_db):
+    """The mirror of test_a_credit_only_rule_may_carry_a_rate, on the update
+    path — the router judges the MERGED rule, so it has to have been taught the
+    same thing the create model was."""
     db, router = rules_db
     db.store["bank_matching_rules"][0]["suggested_gst_rate_bps"] = 1800
-    with pytest.raises(HTTPException) as ei:
-        router.update_rule("r1", MatchingRuleUpdateIn(txn_type="credit"),
-                           current_user=PARTNER)
-    assert ei.value.status_code == 422
+    router.update_rule("r1", MatchingRuleUpdateIn(txn_type="credit"),
+                       current_user=PARTNER)
+    assert db.store["bank_matching_rules"][0]["suggested_gst_rate_bps"] == 1800
+    assert db.store["bank_matching_rules"][0]["txn_type"] == "credit"
+
 
 
 def test_an_explicit_null_clears_a_wrongly_stamped_rate(rules_db):

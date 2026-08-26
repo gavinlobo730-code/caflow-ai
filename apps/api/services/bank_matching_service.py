@@ -21,6 +21,7 @@ from domain.banking import (
     Candidate, rank_suggestions, match_rule, is_valid_category, CATEGORIES,
     NEAR_MATCH_BAND_BPS, parse_narration, describe_narration,
 )
+from domain.banking import posting_map as pmap
 from services.timeline_service import timeline_service
 
 _logger = logging.getLogger("caflow.bank_matching")
@@ -634,9 +635,10 @@ class BankMatchingService:
             t["suggested_by_rule"] = hit.rule_name if hit else None
             # The GST treatment of a bank charge (migration 254). Prefills the
             # posting drawer; the CA still confirms it before anything is booked.
-            # Only offered on a DEBIT — money arriving is not a charge, and a
-            # rate on a receipt would book negative input credit.
-            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit and not is_credit else None)
+            # Offered in BOTH directions. Out is input credit (CGST Act s.16),
+            # in is output tax (s.9) — the posting engine picks the accounts
+            # from the direction, so the rule only has to state the rate.
+            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit else None)
             t["suggested_is_interstate"] = bool(hit.is_interstate) if hit else False
             # What the bank already wrote down (channel, UTR, counterparty, VPA).
             # The raw narration stays untouched as the record of what arrived;
@@ -675,7 +677,28 @@ class BankMatchingService:
                 t["suggestions"] = found.get(str(t.get("id")), [])
 
         self._attach_splits(db, firm_id, txns)
+        self._mark_gst_eligibility(txns)
         return txns
+
+    @staticmethod
+    def _mark_gst_eligibility(txns: list[dict]) -> None:
+        """Say, per row, whether a GST rate may go on it.
+
+        The RULE lives in posting_map.gst_split_allowed and is the same call the
+        posting engine makes to refuse one. Computed here rather than in the
+        browser for the ordinary reason — it is a statutory rule, not a display
+        choice — and, more practically, so the screen can never offer a control
+        the server would then reject.
+
+        Depends on `is_split`, so it must run after _attach_splits.
+        """
+        for t in txns:
+            t["gst_allowed"] = pmap.gst_split_allowed(
+                t.get("category"),
+                settles_document=pmap.settles_document(
+                    t.get("category"), t.get("matched_entity_type"),
+                    t.get("matched_entity_id")),
+                is_split=bool(t.get("is_split")))
 
     @staticmethod
     def _attach_splits(db, firm_id: str, txns: list[dict]) -> None:

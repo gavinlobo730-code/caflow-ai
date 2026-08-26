@@ -80,3 +80,45 @@ def build_transfer_lines(amount_paise: int, is_credit: bool,
 
 def counter_is_auto(category: Optional[str]) -> bool:
     return category in AUTO_COUNTER
+
+
+def settles_document(category: Optional[str], matched_entity_type: Optional[str],
+                     matched_entity_id: Optional[str]) -> bool:
+    """True when posting this line will also settle an invoice or bill.
+
+    Pure so that the posting engine and the review queue can ask the SAME
+    question. A settling line is special twice over: its counter is the control
+    account whatever the category says, and it cannot carry a GST rate.
+    """
+    if not matched_entity_id:
+        return False
+    return ((category in SETTLES_SALES_INVOICE and matched_entity_type == "sales_invoice")
+            or (category in SETTLES_PURCHASE_BILL and matched_entity_type == "purchase_bill"))
+
+
+def gst_split_allowed(category: Optional[str], *, settles_document: bool,
+                      is_split: bool = False) -> bool:
+    """Can this line carry a GST rate?
+
+    DIRECTION IS NOT A CONDITION. Money out is an inward supply and its tax is
+    input credit (CGST Act s.16); money in is an outward supply and its tax is
+    output tax (s.9). Both are real, and the posting engine picks the accounts
+    from the direction — see charge_gst.build_inclusive_lines.
+
+    What IS refused:
+      * a line that settles a document — the invoice or bill already carries
+        its own GST, so taxing the bank line counts the same tax twice;
+      * a control-account category (Customer Payment → Trade Receivables, and
+        the rest of AUTO_COUNTER) — tax has no business on a control account;
+      * a line already allocated across several ledgers, which would need a
+        rate per leg.
+      * a line with no ledger chosen yet: there is nowhere to book the ex-tax
+        amount, and `category` is None until one is.
+
+    One function so the guard that REFUSES and the flag the queue shows can
+    never disagree — a screen offering a control the server rejects is the
+    failure this exists to prevent.
+    """
+    if settles_document or is_split:
+        return False
+    return category in EXPLICIT_COUNTER

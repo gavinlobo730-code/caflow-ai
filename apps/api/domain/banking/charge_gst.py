@@ -111,57 +111,74 @@ def split_inclusive_charge(gross_paise: int, rate_bps: int,
     return ChargeSplit(gross, taxable, cgst, sgst, 0, rate, False)
 
 
-def build_charge_lines(split: ChargeSplit, *, bank_account_id: str,
-                       expense_account_id: str, cgst_account_id: str | None = None,
-                       sgst_account_id: str | None = None,
-                       igst_account_id: str | None = None) -> list[dict]:
-    """Journal lines for a bank charge, GST separated out.
+def build_inclusive_lines(split: ChargeSplit, *, bank_account_id: str,
+                          counter_account_id: str, is_credit: bool = False,
+                          cgst_account_id: str | None = None,
+                          sgst_account_id: str | None = None,
+                          igst_account_id: str | None = None) -> list[dict]:
+    """Journal lines for a tax-inclusive amount that crossed the bank.
 
-        Dr  Bank Charges        (taxable)
-        Dr  GST Input – CGST    (half the tax)      intra-state
-        Dr  GST Input – SGST    (the other half)    intra-state
-        Dr  GST Input – IGST    (all the tax)       inter-state
-            Cr  Bank            (the gross debited)
+    Money OUT — an inward supply the client PAID for. The tax is input credit
+    under s.16 of the CGST Act, so it is DEBITED to the GST Input asset:
 
-    Money OUT of the bank only: a bank CHARGE is by definition a debit. A refund
-    of charges is a credit and goes through the ordinary two-line path — reversing
-    these signs would silently book negative input credit.
+        Dr  <expense>           (taxable)
+        Dr  GST Input CGST/SGST (the tax)      intra-state
+        Dr  GST Input IGST      (the tax)      inter-state
+            Cr  Bank                           (the gross debited)
+
+    Money IN — an outward supply the client MADE. The tax is output tax under
+    s.9 of the CGST Act (s.5 of the IGST Act inter-state): it is a LIABILITY
+    the client now owes the government, so it is CREDITED to GST Output:
+
+        Dr  Bank                (the gross received)
+            Cr  <income>                       (taxable)
+            Cr  GST Output CGST/SGST           (the tax)      intra-state
+            Cr  GST Output IGST                (the tax)      inter-state
+
+    The arithmetic is identical in both directions — split_inclusive_charge
+    does not care which way the money went. What differs is which ACCOUNTS the
+    tax lands on, and that difference is the whole point: putting output tax on
+    the input-credit asset would claim ITC on a sale, which is why the two
+    directions cannot share an account list even though they share the maths.
     """
-    if not bank_account_id or not expense_account_id:
-        raise ValueError("Both the bank and the charge expense account are required.")
+    if not bank_account_id or not counter_account_id:
+        raise ValueError("Both the bank and the counter account are required.")
 
-    lines = [{
-        "account_id": expense_account_id,
-        "debit_paise": split.taxable_paise, "credit_paise": 0,
-        "narration": "Bank charges",
-    }]
+    side = "Output" if is_credit else "Input"
+    # CGST Act s.9 levies the tax on an outward supply; s.16 grants the credit
+    # on an inward one. Both are stated on the line so the ledger explains
+    # itself without the reader going back to the bank statement.
+    section = "CGST Act s.9" if is_credit else "CGST Act s.16"
+
+    def leg(account_id: str, amount: int, narration: str) -> dict:
+        """One non-bank leg. It moves opposite to the bank: money into the bank
+        is a debit there, so everything else on the entry is a credit."""
+        return {
+            "account_id": account_id,
+            "debit_paise": 0 if is_credit else amount,
+            "credit_paise": amount if is_credit else 0,
+            "narration": narration,
+        }
+
+    lines = [leg(counter_account_id, split.taxable_paise,
+                 "Receipt excluding GST" if is_credit else "Bank charges")]
 
     if split.is_interstate and split.igst_paise:
         if not igst_account_id:
-            raise ValueError("An IGST input account is required for an inter-state charge.")
-        lines.append({
-            "account_id": igst_account_id,
-            "debit_paise": split.igst_paise, "credit_paise": 0,
-            "narration": "Input IGST on bank charges (CGST Act s.16)",
-        })
+            raise ValueError(f"An IGST {side.lower()} account is required for an inter-state amount.")
+        lines.append(leg(igst_account_id, split.igst_paise,
+                         f"{side} IGST ({section})"))
     elif not split.is_interstate and (split.cgst_paise or split.sgst_paise):
         if not cgst_account_id or not sgst_account_id:
-            raise ValueError("CGST and SGST input accounts are required for an intra-state charge.")
-        lines.append({
-            "account_id": cgst_account_id,
-            "debit_paise": split.cgst_paise, "credit_paise": 0,
-            "narration": "Input CGST on bank charges (CGST Act s.16)",
-        })
-        lines.append({
-            "account_id": sgst_account_id,
-            "debit_paise": split.sgst_paise, "credit_paise": 0,
-            "narration": "Input SGST on bank charges (CGST Act s.16)",
-        })
+            raise ValueError(f"CGST and SGST {side.lower()} accounts are required for an intra-state amount.")
+        lines.append(leg(cgst_account_id, split.cgst_paise, f"{side} CGST ({section})"))
+        lines.append(leg(sgst_account_id, split.sgst_paise, f"{side} SGST ({section})"))
 
     lines.append({
         "account_id": bank_account_id,
-        "debit_paise": 0, "credit_paise": split.gross_paise,
-        "narration": "Bank charge debited",
+        "debit_paise": split.gross_paise if is_credit else 0,
+        "credit_paise": 0 if is_credit else split.gross_paise,
+        "narration": "Received into bank" if is_credit else "Bank charge debited",
     })
 
     # Cheap structural guarantee rather than trust: the split is exact by
@@ -169,5 +186,21 @@ def build_charge_lines(split: ChargeSplit, *, bank_account_id: str,
     total_dr = sum(l["debit_paise"] for l in lines)
     total_cr = sum(l["credit_paise"] for l in lines)
     if total_dr != total_cr:
-        raise ValueError(f"Bank charge lines do not balance: {total_dr} vs {total_cr}")
+        raise ValueError(f"Inclusive-GST lines do not balance: {total_dr} vs {total_cr}")
     return lines
+
+
+def build_charge_lines(split: ChargeSplit, *, bank_account_id: str,
+                       expense_account_id: str, cgst_account_id: str | None = None,
+                       sgst_account_id: str | None = None,
+                       igst_account_id: str | None = None) -> list[dict]:
+    """A bank CHARGE — money out, input credit. The named case of the above.
+
+    Kept as its own name because "bank charge" is what the docs and the screen
+    call it, but it DELEGATES: one implementation of the line shape, so the two
+    directions cannot drift apart.
+    """
+    return build_inclusive_lines(
+        split, bank_account_id=bank_account_id, counter_account_id=expense_account_id,
+        is_credit=False, cgst_account_id=cgst_account_id,
+        sgst_account_id=sgst_account_id, igst_account_id=igst_account_id)
