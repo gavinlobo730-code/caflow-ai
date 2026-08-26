@@ -516,13 +516,12 @@ def _validate_rule_shape(rule) -> object:
         # without one there is nowhere for it to go and the post would fail at
         # the last step. Migration 254 carries the same CHECK; catching it here
         # gives the CA the error while they still have the rule form open.
+        #
+        # A credit-only rule may carry a rate too: money arriving can be an
+        # outward supply (a banked cash sale), whose tax is output tax under
+        # CGST Act s.9 rather than input credit under s.16. The posting engine
+        # decides which by direction; the rule only states the rate.
         raise ValueError(
-            "A GST rate needs an expense account to code the charge to — "
+            "A GST rate needs a ledger to code the amount to — "
             "the split books the ex-tax amount there.")
-    if rule.suggested_gst_rate_bps is not None and (rule.txn_type or "any") == "credit":
-        # Money ARRIVING is not a bank charge. A credit-only rule carrying a GST
-        # rate can never fire on anything the posting engine would split.
-        raise ValueError(
-            "A GST rate applies to bank charges — money leaving the account. "
-            "Set the rule to debit (or any), not credit.")
     return rule

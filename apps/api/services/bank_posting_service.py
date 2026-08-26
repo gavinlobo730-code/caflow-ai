@@ -21,7 +21,7 @@ from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from domain.banking import posting_map as pmap
-from domain.banking.charge_gst import split_inclusive_charge, build_charge_lines
+from domain.banking.charge_gst import split_inclusive_charge, build_inclusive_lines
 from domain.banking.rules import match_rule
 from domain.banking.splits import build_split_lines, SplitError
 from services.bank_split_service import bank_split_service
@@ -160,16 +160,47 @@ class BankPostingService:
                         "Add one, or post the charge without a GST split."))
         return rows[0]["id"]
 
+    @staticmethod
+    def _gst_output_account(db, firm_id, client_id, head: str) -> str:
+        """The GST Output (payable) account for one tax head.
+
+        Unlike the input side, migration 098 keys these PER HEAD — 'gst_cgst',
+        'gst_sgst', 'gst_igst', and only on Liability accounts, deliberately so
+        that an output head can never resolve to a GST Input asset. So the key
+        alone identifies the account and the name is only a fallback.
+
+        Resolved through phase2_journal_service._find_account, the same call the
+        sales side makes, rather than a second lookup of our own: a receipt
+        recorded from the bank and the same receipt recorded from an invoice
+        must land on the SAME liability, or GSTR-3B reports two different
+        worlds. gst_return_service reads output tax as the net credit on exactly
+        these three keys.
+        """
+        try:
+            return phase2_journal_service._find_account(
+                db, firm_id, client_id, "%GST Output%", system_key=f"gst_{head.lower()}")
+        except Exception:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"No active 'GST Output - {head}' account in this client's chart. "
+                        "Add one, or record this receipt without a GST split."))
+
     def _charge_lines(self, db, firm_id, txn, amount, bank_id, counter_id,
-                      gst_rate_bps: int, is_interstate: bool) -> list[dict]:
-        """A bank charge with its GST separated out (CGST Act s.16 — input service).
+                      gst_rate_bps: int, is_interstate: bool,
+                      is_credit: bool = False) -> list[dict]:
+        """A tax-inclusive amount that crossed the bank, with its GST separated.
 
-        The charge on the statement is tax-INCLUSIVE, so the taxable value is
-        backed out of it rather than computed on it — see domain/banking/charge_gst
-        for why that distinction matters and why the split is exact.
+        The figure on the statement is tax-INCLUSIVE either way, so the taxable
+        value is backed out of it rather than computed on it — see
+        domain/banking/charge_gst for why that distinction matters and why the
+        split is exact.
 
-        Only ever for money LEAVING the bank: a charge is by definition a debit.
-        A refund of charges is a credit and takes the ordinary two-line path.
+        DIRECTION DECIDES THE TAX ACCOUNTS, not the arithmetic. Money out is an
+        inward supply: the tax is input credit (CGST Act s.16) and debits the
+        GST Input asset. Money in is an outward supply: the tax is output tax
+        (CGST Act s.9) and credits the GST Output liability. Using one set for
+        both would claim ITC on a sale, so the two lookups are separate even
+        though the split above them is the same call.
         """
         client_id = txn["client_id"]
         try:
@@ -177,17 +208,22 @@ class BankPostingService:
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
+        find = ((lambda h: self._gst_output_account(db, firm_id, client_id, h))
+                if is_credit
+                else (lambda h: self._gst_input_account(db, firm_id, client_id, h)))
+
         cgst_id = sgst_id = igst_id = None
         if split.has_gst:
             if is_interstate:
-                igst_id = self._gst_input_account(db, firm_id, client_id, "IGST")
+                igst_id = find("IGST")
             else:
-                cgst_id = self._gst_input_account(db, firm_id, client_id, "CGST")
-                sgst_id = self._gst_input_account(db, firm_id, client_id, "SGST")
+                cgst_id = find("CGST")
+                sgst_id = find("SGST")
         try:
-            return build_charge_lines(
-                split, bank_account_id=bank_id, expense_account_id=counter_id,
-                cgst_account_id=cgst_id, sgst_account_id=sgst_id, igst_account_id=igst_id)
+            return build_inclusive_lines(
+                split, bank_account_id=bank_id, counter_account_id=counter_id,
+                is_credit=is_credit, cgst_account_id=cgst_id,
+                sgst_account_id=sgst_id, igst_account_id=igst_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
@@ -196,14 +232,12 @@ class BankPostingService:
         """True when posting this transaction will also settle an invoice/bill.
 
         The same condition _settle uses, kept in one place so the split guard and
-        the settlement cannot drift apart.
+        the settlement cannot drift apart. The rule itself lives in posting_map
+        because the review queue has to ask it too, to decide whether to offer a
+        GST rate at all.
         """
-        cat = txn.get("category")
-        mt, mid = txn.get("matched_entity_type"), txn.get("matched_entity_id")
-        if not mid:
-            return False
-        return ((cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice")
-                or (cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill"))
+        return pmap.settles_document(txn.get("category"), txn.get("matched_entity_type"),
+                                     txn.get("matched_entity_id"))
 
     def _plan(self, db, firm_id, txn, bank_account_id, account_id, to_bank_account_id,
               gst_rate_bps: Optional[int] = None, is_interstate: bool = False):
@@ -293,20 +327,30 @@ class BankPostingService:
             lines = pmap.build_transfer_lines(amount, is_credit, bank_id, to_id)
         else:
             counter_id = self._resolve_counter(db, firm_id, txn, account_id)
-            # A GST split applies ONLY to money going out against an explicitly
-            # chosen expense account. Splitting a receipt would book negative input
-            # credit; splitting a control-account category (Customer Payment →
-            # Trade Receivables) would put tax on a balance-sheet control account.
-            # Refuse rather than silently ignore: a caller that asked for a split
-            # and got a gross post would never find out.
+            # A GST split works in BOTH directions — out is input credit, in is
+            # output tax — but only against an explicitly chosen ledger.
+            #
+            # It is refused on the control-account categories (Customer Payment
+            # → Trade Receivables, Vendor Payment → Trade Payables, GST Payment)
+            # because that would put tax on a balance-sheet control account. And
+            # it is refused on a row that SETTLES a document, because the
+            # invoice or bill already carries its own GST: taxing the bank line
+            # too counts the same tax twice, once in the document's journal and
+            # once here. Both refuse rather than silently ignoring — a caller
+            # that asked for a split and got a gross post would never find out.
             if gst_rate_bps is not None:
-                if is_credit or cat not in pmap.EXPLICIT_COUNTER:
+                settles = self._settles_a_document(txn)
+                if not pmap.gst_split_allowed(cat, settles_document=settles):
                     raise HTTPException(
                         status_code=422,
-                        detail=("A GST split applies only to money leaving the bank against an "
-                                "explicitly chosen expense account."))
+                        detail=("This transaction settles an invoice or bill, which already "
+                                "carries its own GST. Adding a rate here would count that tax "
+                                "twice. Unmatch it first if the GST belongs on the bank line.")
+                        if settles else
+                        ("A GST split needs an explicitly chosen ledger — it cannot go on "
+                         "a control account like Trade Receivables or Trade Payables."))
                 lines = self._charge_lines(db, firm_id, txn, amount, bank_id, counter_id,
-                                           gst_rate_bps, is_interstate)
+                                           gst_rate_bps, is_interstate, is_credit=is_credit)
             else:
                 lines = pmap.build_lines(amount, is_credit, bank_id, counter_id)
         return pmap.entry_type_for(cat, is_credit), lines, bank_id
@@ -789,9 +833,10 @@ class BankPostingService:
             amount, is_credit = _amount(t)
             hit = match_rule(t.get("description"), amount, not is_credit, client_rules)
             t["suggested_account_id"] = (hit.account_id if hit else None) if not t.get("account_id") else None
-            # A GST split is only ever offered on money LEAVING the bank; a rate
-            # on a receipt would prefill a split the posting engine then refuses.
-            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit and not is_credit else None)
+            # Offered in BOTH directions. Out is input credit (CGST Act s.16),
+            # in is output tax (s.9) — the posting engine picks the accounts
+            # from the direction, so the rule only has to state the rate.
+            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit else None)
             t["suggested_is_interstate"] = bool(hit.is_interstate) if hit else False
 
     def pending(self, db, firm_id, client_id: Optional[str]) -> list[dict]:

@@ -70,7 +70,7 @@ test("the queue is a table, not a list of cards", () => {
   assert.match(s, /columns=\{queueColumns\}/, "it must pass the column set below");
 });
 
-test("the columns are the six, in order, with Spent and Received separate", () => {
+test("the columns are the seven, in order, with Spent and Received separate", () => {
   const s = queueSource();
   const decl = s.slice(s.indexOf("const queueColumns"));
   assert.ok(decl.length > 500, "the queueColumns declaration came back empty");
@@ -79,11 +79,14 @@ test("the columns are the six, in order, with Spent and Received separate", () =
 
   const headers = [...body.matchAll(/header:\s*"([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(headers,
-    ["Date", "Description", "Payee", "Ledger or match", "Spent", "Received"],
+    ["Date", "Description", "Payee", "Ledger or match", "GST", "Spent", "Received"],
     "the column set changed. Spent and Received are SEPARATE on purpose — " +
     "money out and money in are the two things the eye separates first. " +
-    "Action is not among them: it is rowActions, which DataTable always " +
-    "renders last, which is what keeps the button in a fixed strip.");
+    "GST sits between the ledger and the amounts because it is a property OF " +
+    "the amount, and it is a column at all because it used to be buried in the " +
+    "opened row, offered on debits only. Action is not among them: it is " +
+    "rowActions, which DataTable always renders last, which is what keeps the " +
+    "button in a fixed strip.");
 });
 
 test("the action button is in the fixed trailing column, and nowhere else", () => {
@@ -247,4 +250,53 @@ test("one Split button, with the choice of what to split across inside it", () =
     "the ledger split editor must actually be rendered");
   assert.match(s, /modeSwitch=\{splitModeSwitch\}/,
     "both editors must show the same switch, in the same place");
+});
+
+
+// ── GST is on the line, both directions, and only where the server allows ────
+
+test("the GST control reads the server's verdict rather than re-deriving it", () => {
+  const s = queueSource();
+  assert.match(s, /if \(!t\.gst_allowed\) return <span/,
+    "the GST cell must gate on gst_allowed — the flag posting_map.gst_split_" +
+    "allowed sets, which is the SAME call the posting engine makes to refuse a " +
+    "rate. Re-deriving the rule here (checking debit_paise, or the category " +
+    "list) is how the screen ends up offering a control the server rejects. " +
+    "Anchored on the <span it returns: the looser form was also satisfied by " +
+    "rateToSend's gate, so neutering the CELL left this test green.");
+});
+
+test("the GST control is not restricted to money going out", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf('key: "gst"'));
+  const cell = decl.slice(0, decl.indexOf("\n    },"));
+  assert.ok(cell.length > 200, "the gst column body came back empty");
+  assert.doesNotMatch(cell, /debit_paise\s*>\s*0/,
+    "gating the rate on a debit is the restriction this change removed: money " +
+    "arriving can be an outward supply (a banked cash sale) whose tax is " +
+    "output tax under CGST Act s.9. Direction picks the ACCOUNTS server-side, " +
+    "not whether a rate may be stated at all.");
+});
+
+test("the category is no longer a question the row asks", () => {
+  const s = queueSource();
+  assert.doesNotMatch(s, /onChange=\{\(e\) => categorize\(t\.id, e\.target\.value\)\}/,
+    "the per-row Category override is gone: the ledger decides the category " +
+    "server-side (domain/banking/account_category), a matched invoice or bill " +
+    "decides it by itself (_MATCH_DEFAULT_CATEGORY), and picking the other " +
+    "bank account is what makes a line a Transfer. Putting the dropdown back " +
+    "asks for an answer the row already has.");
+});
+
+
+test("a rate the server would refuse is never sent with the post", () => {
+  const s = queueSource();
+  assert.match(s, /if \(!t\.gst_allowed\) return "";/,
+    "postRow falls back to suggested_gst_rate_bps, and a rule can propose a " +
+    "rate on a row the posting engine refuses one on. Without this gate the " +
+    "proposal is sent anyway and Add fails with a message about a control the " +
+    "reader cannot see, because the cell correctly rendered nothing.");
+  assert.equal((s.match(/const rate = rateToSend\(t\);/g) ?? []).length, 2,
+    "both send sites — the single row and the bulk apply — must go through it; " +
+    "the bulk one is exactly where an unseen rate does the most damage");
 });

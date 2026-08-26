@@ -123,10 +123,17 @@ interface QueueTxn {
   account_id?: string | null;
   /** Set once the row is on the books. Its presence is what "Categorized" means. */
   posted_journal_id?: string | null;
-  /** What a rule proposed for a tax-INCLUSIVE bank charge (CGST Act s.16). A
-   *  proposal only — the person clicking Add is the one asserting the rate. */
+  /** What a rule proposed for a tax-INCLUSIVE amount. A proposal only — the
+   *  person clicking Add is the one asserting the rate. Offered in BOTH
+   *  directions now: out is input credit (CGST Act s.16), in is output tax
+   *  (s.9). */
   suggested_gst_rate_bps?: number | null;
   suggested_is_interstate?: boolean | null;
+  /** Whether a GST rate may go on this line AT ALL — decided server-side by
+   *  posting_map.gst_split_allowed, the same call the posting engine makes to
+   *  refuse one. Reading it rather than re-deriving the rule here is what stops
+   *  the screen offering a control the server rejects. */
+  gst_allowed?: boolean;
   // What a matching rule proposes for this row (Rules tab). The account and
   // narration are new: the rule engine used to return only a category.
   suggested_account_id: string | null;
@@ -332,14 +339,18 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   useEffect(() => { setPage(0); }, [status, clientId, search]);
   useEffect(() => { setOpen(new Set()); }, [status, page]);
 
-  async function categorize(id: string, category: string) {
-    if (!category) return;
-    setBusy((b) => ({ ...b, [id]: true }));
-    setRowError((e) => ({ ...e, [id]: "" }));
-    try { await api.banking.categorize(id, { category }); await load(); }
-    catch (e) { setRowError((x) => ({ ...x, [id]: e instanceof Error ? e.message : "Failed" })); }
-    finally { setBusy((b) => ({ ...b, [id]: false })); }
-  }
+  /** The GST rate to SEND with a post, or "" for none.
+
+   *  Gated on the server's own verdict. A matching rule can propose a rate on a
+   *  row the posting engine will refuse it on — a receipt later matched to an
+   *  invoice, say — and the cell then correctly shows nothing. Without this
+   *  gate the proposal would still be sent, and Add would fail with a message
+   *  about a control the reader cannot see.
+   */
+  const rateToSend = (t: QueueTxn): string => {
+    if (!t.gst_allowed) return "";
+    return gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
+  };
 
   /** Code a row by naming the LEDGER — the one field this screen asks for.
    *
@@ -402,7 +413,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     setBusy((b) => ({ ...b, [t.id]: true }));
     setRowError((e) => ({ ...e, [t.id]: "" }));
     try {
-      const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
+      const rate = rateToSend(t);
       // No account_id: the ledger is already ON the row, written when it was
       // picked, and the posting engine reads it from there. Sending a browser
       // copy of it would be a second source of the same fact.
@@ -487,7 +498,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
               matched_entity_type: best.matched_entity_type,
               matched_entity_id: best.matched_entity_id });
           }
-          const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "");
+          const rate = rateToSend(t);
           const res = (await api.banking.postTransaction(t.id, {
             ...(rate !== "" ? {
               gst_rate_bps: Number(rate),
@@ -657,6 +668,50 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                 ? `Suggested: ${accountLabel(t.suggested_account_id)}`
                 : "Choose a ledger…"}
             />
+          </div>
+        );
+      },
+    },
+    {
+      // GST on the line, the way a CA reads a statement: one column, both
+      // directions, their call. It used to live inside the opened row, offered
+      // on every unmatched DEBIT — including rows the server would then refuse,
+      // and never on a receipt at all, so a banked cash sale could not be
+      // recorded with its output tax.
+      //
+      // `gst_allowed` is the SERVER's answer (posting_map.gst_split_allowed),
+      // not a rule re-derived here: a control that appears where the post would
+      // be rejected is worse than no control.
+      key: "gst", header: "GST", width: "11rem",
+      accessor: (t) => gstRate[t.id] ?? (t.suggested_gst_rate_bps ?? ""),
+      render: (t) => {
+        if (!t.gst_allowed) return <span className="text-[#CBD5E1]">—</span>;
+        const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null
+          ? String(t.suggested_gst_rate_bps) : "");
+        return (
+          // stopPropagation for the same reason the ledger picker does it: the
+          // row toggles open on click.
+          <div onClick={(e) => e.stopPropagation()} className="space-y-0.5">
+            <select
+              value={rate}
+              disabled={busy[t.id]}
+              onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
+              aria-label={t.credit_paise > 0 ? "Output GST on this receipt" : "Input GST on this payment"}
+              className="w-full px-1.5 py-0.5 text-[10px] border border-[#E2E8F0] rounded bg-white">
+              <option value="">No GST split</option>
+              {GST_RATE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {rate !== "" && rate !== "0" && (
+              <label className="flex items-center gap-1 text-[10px] text-[#64748B]">
+                <input type="checkbox" disabled={busy[t.id]}
+                  checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
+                  onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
+                  className="h-3 w-3 rounded border-[#CBD5E1]" />
+                IGST
+              </label>
+            )}
           </div>
         );
       },
@@ -1073,27 +1128,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       </div>
     )}
 
-    {/* The category, which now FOLLOWS the ledger rather than gating it. Kept
-        because the derivation deliberately refuses to guess from names: an
-        Expense ledger called Salaries derives "Expense", and a CA who wants the
-        finer word says so here. Changing it never moves the money — the ledger
-        on the line decides that. */}
-    {!posted && !excluded && t.category && !t.matched_entity_id && (
-      <div className="flex items-center gap-2 flex-wrap">
-        <label className="text-[10px] text-[#94A3B8]" htmlFor={`cat-${t.id}`}>Category</label>
-        <select
-          id={`cat-${t.id}`}
-          value={t.category} disabled={busy[t.id]}
-          onChange={(e) => categorize(t.id, e.target.value)}
-          className="px-2 py-0.5 text-[11px] border border-[#E2E8F0] rounded bg-white max-w-[14rem]">
-          {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <span className="text-[10px] text-[#CBD5E1]">
-          from {t.account_id ? accountLabel(t.account_id) : "this line"}
-        </span>
-      </div>
-    )}
-
     {/* Tier 1.2 — the ledgers this one line was allocated across. Shown as the
         allocation itself, not a count: "split 3 ways" tells a reviewer nothing
         they can check. */}
@@ -1143,33 +1177,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
           className="text-[11px] text-[#94A3B8] hover:text-[#64748B] hover:underline ml-auto disabled:opacity-50">
           Exclude
         </button>
-      </div>
-    )}
-
-    {/* Input GST on a tax-inclusive charge (CGST Act s.16). Offered
-        on money going out, because that is what a bank charge is,
-        and left blank by default — the rate is an assertion the
-        person recording it makes, not something the app decides. */}
-    {t.debit_paise > 0 && t.match_status === "unmatched" && (
-      <div className="flex items-center gap-2 flex-wrap">
-        <label className="text-[10px] text-[#94A3B8]">Input GST on this charge</label>
-        <select
-          value={gstRate[t.id] ?? (t.suggested_gst_rate_bps != null ? String(t.suggested_gst_rate_bps) : "")}
-          disabled={busy[t.id]}
-          onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
-          className="px-2 py-0.5 text-[10px] border border-[#E2E8F0] rounded bg-white">
-          <option value="">Don&apos;t split</option>
-          {GST_RATE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1 text-[10px] text-[#64748B]">
-          <input type="checkbox" disabled={busy[t.id]}
-            checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
-            onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
-            className="h-3 w-3 rounded border-[#CBD5E1]" />
-          IGST (inter-state)
-        </label>
       </div>
     )}
 
@@ -1862,13 +1869,18 @@ function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
 }
 
 // Label only — the split itself is computed server-side (CLAUDE.md: no business
-// logic in the frontend). "No GST" is 0 and is a real, deliberate answer;
-// "Don't split" is the absence of a rate, which posts the gross as before.
+// logic in the frontend). 0% is a real, deliberate answer; the absence of a
+// rate is a different one, and posts the gross as one line.
+//
+// Deliberately neutral about direction and about banking: the same list now
+// offers input credit on a payment (CGST Act s.16) and output tax on a receipt
+// (s.9), so a label that said "standard for banking services" would be wrong
+// half the time. Short, because this is a column now, not a drawer.
 const GST_RATE_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: "No GST on this charge" },
+  { value: 0, label: "0% — no GST" },
   { value: 500, label: "5%" },
   { value: 1200, label: "12%" },
-  { value: 1800, label: "18% — standard for banking services" },
+  { value: 1800, label: "18%" },
   { value: 2800, label: "28%" },
 ];
 
@@ -3291,7 +3303,7 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
               rather than being re-entered on every ₹590 debit. */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">GST inside the charge</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">GST inside the amount</label>
               <select value={form.suggested_gst_rate_bps}
                 onChange={(e) => setForm((f) => ({ ...f, suggested_gst_rate_bps: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
@@ -3299,8 +3311,10 @@ function BankRules({ clientId, accounts }: { clientId: string; accounts: Account
                 {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <p className="text-[10px] text-[#94A3B8] mt-1">
-                Bank charges are quoted inclusive of GST. Splitting them claims the input
-                tax credit (CGST Act s.16) instead of expensing it.
+                Amounts on a statement are inclusive of GST. On money going out the split
+                claims the input tax credit (CGST Act s.16) instead of expensing it; on
+                money coming in it books the output tax owed (s.9) instead of overstating
+                income. 18% is the usual rate on bank charges.
               </p>
             </div>
             {form.suggested_gst_rate_bps !== "" && form.suggested_gst_rate_bps !== "0" && (

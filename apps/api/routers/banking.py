@@ -1632,14 +1632,8 @@ def update_rule(
     if merged.get("suggested_gst_rate_bps") is not None and not merged.get("suggested_account_id"):
         raise HTTPException(
             status_code=422,
-            detail=("A GST rate needs an expense account to code the charge to — "
+            detail=("A GST rate needs a ledger to code the amount to — "
                     "the split books the ex-tax amount there."))
-    if (merged.get("suggested_gst_rate_bps") is not None
-            and (merged.get("txn_type") or "any") == "credit"):
-        raise HTTPException(
-            status_code=422,
-            detail=("A GST rate applies to bank charges — money leaving the account. "
-                    "Set the rule to debit (or any), not credit."))
     row = (db.table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     return api_response(True, (row.data or [{}])[0])
