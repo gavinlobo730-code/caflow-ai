@@ -34,6 +34,7 @@ from services.timeline_service import timeline_service
 from domain.banking.dedup import transaction_hash
 from domain.banking.account_category import category_for_account
 from domain.banking.posting_map import AUTO_COUNTER
+from domain.banking import posting_map as pmap
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -329,8 +330,20 @@ class BankingService:
                             "category cannot be changed until that draft is approved."))
             update["category"] = self._confirmed_category(db, firm_id, txn, account)
         db.table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        category = update.get("category", txn.get("category"))
+        # gst_allowed comes back WITH the row so the screen can patch that one
+        # line instead of refetching the page. Picking a ledger is exactly what
+        # flips the GST cell from "pick a ledger" to a usable rate, so a caller
+        # that updated in place without it would leave the cell contradicting
+        # the row beside it — and the reason the queue reloaded after every
+        # pick was that there was nothing else to keep the two in step.
         return {"id": txn_id, "match_status": "matched", "account_id": account_id,
-                "category": update.get("category", txn.get("category"))}
+                "category": category,
+                "gst_allowed": pmap.gst_split_allowed(
+                    category,
+                    settles_document=pmap.settles_document(
+                        category, txn.get("matched_entity_type"), txn.get("matched_entity_id")),
+                    is_split=bool(txn.get("is_split")))}
 
     def ignore(self, db, firm_id: str, txn_id: str) -> dict:
         txn = self._get_txn(db, firm_id, txn_id)

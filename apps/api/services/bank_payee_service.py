@@ -191,6 +191,36 @@ class BankPayeeService:
             index.setdefault(key, []).append(r)
         return index
 
+    @staticmethod
+    def ranked_accounts(index: dict) -> list[str]:
+        """The ledgers this client actually codes bank lines to, most-used first.
+
+        WHY IT EXISTS
+            The picker offered every active account in the chart, ordered by
+            account_code — 100-200 entries on a normal Indian chart, with
+            Accumulated Depreciation and Retained Earnings sitting between the
+            two anyone would ever pick, in a numeric order that means nothing to
+            someone typing. This is what lets the screen put the handful that
+            matter at the top.
+
+        ORDERS, NEVER FILTERS. A ledger this client has not used yet is still a
+        legitimate answer — often the whole reason a CA opens the picker — so
+        nothing is removed from the list, only moved up it.
+
+        Reuses the index the queue already built, so it costs no extra query.
+        The index only contains POSTED rows (see history_index), which is what
+        makes it evidence rather than a record of what someone half-typed.
+        """
+        counts: dict[str, int] = {}
+        for rows in index.values():
+            for r in rows:
+                acc = r.get("account_id")
+                if acc:
+                    counts[acc] = counts.get(acc, 0) + 1
+        # Ties broken by id so the order is stable between page loads — a list
+        # that reshuffles under the cursor is worse than one that is merely long.
+        return [a for a, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
     def suggest_for(self, txn: dict, index: dict) -> Optional[HistorySuggestion]:
         """What history proposes for ONE transaction. A dictionary lookup —
         no query.

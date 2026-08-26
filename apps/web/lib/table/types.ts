@@ -93,6 +93,7 @@ export interface TableState {
   page: number; // 1-based
   pageSize: number;
   hiddenColumns: string[];
+  columnWidths: Record<string, number>;
 }
 
 export interface BulkAction<T> {

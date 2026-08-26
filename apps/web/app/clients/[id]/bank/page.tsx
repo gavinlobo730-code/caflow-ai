@@ -32,10 +32,11 @@
  *   docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md.
  */
 
-import { useEffect, useState, useCallback, useRef, Fragment, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment, type ReactNode } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Download, Pencil, Landmark, Search, Split } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { SplitAcrossLedgersModal } from "@/components/banking/SplitAcrossLedgersModal";
@@ -270,7 +271,12 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   // needs lives behind this — payee, history, the other candidates, split,
   // TDS, exclude. A row that already knows its answer shows a button and
   // nothing else.
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  /** The line whose detail modal is open, if any. One id, not a set: the modal
+   *  is centred and singular, where the old expanded rows could be opened all
+   *  at once and turn the queue into a wall. */
+  const [detailId, setDetailId] = useState<string | null>(null);
+  /** Account ids ranked by how often this client posts bank lines to them. */
+  const [ledgerOrder, setLedgerOrder] = useState<string[]>([]);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   // Input GST split out of a tax-inclusive bank charge, per row. Carried here
   // rather than left in the posting drawer that used to own it: that drawer is
@@ -279,13 +285,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const [gstRate, setGstRate] = useState<Record<string, string>>({});
   const [gstInterstate, setGstInterstate] = useState<Record<string, boolean>>({});
 
-  function toggleOpen(id: string) {
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
 
   /** The split editor, opened on the LEDGER side — the everyday case, and the
    *  one that had no route through the UI. The mode switch inside reaches the
@@ -306,6 +305,24 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     setSplitTxn(t);
   }
 
+  /** The chart, reordered so the handful this client actually uses come first.
+   *
+   *  ORDERS, NEVER FILTERS. The picker offered every active account in
+   *  account_code order — 100-200 entries on a normal Indian chart, with
+   *  Accumulated Depreciation and Retained Earnings sitting between the two
+   *  anyone would pick. Removing them would be worse: a ledger nobody has used
+   *  YET is often exactly why a CA opened the list. So nothing goes missing,
+   *  things simply come up in the order a person would look for them.
+   */
+  const orderedAccounts = useMemo(() => {
+    if (ledgerOrder.length === 0) return accounts;
+    const rank = new Map(ledgerOrder.map((id, i) => [id, i]));
+    // Stable: equal ranks keep the chart's own account_code order, so the list
+    // below the used ones stays where the reader last saw it.
+    return [...accounts].sort((a, b) =>
+      (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  }, [accounts, ledgerOrder]);
+
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
@@ -314,11 +331,14 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         client_id: clientId, status,
         limit: String(pageSize), offset: String(page * pageSize),
         ...(search.trim() ? { q: search.trim() } : {}),
-      })) as { success: boolean; data: { rows: QueueTxn[]; total: number } };
+      })) as { success: boolean; data: { rows: QueueTxn[]; total: number; ledger_order?: string[] } };
       if (!res.success) throw new Error("Couldn't load the bank match queue.");
       const got = res.data?.rows ?? [];
       setRows(got);
       setTotal(res.data?.total ?? 0);
+      // Which ledgers THIS client actually codes bank lines to, most-used
+      // first. A property of the client, so it arrives once per page.
+      setLedgerOrder(res.data?.ledger_order ?? []);
       // Candidates arrive WITH the rows. They used to be fetched one request
       // per row after the queue landed, three at a time — five Mumbai round
       // trips each, so the matched rows lit up a few at a time over several
@@ -337,7 +357,8 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   useEffect(() => { load(); }, [load]);
   // A different view, client or search term is a different queue — page one.
   useEffect(() => { setPage(0); }, [status, clientId, search]);
-  useEffect(() => { setOpen(new Set()); }, [status, page]);
+  // A different view or page is a different set of lines; close the modal.
+  useEffect(() => { setDetailId(null); }, [status, page]);
 
   /** The GST rate to SEND with a post, or "" for none.
 
@@ -360,14 +381,37 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
    *  through on the click rather than held as a draft: a choice that sits in
    *  the browser until someone presses Add is a choice that gets lost when
    *  they page, search or reload. */
+  /** Patch ONE row from what an endpoint just returned.
+   *
+   *  Every per-row action used to end in load(), which sets `loading` and
+   *  refetches the whole page — a cross-region round trip to Mumbai — so
+   *  picking one ledger tore down and rebuilt the entire table in front of the
+   *  reader. Nothing about the other forty-nine rows changed; only this one
+   *  did, and the server already says how.
+   */
+  const patchRow = useCallback((id: string, fields: Partial<QueueTxn>) => {
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...fields } : r)));
+  }, []);
+
   async function codeToAccount(t: QueueTxn, accountId: string) {
     if (!accountId) return;
     setBusy((b) => ({ ...b, [t.id]: true }));
     setRowError((e) => ({ ...e, [t.id]: "" }));
     try {
-      await api.banking.setTransactionAccount(t.id, {
-        account_id: accountId, derive_category: true });
-      await load();
+      const res = (await api.banking.setTransactionAccount(t.id, {
+        account_id: accountId, derive_category: true,
+      })) as { data?: { account_id?: string; category?: string | null; gst_allowed?: boolean;
+                        match_status?: string } };
+      const d = res?.data ?? {};
+      // gst_allowed comes back WITH the row precisely so this patch keeps the
+      // GST cell in step: picking a ledger is what turns "pick a ledger" into a
+      // usable rate, and without it the cell would contradict the line beside it.
+      patchRow(t.id, {
+        account_id: d.account_id ?? accountId,
+        category: d.category ?? null,
+        gst_allowed: d.gst_allowed ?? false,
+        match_status: d.match_status ?? t.match_status,
+      });
     } catch (e) {
       setRowError((x) => ({ ...x, [t.id]: e instanceof Error ? e.message : "Could not set the ledger." }));
     } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
@@ -564,11 +608,20 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     }
     return (
       <button
-        onClick={() => (best && !t.matched_entity_id) ? matchAndPost(t, best) : postRow(t)}
-        disabled={busy[t.id] || (!isMatch && !readyToAdd(t))}
+        // A ready line posts straight away — with 47 to clear, a confirmation
+        // step on every one is 47 trips through a dialogue nobody reads. A line
+        // that is NOT ready opens its detail instead of sitting disabled: a
+        // greyed button with a tooltip is a dead end, and the modal is where the
+        // missing answer actually gets given.
+        onClick={() => {
+          if (!isMatch && !readyToAdd(t)) { setDetailId(t.id); return; }
+          if (best && !t.matched_entity_id) { matchAndPost(t, best); return; }
+          postRow(t);
+        }}
+        disabled={busy[t.id]}
         title={isMatch ? "Link this line to that document and record it"
           : readyToAdd(t) ? "Record this line on the books"
-          : "Choose a category — and an account, if the category needs one."}
+          : "Open this line and choose a ledger"}
         className={`text-[11px] px-3 py-1 rounded font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed ${
           isMatch ? "bg-[#059669] hover:bg-[#047857]" : "bg-[#4338CA] hover:bg-[#3730A3]"}`}>
         {busy[t.id] ? "…" : isMatch ? "Match" : "Add"}
@@ -669,7 +722,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
           // collapsed the row it sits in would be unusable.
           <div onClick={(e) => e.stopPropagation()}>
             <AccountLookup
-              accounts={accounts}
+              accounts={orderedAccounts}
               value={t.account_id ?? ""}
               onChange={(id) => codeToAccount(t, id)}
               disabled={busy[t.id]}
@@ -693,48 +746,24 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       // `gst_allowed` is the SERVER's answer (posting_map.gst_split_allowed),
       // not a rule re-derived here: a control that appears where the post would
       // be rejected is worse than no control.
-      key: "gst", header: "GST", width: "11rem",
+      key: "gst", header: "GST", width: "7rem",
       accessor: (t) => gstRate[t.id] ?? (t.suggested_gst_rate_bps ?? ""),
       render: (t) => {
+        // A READ-OUT, not a control. A select and a checkbox squeezed beside a
+        // ledger picker is what made the line look like a form; the rate is set
+        // in the detail modal, where it has a label and room to explain itself.
         if (!t.gst_allowed) {
-          // A dash says nothing, and a reader looking at a column of dashes
-          // concludes GST is not wired up — which is what happened. Say WHICH
-          // of the server's reasons applies, in the order gst_split_allowed
-          // itself checks them.
-          const why = t.matched_entity_id ? "on the invoice"
-            : t.is_split ? "per split"
-            : t.category === "Transfer" ? "not a supply"
-            : !t.account_id ? "pick a ledger"
-            : "control account";
+          const why = gstWhy(t);
           return <span className="text-[#CBD5E1] text-[10px]" title={GST_WHY_LONG[why]}>{why}</span>;
         }
         const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null
           ? String(t.suggested_gst_rate_bps) : "");
+        if (rate === "") return <span className="text-[#CBD5E1] text-[10px]">none</span>;
+        const inter = gstInterstate[t.id] ?? !!t.suggested_is_interstate;
         return (
-          // stopPropagation for the same reason the ledger picker does it: the
-          // row toggles open on click.
-          <div onClick={(e) => e.stopPropagation()} className="space-y-0.5">
-            <select
-              value={rate}
-              disabled={busy[t.id]}
-              onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
-              aria-label={t.credit_paise > 0 ? "Output GST on this receipt" : "Input GST on this payment"}
-              className="w-full px-1.5 py-0.5 text-[10px] border border-[#E2E8F0] rounded bg-white">
-              <option value="">No GST split</option>
-              {GST_RATE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            {rate !== "" && rate !== "0" && (
-              <label className="flex items-center gap-1 text-[10px] text-[#64748B]">
-                <input type="checkbox" disabled={busy[t.id]}
-                  checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
-                  onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
-                  className="h-3 w-3 rounded border-[#CBD5E1]" />
-                IGST
-              </label>
-            )}
-          </div>
+          <span className="text-[11px] text-[#334155]" title="Set the rate in the line's detail">
+            {inter && rate !== "0" ? "IGST " : ""}{Number(rate) / 100}%
+          </span>
         );
       },
     },
@@ -859,8 +888,16 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     setBusy((b) => ({ ...b, [t.id]: true }));
     try {
       if (t.suggested_category) await api.banking.categorize(t.id, { category: t.suggested_category });
-      if (t.suggested_account_id) await api.banking.setTransactionAccount(t.id, { account_id: t.suggested_account_id });
-      await load();
+      // Coding a row does not move it between views, so the row is patched in
+      // place — the same reason codeToAccount stopped calling load().
+      if (t.suggested_account_id) {
+        const res = (await api.banking.setTransactionAccount(
+          t.id, { account_id: t.suggested_account_id })) as { data?: Partial<QueueTxn> };
+        patchRow(t.id, { ...(res?.data ?? {}), account_id: t.suggested_account_id,
+                         category: t.suggested_category ?? t.category });
+      } else {
+        patchRow(t.id, { category: t.suggested_category ?? t.category });
+      }
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
@@ -945,9 +982,13 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     try {
       if (t.history.category) await api.banking.categorize(t.id, { category: t.history.category });
       if (t.history.account_id) {
-        await api.banking.setTransactionAccount(t.id, { account_id: t.history.account_id });
+        const res = (await api.banking.setTransactionAccount(
+          t.id, { account_id: t.history.account_id })) as { data?: Partial<QueueTxn> };
+        patchRow(t.id, { ...(res?.data ?? {}), account_id: t.history.account_id,
+                         category: t.history.category ?? t.category });
+      } else {
+        patchRow(t.id, { category: t.history.category ?? t.category });
       }
-      await load();
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
@@ -1104,15 +1145,128 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             emptyTitle="Nothing in this view"
             emptyDescription="Statement lines land here once a statement is imported."
             rowClassName={(t) => (readyRow(t) ? "bg-[#F0FDF4] hover:bg-[#DCFCE7]" : "")}
-            onRowClick={(t) => toggleOpen(t.id)}
-            isExpanded={(t) => open.has(t.id)}
-            expandedRow={(t) => {
-              // Named here because the disclosure below reads them repeatedly
-              // and `t.match_status === "posted"` five times is harder to scan.
-              const posted = t.match_status === "posted";
-              const excluded = t.match_status === "ignored";
-              return (
-              <>
+            // Clicking a line opens the detail MODAL rather than expanding the row.
+            // The panel had grown to a dozen controls stacked under a table row,
+            // which is what made the line itself look unpresentable. The row is one
+            // control now, and everything needing thought lives in the modal.
+            onRowClick={(t) => setDetailId(t.id)}
+            rowActions={(t) => actionCell(t)}
+            bulkActions={queueBulkActions}
+            toolbarExtra={bulkCategoryPicker}
+            serverPaged={{
+              total,
+              offset: page * pageSize,
+              pageSize,
+              busy: loading,
+              search,
+              onSearchChange: setSearch,
+              onChange: ({ offset, pageSize: size }) => {
+                setPageSize(size);
+                setPage(Math.floor(offset / size));
+              },
+            }}
+          />
+        </>
+      )}
+      <p className="text-[10px] text-[#94A3B8] text-center">
+        Match or Add posts the transaction and settles its document. Undo puts it back.
+        Click a line to see the bank&apos;s own narration.
+      </p>
+      {/* The detail modal: everything about ONE line that the row deliberately
+          does not carry. The row asks one question — which ledger — and this is
+          where the answers that need thought live: the rate, the note, the
+          routes to a document or a split, and what history and the rules
+          propose. */}
+      {(() => {
+        const t = rows.find((r) => r.id === detailId);
+        if (!t) return null;
+        const posted = t.match_status === "posted";
+        const excluded = t.match_status === "ignored";
+        const amount = t.credit_paise > 0 ? t.credit_paise : t.debit_paise;
+        const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null
+          ? String(t.suggested_gst_rate_bps) : "");
+        return (
+          <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4"
+               onClick={() => setDetailId(null)}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col"
+                 onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between px-5 py-4 border-b border-[#F1F5F9]">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-[#0F172A] truncate"
+                      title={t.description}>{t.description}</h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    {t.transaction_date} · <span className="font-mono">{fmt(amount)}</span>{" "}
+                    {t.credit_paise > 0 ? "received" : "spent"}
+                    {t.category ? <span className="text-[#94A3B8]"> · {t.category}</span> : null}
+                  </p>
+                </div>
+                <button onClick={() => setDetailId(null)} aria-label="Close"
+                  className="text-[#94A3B8] hover:text-[#475569] shrink-0"><X size={16} /></button>
+              </div>
+
+              <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
+                {/* The two fields that decide the journal, given room to be
+                    read. On the row the ledger picker and a GST select fought
+                    for one line; here each gets a label. */}
+                {!posted && !excluded && !t.is_split && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                        Ledger
+                      </label>
+                      <AccountLookup
+                        accounts={orderedAccounts}
+                        value={t.account_id ?? ""}
+                        onChange={(id) => codeToAccount(t, id)}
+                        disabled={busy[t.id]}
+                        ariaLabel="Ledger"
+                        placeholder={t.suggested_account_id
+                          ? `Suggested: ${accountLabel(t.suggested_account_id)}`
+                          : "Choose a ledger…"}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                        GST inside this amount
+                      </label>
+                      {t.gst_allowed ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <select
+                            value={rate}
+                            disabled={busy[t.id]}
+                            onChange={(e) => setGstRate((g) => ({ ...g, [t.id]: e.target.value }))}
+                            aria-label={t.credit_paise > 0
+                              ? "Output GST on this receipt" : "Input GST on this payment"}
+                            className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg bg-white">
+                            <option value="">No GST split</option>
+                            {GST_RATE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                          {rate !== "" && rate !== "0" && (
+                            <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                              <input type="checkbox" disabled={busy[t.id]}
+                                checked={gstInterstate[t.id] ?? !!t.suggested_is_interstate}
+                                onChange={(e) => setGstInterstate((g) => ({ ...g, [t.id]: e.target.checked }))}
+                                className="h-3.5 w-3.5 rounded border-[#CBD5E1]" />
+                              IGST (inter-state)
+                            </label>
+                          )}
+                          <span className="text-[10px] text-[#94A3B8]">
+                            {t.credit_paise > 0
+                              ? "Output tax owed — CGST Act s.9"
+                              : "Input credit claimed — CGST Act s.16"}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-[#94A3B8]">
+                          {GST_WHY_LONG[gstWhy(t)] ?? "Not available on this line."}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {rowError[t.id] && (
                   <p className="text-[10px] text-red-600 mb-1">{rowError[t.id]}</p>
                 )}
@@ -1281,31 +1435,28 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     )}
 
     </div>
-              </>
-              );
-            }}
-            rowActions={(t) => actionCell(t)}
-            bulkActions={queueBulkActions}
-            toolbarExtra={bulkCategoryPicker}
-            serverPaged={{
-              total,
-              offset: page * pageSize,
-              pageSize,
-              busy: loading,
-              search,
-              onSearchChange: setSearch,
-              onChange: ({ offset, pageSize: size }) => {
-                setPageSize(size);
-                setPage(Math.floor(offset / size));
-              },
-            }}
-          />
-        </>
-      )}
-      <p className="text-[10px] text-[#94A3B8] text-center">
-        Match or Add posts the transaction and settles its document. Undo puts it back.
-        Click a line to see the bank&apos;s own narration.
-      </p>
+              </div>
+
+              <div className="px-5 py-3 border-t border-[#F1F5F9] flex items-center justify-end gap-2">
+                <button onClick={() => setDetailId(null)}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+                  Close
+                </button>
+                {!posted && !excluded && (
+                  <button
+                    onClick={async () => { await postRow(t); setDetailId(null); }}
+                    disabled={busy[t.id] || !readyToAdd(t)}
+                    title={readyToAdd(t) ? "Record this line" : "Choose a ledger first"}
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40 disabled:cursor-not-allowed">
+                    {busy[t.id] ? "…" : "Add"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ONE button, two kinds of split, chosen INSIDE the editor. Two
           similarly-named buttons on the row is how the ledger split stayed
           invisible for as long as it did. */}
@@ -1902,6 +2053,17 @@ function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
 // offers input credit on a payment (CGST Act s.16) and output tax on a receipt
 // (s.9), so a label that said "standard for banking services" would be wrong
 // half the time. Short, because this is a column now, not a drawer.
+/** Which of the server's refusals applies to this line, in the order
+ *  posting_map.gst_split_allowed checks them. One function so the row's short
+ *  label and the modal's sentence are always the same answer. */
+function gstWhy(t: QueueTxn): string {
+  if (t.matched_entity_id) return "on the invoice";
+  if (t.is_split) return "per split";
+  if (t.category === "Transfer") return "not a supply";
+  if (!t.account_id) return "pick a ledger";
+  return "control account";
+}
+
 /** The short reason in the cell → the sentence behind it on hover. Mirrors
  *  posting_map.gst_split_allowed, which is the authority; these are words for
  *  its answers, never a second copy of the rule. */
@@ -3857,9 +4019,14 @@ export default function BankPage() {
     if (!clientId || clientId === "_placeholder") return;
     try {
       const supabase = getSupabaseClient();
+      const firmId = await getFirmId();
       const { data, error } = await selectAll(() => supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
+        // firm_id explicitly, not RLS alone. CLAUDE.md: the app-layer filter is
+        // the primary isolation control and the policy is defence in depth —
+        // this query had only the policy.
+        .eq("firm_id", firmId)
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .eq("is_active", true)
         .order("account_code")

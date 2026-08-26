@@ -783,6 +783,10 @@ def matching_queue(
     return api_response(True, {
         "rows": _scope_rows(current_user, client_id, rows),
         "total": total, "limit": limit, "offset": offset,
+        # Orders the screen's ledger picker. Describes the client, so it belongs
+        # in the envelope rather than on every row.
+        "ledger_order": bank_matching_service.ledger_order(
+            db, current_user["firm_id"], client_id),
     })
 
 
