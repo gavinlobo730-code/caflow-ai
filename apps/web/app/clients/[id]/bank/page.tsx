@@ -448,12 +448,17 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   }
 
   /** Undo. The reason it is safe to go fast: a posted row is one click from
-   *  being back in the queue, so nothing needs approving in advance. */
+   *  being back in the queue, so nothing needs approving in advance.
+   *
+   *  It called `unmatch`, which REFUSES a posted transaction — so this button,
+   *  which only ever appears on posted rows, returned 409 every time it was
+   *  pressed. `undoPost` reverses the journal and un-settles the document,
+   *  which is what putting a posted row back actually requires. */
   async function undoRow(t: QueueTxn) {
     setBusy((b) => ({ ...b, [t.id]: true }));
     setRowError((e) => ({ ...e, [t.id]: "" }));
     try {
-      await api.banking.unmatch(t.id);
+      await api.banking.undoPost(t.id);
       setSugg((x) => ({ ...x, [t.id]: undefined as unknown as MatchSuggestion[] }));
       await load();
     } catch (e) {
@@ -571,6 +576,12 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     );
   };
 
+  /** Categorized and Excluded hold rows nothing can be set on any more, so a
+   *  GST column there is a column of dashes. It is dropped from those views
+   *  entirely rather than rendered empty — the first version shipped it on
+   *  every tab and it read as a broken feature. */
+  const showGstColumn = status !== "done" && status !== "ignored";
+
   /** The columns. `accessor` is what search, sort and CSV export read, so it
    *  is the plain value; `render` is what the reader sees. Money stays in
    *  paise for sorting and is formatted only in the cell. */
@@ -685,7 +696,18 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       key: "gst", header: "GST", width: "11rem",
       accessor: (t) => gstRate[t.id] ?? (t.suggested_gst_rate_bps ?? ""),
       render: (t) => {
-        if (!t.gst_allowed) return <span className="text-[#CBD5E1]">—</span>;
+        if (!t.gst_allowed) {
+          // A dash says nothing, and a reader looking at a column of dashes
+          // concludes GST is not wired up — which is what happened. Say WHICH
+          // of the server's reasons applies, in the order gst_split_allowed
+          // itself checks them.
+          const why = t.matched_entity_id ? "on the invoice"
+            : t.is_split ? "per split"
+            : t.category === "Transfer" ? "not a supply"
+            : !t.account_id ? "pick a ledger"
+            : "control account";
+          return <span className="text-[#CBD5E1] text-[10px]" title={GST_WHY_LONG[why]}>{why}</span>;
+        }
         const rate = gstRate[t.id] ?? (t.suggested_gst_rate_bps != null
           ? String(t.suggested_gst_rate_bps) : "");
         return (
@@ -731,6 +753,8 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       render: (t) => <span className="font-mono text-green-700">{t.credit_paise > 0 ? fmt(t.credit_paise) : ""}</span>,
     },
   ];
+  const visibleQueueColumns: Column<QueueTxn>[] =
+    queueColumns.filter((c) => c.key !== "gst" || showGstColumn);
 
   /** Across LEDGERS or across DOCUMENTS. Rendered inside whichever split
    *  editor is open, so the two are one control in one place rather than two
@@ -821,7 +845,9 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
 
   async function reject(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
+    setRowError((e) => ({ ...e, [id]: "" }));
     try { await api.banking.unmatch(id); setSugg((s) => ({ ...s, [id]: [] })); await load(); }
+    catch (e) { setRowError((x) => ({ ...x, [id]: e instanceof Error ? e.message : "Could not unmatch." })); }
     finally { setBusy((b) => ({ ...b, [id]: false })); }
   }
   // Take everything the firing rule proposed: the category and, when it named
@@ -1070,7 +1096,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
               filtered them would call a line on page four "no match". */}
           <DataTable
             data={rows}
-            columns={queueColumns}
+            columns={visibleQueueColumns}
             getRowId={(t) => t.id}
             loading={loading}
             searchPlaceholder="Search narration, reference or payee…"
@@ -1876,6 +1902,17 @@ function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
 // offers input credit on a payment (CGST Act s.16) and output tax on a receipt
 // (s.9), so a label that said "standard for banking services" would be wrong
 // half the time. Short, because this is a column now, not a drawer.
+/** The short reason in the cell → the sentence behind it on hover. Mirrors
+ *  posting_map.gst_split_allowed, which is the authority; these are words for
+ *  its answers, never a second copy of the rule. */
+const GST_WHY_LONG: Record<string, string> = {
+  "on the invoice": "This line settles an invoice or bill, and that document already carries its own GST. Taxing the bank line too would count the same tax twice.",
+  "per split": "This line is allocated across several ledgers. A GST rate would need one rate per leg, which is not built yet.",
+  "not a supply": "Moving money between your own accounts is not a supply, so no GST arises.",
+  "pick a ledger": "Choose a ledger first — the split books the amount excluding tax there, so there is nowhere to put it yet.",
+  "control account": "This posts to a control account like Trade Receivables or Trade Payables. Tax does not belong on one.",
+};
+
 const GST_RATE_OPTIONS: { value: number; label: string }[] = [
   { value: 0, label: "0% — no GST" },
   { value: 500, label: "5%" },

@@ -493,6 +493,10 @@ export const api = {
       currency?: string; exchange_rate?: string;
     }) => request(`/api/banking/transactions/${txnId}/match-multi`, { method: "POST", body: JSON.stringify(data) }),
     unmatch: (txnId: string) => request(`/api/banking/transactions/${txnId}/unmatch`, { method: "POST" }),
+    /** Undo a POSTED transaction: reverses its journal, un-settles its document
+     *  and puts the row back in the queue. `unmatch` refuses a posted row — it
+     *  clears a MATCH, which is a different thing. */
+    undoPost: (txnId: string) => request(`/api/banking/transactions/${txnId}/undo`, { method: "POST" }),
     // B.2.3 — matching rules. A rule annotates the work queue with a suggested
     // category / counter account / narration; it never posts and never writes to
     // a transaction on its own. Precedence is creation order. (These endpoints

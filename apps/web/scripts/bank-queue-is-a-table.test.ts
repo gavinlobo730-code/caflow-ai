@@ -67,7 +67,8 @@ test("the queue is a table, not a list of cards", () => {
     "the Categorize queue must render the shared DataTable — a hand-rolled " +
     "list is what it replaced, and rebuilding one loses search, column " +
     "visibility, export and the page-size control with it");
-  assert.match(s, /columns=\{queueColumns\}/, "it must pass the column set below");
+  assert.match(s, /columns=\{visibleQueueColumns\}/,
+    "it must pass the column set below, minus any column hidden for this tab");
 });
 
 test("the columns are the seven, in order, with Spent and Received separate", () => {
@@ -257,13 +258,13 @@ test("one Split button, with the choice of what to split across inside it", () =
 
 test("the GST control reads the server's verdict rather than re-deriving it", () => {
   const s = queueSource();
-  assert.match(s, /if \(!t\.gst_allowed\) return <span/,
+  assert.match(s, /if \(!t\.gst_allowed\) \{/,
     "the GST cell must gate on gst_allowed — the flag posting_map.gst_split_" +
     "allowed sets, which is the SAME call the posting engine makes to refuse a " +
     "rate. Re-deriving the rule here (checking debit_paise, or the category " +
     "list) is how the screen ends up offering a control the server rejects. " +
-    "Anchored on the <span it returns: the looser form was also satisfied by " +
-    "rateToSend's gate, so neutering the CELL left this test green.");
+    "Anchored on the brace: rateToSend's gate is `return \"\";` on one line, " +
+    "and the looser form matched it too — so neutering the CELL left this green.");
 });
 
 test("the GST control is not restricted to money going out", () => {
@@ -299,4 +300,43 @@ test("a rate the server would refuse is never sent with the post", () => {
   assert.equal((s.match(/const rate = rateToSend\(t\);/g) ?? []).length, 2,
     "both send sites — the single row and the bulk apply — must go through it; " +
     "the bulk one is exactly where an unseen rate does the most damage");
+});
+
+
+// ── Undo, and the GST column saying why it is empty ──────────────────────────
+
+test("Undo calls the endpoint that can actually undo a posting", () => {
+  const s = queueSource();
+  assert.match(s, /await api\.banking\.undoPost\(t\.id\);/,
+    "undoRow called api.banking.unmatch, and bank_matching_service.unmatch " +
+    "REFUSES a posted transaction with a 409. The button renders only on " +
+    "posted rows, so every click failed. Undoing a posting means reversing " +
+    "its journal and un-settling its document, which is what /undo does.");
+  assert.doesNotMatch(s, /undoRow[\s\S]{0,400}api\.banking\.unmatch\(/,
+    "unmatch clears a MATCH — a different operation that refuses posted rows");
+});
+
+test("the GST cell names the reason instead of showing a bare dash", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf('key: "gst"'));
+  const cell = decl.slice(0, decl.indexOf("\n    },"));
+  for (const why of ["on the invoice", "per split", "not a supply", "pick a ledger", "control account"]) {
+    assert.ok(cell.includes(why),
+      `the GST cell must be able to say "${why}". A column of dashes reads as ` +
+      "a broken feature — which is exactly how it was reported.");
+  }
+  // Computing the reason is not showing it. Without this the cell could keep
+  // all five strings and still render a dash — which is how the first negative
+  // control for this test passed against code that had gone back to a dash.
+  assert.match(cell, /title=\{GST_WHY_LONG\[why\]\}>\{why\}<\/span>/,
+    "the reason has to be what the cell RENDERS, and the long form its tooltip");
+});
+
+test("the GST column is dropped on the tabs where nothing can be set", () => {
+  const s = queueSource();
+  assert.match(s, /const showGstColumn = status !== "done" && status !== "ignored";/,
+    'Categorized is the LABEL of the tab whose id is "done" — naming it by ' +
+    "label would leave the column on the very tab it was reported dead on.");
+  assert.match(s, /queueColumns\.filter\(\(c\) => c\.key !== "gst" \|\| showGstColumn\)/,
+    "the flag has to actually remove the column, not just be computed");
 });

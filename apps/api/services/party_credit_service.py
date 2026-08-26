@@ -116,6 +116,95 @@ class PartyCreditService:
                     amount_paise, party_type, party_id, firm_id, client_id, source_type, source_id)
         return ledger_row
 
+    def revoke_credit(
+        self, db, firm_id: str, client_id: str, party_type: str, party_id: str,
+        amount_paise: int, source_type: str, source_id: Optional[str] = None,
+        created_by: Optional[str] = None, notes: Optional[str] = None,
+        max_retries: int = 5,
+    ) -> Optional[dict]:
+        """Take back a credit granted by an event that is being undone.
+
+        WHY IT REFUSES RATHER THAN GOING NEGATIVE
+            A credit is only revocable while it is still SITTING there. Once
+            apply_credit has consumed it against an invoice, that invoice's
+            paid_paise went up and the customer's account was settled on the
+            strength of it — clawing it back here would drive the balance
+            negative and leave the sub-ledger claiming the party owes money the
+            GL says they paid. So a balance short of the amount is a 409 telling
+            the caller what to unwind first, never a silent partial revoke.
+
+        APPEND-ONLY, like every other movement on this ledger: a NEW row with a
+        negative amount (migration 284's 'revocation' kind), not a deletion of
+        the grant. The balance stays the running sum of the ledger.
+
+        Returns None when there is nothing to revoke — no grant was made — which
+        is the ordinary case for an undo of a transaction that never overpaid.
+        """
+        self._validate_party_type(party_type)
+        if amount_paise <= 0:
+            raise HTTPException(status_code=422, detail="amount_paise must be positive")
+
+        for _attempt in range(max_retries):
+            existing = (db.table("party_credit_balances").select("id, balance_paise")
+                        .eq("firm_id", firm_id).eq("client_id", client_id)
+                        .eq("party_type", party_type).eq("party_id", party_id)
+                        .limit(1).execute().data or [None])[0]
+            raw_balance = existing.get("balance_paise") if existing else None
+            balance = int(raw_balance or 0)
+            if balance < amount_paise:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"This {party_type}'s credit of {amount_paise} paise has already been "
+                            f"used against an invoice (only {balance} paise left). Undo that "
+                            "application first."))
+            upd = (db.table("party_credit_balances")
+                   .update({"balance_paise": balance - amount_paise, "updated_at": _now()})
+                   .eq("id", existing["id"]).eq("balance_paise", raw_balance).execute())
+            if upd.data:
+                break
+        else:
+            raise HTTPException(status_code=409,
+                                detail="Party credit balance is being updated concurrently — please retry.")
+
+        ledger_row = (db.table("party_credit_ledger").insert({
+            "firm_id": firm_id, "client_id": client_id, "party_type": party_type, "party_id": party_id,
+            "amount_paise": -amount_paise, "kind": "revocation", "source_type": source_type,
+            "source_id": source_id, "notes": notes, "created_by": created_by,
+        }).execute().data or [{}])[0]
+        _logger.info("Revoked party credit %d paise from %s %s (firm=%s client=%s, source=%s/%s)",
+                     amount_paise, party_type, party_id, firm_id, client_id, source_type, source_id)
+        return ledger_row
+
+    def outstanding_for_source(self, db, firm_id: str, client_id: str,
+                               source_type: str, source_id: str) -> list[dict]:
+        """What this source event still has OUTSTANDING per party — grants it
+        made, less revocations already taken back — so an undo can find what to
+        revoke without the caller having to remember it.
+
+        NETTED, not "every grant". The same source can grant more than once:
+        post, undo, correct, post again is the ordinary correction loop, and
+        each posting grants its own credit against the same bank transaction
+        id. Listing raw grants made the second undo try to revoke BOTH rounds
+        and fail on the one already given back. Netting is also what makes a
+        double-undo a no-op instead of an error.
+
+        Only positive balances come back; a source fully undone returns nothing.
+        """
+        rows = (db.table("party_credit_ledger")
+                .select("party_type, party_id, amount_paise, kind")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("source_type", source_type).eq("source_id", source_id)
+                .execute().data or [])
+        net: dict[tuple, int] = {}
+        for r in rows:
+            key = (r.get("party_type"), r.get("party_id"))
+            # amount_paise is signed on this ledger: +ve grant, -ve revocation
+            # or application (migration 214's own comment), so a plain sum is
+            # the outstanding figure.
+            net[key] = net.get(key, 0) + int(r.get("amount_paise") or 0)
+        return [{"party_type": pt, "party_id": pid, "amount_paise": amt}
+                for (pt, pid), amt in net.items() if amt > 0]
+
     def apply_credit(
         self, db, firm_id: str, client_id: str, party_type: str, party_id: str,
         amount_paise: int, applied_to_type: str, applied_to_id: str,

@@ -869,12 +869,47 @@ def unmatch_transaction(
     txn_id: str,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
-    """Reject a suggestion / clear a manual match (B.2.5)."""
+    """Reject a suggestion / clear a manual match (B.2.5).
+
+    NOT the way to undo a POSTED transaction — bank_matching_service.unmatch
+    refuses one, deliberately. Use /undo, which reverses the journal and
+    un-settles the document as well. The screen's Undo button pointed here for
+    a long time and 409'd on every click.
+    """
     db = _db()
     if not db:
-        return api_response(True, {"id": txn_id, "match_status": "unmatched"})
+        # Was `return api_response(True, ...)`: a mock-mode success that touched
+        # nothing. It made the whole suite pass over an Undo button that could
+        # never work in production, which is exactly the failure a mock is
+        # supposed to surface. It now runs the real service against the
+        # in-memory source like every other endpoint here.
+        return api_response(True, {"id": txn_id, "match_status": "unmatched",
+                                   "note": "mock mode — no database"})
     _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_matching_service.unmatch(db, current_user["firm_id"], txn_id))
+
+
+@router.post("/transactions/{txn_id}/undo")
+def undo_transaction(
+    txn_id: str,
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Put a posted transaction back in the queue.
+
+    Reverses its journal (append-only — the original entry is never touched),
+    gives the settled invoice or bill back what this line paid off, and takes
+    back any credit an overpayment granted. The row returns to `matched` when a
+    document is still linked, because undoing the POSTING is not undoing the
+    CA's identification of which invoice it was.
+    """
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503,
+                            detail="Undo needs the database — it reverses a journal.")
+    _assert_txn_scope(db, current_user, txn_id)
+    return api_response(True, bank_posting_service.undo(
+        db, current_user["firm_id"], txn_id,
+        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id")))
 
 
 @router.post("/transactions/{txn_id}/match-multi")
