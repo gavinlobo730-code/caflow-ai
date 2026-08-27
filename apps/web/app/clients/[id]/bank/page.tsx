@@ -574,24 +574,39 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     return best ?? null;
   }
 
-  /** Every row the screen already has an answer for. Deliberately the SAME
-   *  test that paints a row green, so "Record all 47" clears exactly the rows
-   *  the reader can see are ready — no hidden second rule about what counts. */
-  const confirmedRows = rows.filter(
-    (t) => t.match_status !== "posted" && t.match_status !== "ignored"
-        && (Boolean(confidentMatch(t)) || Boolean(t.matched_entity_id) || readyToAdd(t)));
-
-  /** Record them all. This walks the rows and does what a reader clicking each
-   *  green button would do, three at a time — it is not a second code path, and
-   *  no row is recorded that the screen was not already offering to record.
+  /** Record the picked rows. Walks them and does what a reader clicking each
+   *  green button would do, three at a time — not a second code path, and no
+   *  row is recorded that the screen was not already offering to record.
    *  Server-side batching would be one request instead of N, but it would also
-   *  need its own copy of "which rows are confident", and two copies drift. */
-  async function addAllConfirmed() {
-    const targets = confirmedRows;
-    if (targets.length === 0) return;
+   *  need its own copy of "which rows are confident", and two copies drift.
+   *
+   *  It used to take no argument and act on every ready row in the queue,
+   *  driven by a green banner above the table. The banner is gone: with a
+   *  selection bar that can already say "all N matching rows", a second
+   *  always-on control doing a fixed subset of the same thing was one control
+   *  too many. Ready-ness is not gone with it — the same test still paints the
+   *  row green, and a picked row that is NOT ready is reported as skipped
+   *  rather than silently passed over, which the banner could never do because
+   *  the reader never chose those rows in the first place.
+   */
+  async function recordPicked(picked: QueueTxn[]) {
+    const targets = picked.filter(readyRow);
+    const results: BatchResult[] = picked
+      .filter((t) => !targets.includes(t))
+      .map((t) => ({
+        transaction_id: t.id,
+        status: "skipped" as const,
+        reason: t.match_status === "posted" ? "Already recorded."
+          : t.match_status === "ignored" ? "Excluded — put it back first."
+          : "No ledger or document yet — open the line and choose one.",
+      }));
+    if (targets.length === 0) {
+      setBatchOutcome({ results, applied: 0, skipped: results.length, failed: 0,
+                        total: results.length });
+      return;
+    }
     setBulkBusy(true);
     setBulkError(null);
-    const results: BatchResult[] = [];
     try {
       await mapWithLimit(targets, 3, async (t) => {
         try {
@@ -621,13 +636,13 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       setBatchOutcome({
         results,
         applied: results.filter((r) => r.status === "applied").length,
-        skipped: 0,
+        skipped: results.filter((r) => r.status === "skipped").length,
         failed: results.filter((r) => r.status === "failed").length,
         total: results.length,
       });
       await load();
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : "Could not record the confirmed rows.");
+      setBulkError(e instanceof Error ? e.message : "Could not record the selected rows.");
     } finally { setBulkBusy(false); }
   }
 
@@ -886,6 +901,17 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       },
     },
     {
+      // Where "Record all N" used to live, as a green banner permanently above
+      // the table. The banner acted on a set the reader had not chosen and
+      // could not see the edges of; this acts on the rows they ticked, and
+      // reports the ones it would not record instead of skipping them in
+      // silence. Select-all + Record is the old button, spelled with two
+      // clicks and no ambiguity about what it touched.
+      id: "record",
+      label: "Record",
+      run: async (picked) => { await recordPicked(picked); },
+    },
+    {
       id: "apply-suggestions",
       label: "Apply suggestions",
       run: async (picked) => { await runBatchIds("accept", picked.map((t) => t.id)); },
@@ -1130,25 +1156,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No transactions in this view.</div>
       ) : (
         <>
-          {/* One click for everything the screen already answered. QuickBooks
-              makes you press Add on each recognised row and buries bulk accept
-              in a menu; a CA with fifty clients wants the confident ones gone
-              and only the judgement calls left on screen. */}
-          {confirmedRows.length > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2">
-              <CheckCircle size={14} className="text-[#15803D] shrink-0" />
-              <p className="text-xs text-[#166534]">
-                <span className="font-semibold">{confirmedRows.length}</span> row
-                {confirmedRows.length === 1 ? " is" : "s are"} ready — matched to a document, or
-                already coded.
-              </p>
-              <button onClick={addAllConfirmed} disabled={bulkBusy}
-                className="ml-auto text-xs px-3 py-1 bg-[#15803D] text-white rounded font-medium hover:bg-[#166534] disabled:opacity-50">
-                {bulkBusy ? "Recording…" : `Record all ${confirmedRows.length}`}
-              </button>
-            </div>
-          )}
-
           {bulkError && <p className="text-[11px] text-red-600 px-1">{bulkError}</p>}
 
           {/* Tier 1.7 — what happened to EACH row. A count alone would hide the
