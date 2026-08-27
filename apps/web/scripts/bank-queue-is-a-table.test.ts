@@ -84,7 +84,7 @@ test("the queue is a table, not a list of cards", () => {
     "it must pass the column set below, minus any column hidden for this tab");
 });
 
-test("the columns are the seven, in order, with Spent and Received separate", () => {
+test("the columns are the six, in order, with Spent and Received separate", () => {
   const s = queueSource();
   const decl = s.slice(s.indexOf("const queueColumns"));
   assert.ok(decl.length > 500, "the queueColumns declaration came back empty");
@@ -93,14 +93,16 @@ test("the columns are the seven, in order, with Spent and Received separate", ()
 
   const headers = [...body.matchAll(/header:\s*"([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(headers,
-    ["Date", "Description", "Payee", "Ledger or match", "GST", "Spent", "Received"],
+    ["Date", "Description", "Payee", "GST", "Spent", "Received"],
     "the column set changed. Spent and Received are SEPARATE on purpose — " +
     "money out and money in are the two things the eye separates first. " +
-    "GST sits between the ledger and the amounts because it is a property OF " +
-    "the amount, and it is a column at all because it used to be buried in the " +
-    "opened row, offered on debits only. Action is not among them: it is " +
-    "rowActions, which DataTable always renders last, which is what keeps the " +
-    "button in a fixed strip.");
+    "\"Ledger or match\" is NOT among them any more: the CA read the line as " +
+    "unpresentable twice, the second time after using the version that kept " +
+    "the picker, and chose to have the column removed outright rather than " +
+    "turned into text. GST is still declared but default-hidden, so it can be " +
+    "brought back from the Columns menu. Action is not among them either: it " +
+    "is rowActions, which DataTable always renders last, which is what keeps " +
+    "the button in a fixed strip.");
 });
 
 test("the action button is in the fixed trailing column, and nowhere else", () => {
@@ -195,55 +197,82 @@ test("the two ways out of an unanswerable row are the largest controls in the pa
 });
 
 
-test("the ledger picker is on the ROW, and is not gated behind a category", () => {
+test("the line asks nothing, and the modal that answers is reachable two ways", () => {
   const s = queueSource();
-
-  // WHY. The account picker DID exist — inside the opened row, rendered only
-  // once a Category had been chosen and only for categories that are not
-  // auto-counter. A reader who had not chosen a category saw no way to name an
-  // account at all, and reported it as missing. It was not missing; it was
-  // behind a gate nothing told them about.
-  //
-  // The column now holds the ledger itself, and the category is derived from it
-  // server-side (domain/banking/account_category). Asserted on the COLUMN, so
-  // that moving the picker back into the panel fails here.
   const decl = s.slice(s.indexOf("const queueColumns"));
   const body = decl.slice(0, decl.indexOf("\n  ];"));
   assert.ok(body.length > 400, "the queueColumns body came back empty");
-  // \b so a renamed near-namesake (<AccountLookupX …>) does not satisfy it —
-  // the first version of this assertion did, which made the control it defends
-  // removable without a failure.
-  assert.match(body, /<AccountLookup\b/,
-    "the Ledger column must render the chart-of-accounts picker on the line");
-  assert.match(body, /onChange=\{\(id\) => codeToAccount\(t, id\)\}/,
-    "picking a ledger must write it through — a draft held in the browser is " +
-    "lost the moment the reader pages, searches or reloads");
 
-  const panel = panelSource(s);
-  // The panel carries a LABELLED copy of the picker now, which is the point of
-  // the modal — so "not in the panel" is no longer the invariant. What still
-  // has to hold is that the row shows one without anything being opened, and
-  // the column assertion above is what pins that. What must NOT come back is
-  // the CATEGORY GATE, which is what actually hid it.
-  assert.doesNotMatch(panel, /AUTO_COUNTER_CATEGORIES\.has/,
-    "the panel is gating a control on the category again — that ordering is " +
-    "the bug: the category now FOLLOWS the ledger, it does not unlock it");
+  // The CA's ask, twice: the line reports, it does not interrogate.
+  // Comment-stripped, or the comment explaining what was removed would fail
+  // the test it is explaining — verified by commenting a picker out and
+  // watching the raw-source version go red.
+  const code = codeOnly(body);
+  assert.doesNotMatch(code, /<AccountLookup\b/,
+    "a ledger picker is back on the line");
+  assert.doesNotMatch(code, /<select\b/,
+    "a dropdown is back on the line");
+
+  // AND THE COUNTERPART, which is the part that could strand a reader: with
+  // no control on the row, the modal is the ONLY way to code a line, so both
+  // routes into it have to hold. Losing either leaves an uncoded line with
+  // nowhere to go — and no test of the column would notice, because there is
+  // no column any more.
+  assert.match(s, /onRowClick=\{\(t\) => setDetailId\(t\.id\)\}/,
+    "clicking the line must open its detail — it is now the way a ledger " +
+    "gets chosen at all, not merely a way to read the narration");
+  assert.match(s, /if \(!isMatch && !readyToAdd\(t\)\) \{ setDetailId\(t\.id\); return; \}/,
+    "Add on a line with no answer yet must open the detail rather than sit " +
+    "disabled: a greyed button is a dead end, and the modal is where the " +
+    "missing answer is given");
 });
 
-test("a split line is shown as a split, not offered a ledger picker", () => {
+test("the ledger is named without a category being chosen first", () => {
   const s = queueSource();
-  const decl = s.slice(s.indexOf("const queueColumns"));
-  const body = decl.slice(0, decl.indexOf("\n  ];"));
+  const panel = panelSource(s);
+
+  // WHY. The account picker DID exist once — inside the opened row, rendered
+  // only after a Category had been chosen and only for categories that are not
+  // auto-counter. A reader who had not chosen a category saw no way to name an
+  // account at all and reported it as missing. It was not missing; it was
+  // behind a gate nothing told them about. The category is DERIVED from the
+  // ledger now (domain/banking/account_category) — it follows, it does not
+  // unlock. Asserted on the modal, which is where the picker lives since the
+  // column was removed.
+  assert.match(panel, /<AccountLookup\b/,
+    "the detail modal must render the chart-of-accounts picker — with the " +
+    "column gone it is the only place a ledger can be named");
+  assert.match(panel, /onChange=\{\(id\) => codeToAccount\(t, id\)\}/,
+    "picking a ledger must write it through — a draft held in the browser is " +
+    "lost the moment the reader pages, searches or reloads");
+  assert.doesNotMatch(panel, /AUTO_COUNTER_CATEGORIES\.has/,
+    "the panel is gating a control on the category again — that ordering is " +
+    "the bug the derivation fixed");
+});
+
+test("a split line is not offered a ledger picker that would overwrite it", () => {
+  const s = queueSource();
+  const panel = panelSource(s);
 
   // A split row carries a null category and a null account_id, exactly like an
-  // untouched one. Without this branch the column would offer a picker over an
-  // allocation already made, and the first ledger chosen would replace it.
-  // The literal guard, not just a mention of the flag: `if (false && t.is_split)`
-  // contains the flag, sits in the right place, and reaches the picker anyway.
-  const at = body.indexOf("if (t.is_split) {");
-  assert.ok(at > 0, "the Ledger column must recognise an already-split row");
-  assert.ok(at < body.indexOf("<AccountLookup"),
-    "the split check must come BEFORE the picker, or the picker wins");
+  // untouched one. Without this guard the modal would offer a plain picker
+  // over an allocation already made, and the first ledger chosen would replace
+  // every leg of it. The guard followed the picker out of the column and into
+  // the modal; this test follows it rather than being deleted with the column.
+  const at = panel.indexOf("!t.is_split && (");
+  assert.ok(at > 0,
+    "the detail modal must recognise an already-split line before offering " +
+    "it a single ledger");
+  const picker = panel.indexOf("<AccountLookup");
+  assert.ok(picker > 0, "the modal's picker was not found");
+  assert.ok(at < picker, "the split check must come BEFORE the picker, or the picker wins");
+
+  // And the BULK path has its own copy of the same refusal, because it never
+  // opens this block: bulkEligible drops split lines before a ledger is
+  // written to any of them.
+  assert.match(s, /const bulkEligible = [\s\S]{0,300}!t\.is_split/,
+    "the bulk path must refuse a split line too — one ledger written across " +
+    "a selection would silently replace an allocation the CA already made");
 });
 
 test("one Split button, with the choice of what to split across inside it", () => {
@@ -422,7 +451,7 @@ test("clicking a line opens the modal, and Add still posts straight away", () =>
     "the dead-end disabled state is what opening the modal replaced");
 });
 
-test("the ledger list is reordered by use, and never shortened", () => {
+test("the ledger list is reordered by use, never shortened, and shared", () => {
   const s = queueSource();
   assert.match(s, /const orderedAccounts = useMemo/, "the ordering has to exist");
   const fn = s.slice(s.indexOf("const orderedAccounts = useMemo"));
@@ -431,13 +460,16 @@ test("the ledger list is reordered by use, and never shortened", () => {
     "ORDER, never filter: a ledger this client has not used yet is often " +
     "exactly why the picker was opened, so nothing may be removed from it");
   assert.match(body, /\.sort\(/, "it reorders");
-  const decl = s.slice(s.indexOf("const queueColumns"));
-  const cols = decl.slice(0, decl.indexOf("\n  ];"));
-  assert.match(cols, /accounts=\{orderedAccounts\}/,
-    "the ROW's picker gets the ordered list — asserting on the whole component " +
-    "was satisfied by the modal's copy while the row still had the raw chart");
+
+  // BOTH pickers, sliced separately. Asserting over the whole component was
+  // satisfied by one copy while the other still had the raw chart — that is
+  // how this test was caught being vacuous before, when the row had a picker
+  // and the modal had the unordered list.
   assert.match(panelSource(s), /accounts=\{orderedAccounts\}/,
-    "and so does the modal's, or the same list is ordered differently in two places");
+    "the detail modal's picker must get the ordered list");
+  assert.match(bulkModalSource(s), /accounts=\{orderedAccounts\}/,
+    "and so must the bulk modal's, or the same list is ordered differently " +
+    "depending on how many lines you happened to select");
 });
 
 // ── The bulk path: one ledger, many lines ───────────────────────────────────
@@ -478,9 +510,11 @@ function bulkModalSource(s: string): string {
  *  those quotes and reports the deleted control as still present. Line
  *  comments are left alone so a "//" inside a string literal survives. */
 function codeOnly(s: string): string {
-  const out = s.replace(/\/\*[\s\S]*?\*\//g, " ");
-  assert.ok(out.length > 5_000 && out.length < s.length,
-    "the comment strip produced nothing usable");
+  const out = s.replace(/\/\*[\s\S]*?\*\//g, " ")
+               .replace(/^\s*\/\/.*$/gm, " ");
+  assert.ok(out.length > s.length / 3,
+    "the comment strip removed most of the source — the slice is wrong, and " +
+    "every doesNotMatch below would pass against near-nothing");
   return out;
 }
 
@@ -639,4 +673,30 @@ test("the bulk apply sets the ledger first, and reports every line it did not re
   assert.match(body, /status: "failed"/,
     "a rejected line must be reported per line: one failure must not strand " +
     "the other seven, and the reader has to be told WHICH failed");
+});
+
+test("an already-split line still says so on the line", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+
+  // Removing the Ledger column removed every status it carried. Most of that
+  // is recoverable — the green tint says "ready", the button says Match or
+  // Add, the Categorized tab says "recorded". A SPLIT is the exception: the
+  // row reads exactly like an untouched one, null category and null
+  // account_id, while already carrying its allocation. A reader who cannot
+  // see that opens it and codes it as though it were blank, and the first
+  // ledger chosen replaces every leg.
+  const at = body.indexOf("t.is_split && (");
+  assert.ok(at > 0,
+    "a split line must still be marked on the line itself — this is the one " +
+    "piece of status the removed Ledger column may not take with it");
+  // In the DESCRIPTION cell, beside the narration, not as a column of its own
+  // and not as a control: the ask was to stop the line interrogating anybody.
+  const descAt = body.indexOf('key: "description"');
+  const gstAt = body.indexOf('key: "gst"');
+  assert.ok(descAt > 0 && gstAt > descAt, "the column order is not what this expects");
+  assert.ok(at > descAt && at < gstAt,
+    "the split marker must sit in the Description cell, with the channel and " +
+    "Transfer chips, rather than reintroducing a column");
 });

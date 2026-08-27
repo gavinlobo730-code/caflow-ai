@@ -721,6 +721,18 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
               Transfer
             </span>
           )}
+          {/* The ONE status the removed Ledger column cannot be allowed to
+              take with it. A split line reads exactly like an untouched one —
+              null category, null account_id — and it is already allocated, so
+              a reader who cannot see that may open it and code it as if it
+              were blank. A chip beside the narration, next to the Transfer one
+              that set the precedent: not a control, and not a column. */}
+          {t.is_split && (
+            <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-[#EEF2FF] text-[#4338CA]"
+              title={`Allocated across ${t.split_count ?? 0} ledgers — open the line to see them`}>
+              Split
+            </span>
+          )}
         </div>
       ),
     },
@@ -737,59 +749,21 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             </span>
           : <span className="text-[#CBD5E1]">—</span>,
     },
-    {
-      // ONE field, and it is the ledger. It used to be a Category dropdown, with
-      // the account hidden inside the opened row and shown only AFTER a category
-      // had been chosen — so a reader who had not chosen one saw no way to name
-      // an account at all, and reported it as missing.
-      //
-      // The category is derived from the ledger server-side
-      // (domain/banking/account_category), which is honest about what the
-      // category was doing: for six of the eleven values it changed nothing in
-      // the journal at all, because posting_map.build_lines is direction-driven.
-      // The word is still shown, and still overridable, in the opened row.
-      key: "category", header: "Ledger or match", width: "18rem", searchable: true,
-      accessor: (t) => (t.account_id ? accountLabel(t.account_id) : "")
-        || t.category || t.matched_entity_type || "",
-      render: (t) => {
-        const best = confidentMatch(t);
-        if (t.match_status === "posted") {
-          return <span className="text-[#15803D] truncate block">
-            Recorded{t.account_id ? ` · ${accountLabel(t.account_id)}` : t.category ? ` · ${t.category}` : ""}
-          </span>;
-        }
-        if (t.match_status === "ignored") return <span className="text-[#94A3B8]">Excluded</span>;
-        if (t.matched_entity_id) {
-          return <span className="text-[#15803D] truncate block">Matched · {t.matched_entity_type}</span>;
-        }
-        if (best) {
-          return <span className="text-[#15803D] truncate block" title={best.reasons.join(" · ")}>{best.label}</span>;
-        }
-        if (t.is_split) {
-          return <span className="text-[#4338CA] truncate block"
-            title="Allocated across several ledgers — open the row to see them">
-            Split across {t.split_count ?? 0} ledgers
-          </span>;
-        }
-        return (
-          // stopPropagation: the row toggles open on click, and a picker that
-          // collapsed the row it sits in would be unusable.
-          <div onClick={(e) => e.stopPropagation()}>
-            <AccountLookup
-              accounts={orderedAccounts}
-              value={t.account_id ?? ""}
-              onChange={(id) => codeToAccount(t, id)}
-              disabled={busy[t.id]}
-              size="sm"
-              ariaLabel="Ledger"
-              placeholder={t.suggested_account_id
-                ? `Suggested: ${accountLabel(t.suggested_account_id)}`
-                : "Choose a ledger…"}
-            />
-          </div>
-        );
-      },
-    },
+    // NO LEDGER COLUMN. It held the picker, and before that a Category
+    // dropdown; the CA read the line as "not presentable" twice — the second
+    // time after using the built version. The line asks NOTHING now. It
+    // reports what the bank sent and what moved, and every answer is given in
+    // the detail modal, reached by clicking the line, or by pressing Add on a
+    // line that has no answer yet (actionCell opens the modal rather than
+    // sitting disabled).
+    //
+    // WHAT WAS GIVEN UP, deliberately and said out loud: that column was also
+    // the STATUS column — "Recorded · Cost of Goods Sold", "Matched · invoice",
+    // "Split across 3 ledgers". The list no longer says what a line was coded
+    // to. What is left to read it by is the green tint on a ready row
+    // (readyRow — the same test that enables its button), the button's own
+    // word (Match on a line with a document, Add on one without), and the
+    // Categorized tab. That is the trade the CA chose, in those terms.
     {
       // GST on the line, the way a CA reads a statement: one column, both
       // directions, their call. It used to live inside the opened row, offered
@@ -1251,8 +1225,8 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         </>
       )}
       <p className="text-[10px] text-[#94A3B8] text-center">
-        Match or Add posts the transaction and settles its document. Undo puts it back.
-        Click a line to see the bank&apos;s own narration.
+        Click a line to choose its ledger, split it, or read the bank&apos;s own narration.
+        Match or Add posts it and settles its document; Undo puts it back.
       </p>
       {/* BULK — the same two questions the detail modal asks, asked once for
           many lines. Same picker, same rate list, same words, so "set the
