@@ -380,6 +380,43 @@ def test_outstanding_for_source_reports_only_what_is_still_live():
     assert out == [{"party_type": "vendor", "party_id": "v1", "amount_paise": 30000}]
 
 
+# ── through the ROUTE, past the mock-mode early return ───────────────────────
+
+def test_the_undo_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
+    """routers.banking has 57 `if not db: return ...` early returns, and in mock
+    mode each one IS the whole endpoint — everything after it is unexercised by
+    the entire suite. That is how #308's ledger_order shipped raising NameError
+    on every real request with CI green.
+
+    /undo is the other route added recently, and it is a WRITE. Patching _db
+    gets past the early return so the route's own wiring — the actor keys it
+    reads off current_user, the scope assertion, the shape it returns — is run
+    at least once.
+    """
+    import core.authz as authz
+    import routers.banking as banking_router
+    db = _db()
+    _txn(db, debit=50000, category="Expense", account_id="acc-exp")
+    svc.post(db, FIRM, "t1", actor_id="u1")
+    monkeypatch.setattr(banking_router, "_db", lambda: db)
+    monkeypatch.setattr(authz, "_USE_MOCK", True)
+    monkeypatch.setattr(banking_router, "_assert_txn_scope", lambda *a, **k: None)
+
+    res = banking_router.undo_transaction(
+        "t1", current_user={"firm_id": FIRM, "role": "Partner",
+                            "auth_user_id": "p1", "id": "u1"})
+    assert res["success"] is True
+    assert res["data"]["match_status"] == "unmatched"
+    rev_id = res["data"]["reversal_journal_id"]
+    assert rev_id
+    assert db.store["bank_transactions"][0]["posted_journal_id"] is None
+    # The actor has to survive the route, not just the service: who reversed a
+    # posted journal is the whole point of the audit trail, and the route is
+    # the only place current_user is unpacked.
+    rev = next(e for e in db.store["journal_entries"] if e["id"] == rev_id)
+    assert rev.get("created_by") == "u1", "the reversal must name who made it"
+
+
 # ── what it refuses to half-undo ─────────────────────────────────────────────
 
 def test_a_receipt_backed_settlement_is_refused_not_half_undone():

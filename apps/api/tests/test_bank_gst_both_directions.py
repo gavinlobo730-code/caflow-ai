@@ -443,3 +443,9 @@ def test_ledger_order_ranks_by_use_and_is_empty_without_a_client():
 
     from services.bank_matching_service import bank_matching_service
     assert bank_matching_service.ledger_order(_db(), FIRM, None) == []
+    # WITH a client too. The first version of this test only asserted the
+    # client_id=None case, which returns [] BEFORE touching bank_payee_service —
+    # so it passed while ledger_order raised NameError on every real request,
+    # and the Categorize screen 500'd in production. An early return is exactly
+    # the shape a test must not stop at.
+    assert bank_matching_service.ledger_order(_db(), FIRM, CLIENT) == []
