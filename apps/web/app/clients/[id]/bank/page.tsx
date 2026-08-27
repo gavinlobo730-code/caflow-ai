@@ -246,8 +246,15 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const [transfers, setTransfers] = useState<TransferSuggestion[]>([]);
   const [batchOutcome, setBatchOutcome] = useState<BatchOutcome | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const [bulkCategory, setBulkCategory] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  /** The lines a bulk "Set ledger" is acting on, captured when the action ran.
+   *  DataTable clears its own selection the moment a bulk action resolves, so
+   *  by the time the modal is on screen there is nothing left to read back —
+   *  it has to hold its own copy of what was picked. */
+  const [bulkRows, setBulkRows] = useState<QueueTxn[] | null>(null);
+  const [bulkAccountId, setBulkAccountId] = useState("");
+  const [bulkGstRate, setBulkGstRate] = useState("");
+  const [bulkGstInterstate, setBulkGstInterstate] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   // Distinguishes "fetch failed" from "queue genuinely empty" (a masked
   // failure here reads as a fully-reconciled bank, which it may not be).
@@ -417,39 +424,86 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
 
-  async function bulkCategorizeIds(ids: string[]) {
-    if (!bulkCategory || ids.length === 0) return;
+  /** Set ONE ledger on every line the CA picked, and record them.
+   *
+   *  This replaced a "— Bulk category —" dropdown that called categorize()
+   *  with a category and nothing else. That word is the one the row stopped
+   *  asking for: the category FOLLOWS the ledger server-side
+   *  (domain/banking/account_category). For the three auto-counter categories
+   *  the posting engine could still derive its own counter account, so those
+   *  lines did become recordable; for the other eight it set a word, left the
+   *  line without a ledger and therefore unpostable, and cleared the selection
+   *  as though the work were done.
+   *
+   *  Per line, never all-or-nothing: one rejected line must not strand the
+   *  other seven, and the reader has to be told WHICH failed.
+   */
+  async function applyBulkLedger() {
+    const picked = bulkRows ?? [];
+    const eligible = bulkEligible(picked);
+    if (!bulkAccountId || eligible.length === 0) return;
+    const rate = bulkGstOffered(eligible) ? bulkGstRate : "";
     setBulkBusy(true);
     setBulkError(null);
+    // The lines that were selected but cannot take a ledger are reported as
+    // skipped rather than dropped — a selection of eight that records six
+    // must say what happened to the other two.
+    const results: BatchResult[] = picked
+      .filter((t) => !eligible.includes(t))
+      .map((t) => ({
+        transaction_id: t.id,
+        status: "skipped" as const,
+        reason: t.match_status === "posted" ? "Already recorded — Undo it first."
+          : t.match_status === "ignored" ? "Excluded — put it back first."
+          : "Allocated across several ledgers — open the line to change that.",
+      }));
     try {
-      const results = await Promise.all(
-        ids.map((id) =>
-          api.banking.categorize(id, { category: bulkCategory }).then(
-            () => null,
-            (e) => (e instanceof Error ? e.message : "Failed"),
-          ),
-        ),
-      );
-      const failCount = results.filter((r) => r !== null).length;
+      await mapWithLimit(eligible, 3, async (t) => {
+        try {
+          const res = (await api.banking.setTransactionAccount(t.id, {
+            account_id: bulkAccountId, derive_category: true,
+          })) as { data?: { gst_allowed?: boolean } };
+          const allowed = res?.data?.gst_allowed ?? false;
+          // A rate was asked for and the SERVER says this line cannot carry
+          // one. The ledger is set, but the line is left in the queue rather
+          // than recorded without the tax: quietly booking one line of a batch
+          // gross while the rest are split is a difference the CA would have
+          // no way to see.
+          if (rate !== "" && !allowed) {
+            results.push({ transaction_id: t.id, status: "skipped",
+              reason: `Ledger set — no GST is available on this line. ${
+                GST_WHY_LONG[gstWhy({ ...t, account_id: bulkAccountId })] ?? ""} Left in the queue.` });
+            return;
+          }
+          const post = (await api.banking.postTransaction(t.id, {
+            ...(rate !== "" ? {
+              gst_rate_bps: Number(rate), is_interstate: bulkGstInterstate,
+            } : {}),
+          })) as { success: boolean; error: string | null };
+          results.push({ transaction_id: t.id,
+            status: post.success ? "applied" : "failed",
+            reason: post.success ? "Recorded." : (post.error ?? "Could not record.") });
+        } catch (e) {
+          results.push({ transaction_id: t.id, status: "failed",
+            reason: e instanceof Error ? e.message : "Could not record." });
+        }
+      });
+      setBatchOutcome({
+        results,
+        applied: results.filter((r) => r.status === "applied").length,
+        skipped: results.filter((r) => r.status === "skipped").length,
+        failed: results.filter((r) => r.status === "failed").length,
+        total: results.length,
+      });
+      setBulkRows(null);
       await load();
-      // DataTable clears the selection itself once a bulk action resolves, so
-      // there is nothing to clear here — the rows have left the queue and a
-      // lingering count would be counting ghosts. What still has to be said is
-      // what did NOT go through: a partial failure reported only as a cleared
-      // selection reads as success.
-      if (failCount > 0) {
-        setBulkError(`Failed to categorize ${failCount} of ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`);
-      }
     } catch (e) {
-      // Each categorize call converts its own rejection to a message, so this
-      // is load() failing after the writes went through: the rows are
-      // categorized but the queue on screen is stale. Say so rather than
-      // leaving the bulk bar disabled with no explanation.
-      setBulkError(e instanceof Error ? e.message : "Categorized, but the queue could not be refreshed.");
+      setBulkError(e instanceof Error ? e.message : "Could not set the ledger.");
     } finally {
       setBulkBusy(false);
     }
   }
+
   /** The single action behind Match / Add: post the row and settle its document.
    *  There is no approval step any more — posting is reversible, and a queue
    *  nobody can get through is not a control. */
@@ -746,7 +800,14 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       // `gst_allowed` is the SERVER's answer (posting_map.gst_split_allowed),
       // not a rule re-derived here: a control that appears where the post would
       // be rejected is worse than no control.
-      key: "gst", header: "GST", width: "7rem",
+      // DEFAULT-HIDDEN, and one click away in the Columns menu. On the tab
+      // where the work happens this column is placeholder text: on an uncoded
+      // queue every cell reads "pick a ledger", because a rate needs a ledger
+      // to book the ex-tax amount to. It is also already dropped entirely from
+      // Categorized and Excluded, so hiding it here makes the three tabs agree.
+      // The rate is set in the detail modal, where it has a label and the room
+      // to say which section it is claimed under.
+      key: "gst", header: "GST", width: "7rem", defaultHidden: true,
       accessor: (t) => gstRate[t.id] ?? (t.suggested_gst_rate_bps ?? ""),
       render: (t) => {
         // A READ-OUT, not a control. A select and a checkbox squeezed beside a
@@ -809,28 +870,45 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     </div>
   );
 
-  /** The bulk category the picker below holds, applied by the bulk action. */
-  const bulkCategoryPicker = (
-    <select
-      value={bulkCategory} disabled={bulkBusy}
-      onChange={(e) => setBulkCategory(e.target.value)}
-      aria-label="Bulk category"
-      className="px-2 py-1 text-xs border border-[#E2E8F0] rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-      <option value="">— Bulk category —</option>
-      {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-    </select>
-  );
+  /** Which of the picked lines a ledger can be set on, and what is left
+   *  alone. A posted line needs Undo first, an excluded one needs putting
+   *  back, and a split line already HAS its ledgers — writing one over that
+   *  allocation would replace an answer the CA has already given. */
+  const bulkEligible = (picked: QueueTxn[]) => picked.filter(
+    (t) => t.match_status !== "posted" && t.match_status !== "ignored" && !t.is_split);
+
+  /** A rate is offered only when EVERY line could take one.
+   *
+   *  `gst_allowed` is false on an uncoded line for exactly the reason choosing
+   *  a ledger fixes, so the test is "nothing but the missing ledger is in the
+   *  way". A line blocked because it settles an invoice, or because it is a
+   *  transfer, never becomes eligible whatever ledger is picked — and one rate
+   *  applied across a mixed selection would tax the invoice line a second
+   *  time, on top of the tax the invoice already carries (CGST Act s.16). */
+  const bulkGstOffered = (eligible: QueueTxn[]) =>
+    eligible.length > 0
+    && eligible.every((t) => t.gst_allowed || gstWhy(t) === "pick a ledger");
 
   const queueBulkActions: BulkAction<QueueTxn>[] = [
     {
-      id: "apply-category",
-      label: "Apply category",
-      run: async (picked) => {
-        if (!bulkCategory) {
-          setBulkError("Choose a bulk category first — the picker is in the toolbar.");
-          return;
-        }
-        await bulkCategorizeIds(picked.map((t) => t.id));
+      // Opens the modal rather than acting: the ledger is the question, and a
+      // toolbar dropdown that had to be set BEFORE selecting rows was a
+      // control you could press with nothing chosen and be told off for it.
+      //
+      // DataTable clears its selection as soon as a bulk action resolves, and
+      // this one resolves on open — so the ticks are gone by the time the
+      // modal is up, and cancelling means re-ticking. That is the honest cost
+      // of not abusing the one thing that preserves a selection, which is a
+      // THROWN error: a CA changing their mind is not a crash, and logging it
+      // as one to buy back four checkboxes is a worse trade.
+      id: "set-ledger",
+      label: "Set ledger",
+      run: (picked) => {
+        setBulkRows(picked);
+        setBulkAccountId("");
+        setBulkGstRate("");
+        setBulkGstInterstate(false);
+        setBulkError(null);
       },
     },
     {
@@ -1141,7 +1219,12 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             getRowId={(t) => t.id}
             loading={loading}
             searchPlaceholder="Search narration, reference or payee…"
-            persistKey="bank.categorize"
+            // BUMPED from "bank.categorize". Hidden columns are persisted, and
+            // a saved pref of "nothing hidden" wins over a column's own
+            // defaultHidden on hydration — so anyone who had already used this
+            // screen would keep the GST column and never see the change. The
+            // cost is one reset of saved widths and page size, once.
+            persistKey="bank.categorize.v2"
             emptyTitle="Nothing in this view"
             emptyDescription="Statement lines land here once a statement is imported."
             rowClassName={(t) => (readyRow(t) ? "bg-[#F0FDF4] hover:bg-[#DCFCE7]" : "")}
@@ -1152,7 +1235,6 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
             onRowClick={(t) => setDetailId(t.id)}
             rowActions={(t) => actionCell(t)}
             bulkActions={queueBulkActions}
-            toolbarExtra={bulkCategoryPicker}
             serverPaged={{
               total,
               offset: page * pageSize,
@@ -1172,6 +1254,121 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         Match or Add posts the transaction and settles its document. Undo puts it back.
         Click a line to see the bank&apos;s own narration.
       </p>
+      {/* BULK — the same two questions the detail modal asks, asked once for
+          many lines. Same picker, same rate list, same words, so "set the
+          ledger" means one thing on this screen whether it is one line or
+          eight. What it replaced set a category and no ledger; see
+          applyBulkLedger. */}
+      {bulkRows && (() => {
+        const picked = bulkRows;
+        const eligible = bulkEligible(picked);
+        const gstOffered = bulkGstOffered(eligible);
+        const gross = eligible.reduce(
+          (n, t) => n + (t.credit_paise > 0 ? t.credit_paise : t.debit_paise), 0);
+        // The FIRST line that can never take a rate, whatever ledger is
+        // chosen. Named in the modal so "no GST here" is a reason and not a
+        // missing control.
+        const blocker = eligible.find((t) => !t.gst_allowed && gstWhy(t) !== "pick a ledger");
+        return (
+          <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4"
+               onClick={() => !bulkBusy && setBulkRows(null)}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col"
+                 onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between px-5 py-4 border-b border-[#F1F5F9]">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-[#0F172A]">
+                    Set the ledger on {eligible.length} line{eligible.length === 1 ? "" : "s"}
+                  </h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    <span className="font-mono">{fmt(gross)}</span> in total
+                    {picked.length > eligible.length && (
+                      <span className="text-[#94A3B8]">
+                        {" · "}{picked.length - eligible.length} of the {picked.length} selected
+                        {" "}left alone (already recorded, excluded, or split)
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <button onClick={() => setBulkRows(null)} disabled={bulkBusy} aria-label="Close"
+                  className="text-[#94A3B8] hover:text-[#475569] shrink-0 disabled:opacity-40">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="px-5 py-4 space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                    Ledger
+                  </label>
+                  <AccountLookup
+                    accounts={orderedAccounts}
+                    value={bulkAccountId}
+                    onChange={setBulkAccountId}
+                    disabled={bulkBusy}
+                    ariaLabel="Ledger for the selected lines"
+                    placeholder="Choose a ledger…"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                    GST inside these amounts
+                  </label>
+                  {gstOffered ? (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <select
+                        value={bulkGstRate}
+                        disabled={bulkBusy}
+                        onChange={(e) => setBulkGstRate(e.target.value)}
+                        aria-label="GST rate for the selected lines"
+                        className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg bg-white">
+                        <option value="">No GST split</option>
+                        {GST_RATE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      {bulkGstRate !== "" && bulkGstRate !== "0" && (
+                        <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                          <input type="checkbox" disabled={bulkBusy}
+                            checked={bulkGstInterstate}
+                            onChange={(e) => setBulkGstInterstate(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-[#CBD5E1]" />
+                          IGST (inter-state)
+                        </label>
+                      )}
+                      <span className="text-[10px] text-[#94A3B8]">
+                        One rate, applied to every line here
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[#94A3B8]">
+                      {blocker
+                        ? `Not for this selection — ${GST_WHY_LONG[gstWhy(blocker)] ?? "one of these lines cannot take a rate."} Set the ledger here and give that line its rate on its own.`
+                        : "Nothing here can take a rate."}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#F1F5F9]">
+                <button onClick={() => setBulkRows(null)} disabled={bulkBusy}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40">
+                  Cancel
+                </button>
+                <button
+                  onClick={applyBulkLedger}
+                  disabled={bulkBusy || !bulkAccountId || eligible.length === 0}
+                  // Says what it does. Add on the row posts straight away, and
+                  // a bulk button that only half-did the same thing would leave
+                  // eight lines still needing a second pass.
+                  className="text-xs px-4 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40 disabled:cursor-not-allowed">
+                  {bulkBusy ? "Recording…"
+                    : `Set ledger & record ${eligible.length} line${eligible.length === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* The detail modal: everything about ONE line that the row deliberately
           does not carry. The row asks one question — which ledger — and this is
           where the answers that need thought live: the rate, the note, the

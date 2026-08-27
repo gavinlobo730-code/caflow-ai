@@ -439,3 +439,204 @@ test("the ledger list is reordered by use, and never shortened", () => {
   assert.match(panelSource(s), /accounts=\{orderedAccounts\}/,
     "and so does the modal's, or the same list is ordered differently in two places");
 });
+
+// ── The bulk path: one ledger, many lines ───────────────────────────────────
+//
+// WHY THESE EXIST
+//     The screen had a "— Bulk category —" dropdown in the toolbar. It called
+//     categorize() with a CATEGORY and nothing else — the very word the row had
+//     stopped asking for, because the category follows from the ledger
+//     server-side (domain/banking/account_category). For the three auto-counter
+//     categories the posting engine could still derive its own counter account,
+//     so those lines did become recordable. For the other eight it wrote a word,
+//     left the line with no ledger and therefore unpostable, and cleared the
+//     selection as though the work were done.
+//
+//     It is a "Set ledger" action now, opening the same two-field modal the
+//     single line uses. These tests pin the three things that made it correct
+//     rather than merely different: it asks for a LEDGER, it does not touch
+//     lines a ledger cannot be set on, and it will not put one GST rate across
+//     a selection where some line cannot carry one.
+
+/** The bulk modal's source. Sliced, because every control in it — the account
+ *  picker, the rate select, the IGST box — also exists on the row or in the
+ *  detail modal, and an assertion made against the whole component would be
+ *  satisfied by those copies while this modal was deleted. */
+function bulkModalSource(s: string): string {
+  const start = s.indexOf("{bulkRows && (() => {");
+  assert.ok(start > 0, "the bulk modal was not found — has it moved?");
+  const end = s.indexOf("{/* The detail modal:", start);
+  assert.ok(end > start, "could not find the end of the bulk modal");
+  const modal = s.slice(start, end);
+  assert.ok(modal.length > 1_500, `the bulk modal came back at ${modal.length} chars`);
+  return modal;
+}
+
+/** Source with BLOCK comments removed. The invariants below are about what
+ *  the screen DOES, and the comments explaining what a control replaced
+ *  legitimately quote the old control by name — a scan of the raw source finds
+ *  those quotes and reports the deleted control as still present. Line
+ *  comments are left alone so a "//" inside a string literal survives. */
+function codeOnly(s: string): string {
+  const out = s.replace(/\/\*[\s\S]*?\*\//g, " ");
+  assert.ok(out.length > 5_000 && out.length < s.length,
+    "the comment strip produced nothing usable");
+  return out;
+}
+
+/** applyBulkLedger's body, for the same reason. */
+function bulkApplySource(s: string): string {
+  const start = s.indexOf("async function applyBulkLedger() {");
+  assert.ok(start > 0, "applyBulkLedger was not found");
+  const end = s.indexOf("\n  /** The single action behind Match / Add", start);
+  assert.ok(end > start, "could not find the end of applyBulkLedger");
+  const body = s.slice(start, end);
+  assert.ok(body.length > 1_000, `applyBulkLedger came back at ${body.length} chars`);
+  return body;
+}
+
+test("GST is off the row by default, and one click away in the Columns menu", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+
+  // Scoped to the GST column's own entry, not the whole column set: asserting
+  // "defaultHidden appears somewhere in queueColumns" would be satisfied by any
+  // other column acquiring it, while GST came back onto the row.
+  const at = body.indexOf('key: "gst"');
+  assert.ok(at > 0, "the GST column is gone entirely — it should be hidden, not deleted");
+  const entry = body.slice(at, body.indexOf("},", at));
+  assert.match(entry, /defaultHidden:\s*true/,
+    "the GST column must be default-hidden. On the tab where the work happens " +
+    "every cell of it reads \"pick a ledger\" until a ledger is chosen, which " +
+    "is placeholder text occupying a column; the rate is set in the detail " +
+    "modal, which has room to say which section it is claimed under.");
+  assert.doesNotMatch(entry, /hideable:\s*false/,
+    "default-hidden AND unhideable would make the column unreachable — the " +
+    "Columns menu is how a CA who wants to eyeball rates before recording " +
+    "gets it back");
+});
+
+test("changing a persisted default came with a persistKey bump", () => {
+  const s = queueSource();
+  // hiddenColumns is persisted to localStorage, and a saved "nothing hidden"
+  // wins over a column's own defaultHidden on hydration. Without a new key,
+  // anyone who had already used this screen would keep the GST column and
+  // never see the change — the default would be live in the source and dead in
+  // every browser that mattered.
+  assert.doesNotMatch(s, /persistKey="bank\.categorize"/,
+    "the table is still on the pre-change persistKey, so saved prefs will " +
+    "override the new column default for every existing user");
+  assert.match(s, /persistKey="bank\.categorize\.v\d+"/,
+    "the queue's persistKey must carry a version suffix, so the next change " +
+    "to a persisted default can be shipped the same way");
+});
+
+test("the bulk control asks for a ledger, not the category the row stopped asking for", () => {
+  const s = queueSource();
+
+  const code = codeOnly(s);
+  assert.doesNotMatch(code, /bulkCategory/,
+    "the bulk-category control is back. The category follows from the ledger " +
+    "server-side; setting it alone leaves eight of the eleven categories with " +
+    "no counter account and the line still unpostable");
+  assert.doesNotMatch(code, /Bulk category/,
+    "the toolbar still offers a bulk CATEGORY picker");
+
+  const actions = s.slice(s.indexOf("const queueBulkActions"));
+  const body = actions.slice(0, actions.indexOf("\n  ];"));
+  assert.ok(body.length > 200, "the queueBulkActions body came back empty");
+  const labels = [...body.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(labels.length >= 3, `only ${labels.length} bulk labels matched`);
+  assert.ok(labels.includes("Set ledger"),
+    `the bulk actions must offer "Set ledger", got: ${JSON.stringify(labels)}`);
+  assert.ok(!labels.includes("Apply category"),
+    "\"Apply category\" is back among the bulk actions");
+});
+
+test("the bulk modal carries the same two fields as the single line", () => {
+  const s = queueSource();
+  const modal = bulkModalSource(s);
+
+  // \b so a renamed near-namesake cannot satisfy it, and the value binding so
+  // the row's own picker cannot: this must be the BULK one.
+  assert.match(modal, /<AccountLookup\b/,
+    "the bulk modal must offer the chart-of-accounts picker");
+  assert.match(modal, /value=\{bulkAccountId\}/,
+    "the bulk modal's picker must be bound to the bulk selection's own ledger");
+  assert.match(modal, /GST_RATE_OPTIONS\.map/,
+    "the bulk modal must offer the same rate list as the line — a second list " +
+    "would be a second answer to the same question");
+});
+
+test("a bulk ledger is not written over an answer already given", () => {
+  const s = queueSource();
+  const at = s.indexOf("const bulkEligible");
+  assert.ok(at > 0, "bulkEligible was not found");
+  const fn = s.slice(at, s.indexOf(";\n", s.indexOf("filter(", at)));
+  assert.ok(fn.length > 100, "bulkEligible came back empty");
+
+  // Each of the three exclusions asserted separately. A single regex over the
+  // whole predicate would stay green if two of the three were dropped.
+  assert.match(fn, /match_status !== "posted"/,
+    "a posted line must be excluded — it needs Undo, not a new ledger");
+  assert.match(fn, /match_status !== "ignored"/,
+    "an excluded line must be excluded — it needs putting back first");
+  assert.match(fn, /!t\.is_split/,
+    "a split line already HAS its ledgers; one written over the allocation " +
+    "would silently replace an answer the CA has already given");
+});
+
+test("one rate is never applied across a selection that cannot all take one", () => {
+  const s = queueSource();
+  const at = s.indexOf("const bulkGstOffered");
+  assert.ok(at > 0, "bulkGstOffered was not found");
+  const fn = s.slice(at, s.indexOf(";\n", at));
+  assert.ok(fn.length > 80, "bulkGstOffered came back empty");
+
+  // EVERY, not some. A selection mixing a bank charge with a line that settles
+  // an invoice would otherwise take one rate across both, and the invoice line
+  // already carries its own tax — the same tax counted twice (CGST Act s.16).
+  assert.match(fn, /\.every\(/,
+    "the rate must be offered only when EVERY selected line could carry one");
+  assert.doesNotMatch(fn, /\.some\(/,
+    "\"some line can take a rate\" is the wrong test — it is the lines that " +
+    "CANNOT that decide this");
+  assert.match(fn, /gstWhy\(t\) === "pick a ledger"/,
+    "the only blocker a ledger fixes is the missing ledger itself; a line " +
+    "blocked on the invoice, the split or a transfer never becomes eligible " +
+    "whatever ledger is chosen, and must keep the rate off the whole selection");
+});
+
+test("the bulk apply sets the ledger first, and reports every line it did not record", () => {
+  const s = queueSource();
+  const body = bulkApplySource(s);
+
+  const setAt = body.indexOf("setTransactionAccount");
+  const postAt = body.indexOf("postTransaction");
+  assert.ok(setAt > 0, "the bulk apply never sets a ledger");
+  assert.ok(postAt > 0, "the bulk apply never records anything");
+  assert.ok(setAt < postAt,
+    "the ledger has to be written BEFORE the post — the posting engine reads " +
+    "it from the row, so posting first would record the line uncoded");
+
+  // The server's verdict, not a rule re-derived here: a line that turns out to
+  // refuse the rate is left in the queue rather than quietly recorded gross,
+  // which would put a different answer on one line of a batch than the rest.
+  // `data?.gst_allowed`, not bare `gst_allowed`: the response TYPE annotation
+  // in this function also spells the field, so the loose version stayed green
+  // with the read itself replaced by a hard-coded `true` — verified by making
+  // exactly that change and watching the test pass.
+  assert.match(body, /data\?\.gst_allowed/,
+    "the apply must read the server's own verdict back after setting the ledger, " +
+    "rather than assume the rate is allowed");
+  assert.match(body, /if \(rate !== "" && !allowed\)/,
+    "the verdict must GATE the post: a line the server says cannot carry the " +
+    "rate is left in the queue, not recorded gross while the rest are split");
+  assert.match(body, /status: "skipped"/,
+    "lines that were selected but not recorded must be reported, not dropped — " +
+    "a selection of eight that records six has to say what became of the other two");
+  assert.match(body, /status: "failed"/,
+    "a rejected line must be reported per line: one failure must not strand " +
+    "the other seven, and the reader has to be told WHICH failed");
+});
