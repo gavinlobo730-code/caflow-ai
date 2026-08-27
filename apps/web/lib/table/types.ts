@@ -111,6 +111,18 @@ export interface BulkAction<T> {
    * (the action crashed rather than completing, so a retry makes sense).
    */
   run: (selected: T[]) => void | boolean | Promise<void | boolean>;
+  /**
+   * Whether this action can do anything for the rows currently ticked. When it
+   * returns false the button is not rendered at all.
+   *
+   * A bulk bar that offers every action on every tab is a bar that is mostly
+   * wrong: "Put back" on a recorded row, "Record" on a row with no ledger,
+   * "Apply suggestions" where no rule matches anything. Pressing one of those
+   * is not an error — it completes, reports "0 applied, 6 skipped", and reads
+   * to the user as a broken button rather than an inapplicable one. Omit to
+   * always offer the action.
+   */
+  appliesTo?: (selected: T[]) => boolean;
   /** Ask for confirmation before running. */
   confirm?: string;
   /** Visual emphasis (e.g. destructive delete). */
