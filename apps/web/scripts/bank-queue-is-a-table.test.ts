@@ -739,3 +739,61 @@ test("Record acts on exactly the rows the screen paints green, and says what it 
   assert.match(rp, /No ledger or document yet/,
     "and the reason must say what to do about it");
 });
+
+test("the rule offer is built from the lines that were RECORDED, and never fires itself", () => {
+  const s = queueSource();
+
+  // WHY THE OFFER EXISTS. The Rules tab could always do this, but it asks for
+  // a pattern up front — which means guessing what next month's narration will
+  // look like, from memory, in a form. Nobody does that. The moment a CA knows
+  // the answer is the moment they have just coded several real lines to one
+  // ledger, so that is where the offer belongs.
+  const fn = s.slice(s.indexOf("async function applyBulkLedger"));
+  const body = fn.slice(0, fn.indexOf("\n  /**", 10));
+  assert.ok(body.length > 1_000, "applyBulkLedger came back empty");
+
+  assert.match(body, /commonNarrationPattern/,
+    "the pattern must come from the shared helper, which is pinned against the " +
+    "server's own substring matcher — a second derivation here would drift");
+  // From the APPLIED rows only. Patterning off lines that failed to record
+  // would teach the client a rule the CA never actually confirmed.
+  // Anchored on the DERIVATION, not on the filter expression: the same
+  // expression appears again a few lines down counting the outcome, so the
+  // loose version stayed green with the derivation replaced by
+  // `results.filter(() => true)` — verified by making exactly that change.
+  assert.match(body, /const done = new Set\(results\.filter\(\(r\) => r\.status === "applied"\)/,
+    "the pattern must be derived from the lines that were recorded, not from " +
+    "every line that was picked");
+
+  // NOTHING IS CREATED WITHOUT A CLICK. rules.create must appear in exactly one
+  // place, and that place must be the handler the button calls.
+  const creates = [...s.matchAll(/api\.banking\.rules\.create\(/g)];
+  assert.equal(creates.length, 1,
+    `rules.create is called from ${creates.length} places in the queue — it ` +
+    "must only ever run from the CA's click on Create rule");
+  const handler = s.slice(s.indexOf("async function createRuleFromPrompt"));
+  const hBody = handler.slice(0, handler.indexOf("\n  /**", 10));
+  assert.ok(hBody.includes("api.banking.rules.create("),
+    "the one call must live in createRuleFromPrompt");
+  assert.match(s, /onClick=\{createRuleFromPrompt\}/,
+    "and be reached from the button, not from an effect that could fire on its own");
+
+  // The pattern is shown and EDITABLE before it is saved. A derived pattern is
+  // a guess about next month; the CA is the one who knows.
+  assert.match(s, /value=\{rulePrompt\.pattern\}/,
+    "the derived pattern must be bound to an input the CA can change");
+});
+
+test("a rate is not stamped on a rule that could not carry it", () => {
+  const s = queueSource();
+  const fn = s.slice(s.indexOf("async function applyBulkLedger"));
+  const body = fn.slice(0, fn.indexOf("\n  /**", 10));
+
+  // The backend refuses a GST rate on a credit-only rule — a rate inside a
+  // bank charge is money OUT. Sending one anyway would fail the save at the
+  // last step, after the CA had already been told the coding worked.
+  assert.match(body, /gstRateBps: rate !== "" && anyDebit \? Number\(rate\) : null/,
+    "the rate may only ride along when at least one selected line was a debit");
+  assert.match(body, /txnType: anyCredit && anyDebit \? "any" : anyCredit \? "credit" : "debit"/,
+    "and the rule must be scoped to the direction the evidence actually showed");
+});

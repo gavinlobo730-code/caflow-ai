@@ -49,6 +49,7 @@ import { TableSkeleton, StatementSkeleton, TransactionListSkeleton } from "@/com
 // cash-flow matrix: one request per visible row, fired at once, is a fan-out at
 // the slowest endpoint in the app.
 import { mapWithLimit } from "@/lib/accounting/cashFlowMatrix";
+import { commonNarrationPattern, MIN_PATTERN_LENGTH } from "@/lib/banking/narrationPattern";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column } from "@/lib/table/types";
 import {
@@ -255,6 +256,18 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const [bulkAccountId, setBulkAccountId] = useState("");
   const [bulkGstRate, setBulkGstRate] = useState("");
   const [bulkGstInterstate, setBulkGstInterstate] = useState(false);
+  /** What a matching rule made from the bulk coding just done would say.
+   *  Held after the modal closes, because the offer belongs AFTER the work: the
+   *  CA has just demonstrated the answer on real lines, which is the only
+   *  moment they know the pattern without being asked to invent one. */
+  const [rulePrompt, setRulePrompt] = useState<{
+    pattern: string; accountId: string; count: number;
+    gstRateBps: number | null; isInterstate: boolean;
+    txnType: "debit" | "credit" | "any";
+  } | null>(null);
+  const [ruleSaving, setRuleSaving] = useState(false);
+  const [ruleSaved, setRuleSaved] = useState<string | null>(null);
+  const [ruleError, setRuleError] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   // Distinguishes "fetch failed" from "queue genuinely empty" (a masked
   // failure here reads as a fully-reconciled bank, which it may not be).
@@ -424,6 +437,46 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
 
+  /** Save the proposed rule. Nothing here is automatic: the pattern is on
+   *  screen and editable, and this runs only on the CA's click.
+   *
+   *  Rules never post anything (domain/banking/rules is "SUGGESTIONS ONLY") —
+   *  the most a wrong one can do is propose a ledger the CA then declines, so
+   *  the cost of a bad pattern is a suggestion to ignore, not a bad entry. */
+  async function createRuleFromPrompt() {
+    const r = rulePrompt;
+    if (!r) return;
+    const pattern = r.pattern.trim();
+    if (pattern.length < MIN_PATTERN_LENGTH) {
+      setRuleError(`A pattern needs at least ${MIN_PATTERN_LENGTH} characters — a shorter one would fire on nearly every line, and the first rule that fires is the one that wins.`);
+      return;
+    }
+    setRuleSaving(true);
+    setRuleError(null);
+    try {
+      const res = (await api.banking.rules.create({
+        client_id: clientId,
+        rule_name: `${pattern} → ${accountLabel(r.accountId)}`,
+        description_pattern: pattern,
+        amount_min_paise: null,
+        amount_max_paise: null,
+        txn_type: r.txnType,
+        suggested_category: null,
+        suggested_account_id: r.accountId,
+        suggested_narration: null,
+        suggested_gst_rate_bps: r.gstRateBps,
+        suggested_is_interstate: r.isInterstate,
+      })) as { success: boolean; error: string | null };
+      if (!res.success) { setRuleError(res.error ?? "Could not save the rule."); return; }
+      setRuleSaved(pattern);
+      setRulePrompt(null);
+    } catch (e) {
+      setRuleError(e instanceof Error ? e.message : "Could not save the rule.");
+    } finally {
+      setRuleSaving(false);
+    }
+  }
+
   /** Set ONE ledger on every line the CA picked, and record them.
    *
    *  This replaced a "— Bulk category —" dropdown that called categorize()
@@ -495,6 +548,32 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         failed: results.filter((r) => r.status === "failed").length,
         total: results.length,
       });
+      // The offer, made only from lines that were actually RECORDED. Proposing
+      // a rule off lines that failed would teach the client a pattern the CA
+      // never confirmed.
+      const done = new Set(results.filter((r) => r.status === "applied")
+                                  .map((r) => r.transaction_id));
+      const coded = eligible.filter((t) => done.has(t.id));
+      const pattern = commonNarrationPattern(coded.map((t) => t.description));
+      if (pattern) {
+        const anyCredit = coded.some((t) => t.credit_paise > 0);
+        const anyDebit = coded.some((t) => t.debit_paise > 0);
+        setRuleSaved(null);
+        setRuleError(null);
+        setRulePrompt({
+          pattern,
+          accountId: bulkAccountId,
+          count: coded.length,
+          // A rate is carried onto the rule only where the rule could hold it.
+          // The backend refuses a rate on a credit-only rule (a GST rate on a
+          // bank charge is money OUT), and mirroring that here avoids sending a
+          // payload we already know will be rejected — the same pre-check the
+          // Rules form does, for the same reason.
+          gstRateBps: rate !== "" && anyDebit ? Number(rate) : null,
+          isInterstate: bulkGstInterstate,
+          txnType: anyCredit && anyDebit ? "any" : anyCredit ? "credit" : "debit",
+        });
+      }
       setBulkRows(null);
       await load();
     } catch (e) {
@@ -1157,6 +1236,57 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       ) : (
         <>
           {bulkError && <p className="text-[11px] text-red-600 px-1">{bulkError}</p>}
+
+          {/* THE OFFER, made at the only moment the CA knows the answer without
+              being asked to invent it: they have just coded several real lines
+              to one ledger. The Rules tab could always do this, but it asks for
+              a pattern up front — which means guessing what next month's
+              narration will look like, from memory, in a form. Here the pattern
+              is read off the lines themselves, shown, and editable before
+              anything is saved. Nothing is created without the click. */}
+          {rulePrompt && (
+            <div className="rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 space-y-2">
+              <p className="text-xs text-[#3730A3]">
+                Recorded <span className="font-semibold">{rulePrompt.count}</span> lines to{" "}
+                <span className="font-semibold">{accountLabel(rulePrompt.accountId)}</span>.
+                Should next month&apos;s do it themselves?
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label htmlFor="rule-pattern" className="text-[11px] text-[#475569]">
+                  Lines whose narration contains
+                </label>
+                <input
+                  id="rule-pattern"
+                  value={rulePrompt.pattern}
+                  disabled={ruleSaving}
+                  onChange={(e) => setRulePrompt((r) => (r ? { ...r, pattern: e.target.value } : r))}
+                  className="px-2 py-1 text-xs font-mono border border-[#C7D2FE] rounded bg-white min-w-[16rem] flex-1"
+                />
+                <button onClick={createRuleFromPrompt} disabled={ruleSaving}
+                  className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">
+                  {ruleSaving ? "Saving…" : "Create rule"}
+                </button>
+                <button onClick={() => setRulePrompt(null)} disabled={ruleSaving}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-white disabled:opacity-40">
+                  Not now
+                </button>
+              </div>
+              <p className="text-[10px] text-[#64748B]">
+                A rule only SUGGESTS — it proposes the ledger
+                {rulePrompt.gstRateBps != null && <> and the {rulePrompt.gstRateBps / 100}% GST split</>}
+                {" "}on a matching line and waits for you. It never records anything by itself.
+              </p>
+              {ruleError && <p className="text-[10px] text-red-600">{ruleError}</p>}
+            </div>
+          )}
+
+          {ruleSaved && (
+            <p className="text-[11px] text-[#166534] px-1">
+              Rule saved. Lines containing <span className="font-mono">{ruleSaved}</span> will
+              arrive with the ledger already suggested — clear them with Apply suggestions.
+              {" "}Edit or delete it in the Rules tab.
+            </p>
+          )}
 
           {/* Tier 1.7 — what happened to EACH row. A count alone would hide the
               two that did not apply, and those are the ones needing attention. */}
