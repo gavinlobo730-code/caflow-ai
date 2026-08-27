@@ -45,6 +45,19 @@ const PAGE = path.join(__dirname, "..", "app", "clients", "[id]", "bank", "page.
 
 /** The BankMatchQueue component's source, from its declaration to the next
  *  top-level declaration. Everything asserted here is inside it. */
+/** The detail panel's source. It used to be DataTable's `expandedRow`; it is
+ *  the centred modal now, opened from `detailId`. The tests below pin what the
+ *  panel CONTAINS, which did not change when it moved — so they follow it
+ *  rather than being deleted with the prop. */
+function panelSource(s: string): string {
+  const start = s.indexOf("const t = rows.find((r) => r.id === detailId);");
+  assert.ok(start > 0, "the detail modal was not found — has it moved again?");
+  const end = s.indexOf("{splitTxn && splitMode === \"ledgers\"}", start);
+  const panel = s.slice(start, end > 0 ? end : start + 20_000);
+  assert.ok(panel.length > 1_000, "the detail panel came back empty");
+  return panel;
+}
+
 function queueSource(): string {
   const src = fs.readFileSync(PAGE, "utf8");
   const start = src.indexOf("function BankMatchQueue(");
@@ -148,8 +161,7 @@ test("the queue offers ONE match, not a ranked list", () => {
   // matched `sugg[t.id].map(` literally and a re-added list written with
   // optional chaining walked straight past it — verified by adding one back
   // and watching the test stay green.
-  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
-  assert.ok(panel.length > 1_000, "the expanded-row panel came back empty");
+  const panel = panelSource(s);
   assert.doesNotMatch(panel, /\bsugg\b/,
     "the expanded row is reaching into the ranked candidates again — the one " +
     "confident match belongs on the LINE, and everything else behind a search");
@@ -164,15 +176,14 @@ test("the queue offers ONE match, not a ranked list", () => {
 
 test("the two ways out of an unanswerable row are the largest controls in the panel", () => {
   const s = queueSource();
-  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
-  assert.ok(panel.length > 1_000, "the expanded-row panel came back empty");
+  const panel = panelSource(s);
 
   // Reported as: "the split and the other option, it is so small I couldn't
   // notice them". They were text-[10px] px-2 py-0.5 among a dozen other 10px
   // things. A control nobody can find is a control that does not exist.
   for (const label of ["Find the ", "Split across several"]) {
     const at = panel.indexOf(label);
-    assert.ok(at > 0, `"${label}" is missing from the expanded row`);
+    assert.ok(at > 0, `"${label}" is missing from the detail panel`);
     // The button opening tag is the nearest one before the label.
     const btn = panel.lastIndexOf("<button", at);
     const cls = panel.slice(btn, at);
@@ -208,11 +219,12 @@ test("the ledger picker is on the ROW, and is not gated behind a category", () =
     "picking a ledger must write it through — a draft held in the browser is " +
     "lost the moment the reader pages, searches or reloads");
 
-  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
-  assert.ok(panel.length > 1_000, "the expanded-row panel came back empty");
-  assert.doesNotMatch(panel, /<AccountLookup|— Account —/,
-    "the ledger picker is back inside the opened row, where it cannot be seen " +
-    "until someone opens it");
+  const panel = panelSource(s);
+  // The panel carries a LABELLED copy of the picker now, which is the point of
+  // the modal — so "not in the panel" is no longer the invariant. What still
+  // has to hold is that the row shows one without anything being opened, and
+  // the column assertion above is what pins that. What must NOT come back is
+  // the CATEGORY GATE, which is what actually hid it.
   assert.doesNotMatch(panel, /AUTO_COUNTER_CATEGORIES\.has/,
     "the panel is gating a control on the category again — that ordering is " +
     "the bug: the category now FOLLOWS the ledger, it does not unlock it");
@@ -236,7 +248,7 @@ test("a split line is shown as a split, not offered a ledger picker", () => {
 
 test("one Split button, with the choice of what to split across inside it", () => {
   const s = queueSource();
-  const panel = s.slice(s.indexOf("expandedRow={"), s.indexOf("rowActions={"));
+  const panel = panelSource(s);
 
   // Splitting across LEDGERS and splitting across DOCUMENTS are both real. They
   // were one button labelled "several" whose behaviour was always documents, so
@@ -320,16 +332,28 @@ test("the GST cell names the reason instead of showing a bare dash", () => {
   const s = queueSource();
   const decl = s.slice(s.indexOf('key: "gst"'));
   const cell = decl.slice(0, decl.indexOf("\n    },"));
+  // The five reasons live in gstWhy() — one function, so the row's short label
+  // and the modal's sentence can never be different answers. The vocabulary is
+  // asserted there; the cell is asserted to USE it.
+  const whole = fs.readFileSync(PAGE, "utf8");
+  const whyDecl = whole.slice(whole.indexOf("function gstWhy("));
+  const whyBody = whyDecl.slice(0, whyDecl.indexOf("\n}"));
+  assert.ok(whyBody.length > 100, "gstWhy came back empty");
   for (const why of ["on the invoice", "per split", "not a supply", "pick a ledger", "control account"]) {
-    assert.ok(cell.includes(why),
-      `the GST cell must be able to say "${why}". A column of dashes reads as ` +
+    assert.ok(whyBody.includes(why),
+      `gstWhy must be able to say "${why}". A column of dashes reads as ` +
       "a broken feature — which is exactly how it was reported.");
   }
+  assert.match(cell, /const why = gstWhy\(t\);/,
+    "the cell must ASK gstWhy rather than repeat the ladder — two copies is how " +
+    "the row and the modal start giving different answers");
   // Computing the reason is not showing it. Without this the cell could keep
   // all five strings and still render a dash — which is how the first negative
   // control for this test passed against code that had gone back to a dash.
   assert.match(cell, /title=\{GST_WHY_LONG\[why\]\}>\{why\}<\/span>/,
     "the reason has to be what the cell RENDERS, and the long form its tooltip");
+  assert.match(panelSource(s), /GST_WHY_LONG\[gstWhy\(t\)\]/,
+    "and the modal must explain it in full from the same answer");
 });
 
 test("the GST column is dropped on the tabs where nothing can be set", () => {
@@ -339,4 +363,79 @@ test("the GST column is dropped on the tabs where nothing can be set", () => {
     "label would leave the column on the very tab it was reported dead on.");
   assert.match(s, /queueColumns\.filter\(\(c\) => c\.key !== "gst" \|\| showGstColumn\)/,
     "the flag has to actually remove the column, not just be computed");
+});
+
+
+// ── the four changes the CA asked for ────────────────────────────────────────
+
+test("coding a line patches that row instead of reloading the queue", () => {
+  const s = queueSource();
+  // Reported as "every time i choose or change the category the whole screen
+  // loads again". codeToAccount ended in load(), which sets `loading` and
+  // refetches the page from Mumbai — a cross-region round trip that tore down
+  // and rebuilt fifty rows because one of them changed.
+  const fn = s.slice(s.indexOf("async function codeToAccount"));
+  const body = fn.slice(0, fn.indexOf("\n  }"));
+  assert.doesNotMatch(body, /await load\(\)/,
+    "codeToAccount must not refetch the whole page to show one row's ledger");
+  assert.match(body, /patchRow\(t\.id, \{/, "it has to update the row it changed");
+  assert.match(body, /gst_allowed: d\.gst_allowed/,
+    "gst_allowed must be carried across, or the GST cell keeps saying 'pick a " +
+    "ledger' after a ledger was picked — the contradiction that made reloading " +
+    "look necessary in the first place");
+
+  for (const name of ["applyRule", "applyHistory"]) {
+    const f = s.slice(s.indexOf(`async function ${name}`));
+    assert.doesNotMatch(f.slice(0, f.indexOf("\n  }")), /await load\(\)/,
+      `${name} only codes the row too — it must not reload either`);
+  }
+});
+
+test("the row asks one question; the rate is a read-out", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf('key: "gst"'));
+  const cell = decl.slice(0, decl.indexOf("\n    },"));
+  assert.doesNotMatch(cell, /<select/,
+    "a rate select and an IGST checkbox squeezed beside the ledger picker is " +
+    "what made the line look like a form. The row shows the rate; the modal sets it.");
+  assert.doesNotMatch(cell, /type="checkbox"/, "same for the IGST toggle");
+  assert.match(panelSource(s), /<select[\s\S]{0,900}GST_RATE_OPTIONS\.map/,
+    "and the modal is where the rate is actually chosen");
+});
+
+test("clicking a line opens the modal, and Add still posts straight away", () => {
+  const s = queueSource();
+  assert.match(s, /onRowClick=\{\(t\) => setDetailId\(t\.id\)\}/,
+    "a click opens the centred detail modal");
+  assert.doesNotMatch(s, /expandedRow=\{/,
+    "the stacked expanded row is what the modal replaced");
+  // The CA chose this: Add on a coded row posts, it does not open a dialogue.
+  // With 47 lines to clear, a confirmation per row is 47 extra round trips
+  // through a modal.
+  const cellFn = s.slice(s.indexOf("const actionCell ="));
+  const action = cellFn.slice(0, cellFn.indexOf("\n  };"));
+  assert.match(action, /if \(!isMatch && !readyToAdd\(t\)\) \{ setDetailId\(t\.id\); return; \}/,
+    "a line that cannot be posted yet must OPEN, not sit disabled behind a tooltip");
+  assert.match(action, /postRow\(t\);/,
+    "and a ready line posts straight away rather than opening a confirmation");
+  assert.doesNotMatch(action, /disabled=\{busy\[t\.id\] \|\| \(!isMatch && !readyToAdd\(t\)\)\}/,
+    "the dead-end disabled state is what opening the modal replaced");
+});
+
+test("the ledger list is reordered by use, and never shortened", () => {
+  const s = queueSource();
+  assert.match(s, /const orderedAccounts = useMemo/, "the ordering has to exist");
+  const fn = s.slice(s.indexOf("const orderedAccounts = useMemo"));
+  const body = fn.slice(0, fn.indexOf("\n  }, ["));
+  assert.doesNotMatch(body, /\.filter\(/,
+    "ORDER, never filter: a ledger this client has not used yet is often " +
+    "exactly why the picker was opened, so nothing may be removed from it");
+  assert.match(body, /\.sort\(/, "it reorders");
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const cols = decl.slice(0, decl.indexOf("\n  ];"));
+  assert.match(cols, /accounts=\{orderedAccounts\}/,
+    "the ROW's picker gets the ordered list — asserting on the whole component " +
+    "was satisfied by the modal's copy while the row still had the raw chart");
+  assert.match(panelSource(s), /accounts=\{orderedAccounts\}/,
+    "and so does the modal's, or the same list is ordered differently in two places");
 });

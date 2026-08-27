@@ -24,6 +24,69 @@ import type { BulkAction, Column, FilterDef, SortState } from "@/lib/table/types
 // picking it never requires more data than what's already loaded client-side.
 const PAGE_SIZES = [25, 50, 100, 250, 1000];
 
+/**
+ * The drag handle on a header's right edge.
+ *
+ * WHY IT MEASURES THE <th> RATHER THAN TRACKING A NUMBER
+ *   A column with no saved width has no number to add a delta to — its width
+ *   comes from the column definition or from the browser's own table layout.
+ *   Reading the real rendered width on mousedown means the first drag starts
+ *   from where the column actually IS, instead of jumping to a guess.
+ *
+ * Double-click gives the column its default back, which is the way out of a
+ * layout someone has dragged into a mess.
+ *
+ * Pointer events (not mouse) so it works on a trackpad and a touch screen, and
+ * capture so a fast drag that leaves the handle keeps resizing.
+ */
+function ColumnResizer({
+  columnKey, onResize, onReset,
+}: {
+  columnKey: string;
+  onResize: (key: string, px: number) => void;
+  onReset: (key: string) => void;
+}) {
+  const start = React.useRef<{ x: number; w: number } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    // The header is often a sort control; a drag must never also sort it.
+    e.preventDefault();
+    e.stopPropagation();
+    const th = e.currentTarget.closest("th");
+    if (!th) return;
+    start.current = { x: e.clientX, w: th.getBoundingClientRect().width };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!start.current) return;
+    onResize(columnKey, start.current.w + (e.clientX - start.current.x));
+  };
+
+  const end = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!start.current) return;
+    start.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+  };
+
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize the ${columnKey} column`}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onDoubleClick={(e) => { e.stopPropagation(); onReset(columnKey); }}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none
+                 hover:bg-[#C7D2FE] active:bg-[#4338CA] touch-none"
+    />
+  );
+}
+
 export interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
@@ -343,9 +406,12 @@ export function DataTable<T>({
                       key={c.key}
                       scope="col"
                       aria-sort={active ? (t.state.sort!.dir === "asc" ? "ascending" : "descending") : "none"}
-                      style={c.width ? { width: c.width } : undefined}
+                      style={t.state.columnWidths[c.key]
+                        ? { width: `${t.state.columnWidths[c.key]}px`,
+                            minWidth: `${t.state.columnWidths[c.key]}px` }
+                        : (c.width ? { width: c.width } : undefined)}
                       className={cn(
-                        "px-3 py-3 font-semibold", align(c.align),
+                        "relative px-3 py-3 font-semibold", align(c.align),
                         c.sticky && "sticky left-0 bg-[#F8FAFC]",
                         c.sortable && "cursor-pointer select-none hover:text-[#475569]",
                         c.headerClassName,
@@ -358,6 +424,11 @@ export function DataTable<T>({
                           ? (t.state.sort!.dir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
                           : <ChevronsUpDown size={11} className="text-[#CBD5E1]" />)}
                       </span>
+                      <ColumnResizer
+                        columnKey={c.key}
+                        onResize={t.setColumnWidth}
+                        onReset={t.resetColumnWidth}
+                      />
                     </th>
                   );
                 })}

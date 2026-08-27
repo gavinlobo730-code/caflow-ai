@@ -13,6 +13,10 @@ export interface TablePrefs {
   filters: Record<string, FilterValue>;
   pageSize: number;
   hiddenColumns: string[];
+  /** Dragged column widths in px, by column key. Absent = the column's own
+   *  default. Saved prefs written before this existed simply lack the key and
+   *  pick up the default, because hydration spreads over the initial state. */
+  columnWidths: Record<string, number>;
 }
 
 const storageKey = (k: string) => `practicesync.table.${k}`;

@@ -399,3 +399,47 @@ def test_the_queue_stamps_the_flag_on_every_row():
     q._mark_gst_eligibility(rows)
     assert [r["gst_allowed"] for r in rows] == [True, False, False, False]
     assert all("gst_allowed" in r for r in rows), "a row with no flag renders no control at all"
+
+
+# ── what the screen needs to patch a row without refetching the page ─────────
+
+def test_set_account_returns_gst_allowed_so_one_row_can_be_updated_alone():
+    """Every per-row action used to end in a full queue reload — a cross-region
+    refetch that rebuilt fifty rows because one changed, which the CA saw as the
+    screen flashing on every pick.
+
+    Patching the single row needs the server to say what changed, and picking a
+    ledger is exactly what turns the GST cell from "pick a ledger" into a usable
+    rate. Without this field the patched row would contradict the cell beside it.
+    """
+    from services.banking_service import banking_service
+    db = _db()
+    _txn(db, debit=59_000)
+    res = banking_service.set_account(db, FIRM, "t1", "acc-exp", derive_category=True)
+    assert res["category"] == "Expense"
+    assert res["gst_allowed"] is True
+
+    db2 = _db()
+    _txn(db2, credit=11_800_000)
+    res2 = banking_service.set_account(db2, FIRM, "t1", "acc-ar", derive_category=True)
+    # Trade Receivables derives Customer Payment, a control account — no rate.
+    assert res2["gst_allowed"] is False
+
+
+def test_ledger_order_ranks_by_use_and_is_empty_without_a_client():
+    """Orders the picker. Empty for a cross-client queue on purpose: "what this
+    client usually does" means nothing without a client, and a merged ranking
+    would order one client's picker by another's habits."""
+    from services.bank_payee_service import bank_payee_service
+    index = {
+        "k1": [{"account_id": "acc-tel"}, {"account_id": "acc-tel"}],
+        "k2": [{"account_id": "acc-rent"}, {"account_id": "acc-tel"}],
+        "k3": [{"account_id": None}],
+    }
+    assert bank_payee_service.ranked_accounts(index) == ["acc-tel", "acc-rent"], \
+        "most-used first — and 'acc-tel' sorts after 'acc-rent', so this cannot " \
+        "be satisfied by ordering the ids alphabetically"
+    assert bank_payee_service.ranked_accounts({}) == []
+
+    from services.bank_matching_service import bank_matching_service
+    assert bank_matching_service.ledger_order(_db(), FIRM, None) == []

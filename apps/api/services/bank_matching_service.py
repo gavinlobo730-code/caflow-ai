@@ -680,6 +680,20 @@ class BankMatchingService:
         self._mark_gst_eligibility(txns)
         return txns
 
+    def ledger_order(self, db, firm_id: str, client_id: Optional[str]) -> list[str]:
+        """The ledgers this client actually codes bank lines to, most-used first.
+
+        A property of the CLIENT, not of any row, so it is returned once in the
+        queue envelope rather than repeated on all fifty. Empty for a
+        cross-client queue: "what this client usually does" has no meaning
+        without a client, and a merged ranking would order one client's picker
+        by another's habits.
+        """
+        if not client_id:
+            return []
+        return bank_payee_service.ranked_accounts(
+            bank_payee_service.history_index(db, firm_id, client_id))
+
     @staticmethod
     def _mark_gst_eligibility(txns: list[dict]) -> None:
         """Say, per row, whether a GST rate may go on it.

@@ -4,6 +4,10 @@ import { processRows } from "./process";
 import { useTablePreferences } from "./useTablePreferences";
 import type { Column, FilterDef, FilterValue, SortState, TableState } from "./types";
 
+/** No drag may take a column below this. Wide enough that a header stays
+ *  readable, so "resized very small" never becomes "silently gone". */
+export const MIN_COLUMN_PX = 64;
+
 export interface UseDataTableArgs<T> {
   data: T[];
   columns: Column<T>[];
@@ -43,6 +47,7 @@ export function useDataTable<T>({
     filters: initialFilters ?? {},
     pageSize: initialPageSize,
     hiddenColumns: defaultHidden,
+    columnWidths: {},
   });
   const [page, setPageRaw] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -95,6 +100,26 @@ export function useDataTable<T>({
         ? p.hiddenColumns.filter((k) => k !== key)
         : [...p.hiddenColumns, key],
     }));
+  }, [setPrefs]);
+
+  /** Resize one column. Clamped so a drag can never take a column below
+   *  MIN_COLUMN_PX — a column dragged to nothing is indistinguishable from a
+   *  broken table, and hiding one is a deliberate choice that belongs in the
+   *  Columns menu, not an accident of the mouse. */
+  const setColumnWidth = useCallback((key: string, px: number) => {
+    setPrefs((p) => ({
+      ...p,
+      columnWidths: { ...p.columnWidths, [key]: Math.max(MIN_COLUMN_PX, Math.round(px)) },
+    }));
+  }, [setPrefs]);
+
+  /** Give one column its default width back. */
+  const resetColumnWidth = useCallback((key: string) => {
+    setPrefs((p) => {
+      const next = { ...p.columnWidths };
+      delete next[key];
+      return { ...p, columnWidths: next };
+    });
   }, [setPrefs]);
 
   const visibleColumns = useMemo(
@@ -174,6 +199,8 @@ export function useDataTable<T>({
     setPage,
     setPageSize,
     toggleColumn,
+    setColumnWidth,
+    resetColumnWidth,
     // selection
     selected,
     selectedRows,
