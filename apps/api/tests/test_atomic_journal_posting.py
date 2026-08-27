@@ -99,18 +99,35 @@ def _call_with_lines(dsn: str, ref: str, lines_json: str) -> subprocess.Complete
 
 
 @pytest.fixture()
-def seeded_db():
+def seeded_db(pg_template):
+    """A fresh database per test, CLONED from the session template.
+
+    It used to replay the whole migration set here — 309 files, ~35 seconds —
+    for each of the five tests below. That is 26% of the real-Postgres CI job
+    spent rebuilding the same schema five times, and it is precisely the waste
+    conftest.pg_template was introduced to end: "~40 minutes of CI spent
+    rebuilding the same schema". This file was missed by that sweep because it
+    is not named *_pg.py.
+
+    Postgres copies a database at the file level, so the clone costs about a
+    second. ISOLATION IS UNCHANGED: every test still gets its own brand-new
+    database nothing else can see, seeded from scratch. Only how the schema got
+    there changed, and a template clone is a byte copy of a freshly-migrated
+    database — identical to what these tests started from before.
+    """
     admin = _ADMIN.strip()
     dbname = f"r16_{uuid.uuid4().hex[:12]}"
     admin_dsn = f"{admin} dbname=postgres"
-    if _psql(admin_dsn, f'CREATE DATABASE "{dbname}";').returncode != 0:
+    if _psql(admin_dsn,
+             f'CREATE DATABASE "{dbname}" TEMPLATE "{pg_template.name}";').returncode != 0:
         pytest.skip("could not create throwaway db")
     dsn = f"{admin} dbname={dbname}"
     try:
-        subprocess.run(
-            [sys.executable, str(RUNNER), "--dsn", dsn, "--with-compat", "--only-schema", "--continue-on-error"],
-            capture_output=True, text=True, cwd=str(API_ROOT),
-        )
+        # The RPC these tests exercise has to exist, or every assertion below
+        # would pass vacuously against a database that simply cannot post.
+        assert "152_atomic_journal_posting.sql" not in pg_template.failed, (
+            "152_atomic_journal_posting.sql did not apply — post_journal_atomic "
+            "is missing and everything below would prove nothing")
         seed = _psql(dsn, SEED)
         assert seed.returncode == 0, f"seed failed: {seed.stderr}"
         yield dsn
