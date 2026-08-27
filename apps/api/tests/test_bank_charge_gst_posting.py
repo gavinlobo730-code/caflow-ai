@@ -602,6 +602,37 @@ def test_the_queue_offers_the_rate_on_a_debit():
     assert row["suggested_is_interstate"] is False
 
 
+def test_the_queue_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
+    """Through routers.banking.matching_queue, not through the service.
+
+    THE BUG THIS EXISTS FOR
+        The route begins `db = _db(); if not db: return ...`. In mock mode that
+        early return is the whole endpoint, so every service call after it was
+        unexercised by 7,000 tests. `ledger_order` — added in #308 and called
+        only on that later line — referenced a name imported inside queue() and
+        raised NameError on every real request. The Categorize screen 500'd in
+        production while CI was green.
+
+        Patching _db to a fake gets past the early return, which is the only way
+        a mock-mode suite can see anything on the far side of it.
+    """
+    import core.authz as authz
+    import routers.banking as banking_router
+    db = _db()
+    _seed(db, debit=59000, credit=0, category="Expense", id="row-1")
+    monkeypatch.setattr(banking_router, "_db", lambda: db)
+    monkeypatch.setattr(authz, "_USE_MOCK", True)
+
+    res = banking_router.matching_queue(
+        client_id=CLIENT, status="unmatched", limit=50, offset=0, q=None,
+        current_user={"firm_id": FIRM, "role": "Partner", "auth_user_id": "p1", "id": "u1"})
+    assert res["success"] is True
+    data = res["data"]
+    assert [r["id"] for r in data["rows"]] == ["row-1"]
+    assert data["ledger_order"] == [], "the envelope carries it even when empty"
+    assert "total" in data
+
+
 def test_the_queue_says_per_row_whether_a_rate_may_go_on_it():
     """Through queue() itself, not through the helper it calls.
 

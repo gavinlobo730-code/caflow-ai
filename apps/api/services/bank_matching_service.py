@@ -22,6 +22,7 @@ from domain.banking import (
     NEAR_MATCH_BAND_BPS, parse_narration, describe_narration,
 )
 from domain.banking import posting_map as pmap
+from services.bank_payee_service import bank_payee_service
 from services.timeline_service import timeline_service
 
 _logger = logging.getLogger("caflow.bank_matching")
@@ -612,7 +613,6 @@ class BankMatchingService:
         # transactions must not mean a hundred round trips. A posted row on
         # screen still teaches the unposted ones beside it; only a transaction's
         # OWN row is kept out of its evidence (suggest_for).
-        from services.bank_payee_service import bank_payee_service
         history_clients = {t.get("client_id") for t in txns if t.get("client_id")}
         history_by_client: dict = {}
         parties_by_client: dict = {}
