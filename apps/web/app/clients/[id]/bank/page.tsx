@@ -437,6 +437,52 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
   }
 
+  /** Put recorded lines back, in bulk. The Categorized tab had no way to do
+   *  this at all: every action the bar offered there was one a posted line
+   *  cannot take, so the one thing a CA actually wants on that tab — "these
+   *  should not have been recorded" — was the one thing missing, and they had
+   *  to press Undo forty times instead.
+   *
+   *  Undo is the reversal path, not a delete: bank_posting_service.undo writes
+   *  an append-only reversal and un-settles the document. Per line, so one
+   *  refusal does not strand the rest. */
+  async function undoPicked(picked: QueueTxn[]) {
+    const targets = picked.filter((t) => t.match_status === "posted");
+    const results: BatchResult[] = picked
+      .filter((t) => !targets.includes(t))
+      .map((t) => ({ transaction_id: t.id, status: "skipped" as const,
+                     reason: "Not recorded — there is nothing to undo." }));
+    if (targets.length === 0) {
+      setBatchOutcome({ results, applied: 0, skipped: results.length, failed: 0,
+                        total: results.length });
+      return;
+    }
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      await mapWithLimit(targets, 3, async (t) => {
+        try {
+          await api.banking.undoPost(t.id);
+          results.push({ transaction_id: t.id, status: "applied", reason: "Put back." });
+        } catch (e) {
+          results.push({ transaction_id: t.id, status: "failed",
+            reason: e instanceof Error ? e.message : "Could not undo." });
+        }
+      });
+      setBatchOutcome({
+        results,
+        applied: results.filter((r) => r.status === "applied").length,
+        skipped: results.filter((r) => r.status === "skipped").length,
+        failed: results.filter((r) => r.status === "failed").length,
+        total: results.length,
+      });
+      setSugg({});
+      await load();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Could not undo the selected rows.");
+    } finally { setBulkBusy(false); }
+  }
+
   /** Save the proposed rule. Nothing here is automatic: the pattern is on
    *  screen and editable, and this runs only on the CA's click.
    *
@@ -957,6 +1003,31 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     eligible.length > 0
     && eligible.every((t) => t.gst_allowed || gstWhy(t) === "pick a ledger");
 
+  /** What a line still has to say for itself, if anything. A rule fired
+   *  (suggested_account_id), history knows the payee (suggested_payee), or a
+   *  document was found — all three are on the row, so the bar can tell
+   *  BEFORE the click whether Apply suggestions has anything to accept. */
+  const hasSomethingToAccept = (t: QueueTxn) =>
+    t.match_status !== "posted" && t.match_status !== "ignored"
+    && (Boolean(t.suggested_account_id) || Boolean(t.suggested_payee)
+        || Boolean(t.matched_entity_id) || Boolean(confidentMatch(t)));
+
+  /** The bulk bar, and every entry says when it applies.
+   *
+   *  It used to offer all five actions on all three tabs. On Categorized that
+   *  meant Set ledger, Record, Apply suggestions, Exclude and Put back — five
+   *  buttons, not one of which a recorded line can take — while Undo, the only
+   *  thing anyone wants there, was missing entirely. Pressing one was not an
+   *  error: it completed and reported "0 applied · 6 skipped", which reads as a
+   *  broken button rather than an inapplicable one. Reported exactly that way.
+   *
+   *  So each action now states the rows it needs, and DataTable renders only
+   *  the ones the current selection satisfies. What that produces per tab:
+   *    For review  — Set ledger, Exclude, plus Record and Apply suggestions
+   *                  when something selected is actually ready or suggested
+   *    Categorized — Undo
+   *    Excluded    — Put back
+   */
   const queueBulkActions: BulkAction<QueueTxn>[] = [
     {
       // Opens the modal rather than acting: the ledger is the question, and a
@@ -971,6 +1042,7 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       // as one to buy back four checkboxes is a worse trade.
       id: "set-ledger",
       label: "Set ledger",
+      appliesTo: (picked) => bulkEligible(picked).length > 0,
       run: (picked) => {
         setBulkRows(picked);
         setBulkAccountId("");
@@ -984,25 +1056,44 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       // the table. The banner acted on a set the reader had not chosen and
       // could not see the edges of; this acts on the rows they ticked, and
       // reports the ones it would not record instead of skipping them in
-      // silence. Select-all + Record is the old button, spelled with two
-      // clicks and no ambiguity about what it touched.
+      // silence.
+      //
+      // It appears only where something IS ready. Asked why it existed at all
+      // next to Set ledger — a fair question, since Set ledger records what it
+      // codes. The answer is the line that needs no ledger: one already matched
+      // to an invoice, or already carrying a rule's answer. On a queue with
+      // none of those, the button was pure noise, and now it is absent.
       id: "record",
       label: "Record",
+      appliesTo: (picked) => picked.some(readyRow),
       run: async (picked) => { await recordPicked(picked); },
     },
     {
       id: "apply-suggestions",
       label: "Apply suggestions",
+      appliesTo: (picked) => picked.some(hasSomethingToAccept),
       run: async (picked) => { await runBatchIds("accept", picked.map((t) => t.id)); },
+    },
+    {
+      // The Categorized tab's reason to exist. undo reverses the journal and
+      // un-settles the document — never a delete.
+      id: "undo",
+      label: "Undo",
+      appliesTo: (picked) => picked.some((t) => t.match_status === "posted"),
+      run: async (picked) => { await undoPicked(picked); },
     },
     {
       id: "exclude",
       label: "Exclude",
+      appliesTo: (picked) => picked.some(
+        (t) => t.match_status !== "posted" && t.match_status !== "ignored"),
       run: async (picked) => { await runBatchIds("exclude", picked.map((t) => t.id)); },
     },
     {
+      // Only on the Excluded tab, which is the only place an excluded line is.
       id: "include",
       label: "Put back",
+      appliesTo: (picked) => picked.some((t) => t.match_status === "ignored"),
       run: async (picked) => { await runBatchIds("include", picked.map((t) => t.id)); },
     },
   ];

@@ -797,3 +797,73 @@ test("a rate is not stamped on a rule that could not carry it", () => {
   assert.match(body, /txnType: anyCredit && anyDebit \? "any" : anyCredit \? "credit" : "debit"/,
     "and the rule must be scoped to the direction the evidence actually showed");
 });
+
+test("every bulk action says when it applies, and the tabs get different bars", () => {
+  const s = queueSource();
+  const actions = s.slice(s.indexOf("const queueBulkActions"));
+  const body = actions.slice(0, actions.indexOf("\n  ];"));
+  assert.ok(body.length > 500, "the queueBulkActions body came back empty");
+
+  // REPORTED AS: on Categorized the bar offered Set ledger, Record, Apply
+  // suggestions, Exclude and Put back — five buttons, not one of which a
+  // recorded line can take — while Undo, the only thing wanted there, was
+  // missing. Pressing one completed and reported "0 applied · 6 skipped",
+  // which reads as a broken button rather than an inapplicable one.
+  const ids = [...body.matchAll(/id:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const applies = [...body.matchAll(/appliesTo:/g)];
+  assert.ok(ids.length >= 6, `only ${ids.length} bulk actions found`);
+  assert.equal(applies.length, ids.length,
+    `${ids.length} bulk actions but ${applies.length} appliesTo guards — an ` +
+    "action with no guard is offered on every tab, including the ones where " +
+    "it can only report that it did nothing");
+
+  assert.ok(ids.includes("undo"),
+    `the Categorized tab needs a bulk Undo, got: ${JSON.stringify(ids)}`);
+
+  // Each guard asks for the state its action needs. Checked one at a time: a
+  // single regex over the whole array stays green if two of the six lose their
+  // condition and keep the keyword.
+  const guardFor = (id: string) => {
+    const at = body.indexOf(`id: "${id}"`);
+    assert.ok(at > 0, `bulk action "${id}" is missing`);
+    const g = body.indexOf("appliesTo:", at);
+    assert.ok(g > at, `"${id}" has no appliesTo`);
+    return body.slice(g, body.indexOf("\n      run:", g));
+  };
+  assert.match(guardFor("undo"), /match_status === "posted"/,
+    "Undo must be offered only where something recorded is selected");
+  assert.match(guardFor("include"), /match_status === "ignored"/,
+    "Put back must be offered only where something excluded is selected");
+  assert.match(guardFor("record"), /picked\.some\(readyRow\)/,
+    "Record must be offered only where something is actually ready — the same " +
+    "readyRow that paints the row green and that recordPicked acts on");
+  assert.match(guardFor("set-ledger"), /bulkEligible\(picked\)\.length > 0/,
+    "Set ledger must be offered only where a ledger can be set — the same " +
+    "bulkEligible the modal itself uses");
+  assert.match(guardFor("exclude"), /!== "posted" && t\.match_status !== "ignored"/,
+    "Exclude must not be offered for rows already recorded or already excluded");
+  assert.match(guardFor("apply-suggestions"), /hasSomethingToAccept/,
+    "Apply suggestions must be offered only where a rule, a payee history or a " +
+    "document actually proposes something — it reported \"nothing to accept\" " +
+    "on every line, which is honest but reads as a dead button");
+});
+
+test("bulk Undo reverses, and refuses lines that were never recorded", () => {
+  const s = queueSource();
+  const fn = s.slice(s.indexOf("async function undoPicked"));
+  const body = fn.slice(0, fn.indexOf("\n  /**", 10));
+  assert.ok(body.length > 500, "undoPicked came back empty");
+
+  // undoPost, not unmatch: unmatch REFUSES a posted transaction, which is the
+  // bug the single-row Undo button had for a long time. And it is a reversal,
+  // never a delete — bank_posting_service.undo writes an append-only reversal
+  // and un-settles the document.
+  assert.match(body, /api\.banking\.undoPost\(t\.id\)/,
+    "bulk Undo must go through undoPost — unmatch refuses a posted row");
+  assert.doesNotMatch(body, /api\.banking\.unmatch/,
+    "unmatch is not the way to put back a recorded line");
+  assert.match(body, /picked\.filter\(\(t\) => t\.match_status === "posted"\)/,
+    "only recorded lines may be undone");
+  assert.match(body, /status: "skipped" as const/,
+    "a selected line that was never recorded must be reported, not passed over");
+});

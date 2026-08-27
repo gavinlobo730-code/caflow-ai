@@ -266,15 +266,22 @@ export function DataTable<T>({
     <div className="space-y-3">
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* The search box RUNS THE LINE, up to whatever sits on the right. It
+            was a 14rem box with a lane of empty toolbar beside it, which reads
+            as a minor control — and on this screen it is not one: with no
+            picker on the row, narrowing to a run of similar lines and coding
+            them together is the way a statement gets worked, and search is how
+            you narrow. min-w so it still looks like a field when filters and
+            buttons crowd the row on a laptop. */}
         {hasSearch && (
-          <div className="relative">
+          <div className="relative min-w-[14rem] flex-1">
             <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={searchPlaceholder}
               aria-label="Search"
-              className="w-56 rounded-lg border border-[#E2E8F0] bg-white py-1.5 pl-8 pr-7 text-xs text-[#334155] placeholder:text-[#94A3B8] focus:border-[#94A3B8] focus:outline-none"
+              className="w-full rounded-lg border border-[#E2E8F0] bg-white py-1.5 pl-8 pr-7 text-xs text-[#334155] placeholder:text-[#94A3B8] focus:border-[#94A3B8] focus:outline-none"
             />
             {q && (
               <button aria-label="Clear search" onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569]">
@@ -294,7 +301,9 @@ export function DataTable<T>({
           </button>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
+        {/* No ml-auto: the search above takes the slack now, and two elements
+            both claiming the free space fight over it. */}
+        <div className="flex items-center gap-2">
           {toolbarExtra}
           <ColumnVisibility columns={columns} hidden={t.prefs.hiddenColumns} onToggle={t.toggleColumn} />
           {exportFilename && (
@@ -366,7 +375,10 @@ export function DataTable<T>({
             </button>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            {bulkActions!.map((a) => (
+            {bulkActions!
+              // Only what this selection can actually do — see BulkAction.appliesTo.
+              .filter((a) => !a.appliesTo || a.appliesTo(t.selectedRows))
+              .map((a) => (
               <button
                 key={a.id}
                 disabled={runningActionId !== null}
