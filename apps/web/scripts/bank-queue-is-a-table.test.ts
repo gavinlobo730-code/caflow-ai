@@ -700,3 +700,42 @@ test("an already-split line still says so on the line", () => {
     "the split marker must sit in the Description cell, with the channel and " +
     "Transfer chips, rather than reintroducing a column");
 });
+
+test("Record acts on exactly the rows the screen paints green, and says what it skipped", () => {
+  const s = queueSource();
+
+  // The green "N rows are ready — Record all N" banner is gone. It sat
+  // permanently above the table and acted on a set the reader had not chosen
+  // and could not see the edges of, while a selection bar underneath it could
+  // already say "all N matching rows". Two controls, one job.
+  const code = codeOnly(s);
+  assert.doesNotMatch(code, /Record all/,
+    "the always-on \"Record all N\" banner is back — Record belongs in the " +
+    "bulk bar, acting on rows the reader ticked");
+
+  const actions = s.slice(s.indexOf("const queueBulkActions"));
+  const body = actions.slice(0, actions.indexOf("\n  ];"));
+  const labels = [...body.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(labels.includes("Record"),
+    `Record must be offered on a selection, got: ${JSON.stringify(labels)}`);
+
+  // ONE definition of "ready", shared by the tint and the action. It used to
+  // be two expressions that happened to agree (confirmedRows and readyRow),
+  // which is the shape a drift bug arrives in: the row looks recordable and
+  // Record passes over it, or the reverse.
+  assert.match(s, /rowClassName=\{\(t\) => \(readyRow\(t\)/,
+    "the green tint must come from readyRow");
+  assert.match(s, /const targets = picked\.filter\(readyRow\)/,
+    "Record must select its targets with the SAME readyRow the tint uses, not " +
+    "a second expression that happens to agree with it today");
+
+  // And the rows it will not record are named, which the banner could never do
+  // — the reader had not chosen them, so there was nothing to explain.
+  const fn = s.slice(s.indexOf("async function recordPicked"));
+  const rp = fn.slice(0, fn.indexOf("\n  /**", 10));
+  assert.ok(rp.length > 500, "recordPicked came back empty");
+  assert.match(rp, /status: "skipped" as const/,
+    "a picked row that is not ready must be reported, not silently passed over");
+  assert.match(rp, /No ledger or document yet/,
+    "and the reason must say what to do about it");
+});
