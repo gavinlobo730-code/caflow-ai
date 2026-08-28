@@ -11,7 +11,7 @@
  * day for any browser running in an ahead-of-UTC timezone — i.e. every
  * India-based user of this product).
  */
-import { toLocalISO, todayLocalISO } from "../dateMath.ts";
+import { toLocalISO, todayLocalISO, currentFinancialYearLabel } from "../dateMath.ts";
 
 export type PeriodMode =
   | "today"
@@ -59,11 +59,101 @@ export const PERIOD_OPTIONS: { value: PeriodMode; label: string }[] = [
   { value: "custom", label: "Custom Range" },
 ];
 
-/** Dropdown option label, with the FY resolved into "This Financial Year (FY 2026-27)" etc. */
+/**
+ * How a chosen period reads in prose — a table heading, an empty-state line.
+ *
+ * A financial year is named outright ("FY 2025-26"), matching the dropdown
+ * exactly. It used to render as "This Financial Year (FY 2025-26)", which was
+ * relative to a year chosen elsewhere on the screen; a heading that says
+ * "This" while the header above it says a different year is the disagreement
+ * this whole change removes.
+ */
 export function periodOptionLabel(mode: PeriodMode, financialYear: string): string {
-  if (mode === "this_fy") return `This Financial Year (FY ${financialYear})`;
-  if (mode === "last_fy") return `Last Financial Year (FY ${shiftFY(financialYear, -1)})`;
+  if (mode === "this_fy") return `FY ${financialYear}`;
+  if (mode === "last_fy") return `FY ${shiftFY(financialYear, -1)}`;
   return PERIOD_OPTIONS.find((o) => o.value === mode)?.label ?? mode;
+}
+
+// ── Choosing a financial year, on the page rather than above it ─────────────
+//
+// "This Financial Year" and "Last Financial Year" are relative labels, and
+// they were relative to a financial year chosen in a DIFFERENT control — the
+// selector that used to sit in the client header. That produced a screen
+// showing "FY 2026-27" at the top and "Last Financial Year (FY 2025-26)" in
+// the filter directly beneath it, both true, disagreeing, with nothing to say
+// which one the rows below belonged to.
+//
+// The header selector is gone. A period is now chosen entirely within the
+// control that scopes the query, and a financial year is named outright —
+// "FY 2025-26", not "Last Financial Year" — so the label on the filter and
+// the data in the table cannot drift apart.
+//
+// this_fy / last_fy stay in PeriodMode above rather than being deleted: a
+// bookmarked ?period=last_fy, or any state persisted before this change, must
+// still resolve to a real range instead of silently falling through to the
+// default. Nothing OFFERS them any more.
+
+/** How many financial years back the picker offers. */
+export const FY_CHOICE_COUNT = 5;
+
+/**
+ * The financial years a picker offers, newest first, ending at the current
+ * one. Not centred on "today plus one": a CA works on the year just closed
+ * far more often than on one that has not started, and a future FY in the
+ * list is a way to file an empty return by accident.
+ */
+export function financialYearChoices(
+  count: number = FY_CHOICE_COUNT,
+  today: Date = new Date(),
+): string[] {
+  const current = currentFinancialYearLabel(today);
+  return Array.from({ length: count }, (_, i) => shiftFY(current, -i));
+}
+
+/**
+ * A single dropdown value covering both halves of the selection.
+ *
+ * A financial year is TWO pieces of state — the mode and which year — and a
+ * `<select>` carries one string. Encoding the year into the value keeps them
+ * from being set independently, which is the bug class this whole change is
+ * about: two controls, each individually correct, describing different periods.
+ */
+export function encodePeriodChoice(mode: PeriodMode, financialYear: string): string {
+  if (mode === "this_fy") return `fy:${financialYear}`;
+  if (mode === "last_fy") return `fy:${shiftFY(financialYear, -1)}`;
+  return mode;
+}
+
+export function decodePeriodChoice(
+  value: string,
+  fallbackFY: string,
+): { mode: PeriodMode; financialYear: string } {
+  if (value.startsWith("fy:")) {
+    return { mode: "this_fy", financialYear: value.slice(3) };
+  }
+  return { mode: value as PeriodMode, financialYear: fallbackFY };
+}
+
+/**
+ * Every option a period dropdown shows, in order: the fixed relative windows,
+ * then each financial year by name, then All Time and Custom Range.
+ */
+export function periodChoices(
+  count: number = FY_CHOICE_COUNT,
+  today: Date = new Date(),
+): { value: string; label: string }[] {
+  return [
+    { value: "today", label: "Today" },
+    { value: "yesterday", label: "Yesterday" },
+    { value: "this_week", label: "This Week" },
+    { value: "last_3_months", label: "Last 3 Months" },
+    ...financialYearChoices(count, today).map((fy) => ({
+      value: `fy:${fy}`,
+      label: `FY ${fy}`,
+    })),
+    { value: "all_time", label: "All Time" },
+    { value: "custom", label: "Custom Range" },
+  ];
 }
 
 /**

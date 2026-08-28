@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Upload, Download, Trash2, FolderOpen, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
@@ -43,7 +43,13 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function DocumentsPage() {
-  const { clientId, financialYear } = useClientNav();
+  // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
+  // the one we are actually in. It used to be whatever year the client header
+  // was set to, which meant browsing back to FY 2024-25 and then marking a
+  // filing done today stamped the event into 2024-25 and hid it from this
+  // year's feed. Nothing on this page is filtered by year, so there is no
+  // picker to move here — only a wrong value to stop reading.
+  const { clientId } = useClientNav();
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "client genuinely has no documents" —
@@ -138,7 +144,7 @@ export default function DocumentsPage() {
         await writeTimelineEvent({
           client_id: clientId,
           firm_id: firmId,
-          financial_year: financialYear,
+          financial_year: getCurrentFinancialYear(),
           category: "document",
           event_type: asNewVersion ? "document_version_uploaded" : "document_uploaded",
           severity: "info",
@@ -177,7 +183,7 @@ export default function DocumentsPage() {
         await writeTimelineEvent({
           client_id: clientId,
           firm_id: firmId,
-          financial_year: financialYear,
+          financial_year: getCurrentFinancialYear(),
           category: "document",
           event_type: "document_deleted",
           severity: "warning",

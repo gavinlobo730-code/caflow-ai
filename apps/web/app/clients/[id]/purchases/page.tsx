@@ -13,7 +13,8 @@ import { PurchaseCreditNoteViewDrawer } from "@/components/purchases/PurchaseCre
 import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
 import { writePurchaseCreditNoteDuplicateSeed } from "@/lib/purchases/purchaseCreditNoteDuplicateSeed";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
@@ -162,7 +163,12 @@ function toDate(): string {
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PurchasesPage() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
+  // ONE financial year for this page, owned by this page — see the Sales page
+  // for the two-controls-disagreeing failure this replaces. The Bills tab's
+  // period filter and the plain year pickers on the other tabs all write here,
+  // so switching year on one tab carries to the next instead of resetting.
+  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [tab, setTab] = useState<PurchaseTab>("bills");
 
   if (!clientId || clientId === "_placeholder") {
@@ -192,11 +198,11 @@ export default function PurchasesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
-        {tab === "bills" && <PurchaseBills clientId={clientId} financialYear={financialYear} />}
-        {tab === "vendors" && <Vendors clientId={clientId} financialYear={financialYear} />}
-        {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} />}
-        {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} />}
-        {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} />}
+        {tab === "bills" && <PurchaseBills clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "vendors" && <Vendors clientId={clientId} />}
+        {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
       </div>
     </div>
   );
@@ -277,7 +283,7 @@ interface PurchaseBillRow {
   document_url: string | null;
 }
 
-function PurchaseBills({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   // Client's own Product/Service catalogue — only needed for the CSV import's
@@ -821,6 +827,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               mode={periodMode}
               onModeChange={setPeriodMode}
               financialYear={financialYear}
+              onFinancialYearChange={onFinancialYearChange}
               customFrom={customFrom}
               customTo={customTo}
               onCustomFromChange={setCustomFrom}
@@ -1020,7 +1027,7 @@ interface VendorDependencies {
   total: number;
 }
 
-function Vendors({ clientId }: { clientId: string; financialYear: string }) {
+function Vendors({ clientId }: { clientId: string }) {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must not render as
@@ -1631,7 +1638,7 @@ interface PaymentRow {
   is_reversed?: boolean;
 }
 
-function Payments({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [openBills, setOpenBills] = useState<{
@@ -1985,7 +1992,10 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
         emptyTitle="No payments"
         emptyDescription={`No payments for FY ${financialYear}.`}
         toolbarExtra={
-          <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
+          <>
+            <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
+            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
+          </>
         }
         rowActions={(p) => !p.is_reversed && (
           <button onClick={() => reversePayment(p)}
@@ -2020,7 +2030,7 @@ interface DebitNoteRow {
   status: string;
 }
 
-function DebitNotes({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function DebitNotes({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<DebitNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -2403,6 +2413,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         emptyTitle={`No debit notes in FY ${financialYear}`}
         toolbarExtra={
           <>
+            <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
@@ -2464,7 +2475,7 @@ interface PurchaseCreditNoteRow {
   status: string;
 }
 
-function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<PurchaseCreditNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -2834,6 +2845,7 @@ function PurchaseCreditNotes({ clientId, financialYear }: { clientId: string; fi
         emptyTitle={`No credit notes in FY ${financialYear}`}
         toolbarExtra={
           <>
+            <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
