@@ -86,7 +86,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
     # by their full value, on a return a CA is about to file (CGST Act §39).
     # Observed on a live firm whose entire chart is firm-wide.
     coa = _paginate_all(lambda: db.table("chart_of_accounts")
-           .select("id, system_account_key, account_name, account_type")
+           .select("id, client_id, system_account_key, account_name, account_type")
            .eq("firm_id", firm_id)
            .or_(f"client_id.eq.{client_id},client_id.is.null"))
     key_by_id = {c["id"]: c.get("system_account_key") for c in coa}

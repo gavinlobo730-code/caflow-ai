@@ -104,7 +104,18 @@ UNFIXED: dict[str, str] = {}
 # variable, an f-string, or a **spread. Budgeted so the blind spot has a number
 # on it. Set just above the current value — it may shrink freely, and growing
 # it is a deliberate act that shows up in a diff.
-MAX_UNREADABLE = 430
+#
+# 430 -> 431: gst_return_service._gl_gst_movements gained
+#   .or_(f"client_id.eq.{client_id},client_id.is.null")
+# so that the GSTR-3B ledger reconciliation can see FIRM-WIDE GST control
+# accounts (client_id NULL) and not just client-scoped ones — without it the
+# reconciliation resolved no accounts at all and compared the books against a
+# ledger of zero. The clause interpolates a runtime id, so it cannot be a
+# string literal and the parser cannot read it; bank_posting_service and
+# phase2_journal_service carry the identical idiom and are already inside this
+# budget. The COLUMN it names, client_id, is verified elsewhere in the same
+# file's select list, so nothing became unchecked that was checked before.
+MAX_UNREADABLE = 431
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
