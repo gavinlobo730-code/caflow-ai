@@ -115,7 +115,20 @@ UNFIXED: dict[str, str] = {}
 # phase2_journal_service carry the identical idiom and are already inside this
 # budget. The COLUMN it names, client_id, is verified elsewhere in the same
 # file's select list, so nothing became unchecked that was checked before.
-MAX_UNREADABLE = 431
+# 431 -> 432: itc_register_service._gst_input_credit_on gained the same
+#   .or_(f"client_id.eq.{client_id},client_id.is.null")
+# for the same reason — a chart built by coa_seed_service holds the GST Input
+# account FIRM-WIDE with client_id NULL, and the register has to find it to
+# check a reversal against the ledger movement on its own journal.
+#
+# The new module added THREE unreadable references and two were removed rather
+# than budgeted: its inserts were .insert(row) with the dict built in a
+# variable, which hides every column name from this scanner. Both are now
+# written inline with literal keys, so the twelve columns they write are
+# checked against the real schema. Only the or_ interpolation is genuinely
+# unreadable, and it names client_id, which the same file's select lists
+# verify.
+MAX_UNREADABLE = 432
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

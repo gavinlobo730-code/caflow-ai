@@ -292,3 +292,69 @@ def test_a_registered_buyer_stays_out_of_table_3_2(monkeypatch):
     _issue(db, "INV-B2B", customer="CUST-REG", taxable=1_00000, igst=18000)
 
     assert _3b(db, JUNE)["payload"]["inter_sup"]["unreg_details"] == []
+
+
+# ── the register reaches the return, and the ledger still agrees ─────────────
+
+def _register_reversal(db, *, journal_id, period, cgst, sgst):
+    return db.seed("itc_reversal_register", {
+        "firm_id": FIRM, "client_id": "CLI", "journal_entry_id": journal_id,
+        "kind": "reversal", "reason_code": "rule_37", "period": period,
+        "igst_paise": 0, "cgst_paise": cgst, "sgst_paise": sgst,
+        "cess_paise": 0, "reverses_id": None})
+
+
+def _register_reclaim(db, *, journal_id, period, reverses_id, cgst, sgst):
+    return db.seed("itc_reversal_register", {
+        "firm_id": FIRM, "client_id": "CLI", "journal_entry_id": journal_id,
+        "kind": "reclaim", "reason_code": "other", "period": period,
+        "igst_paise": 0, "cgst_paise": cgst, "sgst_paise": sgst,
+        "cess_paise": 0, "reverses_id": reverses_id})
+
+
+def test_a_registered_reversal_is_declared_in_4b2(monkeypatch):
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-06-12")
+    _register_reversal(db, journal_id="je-x", period=JUNE, cgst=1000, sgst=1000)
+
+    rev = _rev(_3b(db, JUNE))
+    assert rev["OTH"]["camt"] == 10, (
+        "a reversal the CA registered never reached Table 4(B)(2)")
+    assert rev["RUL"]["camt"] == 0, "it is reclaimable, not permanent"
+
+
+def test_a_registered_reclaim_is_declared_in_4d1(monkeypatch):
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-06-12")
+    r = _register_reversal(db, journal_id="je-x", period=JUNE, cgst=1000, sgst=1000)
+    _register_reclaim(db, journal_id="je-y", period=JULY,
+                      reverses_id=r["id"], cgst=1000, sgst=1000)
+
+    inelg = {x["ty"]: x for x in _3b(db, JULY)["payload"]["itc_elg"]["itc_inelg"]}
+    assert inelg["RUL"]["camt"] == 10, "4(D)(1) is still hard-zero"
+    assert inelg["OTH"]["camt"] == 0, "§16(4)/PoS is a different row"
+
+
+def test_a_reclaim_does_not_reduce_4c(monkeypatch):
+    """4(D)(1) is a disclosure. The credit comes back through 4(A)(5); netting
+    it in 4(C) as well would take it away again."""
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-07-04")
+    r = _register_reversal(db, journal_id="je-x", period=JUNE, cgst=1000, sgst=1000)
+    _register_reclaim(db, journal_id="je-y", period=JULY,
+                      reverses_id=r["id"], cgst=1000, sgst=1000)
+
+    t4 = _3b(db, JULY)["payload"]["itc_elg"]
+    assert t4["itc_net"]["camt"] == 45000 // 100
+
+
+def test_a_registered_reversal_is_netted_in_the_books_comparator(monkeypatch):
+    """It is POSTED — that is the whole premise of the register — so the books
+    side must net it or the reconciliation reports a difference that is really
+    just one side ignoring a real journal."""
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-06-12")     # ITC 45,000 + 45,000
+    _register_reversal(db, journal_id="je-x", period=JUNE, cgst=1000, sgst=1000)
+
+    itc = _3b(db, JUNE)["reconciliation"]["itc"]
+    assert itc["books_paise"] == 90000 - 2000

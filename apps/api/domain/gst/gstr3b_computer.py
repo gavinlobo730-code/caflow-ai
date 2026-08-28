@@ -180,6 +180,14 @@ class GSTR3BResult:
     itc_rev_perm_cess: int = 0
 
     # Table 4(B)(2) — reclaimable reversals: Rule 37/37A, §16(2)(b)/(c).
+    # Table 4(D)(1) — credit reversed under 4(B)(2) in an EARLIER period and
+    # reclaimed now. A separate declaration from 4(B): it does not reduce this
+    # period's 4(C), because the credit comes back through 4(A)(5) instead.
+    itc_reclaimed_igst: int = 0
+    itc_reclaimed_cgst: int = 0
+    itc_reclaimed_sgst: int = 0
+    itc_reclaimed_cess: int = 0
+
     itc_rev_temp_igst: int = 0
     itc_rev_temp_cgst: int = 0
     itc_rev_temp_sgst: int = 0
@@ -453,13 +461,16 @@ class GSTR3BResult:
                 # GSTR-3B." Reporting it in both overstates the ineligible
                 # credit the portal shows against the taxpayer.
                 "itc_inelg": [
-                    # 4(D)(1) — credit reversed under 4(B)(2) in an earlier
-                    # period and reclaimed now. Zero because a reclaim is not
-                    # yet a modelled event: 4(B)(2) records the reversal, and
-                    # nothing records the later payment that brings it back.
-                    # The row is still emitted — the utility always writes both,
-                    # and an absent row is not a nil row.
-                    {"ty": "RUL", "iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
+                    # 4(D)(1) — credit reversed under 4(B)(2) in an EARLIER
+                    # period and reclaimed now, from the ITC reversal register.
+                    # It does NOT reduce this period's 4(C): the credit comes
+                    # back through 4(A)(5), and 4(D)(1) is the disclosure that
+                    # says where it came from.
+                    {"ty": "RUL",
+                     "iamt": r(self.itc_reclaimed_igst),
+                     "camt": r(self.itc_reclaimed_cgst),
+                     "samt": r(self.itc_reclaimed_sgst),
+                     "csamt": r(self.itc_reclaimed_cess)},
                     # 4(D)(2) — §16(4) time-bar and place-of-supply
                     # ineligibility. Neither is tracked. §17(5) is NOT here; it
                     # is declared in 4(B)(1) above.
@@ -533,6 +544,7 @@ def compute_gstr3b(
     purchases: Sequence[PurchaseTransaction],
     gstr2a_records: Sequence[GSTR2ARecord],
     reversals: Sequence[ITCReversal] = (),
+    reclaims: Sequence[ITCReversal] = (),
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -641,6 +653,16 @@ def compute_gstr3b(
             result.itc_rev_perm_cgst += rv.cgst_paise
             result.itc_rev_perm_sgst += rv.sgst_paise
             result.itc_rev_perm_cess += rv.cess_paise
+
+    # ── Table 4(D)(1): credit reversed earlier and taken back now ────────────
+    # Reported, never netted here. The credit itself re-enters through 4(A)(5)
+    # — it is part of the period's availed ITC — and 4(D)(1) only discloses
+    # that this much of it is a reclaim rather than a fresh purchase.
+    for rc in reclaims:
+        result.itc_reclaimed_igst += rc.igst_paise
+        result.itc_reclaimed_cgst += rc.cgst_paise
+        result.itc_reclaimed_sgst += rc.sgst_paise
+        result.itc_reclaimed_cess += rc.cess_paise
 
     # ── Table 6: Net tax payable ─────────────────────────────────────────────
     # CGST Act Section 49: IGST credit first against IGST, then CGST, then SGST.

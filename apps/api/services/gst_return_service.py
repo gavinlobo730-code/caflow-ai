@@ -20,6 +20,7 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
+import services.itc_register_service as itc_register_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
     compute_gstr3b,
@@ -539,6 +540,34 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         for b in _bills_cancelled_in(db, firm_id, client_id, start, end)
     ]
 
+    # ── Table 4(B)(2) and 4(D)(1): the reclaimable side ─────────────────────
+    # From the ITC reversal register (migration 285). Each row classifies a
+    # journal the CA has already POSTED, so unlike the Rule 37 report these
+    # amounts are on the ledger and the reconciliation below must net them.
+    register = itc_register_service.for_period(db, firm_id, client_id, period)
+    reversals.extend(
+        ITCReversal(
+            igst_paise=int(r.get("igst_paise") or 0),
+            cgst_paise=int(r.get("cgst_paise") or 0),
+            sgst_paise=int(r.get("sgst_paise") or 0),
+            cess_paise=int(r.get("cess_paise") or 0),
+            reclaimable=True,
+            reason=f"{r.get('reason_code')} reversal",
+        )
+        for r in register["reversals"]
+    )
+    reclaims = [
+        ITCReversal(
+            igst_paise=int(r.get("igst_paise") or 0),
+            cgst_paise=int(r.get("cgst_paise") or 0),
+            sgst_paise=int(r.get("sgst_paise") or 0),
+            cess_paise=int(r.get("cess_paise") or 0),
+            reclaimable=True,
+            reason="reclaimed after an earlier 4(B)(2) reversal",
+        )
+        for r in register["reclaims"]
+    ]
+
     # Rule 36(4): ITC is capped at the credit suppliers have actually filed.
     # This used to pass [], so the cap could never fire on the return a CA
     # files. _apply_rule_36_4_cap leaves book ITC alone when no records exist,
@@ -553,7 +582,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         for x in two_a_rows
     ]
 
-    result = compute_gstr3b(sales, purchases, gstr2a, reversals)
+    result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -570,13 +599,24 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     # not, and that was the whole of the Rs 88,141.67 the July 2026 reconciliation
     # reported for Apex: four February bills cancelled on 17 July.
     #
-    # PERMANENT REVERSALS ONLY. 4(B)(2) carries Rule 37 / §16(2) amounts, and
-    # itc_reversal_service deliberately posts no journal for those — it reports
-    # them for the CA to act on. Netting an unposted reversal here would create
-    # the mismatch it is meant to detect. Anything fed as non-reclaimable must
-    # therefore be something the books have actually posted.
+    # EVERY POSTED REVERSAL, both kinds. This used to net permanent reversals
+    # only, because the reclaimable ones — Rule 37, §16(2) — existed nowhere
+    # but a report and had no journal behind them, so netting them would have
+    # invented the mismatch this comparator exists to detect.
+    #
+    # The register changed that. A row there classifies a journal the CA has
+    # already posted (migration 285 refuses a row that exceeds the GST Input
+    # movement on its own journal), so a registered reversal IS on the ledger
+    # and leaving it out would now create the mismatch instead.
+    #
+    # A RECLAIM is deliberately not netted back. It takes the credit again, and
+    # that debit belongs to the period's ordinary ITC — which _posted_bills
+    # does not see, because the purchase was in an earlier period. Netting it
+    # here as well would count the same movement twice.
     books_reversed = (result.itc_rev_perm_cgst + result.itc_rev_perm_sgst
-                      + result.itc_rev_perm_igst)
+                      + result.itc_rev_perm_igst
+                      + result.itc_rev_temp_cgst + result.itc_rev_temp_sgst
+                      + result.itc_rev_temp_igst)
     books_itc = (result.itc_book_cgst + result.itc_book_sgst + result.itc_book_igst
                  - books_reversed)
     output_matched = books_output == gl["output_paise"]
