@@ -804,3 +804,101 @@ def test_omitting_the_rate_leaves_it_alone(rules_db):
     router.update_rule("r1", MatchingRuleUpdateIn(rule_name="Renamed"),
                        current_user=PARTNER)
     assert db.store["bank_matching_rules"][0]["suggested_gst_rate_bps"] == 1800
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# The chart the app's own seeder actually creates
+#
+# REPORTED FROM PRODUCTION: a bank charge with an 18% split failed five times
+# with "No active 'GST Input Credit - CGST' account in this client's chart".
+# The chart was not at fault. It held ONE combined account,
+#
+#     1301  GST Input Tax Credit      (firm-wide, active, 1,045 lines posted)
+#
+# which is exactly what services/coa_seed_service.py creates for every new
+# client, and exactly what phase2_journal_service resolves against for
+# purchases, credit notes and ITC reversal — "%GST Input%", no head. Bank
+# charges were the only GST posting in the platform demanding a shape the
+# platform's own seeder never produces.
+# ══════════════════════════════════════════════════════════════════════════════
+
+COMBINED_ACCOUNTS = [
+    ("acc-bank", "HDFC Bank", "bank"),
+    ("acc-charges", "Bank Charges", None),
+    # The seeder's own name and nothing else. system_account_key is None because
+    # that is how it exists in production — coa_seed_service does not stamp it.
+    ("acc-in", "GST Input Tax Credit", None),
+]
+
+
+def test_the_fake_has_no_per_head_account_to_find():
+    """Guard: if the fake did hold one, every assertion below would pass for the
+    wrong reason — proving the per-head path works, not the fallback."""
+    db = _db(COMBINED_ACCOUNTS)
+    q = (db.table("chart_of_accounts").select("id")
+         .eq("firm_id", FIRM).ilike("account_name", "%GST Input%CGST%").execute())
+    assert q.data == [], "the combined-chart fake must NOT contain a per-head account"
+
+
+def test_an_intra_state_charge_posts_against_the_combined_account():
+    db = _db(COMBINED_ACCOUNTS)
+    _seed(db, debit=59000)
+    je = _post(db, gst_rate_bps=1800, is_interstate=False)["posted_journal_id"]
+    lines = _lines(db, je)
+
+    # Both halves land on the one account the chart has, and the entry balances.
+    gst = [l for l in lines if l["account_id"] == "acc-in"]
+    assert len(gst) == 2, f"expected CGST and SGST legs, got {len(gst)}: {lines}"
+    assert sum(l["debit_paise"] for l in gst) == 9000, "18% of 59000 inclusive is 9000"
+    assert sum(l["debit_paise"] for l in lines) == sum(l["credit_paise"] for l in lines)
+
+    # And the ex-tax amount still reaches the expense account, unrounded.
+    charge = [l for l in lines if l["account_id"] == "acc-charges"]
+    assert sum(l["debit_paise"] for l in charge) == 50000
+
+
+def test_an_inter_state_charge_posts_against_the_combined_account():
+    db = _db(COMBINED_ACCOUNTS)
+    _seed(db, debit=59000)
+    je = _post(db, gst_rate_bps=1800, is_interstate=True)["posted_journal_id"]
+    lines = _lines(db, je)
+    gst = [l for l in lines if l["account_id"] == "acc-in"]
+    assert len(gst) == 1, "IGST is one leg"
+    assert gst[0]["debit_paise"] == 9000
+    assert sum(l["debit_paise"] for l in lines) == sum(l["credit_paise"] for l in lines)
+
+
+def test_a_per_head_chart_still_splits_by_head():
+    """The fallback must not flatten a chart that HAS the three accounts —
+    migration 011's shape, and every seeded test chart."""
+    db = _db()  # the per-head ACCOUNTS
+    _seed(db, debit=59000)
+    je = _post(db, gst_rate_bps=1800, is_interstate=False)["posted_journal_id"]
+    lines = _lines(db, je)
+    hit = {l["account_id"] for l in lines
+           if l["debit_paise"] and l["account_id"].startswith("acc-in")}
+    assert hit == {"acc-in-cgst", "acc-in-sgst"}, (
+        f"the heads must still go to their own accounts, got {hit} — the "
+        "combined fallback has swallowed the per-head lookup")
+
+
+def test_a_chart_with_no_gst_input_account_at_all_is_still_refused():
+    """The refusal has to survive: a chart genuinely missing the account must
+    not silently book input credit somewhere else."""
+    db = _db([("acc-bank", "HDFC Bank", "bank"), ("acc-charges", "Bank Charges", None)])
+    _seed(db, debit=59000)
+    with pytest.raises(HTTPException) as e:
+        _post(db, gst_rate_bps=1800, is_interstate=False)
+    assert e.value.status_code == 422
+    assert "GST Input" in str(e.value.detail)
+
+
+def test_an_account_found_only_by_its_system_key_is_accepted():
+    """Last resort: named something else entirely, but keyed correctly."""
+    db = _db([("acc-bank", "HDFC Bank", "bank"),
+              ("acc-charges", "Bank Charges", None),
+              ("acc-in", "Input Tax Recoverable", "gst_input")])
+    _seed(db, debit=59000)
+    je = _post(db, gst_rate_bps=1800, is_interstate=True)["posted_journal_id"]
+    lines = _lines(db, je)
+    assert [l["account_id"] for l in lines if l["debit_paise"] == 9000] == ["acc-in"]

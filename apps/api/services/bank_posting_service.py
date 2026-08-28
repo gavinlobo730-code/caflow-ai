@@ -139,24 +139,71 @@ class BankPostingService:
                             detail="Categorize the transaction (or map an account) before posting.")
 
     def _gst_input_account(self, db, firm_id, client_id, head: str) -> str:
-        """The GST Input Credit account for one tax head.
+        """The GST Input Credit account for one tax head, or the single combined
+        one where the chart has no per-head accounts.
 
-        The seeded chart carries three (CGST / SGST / IGST, migration 011) and
-        migration 092 stamps system_account_key='gst_input' on ALL THREE, so the
-        key alone cannot tell them apart — the head has to come from the name.
-        The GST return nets all three into one ITC figure either way
-        (gst_return_service), so keeping the heads separate in the ledger costs
-        nothing and preserves the detail GSTR-3B table 4 wants.
+        PER-HEAD FIRST. Migration 011's seeded chart carries three (CGST / SGST /
+        IGST) and migration 092 stamps system_account_key='gst_input' on ALL
+        THREE, so the key alone cannot tell them apart — the head has to come
+        from the name. Where those three exist, each head still lands on its own
+        account and nothing about that changed.
+
+        THEN THE COMBINED ACCOUNT, and this is the part that was missing. A bank
+        charge on a live firm failed with "No active 'GST Input Credit - CGST'
+        account in this client's chart", and the chart was not at fault: it held
+        `1301 GST Input Tax Credit`, one account for all three heads, with 1,045
+        journal lines already posted to it. That is not an unusual setup — it is
+        what services/coa_seed_service.py CREATES for every new client
+        ("1301", "GST Input Tax Credit"), and what every other GST-input posting
+        in the platform resolves against: phase2_journal_service looks up
+        "%GST Input%" with no head at all, for purchases, credit notes and ITC
+        reversal alike. This method was the ONLY place demanding a shape the
+        app's own seeder never produces, so bank charges were the only GST
+        posting that could not find its account.
+
+        Splitting the heads apart on such a chart would be the wrong repair: the
+        bank's ITC would sit in three new accounts while every other posting
+        path kept writing to 1301, and the ledger would carry the same credit in
+        four places.
+
+        Nor does the fallback cost anything at return time. gst_return_service
+        ._gl_gst_movements computes ITC as the net DEBIT across accounts keyed
+        'gst_input' — one bucket, no head split — and the head-level figures
+        GSTR-3B table 4 wants come from the purchase documents, not from these
+        accounts. So a combined account reconciles exactly as three do.
+
+        The system_account_key lookup is last rather than first, deliberately:
+        with all three heads carrying 'gst_input' it would return an arbitrary
+        one and quietly book CGST to the IGST account. It is here for a chart
+        whose account is named something else entirely but correctly keyed.
         """
-        rows = (db.table("chart_of_accounts").select("id, account_name")
+        def _by_name(pattern: str) -> list:
+            return (db.table("chart_of_accounts").select("id, account_name")
+                    .eq("firm_id", firm_id)
+                    .or_(f"client_id.eq.{client_id},client_id.is.null")
+                    .ilike("account_name", pattern)
+                    .eq("is_active", True).limit(1).execute().data or [])
+
+        rows = _by_name(f"%GST Input%{head}%")
+        if not rows and not any(_by_name(f"%GST Input%{h}%")
+                                for h in ("CGST", "SGST", "IGST")):
+            # ONLY a chart with no per-head account AT ALL falls back. A chart
+            # that has them and is missing THIS one is a real error, and the
+            # first version of this method got that wrong: with the CGST account
+            # deactivated it found the SGST one under "%GST Input%" and would
+            # have booked central tax to the state head. Two tests written for
+            # exactly that — an inactive account, and one belonging to another
+            # firm — went red and are the reason this gate exists.
+            rows = _by_name("%GST Input%") or (
+                db.table("chart_of_accounts").select("id, account_name")
                 .eq("firm_id", firm_id)
-                .or_(f"client_id.eq.{client_id},client_id.is.null")
-                .ilike("account_name", f"%GST Input%{head}%")
+                .eq("system_account_key", "gst_input")
                 .eq("is_active", True).limit(1).execute().data or [])
         if not rows:
             raise HTTPException(
                 status_code=422,
-                detail=(f"No active 'GST Input Credit - {head}' account in this client's chart. "
+                detail=("No active GST Input Credit account in this client's chart "
+                        f"(looked for '{head}', then any 'GST Input'). "
                         "Add one, or post the charge without a GST split."))
         return rows[0]["id"]
 
