@@ -264,10 +264,45 @@ def test_a_reclassified_document_is_not_also_counted_as_an_amount_change():
 
 # ── B2CS, at the only grain it has ───────────────────────────────────────────
 
-def _b2cs(txval, camt=0, samt=0, iamt=0, rate=18.0, pos="27", sply="INTRA"):
-    return {"sply_tp": sply, "rt": rate, "pos": pos,
+def _b2cs(txval, camt=0, samt=0, iamt=0, rate=18.0, pos="27", sply="INTRA",
+          key="sply_tp"):
+    """A filed B2CS row.
+
+    `key` defaults to the OLD misspelling on purpose. This function parses
+    returns that are already filed and stored, and every one saved before the
+    spelling was corrected against the GSTN Returns Offline Tool carries
+    "sply_tp". If the report stopped reading it, INTER and INTRA would collapse
+    into one empty-keyed bucket and a correctly filed historical return would be
+    reported as differing from the books.
+    """
+    return {key: sply, "rt": rate, "pos": pos,
             "txval": txval / 100, "camt": camt / 100, "samt": samt / 100,
             "iamt": iamt / 100, "csamt": 0}
+
+
+@pytest.mark.parametrize("key", ["sply_ty", "sply_tp"])
+def test_both_spellings_of_the_supply_type_key_are_read(key):
+    """New returns carry sply_ty; stored ones carry sply_tp. A return that
+    matches its books must reconcile under either."""
+    rows = [_b2cs(100_000, 9_000, 9_000, sply="INTRA", key=key),
+            _b2cs(50_000, iamt=9_000, sply="INTER", pos="29", key=key)]
+    out = compare_payloads(_payload(b2cs=rows), _payload(b2cs=rows))
+    assert out["finding_count"] == 0, out["findings"]
+
+
+@pytest.mark.parametrize("key", ["sply_ty", "sply_tp"])
+def test_inter_and_intra_stay_separate_under_either_spelling(key):
+    """The guard on the test above: if the key were unreadable, both rows would
+    land in one bucket, their totals would still tie, and the test would pass
+    while the grouping was broken."""
+    filed = _payload(b2cs=[_b2cs(100_000, 9_000, 9_000, sply="INTRA", key=key),
+                           _b2cs(50_000, iamt=9_000, sply="INTER", pos="29", key=key)])
+    books = _payload(b2cs=[_b2cs(100_000, 9_000, 9_000, sply="INTER", pos="29", key=key),
+                           _b2cs(50_000, iamt=9_000, sply="INTRA", key=key)])
+    out = compare_payloads(filed, books)
+    assert out["finding_count"] > 0, (
+        "the two supply types were swapped and nothing was reported — they are "
+        "being merged into a single bucket")
 
 
 def test_b2cs_is_compared_as_totals_because_it_carries_no_invoice_number():
