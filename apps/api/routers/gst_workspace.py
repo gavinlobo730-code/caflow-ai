@@ -993,6 +993,41 @@ def gstr1_exception_report(
         get_supabase(), current_user["firm_id"], client_id, period))
 
 
+@router.get("/gstr1/advances")
+def gstr1_advances(
+    client_id: str = Query(..., description="Client whose receipts to check"),
+    period: str = Query(..., description="MMYYYY of the return being prepared"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """Advances received against no invoice — GSTR-1 Table 11.
+
+    Table 11A declares an advance on which tax is payable and no invoice has
+    been issued. A row needs the place of supply and the RATE of a supply that
+    has not happened yet; a receipt in this system records an amount, a
+    customer and a date. So this NAMES the advances and computes no tax —
+    inventing a rate would invent a liability on a filed return.
+
+    Which advances are even taxable is a fact about the client's business:
+    CGST Act §13(2) makes an advance for SERVICES taxable on receipt, and
+    Notification 66/2017-Central Tax removed the charge for GOODS, where the
+    liability arises at the invoice instead.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports; it computes no
+    # tax, writes nothing and files nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "period": period, "unadjusted_advances": [], "count": 0,
+            "total_unadjusted_paise": 0, "table_11_computed": False,
+            "ca_review_required": True,
+        })
+    from core.supabase_client import get_supabase
+    from services.gst_advance_service import advances_report
+    return api_response(True, advances_report(
+        get_supabase(), current_user["firm_id"], client_id, period))
+
+
 @router.get("/itc/rule37")
 def rule37_itc_reversal(
     client_id: str = Query(..., description="Client whose purchase ledger to check"),
