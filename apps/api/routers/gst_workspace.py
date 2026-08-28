@@ -993,6 +993,105 @@ def gstr1_exception_report(
         get_supabase(), current_user["firm_id"], client_id, period))
 
 
+class ITCReversalIn(BaseModel):
+    client_id: str
+    journal_entry_id: str
+    period: str = Field(..., description="MMYYYY of the GSTR-3B this is declared in")
+    reason_code: str = Field(..., description="rule_37 | rule_37a | section_16_2b | section_16_2c | other")
+    igst_paise: int = Field(default=0, ge=0)
+    cgst_paise: int = Field(default=0, ge=0)
+    sgst_paise: int = Field(default=0, ge=0)
+    cess_paise: int = Field(default=0, ge=0)
+    purchase_bill_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ITCReclaimIn(BaseModel):
+    client_id: str
+    journal_entry_id: str
+    period: str
+    reverses_id: str
+    igst_paise: int = Field(default=0, ge=0)
+    cgst_paise: int = Field(default=0, ge=0)
+    sgst_paise: int = Field(default=0, ge=0)
+    cess_paise: int = Field(default=0, ge=0)
+    notes: Optional[str] = None
+
+
+@router.get("/itc/register")
+def itc_register_for_period(
+    client_id: str = Query(...),
+    period: str = Query(..., description="MMYYYY"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """What this period's GSTR-3B declares in Table 4(B)(2) and Table 4(D)(1)."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "period": period, "reversals": [], "reclaims": [],
+            "reversal_totals": {}, "reclaim_totals": {}, "ca_review_required": True})
+    from core.supabase_client import get_supabase
+    from services.itc_register_service import for_period
+    return api_response(True, for_period(
+        get_supabase(), current_user["firm_id"], client_id, period))
+
+
+@router.post("/itc/register/reversal")
+def itc_register_reversal(
+    body: ITCReversalIn,
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """Classify an already-posted journal as a Table 4(B)(2) reversal.
+
+    This does NOT post anything. Giving credit back is a real movement and it
+    goes through the one posting kernel like every other entry — the CA raises
+    the journal, and this says what it was, so the return can declare it.
+    Registering a row that claims more than its journal actually moved is
+    refused: a return figure the ledger cannot support is the failure this
+    exists to prevent.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
+    """
+    assert_client_access(current_user, body.client_id)
+    from core.supabase_client import get_supabase
+    from services.itc_register_service import ITCRegisterError, record_reversal
+    try:
+        return api_response(True, record_reversal(
+            get_supabase(), current_user["firm_id"], body.client_id,
+            journal_entry_id=body.journal_entry_id, period=body.period,
+            reason_code=body.reason_code,
+            amounts=body.model_dump(),
+            purchase_bill_id=body.purchase_bill_id, notes=body.notes,
+            actor_id=current_user.get("id")))
+    except ITCRegisterError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/itc/register/reclaim")
+def itc_register_reclaim(
+    body: ITCReclaimIn,
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """Classify an already-posted journal as a Table 4(D)(1) reclaim.
+
+    Refused if it would reclaim more than the reversal it names still has
+    outstanding — credit can only come back once.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
+    """
+    assert_client_access(current_user, body.client_id)
+    from core.supabase_client import get_supabase
+    from services.itc_register_service import ITCRegisterError, record_reclaim
+    try:
+        return api_response(True, record_reclaim(
+            get_supabase(), current_user["firm_id"], body.client_id,
+            journal_entry_id=body.journal_entry_id, period=body.period,
+            reverses_id=body.reverses_id, amounts=body.model_dump(),
+            notes=body.notes, actor_id=current_user.get("id")))
+    except ITCRegisterError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/gstr1/advances")
 def gstr1_advances(
     client_id: str = Query(..., description="Client whose receipts to check"),
