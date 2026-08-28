@@ -77,11 +77,61 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
     Output tax = net CREDIT on gst_cgst/gst_sgst/gst_igst (sales credit, credit-note
     reversals debit). ITC = net DEBIT on gst_input. Reads posted journal_lines only.
     """
-    coa = _paginate_all(lambda: db.table("chart_of_accounts").select("id, system_account_key")
-           .eq("firm_id", firm_id).eq("client_id", client_id))
+    # FIRM-WIDE ACCOUNTS COUNT. The GST control accounts are normally firm-wide
+    # (client_id NULL) — that is how migration 011 seeds them and how
+    # services/coa_seed_service.py creates them — and a client-only filter found
+    # NONE of them. out_ids and in_ids came back empty, every line fell through
+    # both branches, and this returned zero output tax and zero ITC. The
+    # reconciliation below then reported the books as differing from the ledger
+    # by their full value, on a return a CA is about to file (CGST Act §39).
+    # Observed on a live firm whose entire chart is firm-wide.
+    coa = _paginate_all(lambda: db.table("chart_of_accounts")
+           .select("id, client_id, system_account_key, account_name, account_type")
+           .eq("firm_id", firm_id)
+           .or_(f"client_id.eq.{client_id},client_id.is.null"))
     key_by_id = {c["id"]: c.get("system_account_key") for c in coa}
+    name_by_id = {c["id"]: (c.get("account_name") or "") for c in coa}
     out_ids = {c["id"] for c in coa if c.get("system_account_key") in ("gst_cgst", "gst_sgst", "gst_igst")}
     in_ids = {c["id"] for c in coa if c.get("system_account_key") == "gst_input"}
+
+    # AND THE KEY IS NOT ALWAYS THERE. system_account_key is stamped by
+    # migrations 092/098 on the accounts THEY seeded; a chart built by
+    # coa_seed_service carries the same accounts with the key left NULL. Same
+    # live firm: `1301 GST Input Tax Credit` and `2002 GST Output Tax Payable`,
+    # both NULL-keyed, 1,045 and 6,220 lines posted respectively — invisible to
+    # a key-only lookup.
+    #
+    # Fall back to the name, and ONLY for the side the key found nothing on, so
+    # a firm whose keys are stamped is completely unaffected. account_type is
+    # what keeps the two sides apart: an input credit is an Asset and output tax
+    # is a Liability, which is the same separation migration 098 enforces by
+    # keying output heads on Liability accounts only. Without it a chart naming
+    # both "%GST%" could book input credit as output tax owed.
+    if not out_ids:
+        out_ids = {c["id"] for c in coa
+                   if c.get("account_type") == "Liability"
+                   and "gst output" in (c.get("account_name") or "").lower()}
+    if not in_ids:
+        in_ids = {c["id"] for c in coa
+                  if c.get("account_type") == "Asset"
+                  and "gst input" in (c.get("account_name") or "").lower()}
+
+    def _head_of(acc: str) -> str:
+        """Which tax head a control account reports under.
+
+        From the key where there is one. From the name otherwise — and where a
+        single combined account serves all three heads, "output", because it
+        genuinely cannot say. by_head is surfaced as `ledger_by_head` for the
+        reader and is never compared against anything, so an honest extra
+        bucket is better than silently attributing the lot to CGST."""
+        key = key_by_id.get(acc)
+        if key:
+            return key.replace("gst_", "")
+        low = name_by_id.get(acc, "").lower()
+        for h in ("cgst", "sgst", "igst"):
+            if h in low:
+                return h
+        return "output"
 
     entries = _paginate_all(lambda: db.table("journal_entries").select("id, entry_date, is_posted")
                .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -109,8 +159,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
         cr = int(l.get("credit_paise") or 0)
         if acc in out_ids:
             output_paise += cr - dr                 # liability is a credit balance
-            head = (key_by_id.get(acc) or "").replace("gst_", "")
-            by_head[head] = by_head.get(head, 0) + (cr - dr)
+            by_head[_head_of(acc)] = by_head.get(_head_of(acc), 0) + (cr - dr)
         elif acc in in_ids:
             itc_paise += dr - cr                     # ITC is a debit balance
             by_head["input"] += dr - cr
