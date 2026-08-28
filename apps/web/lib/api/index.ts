@@ -528,6 +528,15 @@ export const api = {
       request("/api/banking/transactions/batch-accept", {
         method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
       }),
+    /** What batchAccept WOULD do, without doing it. Same server function with
+     *  preview=True — the same rules, the same payee history, the same
+     *  refusals — so the list a CA approves is produced by the code that will
+     *  act on it. Rows that would change come back as `would_apply` carrying
+     *  the account and the source; nothing is written. */
+    batchAcceptPreview: (transactionIds: string[]) =>
+      request("/api/banking/transactions/batch-accept/preview", {
+        method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
+      }),
     batchExclude: (transactionIds: string[]) =>
       request("/api/banking/transactions/batch-exclude", {
         method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
