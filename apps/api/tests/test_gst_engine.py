@@ -81,6 +81,8 @@ def make_txn_for_classify(
     supply_type="taxable",
     invoice_type="Regular",
     place_of_supply="27",
+    invoice_value_paise=None,
+    transaction_date="2026-04-10",
 ) -> TransactionForClassification:
     return TransactionForClassification(
         id="test-id",
@@ -91,6 +93,12 @@ def make_txn_for_classify(
         supply_type=supply_type,
         invoice_type=invoice_type,
         place_of_supply=place_of_supply,
+        # Rule 59(4) compares the invoice VALUE. Defaulting it to the taxable
+        # value keeps every test that is not about the threshold unchanged;
+        # the threshold tests pass it explicitly.
+        invoice_value_paise=(taxable_paise if invoice_value_paise is None
+                             else invoice_value_paise),
+        transaction_date=transaction_date,
     )
 
 
@@ -145,19 +153,18 @@ class TestInvoiceClassifier:
         txn = make_txn_for_classify(party_gstin=None, is_interstate=False)
         assert classify_transaction(txn) == GSTInvoiceCategory.B2CS
 
-    def test_b2cs_unregistered_interstate_below_threshold(self):
-        # Interstate but taxable ≤ ₹2.5L → B2CS
+    def test_b2cs_unregistered_interstate_at_the_threshold(self):
+        # Rule 59(4) says "exceeds", so exactly at the limit is still B2CS.
         txn = make_txn_for_classify(
             party_gstin=None, is_interstate=True,
-            taxable_paise=B2CL_THRESHOLD_PAISE,  # exactly ₹2.5L = B2CS (not >)
+            invoice_value_paise=B2CL_THRESHOLD_PAISE,
         )
         assert classify_transaction(txn) == GSTInvoiceCategory.B2CS
 
     def test_b2cl_unregistered_interstate_above_threshold(self):
-        # Interstate taxable > ₹2.5L → B2CL
         txn = make_txn_for_classify(
             party_gstin=None, is_interstate=True,
-            taxable_paise=B2CL_THRESHOLD_PAISE + 1,
+            invoice_value_paise=B2CL_THRESHOLD_PAISE + 1,
         )
         assert classify_transaction(txn) == GSTInvoiceCategory.B2CL
 
@@ -208,9 +215,9 @@ class TestInvoiceClassifier:
 
     def test_batch_classification(self):
         txns = [
-            TransactionForClassification("t1", "sales_invoice", "27AABCU9603R1ZX", False, 100_000_00, "taxable", "Regular", "27"),
-            TransactionForClassification("t2", "sales_invoice", None, False, 50_000_00, "taxable", "Regular", "27"),
-            TransactionForClassification("t3", "credit_note", "27AABCU9603R1ZX", False, 10_000_00, "taxable", "Regular", "27"),
+            TransactionForClassification("t1", "sales_invoice", "27AABCU9603R1ZX", False, 100_000_00, "taxable", "Regular", "27", 118_000_00, "2026-04-10"),
+            TransactionForClassification("t2", "sales_invoice", None, False, 50_000_00, "taxable", "Regular", "27", 59_000_00, "2026-04-10"),
+            TransactionForClassification("t3", "credit_note", "27AABCU9603R1ZX", False, 10_000_00, "taxable", "Regular", "27", 11_800_00, "2026-04-10"),
         ]
         results = classify_transactions(txns)
         assert results["t1"] == GSTInvoiceCategory.B2B

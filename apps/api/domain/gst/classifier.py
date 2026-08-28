@@ -14,8 +14,8 @@ from typing import Sequence
 
 class GSTInvoiceCategory(str, Enum):
     B2B = "B2B"           # supply to registered person (CGST Act §2(84))
-    B2CS = "B2CS"         # unregistered, intra-state or inter-state ≤₹2.5L
-    B2CL = "B2CL"         # unregistered, inter-state >₹2.5L taxable value
+    B2CS = "B2CS"         # unregistered, intra-state or inter-state at/below the limit
+    B2CL = "B2CL"         # unregistered, inter-state above the limit (see below)
     CDNR = "CDNR"         # credit/debit note to registered person
     CDNA = "CDNA"         # credit/debit note to unregistered person
     EXP_WP = "EXP_WP"    # export with payment of IGST
@@ -23,8 +23,35 @@ class GSTInvoiceCategory(str, Enum):
     NIL_EXEMPT = "NIL_EXEMPT"  # nil-rated or exempt supplies
 
 
-# ₹2.5 lakh threshold for B2CL (inter-state unregistered) — CGST Rule 59(2)
-B2CL_THRESHOLD_PAISE = 2_50_000_00  # 2,50,000 rupees in paise
+# CGST Rule 59(4) — invoice-wise reporting of inter-state supplies to
+# unregistered persons (GSTR-1 Table 5).
+#
+# Notification 12/2024-Central Tax, dated 10 July 2024, substituted "one lakh
+# rupees" for "two and a half lakh rupees" wherever they occur in Rule 59(4),
+# WITH EFFECT FROM 1 AUGUST 2024. This module carried the old figure, and the
+# citation named Rule 59(2), which is a different provision.
+#
+# The threshold is therefore a function of the invoice's date, not a constant.
+# GSTN's own Returns Offline Tool treats it that way too: it holds a limit and
+# the period the limit takes effect from (B2CL_MIN / B2CL_MIN_PRD) and picks
+# between them per return period.
+B2CL_THRESHOLD_PAISE = 1_00_000_00          # Rs 1,00,000 — from 01-08-2024
+B2CL_THRESHOLD_LEGACY_PAISE = 2_50_000_00   # Rs 2,50,000 — up to 31-07-2024
+B2CL_NEW_THRESHOLD_FROM = "2024-08-01"
+
+
+def b2cl_threshold_paise(transaction_date: str | None) -> int:
+    """The Rule 59(4) limit in force on `transaction_date` (YYYY-MM-DD).
+
+    A missing or unparseable date gets the CURRENT limit. Returns are prepared
+    for recent periods; defaulting to the superseded figure would silently
+    under-report B2CL on today's filings, which is the failure this function
+    exists to end.
+    """
+    d = (transaction_date or "").strip()[:10]
+    if len(d) == 10 and d < B2CL_NEW_THRESHOLD_FROM:
+        return B2CL_THRESHOLD_LEGACY_PAISE
+    return B2CL_THRESHOLD_PAISE
 
 # State codes for export detection
 EXPORT_PLACE_OF_SUPPLY = "96"  # GSTN uses "96" for outside India
@@ -41,6 +68,15 @@ class TransactionForClassification:
     supply_type: str            # taxable | zero_rated | nil_rated | exempt | non_gst
     invoice_type: str           # Regular | SEZ_with_payment | SEZ_without_payment | Deemed_export
     place_of_supply: str | None
+    # Rule 59(4) tests the INVOICE VALUE — taxable value plus every tax head —
+    # not the taxable value. GSTN's tool compares the worksheet's "Invoice
+    # Value" column. On an 18% supply the two differ by enough to move an
+    # invoice between Table 5 and Table 7: taxable Rs 95,000 is an invoice
+    # value of Rs 1,12,100, which is B2CL.
+    invoice_value_paise: int
+    # The threshold changed on 01-08-2024, so classification depends on when
+    # the supply was made. YYYY-MM-DD.
+    transaction_date: str | None
 
 
 def classify_transaction(txn: TransactionForClassification) -> GSTInvoiceCategory:
@@ -82,9 +118,12 @@ def classify_transaction(txn: TransactionForClassification) -> GSTInvoiceCategor
     if txn.party_gstin:
         return GSTInvoiceCategory.B2B
 
-    # Unregistered buyer — split B2CS vs B2CL
-    # CGST Rule 59(2): B2CL applies to inter-state invoice with taxable value >₹2.5L
-    if txn.is_interstate and txn.taxable_amount_paise > B2CL_THRESHOLD_PAISE:
+    # Unregistered buyer — split B2CS vs B2CL.
+    # CGST Rule 59(4): B2CL is an inter-state supply whose INVOICE VALUE exceeds
+    # the limit in force on the invoice date. Both halves of that sentence were
+    # wrong here: it compared taxable value, against a fixed Rs 2.5 lakh.
+    if (txn.is_interstate
+            and txn.invoice_value_paise > b2cl_threshold_paise(txn.transaction_date)):
         return GSTInvoiceCategory.B2CL
 
     return GSTInvoiceCategory.B2CS

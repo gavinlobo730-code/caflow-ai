@@ -183,6 +183,13 @@ def _parse_invoices_for_gstr1(
                 supply_type=r.get("supply_type", "taxable"),
                 invoice_type=r.get("invoice_type", "Regular"),
                 place_of_supply=r.get("place_of_supply"),
+                invoice_value_paise=(int(r.get("taxable_amount_paise", 0) or 0)
+                                     + int(r.get("cgst_paise", 0) or 0)
+                                     + int(r.get("sgst_paise", 0) or 0)
+                                     + int(r.get("igst_paise", 0) or 0)
+                                     + int(r.get("cess_paise", 0) or 0)
+                                     + int(r.get("round_off_paise", 0) or 0)),
+                transaction_date=r.get("transaction_date"),
             )
             from domain.gst.classifier import classify_transaction
             category = classify_transaction(txn_for_classify)
@@ -237,6 +244,13 @@ def classify_invoices(req: TransactionClassifyRequest, current_user: dict = Depe
             supply_type=r.get("supply_type", "taxable"),
             invoice_type=r.get("invoice_type", "Regular"),
             place_of_supply=r.get("place_of_supply"),
+            invoice_value_paise=(int(r.get("taxable_amount_paise", 0) or 0)
+                             + int(r.get("cgst_paise", 0) or 0)
+                             + int(r.get("sgst_paise", 0) or 0)
+                             + int(r.get("igst_paise", 0) or 0)
+                             + int(r.get("cess_paise", 0) or 0)
+                             + int(r.get("round_off_paise", 0) or 0)),
+            transaction_date=r.get("transaction_date"),
         )
         for r in req.transactions
     ]
