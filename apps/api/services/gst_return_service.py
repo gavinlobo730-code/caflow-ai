@@ -20,6 +20,7 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
+import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
@@ -855,6 +856,23 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                 + [_to_gstr1(r, "credit_note") for r in cns_raw]
                 + [_to_gstr1(r, "debit_note") for r in sdns_raw])
     payload = build_gstr1(invoices, gstin, period, aggregate_turnover_paise)
+
+    # Tables 11A and 11B — advances. Merged here rather than inside
+    # build_gstr1() because they come from RECEIPTS, not from the invoices the
+    # builder is given, and the builder stays a pure function of its input.
+    #
+    # Empty unless the client is marked as one whose advances bear tax:
+    # Notification 66/2017-Central Tax removed the charge for advances on
+    # goods, so for most registered persons there is no Table 11 at all. A
+    # section with no rows is omitted rather than sent empty — the GSTN tool
+    # writes a section only when it has something to declare.
+    # build_gstr1 returns a GSTR1Payload dataclass; the GSTN JSON is the
+    # `.payload` dict inside it. Writing to the dataclass raises, which is how
+    # the payload-level test caught this merge never working at all.
+    table_11 = gst_advance_service.table_11_sections(db, firm_id, client_id, period)
+    for key in ("at", "txpd"):
+        if table_11.get(key):
+            payload.payload[key] = table_11[key]
 
     # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit
     # notes, before debit notes); compare against sales-only GST in the GL
