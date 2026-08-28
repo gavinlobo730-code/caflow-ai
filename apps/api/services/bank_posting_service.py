@@ -740,9 +740,31 @@ class BankPostingService:
             # reversal — and that is a real answer, not something to paper over.
             period_validation_service.validate_posting_date(firm_id or "", reversal_date)
 
-        reversal_id = phase2_journal_service.reverse_entry(
-            db, firm_id, journal_id, reversal_date,
-            narration=f"Undo of bank transaction {txn_id}", created_by=actor_id)
+        # REUSE A REVERSAL THIS JOURNAL ALREADY HAS, rather than writing a second
+        # one. The undo is several writes and is not atomic: the reversal lands
+        # first, and anything that fails after it leaves the reversal on the
+        # books with the bank line still "posted". That happened for real — see
+        # _unsettle's status note — and the retry is what makes it recoverable.
+        #
+        # Without this guard, pressing Undo again on such a line reverses the
+        # SAME journal twice and swings the ledger the wrong way by the whole
+        # amount. reference_no is REV-<random>, so the (client, ref, date)
+        # dedupe in _create_journal never catches it.
+        #
+        # Reaching here means match_status is still "posted" (checked above), so
+        # an existing reversal of THIS journal can only be a previous undo that
+        # died part-way. A re-POST creates a new journal with its own id, so a
+        # legitimate second undo finds nothing here and reverses normally.
+        prior = (db.table("journal_entries").select("id, entry_date")
+                 .eq("firm_id", firm_id).eq("reversal_of", journal_id)
+                 .limit(1).execute().data or [])
+        if prior:
+            reversal_id = prior[0]["id"]
+            reversal_date = str(prior[0].get("entry_date") or reversal_date)[:10]
+        else:
+            reversal_id = phase2_journal_service.reverse_entry(
+                db, firm_id, journal_id, reversal_date,
+                narration=f"Undo of bank transaction {txn_id}", created_by=actor_id)
 
         # 2 and 3, in that order: the credit was granted out of the settlement's
         # excess, so it is unwound before the settlement that produced it.
@@ -841,12 +863,37 @@ class BankPostingService:
             return {"entity": table, "label": doc.get(label_col), "reversed_paise": 0,
                     "status": doc.get("status"), "note": "nothing was allocated to this document"}
         new_paid = paid - give_back
-        # Recomputed from the document's own figures, never assumed to be
-        # "unpaid": a partly-paid invoice that this line topped up must go back
-        # to partially_paid, not to a state saying nobody has paid anything.
+        # Recomputed from the document's own figures: a partly-paid invoice that
+        # this line topped up must go back to partially_paid, not to a state
+        # saying nobody has paid anything.
         probe = dict(doc); probe["paid_paise"] = new_paid
-        status = "unpaid" if new_paid <= 0 else (
-            "paid" if outstanding_fn(probe) <= 0 else "partially_paid")
+
+        # BACK TO THE DOCUMENT'S OWN UNPAID STATE — 'issued' for an invoice,
+        # 'received' for a bill. This said "unpaid", which NO table accepts:
+        #     client_sales_invoices  draft | issued   | partially_paid | paid | cancelled
+        #     purchase_bills         draft | received | partially_paid | paid | cancelled
+        # so undoing a payment that cleared a document to zero violated the
+        # status CHECK and came back as a 500. It had never worked for a line
+        # that settled a document — the single-row Undo button failed the same
+        # way; recording five at once is only what made it visible.
+        #
+        # WORSE THAN A FAILED CLICK. The journal reversal is written BEFORE this
+        # runs, so each failure left a balanced reversal on the books with the
+        # bank line still reading "posted" and the invoice still reading "paid":
+        # the GL said the customer owes again, the sub-ledger said they had
+        # paid. Five documents ended up in that state on a live firm.
+        #
+        # The mock-mode FakeDB has no CHECK constraints and accepted "unpaid"
+        # happily, which is why 7,000 tests passed over it. The guard that
+        # actually holds is test_bank_undo_status_vocabulary_pg.py: it reads the
+        # allowed values out of the real schema.
+        back_to_unpaid = "issued" if table == "client_sales_invoices" else "received"
+        if new_paid <= 0:
+            # A draft or cancelled document is not resurrected by an undo —
+            # whatever it is, it is not "waiting to be paid".
+            status = doc.get("status") if doc.get("status") in ("draft", "cancelled") else back_to_unpaid
+        else:
+            status = "paid" if outstanding_fn(probe) <= 0 else "partially_paid"
         db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
             .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         return {"entity": table, "label": doc.get(label_col), "reversed_paise": give_back,
