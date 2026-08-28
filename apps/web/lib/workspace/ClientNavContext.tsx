@@ -2,7 +2,6 @@
 
 import React, {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useState,
@@ -79,8 +78,26 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "instructions", label: "Instructions",   href: (id) => `/clients/${id}/instructions/` },
 ];
 
-/** localStorage key for the persisted financial-year selection. */
-const FY_STORAGE_KEY = "caflow.financialYear";
+// THE FINANCIAL YEAR IS NOT IN THIS CONTEXT ANY MORE
+//
+// It used to be: a `financialYear` + `setFinancialYear` pair, persisted to
+// localStorage under "caflow.financialYear" and mirrored into ?fy=, driven by
+// a selector in the client header.
+//
+// Eleven of the twenty-odd client pages read it. The rest ignored it. So the
+// header could say "FY 2026-27" over a Tasks or Bank screen the year had no
+// bearing on, and — worse — over a Sales screen whose own period filter said
+// "Last Financial Year (FY 2025-26)" and was showing exactly that. Two
+// controls, each correct, describing different periods, with the rows below
+// belonging to one of them and no way to tell which.
+//
+// A period now belongs to the control that scopes the query, on the page that
+// runs it. Removing the value from the context rather than merely hiding the
+// selector is the point: while it is reachable here, the next page to want a
+// year reaches for the global one and the whole shape comes back.
+//
+// getCurrentFinancialYear() stays — a page that needs a default needs this,
+// and it is a pure function of the date rather than a shared mutable setting.
 
 export function getCurrentFinancialYear(): string {
   return currentFinancialYearLabel();
@@ -96,8 +113,6 @@ export function getSectionForPathname(pathname: string): ClientSection {
 
 export interface ClientNavContextValue {
   clientId: string;
-  financialYear: string;
-  setFinancialYear: (fy: string) => void;
 }
 
 const ClientNavContext = createContext<ClientNavContextValue | null>(null);
@@ -123,32 +138,7 @@ export function ClientNavProvider({ children }: ClientNavProviderProps) {
     const id = m ? decodeURIComponent(m[1]) : "";
     setClientId(id);
   }, [pathname]);
-  // Persist the selected FY so it survives a page refresh / direct link, instead
-  // of silently resetting to the current FY on every mount. Priority on init:
-  // ?fy= URL param → localStorage → current FY.
-  const [financialYear, setFinancialYearState] = useState<string>(() => {
-    if (typeof window === "undefined") return getCurrentFinancialYear();
-    const fromUrl = new URLSearchParams(window.location.search).get("fy");
-    if (fromUrl) return fromUrl;
-    const stored = window.localStorage.getItem(FY_STORAGE_KEY);
-    return stored || getCurrentFinancialYear();
-  });
-
-  const setFinancialYear = useCallback((fy: string) => {
-    setFinancialYearState(fy);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(FY_STORAGE_KEY, fy);
-      const p = new URLSearchParams(window.location.search);
-      p.set("fy", fy);
-      window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`);
-    }
-  }, []);
-
-  const value: ClientNavContextValue = {
-    clientId,
-    financialYear,
-    setFinancialYear,
-  };
+  const value: ClientNavContextValue = { clientId };
 
   return (
     <ClientNavContext.Provider value={value}>

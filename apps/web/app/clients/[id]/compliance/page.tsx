@@ -11,7 +11,7 @@ import { toCsv } from "@/lib/table/process";
 import { getComplianceCalendarDirect, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -184,7 +184,13 @@ function NoticesSection({ clientId }: { clientId: string }) {
 
 export default function CompliancePage() {
   const router = useRouter();
-  const { clientId, financialYear } = useClientNav();
+  // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
+  // the one we are actually in. It used to be whatever year the client header
+  // was set to, which meant browsing back to FY 2024-25 and then marking a
+  // filing done today stamped the event into 2024-25 and hid it from this
+  // year's feed. Nothing on this page is filtered by year, so there is no
+  // picker to move here — only a wrong value to stop reading.
+  const { clientId } = useClientNav();
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no compliance obligations yet".
@@ -255,7 +261,7 @@ export default function CompliancePage() {
         await writeTimelineEvent({
           client_id: clientId,
           firm_id: firmId,
-          financial_year: financialYear,
+          financial_year: getCurrentFinancialYear(),
           category: "compliance",
           event_type: "filing_marked_filed",
           severity: "success",

@@ -11,7 +11,8 @@ import { toCsv } from "@/lib/table/process";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { api, type ReconciliationRun, type ReconciliationFinding } from "@/lib/api";
 import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
@@ -167,7 +168,15 @@ function isDrillableAccount(id?: string): boolean {
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function AccountingPage() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
+  // ONE financial year for this whole page, owned by this page.
+  //
+  // Every tab below scopes to a period, and until now that period came partly
+  // from a selector in the client header and partly from each tab's own
+  // PeriodPicker, whose "This Financial Year" was relative to the header's
+  // choice. The header is gone; the pickers set this value directly, so the
+  // year a CA picks on Trial Balance is the year Profit & Loss opens on.
+  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   // The tab lives in the URL, not only in state, so it survives leaving the
   // page and coming back — which the journal editor does on every save. Before
   // this, "Back to Journal" landed the CA on the Dashboard.
@@ -266,25 +275,25 @@ export default function AccountingPage() {
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "dashboard" && (
-          <AccountingDashboard clientId={clientId} financialYear={financialYear} accounts={accounts} onNavigate={setTab} />
+          <AccountingDashboard clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} accounts={accounts} onNavigate={setTab} />
         )}
         {tab === "coa" && (
           <ChartOfAccounts accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} />
         )}
         {tab === "journal" && (
-          <JournalList clientId={clientId} financialYear={financialYear} />
+          <JournalList clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
         {tab === "trial" && (
-          <TrialBalance clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
+          <TrialBalance clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
         )}
         {tab === "pl" && (
-          <ProfitAndLoss clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
+          <ProfitAndLoss clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
         )}
         {tab === "balance-sheet" && (
-          <BalanceSheet clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
+          <BalanceSheet clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
         )}
         {tab === "cashflow" && (
-          <CashFlow clientId={clientId} financialYear={financialYear} />
+          <CashFlow clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
         {tab === "approvals" && (
           <ApprovalQueue clientId={clientId} />
@@ -293,7 +302,7 @@ export default function AccountingPage() {
           <VerifyBooks clientId={clientId} />
         )}
         {tab === "reports" && (
-          <FinancialReports clientId={clientId} financialYear={financialYear} mcActive={mcActive} />
+          <FinancialReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mcActive={mcActive} />
         )}
       </div>
 
@@ -313,10 +322,11 @@ export default function AccountingPage() {
 // ── Accounting Dashboard ───────────────────────────────────────────────────
 
 function AccountingDashboard({
-  clientId, financialYear, accounts, onNavigate,
+  clientId, financialYear, onFinancialYearChange, accounts, onNavigate,
 }: {
   clientId: string;
   financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
   accounts: Account[];
   onNavigate: (tab: AccountingTab) => void;
 }) {
@@ -438,6 +448,12 @@ function AccountingDashboard({
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
+      {/* Every figure below is for one financial year, so the year is named
+          and changeable here rather than assumed from elsewhere. */}
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-[11px] text-[#94A3B8]">Figures for</span>
+        <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} ariaLabel="Dashboard financial year" />
+      </div>
       {/* Say so, rather than presenting a failed load as a client with no
           activity. Zeros on an accounting dashboard are a claim about the
           books, and this one would be false. */}
@@ -591,7 +607,7 @@ function journalEditorHref(clientId: string, entryId: string): string {
   return `/clients/${clientId}/accounting/journal/${entryId}/edit`;
 }
 
-function JournalList({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function JournalList({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const router = useRouter();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
@@ -855,6 +871,7 @@ function JournalList({ clientId, financialYear }: { clientId: string; financialY
             mode={periodMode}
             onModeChange={setPeriodMode}
             financialYear={financialYear}
+            onFinancialYearChange={onFinancialYearChange}
             customFrom={customFrom}
             customTo={customTo}
             onCustomFromChange={setCustomFrom}
@@ -1103,7 +1120,7 @@ function LedgerDrillDown({
 
 // ── Trial Balance ──────────────────────────────────────────────────────────
 
-function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
+function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillDown }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -1197,6 +1214,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            onFinancialYearChange={onFinancialYearChange}
             customFrom={customFrom} customTo={customTo}
             onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
             ariaLabel="As at"
@@ -1308,7 +1326,7 @@ function fxDelta(paise: number) {
   return <span className={`font-mono ${cls}`}>{paise === 0 ? "—" : `${sign}${formatPaise(paise)}`}</span>;
 }
 
-function FXReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function FXReports({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const [view, setView] = useState<FXView>("exposure");
   const [ccy, setCcy] = useState<string>("all");
   const [data, setData] = useState<unknown>(null);
@@ -1373,6 +1391,7 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            onFinancialYearChange={onFinancialYearChange}
             customFrom={customFrom} customTo={customTo}
             onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
             ariaLabel="Period"
@@ -1641,7 +1660,7 @@ interface PLColumnResult {
   error?: boolean;
 }
 
-function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
+function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrillDown }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -1820,6 +1839,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            onFinancialYearChange={onFinancialYearChange}
             customFrom={customFrom} customTo={customTo} onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
             granularity={granularity} onGranularityChange={setGranularity}
             ariaLabel="Period"
@@ -1966,7 +1986,7 @@ interface BSColumnResult {
   error?: boolean;
 }
 
-function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
+function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillDown }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -2141,6 +2161,7 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            onFinancialYearChange={onFinancialYearChange}
             customFrom={customFrom} customTo={customTo} onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
             granularity={granularity} onGranularityChange={setGranularity}
             ariaLabel="As of / period"
@@ -2451,7 +2472,7 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
   );
 }
 
-function CashFlow({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const [columns, setColumns] = useState<CFColumn[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -2599,6 +2620,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            onFinancialYearChange={onFinancialYearChange}
             customFrom={customFrom} customTo={customTo}
             onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
             granularity={granularity} onGranularityChange={setGranularity}
@@ -3214,7 +3236,7 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
  * opening one replaces the index (with a way back). FX is the first such
  * drill-in; the next report follows the same shape.
  */
-function FinancialReports({ clientId, financialYear, mcActive }: { clientId: string; financialYear: string; mcActive: boolean }) {
+function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcActive }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; mcActive: boolean }) {
   // Which grouped report is open; null = the hub index.
   const [openReport, setOpenReport] = useState<null | "fx">(null);
   // Exports follow the same basis the user is viewing (URL-persisted).
@@ -3387,7 +3409,7 @@ function FinancialReports({ clientId, financialYear, mcActive }: { clientId: str
         >
           ← All reports
         </button>
-        <FXReports clientId={clientId} financialYear={financialYear} />
+        <FXReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={onFinancialYearChange} />
       </div>
     );
   }
@@ -3397,8 +3419,11 @@ function FinancialReports({ clientId, financialYear, mcActive }: { clientId: str
       {/* ── Financial statements ── */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <p className="text-xs font-semibold text-[#334155]">Financial Statements — FY {financialYear}</p>
-          <p className="text-[10px] text-[#94A3B8] mt-0.5">Export to XLSX or share directly to the client portal.</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-[#334155]">Financial Statements</p>
+            <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} ariaLabel="Statements financial year" />
+          </div>
+          <p className="text-[10px] text-[#94A3B8] mt-0.5">Export to XLSX or share directly to the client portal. The year above also decides which year Year-End Close locks.</p>
         </div>
         <div className="divide-y divide-[#F8FAFC]">
           {REPORT_LINKS.map((r) => (

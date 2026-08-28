@@ -14,11 +14,15 @@ import type { Client } from "@/lib/types";
 import type { Task } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
 export default function OverviewPage() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
+  // The activity feed is the only thing on this page scoped to a year, so
+  // the year is chosen on the feed rather than over the whole screen.
+  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [client, setClient] = useState<Client | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
@@ -144,9 +148,12 @@ export default function OverviewPage() {
 
         {/* Timeline */}
         <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-3">
-            Activity · FY {financialYear}
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+              Activity
+            </p>
+            <FinancialYearPicker value={financialYear} onChange={setFinancialYear} ariaLabel="Activity financial year" />
+          </div>
           <ClientTimeline clientId={clientId} financialYear={financialYear} />
         </div>
       </div>

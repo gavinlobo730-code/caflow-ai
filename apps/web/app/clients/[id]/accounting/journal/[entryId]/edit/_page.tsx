@@ -23,7 +23,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { clearReports } from "@/lib/accounting/reportCache";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { api, type ApiResp, type JournalEntryDetail, type JournalLineIO } from "@/lib/api";
 import { JournalEditor, type EditorAccount, type JournalSaveMode } from "@/components/journal/JournalEditor";
 import { ErrorState } from "@/components/ui/states";
@@ -41,7 +41,10 @@ function journalListHref(clientId: string): string {
 }
 
 export default function JournalEntryPageClient() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
+  // Only used to stamp the timeline event below. An edit happened when it
+  // happened, so the year is the current one — not whichever year a selector
+  // elsewhere on the screen was left on.
   // usePathname() is only a re-run trigger (its own value is the build-time
   // placeholder segment) — the real id always comes from window.location.
   const pathname = usePathname();
@@ -107,7 +110,7 @@ export default function JournalEntryPageClient() {
       try {
         const firmId = await getFirmId();
         await writeTimelineEvent({
-          client_id: clientId, firm_id: firmId, financial_year: financialYear,
+          client_id: clientId, firm_id: firmId, financial_year: getCurrentFinancialYear(),
           category: "accounting", event_type: eventType, severity: "info",
           title, description, entity_type: "journal_entry", entity_id: id, actor_type: "user",
         });
@@ -116,7 +119,7 @@ export default function JournalEntryPageClient() {
     // Reports read the ledger this just changed.
     clearReports(clientId);
     router.push(journalListHref(clientId));
-  }, [clientId, financialYear, router]);
+  }, [clientId, router]);
 
   async function handleSave(mode: JournalSaveMode, payload: {
     entry_date: string; entry_type: string; reference_no: string;

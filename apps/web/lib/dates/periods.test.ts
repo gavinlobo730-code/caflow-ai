@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/dates/periods.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fyRangeFor, shiftFY, resolvePeriodRange, periodOptionLabel, splitPeriodColumns, periodSplitNotice, formatRangeLabel } from "./periods.ts";
+import { fyRangeFor, shiftFY, resolvePeriodRange, periodOptionLabel, splitPeriodColumns, periodSplitNotice, formatRangeLabel, financialYearChoices, encodePeriodChoice, decodePeriodChoice, periodChoices, FY_CHOICE_COUNT } from "./periods.ts";
 
 const FY = "2026-27";
 const TODAY = "2026-07-12"; // a Sunday
@@ -62,8 +62,11 @@ test("all_time resolves to the same wide bound custom falls back to", () => {
 });
 
 test("periodOptionLabel resolves FY-dependent labels", () => {
-  assert.equal(periodOptionLabel("this_fy", FY), "This Financial Year (FY 2026-27)");
-  assert.equal(periodOptionLabel("last_fy", FY), "Last Financial Year (FY 2025-26)");
+  // Named outright, matching the dropdown. "This Financial Year" was relative
+  // to a year chosen in the client header, which is exactly the thing removed:
+  // a heading reading "This" over rows from a year the header disagreed with.
+  assert.equal(periodOptionLabel("this_fy", FY), "FY 2026-27");
+  assert.equal(periodOptionLabel("last_fy", FY), "FY 2025-26");
   assert.equal(periodOptionLabel("today", FY), "Today");
   assert.equal(periodOptionLabel("all_time", FY), "All Time");
 });
@@ -226,4 +229,64 @@ test("exceeding the column cap says so, and says what to do about it", () => {
 test("an inverted custom range is reported rather than rendered as one odd column", () => {
   const notice = periodSplitNotice("custom", FY, { from: "2026-06-30", to: "2026-06-01" }, "month", TODAY);
   assert.ok(notice && notice.includes("ends before it starts"));
+});
+
+
+// ── Choosing a financial year on the page ──────────────────────────────────
+// These back the removal of the client header's FY selector. The failure they
+// guard against is not an exception: it is two controls on one screen, each
+// individually correct, describing different periods.
+
+test("the year list runs backwards from the current one and includes no future year", () => {
+  const inMarch = new Date("2027-03-15T00:00:00");   // still FY 2026-27
+  assert.deepEqual(financialYearChoices(4, inMarch),
+    ["2026-27", "2025-26", "2024-25", "2023-24"]);
+
+  const inApril = new Date("2027-04-01T00:00:00");   // FY 2027-28 begins
+  assert.equal(financialYearChoices(4, inApril)[0], "2027-28");
+});
+
+test("the year list offers FY_CHOICE_COUNT years by default", () => {
+  assert.equal(financialYearChoices(undefined, new Date("2026-08-28T00:00:00")).length,
+               FY_CHOICE_COUNT);
+});
+
+test("a period choice round-trips through the single dropdown value", () => {
+  for (const mode of ["today", "yesterday", "this_week", "last_3_months", "all_time", "custom"] as const) {
+    const encoded = encodePeriodChoice(mode, FY);
+    assert.deepEqual(decodePeriodChoice(encoded, FY), { mode, financialYear: FY });
+  }
+  assert.equal(encodePeriodChoice("this_fy", FY), "fy:2026-27");
+  assert.deepEqual(decodePeriodChoice("fy:2026-27", "2024-25"),
+                   { mode: "this_fy", financialYear: "2026-27" });
+});
+
+test("last_fy encodes as the year it actually means, not as a relative mode", () => {
+  // Anything persisted before this change still resolves to a real year rather
+  // than staying relative to a base nothing sets any more.
+  assert.equal(encodePeriodChoice("last_fy", FY), "fy:2025-26");
+  const decoded = decodePeriodChoice(encodePeriodChoice("last_fy", FY), FY);
+  assert.deepEqual(decoded, { mode: "this_fy", financialYear: "2025-26" });
+  assert.deepEqual(resolvePeriodRange(decoded.mode, decoded.financialYear, { from: "", to: "" }),
+                   resolvePeriodRange("last_fy", FY, { from: "", to: "" }));
+});
+
+test("every dropdown option decodes to a range, and every FY option is named", () => {
+  const opts = periodChoices(4, new Date("2026-08-28T00:00:00"));
+  for (const o of opts) {
+    if (o.value === "custom") continue;
+    const { mode, financialYear } = decodePeriodChoice(o.value, FY);
+    const range = resolvePeriodRange(mode, financialYear, { from: "", to: "" }, "2026-08-28");
+    assert.ok(range.start <= range.end, `${o.value} produced an inverted range`);
+  }
+  const fyLabels = opts.filter((o) => o.value.startsWith("fy:")).map((o) => o.label);
+  assert.deepEqual(fyLabels, ["FY 2026-27", "FY 2025-26", "FY 2024-25", "FY 2023-24"]);
+  // The relative labels are what disagreed with the header. Nothing offers them.
+  assert.equal(opts.some((o) => /This Financial Year|Last Financial Year/.test(o.label)), false);
+});
+
+test("picking a financial year picks the April-March range for that year", () => {
+  const { mode, financialYear } = decodePeriodChoice("fy:2024-25", "2026-27");
+  assert.deepEqual(resolvePeriodRange(mode, financialYear, { from: "", to: "" }),
+                   { start: "2024-04-01", end: "2025-03-31" });
 });

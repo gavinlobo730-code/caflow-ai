@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -83,7 +84,11 @@ function fmtDate(d: string) {
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function FixedAssetsPage() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
+  // Was a read-only "FY 2026-27" pill fed by the header selector. It is now
+  // the control itself: the badge always said which year the depreciation
+  // below belonged to, but changing it meant leaving the page to do it.
+  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [tab, setTab] = useState<FATab>("register");
 
   return (
@@ -96,7 +101,7 @@ export default function FixedAssetsPage() {
             Companies Act 2013, Schedule II — WDV &amp; SL depreciation
           </p>
         </div>
-        <span className="text-xs bg-[#F1F5F9] text-[#64748B] px-3 py-1 rounded-full font-medium">FY {financialYear}</span>
+        <FinancialYearPicker value={financialYear} onChange={setFinancialYear} />
       </div>
 
       {/* Tabs */}

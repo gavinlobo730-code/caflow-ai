@@ -7,7 +7,8 @@ import {
   Pencil, Trash2, Eye, Download, Loader2, AlertTriangle,
   CreditCard, Copy, MoreHorizontal, RotateCcw, Ban, BookOpen,
 } from "lucide-react";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
@@ -201,7 +202,16 @@ function Toast({ msg, type }: { msg: string; type: "success" | "error" }) {
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function SalesPage() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
+  // ONE financial year for this page, owned by this page.
+  //
+  // It used to come from a selector in the client header, which meant the
+  // Invoices tab's own period filter read "Last Financial Year (FY 2025-26)"
+  // while the header above it read "FY 2026-27" — two controls, both correct,
+  // describing different periods, over one table of rows. The pickers below
+  // all write to this one value, so a tab can never disagree with the header
+  // (there is none) or with another tab.
+  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [tab, setTab] = useState<SalesTab>("invoices");
 
   // Cross-tab navigation (e.g. Customers → "View Invoices" / "View Ledger").
@@ -241,25 +251,25 @@ export default function SalesPage() {
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "invoices" && (
-          <SalesInvoices clientId={clientId} financialYear={financialYear} />
+          <SalesInvoices clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
         {tab === "recurring" && (
           <RecurringInvoices clientId={clientId} />
         )}
         {tab === "customers" && (
-          <Customers clientId={clientId} financialYear={financialYear} onNavigate={navigateTo} />
+          <Customers clientId={clientId} onNavigate={navigateTo} />
         )}
         {tab === "receipts" && (
-          <Receipts clientId={clientId} financialYear={financialYear} />
+          <Receipts clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
         {tab === "credit-notes" && (
-          <CreditNotes clientId={clientId} financialYear={financialYear} />
+          <CreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
         {tab === "debit-notes" && (
-          <SalesDebitNotes clientId={clientId} financialYear={financialYear} />
+          <SalesDebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
         {tab === "statements" && (
-          <Statements clientId={clientId} financialYear={financialYear} />
+          <Statements clientId={clientId} />
         )}
       </div>
     </div>
@@ -923,8 +933,11 @@ const stmtRupees = (p: number) => (Math.abs(p) / 100).toLocaleString("en-IN", { 
 const stmtBal = (p: number) => `₹${stmtRupees(p)} ${p >= 0 ? "Dr" : "Cr"}`;
 const stmtAmt = (p: number) => (p ? `₹${stmtRupees(p)}` : "—");
 
-function Statements({ clientId, financialYear }: { clientId: string; financialYear: string }) {
-  const def = fyRange(financialYear);
+function Statements({ clientId }: { clientId: string }) {
+  // The start/end dates below are this tab's filter and the user edits them
+  // freely; the financial year only seeds them. So it seeds from the year we
+  // are actually in rather than one carried in from elsewhere on the screen.
+  const def = fyRange(getCurrentFinancialYear());
   const [customers, setCustomers] = useState<{ id: string; name: string; email: string | null }[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [start, setStart] = useState(def.start);
@@ -1212,9 +1225,11 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
 function SalesInvoices({
   clientId,
   financialYear,
+  onFinancialYearChange,
 }: {
   clientId: string;
   financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
 }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -1964,6 +1979,7 @@ function SalesInvoices({
               mode={periodMode}
               onModeChange={setPeriodMode}
               financialYear={financialYear}
+              onFinancialYearChange={onFinancialYearChange}
               customFrom={customFrom}
               customTo={customTo}
               onCustomFromChange={setCustomFrom}
@@ -2481,7 +2497,6 @@ function Customers({
   onNavigate,
 }: {
   clientId: string;
-  financialYear: string;
   onNavigate: (tab: SalesTab, custId?: string) => void;
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -3055,9 +3070,11 @@ function Customers({
 function Receipts({
   clientId,
   financialYear,
+  onFinancialYearChange,
 }: {
   clientId: string;
   financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
 }) {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -3250,6 +3267,7 @@ function Receipts({
         exportFilename="receipts"
         persistKey="sales.receipts"
         emptyTitle={`No receipts in FY ${financialYear}`}
+        toolbarExtra={<FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />}
         error={loadFailed ? "Couldn't load receipts — the request failed or timed out." : null}
         onRetry={load}
         rowActions={(r) => !r.is_reversed && (
@@ -3568,9 +3586,11 @@ function ReceiptForm({
 function CreditNotes({
   clientId,
   financialYear,
+  onFinancialYearChange,
 }: {
   clientId: string;
   financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
 }) {
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
@@ -3931,6 +3951,7 @@ function CreditNotes({
         onRetry={load}
         toolbarExtra={
           <>
+            <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
@@ -3997,9 +4018,11 @@ function CreditNotes({
 function SalesDebitNotes({
   clientId,
   financialYear,
+  onFinancialYearChange,
 }: {
   clientId: string;
   financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
 }) {
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<SalesDebitNote[]>([]);
@@ -4353,6 +4376,7 @@ function SalesDebitNotes({
         onRetry={load}
         toolbarExtra={
           <>
+            <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"

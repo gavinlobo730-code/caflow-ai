@@ -1,13 +1,25 @@
 "use client";
 
-import { PERIOD_OPTIONS, periodOptionLabel, GRANULARITY_OPTIONS, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { periodChoices, encodePeriodChoice, decodePeriodChoice, GRANULARITY_OPTIONS, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 
 /**
- * QuickBooks-style period dropdown: Today / Yesterday / This Week / Last 3
- * Months / This Financial Year / Last Financial Year / Custom Range. Drop
- * into a page's toolbar next to search — the page owns the `mode`/custom
- * from-to state and resolves it to a concrete date range via
+ * Period dropdown: Today / Yesterday / This Week / Last 3 Months / each of
+ * the last five financial years by name / All Time / Custom Range. Drop into
+ * a page's toolbar next to search — the page owns the mode, the financial
+ * year and the custom from-to, and resolves them to a concrete date range via
  * `resolvePeriodRange` (lib/dates/periods.ts) to scope its own query.
+ *
+ * THE FINANCIAL YEAR IS CHOSEN HERE, NOT ABOVE
+ *   This control used to offer "This Financial Year" and "Last Financial
+ *   Year", both relative to a year picked in the client header — a second
+ *   control, on a different part of the screen, that no page was obliged to
+ *   honour and half of them ignored. A CA could be looking at "FY 2026-27" in
+ *   the header and "Last Financial Year (FY 2025-26)" in the filter, on one
+ *   page, over rows belonging to one of them.
+ *
+ *   So the header selector was removed and the years are named outright. The
+ *   filter that scopes the query is the only thing on screen claiming to say
+ *   what period is shown, which means it cannot disagree with anything.
  *
  * Pass `granularity`/`onGranularityChange` to also render the "Display
  * columns by" split (Total/Monthly/Quarterly/Yearly) used by P&L/Balance
@@ -15,7 +27,7 @@ import { PERIOD_OPTIONS, periodOptionLabel, GRANULARITY_OPTIONS, type PeriodMode
  * picker used by transaction list pages (Sales Invoices, Purchase Bills).
  */
 export default function PeriodPicker({
-  mode, onModeChange, financialYear,
+  mode, onModeChange, financialYear, onFinancialYearChange,
   customFrom, customTo, onCustomFromChange, onCustomToChange,
   granularity, onGranularityChange,
   ariaLabel = "Date range",
@@ -23,6 +35,7 @@ export default function PeriodPicker({
   mode: PeriodMode;
   onModeChange: (m: PeriodMode) => void;
   financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
   customFrom: string;
   customTo: string;
   onCustomFromChange: (v: string) => void;
@@ -34,13 +47,20 @@ export default function PeriodPicker({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
-        value={mode}
-        onChange={(e) => onModeChange(e.target.value as PeriodMode)}
+        value={encodePeriodChoice(mode, financialYear)}
+        onChange={(e) => {
+          const next = decodePeriodChoice(e.target.value, financialYear);
+          // Order matters only if a caller re-renders between the two; both
+          // are React state setters batched into one render, so the picker
+          // never shows a mode and a year from different selections.
+          if (next.financialYear !== financialYear) onFinancialYearChange(next.financialYear);
+          onModeChange(next.mode);
+        }}
         aria-label={ariaLabel}
         className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
       >
-        {PERIOD_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{periodOptionLabel(o.value, financialYear)}</option>
+        {periodChoices().map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
       {mode === "custom" && (

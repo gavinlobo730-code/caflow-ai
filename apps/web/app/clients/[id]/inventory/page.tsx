@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2, TrendingDown } from "lucide-react";
-import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column } from "@/lib/table/types";
@@ -96,7 +96,7 @@ function fmtQty(v: number | string | null | undefined): string {
 }
 
 export default function InventoryPage() {
-  const { clientId, financialYear } = useClientNav();
+  const { clientId } = useClientNav();
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(false);
   // True when the LAST load attempt failed (thrown/PostgREST error) rather than
@@ -219,21 +219,26 @@ export default function InventoryPage() {
       </div>
 
       {drillDown && (
-        <StockLedgerDrillDown clientId={clientId} financialYear={financialYear} item={drillDown} onClose={() => setDrillDown(null)} onAdjusted={load} />
+        <StockLedgerDrillDown clientId={clientId} item={drillDown} onClose={() => setDrillDown(null)} onAdjusted={load} />
       )}
     </div>
   );
 }
 
 function StockLedgerDrillDown({
-  clientId, financialYear, item, onClose, onAdjusted,
+  clientId, item, onClose, onAdjusted,
 }: {
   clientId: string;
-  financialYear: string;
   item: StockItem;
   onClose: () => void;
   onAdjusted: () => void;
 }) {
+  // The financial year here only SEEDS the from/to dates below, which the user
+  // then edits freely — the date pair is the filter, and it is already on this
+  // panel. So the seed is the year we are actually in, rather than one carried
+  // over from a selector in the client header that this panel had no way to
+  // show or change.
+  const financialYear = getCurrentFinancialYear();
   const fyRange = fyDateRange(financialYear);
   const [startDate, setStartDate] = useState(fyRange.start);
   const [endDate, setEndDate] = useState(fyRange.end);
