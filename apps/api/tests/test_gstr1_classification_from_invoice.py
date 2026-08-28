@@ -72,6 +72,14 @@ def _category(**invoice_fields) -> str:
         taxable_amount_paise=int(row["taxable_amount_paise"]),
         supply_type=row["supply_type"], invoice_type=row["invoice_type"],
         place_of_supply=row.get("place_of_supply", "27"),
+        # Rule 59(4) compares the invoice VALUE against a limit that depends on
+        # the invoice date.
+        invoice_value_paise=(int(row["taxable_amount_paise"])
+                             + int(row.get("cgst_paise") or 0)
+                             + int(row.get("sgst_paise") or 0)
+                             + int(row.get("igst_paise") or 0)
+                             + int(row.get("cess_paise") or 0)),
+        transaction_date=row.get("invoice_date") or "2026-04-10",
     )
     return classify_transaction(txn).value
 
@@ -104,12 +112,20 @@ def test_nil_exempt_and_non_gst_supplies_are_not_taxable(supply_type):
 
 
 def test_the_b2cl_threshold_still_applies_to_an_unregistered_buyer():
-    """Rule 59(2) — interstate, above 2.5 lakh, no GSTIN. Unchanged by 268;
-    here so a regression in the untouched path is visible."""
+    """Rule 59(4) — inter-state, no GSTIN, invoice value above the limit.
+
+    This asserted that Rs 2,00,000 was B2CS, which was true until 31 July 2024.
+    Notification 12/2024-Central Tax substituted "one lakh rupees" for "two and
+    a half lakh rupees" in Rule 59(4) with effect from 1 August 2024, so on any
+    current return that invoice is B2CL and belongs in Table 5 invoice-wise.
+    The test did not merely miss the change; it pinned the superseded figure.
+    """
     assert _category(party_gstin=None, is_interstate=True,
                      taxable_amount_paise=300_000_00) == "B2CL"
     assert _category(party_gstin=None, is_interstate=True,
-                     taxable_amount_paise=200_000_00) == "B2CS"
+                     taxable_amount_paise=200_000_00) == "B2CL"
+    assert _category(party_gstin=None, is_interstate=True,
+                     taxable_amount_paise=50_000_00) == "B2CS"
 
 
 # ── the wiring: does the invoice's own value reach the classifier? ───────────

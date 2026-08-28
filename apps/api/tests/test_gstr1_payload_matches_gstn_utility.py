@@ -188,3 +188,64 @@ def test_the_sections_this_builder_does_not_produce_are_recorded():
     assert missing.isdisjoint(p), sorted(missing & set(p))
     assert set(p) <= {"gstin", "fp", "gt", "cur_gt", "b2b", "b2cl", "b2cs",
                       "cdnr", "cdnur", "exp", "nil", "hsn", "doc_issue"}, sorted(p)
+
+
+# ── cdnur: the type codes Table 9B actually accepts ──────────────────────────
+
+def _note(**kw):
+    base = dict(id="n1", transaction_type="credit_note", reference_no="CN-1",
+                gst_invoice_category=GSTInvoiceCategory.CDNA)
+    base.update(kw)
+    return _inv(**base)
+
+
+def _cdnur(invoices):
+    return _payload(invoices).get("cdnur", [])
+
+
+def test_cdnur_never_emits_b2cs():
+    """B2CS is not one of the values Table 9B offers (returns.fct.js cdnur type
+    list: B2CL, EXPWP, EXPWOP). This builder emitted it for every intra-state
+    note to an unregistered person — a value the portal rejects."""
+    rows = _cdnur([
+        _note(id="a", is_interstate=False),
+        _note(id="b", is_interstate=True, place_of_supply="29",
+              cgst_paise=0, sgst_paise=0, igst_paise=18000),
+    ])
+    assert all(r["typ"] != "B2CS" for r in rows), rows
+    assert all(r["typ"] in {"B2CL", "EXPWP", "EXPWOP"} for r in rows), rows
+
+
+def test_an_inter_state_note_is_b2cl():
+    rows = _cdnur([_note(is_interstate=True, place_of_supply="29",
+                         cgst_paise=0, sgst_paise=0, igst_paise=18000)])
+    assert [r["typ"] for r in rows] == ["B2CL"]
+
+
+@pytest.mark.parametrize("igst,expected", [(18000, "EXPWP"), (0, "EXPWOP")])
+def test_an_export_note_is_typed_by_whether_igst_was_paid(igst, expected):
+    """A without-payment (LUT/bond) export carries no IGST by construction, so
+    the presence of IGST is what separates the two."""
+    rows = _cdnur([_note(supply_type="zero_rated", place_of_supply="96",
+                         is_interstate=True, cgst_paise=0, sgst_paise=0,
+                         igst_paise=igst)])
+    assert [r["typ"] for r in rows] == [expected]
+
+
+def test_an_intra_state_note_is_left_out_rather_than_mislabelled():
+    """It has no row in 9B: an intra-state B2C supply is never reported
+    invoice-wise, so its note has nothing to point at and is absorbed into the
+    Table 7 summary. Dropping it is correct; inventing a code was not."""
+    from domain.gst.gstr1_builder import _cdnur_unreportable
+    note = _note(is_interstate=False)
+    assert _cdnur([note]) == []
+    # And it is countable, so the omission is visible rather than silent.
+    assert [i.id for i in _cdnur_unreportable([note])] == ["n1"]
+
+
+def test_the_fixture_would_have_produced_a_b2cs_row_before():
+    """Guard. If an intra-state note no longer reached _build_cdnur at all, the
+    assertion above would hold for a reason unrelated to the fix."""
+    from domain.gst.gstr1_builder import _cdnur_type
+    assert _cdnur_type(_note(is_interstate=False)) is None
+    assert _cdnur_type(_note(is_interstate=True)) == "B2CL"

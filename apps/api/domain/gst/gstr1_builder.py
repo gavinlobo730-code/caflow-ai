@@ -470,6 +470,40 @@ def _build_cdnr(invoices: list[InvoiceForGSTR1]) -> list[dict]:
     ]
 
 
+# The only values GSTR-1 Table 9B accepts for an unregistered note's `typ`,
+# read from the GSTN Returns Offline Tool V3.2.4 (returns.fct.js, the cdnur
+# type list). "B2CS" is NOT among them, and this builder used to emit it for
+# every intra-state note.
+#
+# That is not an arbitrary omission. Table 9B reports notes against invoices
+# reported invoice-wise; an intra-state B2C supply is never reported
+# invoice-wise, so its credit note has nothing to point at and is instead
+# absorbed into the Table 7 (B2CS) summary for the period. A note declared as
+# "B2CS" in 9B is a value the portal rejects.
+CDNUR_B2CL = "B2CL"
+CDNUR_EXPORT_WITH_PAYMENT = "EXPWP"
+CDNUR_EXPORT_WITHOUT_PAYMENT = "EXPWOP"
+
+
+def _cdnur_type(inv: InvoiceForGSTR1) -> str | None:
+    """Which Table 9B row this note belongs on, or None if it belongs nowhere.
+
+    None means "not reportable in 9B" — an intra-state note to an unregistered
+    person, whose effect belongs in the Table 7 summary. Returning None rather
+    than inventing a code is the whole point: the caller drops the row and
+    _cdnur_unreportable() reports how many were dropped, so a silent omission
+    becomes a visible number.
+    """
+    if inv.supply_type == "zero_rated" or inv.place_of_supply == "96":
+        # Export note. With payment of IGST if the note carries IGST at all —
+        # a without-payment (LUT/bond) supply has none, by construction.
+        return (CDNUR_EXPORT_WITH_PAYMENT if inv.igst_paise
+                else CDNUR_EXPORT_WITHOUT_PAYMENT)
+    if inv.is_interstate:
+        return CDNUR_B2CL
+    return None
+
+
 def _build_cdnur(invoices: list[InvoiceForGSTR1]) -> list[dict]:
     """Credit/debit notes to unregistered buyers."""
     return [
@@ -477,13 +511,19 @@ def _build_cdnur(invoices: list[InvoiceForGSTR1]) -> list[dict]:
             "ntty": "C" if inv.transaction_type == "credit_note" else "D",
             "nt_num": inv.reference_no,
             "nt_dt": _format_date_gstn(inv.transaction_date),
-            "typ": "B2CL" if inv.is_interstate else "B2CS",
+            "typ": _cdnur_type(inv),
             "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
             "pos": inv.place_of_supply or "",
             "itms": _build_invoice_items(inv),
         }
         for inv in invoices
+        if _cdnur_type(inv) is not None
     ]
+
+
+def _cdnur_unreportable(invoices: list[InvoiceForGSTR1]) -> list[InvoiceForGSTR1]:
+    """Notes to unregistered persons that Table 9B has no row for."""
+    return [inv for inv in invoices if _cdnur_type(inv) is None]
 
 
 # ── Table 6A: Exports ─────────────────────────────────────────────────────────

@@ -690,6 +690,15 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             supply_type=cls["supply_type"],
             invoice_type=cls["invoice_type"],
             place_of_supply=pos,
+            # Rule 59(4) tests the invoice VALUE, and the limit it is tested
+            # against depends on the invoice date.
+            invoice_value_paise=(int(r.get("taxable_amount_paise") or 0)
+                                 + int(r.get("cgst_paise") or 0)
+                                 + int(r.get("sgst_paise") or 0)
+                                 + int(r.get("igst_paise") or 0)
+                                 + int(r.get("cess_paise") or 0)
+                                 + int(r.get("round_off_paise") or 0)),
+            transaction_date=r.get(_DATE_FIELD[doc_type]) or "",
         )
         return InvoiceForGSTR1(
             id=r.get("id", ""),

@@ -170,6 +170,7 @@ raw_txns = [
         party_gstin="29AADCB2230M1ZT",
         is_interstate=False, taxable_amount_paise=5_00_000_00,
         supply_type="taxable", invoice_type="Regular", place_of_supply="27",
+        invoice_value_paise=5_00_000_00, transaction_date="2026-04-10",
     ),
     # B2B interstate 18%
     TransactionForClassification(
@@ -177,20 +178,23 @@ raw_txns = [
         party_gstin="29AADCB2230M1ZT",
         is_interstate=True, taxable_amount_paise=3_00_000_00,
         supply_type="taxable", invoice_type="Regular", place_of_supply="29",
+        invoice_value_paise=3_00_000_00, transaction_date="2026-04-10",
     ),
-    # B2CS intrastate 12% — unregistered, below ₹2.5L
+    # B2CS intrastate 12% — unregistered
     TransactionForClassification(
         id="TXN003", transaction_type="sales_invoice",
         party_gstin=None,
         is_interstate=False, taxable_amount_paise=80_000_00,
         supply_type="taxable", invoice_type="Regular", place_of_supply="27",
+        invoice_value_paise=80_000_00, transaction_date="2026-04-10",
     ),
-    # B2CL interstate 18% — unregistered, above ₹2.5L
+    # B2CL interstate 18% — unregistered, above the Rule 59(4) limit
     TransactionForClassification(
         id="TXN004", transaction_type="sales_invoice",
         party_gstin=None,
         is_interstate=True, taxable_amount_paise=3_00_000_00,
         supply_type="taxable", invoice_type="Regular", place_of_supply="29",
+        invoice_value_paise=3_00_000_00, transaction_date="2026-04-10",
     ),
     # CDNR — credit note to registered buyer
     TransactionForClassification(
@@ -198,6 +202,7 @@ raw_txns = [
         party_gstin="29AADCB2230M1ZT",
         is_interstate=False, taxable_amount_paise=50_000_00,
         supply_type="taxable", invoice_type="Regular", place_of_supply="27",
+        invoice_value_paise=50_000_00, transaction_date="2026-04-10",
     ),
     # EXP_WOP — export without payment
     TransactionForClassification(
@@ -205,6 +210,7 @@ raw_txns = [
         party_gstin=None,
         is_interstate=True, taxable_amount_paise=2_00_000_00,
         supply_type="zero_rated", invoice_type="SEZ_without_payment", place_of_supply="96",
+        invoice_value_paise=2_00_000_00, transaction_date="2026-04-10",
     ),
     # NIL_EXEMPT
     TransactionForClassification(
@@ -212,6 +218,7 @@ raw_txns = [
         party_gstin=None,
         is_interstate=False, taxable_amount_paise=1_00_000_00,
         supply_type="exempt", invoice_type="Regular", place_of_supply="27",
+        invoice_value_paise=1_00_000_00, transaction_date="2026-04-10",
     ),
     # B2CS interstate 18% below ₹2.5L — different POS from TXN003
     TransactionForClassification(
@@ -219,6 +226,7 @@ raw_txns = [
         party_gstin=None,
         is_interstate=True, taxable_amount_paise=1_50_000_00,
         supply_type="taxable", invoice_type="Regular", place_of_supply="29",
+        invoice_value_paise=1_50_000_00, transaction_date="2026-04-10",
     ),
 ]
 
