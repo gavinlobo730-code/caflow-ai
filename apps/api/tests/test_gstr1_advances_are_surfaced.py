@@ -23,6 +23,7 @@ import pytest
 
 import routers.gst_workspace as gw
 import services.gst_advance_service as svc
+import services.gst_return_service as grs
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM, CLIENT = "FIRM-A", "CLI"
@@ -32,7 +33,7 @@ PERIOD = "062025"
 @pytest.fixture
 def db(monkeypatch):
     d = FakeDB()
-    wire_e2e(monkeypatch, d, [gw])
+    wire_e2e(monkeypatch, d, [gw, grs])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
                          "name": "Acme", "gstin": "27BBBBB1111B1Z5",
@@ -143,3 +144,174 @@ def test_the_route_is_registered():
     from main import app
     paths = {r.path for r in app.routes if hasattr(r, "path")}
     assert "/api/gst-workspace/gstr1/advances" in paths
+
+
+# ── Table 11A / 11B, once the client is marked as one whose advances bear tax ─
+
+def _client(db, *, applicable):
+    db.seed("clients", {"id": CLIENT, "firm_id": FIRM,
+                        "gstin": "27AAAAA0000A1Z5", "state_code": "27",
+                        "financial_year_start": "2025-04-01",
+                        "gst_advance_tax_applicable": applicable})
+
+
+def _adv(db, no, date, amount, *, rate=1800, pos="27", interstate=False):
+    return db.seed("receipts", {
+        "firm_id": FIRM, "client_id": CLIENT, "customer_id": "CUST",
+        "receipt_no": no, "receipt_date": date, "amount_paise": amount,
+        "allocated_paise": 0, "unallocated_paise": amount,
+        "gst_rate_bps": rate, "place_of_supply": pos,
+        "is_interstate": interstate})
+
+
+def _allocate(db, receipt, paise, when):
+    db.seed("receipt_allocations", {
+        "receipt_id": receipt["id"], "sales_invoice_id": "inv-1",
+        "allocated_paise": paise, "created_at": when})
+
+
+def _t11(db, period=PERIOD):
+    return svc.table_11_sections(db, FIRM, CLIENT, period)
+
+
+def test_a_goods_client_gets_no_table_11_at_all(db):
+    """The default. Notification 66/2017 removed the charge on advances for
+    goods, so demanding a rate on every receipt would buy nothing."""
+    _client(db, applicable=False)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    out = _t11(db)
+    assert out == {"at": [], "txpd": [], "applicable": False}
+
+
+def test_a_services_client_declares_the_advance_in_11a(db):
+    _client(db, applicable=True)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000)          # Rs 1,180 incl. 18%
+    at = _t11(db)["at"]
+    assert len(at) == 1
+    assert at[0]["pos"] == "27" and at[0]["sply_ty"] == "INTRA"
+    itm = at[0]["itms"][0]
+    assert itm["rt"] == 18.0
+    # The receipt is money the customer paid, so it INCLUDES the tax. ad_amt is
+    # the taxable value backed out of it: 1,180 -> 1,000 + 90 + 90.
+    assert itm["ad_amt"] == 1000.0
+    assert itm["camt"] == 90.0 and itm["samt"] == 90.0
+    assert "iamt" not in itm
+
+
+def test_an_inter_state_advance_carries_the_whole_rate_as_igst(db):
+    _client(db, applicable=True)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000, pos="29", interstate=True)
+    itm = _t11(db)["at"][0]["itms"][0]
+    assert itm["ad_amt"] == 1000.0 and itm["iamt"] == 180.0
+    assert "camt" not in itm and "samt" not in itm
+
+
+def test_an_advance_with_no_rate_is_left_out_of_11a(db):
+    """It is still listed by advances_report — visible, not silently dropped —
+    but a guessed rate is a guessed liability."""
+    _client(db, applicable=True)
+    db.seed("receipts", {
+        "firm_id": FIRM, "client_id": CLIENT, "customer_id": "CUST",
+        "receipt_no": "RCT-1", "receipt_date": "2025-06-10",
+        "amount_paise": 1_18_000, "allocated_paise": 0,
+        "unallocated_paise": 1_18_000, "gst_rate_bps": None,
+        "place_of_supply": None, "is_interstate": None})
+    assert _t11(db)["at"] == []
+    assert _run(db)["count"] == 1
+
+
+def test_an_advance_invoiced_in_the_same_period_reaches_neither_table(db):
+    """Its tax was never declared in an 11A, so there is nothing to adjust."""
+    _client(db, applicable=True)
+    r = _adv(db, "RCT-1", "2025-06-05", 1_18_000)
+    _allocate(db, r, 1_18_000, "2025-06-20T00:00:00Z")
+    out = _t11(db)
+    assert out["at"] == [] and out["txpd"] == []
+
+
+def test_an_earlier_advance_adjusted_now_is_declared_in_11b(db):
+    _client(db, applicable=True)
+    r = _adv(db, "RCT-1", "2025-05-20", 1_18_000)
+    _allocate(db, r, 1_18_000, "2025-06-15T00:00:00Z")
+    out = _t11(db)
+    assert out["at"] == [], "it was received in May, not June"
+    assert len(out["txpd"]) == 1
+    assert out["txpd"][0]["itms"][0]["ad_amt"] == 1000.0
+
+
+def test_11a_asks_what_was_outstanding_at_the_PERIOD_END(db):
+    """Not what is outstanding today. Reading unallocated_paise would answer a
+    June question with today's facts and change a filed period every time an
+    old advance is finally settled."""
+    _client(db, applicable=True)
+    r = _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    _allocate(db, r, 1_18_000, "2025-09-01T00:00:00Z")   # settled much later
+    assert _t11(db)["at"][0]["itms"][0]["ad_amt"] == 1000.0, (
+        "a September allocation changed what June declared")
+
+
+def test_a_partly_adjusted_advance_declares_only_the_balance(db):
+    _client(db, applicable=True)
+    r = _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    _allocate(db, r, 59_000, "2025-06-25T00:00:00Z")
+    assert _t11(db)["at"][0]["itms"][0]["ad_amt"] == 500.0
+
+
+def test_advances_at_different_rates_are_separate_items(db):
+    _client(db, applicable=True)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000, rate=1800)
+    _adv(db, "RCT-2", "2025-06-11", 1_05_000, rate=500)
+    itms = _t11(db)["at"][0]["itms"]
+    assert sorted(i["rt"] for i in itms) == [5.0, 18.0]
+
+
+def test_advances_to_different_states_are_separate_rows(db):
+    _client(db, applicable=True)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000, pos="27")
+    _adv(db, "RCT-2", "2025-06-11", 1_18_000, pos="29", interstate=True)
+    at = _t11(db)["at"]
+    assert {r["pos"] for r in at} == {"27", "29"}
+    assert {r["sply_ty"] for r in at} == {"INTRA", "INTER"}
+
+
+def test_the_split_is_exact_so_the_declaration_reconciles(db):
+    """taxable + tax must equal the advance the customer actually paid — an
+    awkward amount is where a naive percentage would leave a rounding hole."""
+    _client(db, applicable=True)
+    _adv(db, "RCT-1", "2025-06-10", 1_00_001)
+    itm = _t11(db)["at"][0]["itms"][0]
+    assert round(itm["ad_amt"] + itm["camt"] + itm["samt"], 2) == 1000.01
+
+
+# ── and it has to reach the payload, not just the service ────────────────────
+
+def test_table_11_reaches_the_gstr1_payload(db):
+    """Every test above calls table_11_sections() directly, which proves the
+    SERVICE computes and says nothing about whether gstr1_from_books merges it.
+    Three times in this run of work a negative control passed because the tests
+    sat one layer below the thing that was broken."""
+    _client(db, applicable=True)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    db.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
+                          "name": "Acme", "gstin": None, "state_code": "27",
+                          "is_active": True})
+
+    payload = grs.gstr1_from_books(db, FIRM, CLIENT, PERIOD,
+                                   "27AAAAA0000A1Z5")["payload"]
+    assert "at" in payload, (
+        "Table 11A was computed and never merged into the file the CA uploads")
+    assert payload["at"][0]["itms"][0]["ad_amt"] == 1000.0
+
+
+def test_a_goods_client_gets_no_at_section_in_the_payload(db):
+    """Omitted, not sent empty: the GSTN tool writes a section only when it has
+    something to declare."""
+    _client(db, applicable=False)
+    _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    db.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
+                          "name": "Acme", "gstin": None, "state_code": "27",
+                          "is_active": True})
+
+    payload = grs.gstr1_from_books(db, FIRM, CLIENT, PERIOD,
+                                   "27AAAAA0000A1Z5")["payload"]
+    assert "at" not in payload and "txpd" not in payload
