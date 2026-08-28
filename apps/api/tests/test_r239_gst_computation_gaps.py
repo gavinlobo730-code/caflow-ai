@@ -105,9 +105,23 @@ def test_gstr3b_payload_populates_itc_inelg():
     ]
     result = compute_gstr3b([], purchases, [])
     payload = result.as_gstn_payload("27AAAAA0000A1Z5", "062026")
-    inelg = payload["itc_elg"]["itc_inelg"][0]
-    assert inelg["camt"] == 4500.0
-    assert inelg["samt"] == 4500.0
+
+    # §17(5) MOVED. This asserted itc_inelg == 4500, which was the layout the
+    # portal used until August 2022. Notification 14/2022-Central Tax and
+    # Circular 170/02/2022-GST put blocked credit in Table 4(B)(1) instead, and
+    # the circular is explicit that once it is shown there it is not repeated
+    # in 4(D). 4(D) is now §16(4) and place-of-supply ineligibility, neither of
+    # which this fixture has.
+    assert payload["itc_elg"]["itc_inelg"][0]["camt"] == 0
+    rev_rul = payload["itc_elg"]["itc_rev"][0]
+    assert rev_rul["ty"] == "RUL"
+    assert rev_rul["camt"] == 4500.0
+    assert rev_rul["samt"] == 4500.0
+
+    # 4(A) carries it too, so the return ties to the auto-populated 2B, and
+    # 4(C) nets it straight back out. The tax payable is what it always was.
+    assert payload["itc_elg"]["itc_avl"][0]["camt"] == 4500.0
+    assert payload["itc_elg"]["itc_net"]["camt"] == 0.0
 
 
 def test_compute_gstr3b_all_eligible_unaffected_by_ineligible_fields():
@@ -208,8 +222,17 @@ def test_gstr3b_from_books_excludes_ineligible_itc(monkeypatch):
     monkeypatch.setattr(svc, "_gl_gst_movements", lambda *a, **k: {"output_paise": 0, "itc_paise": 0, "by_head": {}})
     result = svc.gstr3b_from_books(db, FIRM, "CLI", "062026", "27AAAAA0000A1Z5")
     payload = result["payload"]
-    assert payload["itc_elg"]["itc_avl"][0]["camt"] == 9000.0   # 13,50,000 - 4,50,000 = 9,00,000 paise = 9000 rupees
-    assert payload["itc_elg"]["itc_inelg"][0]["camt"] == 4500.0
+    # 4(A) is ALL credit availed — 13,50,000 paise = Rs 13,500 — not the figure
+    # net of §17(5). It asserted 9000 here, which was the pre-August-2022
+    # layout; understating 4(A) is what fails to tie to the portal's
+    # auto-populated GSTR-2B.
+    assert payload["itc_elg"]["itc_avl"][0]["camt"] == 13500.0
+    # The blocked credit is reversed in 4(B)(1), not repeated in 4(D).
+    assert payload["itc_elg"]["itc_rev"][0]["camt"] == 4500.0
+    assert payload["itc_elg"]["itc_inelg"][0]["camt"] == 0
+    # And 4(C) is the same 9000 the old 4(A) reported: what changed is where the
+    # numbers sit, not the credit the client ends up with.
+    assert payload["itc_elg"]["itc_net"]["camt"] == 9000.0
 
 
 # =============================================================================
