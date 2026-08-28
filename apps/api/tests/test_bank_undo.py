@@ -126,7 +126,7 @@ def _txn(db, *, credit=0, debit=0, category=None, matched_type=None, matched_id=
     return row
 
 
-def _invoice(db, *, total, paid=0, status="unpaid", iid="inv-1"):
+def _invoice(db, *, total, paid=0, status="issued", iid="inv-1"):
     row = {"id": iid, "firm_id": FIRM, "client_id": CLIENT, "invoice_no": "INV-1",
            "total_paise": total, "paid_paise": paid, "credited_paise": 0,
            "debit_note_paise": 0, "status": status, "customer_id": "cust-1"}
@@ -243,7 +243,14 @@ def test_a_settled_invoice_is_unsettled():
     assert (inv["paid_paise"], inv["status"]) == (118000, "paid")
 
     out = svc.undo(db, FIRM, "t1", actor_id="u1")
-    assert (inv["paid_paise"], inv["status"]) == (0, "unpaid")
+    # "issued", NOT "unpaid". This test asserted "unpaid" and passed for
+    # months, because the FakeDB below has no CHECK constraints and stores any
+    # string it is handed. The real column does not:
+    #     client_sales_invoices.status  draft|issued|partially_paid|paid|cancelled
+    # so in production this UPDATE raised and the undo came back as a 500 —
+    # every time a bank line that settled a document was undone. The test was
+    # not merely silent about the bug; it encoded it.
+    assert (inv["paid_paise"], inv["status"]) == (0, "issued")
     assert out["unsettled"]["reversed_paise"] == 118000
 
 
@@ -274,7 +281,7 @@ def test_unsettling_never_drives_paid_negative():
     db.store["client_sales_invoices"][0]["paid_paise"] = 20000   # a correction landed
     svc.undo(db, FIRM, "t1", actor_id="u1")
     inv = db.store["client_sales_invoices"][0]
-    assert inv["paid_paise"] == 0 and inv["status"] == "unpaid"
+    assert inv["paid_paise"] == 0 and inv["status"] == "issued"
 
 
 def test_an_unmatched_posting_touches_no_document():
@@ -429,3 +436,69 @@ def test_a_receipt_backed_settlement_is_refused_not_half_undone():
     with pytest.raises(HTTPException) as e:
         svc.undo(db, FIRM, "t1", actor_id="u1")
     assert e.value.status_code == 422 and "receipt" in e.value.detail
+
+
+# ── a half-finished undo is resumable, not double-reversing ──────────────────
+
+def test_a_second_undo_reuses_the_reversal_the_first_one_already_wrote():
+    """THE STATE A FAILED UNDO LEAVES BEHIND.
+
+    Undo is several writes and is not atomic: the reversal lands first, and
+    anything failing after it — as _unsettle did for months, writing a status
+    no table accepts — leaves a balanced reversal on the books with the bank
+    line still reading "posted". Five documents on a live firm sat like that.
+
+    Pressing Undo again is how a CA gets out of it, so that press must FINISH
+    the job, not start it over. Reversing the same journal twice would swing the
+    ledger the wrong way by the full amount, and the (client, reference_no,
+    entry_date) dedupe in _create_journal cannot stop it because a reversal's
+    reference_no is REV-<random>.
+    """
+    db = _db()
+    inv = _invoice(db, total=118000, paid=0)
+    _txn(db, credit=118000, category="Customer Payment",
+         matched_type="sales_invoice", matched_id=inv["id"])
+    je = svc.post(db, FIRM, "t1", actor_id="u1")["posted_journal_id"]
+
+    # Simulate the interrupted undo: the reversal is written, everything after
+    # it never ran — the row is still posted and the invoice still shows paid.
+    first = svc._reverse_for_test if hasattr(svc, "_reverse_for_test") else None
+    import services.phase2_journal_service as p2
+    orphan = p2.phase2_journal_service.reverse_entry(
+        db, FIRM, je, "2026-06-10", narration="interrupted undo", created_by="u1")
+    reversals_before = [e for e in db.store["journal_entries"] if e.get("reversal_of") == je]
+    assert len(reversals_before) == 1 and orphan == reversals_before[0]["id"]
+
+    out = svc.undo(db, FIRM, "t1", actor_id="u1")
+
+    # NO second reversal — the existing one is adopted.
+    reversals_after = [e for e in db.store["journal_entries"] if e.get("reversal_of") == je]
+    assert len(reversals_after) == 1, (
+        f"undo wrote a second reversal of the same journal ({len(reversals_after)} "
+        "now exist) — the ledger has moved twice for one correction")
+    assert out["reversal_journal_id"] == orphan
+
+    # And the rest of the undo still completed: the document gave the money
+    # back and the line is out of the posted state.
+    assert (inv["paid_paise"], inv["status"]) == (0, "issued")
+    txn = db.store["bank_transactions"][0]
+    assert txn["match_status"] == "matched" and txn["posted_journal_id"] is None
+
+
+def test_a_fresh_posting_is_still_reversed_normally():
+    """The guard must not swallow a legitimate reversal. A re-POST creates a
+    NEW journal, so the second undo has nothing of its own to adopt."""
+    db = _db()
+    _txn(db, debit=50000, category="Expense", account_id="acc-exp")
+    je1 = svc.post(db, FIRM, "t1", actor_id="u1")["posted_journal_id"]
+    svc.undo(db, FIRM, "t1", actor_id="u1")
+
+    db.store["bank_transactions"][0].update({"category": "Expense", "account_id": "acc-exp"})
+    je2 = svc.post(db, FIRM, "t1", actor_id="u1")["posted_journal_id"]
+    assert je2 != je1, "the re-post must create its own journal"
+    out = svc.undo(db, FIRM, "t1", actor_id="u1")
+
+    assert out["reversal_journal_id"] not in (None, "")
+    revs2 = [e for e in db.store["journal_entries"] if e.get("reversal_of") == je2]
+    assert len(revs2) == 1, "the second posting must get a reversal of its own"
+    assert out["reversal_journal_id"] == revs2[0]["id"]
