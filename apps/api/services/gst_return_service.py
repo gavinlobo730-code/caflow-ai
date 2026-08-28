@@ -21,7 +21,7 @@ import calendar
 from datetime import date
 
 from domain.gst.gstr3b_computer import (
-    SalesTransaction, PurchaseTransaction, compute_gstr3b,
+    SalesTransaction, PurchaseTransaction, ITCReversal, compute_gstr3b,
 )
 from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
@@ -180,11 +180,60 @@ def _issued_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("credit_note_date", start).lte("credit_note_date", end))
 
 
+def _bills_cancelled_in(db, firm_id, client_id, start, end) -> list[dict]:
+    """Bills CANCELLED during the period, whatever period they were raised in.
+
+    Credit taken on a purchase that is later cancelled has to be given back, in
+    the period the cancellation happens — and that is very often not the period
+    the bill belongs to. Apex cancelled four February bills on 17 July 2026:
+    the ledger reversed Rs 88,141.67 of ITC that month, and the return, which
+    reads documents DATED in the month, saw nothing at all. It is the books-vs-
+    ledger reconciliation that surfaced the difference.
+
+    Keyed on cancelled_at, not bill_date, for exactly that reason.
+
+    A bill RAISED and cancelled inside the same period is excluded, and that is
+    not a detail. _posted_bills selects status in ('received','partially_paid',
+    'paid'), so a cancelled bill is already absent from Table 4(A). Reversing in
+    4(B) a credit that 4(A) never claimed would understate 4(C) by the tax and
+    make the books-vs-ledger comparator disagree with a ledger that is correct —
+    the cancellation reversal nets the original posting to zero inside the same
+    month. Only credit availed in an EARLIER period is given back here.
+    """
+    rows = _paginate_all(lambda: db.table("purchase_bills").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "cancelled")
+            .gte("cancelled_at", start).lte("cancelled_at", f"{end}T23:59:59.999999+00:00"))
+    return [b for b in rows if str(b.get("bill_date") or "")[:10] < start]
+
+
 def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("purchase_bills").select("*")
+    """Bills whose credit was availed in this period — as at the END of it.
+
+    The status filter alone answers "is this bill live TODAY", and for a return
+    that is the wrong question. A June bill cancelled in July was live for the
+    whole of June: the June return claimed its ITC, the June GL still carries
+    the debit, and the reversal belongs to July (see _bills_cancelled_in). With
+    the status filter alone, re-opening June after the cancellation drops the
+    bill from Table 4(A) while the ledger keeps it, and the reconciliation
+    reports a difference in a month where nothing is actually wrong — the same
+    Rs 88,141.67 of Apex's July gap, showing up a second time in February.
+
+    A cancelled bill with no cancelled_at cannot be placed in time, so it stays
+    excluded: that is the behaviour every existing return was computed under.
+    """
+    live = _paginate_all(lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
             .gte("bill_date", start).lte("bill_date", end))
+    cancelled_later = [
+        b for b in _paginate_all(lambda: db.table("purchase_bills").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "cancelled")
+            .gte("bill_date", start).lte("bill_date", end))
+        if str(b.get("cancelled_at") or "")[:10] > end
+    ]
+    return live + cancelled_later
 
 
 def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
@@ -412,7 +461,28 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
         ))
 
-    result = compute_gstr3b(sales, purchases, [])
+    # ── Table 4(B): credit given back in this period ────────────────────────
+    # From the DOCUMENTS, never from the GL. The books-vs-ledger reconciliation
+    # below is only worth reading while the two sides are derived
+    # independently; sourcing 4(B) from the movement on gst_input would make it
+    # compare the ledger with itself and agree by construction.
+    #
+    # A cancelled purchase is a PERMANENT reversal — the credit is not coming
+    # back — so it belongs in 4(B)(1) with the Rule 38/42/43 and §17(5) amounts,
+    # not in 4(B)(2), which tells the portal to expect a reclaim.
+    reversals = [
+        ITCReversal(
+            igst_paise=int(b.get("igst_paise") or 0),
+            cgst_paise=int(b.get("cgst_paise") or 0),
+            sgst_paise=int(b.get("sgst_paise") or 0),
+            cess_paise=int(b.get("cess_paise") or 0),
+            reclaimable=False,
+            reason=f"purchase bill {b.get('bill_no') or b.get('id')} cancelled",
+        )
+        for b in _bills_cancelled_in(db, firm_id, client_id, start, end)
+    ]
+
+    result = compute_gstr3b(sales, purchases, [], reversals)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -424,7 +494,20 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     books_rcm = result.rcm_cgst + result.rcm_sgst + result.rcm_igst
     books_output = (result.outward_taxable_cgst + result.outward_taxable_sgst
                     + result.outward_taxable_igst + books_rcm)
-    books_itc = result.itc_book_cgst + result.itc_book_sgst + result.itc_book_igst
+    # The ledger's gst_input movement is NET of reversals — cancelling a bill
+    # credits the account — so the books comparator has to net them too. It did
+    # not, and that was the whole of the Rs 88,141.67 the July 2026 reconciliation
+    # reported for Apex: four February bills cancelled on 17 July.
+    #
+    # PERMANENT REVERSALS ONLY. 4(B)(2) carries Rule 37 / §16(2) amounts, and
+    # itc_reversal_service deliberately posts no journal for those — it reports
+    # them for the CA to act on. Netting an unposted reversal here would create
+    # the mismatch it is meant to detect. Anything fed as non-reclaimable must
+    # therefore be something the books have actually posted.
+    books_reversed = (result.itc_rev_perm_cgst + result.itc_rev_perm_sgst
+                      + result.itc_rev_perm_igst)
+    books_itc = (result.itc_book_cgst + result.itc_book_sgst + result.itc_book_igst
+                 - books_reversed)
     output_matched = books_output == gl["output_paise"]
     itc_matched = books_itc == gl["itc_paise"]
 
@@ -457,6 +540,33 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 "cgst_paise": result.itc_book_cgst,
                 "sgst_paise": result.itc_book_sgst,
                 "igst_paise": result.itc_book_igst,
+            },
+            # Table 4 as the portal lays it out since Notification 14/2022 read
+            # with Circular 170/02/2022-GST. The payload above carries the same
+            # figures in whole rupees; these are the paise a CA reconciles with,
+            # and the reasons are what lets them answer "why is 4(B) this much".
+            "itc_reversal": {
+                "permanent_paise": {          # 4(B)(1) — Rules 38/42/43, §17(5)
+                    "cgst_paise": result.itc_ineligible_cgst + result.itc_rev_perm_cgst,
+                    "sgst_paise": result.itc_ineligible_sgst + result.itc_rev_perm_sgst,
+                    "igst_paise": result.itc_ineligible_igst + result.itc_rev_perm_igst,
+                    "cess_paise": result.itc_ineligible_cess + result.itc_rev_perm_cess,
+                },
+                "reclaimable_paise": {        # 4(B)(2) — Rule 37/37A, §16(2)(b)/(c)
+                    "cgst_paise": result.itc_rev_temp_cgst,
+                    "sgst_paise": result.itc_rev_temp_sgst,
+                    "igst_paise": result.itc_rev_temp_igst,
+                    "cess_paise": result.itc_rev_temp_cess,
+                },
+                "reasons": [
+                    {"reason": rv.reason,
+                     "reclaimable": rv.reclaimable,
+                     "cgst_paise": rv.cgst_paise,
+                     "sgst_paise": rv.sgst_paise,
+                     "igst_paise": rv.igst_paise,
+                     "cess_paise": rv.cess_paise}
+                    for rv in reversals
+                ],
             },
         },
         "reconciliation": {

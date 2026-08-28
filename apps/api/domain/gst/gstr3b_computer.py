@@ -60,6 +60,34 @@ class GSTR2ARecord:
 
 
 @dataclass
+class ITCReversal:
+    """Credit already taken that is being given back in this period.
+
+    `reclaimable` is the whole classification, and it is the one GSTR-3B asks
+    for (Notification 14/2022, Circular 170/02/2022-GST, live on the portal for
+    periods from August 2022):
+
+      False -> Table 4(B)(1), permanent. Rules 38, 42 and 43, CGST Act §17(5),
+               and any other reversal that will never come back — a purchase
+               cancelled after its credit was taken, stock written off.
+      True  -> Table 4(B)(2), "Others". Reversals that MAY be reclaimed later:
+               Rule 37 / 37A (supplier unpaid past 180 days), §16(2)(b) and
+               §16(2)(c). When the condition is met the credit is taken again
+               through Table 4(A)(5), and 4(D)(1) reports the reclaim.
+
+    Getting the side wrong is not a rounding matter: 4(B)(2) tells the portal a
+    credit is coming back, and the electronic credit reversal and re-claimed
+    statement reconciles against it.
+    """
+    igst_paise: int = 0
+    cgst_paise: int = 0
+    sgst_paise: int = 0
+    cess_paise: int = 0
+    reclaimable: bool = False
+    reason: str = ""
+
+
+@dataclass
 class GSTR3BResult:
     """Computed GSTR-3B values — all amounts in paise."""
 
@@ -83,13 +111,34 @@ class GSTR3BResult:
     itc_sgst: int = 0
     itc_cess: int = 0
 
-    # Table 4(D)(1): ITC ineligible under CGST Act §17(5) (blocked credit) —
-    # excluded from itc_igst/cgst/sgst/cess above, and from the Rule 36(4) cap
-    # (ineligibility is a hard bar, applied before matching against 2A/2B).
+    # CGST Act §17(5) blocked credit. Excluded from itc_igst/cgst/sgst/cess
+    # above and from the Rule 36(4) cap (ineligibility is a hard bar, applied
+    # before matching against 2A/2B).
+    #
+    # WHERE IT IS REPORTED CHANGED. Until August 2022 this was Table 4(D)(1).
+    # Notification 14/2022 moved it into Table 4(B)(1) — it is a REVERSAL, and
+    # 4(A) now carries all ITC including it, so that 4(A) ties to the
+    # auto-populated GSTR-2B and 4(C) = 4(A) - 4(B) nets it back out. Reporting
+    # it in 4(D) understates 4(A) against the portal's own figure, which is
+    # precisely the mismatch that draws a notice.
     itc_ineligible_igst: int = 0
     itc_ineligible_cgst: int = 0
     itc_ineligible_sgst: int = 0
     itc_ineligible_cess: int = 0
+
+    # Table 4(B)(1) — permanent reversals OTHER than §17(5) (which is added to
+    # this line in the payload): Rules 38/42/43, a cancelled purchase, stock
+    # written off.
+    itc_rev_perm_igst: int = 0
+    itc_rev_perm_cgst: int = 0
+    itc_rev_perm_sgst: int = 0
+    itc_rev_perm_cess: int = 0
+
+    # Table 4(B)(2) — reclaimable reversals: Rule 37/37A, §16(2)(b)/(c).
+    itc_rev_temp_igst: int = 0
+    itc_rev_temp_cgst: int = 0
+    itc_rev_temp_sgst: int = 0
+    itc_rev_temp_cess: int = 0
 
     # ITC working — raw figures before Rule 36(4) cap
     itc_book_igst: int = 0
@@ -99,6 +148,63 @@ class GSTR3BResult:
     itc_2a_cgst: int = 0
     itc_2a_sgst: int = 0
     itc_capped_by_2a: bool = False   # True if Rule 36(4) cap was applied
+
+    # ── Table 4 derived views ────────────────────────────────────────────
+    # Kept as properties rather than stored fields so they can never drift from
+    # the parts they are made of.
+
+    @property
+    def itc_avail_igst(self) -> int:
+        """4(A): ALL credit availed, blocked credit included."""
+        return self.itc_igst + self.itc_ineligible_igst
+
+    @property
+    def itc_avail_cgst(self) -> int:
+        return self.itc_cgst + self.itc_ineligible_cgst
+
+    @property
+    def itc_avail_sgst(self) -> int:
+        return self.itc_sgst + self.itc_ineligible_sgst
+
+    @property
+    def itc_avail_cess(self) -> int:
+        return self.itc_cess + self.itc_ineligible_cess
+
+    @property
+    def itc_rev_total_igst(self) -> int:
+        """4(B) = 4(B)(1) + 4(B)(2), §17(5) included in the permanent half."""
+        return self.itc_ineligible_igst + self.itc_rev_perm_igst + self.itc_rev_temp_igst
+
+    @property
+    def itc_rev_total_cgst(self) -> int:
+        return self.itc_ineligible_cgst + self.itc_rev_perm_cgst + self.itc_rev_temp_cgst
+
+    @property
+    def itc_rev_total_sgst(self) -> int:
+        return self.itc_ineligible_sgst + self.itc_rev_perm_sgst + self.itc_rev_temp_sgst
+
+    @property
+    def itc_rev_total_cess(self) -> int:
+        return self.itc_ineligible_cess + self.itc_rev_perm_cess + self.itc_rev_temp_cess
+
+    @property
+    def itc_net_igst(self) -> int:
+        """4(C) = 4(A) - 4(B). Never negative: a reversal cannot exceed the
+        credit there was to reverse, and if the data says otherwise the return
+        must not carry a negative into the electronic credit ledger."""
+        return max(self.itc_avail_igst - self.itc_rev_total_igst, 0)
+
+    @property
+    def itc_net_cgst(self) -> int:
+        return max(self.itc_avail_cgst - self.itc_rev_total_cgst, 0)
+
+    @property
+    def itc_net_sgst(self) -> int:
+        return max(self.itc_avail_sgst - self.itc_rev_total_sgst, 0)
+
+    @property
+    def itc_net_cess(self) -> int:
+        return max(self.itc_avail_cess - self.itc_rev_total_cess, 0)
 
     # Table 6: Net tax payable
     net_igst: int = 0
@@ -154,34 +260,65 @@ class GSTR3BResult:
                 },
                 "osup_nongst": {"txval": 0},
             },
+            # ── Table 4, in the shape the portal has used since 01-09-2022 ──
+            # Notification 14/2022-Central Tax and Circular 170/02/2022-GST:
+            #
+            #   4(A)    ALL ITC availed, including credit that is then reversed.
+            #           Auto-populated from GSTR-2B on the portal, so a figure
+            #           that omits blocked credit does not tie to 2B.
+            #   4(B)(1) permanent reversals — Rules 38/42/43 and §17(5).
+            #   4(B)(2) reclaimable reversals — Rule 37/37A, §16(2)(b)/(c).
+            #   4(C)    net ITC available = 4(A) - 4(B).
+            #   4(D)(1) reclaims of amounts reversed earlier under 4(B)(2).
+            #   4(D)(2) ineligible under §16(4) and the place-of-supply rules.
+            #
+            # This used to file 4(A) NET of §17(5), an empty 4(B), and §17(5)
+            # under 4(D) — the pre-August-2022 layout. The tax payable came out
+            # the same, but the face of the return was wrong in two ways: 4(A)
+            # understated against 2B, and 4(B) said no credit had been reversed
+            # in a period when the books had reversed some.
             "itc_elg": {
                 "itc_avl": [
                     {
                         "ty": "ISRC",       # inputs, inputs services, capital goods combined
-                        "iamt": r(self.itc_igst),
-                        "camt": r(self.itc_cgst),
-                        "samt": r(self.itc_sgst),
-                        "csamt": r(self.itc_cess),
+                        "iamt": r(self.itc_avail_igst),
+                        "camt": r(self.itc_avail_cgst),
+                        "samt": r(self.itc_avail_sgst),
+                        "csamt": r(self.itc_avail_cess),
                     }
                 ],
-                "itc_rev": [],
-                "itc_net": {
-                    "iamt": r(self.itc_igst),
-                    "camt": r(self.itc_cgst),
-                    "samt": r(self.itc_sgst),
-                    "csamt": r(self.itc_cess),
-                },
-                # Table 4(D)(1) — CGST Act §17(5) blocked credit (see
-                # itc_ineligible_* above). "RUL" is the GSTN API type code for
-                # ITC ineligible under Rule 38/42/43 & Section 17(5).
-                "itc_inelg": [
+                "itc_rev": [
+                    # "RUL" is the GSTN type code for a reversal under the rules
+                    # — 4(B)(1). §17(5) rides here with them.
                     {
                         "ty": "RUL",
-                        "iamt": r(self.itc_ineligible_igst),
-                        "camt": r(self.itc_ineligible_cgst),
-                        "samt": r(self.itc_ineligible_sgst),
-                        "csamt": r(self.itc_ineligible_cess),
-                    }
+                        "iamt": r(self.itc_ineligible_igst + self.itc_rev_perm_igst),
+                        "camt": r(self.itc_ineligible_cgst + self.itc_rev_perm_cgst),
+                        "samt": r(self.itc_ineligible_sgst + self.itc_rev_perm_sgst),
+                        "csamt": r(self.itc_ineligible_cess + self.itc_rev_perm_cess),
+                    },
+                    # "OTH" — 4(B)(2), the reclaimable ones.
+                    {
+                        "ty": "OTH",
+                        "iamt": r(self.itc_rev_temp_igst),
+                        "camt": r(self.itc_rev_temp_cgst),
+                        "samt": r(self.itc_rev_temp_sgst),
+                        "csamt": r(self.itc_rev_temp_cess),
+                    },
+                ],
+                "itc_net": {
+                    "iamt": r(self.itc_net_igst),
+                    "camt": r(self.itc_net_cgst),
+                    "samt": r(self.itc_net_sgst),
+                    "csamt": r(self.itc_net_cess),
+                },
+                # Table 4(D)(2) — ineligible under §16(4) and the PoS rules.
+                # Zero because neither is tracked yet; §17(5) is NOT reported
+                # here any more (it moved to 4(B)(1) above), and the circular is
+                # explicit that once §17(5) is shown in 4(B) it is not to be
+                # repeated in 4(D).
+                "itc_inelg": [
+                    {"ty": "OTH", "iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
                 ],
             },
             "intr_ltfee": {
@@ -218,6 +355,7 @@ def compute_gstr3b(
     sales: Sequence[SalesTransaction],
     purchases: Sequence[PurchaseTransaction],
     gstr2a_records: Sequence[GSTR2ARecord],
+    reversals: Sequence[ITCReversal] = (),
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -296,6 +434,21 @@ def compute_gstr3b(
     result.itc_sgst = itc_sgst
     result.itc_cess = book_cess
     result.itc_capped_by_2a = capped_i or capped_c or capped_s
+
+    # ── Table 4(B): credit given back this period ────────────────────────────
+    # Split by whether it can ever come back, which is the only question the
+    # return asks: 4(B)(1) permanent, 4(B)(2) reclaimable. See ITCReversal.
+    for rv in reversals:
+        if rv.reclaimable:
+            result.itc_rev_temp_igst += rv.igst_paise
+            result.itc_rev_temp_cgst += rv.cgst_paise
+            result.itc_rev_temp_sgst += rv.sgst_paise
+            result.itc_rev_temp_cess += rv.cess_paise
+        else:
+            result.itc_rev_perm_igst += rv.igst_paise
+            result.itc_rev_perm_cgst += rv.cgst_paise
+            result.itc_rev_perm_sgst += rv.sgst_paise
+            result.itc_rev_perm_cess += rv.cess_paise
 
     # ── Table 6: Net tax payable ─────────────────────────────────────────────
     # CGST Act Section 49: IGST credit first against IGST, then CGST, then SGST
