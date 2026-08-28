@@ -196,3 +196,99 @@ def test_an_ordinary_month_is_unchanged(monkeypatch):
     assert out["reconciliation"]["itc"]["matched"] is True
     assert _rev(out)["RUL"]["camt"] == 0 and _rev(out)["OTH"]["camt"] == 0
     assert out["working"]["itc_reversal"]["reasons"] == []
+
+
+# ── Rule 36(4): the cap has to reach the return a CA actually files ──────────
+
+def _seed_2a(db, period, *, cgst=0, sgst=0, igst=0):
+    db.seed("gstr2a_records", {
+        "firm_id": FIRM, "client_id": "CLI", "return_period": period,
+        "supplier_gstin": "27CCCCC2222C1Z5", "invoice_number": "S-1",
+        "invoice_date": "2025-06-12", "taxable_value_paise": (cgst + sgst + igst) * 100 // 18,
+        "cgst_paise": cgst, "sgst_paise": sgst, "igst_paise": igst})
+
+
+def test_the_cap_fires_when_suppliers_filed_less_than_the_books_claim(monkeypatch):
+    """gstr3b_from_books passed [] for GSTR-2A, so CGST Rule 36(4) was live code
+    reachable only from an endpoint nothing calls. A client claiming credit no
+    supplier had filed was never told."""
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-06-12")      # ITC 45,000 + 45,000
+    _seed_2a(db, JUNE, cgst=30000, sgst=30000)           # suppliers filed less
+
+    out = _3b(db, JUNE)
+    assert out["working"]["rule_36_4"]["cap_applied"] is True
+    assert out["working"]["rule_36_4"]["gstr2a_record_count"] == 1
+    assert _avl(out)["camt"] == 30000 // 100, (
+        "credit was claimed above what suppliers filed")
+
+
+def test_a_client_who_has_uploaded_no_2a_is_not_capped_to_nil(monkeypatch):
+    """THE risk in wiring this up. A zero 2A total means 'nothing uploaded',
+    not 'suppliers filed nothing' — capping there would zero the whole return."""
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-06-12")
+
+    out = _3b(db, JUNE)
+    r36 = out["working"]["rule_36_4"]
+    assert r36["gstr2a_record_count"] == 0
+    assert r36["compared"] is False, (
+        "the response must distinguish 'no data' from 'books agree with 2A'")
+    assert r36["cap_applied"] is False
+    assert _avl(out)["camt"] == 45000 // 100
+
+
+def test_2a_from_another_period_does_not_cap_this_one(monkeypatch):
+    db = _setup(monkeypatch)
+    _receive_bill(db, "B-1", 5_00000, "2025-06-12")
+    _seed_2a(db, JULY, cgst=1000, sgst=1000)
+
+    out = _3b(db, JUNE)
+    assert out["working"]["rule_36_4"]["gstr2a_record_count"] == 0
+    assert _avl(out)["camt"] == 45000 // 100
+
+
+# ── Table 3.2 reaches the return from real invoices ──────────────────────────
+
+def _b2c_customer(db):
+    """A walk-in with no GSTIN — the only recipient class Table 3.2 can see."""
+    db.seed("customers", {"id": "CUST-B2C", "firm_id": FIRM, "client_id": "CLI",
+                          "name": "Walk-in", "gstin": None, "state_code": "29",
+                          "is_active": True, "opening_balance_paise": 0})
+
+
+def _issue(db, no, *, customer, taxable, igst=0, cgst=0, sgst=0,
+           interstate=True, pos="29", date="2025-06-10"):
+    inv = db.seed("client_sales_invoices", {
+        "firm_id": FIRM, "client_id": "CLI", "customer_id": customer,
+        "invoice_no": no, "invoice_date": date, "status": "draft",
+        "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
+        "igst_paise": igst, "total_paise": taxable + cgst + sgst + igst,
+        "paid_paise": 0, "credited_paise": 0, "is_interstate": interstate,
+        "supply_state_code": pos})
+    assert si.issue_invoice(inv["id"], CALLER)["success"] is True
+    return inv["id"]
+
+
+def test_an_unregistered_inter_state_sale_reaches_table_3_2(monkeypatch):
+    """The service has to derive the recipient class from the customer. A
+    domain-level test cannot see that wiring — it hands the class in."""
+    db = _setup(monkeypatch)
+    _b2c_customer(db)
+    _issue(db, "INV-B2C", customer="CUST-B2C", taxable=1_00000, igst=18000)
+
+    inter = _3b(db, JUNE)["payload"]["inter_sup"]
+    assert inter["unreg_details"] == [{"pos": "29", "txval": 1000, "iamt": 180}]
+
+
+def test_a_registered_buyer_stays_out_of_table_3_2(monkeypatch):
+    """VEND1 aside, the harness's CUST1 carries a GSTIN. If the service ignored
+    the customer and called everything unregistered, this would fail."""
+    db = _setup(monkeypatch)
+    db.seed("customers", {"id": "CUST-REG", "firm_id": FIRM, "client_id": "CLI",
+                          "name": "Acme", "gstin": "29BBBBB1111B1Z5",
+                          "state_code": "29", "is_active": True,
+                          "opening_balance_paise": 0})
+    _issue(db, "INV-B2B", customer="CUST-REG", taxable=1_00000, igst=18000)
+
+    assert _3b(db, JUNE)["payload"]["inter_sup"]["unreg_details"] == []

@@ -196,29 +196,88 @@ def test_a_period_that_cannot_be_parsed_keeps_the_block():
 # ── the top-level shape ──────────────────────────────────────────────────────
 
 def test_the_payload_carries_the_blocks_it_is_meant_to_and_no_others():
-    """NOT the same as "every block the utility writes" — it is not.
-
-    The utility also emits `inter_sup`, Table 3.2: of the supplies in 3.1(a),
-    the inter-state ones made to unregistered persons, composition taxable
-    persons and UIN holders, as unreg_details / comp_details / uin_details
-    keyed by place of supply (V5.8 VBA, sheet rows 87-125). This payload has
-    never produced it, and this change does not add it — outward invoices are
-    not yet classified by recipient registration status.
-
-    So the assertion below pins CURRENT behaviour, deliberately: adding a block
-    should be a decision someone makes on purpose, and this test failing is how
-    they notice. It is not evidence that 3.2 is unnecessary. It is a known gap,
-    and a return with inter-state B2C supplies is incomplete without it.
-    """
+    """Table 3.2 (`inter_sup`) is now produced; it was the one block this test
+    was written to record as MISSING. Everything the utility writes is here."""
     p = _payload()
     assert set(p) == {"gstin", "ret_period", "inward_sup", "sup_details",
-                      "eco_dtls", "itc_elg", "intr_ltfee"}, sorted(p)
-    assert "inter_sup" not in p, (
-        "Table 3.2 has appeared — good, but this test and its docstring were "
-        "written when it did not exist and both need revisiting")
+                      "inter_sup", "eco_dtls", "itc_elg", "intr_ltfee"}, sorted(p)
     assert set(p["sup_details"]) == {"osup_det", "osup_zero", "osup_nil_exmp",
                                      "isup_rev", "osup_nongst"}
     assert set(p["itc_elg"]) == {"itc_avl", "itc_rev", "itc_net", "itc_inelg"}
+    assert set(p["inter_sup"]) == {"unreg_details", "comp_details", "uin_details"}
+
+
+# ── Table 3.2 ────────────────────────────────────────────────────────────────
+
+def _b2c(taxable, igst, pos, *, recipient="unregistered", interstate=True,
+         note=False):
+    return SalesTransaction(
+        transaction_type="credit_note" if note else "invoice",
+        taxable_amount_paise=taxable, cgst_paise=0, sgst_paise=0,
+        igst_paise=igst, cess_paise=0, supply_type="taxable",
+        is_reverse_charge=False, is_interstate=interstate,
+        place_of_supply=pos, recipient_type=recipient)
+
+
+def test_inter_state_b2c_supplies_are_broken_down_by_place_of_supply():
+    p = _payload([_b2c(1_00000, 18000, "29"), _b2c(50000, 9000, "29"),
+                  _b2c(2_00000, 36000, "33")])
+    assert p["inter_sup"]["unreg_details"] == [
+        {"pos": "29", "txval": 1500, "iamt": 270},
+        {"pos": "33", "txval": 2000, "iamt": 360},
+    ]
+
+
+def test_table_3_2_is_a_breakdown_of_3_1_a_not_an_addition_to_it():
+    """"Of the supplies shown in 3.1(a)". If 3.2 exceeded 3.1(a) the portal
+    would reject the return outright."""
+    p = _payload([_b2c(1_00000, 18000, "29")])
+    assert p["sup_details"]["osup_det"]["txval"] == 1000
+    assert sum(r["txval"] for r in p["inter_sup"]["unreg_details"]) <= \
+        p["sup_details"]["osup_det"]["txval"]
+
+
+def test_a_credit_note_reduces_the_3_2_line_it_relates_to():
+    p = _payload([_b2c(1_00000, 18000, "29"), _b2c(40000, 7200, "29", note=True)])
+    assert p["inter_sup"]["unreg_details"] == [
+        {"pos": "29", "txval": 600, "iamt": 108}]
+
+
+def test_a_place_of_supply_that_nets_to_nothing_is_dropped():
+    """Declaring a nil inter-state supply to a state the client did not supply
+    is noise on the face of the return."""
+    p = _payload([_b2c(1_00000, 18000, "29"), _b2c(1_00000, 18000, "29", note=True)])
+    assert p["inter_sup"]["unreg_details"] == []
+
+
+def test_a_registered_recipient_is_not_reported_in_3_2():
+    p = _payload([_b2c(1_00000, 18000, "29", recipient="registered")])
+    assert p["inter_sup"]["unreg_details"] == []
+
+
+def test_an_intra_state_b2c_supply_is_not_reported_in_3_2():
+    """3.2 is inter-state only."""
+    p = _payload([_b2c(1_00000, 0, "27", interstate=False)])
+    assert p["inter_sup"]["unreg_details"] == []
+
+
+def test_composition_and_uin_are_emitted_empty_rather_than_guessed():
+    """Both hold a registration number, so this platform's data cannot tell
+    them from any other registered recipient. Empty is the accurate claim."""
+    p = _payload([_b2c(1_00000, 18000, "29")])
+    assert p["inter_sup"]["comp_details"] == []
+    assert p["inter_sup"]["uin_details"] == []
+
+
+def test_the_three_classes_stay_separate():
+    """Guard: if recipient_type were ignored, everything would land in one
+    bucket and the assertions above would pass for the wrong reason."""
+    p = _payload([_b2c(1_00000, 18000, "29"),
+                  _b2c(2_00000, 36000, "29", recipient="composition"),
+                  _b2c(3_00000, 54000, "29", recipient="uin")])
+    assert p["inter_sup"]["unreg_details"] == [{"pos": "29", "txval": 1000, "iamt": 180}]
+    assert p["inter_sup"]["comp_details"] == [{"pos": "29", "txval": 2000, "iamt": 360}]
+    assert p["inter_sup"]["uin_details"] == [{"pos": "29", "txval": 3000, "iamt": 540}]
 
 
 def test_every_amount_in_the_payload_is_a_whole_rupee_integer():
