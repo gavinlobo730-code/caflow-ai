@@ -375,8 +375,13 @@ def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
     _apply_rule_36_4_cap treats a zero 2A total as "no data" and leaves book
     ITC alone rather than capping the whole return to nil.
     """
+    # `id` is selected because it is NOT decoration: _paginate_all keysets on
+    # it and reads rows[-1]["id"] to advance. Omitting it works right up to the
+    # 1000th row and then raises KeyError — so the failure appears only on a
+    # client with a busy month, which is the one whose return most needs the
+    # rows this function is fetching.
     return _paginate_all(lambda: db.table("gstr2a_records")
-            .select("taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
+            .select("id, taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("return_period", period))
 

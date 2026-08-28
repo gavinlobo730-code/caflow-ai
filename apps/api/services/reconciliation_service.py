@@ -40,7 +40,14 @@ _PAGE = 1000
 def _paginate_all(make_query, key: str = "id") -> list[dict]:
     """Keyset-paginate a Supabase query to completion — an un-paged .execute()
     silently caps at PostgREST's ~1000-row default limit (the same class of
-    bug documented in services/tds_return_service.py's own copy of this)."""
+    bug documented in services/tds_return_service.py's own copy of this).
+
+    EVERY CALLER MUST SELECT `key`. Line for line below, the cursor advances by
+    rows[-1][key] — so a select that omits it works perfectly up to the 1000th
+    row and then raises KeyError. The failure therefore appears only on a
+    client busy enough to need the second page, which is the client whose
+    numbers most need to be right. tests/test_paginated_selects_carry_their_key.py
+    checks every call site."""
     out: list[dict] = []
     cursor = None
     while True:
@@ -131,7 +138,7 @@ def check_missing_cogs_journals(db, firm_id: str, client_id: str, entries) -> li
     correctly recorded 5 invoices' goods leaving, but their COGS journal
     silently never posted."""
     ledger_rows = _paginate_all(lambda: (
-        db.table("inventory_stock_ledger").select("source_id, value_delta_paise")
+        db.table("inventory_stock_ledger").select("id, source_id, value_delta_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .eq("source_type", "sales_invoice").eq("movement_type", "sale")
     ))
@@ -180,7 +187,7 @@ def check_missing_inventory_receipt_journals(db, firm_id: str, client_id: str, e
     from services.phase2_journal_service import purchase_bill_journal_ref
 
     ledger_rows = _paginate_all(lambda: (
-        db.table("inventory_stock_ledger").select("source_id, value_delta_paise")
+        db.table("inventory_stock_ledger").select("id, source_id, value_delta_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .eq("source_type", "purchase_bill").eq("movement_type", "purchase")
     ))
@@ -240,7 +247,7 @@ def check_inventory_cache_drift(db, firm_id: str, client_id: str, entries) -> li
     ledger_rows = _paginate_all(
         lambda: (
             db.table("inventory_stock_ledger")
-            .select("service_catalogue_id, running_qty_units, running_avg_cost_paise, created_at")
+            .select("id, service_catalogue_id, running_qty_units, running_avg_cost_paise, created_at")
             .eq("firm_id", firm_id).eq("client_id", client_id)
         ),
         key="id",
@@ -292,7 +299,7 @@ def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
 
     invoices = _paginate_all(lambda: (
         db.table("client_sales_invoices")
-        .select("total_paise, paid_paise, credited_paise, debit_note_paise")
+        .select("id, total_paise, paid_paise, credited_paise, debit_note_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "issued")
     ))
     subledger_paise = sum(
@@ -320,7 +327,7 @@ def check_ap_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
 
     bills = _paginate_all(lambda: (
         db.table("purchase_bills")
-        .select("net_payable_paise, paid_paise, debited_paise, credit_note_paise")
+        .select("id, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .in_("status", ["received", "partially_paid", "paid"])
     ))
