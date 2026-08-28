@@ -457,13 +457,19 @@ export default function GSTR1Page() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F8FAFC]">
-                        {b2cs.map((row, i) => (
+                        {b2cs.map((row, i) => {
+                          // "sply_ty" is the GSTN key. "sply_tp" was this
+                          // codebase's misspelling, and a GSTR-1 saved before
+                          // the fix still carries it — so a stored return
+                          // renders instead of showing a blank chip.
+                          const supplyType = (row.sply_ty ?? row.sply_tp) as string | undefined;
+                          return (
                           <tr key={i} className="hover:bg-[#F8FAFC]">
                             <td className="px-4 py-2.5">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                row.sply_tp === "INTER" ? "bg-blue-100 text-blue-700" : "bg-[#F1F5F9] text-[#475569]"
+                                supplyType === "INTER" ? "bg-blue-100 text-blue-700" : "bg-[#F1F5F9] text-[#475569]"
                               }`}>
-                                {row.sply_tp as string}
+                                {supplyType ?? "—"}
                               </span>
                             </td>
                             <td className="px-4 py-2.5 text-sm text-[#475569]">{row.rt as number}%</td>
@@ -473,7 +479,8 @@ export default function GSTR1Page() {
                             <td className="px-4 py-2.5 text-right font-mono text-sm">{r(row.camt as number)}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-sm">{r(row.samt as number)}</td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}

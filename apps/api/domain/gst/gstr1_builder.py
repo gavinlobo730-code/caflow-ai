@@ -295,10 +295,10 @@ def _infer_rate(inv: InvoiceForGSTR1) -> float:
 def _build_b2cs(invoices: list[InvoiceForGSTR1]) -> list[dict]:
     """Build B2CS table grouped by rate, place of supply, AND supply type (INTER/INTRA).
 
-    GSTN format: [{sply_tp, rt, pos, txval, iamt, camt, samt, csamt}]
+    GSTN format: [{sply_ty, typ, rt, pos, txval, iamt, camt, samt, csamt}]
     B2CS = unregistered buyer, intra-state OR inter-state ≤₹2.5L.
 
-    GSTN spec requires separate rows when sply_tp differs, even at identical rate+POS.
+    GSTN spec requires separate rows when sply_ty differs, even at identical rate+POS.
     Key includes is_interstate so INTER and INTRA are never merged.
     """
     # Key: (rate, place_of_supply, is_interstate) — all three determine a distinct GSTN row
@@ -316,9 +316,20 @@ def _build_b2cs(invoices: list[InvoiceForGSTR1]) -> list[dict]:
 
     return [
         {
-            # sply_tp comes directly from the grouping key — no representative-invoice lookup
-            "sply_tp": "INTER" if is_interstate else "INTRA",
+            # "sply_ty", not "sply_tp". Read out of the GSTN Returns Offline
+            # Tool V3.2.4 (app/utility/returnStructure.js, case 'b2cs'), which
+            # is the generator a taxpayer filing by hand uploads through. The
+            # nil table in this same file has always used sply_ty; b2cs used a
+            # spelling that appears nowhere in the schema.
+            # Comes from the grouping key — no representative-invoice lookup.
+            "sply_ty": "INTER" if is_interstate else "INTRA",
             "rt": rate,
+            # E-commerce indicator. The tool offers exactly one value, "OE" —
+            # Other Than E-COMMERCE — because supplies through an operator
+            # moved to their own table (supeco). Nothing here is marked as made
+            # through an operator, so OE is the accurate answer, not a
+            # placeholder. The field was absent entirely.
+            "typ": "OE",
             "pos": pos,
             "txval": _paise_to_rupees(totals["txval"]),
             "iamt": _paise_to_rupees(totals["iamt"]),
@@ -597,8 +608,36 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
 
 # ── Table 13: Documents Issued Summary ───────────────────────────────────────
 
+# Table 13's twelve document natures, in the order GSTN fixes them. doc_num is
+# this list's 1-based POSITION — `docDetails.indexOf(nature) + 1` in the
+# Returns Offline Tool V3.2.4 (app/utility/returnStructure.js, case
+# 'doc_issue') — not a running count of the rows being filed.
+_DOC_NATURES = (
+    "Invoices for outward supply",                                    # 1
+    "Invoices for inward supply from unregistered person",            # 2
+    "Revised Invoice",                                                # 3
+    "Debit Note",                                                     # 4
+    "Credit Note",                                                    # 5
+    "Receipt Voucher",                                                # 6
+    "Payment Voucher",                                                # 7
+    "Refund Voucher",                                                 # 8
+    "Delivery Challan for job work",                                  # 9
+    "Delivery Challan for supply on approval",                        # 10
+    "Delivery Challan in case of liquid gas",                         # 11
+    "Delivery Challan in case other than by way of supply "
+    "(excluding at S no. 9 to 11)",                                   # 12
+)
+
+
 def _build_doc_summary(invoices: Sequence[InvoiceForGSTR1]) -> list[dict]:
-    """Count documents issued by type for Table 13."""
+    """Count documents issued by type for Table 13.
+
+    doc_num used to be enumerate(..., start=1) over the natures that had a
+    non-zero count. That is a different number from the one the form asks for
+    and it moves with the data: a period with only credit notes filed them as
+    doc_num 1, "Invoices for outward supply". Even a full period had Credit
+    Note as 2 and Debit Note as 3, where the form fixes them at 5 and 4.
+    """
     counts: dict[str, int] = {
         "Invoices for outward supply": 0,
         "Credit Note": 0,
@@ -613,12 +652,13 @@ def _build_doc_summary(invoices: Sequence[InvoiceForGSTR1]) -> list[dict]:
             counts["Debit Note"] += 1
 
     result = []
-    for idx, (doc_type, count) in enumerate(counts.items(), start=1):
+    for doc_type, count in counts.items():
         if count == 0:
             continue
         result.append({
-            "doc_num": idx,
+            "doc_num": _DOC_NATURES.index(doc_type) + 1,
             "doc_typ": doc_type,
             "docs": [{"num": count, "cancel": 0, "net_issue": count}],
         })
-    return result
+    # Ascending by nature, the order the form lists them in.
+    return sorted(result, key=lambda d: d["doc_num"])

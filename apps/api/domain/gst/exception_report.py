@@ -169,9 +169,17 @@ def index_b2cs(payload: Optional[dict]) -> dict:
     out: dict = {}
     for row in (payload or {}).get("b2cs") or []:
         row = row or {}
-        key = f"{row.get('sply_tp') or ''}|{row.get('rt')}|{row.get('pos') or ''}"
+        # "sply_ty" is the GSTN key; "sply_tp" is the misspelling this codebase
+        # emitted until it was corrected against the Returns Offline Tool. Both
+        # are read because this function parses payloads ALREADY FILED and
+        # stored — every return saved before the fix carries the old spelling,
+        # and reading only the new one would collapse INTER and INTRA into a
+        # single empty-keyed bucket and report a difference against books that
+        # does not exist.
+        supply_type = row.get("sply_ty") or row.get("sply_tp") or ""
+        key = f"{supply_type}|{row.get('rt')}|{row.get('pos') or ''}"
         bucket = out.setdefault(key, {
-            "supply_type": row.get("sply_tp") or "",
+            "supply_type": supply_type,
             "rate": row.get("rt"),
             "place_of_supply": row.get("pos") or "",
             **{h: 0 for h in _HEADS},

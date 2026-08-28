@@ -646,7 +646,7 @@ class TestB2CSRegressionBug1:
         intra = make_b2cs_invoice("i2", "INV002", is_interstate=False, place_of_supply="27")
         payload = build_gstr1([inter, intra], "27AABCU9603R1ZX", "052025")
         b2cs = payload.payload.get("b2cs", [])
-        supply_types = {row["sply_tp"] for row in b2cs}
+        supply_types = {row["sply_ty"] for row in b2cs}
         assert "INTER" in supply_types, "INTER row missing from B2CS"
         assert "INTRA" in supply_types, "INTRA row missing from B2CS"
         assert len(b2cs) == 2, f"Expected 2 B2CS rows, got {len(b2cs)}"
@@ -657,8 +657,8 @@ class TestB2CSRegressionBug1:
         intra = make_b2cs_invoice("i2", "INV002", is_interstate=False, place_of_supply="29", taxable_paise=300_000_00)
         payload = build_gstr1([inter, intra], "27AABCU9603R1ZX", "052025")
         b2cs = payload.payload.get("b2cs", [])
-        inter_row = next((r for r in b2cs if r["sply_tp"] == "INTER"), None)
-        intra_row = next((r for r in b2cs if r["sply_tp"] == "INTRA"), None)
+        inter_row = next((r for r in b2cs if r["sply_ty"] == "INTER"), None)
+        intra_row = next((r for r in b2cs if r["sply_ty"] == "INTRA"), None)
         assert inter_row is not None
         assert intra_row is not None
         assert inter_row["txval"] == pytest.approx(200_000_00 / 100, rel=1e-6)
@@ -670,7 +670,7 @@ class TestB2CSRegressionBug1:
         inv2 = make_b2cs_invoice("i2", "INV002", is_interstate=True, place_of_supply="27", taxable_paise=80_000_00)
         payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZX", "052025")
         b2cs = payload.payload.get("b2cs", [])
-        inter_rows = [r for r in b2cs if r["sply_tp"] == "INTER"]
+        inter_rows = [r for r in b2cs if r["sply_ty"] == "INTER"]
         assert len(inter_rows) == 1
         assert inter_rows[0]["txval"] == pytest.approx(130_000_00 / 100, rel=1e-6)
 

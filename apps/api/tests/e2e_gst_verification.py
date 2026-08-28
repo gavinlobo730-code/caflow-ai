@@ -590,20 +590,20 @@ print(f"\n  B2CS rows: {len(b2cs)}")
 print(json.dumps(b2cs, indent=4))
 
 check("b2cs table present", len(b2cs) > 0)
-check("all b2cs rows have sply_tp", all("sply_tp" in r for r in b2cs))
-check("b2cs sply_tp values are INTER or INTRA",
-      all(r["sply_tp"] in ("INTER", "INTRA") for r in b2cs))
+check("all b2cs rows have sply_ty", all("sply_ty" in r for r in b2cs))
+check("b2cs sply_ty values are INTER or INTRA",
+      all(r["sply_ty"] in ("INTER", "INTRA") for r in b2cs))
 
 # TXN003 is INTRA/27/12%, TXN008 is INTER/29/18% — must be separate rows
-intra_rows = [r for r in b2cs if r["sply_tp"] == "INTRA"]
-inter_rows = [r for r in b2cs if r["sply_tp"] == "INTER"]
+intra_rows = [r for r in b2cs if r["sply_ty"] == "INTRA"]
+inter_rows = [r for r in b2cs if r["sply_ty"] == "INTER"]
 check("B2CS has both INTRA and INTER rows", len(intra_rows) >= 1 and len(inter_rows) >= 1,
       f"intra={len(intra_rows)} inter={len(inter_rows)}")
 
 for r in b2cs:
-    check(f"b2cs row {r['sply_tp']}/{r.get('pos')}: rt present", "rt" in r)
-    check(f"b2cs row {r['sply_tp']}/{r.get('pos')}: txval present", "txval" in r)
-    check(f"b2cs row {r['sply_tp']}/{r.get('pos')}: iamt/camt/samt present",
+    check(f"b2cs row {r['sply_ty']}/{r.get('pos')}: rt present", "rt" in r)
+    check(f"b2cs row {r['sply_ty']}/{r.get('pos')}: txval present", "txval" in r)
+    check(f"b2cs row {r['sply_ty']}/{r.get('pos')}: iamt/camt/samt present",
           all(k in r for k in ["iamt", "camt", "samt"]))
 
 
@@ -770,13 +770,13 @@ check("tax_total_paise matches manual sum (CGST+SGST+IGST only, no CDNR)",
       f"got ₹{gstr1.tax_total_paise/100:,.2f}, expected ₹{(manual_cgst+manual_sgst+manual_igst)/100:,.2f}")
 
 # Verify B2CS INTRA row taxable = TXN003 only = ₹80,000
-intra_b2cs = next((r for r in b2cs if r["sply_tp"] == "INTRA"), None)
+intra_b2cs = next((r for r in b2cs if r["sply_ty"] == "INTRA"), None)
 check("B2CS INTRA txval = ₹80,000 (TXN003 only)",
       intra_b2cs is not None and abs(intra_b2cs["txval"] - 80_000.00) < 0.01,
       f"got txval={intra_b2cs['txval'] if intra_b2cs else 'N/A'}")
 
 # Verify B2CS INTER row taxable = TXN008 = ₹1,50,000
-inter_b2cs = next((r for r in b2cs if r["sply_tp"] == "INTER"), None)
+inter_b2cs = next((r for r in b2cs if r["sply_ty"] == "INTER"), None)
 check("B2CS INTER txval = ₹1,50,000 (TXN008 only)",
       inter_b2cs is not None and abs(inter_b2cs["txval"] - 1_50_000.00) < 0.01,
       f"got txval={inter_b2cs['txval'] if inter_b2cs else 'N/A'}")
