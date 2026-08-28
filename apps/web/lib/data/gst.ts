@@ -71,25 +71,53 @@ export interface GSTR2ARecord {
   sgst_paise: number;
 }
 
+/** The `working` block of POST /api/gst/gstr3b/from-books.
+ *
+ *  This interface used to describe a DIFFERENT endpoint — /gstr3b/compute,
+ *  which reports book vs GSTR-2A vs eligible ITC and a net_payable block.
+ *  computeGSTR3B was moved to /from-books without the type moving with it, and
+ *  because the move happens at an `apiPost<FromBooksGSTR3B>` cast, tsc had
+ *  nothing to check it against. The screen rendered ITC as "Rs NaN" and threw
+ *  outright on w.net_payable, which is undefined there.
+ *
+ *  So: these fields are the ones /from-books actually returns. Anything added
+ *  to the screen must be added to the endpoint, and
+ *  apps/api/tests/test_gstr3b_screen_contract.py reads this screen's bindings
+ *  and checks every one against a real response. */
 export interface GSTR3BWorking {
   outward: {
+    taxable_value_paise: number;
     taxable_igst_paise: number;
     taxable_cgst_paise: number;
     taxable_sgst_paise: number;
     zero_rated_paise: number;
     nil_exempt_paise: number;
   };
+  rcm_inward: {
+    igst_paise: number;
+    cgst_paise: number;
+    sgst_paise: number;
+  };
   itc: {
-    book_igst_paise: number;
-    book_cgst_paise: number;
-    book_sgst_paise: number;
-    gstr2a_igst_paise: number;
-    gstr2a_cgst_paise: number;
-    gstr2a_sgst_paise: number;
-    eligible_igst_paise: number;
-    eligible_cgst_paise: number;
-    eligible_sgst_paise: number;
-    rule_36_4_cap_applied: boolean;
+    /** As per the purchase register, before Section 17(5) and before Table 4(B). */
+    igst_paise: number;
+    cgst_paise: number;
+    sgst_paise: number;
+    /** Table 4(A) — gross, as the portal populates it from GSTR-2B. */
+    avail_igst_paise: number;
+    avail_cgst_paise: number;
+    avail_sgst_paise: number;
+    /** Table 4(C) — after the Table 4(B) reversals. What is actually claimed. */
+    net_igst_paise: number;
+    net_cgst_paise: number;
+    net_sgst_paise: number;
+  };
+  /** Table 4(B). permanent = 4(B)(1) (Rules 38/42/43 and Section 17(5));
+   *  reclaimable = 4(B)(2) (Rule 37/37A, Section 16(2)(b) and (c)). */
+  itc_reversal: {
+    permanent_paise: HeadAmounts;
+    reclaimable_paise: HeadAmounts;
+    reasons: ITCReversalReason[];
   };
   net_payable: {
     igst_paise: number;
@@ -97,6 +125,22 @@ export interface GSTR3BWorking {
     sgst_paise: number;
     total_paise: number;
   };
+}
+
+export interface HeadAmounts {
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+}
+
+export interface ITCReversalReason {
+  reason: string;
+  reclaimable: boolean;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
 }
 
 export interface ValidationError {
@@ -259,6 +303,22 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return json.data as T;
 }
 
+async function apiGet<T>(path: string): Promise<T> {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(JSON.stringify(err.detail ?? err));
+  }
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error ?? "API error");
+  return json.data as T;
+}
+
 /** Classify transactions and persist gst_invoice_category back to Supabase. */
 // classifyAndPersistTransactions lived here. It POSTed to /api/gst/classify and
 // wrote the answer back to `transactions` — a table migration 139 dropped. The
@@ -266,6 +326,53 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
 // classifier.py), so nothing needs to be persisted client-side first.
 
 // ── GSTR-3B ────────────────────────────────────────────────────────────────
+
+/** One overdue bill from GET /api/gst/itc/rule37. */
+export interface Rule37Bill {
+  bill_id: string;
+  bill_no: string | null;
+  bill_date: string | null;
+  vendor_id: string | null;
+  status: string;
+  total_paise: number;
+  paid_paise: number;
+  unpaid_paise: number;
+  days_outstanding: number;
+  payment_due_by: string;
+  /** MMYYYY. Rule 37(1): the period AFTER the one the 180 days expired in. */
+  reverse_in_period: string;
+  reversal: { igst_paise: number; cgst_paise: number; sgst_paise: number; total_paise: number };
+}
+
+export interface Rule37Report {
+  as_of: string;
+  rule: string;
+  bills: Rule37Bill[];
+  bill_count: number;
+  totals: { igst_paise: number; cgst_paise: number; sgst_paise: number; total_paise: number };
+  ca_review_required: true;
+}
+
+/** Bills 180 days unpaid as at `asOf`, and the credit Rule 37 reverses.
+ *
+ *  `asOf` is the period END, not today: the CA is asking "what does THIS return
+ *  have to carry", and a bill that crosses 180 days next week belongs in next
+ *  month's answer, not this one.
+ *
+ *  # CA REVIEW REQUIRED — this reports; it posts no journal and files nothing.
+ */
+export async function fetchRule37Report(
+  clientId: string,
+  asOf: string,          // YYYY-MM-DD
+): Promise<Rule37Report> {
+  // /api/gst-workspace, not /api/gst — routers/gst_workspace.py carries its own
+  // prefix. test_gst_api_paths_exist.py checks this against the live app.
+  return apiGet<Rule37Report>(
+    `/api/gst-workspace/itc/rule37?client_id=${encodeURIComponent(clientId)}` +
+    `&as_of=${encodeURIComponent(asOf)}`,
+  );
+}
+
 
 /**
  * Compute GSTR-3B for a client and period.
@@ -319,15 +426,21 @@ export async function saveGSTR3BReturn(
     outward_taxable_sgst_paise: w.outward.taxable_sgst_paise,
     outward_zero_rated_paise: w.outward.zero_rated_paise,
     outward_nil_exempt_paise: w.outward.nil_exempt_paise,
-    itc_igst_paise: w.itc.eligible_igst_paise,
-    itc_cgst_paise: w.itc.eligible_cgst_paise,
-    itc_sgst_paise: w.itc.eligible_sgst_paise,
-    itc_book_igst_paise: w.itc.book_igst_paise,
-    itc_book_cgst_paise: w.itc.book_cgst_paise,
-    itc_book_sgst_paise: w.itc.book_sgst_paise,
-    itc_2a_igst_paise: w.itc.gstr2a_igst_paise,
-    itc_2a_cgst_paise: w.itc.gstr2a_cgst_paise,
-    itc_2a_sgst_paise: w.itc.gstr2a_sgst_paise,
+    // Table 4(C) — the credit the return actually claims, after 4(B).
+    itc_igst_paise: w.itc.net_igst_paise,
+    itc_cgst_paise: w.itc.net_cgst_paise,
+    itc_sgst_paise: w.itc.net_sgst_paise,
+    // The purchase register, before Section 17(5) and before any reversal.
+    itc_book_igst_paise: w.itc.igst_paise,
+    itc_book_cgst_paise: w.itc.cgst_paise,
+    itc_book_sgst_paise: w.itc.sgst_paise,
+    // itc_2a_* are deliberately NOT written. The from-books path does no
+    // GSTR-2A comparison — that is the 2A/2B reconciliation screen's job — so
+    // these three read as whatever they last held. Writing 0 would assert that
+    // no supplier filed anything against this client for the period, which is
+    // a different and much worse claim than "not computed here". They default
+    // to 0 NOT NULL on a first insert (migration 036), which is the same
+    // not-computed state the columns have always carried on this path.
     net_igst_paise: w.net_payable.igst_paise,
     net_cgst_paise: w.net_payable.cgst_paise,
     net_sgst_paise: w.net_payable.sgst_paise,

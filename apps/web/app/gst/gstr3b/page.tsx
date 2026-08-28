@@ -20,6 +20,7 @@ import {
   FileCheck,
   ChevronRight,
   ArrowLeft,
+  Clock,
   Info,
   X,
 } from "lucide-react";
@@ -32,10 +33,13 @@ import {
   markGSTR3BFiled,
   downloadGSTR3BJSON,
   getGSTR3BReturn,
+  fetchRule37Report,
   toPeriod,
   type GSTR3BComputeResult,
   type GSTReturnStatus,
+  type Rule37Report,
 } from "@/lib/data/gst";
+import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -81,6 +85,11 @@ export default function GSTR3BPage() {
   // CA Approve
   const [approving, setApproving] = useState(false);
 
+  // Rule 37: reported alongside the return, never folded into it. See the
+  // panel below for why the two must stay separate.
+  const [rule37, setRule37] = useState<Rule37Report | null>(null);
+  const [rule37Error, setRule37Error] = useState<string | null>(null);
+
   // Mark as Filed modal
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [arn, setArn] = useState("");
@@ -100,12 +109,22 @@ export default function GSTR3BPage() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setRule37(null);
+    setRule37Error(null);
     try {
       const res = await computeGSTR3B(clientId, yearMonth);
       setResult(res);
       const period = toPeriod(yearMonth);
       const saved = await getGSTR3BReturn(clientId, period);
       setFilingStatus((saved?.status as GSTReturnStatus) ?? "draft");
+      // Asked as at the PERIOD END, not today: a bill that crosses 180 days
+      // next week belongs in next month's return, not this one. Failing this
+      // must not fail the return — the figures above stand on their own.
+      try {
+        setRule37(await fetchRule37Report(clientId, periodEndDate(yearMonth)));
+      } catch (e) {
+        setRule37Error(e instanceof Error ? e.message : "Could not check Rule 37");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Computation failed");
     } finally {
@@ -185,7 +204,7 @@ export default function GSTR3BPage() {
               <ClientLookup
                 clients={clients}
                 value={clientId}
-                onChange={(id) => { setClientId(id); setResult(null); setError(null); }}
+                onChange={(id) => { setClientId(id); setResult(null); setError(null); setRule37(null); }}
                 ariaLabel="Client"
                 placeholder="— Select client —"
               />
@@ -195,7 +214,7 @@ export default function GSTR3BPage() {
             <label className="block text-sm font-medium text-[#334155] mb-1">Period</label>
             <select
               value={yearMonth}
-              onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); }}
+              onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); setRule37(null); }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               {PERIOD_OPTIONS.map(o => (
@@ -315,23 +334,19 @@ export default function GSTR3BPage() {
             </table>
           </section>
 
-          {/* Table 4 — ITC Available */}
+          {/* Table 4 — ITC, in the layout the portal has used since 01-09-2022 */}
           <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-[#1E293B] text-sm">Table 4 — ITC Available</h3>
-                <p className="text-xs text-[#64748B] mt-0.5">CGST Rule 36(4): capped at 105% of GSTR-2A credit.</p>
-              </div>
-              {w.itc.rule_36_4_cap_applied && (
-                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                  Rule 36(4) cap applied
-                </span>
-              )}
+            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+              <h3 className="font-semibold text-[#1E293B] text-sm">Table 4 — Input Tax Credit</h3>
+              <p className="text-xs text-[#64748B] mt-0.5">
+                Notification 14/2022 with Circular 170/02/2022-GST. 4(A) is gross — the portal
+                populates it from GSTR-2B — and the reversals are declared separately in 4(B).
+              </p>
             </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
-                  <th className="text-left px-5 py-2.5 font-medium">ITC Component</th>
+                  <th className="text-left px-5 py-2.5 font-medium">Row</th>
                   <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">CGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">SGST</th>
@@ -339,25 +354,60 @@ export default function GSTR3BPage() {
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#475569] text-xs">As per books (purchase register)</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc.book_igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc.book_cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc.book_sgst_paise)}</td>
+                  <td className="px-5 py-3 text-[#334155]">
+                    4(A) ITC available
+                    <span className="block text-xs text-[#94A3B8]">All credit availed, including credit reversed below</span>
+                  </td>
+                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.avail_igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.avail_cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.avail_sgst_paise)}</td>
                 </tr>
                 <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#475569] text-xs">As per GSTR-2A (supplier-filed)</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc.gstr2a_igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc.gstr2a_cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc.gstr2a_sgst_paise)}</td>
+                  <td className="px-5 py-3 text-[#475569] text-xs">
+                    4(B)(1) Reversed — permanent
+                    <span className="block text-[#94A3B8]">Rules 38, 42 and 43, and Section 17(5) blocked credit</span>
+                  </td>
+                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.permanent_paise.igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.permanent_paise.cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.permanent_paise.sgst_paise)}</td>
+                </tr>
+                <tr className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-3 text-[#475569] text-xs">
+                    4(B)(2) Reversed — reclaimable later
+                    <span className="block text-[#94A3B8]">Rule 37 / 37A and Section 16(2)(b), (c). Comes back through 4(A)(5)</span>
+                  </td>
+                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.reclaimable_paise.igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.reclaimable_paise.cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.reclaimable_paise.sgst_paise)}</td>
                 </tr>
                 <tr className="bg-green-50 font-semibold">
-                  <td className="px-5 py-3 text-green-800">Eligible ITC (after Rule 36(4))</td>
-                  <td className="px-5 py-3 text-right font-mono text-green-900">{r(w.itc.eligible_igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-green-900">{r(w.itc.eligible_cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-green-900">{r(w.itc.eligible_sgst_paise)}</td>
+                  <td className="px-5 py-3 text-green-800">4(C) Net ITC available</td>
+                  <td className="px-5 py-3 text-right font-mono text-green-900">{r(w.itc.net_igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-green-900">{r(w.itc.net_cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-green-900">{r(w.itc.net_sgst_paise)}</td>
                 </tr>
               </tbody>
             </table>
+            {w.itc_reversal.reasons.length > 0 && (
+              <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#FCFCFD]">
+                <p className="text-xs font-medium text-[#475569] mb-1.5">What is in 4(B)</p>
+                <ul className="space-y-1">
+                  {w.itc_reversal.reasons.map((x, i) => (
+                    <li key={i} className="text-xs text-[#64748B] flex items-baseline justify-between gap-4">
+                      <span>
+                        {x.reason}
+                        <span className="ml-2 text-[#94A3B8]">
+                          {x.reclaimable ? "4(B)(2)" : "4(B)(1)"}
+                        </span>
+                      </span>
+                      <span className="font-mono shrink-0">
+                        {r(x.igst_paise + x.cgst_paise + x.sgst_paise + x.cess_paise)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
 
           {/* Table 6 — Net Tax Payable */}
@@ -380,6 +430,99 @@ export default function GSTR3BPage() {
               ))}
             </div>
           </section>
+
+          {/* Rule 37 — reported beside the return, never folded into it */}
+          {(rule37 || rule37Error) && (() => {
+            if (rule37Error) {
+              return (
+                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 text-sm text-[#64748B]">
+                  <strong className="text-[#334155]">Rule 37 not checked.</strong>{" "}
+                  {rule37Error} The figures above are unaffected, but this return has not been
+                  checked for suppliers unpaid past 180 days.
+                </section>
+              );
+            }
+            // Rule 37(1) puts each reversal in ONE specific return. The bills
+            // whose period is this one are what THIS 3B has to carry; earlier
+            // ones belonged to a return that has already been filed, and are
+            // listed separately rather than silently added here.
+            const { due, earlier: overdueEarlier } =
+              splitRule37Bills(rule37!.bills, toPeriod(yearMonth));
+            const dueTotal = due.reduce((t, b) => t + b.reversal.total_paise, 0);
+            const earlierTotal = overdueEarlier.reduce((t, b) => t + b.reversal.total_paise, 0);
+
+            if (due.length === 0 && overdueEarlier.length === 0) {
+              return (
+                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-[#94A3B8] mt-0.5 shrink-0" />
+                  <p className="text-sm text-[#64748B]">
+                    <strong className="text-[#334155]">No Rule 37 reversal due.</strong>{" "}
+                    No purchase bill was 180 days unpaid as at {periodEndDate(yearMonth)}.
+                  </p>
+                </section>
+              );
+            }
+
+            return (
+              <section className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-amber-200 flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-amber-900 text-sm">
+                      Rule 37 — credit to reverse in this return
+                    </h3>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      CGST Act Section 16(2) second proviso and Rule 37: credit on a bill the
+                      supplier has not been paid for within 180 days is reversed, in Table 4(B)(2).
+                      It is reclaimed when the supplier is paid.
+                    </p>
+                  </div>
+                </div>
+
+                {due.length > 0 && (
+                  <div className="px-5 py-4">
+                    <div className="flex items-baseline justify-between mb-3">
+                      <p className="text-sm text-amber-900">
+                        <strong>{due.length}</strong> bill{due.length !== 1 ? "s" : ""} crossed 180 days
+                        for this period
+                      </p>
+                      <p className="font-mono font-semibold text-amber-900">{r(dueTotal)}</p>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {due.map(b => (
+                        <li key={b.bill_id} className="text-xs text-amber-800 flex items-baseline justify-between gap-4">
+                          <span>
+                            <span className="font-mono">{b.bill_no ?? b.bill_id.slice(0, 8)}</span>
+                            <span className="text-amber-700 ml-2">
+                              {b.bill_date} · {b.days_outstanding} days · {r(b.unpaid_paise)} unpaid
+                            </span>
+                          </span>
+                          <span className="font-mono shrink-0">{r(b.reversal.total_paise)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {overdueEarlier.length > 0 && (
+                  <div className="px-5 py-3 border-t border-amber-200 text-xs text-amber-800">
+                    <strong>{overdueEarlier.length}</strong> more bill
+                    {overdueEarlier.length !== 1 ? "s" : ""} ({r(earlierTotal)}) crossed 180 days in an
+                    earlier period. Rule 37(1) puts those in the return for the period after the one
+                    the 180 days expired in — check they were reversed then.
+                  </div>
+                )}
+
+                <div className="px-5 py-3 bg-amber-100/60 border-t border-amber-200 text-xs text-amber-900">
+                  <strong>Not included in Table 4(B) above.</strong> PracticeSync computes this return
+                  from posted books, and no journal has been posted for these reversals — so adding
+                  them here would put the return out of step with the ledger and the reconciliation
+                  would flag it. Post the reversal journal, then recompute and it will appear in
+                  4(B)(2) on its own.
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Validation warnings */}
           {result.validation_warnings.length > 0 && (
