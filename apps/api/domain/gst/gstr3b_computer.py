@@ -29,6 +29,14 @@ class SalesTransaction:
     cess_paise: int
     supply_type: str       # taxable | zero_rated | nil_rated | exempt | non_gst
     is_reverse_charge: bool
+    # Table 3.2 needs to know, of the supplies in 3.1(a), which were made
+    # INTER-STATE and to whom. Defaulted so existing callers are unaffected;
+    # a supply left at the defaults simply never reaches 3.2.
+    is_interstate: bool = False
+    place_of_supply: str = ""     # 2-digit state code
+    # registered | unregistered | composition | uin. Only the last three are
+    # reported in 3.2 — a supply to an ordinary registered person is not.
+    recipient_type: str = "registered"
 
 
 @dataclass(frozen=True)
@@ -129,7 +137,15 @@ class GSTR3BResult:
     outward_zero_rated: int = 0      # zero-rated (export) taxable value
     outward_nil_exempt: int = 0      # nil-rated + exempt taxable value
 
-    # Table 3.2: Inward supplies on reverse charge (CGST Act Section 9(3), 9(4))
+    # Table 3.2 of the FORM (not of this dataclass's old numbering): of the
+    # supplies declared in 3.1(a), the inter-state ones made to unregistered
+    # persons, composition taxable persons and UIN holders, per place of
+    # supply. Keyed by 2-digit state code -> {"txval": paise, "iamt": paise}.
+    inter_sup_unreg: dict = field(default_factory=dict)
+    inter_sup_comp: dict = field(default_factory=dict)
+    inter_sup_uin: dict = field(default_factory=dict)
+
+    # Reverse-charge INWARD supplies (CGST Act Section 9(3), 9(4))
     rcm_igst: int = 0
     rcm_cgst: int = 0
     rcm_sgst: int = 0
@@ -352,6 +368,22 @@ class GSTR3BResult:
                 },
                 "osup_nongst": {"txval": 0},
             },
+            # Table 3.2 — of the supplies in 3.1(a), the inter-state ones made
+            # to unregistered persons, composition taxable persons and UIN
+            # holders, per place of supply. Read from the GSTN GSTR-3B utility
+            # V5.8 (sheet rows 87-125): three arrays of {pos, txval, iamt}.
+            #
+            # comp_details and uin_details are always empty. A composition
+            # dealer and a UIN holder both HOLD a registration number, so on
+            # this platform's data they are indistinguishable from any other
+            # registered recipient — nothing records that a customer is one.
+            # Emitting an empty array says "none to report", which is the
+            # accurate statement; inventing a split would not be.
+            "inter_sup": {
+                "unreg_details": _inter_sup_rows(self.inter_sup_unreg, r),
+                "comp_details": _inter_sup_rows(self.inter_sup_comp, r),
+                "uin_details": _inter_sup_rows(self.inter_sup_uin, r),
+            },
             **eco_dtls,
             # ── Table 4, in the shape the portal has used since 01-09-2022 ──
             # Notification 14/2022-Central Tax and Circular 170/02/2022-GST:
@@ -464,6 +496,21 @@ def _apply_rule_36_4_cap(book: int, gstr2a: int) -> tuple[int, bool]:
     return book, False
 
 
+def _inter_sup_rows(by_pos: dict, r) -> list[dict]:
+    """Table 3.2 rows for one recipient class, sorted by place of supply.
+
+    A place of supply that nets to nothing after credit notes is dropped: the
+    utility writes a row only where the worksheet has a value, and declaring a
+    nil inter-state supply to a state the client did not supply is noise on the
+    face of the return.
+    """
+    return [
+        {"pos": pos, "txval": r(v["txval"]), "iamt": r(v["iamt"])}
+        for pos, v in sorted(by_pos.items())
+        if v["txval"] or v["iamt"]
+    ]
+
+
 def _period_at_or_after(period: str, month: int, year: int) -> bool:
     """Is this MMYYYY return period on or after the given month and year?
 
@@ -515,6 +562,21 @@ def compute_gstr3b(
                 result.outward_taxable_cgst += sign * s.cgst_paise
                 result.outward_taxable_sgst += sign * s.sgst_paise
                 result.outward_taxable_cess += sign * s.cess_paise
+
+                # Table 3.2 — "of the supplies shown in 3.1(a)". It is a
+                # BREAKDOWN of what was just added above, never an addition to
+                # it, so it is accumulated here and under the same sign: a
+                # credit note reduces the 3.2 line it relates to as well.
+                bucket = {
+                    "unregistered": result.inter_sup_unreg,
+                    "composition": result.inter_sup_comp,
+                    "uin": result.inter_sup_uin,
+                }.get(s.recipient_type)
+                if s.is_interstate and bucket is not None and s.place_of_supply:
+                    row = bucket.setdefault(s.place_of_supply,
+                                            {"txval": 0, "iamt": 0})
+                    row["txval"] += sign * s.taxable_amount_paise
+                    row["iamt"] += sign * s.igst_paise
 
     # ── Table 3.2: Reverse charge INWARD supplies ────────────────────────────
     # C5 fix: RCM liability arises on INWARD supplies (purchases), not on sales.

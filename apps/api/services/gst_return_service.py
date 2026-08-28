@@ -21,7 +21,8 @@ import calendar
 from datetime import date
 
 from domain.gst.gstr3b_computer import (
-    SalesTransaction, PurchaseTransaction, ITCReversal, compute_gstr3b,
+    SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
+    compute_gstr3b,
 )
 from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
@@ -361,12 +362,56 @@ def _issued_purchase_credit_notes(db, firm_id, client_id, start, end) -> list[di
             .gte("credit_note_date", start).lte("credit_note_date", end))
 
 
+def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
+    """Supplier-filed records for the period, for the Rule 36(4) comparison.
+
+    The from-books path passed an empty list, so the cap has never been able to
+    fire on the return a CA actually files — Rule 36(4) was live code reachable
+    only from /gstr3b/compute, which nothing in the product calls.
+
+    Returning [] when nothing has been uploaded is correct and safe:
+    _apply_rule_36_4_cap treats a zero 2A total as "no data" and leaves book
+    ITC alone rather than capping the whole return to nil.
+    """
+    return _paginate_all(lambda: db.table("gstr2a_records")
+            .select("taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("return_period", period))
+
+
+def _customers_for_3b(db, firm_id, rows) -> dict:
+    """id -> customer, for the Table 3.2 recipient split."""
+    ids = {r.get("customer_id") for r in rows if r.get("customer_id")}
+    if not ids:
+        return {}
+    got = (db.table("customers").select("id, gstin, state_code")
+           .eq("firm_id", firm_id).in_("id", list(ids)).execute().data) or []
+    return {c["id"]: c for c in got}
+
+
+def _recipient_type(cust: dict | None) -> str:
+    """Which Table 3.2 column a recipient belongs in, if any.
+
+    A GSTIN means registered, and 3.2 does not report ordinary registered
+    recipients. Composition dealers and UIN holders also hold a number, so on
+    this platform's data they cannot be told apart from any other registered
+    recipient — nothing records that a customer is one. They therefore never
+    reach comp_details or uin_details, which stay empty. That is a data gap,
+    not a classification the code is getting wrong.
+    """
+    return "registered" if (cust or {}).get("gstin") else "unregistered"
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger."""
     start, end = _period_bounds(period)
 
+    invoices_3b = _posted_sales(db, firm_id, client_id, start, end)
+    cust_3b = _customers_for_3b(db, firm_id, invoices_3b)
+
     sales: list[SalesTransaction] = []
-    for inv in _posted_sales(db, firm_id, client_id, start, end):
+    for inv in invoices_3b:
+        cust = cust_3b.get(inv.get("customer_id"))
         sales.append(SalesTransaction(
             transaction_type="sales_invoice",
             taxable_amount_paise=int(inv.get("taxable_amount_paise") or 0),
@@ -376,6 +421,11 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             cess_paise=int(inv.get("cess_paise") or 0),
             supply_type=inv.get("supply_type") or "taxable",
             is_reverse_charge=bool(inv.get("is_reverse_charge", False)),
+            # Table 3.2 — the breakdown of 3.1(a) by recipient and place of
+            # supply. supply_state_code is where the supply is made TO.
+            is_interstate=bool(inv.get("is_interstate", False)),
+            place_of_supply=str(inv.get("supply_state_code") or "")[:2],
+            recipient_type=_recipient_type(cust),
         ))
     # Notes inherit their classification from the invoice they adjust (CGST §34)
     # — see _classification_by_parent_invoice.
@@ -489,7 +539,21 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         for b in _bills_cancelled_in(db, firm_id, client_id, start, end)
     ]
 
-    result = compute_gstr3b(sales, purchases, [], reversals)
+    # Rule 36(4): ITC is capped at the credit suppliers have actually filed.
+    # This used to pass [], so the cap could never fire on the return a CA
+    # files. _apply_rule_36_4_cap leaves book ITC alone when no records exist,
+    # so a client who has never uploaded 2A is unaffected.
+    two_a_rows = _gstr2a_for_period(db, firm_id, client_id, period)
+    gstr2a = [
+        GSTR2ARecord(
+            cgst_paise=int(x.get("cgst_paise") or 0),
+            sgst_paise=int(x.get("sgst_paise") or 0),
+            igst_paise=int(x.get("igst_paise") or 0),
+        )
+        for x in two_a_rows
+    ]
+
+    result = compute_gstr3b(sales, purchases, gstr2a, reversals)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -586,6 +650,19 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                      "cess_paise": rv.cess_paise}
                     for rv in reversals
                 ],
+            },
+            # Rule 36(4). A CA reading a capped return needs to know the cap
+            # fired and what it was measured against; a CA reading an uncapped
+            # one needs to know whether that is because the books agree with 2A
+            # or because no 2A has been uploaded at all. Those are very
+            # different, and the figures alone cannot tell them apart.
+            "rule_36_4": {
+                "gstr2a_record_count": len(two_a_rows),
+                "gstr2a_cgst_paise": result.itc_2a_cgst,
+                "gstr2a_sgst_paise": result.itc_2a_sgst,
+                "gstr2a_igst_paise": result.itc_2a_igst,
+                "cap_applied": result.itc_capped_by_2a,
+                "compared": bool(two_a_rows),
             },
             # Table 6. Computed HERE, not in the browser: the Section 49(5)
             # cross-utilisation order is a statutory rule, and CLAUDE.md keeps
