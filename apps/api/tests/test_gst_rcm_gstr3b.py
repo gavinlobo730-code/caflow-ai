@@ -89,13 +89,25 @@ def test_f16_gstn_payload_amounts_are_rupees_not_paise():
     isup_rev = p["sup_details"]["isup_rev"]
     assert isup_rev["iamt"] == 10_000.00 and isup_rev["camt"] == 5_000.00 and isup_rev["samt"] == 5_000.00
 
-    rcm = p["inward_sup"]["isup_details"][0]
-    assert rcm["inter"] == 10_000.00 and rcm["intra_cgst"] == 5_000.00 and rcm["intra_sgst"] == 5_000.00
+    # inward_sup is NOT the reverse-charge block — it is section 5 of the form,
+    # exempt / nil-rated / non-GST INWARD supplies, written by GSTN's offline
+    # utility as GST and NONGST with inter/intra (V5.8 VBA, sheet rows 48-49).
+    # The RCM figures asserted here used an invented {"ty": "RCM", "inter",
+    # "intra_cgst", "intra_sgst"} shape the schema has never had. Table 3.1(d)
+    # above (isup_rev) is where the reverse-charge liability is declared, and
+    # that assertion is the one that matters.
+    assert [x["ty"] for x in p["inward_sup"]["isup_details"]] == ["GST", "NONGST"]
 
     itc = p["itc_elg"]["itc_net"]
     assert itc["iamt"] == 90_000.00 and itc["camt"] == 20_000.00 and itc["samt"] == 20_000.00 and itc["csamt"] == 1_000.00
-    avl = p["itc_elg"]["itc_avl"][0]
-    assert avl["iamt"] == 90_000.00 and avl["csamt"] == 1_000.00
+    # 4(A) is five rows now (IMPG/IMPS/ISRC/ISD/OTH), so index 0 is Import of
+    # goods, not the whole credit. The RCM tax sits in ISRC and the rest in OTH.
+    avl = {x["ty"]: x for x in p["itc_elg"]["itc_avl"]}
+    assert sum(x["iamt"] for x in avl.values()) == 90_000.00
+    assert sum(x["csamt"] for x in avl.values()) == 1_000.00
+    assert avl["ISRC"]["iamt"] == 10_000.00, (
+        "the reverse-charge credit must be declared on the reverse-charge row")
+    assert avl["OTH"]["iamt"] == 80_000.00
 
 
 def test_f16_gstr3b_rounds_to_whole_rupees_section_170():

@@ -81,6 +81,17 @@ def _table4(result):
     return result.as_gstn_payload(GSTIN, PERIOD)["itc_elg"]
 
 
+def _avl(t4, ty="OTH"):
+    """One row of Table 4(A). It is five objects — IMPG, IMPS, ISRC, ISD, OTH
+    — one per row of the form (GSTN offline utility V5.8, sheet rows 31-35).
+    Ordinary purchase credit lands in OTH, "All other ITC"."""
+    return {x["ty"]: x for x in t4["itc_avl"]}[ty]
+
+
+def _avl_total(t4, head):
+    return sum(x[head] for x in t4["itc_avl"])
+
+
 def _base():
     """One purchase carrying both ordinary and blocked credit, plus one
     permanent and one reclaimable reversal."""
@@ -111,7 +122,7 @@ def test_the_fixture_puts_a_distinct_amount_in_every_bucket():
 # ── 4(A): gross, so it ties to GSTR-2B ───────────────────────────────────────
 
 def test_4a_reports_all_credit_availed_including_blocked_credit():
-    avl = _table4(_base())["itc_avl"][0]
+    avl = _avl(_table4(_base()))
     assert avl["camt"] == (AVAILED_CGST + BLOCKED_CGST) // 100, (
         "4(A) is net of §17(5) — it cannot tie to the 2B-populated figure the "
         "portal shows, and the taxpayer is asked to explain the difference")
@@ -121,13 +132,13 @@ def test_4a_reports_all_credit_availed_including_blocked_credit():
 def test_4a_is_not_reduced_by_a_reversal_declared_in_4b():
     """Reversing in 4(B) and also netting it out of 4(A) would deduct the same
     credit twice."""
-    with_rev = _table4(_base())["itc_avl"][0]["camt"]
-    no_rev = _table4(compute_gstr3b(
+    with_rev = _avl(_table4(_base()))["camt"]
+    no_rev = _avl(_table4(compute_gstr3b(
         [_sale(5_00_000, 5_00_000)],
         [_purchase(AVAILED_CGST + BLOCKED_CGST, AVAILED_CGST + BLOCKED_CGST,
                    blocked_cgst=BLOCKED_CGST, blocked_sgst=BLOCKED_CGST)],
         [], [],
-    ))["itc_avl"][0]["camt"]
+    )))["camt"]
     assert with_rev == no_rev
 
 
@@ -169,10 +180,9 @@ def test_the_reclaimable_flag_alone_decides_the_side(reclaimable, expected_ty):
 
 def test_4c_is_4a_minus_4b_on_every_head():
     t4 = _table4(_base())
-    avl = t4["itc_avl"][0]
     rev = t4["itc_rev"]
     for head in ("iamt", "camt", "samt", "csamt"):
-        assert t4["itc_net"][head] == avl[head] - sum(r[head] for r in rev), head
+        assert t4["itc_net"][head] == _avl_total(t4, head) - sum(r[head] for r in rev), head
 
 
 def test_the_net_credit_is_what_the_old_layout_reported_as_available():
@@ -212,7 +222,7 @@ def test_section_17_5_is_not_repeated_in_4d():
 def test_every_table_4_figure_is_a_whole_rupee_integer():
     t4 = _table4(compute_gstr3b([], [_purchase(1_00_067, 1_00_049)], [], [
         ITCReversal(cgst_paise=2_051, sgst_paise=2_049, reclaimable=True, reason="x")]))
-    figures = ([t4["itc_avl"][0][h] for h in ("iamt", "camt", "samt", "csamt")]
+    figures = ([x[h] for x in t4["itc_avl"] for h in ("iamt", "camt", "samt", "csamt")]
                + [x[h] for x in t4["itc_rev"] for h in ("iamt", "camt", "samt", "csamt")]
                + [t4["itc_net"][h] for h in ("iamt", "camt", "samt", "csamt")])
     assert all(isinstance(f, int) for f in figures), figures
@@ -238,7 +248,7 @@ def test_the_2a_cap_still_applies_to_4a():
     r = compute_gstr3b([], [_purchase(1_00_000, 1_00_000)], [
         GSTR2ARecord(cgst_paise=60_000, sgst_paise=60_000, igst_paise=0)], [])
     assert r.itc_capped_by_2a is True
-    assert _table4(r)["itc_avl"][0]["camt"] == 600
+    assert _avl(_table4(r))["camt"] == 600
 
 
 # ── Table 6: what the reversal does to the tax actually payable ──────────────

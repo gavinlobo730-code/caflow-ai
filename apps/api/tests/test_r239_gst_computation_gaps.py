@@ -95,6 +95,17 @@ def test_compute_gstr3b_ineligible_excluded_before_rule_36_4_cap():
     assert result.itc_ineligible_sgst == 10_00000
 
 
+
+def _avl(payload, ty):
+    """One row of Table 4(A) by its GSTN type code.
+
+    itc_avl is five objects — IMPG, IMPS, ISRC, ISD, OTH — one per row of the
+    form (GSTN offline utility V5.8, sheet rows 31-35). Indexing [0] gets
+    Import of goods.
+    """
+    return {x["ty"]: x for x in payload["itc_elg"]["itc_avl"]}[ty]
+
+
 def test_gstr3b_payload_populates_itc_inelg():
     from domain.gst.gstr3b_computer import PurchaseTransaction, compute_gstr3b
 
@@ -120,7 +131,9 @@ def test_gstr3b_payload_populates_itc_inelg():
 
     # 4(A) carries it too, so the return ties to the auto-populated 2B, and
     # 4(C) nets it straight back out. The tax payable is what it always was.
-    assert payload["itc_elg"]["itc_avl"][0]["camt"] == 4500.0
+    # 4(A)(5) "All other ITC" — index 0 is Import of goods. The one-object
+    # itc_avl this used to index was typed ISRC, i.e. reverse charge.
+    assert _avl(payload, "OTH")["camt"] == 4500.0
     assert payload["itc_elg"]["itc_net"]["camt"] == 0.0
 
 
@@ -226,7 +239,7 @@ def test_gstr3b_from_books_excludes_ineligible_itc(monkeypatch):
     # net of §17(5). It asserted 9000 here, which was the pre-August-2022
     # layout; understating 4(A) is what fails to tie to the portal's
     # auto-populated GSTR-2B.
-    assert payload["itc_elg"]["itc_avl"][0]["camt"] == 13500.0
+    assert _avl(payload, "OTH")["camt"] == 13500.0
     # The blocked credit is reversed in 4(B)(1), not repeated in 4(D).
     assert payload["itc_elg"]["itc_rev"][0]["camt"] == 4500.0
     assert payload["itc_elg"]["itc_inelg"][0]["camt"] == 0

@@ -235,6 +235,51 @@ class GSTR3BResult:
     def itc_net_cess(self) -> int:
         return max(self.itc_avail_cess - self.itc_rev_total_cess, 0)
 
+    def itc_avl_rows(self) -> list[tuple[str, int, int, int, int]]:
+        """Table 4(A), one tuple per row: (ty, igst, cgst, sgst, cess).
+
+        The form has never had a single 4(A) line. It has five, and the GSTN
+        offline utility (GSTR3B_Excel_Utility V5.8, sheet rows 31-35) writes one
+        JSON object for each, unconditionally, in this order:
+
+            4(A)(1) Import of goods                            IMPG
+            4(A)(2) Import of services                         IMPS
+            4(A)(3) Inward supplies liable to reverse charge   ISRC
+            4(A)(4) Inward supplies from ISD                   ISD
+            4(A)(5) All other ITC                              OTH
+
+        This used to emit ONE object typed "ISRC" carrying the whole credit, so
+        every rupee of a client's ITC was declared on the reverse-charge line
+        of a filed return. "ISRC" is Inward Supplies Reverse Charge; the
+        general bucket is "OTH".
+
+        IMPG, IMPS and ISD are zero because nothing upstream distinguishes an
+        import or an ISD distribution from any other purchase yet. They are
+        still emitted: the utility always writes all five, and a row that is
+        absent is not the same as a row that is nil.
+
+        ISRC is capped at the credit available so the five rows sum to exactly
+        4(A). Without the cap, a period where the Rule 36(4) cap trimmed credit
+        below the reverse-charge tax would file a 4(A) that does not reconcile
+        with its own 4(C).
+        """
+        isrc_i = min(self.rcm_igst, self.itc_avail_igst)
+        isrc_c = min(self.rcm_cgst, self.itc_avail_cgst)
+        isrc_s = min(self.rcm_sgst, self.itc_avail_sgst)
+        return [
+            ("IMPG", 0, 0, 0, 0),
+            ("IMPS", 0, 0, 0, 0),
+            # Reverse-charge tax is self-assessed by the recipient and taken as
+            # credit in the same return (CGST Act §9(3)/(4) with §16).
+            ("ISRC", isrc_i, isrc_c, isrc_s, 0),
+            ("ISD", 0, 0, 0, 0),
+            ("OTH",
+             self.itc_avail_igst - isrc_i,
+             self.itc_avail_cgst - isrc_c,
+             self.itc_avail_sgst - isrc_s,
+             self.itc_avail_cess),
+        ]
+
     # Table 6: Net tax payable
     net_igst: int = 0
     net_cgst: int = 0
@@ -252,17 +297,35 @@ class GSTR3BResult:
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         """
         r = paise_to_rupees_whole
+        # Table 3.1.1 — supplies notified under CGST Act §9(5), where an
+        # electronic commerce operator is liable for the tax instead of the
+        # supplier. The GSTN utility gates this block on the return period and
+        # writes it for every period from July 2022; before that the row did
+        # not exist on the form. Zero here: nothing marks a supply as made
+        # through an ECO, and neither side of §9(5) is modelled.
+        eco_zero = {"txval": 0, "iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
+        eco_dtls = (
+            {"eco_dtls": {"eco_sup": dict(eco_zero),          # ECO pays the tax
+                          "eco_reg_sup": dict(eco_zero)}}     # supplier through an ECO
+            if _period_at_or_after(period, 7, 2022) else {}
+        )
         return {
             "gstin": gstin,
             "ret_period": period,
+            # Section 5 of the form — values of EXEMPT, NIL-RATED and NON-GST
+            # INWARD supplies, split inter-state / intra-state. Not reverse
+            # charge: this block previously carried the RCM figures under an
+            # invented {"ty": "RCM", "inter", "intra_cgst", "intra_sgst"}, none
+            # of which the schema has. The reverse-charge liability belongs in
+            # sup_details.isup_rev (Table 3.1(d)) and is already there.
+            #
+            # Zero because purchases are not yet classified as exempt or
+            # non-GST on the inward side. Both rows are emitted regardless: the
+            # utility defaults the cells to 0 and always writes GST and NONGST.
             "inward_sup": {
                 "isup_details": [
-                    {
-                        "ty": "RCM",
-                        "inter": r(self.rcm_igst),
-                        "intra_cgst": r(self.rcm_cgst),
-                        "intra_sgst": r(self.rcm_sgst),
-                    }
+                    {"ty": "GST", "inter": 0, "intra": 0},
+                    {"ty": "NONGST", "inter": 0, "intra": 0},
                 ]
             },
             "sup_details": {
@@ -289,6 +352,7 @@ class GSTR3BResult:
                 },
                 "osup_nongst": {"txval": 0},
             },
+            **eco_dtls,
             # ── Table 4, in the shape the portal has used since 01-09-2022 ──
             # Notification 14/2022-Central Tax and Circular 170/02/2022-GST:
             #
@@ -317,14 +381,11 @@ class GSTR3BResult:
             # understated against 2B, and 4(B) said no credit had been reversed
             # in a period when the books had reversed some.
             "itc_elg": {
+                # Five rows, always, in form order. See itc_avl_rows().
                 "itc_avl": [
-                    {
-                        "ty": "ISRC",       # inputs, inputs services, capital goods combined
-                        "iamt": r(self.itc_avail_igst),
-                        "camt": r(self.itc_avail_cgst),
-                        "samt": r(self.itc_avail_sgst),
-                        "csamt": r(self.itc_avail_cess),
-                    }
+                    {"ty": ty, "iamt": r(i), "camt": r(c), "samt": r(sg),
+                     "csamt": r(cs)}
+                    for ty, i, c, sg, cs in self.itc_avl_rows()
                 ],
                 "itc_rev": [
                     # "RUL" is the GSTN type code for a reversal under the rules
@@ -360,6 +421,16 @@ class GSTR3BResult:
                 # GSTR-3B." Reporting it in both overstates the ineligible
                 # credit the portal shows against the taxpayer.
                 "itc_inelg": [
+                    # 4(D)(1) — credit reversed under 4(B)(2) in an earlier
+                    # period and reclaimed now. Zero because a reclaim is not
+                    # yet a modelled event: 4(B)(2) records the reversal, and
+                    # nothing records the later payment that brings it back.
+                    # The row is still emitted — the utility always writes both,
+                    # and an absent row is not a nil row.
+                    {"ty": "RUL", "iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
+                    # 4(D)(2) — §16(4) time-bar and place-of-supply
+                    # ineligibility. Neither is tracked. §17(5) is NOT here; it
+                    # is declared in 4(B)(1) above.
                     {"ty": "OTH", "iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
                 ],
             },
@@ -391,6 +462,23 @@ def _apply_rule_36_4_cap(book: int, gstr2a: int) -> tuple[int, bool]:
     if book > cap:
         return cap, True
     return book, False
+
+
+def _period_at_or_after(period: str, month: int, year: int) -> bool:
+    """Is this MMYYYY return period on or after the given month and year?
+
+    A string compare is wrong here — "012026" sorts below "122025" — so the
+    period is split and compared as (year, month).
+
+    An unparseable period is treated as being in range. The form has carried
+    Table 3.1.1 since July 2022 and every period this product files is later
+    than that, so including the block is the safe direction; omitting it on a
+    malformed input would silently drop a section of a live return.
+    """
+    p = (period or "").strip()
+    if len(p) != 6 or not p.isdigit():
+        return True
+    return (int(p[2:]), int(p[:2])) >= (year, month)
 
 
 def compute_gstr3b(
