@@ -451,21 +451,32 @@ def compute_gstr3b(
             result.itc_rev_perm_cess += rv.cess_paise
 
     # ── Table 6: Net tax payable ─────────────────────────────────────────────
-    # CGST Act Section 49: IGST credit first against IGST, then CGST, then SGST
-    igst_after_itc = result.outward_taxable_igst - itc_igst
+    # CGST Act Section 49: IGST credit first against IGST, then CGST, then SGST.
+    #
+    # The credit set off here is Table 4(C) — what is left AFTER the 4(B)
+    # reversals — not 4(A). Section 49(4) permits payment only out of credit
+    # "available in the electronic credit ledger", and credit reversed in this
+    # very return is not available: reversing it and then paying tax with it
+    # would use the same rupee twice. Before reversals existed as an input this
+    # distinction could not arise and the set-off read the gross figure; with a
+    # cancellation in the period, that understates the tax payable by the whole
+    # reversed amount, and the taxpayer underpays.
+    avail_igst, avail_cgst, avail_sgst = (
+        result.itc_net_igst, result.itc_net_cgst, result.itc_net_sgst)
+    igst_after_itc = result.outward_taxable_igst - avail_igst
 
     if igst_after_itc <= 0:
         # Excess IGST ITC — offset against CGST and SGST (Section 49(5))
         excess_igst_itc = abs(igst_after_itc)
         half_excess = excess_igst_itc // 2
         result.net_igst = 0
-        result.net_cgst = max(0, result.outward_taxable_cgst - itc_cgst - half_excess)
-        result.net_sgst = max(0, result.outward_taxable_sgst - itc_sgst - (excess_igst_itc - half_excess))
+        result.net_cgst = max(0, result.outward_taxable_cgst - avail_cgst - half_excess)
+        result.net_sgst = max(0, result.outward_taxable_sgst - avail_sgst - (excess_igst_itc - half_excess))
     else:
         result.net_igst = igst_after_itc
-        result.net_cgst = max(0, result.outward_taxable_cgst - itc_cgst)
-        result.net_sgst = max(0, result.outward_taxable_sgst - itc_sgst)
+        result.net_cgst = max(0, result.outward_taxable_cgst - avail_cgst)
+        result.net_sgst = max(0, result.outward_taxable_sgst - avail_sgst)
 
-    result.net_cess = max(0, result.outward_taxable_cess - result.itc_cess)
+    result.net_cess = max(0, result.outward_taxable_cess - result.itc_net_cess)
 
     return result

@@ -239,3 +239,88 @@ def test_the_2a_cap_still_applies_to_4a():
         GSTR2ARecord(cgst_paise=60_000, sgst_paise=60_000, igst_paise=0)], [])
     assert r.itc_capped_by_2a is True
     assert _table4(r)["itc_avl"][0]["camt"] == 600
+
+
+# ── Table 6: what the reversal does to the tax actually payable ──────────────
+
+def test_the_set_off_uses_4c_not_4a():
+    """CGST Act §49(4) lets tax be paid only from credit AVAILABLE in the
+    electronic credit ledger. Credit reversed in this very return is not
+    available — setting off the gross 4(A) figure spends the same rupee twice
+    and the taxpayer underpays by the whole reversed amount."""
+    sale = _sale(90000, 90000)
+    purchase = _purchase(45000, 45000)
+    without = compute_gstr3b([sale], [purchase], [], [])
+    with_rev = compute_gstr3b([sale], [purchase], [], [
+        ITCReversal(cgst_paise=45000, sgst_paise=45000, reclaimable=False,
+                    reason="bill cancelled")])
+
+    # Guard: the reversal really does empty 4(C), or the assertion below could
+    # hold with the set-off unchanged.
+    assert without.itc_net_cgst == 45000 and with_rev.itc_net_cgst == 0
+
+    assert without.net_cgst == 90000 - 45000
+    assert with_rev.net_cgst == 90000, (
+        "the reversed credit was still set off against output tax — the return "
+        "asks for less money than the law does")
+    assert with_rev.net_sgst == 90000
+
+
+def test_a_reclaimable_reversal_also_reduces_the_credit_set_off():
+    """Rule 37 credit is coming back later, but it is not available NOW."""
+    r = compute_gstr3b([_sale(90000, 90000)], [_purchase(45000, 45000)], [], [
+        ITCReversal(cgst_paise=45000, sgst_paise=45000, reclaimable=True,
+                    reason="Rule 37")])
+    assert r.net_cgst == 90000 and r.net_sgst == 90000
+
+
+def test_blocked_credit_was_already_out_of_the_set_off_and_stays_out():
+    """§17(5) never reached the set-off before this change either — it is
+    excluded from itc_* at source. Moving it into 4(B) must not double-count it
+    by subtracting it a second time."""
+    r = compute_gstr3b([_sale(90000, 90000)],
+                       [_purchase(45000, 45000, blocked_cgst=5000, blocked_sgst=5000)],
+                       [], [])
+    # Credit available = 45000 - 5000 blocked = 40000. Tax = 90000 - 40000.
+    assert r.itc_net_cgst == 40000
+    assert r.net_cgst == 50000
+
+
+def test_a_period_with_no_reversals_pays_exactly_what_it_paid_before():
+    """The guard against fixing the reversal case by breaking every other one."""
+    r = compute_gstr3b([_sale(90000, 90000)], [_purchase(45000, 45000)], [], [])
+    assert r.net_cgst == 45000 and r.net_sgst == 45000
+    assert r.itc_net_cgst == r.itc_cgst == 45000
+
+
+def test_excess_igst_credit_is_still_cross_utilised_after_a_reversal():
+    """§49(5): surplus IGST credit spills to CGST then SGST. The spill must be
+    computed from the credit that survives 4(B), not from 4(A)."""
+    sale = SalesTransaction("invoice", 5_00000, 45000, 45000, 0, 0, "taxable", False)
+    purchase = PurchaseTransaction(10_00000, 0, 0, 1_00000, 0, False)
+    r = compute_gstr3b([sale], [purchase], [], [
+        ITCReversal(igst_paise=40000, reclaimable=False, reason="bill cancelled")])
+    # IGST credit surviving 4(B) = 60000, no IGST output, so 60000 spills:
+    # 30000 to CGST and 30000 to SGST.
+    assert r.itc_net_igst == 60000
+    assert r.net_igst == 0
+    assert r.net_cgst == 45000 - 30000
+    assert r.net_sgst == 45000 - 30000
+
+
+def test_a_cess_reversal_reduces_the_cess_payable():
+    """Cess has its own set-off line and its own reversal column. A cancelled
+    bill on a cess-bearing supply (tobacco, coal, motor vehicles) carries cess
+    like any other head, so the same rule applies to it."""
+    sale = SalesTransaction("invoice", 5_00000, 45000, 45000, 0, 20000,
+                            "taxable", False)
+    purchase = PurchaseTransaction(2_00000, 18000, 18000, 0, 12000, False)
+    without = compute_gstr3b([sale], [purchase], [], [])
+    with_rev = compute_gstr3b([sale], [purchase], [], [
+        ITCReversal(cess_paise=12000, reclaimable=False, reason="bill cancelled")])
+    assert without.net_cess == 20000 - 12000
+    assert with_rev.net_cess == 20000, (
+        "the reversed cess credit was still set off — cess is a separate levy "
+        "under the GST (Compensation to States) Act and underpaying it is the "
+        "same defect as underpaying CGST")
+    assert _table4(with_rev)["itc_net"]["csamt"] == 0

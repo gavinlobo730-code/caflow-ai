@@ -519,7 +519,10 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         # server-side (CLAUDE.md: zero business logic in the frontend) so the
         # caller never has to derive these from the rupee-rounded payload/summary.
         "tax_liability_paise": books_output,
-        "itc_claimed_paise": result.itc_igst + result.itc_cgst + result.itc_sgst,
+        # Table 4(C): the credit actually claimed, net of the 4(B) reversals.
+        # This is the figure stored on gst_returns and shown as "ITC Claimed",
+        # so it has to be the one the return claims, not the gross 4(A).
+        "itc_claimed_paise": result.itc_net_igst + result.itc_net_cgst + result.itc_net_sgst,
         "net_tax_paise": result.net_igst + result.net_cgst + result.net_sgst,
         "payload": result.as_gstn_payload(gstin, period),
         "working": {
@@ -540,6 +543,15 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 "cgst_paise": result.itc_book_cgst,
                 "sgst_paise": result.itc_book_sgst,
                 "igst_paise": result.itc_book_igst,
+                # Table 4(A) and 4(C), in paise. 4(A) is GROSS — it includes
+                # blocked credit and credit reversed below — because the portal
+                # populates it from GSTR-2B. 4(C) is what is actually claimed.
+                "avail_cgst_paise": result.itc_avail_cgst,
+                "avail_sgst_paise": result.itc_avail_sgst,
+                "avail_igst_paise": result.itc_avail_igst,
+                "net_cgst_paise": result.itc_net_cgst,
+                "net_sgst_paise": result.itc_net_sgst,
+                "net_igst_paise": result.itc_net_igst,
             },
             # Table 4 as the portal lays it out since Notification 14/2022 read
             # with Circular 170/02/2022-GST. The payload above carries the same
@@ -567,6 +579,15 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                      "cess_paise": rv.cess_paise}
                     for rv in reversals
                 ],
+            },
+            # Table 6. Computed HERE, not in the browser: the Section 49(5)
+            # cross-utilisation order is a statutory rule, and CLAUDE.md keeps
+            # those in apps/api. The screen renders these; it derives nothing.
+            "net_payable": {
+                "igst_paise": result.net_igst,
+                "cgst_paise": result.net_cgst,
+                "sgst_paise": result.net_sgst,
+                "total_paise": result.net_igst + result.net_cgst + result.net_sgst,
             },
         },
         "reconciliation": {
