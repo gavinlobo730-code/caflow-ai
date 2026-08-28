@@ -1036,6 +1036,7 @@ def posted_queue(
 @router.post("/transactions/batch-accept")
 def batch_accept(
     data: BankBatchIn,
+    preview: bool = False,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Apply each selected row's own strongest suggestion — a matching rule
@@ -1049,11 +1050,36 @@ def batch_accept(
     db = _db()
     if not db:
         return api_response(True, {"results": [], "applied": 0, "skipped": 0,
-                                   "failed": 0, "total": 0})
+                                   "failed": 0, "would_apply": 0, "total": 0})
     _assert_txn_batch_scope(db, current_user, data.transaction_ids)
     return api_response(True, bank_batch_service.accept(
         db, current_user["firm_id"], data.transaction_ids,
-        actor_id=current_user.get("auth_user_id")))
+        actor_id=current_user.get("auth_user_id"), preview=bool(preview)))
+
+
+@router.post("/transactions/batch-accept/preview")
+def batch_accept_preview(
+    data: BankBatchIn,
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """What batch-accept WOULD do, without doing it.
+
+    Runs the same function with preview=True, so the list the CA approves is
+    produced by the code that will act on it. Rows that would change come back
+    as "would_apply" with the account and the source; nothing is written.
+
+    Behind the same rbac("banking", "write") as the action itself. It reads a
+    proposal about writes, and anyone who may not make the writes has no
+    business being shown the plan for them either.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"results": [], "applied": 0, "skipped": 0,
+                                   "failed": 0, "would_apply": 0, "total": 0})
+    _assert_txn_batch_scope(db, current_user, data.transaction_ids)
+    return api_response(True, bank_batch_service.accept(
+        db, current_user["firm_id"], data.transaction_ids,
+        actor_id=current_user.get("auth_user_id"), preview=True))
 
 
 @router.post("/transactions/batch-exclude")

@@ -867,3 +867,92 @@ test("bulk Undo reverses, and refuses lines that were never recorded", () => {
   assert.match(body, /status: "skipped" as const/,
     "a selected line that was never recorded must be reported, not passed over");
 });
+
+test("a line shows what a rule proposes for it, before anything is applied", () => {
+  const s = queueSource();
+  const decl = s.slice(s.indexOf("const queueColumns"));
+  const body = decl.slice(0, decl.indexOf("\n  ];"));
+
+  // WHY. The ledger picker's placeholder used to read "Suggested: Bank
+  // Charges". Removing that column removed the only place a suggestion was
+  // ever visible, which turned Apply suggestions into a blind write — press it
+  // and N lines are coded with no way to see beforehand which lines had a
+  // suggestion or what it was.
+  const at = body.indexOf("t.suggested_account_id && (");
+  assert.ok(at > 0, "a line no longer shows the ledger a rule proposes for it");
+
+  // Only where it is still NEWS: an uncoded, unsplit line. Once the CA has
+  // answered, the machine's opinion is not worth a word on the row.
+  const cell = body.slice(body.lastIndexOf("{", at), body.indexOf("</span>", at));
+  assert.match(cell, /!t\.account_id/,
+    "the proposal must be hidden once the line has a ledger of its own");
+  assert.match(cell, /!t\.is_split/,
+    "a split line has its answer already");
+
+  const descAt = body.indexOf('key: "description"');
+  const gstAt = body.indexOf('key: "gst"');
+  assert.ok(at > descAt && at < gstAt,
+    "the proposal belongs beside the narration, not in a column of its own");
+});
+
+test("Apply suggestions previews from the server before it writes", () => {
+  const s = queueSource();
+  const actions = s.slice(s.indexOf("const queueBulkActions"));
+  const body = actions.slice(0, actions.indexOf("\n  ];"));
+
+  const at = body.indexOf('id: "apply-suggestions"');
+  assert.ok(at > 0, "the action is gone");
+  const entry = body.slice(at, body.indexOf("\n    },", at));
+  assert.match(entry, /previewSuggestions\(picked\)/,
+    "the first click must PREVIEW — it used to code every selected line and " +
+    "report a count, with no way to see what landed where");
+  assert.doesNotMatch(entry, /runBatchIds\("accept"/,
+    "the click must not write; that happens on Apply inside the modal");
+
+  // AND THE PREVIEW COMES FROM THE SERVER. A list drawn in the browser from
+  // suggested_account_id would be a second answer: it knows nothing about
+  // payee history or the refusals the server applies, so the CA could approve
+  // one thing and the books take another with nothing reporting it.
+  const fn = s.slice(s.indexOf("async function previewSuggestions"));
+  const pv = fn.slice(0, fn.indexOf("\n  /**", 10));
+  assert.ok(pv.length > 300, "previewSuggestions came back empty");
+  assert.match(pv, /api\.banking\.batchAcceptPreview\(ids\)/,
+    "the preview must be the server's dry run of the same function that applies");
+  assert.doesNotMatch(pv, /suggested_account_id/,
+    "the preview must not be recomputed from the row's own fields");
+});
+
+test("Apply suggestions is not offered where it could only report doing nothing", () => {
+  const s = queueSource();
+  const at = s.indexOf("const hasSomethingToAccept");
+  assert.ok(at > 0, "the guard is gone");
+  const fn = s.slice(at, s.indexOf(";\n", s.indexOf("confidentMatch(t)", at)));
+
+  // batch_accept fills a field only when it is EMPTY. Without this the button
+  // showed on an already-coded line and answered "Already coded — nothing was
+  // changed", which is the same dead button one step further along.
+  assert.match(fn, /!t\.account_id/,
+    "a line that already has a ledger has nothing for a suggestion to fill");
+  assert.match(fn, /!t\.is_split/,
+    "a split line has its answer already");
+});
+
+test("the outcome says which ledger landed on which line", () => {
+  const s = queueSource();
+  const at = s.indexOf("{batchOutcome.results");
+  assert.ok(at > 0, "the outcome list is gone");
+  const panel = s.slice(at, s.indexOf("</div>", s.indexOf("</p>", at)));
+
+  // It listed only rows that did NOT apply. Right for "record these" — a
+  // recorded line visibly leaves the queue — and wrong for a coding action,
+  // where the only question a CA has afterwards is what went where.
+  assert.doesNotMatch(panel, /results\.some\(\(r\) => r\.status !== "applied"\)/,
+    "the panel is back to hiding everything that succeeded");
+  assert.match(panel, /r\.status === "applied" && r\.account_id/,
+    "an applied row must name the ledger it was coded to");
+  assert.match(panel, /accountLabel\(r\.account_id\)/,
+    "and name it, not print the id");
+  assert.match(panel, /r\.source/,
+    "and say on whose authority — a rule the CA wrote reads differently from " +
+    "a habit the machine noticed");
+});

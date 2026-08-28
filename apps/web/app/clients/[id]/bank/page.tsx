@@ -183,7 +183,18 @@ interface QueueTxn {
 /** Tier 1.7 — what happened to ONE row of a batch. Every row comes back with
  *  an outcome; a partial success shown as a success hides uncoded lines. */
 interface BatchResult {
-  transaction_id: string; status: "applied" | "skipped" | "failed"; reason: string;
+  transaction_id: string;
+  /** "would_apply" is the dry run's verdict — this row WOULD be coded. It is a
+   *  distinct value on purpose: a preview that reported "applied" would count
+   *  writes that never happened. */
+  status: "applied" | "skipped" | "failed" | "would_apply";
+  reason: string;
+  /** Present on accept outcomes and on every dry-run row, so the screen can say
+   *  which line is getting which ledger, and on whose authority. */
+  account_id?: string | null;
+  category?: string | null;
+  source?: string;
+  description?: string;
 }
 interface BatchOutcome {
   results: BatchResult[]; applied: number; skipped: number; failed: number; total: number;
@@ -268,6 +279,9 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleSaved, setRuleSaved] = useState<string | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  /** What "Apply suggestions" WOULD do, straight from the server's dry run.
+   *  Held so the CA can read it before anything is written. */
+  const [preview, setPreview] = useState<{ rows: BatchResult[]; ids: string[] } | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   // Distinguishes "fetch failed" from "queue genuinely empty" (a masked
   // failure here reads as a fully-reconciled bank, which it may not be).
@@ -435,6 +449,30 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
     } catch (e) {
       setRowError((x) => ({ ...x, [t.id]: e instanceof Error ? e.message : "Could not set the ledger." }));
     } finally { setBusy((b) => ({ ...b, [t.id]: false })); }
+  }
+
+  /** Ask the server what Apply suggestions would do, and show it.
+   *
+   *  NOT computed here. The browser has each row's `suggested_account_id` and
+   *  could draw a list from it — and that list would be a SECOND answer: it
+   *  knows nothing about payee history, and nothing about the refusals the
+   *  server applies (already posted, already coded). The CA would approve one
+   *  thing and the books would take another, with nothing reporting the
+   *  difference. The dry run is the same function that does the work.
+   */
+  async function previewSuggestions(picked: QueueTxn[]) {
+    const ids = picked.map((t) => t.id);
+    // No busy flag of its own: DataTable disables the whole bulk bar while a
+    // bulk action's promise is in flight, and this runs inside one.
+    setBulkError(null);
+    try {
+      const res = (await api.banking.batchAcceptPreview(ids)) as
+        { success: boolean; data?: { results?: BatchResult[] }; error: string | null };
+      if (!res.success) { setBulkError(res.error ?? "Could not read the suggestions."); return; }
+      setPreview({ rows: res.data?.results ?? [], ids });
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Could not read the suggestions.");
+    }
   }
 
   /** Put recorded lines back, in bulk. The Categorized tab had no way to do
@@ -873,6 +911,25 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
               Split
             </span>
           )}
+          {/* WHAT A RULE PROPOSES FOR THIS LINE, on the line.
+              It used to show as the ledger picker's placeholder —
+              "Suggested: Bank Charges" — and removing that column removed the
+              only place a suggestion was ever visible. Apply suggestions then
+              became a blind write: press it and N lines are coded from rules
+              and history with no way to see, beforehand, which lines had a
+              suggestion or what it was. Reported by the CA in those words.
+
+              Grey and unemphatic because it is a PROPOSAL, and only on a line
+              that has not been coded — once the CA has answered, the machine's
+              opinion is no longer news. */}
+          {!t.account_id && !t.is_split && t.suggested_account_id && (
+            <span className="shrink-0 text-[10px] text-[#94A3B8] truncate"
+              title={t.suggested_by_rule
+                ? `Rule “${t.suggested_by_rule}” proposes ${accountLabel(t.suggested_account_id)}`
+                : `Proposed: ${accountLabel(t.suggested_account_id)}`}>
+              → {accountLabel(t.suggested_account_id)}
+            </span>
+          )}
         </div>
       ),
     },
@@ -1009,6 +1066,13 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
    *  BEFORE the click whether Apply suggestions has anything to accept. */
   const hasSomethingToAccept = (t: QueueTxn) =>
     t.match_status !== "posted" && t.match_status !== "ignored"
+    // AND STILL MISSING WHAT THE SUGGESTION WOULD FILL. The first version asked
+    // only "does this line have a suggestion?", so the button appeared on a
+    // line that was already coded and then reported "Already coded — nothing
+    // was changed" — which is the same dead button the guard was added to
+    // remove, one step further along. batch_accept fills a field only when it
+    // is empty, and this is that rule read back.
+    && !t.account_id && !t.is_split
     && (Boolean(t.suggested_account_id) || Boolean(t.suggested_payee)
         || Boolean(t.matched_entity_id) || Boolean(confidentMatch(t)));
 
@@ -1069,10 +1133,14 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
       run: async (picked) => { await recordPicked(picked); },
     },
     {
+      // PREVIEWS, then writes on a second click. It used to code every selected
+      // line on the first press and report "20 applied" — a CA answerable for
+      // each of those lines could not see beforehand which had a suggestion or
+      // what it was, and could not see afterwards which ledger went where.
       id: "apply-suggestions",
       label: "Apply suggestions",
       appliesTo: (picked) => picked.some(hasSomethingToAccept),
-      run: async (picked) => { await runBatchIds("accept", picked.map((t) => t.id)); },
+      run: async (picked) => { await previewSuggestions(picked); },
     },
     {
       // The Categorized tab's reason to exist. undo reverses the journal and
@@ -1395,14 +1463,29 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
                   <X size={13} />
                 </button>
               </div>
-              {batchOutcome.results.some((r) => r.status !== "applied") && (
+              {/* EVERY row, not only the ones that did not go through. It used
+                  to list failures and skips alone, which is right for "record
+                  these" — a recorded line is visibly gone from the queue — and
+                  wrong for a CODING action: the whole question a CA has after
+                  Apply suggestions is which ledger landed on which line, and
+                  the answer was nowhere on screen. Rows that named a ledger
+                  say so; the rest read as before. */}
+              {batchOutcome.results.length > 0 && (
                 <div className="divide-y divide-[#F8FAFC] max-h-48 overflow-y-auto">
-                  {batchOutcome.results.filter((r) => r.status !== "applied").map((r) => (
+                  {batchOutcome.results
+                    .filter((r) => r.status !== "applied" || r.account_id || r.category)
+                    .map((r) => (
                     <p key={r.transaction_id} className="px-4 py-1.5 text-[10px] text-[#64748B]">
-                      <span className={`font-medium ${r.status === "failed" ? "text-red-700" : "text-amber-700"}`}>
+                      <span className={`font-medium ${
+                        r.status === "failed" ? "text-red-700"
+                          : r.status === "applied" ? "text-[#15803D]" : "text-amber-700"}`}>
                         {r.status}
                       </span>
-                      {" — "}{r.reason}
+                      {r.description ? <> — <span className="text-[#334155]">{r.description}</span></> : null}
+                      {r.status === "applied" && r.account_id
+                        ? <> → <span className="font-medium text-[#0F172A]">{accountLabel(r.account_id)}</span>
+                            {r.source ? <span className="text-[#94A3B8]"> ({r.source})</span> : null}</>
+                        : <>{" — "}{r.reason}</>}
                     </p>
                   ))}
                 </div>
@@ -1456,6 +1539,103 @@ function BankMatchQueue({ clientId, accounts }: { clientId: string; accounts: Ac
         Click a line to choose its ledger, split it, or read the bank&apos;s own narration.
         Match or Add posts it and settles its document; Undo puts it back.
       </p>
+      {/* WHAT APPLY SUGGESTIONS IS ABOUT TO DO, before it does it. Every row
+          here came from the server's dry run of the same function that will
+          run on Apply, so this list cannot disagree with what lands. */}
+      {preview && (() => {
+        const willChange = preview.rows.filter((r) => r.status === "would_apply");
+        const leftAlone = preview.rows.filter((r) => r.status !== "would_apply");
+        return (
+          <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4"
+               onClick={() => !bulkBusy && setPreview(null)}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+                 onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between px-5 py-4 border-b border-[#F1F5F9]">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#0F172A]">
+                    {willChange.length === 0
+                      ? "Nothing to apply"
+                      : `${willChange.length} line${willChange.length === 1 ? "" : "s"} would be coded`}
+                  </h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    From rules you wrote and how you coded these payees before.
+                    Nothing is written until you apply.
+                  </p>
+                </div>
+                <button onClick={() => setPreview(null)} disabled={bulkBusy} aria-label="Close"
+                  className="text-[#94A3B8] hover:text-[#475569] shrink-0 disabled:opacity-40">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1">
+                {willChange.length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead className="bg-[#F8FAFC] text-[#64748B]">
+                      <tr>
+                        <th className="text-left font-medium px-5 py-2">Line</th>
+                        <th className="text-left font-medium px-3 py-2">Ledger</th>
+                        <th className="text-left font-medium px-5 py-2">From</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F8FAFC]">
+                      {willChange.map((r) => (
+                        <tr key={r.transaction_id}>
+                          <td className="px-5 py-2 text-[#1E293B] max-w-[18rem] truncate"
+                              title={r.description ?? ""}>{r.description}</td>
+                          <td className="px-3 py-2 font-medium text-[#0F172A]">
+                            {r.account_id ? accountLabel(r.account_id) : (r.category ?? "—")}
+                          </td>
+                          {/* Whose authority. A rule the CA wrote reads
+                              differently from a habit the machine noticed, and
+                              they should not look the same. */}
+                          <td className="px-5 py-2 text-[#64748B]">{r.source}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {leftAlone.length > 0 && (
+                  <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#FCFCFD]">
+                    <p className="text-[11px] font-medium text-[#475569] mb-1">
+                      {leftAlone.length} left alone
+                    </p>
+                    {/* The refusals, named. "12 selected, 6 coded" leaves the
+                        other six unaccounted for, and unaccounted-for lines are
+                        what sit uncoded until year end. */}
+                    <ul className="space-y-0.5">
+                      {leftAlone.map((r) => (
+                        <li key={r.transaction_id} className="text-[10px] text-[#64748B] truncate"
+                            title={`${r.description ?? ""} — ${r.reason}`}>
+                          {r.description} — {r.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#F1F5F9]">
+                <button onClick={() => setPreview(null)} disabled={bulkBusy}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40">
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    const ids = preview.ids;
+                    setPreview(null);
+                    await runBatchIds("accept", ids);
+                  }}
+                  disabled={bulkBusy || willChange.length === 0}
+                  className="text-xs px-4 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40 disabled:cursor-not-allowed">
+                  {bulkBusy ? "Applying…" : `Apply to ${willChange.length} line${willChange.length === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* BULK — the same two questions the detail modal asks, asked once for
           many lines. Same picker, same rate list, same words, so "set the
           ledger" means one thing on this screen whether it is one line or

@@ -68,8 +68,23 @@ class BankBatchService:
 
     # ── 1.7 accept ──────────────────────────────────────────────────────────
     def accept(self, db, firm_id: str, txn_ids: list[str],
-               actor_id: Optional[str] = None) -> dict:
-        """Apply each row's own strongest suggestion. Per-row outcomes."""
+               actor_id: Optional[str] = None, preview: bool = False) -> dict:
+        """Apply each row's own strongest suggestion. Per-row outcomes.
+
+        PREVIEW IS THIS SAME FUNCTION, not a second one. With preview=True it
+        walks every row exactly as it would to apply — the same rules, the same
+        payee history, the same "already coded" and "already posted" refusals —
+        and returns what it WOULD write instead of writing it. Rows that would
+        change come back as "would_apply" carrying the account and the source;
+        nothing is written and nothing is logged.
+
+        WHY IT HAS TO BE THE SAME LOOP. The screen shows the CA a list of lines
+        and the ledger each is about to get, and they press Apply on the
+        strength of it. A preview computed anywhere else — a second copy of the
+        rule matching, or the browser guessing from suggested_account_id — is a
+        list that can disagree with what lands. The CA would have approved one
+        thing and the books would carry another, and nothing would report it.
+        """
         ids = self._check_batch(txn_ids)
         found = self._fetch(db, firm_id, ids)
 
@@ -125,13 +140,29 @@ class BankBatchService:
                     txn_id, "skipped", "Already coded — nothing was changed."))
                 continue
 
+            if preview:
+                # Everything above ran; only the write is skipped. `source` and
+                # `description` ride along so the screen can say WHICH line is
+                # getting WHICH ledger and on whose authority — a rule the CA
+                # wrote, or how they coded that payee before.
+                results.append(self._outcome(
+                    txn_id, "would_apply", f"Would be coded from {source}.",
+                    category=update.get("category"), account_id=update.get("account_id"),
+                    source=source, description=txn.get("description")))
+                continue
+
             (db.table("bank_transactions").update(update)
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
             results.append(self._outcome(
                 txn_id, "applied", f"Coded from {source}.",
-                category=update.get("category"), account_id=update.get("account_id")))
+                category=update.get("category"), account_id=update.get("account_id"),
+                source=source, description=txn.get("description")))
 
-        self._log_batch(firm_id, "accept", results, actor_id)
+        # A preview is a read. It leaves no audit trail because it changed
+        # nothing — logging one would put "accepted a batch" in the record for a
+        # CA who then pressed Cancel.
+        if not preview:
+            self._log_batch(firm_id, "accept", results, actor_id)
         return self._summarise(results)
 
     @staticmethod
@@ -240,7 +271,9 @@ class BankBatchService:
 
     @staticmethod
     def _summarise(results: list[dict]) -> dict:
-        counts = {"applied": 0, "skipped": 0, "failed": 0}
+        # would_apply is seeded so a preview reports 0 applied — which is the
+        # truth, nothing was written — while still counting what it would do.
+        counts = {"applied": 0, "skipped": 0, "failed": 0, "would_apply": 0}
         for r in results:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
         return {
@@ -248,6 +281,7 @@ class BankBatchService:
             "applied": counts["applied"],
             "skipped": counts["skipped"],
             "failed": counts["failed"],
+            "would_apply": counts["would_apply"],
             "total": len(results),
         }
 
