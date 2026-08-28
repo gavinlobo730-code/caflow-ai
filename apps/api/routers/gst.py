@@ -398,6 +398,60 @@ def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depend
     return api_response(True, data)
 
 
+@router.post("/gstr1/with-amendments")
+def gstr1_with_amendments_endpoint(req: FromBooksRequest, current_user: dict = Depends(rbac("gst", "compute"))):
+    """GSTR-1 from books, with the amendment tables this period has to carry.
+
+    CGST Act §37: a filed GSTR-1 can never be revised, so a correction to an
+    earlier period is declared in a LATER return's amendment tables — 9A for
+    invoices, 9C for notes, 10 for B2C-others. services/gst_amendment_service
+    has worked out which corrections are outstanding since it was built, and
+    domain/gst/amendments.merge_into_payload has been able to fold them into a
+    payload for just as long. NOTHING CONNECTED THE TWO: there was no route
+    that produced the merged payload, so a CA could see the amendments and had
+    no way to file them.
+
+    Out-of-time corrections are already excluded upstream — outstanding_
+    amendments only collects entries for a period whose §37(3) window is still
+    open — so nothing here can declare an amendment that the law no longer
+    allows. Amounts the CA must decide on (a document cancelled after filing)
+    and invoices that were never declared at all stay OUT of the payload and
+    are returned alongside it, because neither is an amendment.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This produces a file; uploading
+    # it to gst.gov.in remains a deliberate human act.
+    """
+    assert_client_access(current_user, req.client_id)
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    gstin = _client_gstin(db, firm_id, req.client_id)
+    errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
+    if errs:
+        raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
+    from services.gst_amendment_service import apply_amendments, outstanding_amendments
+    try:
+        base = gst_return_service.gstr1_from_books(
+            db, firm_id, req.client_id, req.period, gstin, req.aggregate_turnover_paise)
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    outstanding = outstanding_amendments(db, firm_id, req.client_id, req.period)
+    return api_response(True, {
+        **base,
+        "payload": apply_amendments(base["payload"], outstanding),
+        "amendments": {
+            "sections": sorted((outstanding.get("sections") or {}).keys()),
+            "counts": outstanding.get("counts") or {},
+            "source_periods": outstanding.get("source_periods") or [],
+            "expired": outstanding.get("expired") or [],
+            "needs_decision": outstanding.get("needs_decision") or [],
+            "carry_forward": outstanding.get("carry_forward") or [],
+            "closing_soon": outstanding.get("closing_soon") or [],
+        },
+        "ca_review_required": True,   # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    })
+
+
 @router.post("/gstr1/build")
 def build_gstr1_endpoint(req: GSTR1Request, current_user: dict = Depends(rbac("gst", "compute"))):
     """Build GSTR-1 JSON payload from classified transaction data.
