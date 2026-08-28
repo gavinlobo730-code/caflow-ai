@@ -467,9 +467,16 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     # independently; sourcing 4(B) from the movement on gst_input would make it
     # compare the ledger with itself and agree by construction.
     #
-    # A cancelled purchase is a PERMANENT reversal — the credit is not coming
-    # back — so it belongs in 4(B)(1) with the Rule 38/42/43 and §17(5) amounts,
-    # not in 4(B)(2), which tells the portal to expect a reclaim.
+    # 4(B)(1), and this one is a JUDGEMENT rather than a lookup. Circular
+    # 170/02/2022-GST does not name a cancelled purchase anywhere; it names
+    # rules 38, 42 and 43 and §17(5). But it names them as examples — the box
+    # is for "reversal of ITC that are absolute in nature and not reclaimable
+    # ... such as those on account of rule 38 ..." — and a cancelled purchase
+    # meets that test exactly: the supply is undone, the credit is gone, and
+    # nothing will ever bring it back. 4(B)(2) is defined as "ITC that is to be
+    # reclaimed or may be reclaimed on a future date", which this is not, and
+    # declaring it there would leave a balance in the electronic credit
+    # reversal and re-claimed statement that never clears.
     reversals = [
         ITCReversal(
             igst_paise=int(b.get("igst_paise") or 0),

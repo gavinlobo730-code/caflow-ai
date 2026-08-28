@@ -87,6 +87,17 @@ change. The code is the authority; keep this file in step with it.
 - Advance tax due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
 - ITR (IT Act §139): 31 July, or 31 October where audit applies
 - MCA/ROC offsets from the AGM date: ADT-1 +15d (§139), AOC-4 +30d (§137), MGT-7 +60d (§92)
+- **GSTR-3B Table 4** follows Notification 14/2022-Central Tax with Circular
+  170/02/2022-GST, live on the portal from 01-09-2022: 4(A) is **gross** (it is
+  auto-populated from GSTR-2B, so netting blocked credit out of it breaks the
+  tie-up), 4(B)(1) takes reversals "absolute in nature and not reclaimable"
+  (Rules 38/42/43 and §17(5)), 4(B)(2) takes the reclaimable ones (Rule 37/37A,
+  §16(2)(b)/(c)), and 4(C) = 4(A) − 4(B). §17(5) goes in 4(B) and is **not**
+  repeated in 4(D). Table 6 sets off 4(C), never 4(A) — §49(4) allows payment
+  only from credit available in the credit ledger, and credit reversed in the
+  same return is not. `domain/gst/gstr3b_computer.py` carries the circular's
+  wording and is the authority; the pre-2022 layout looks plausible and gets the
+  tax right, which is why it survived so long.
 - **Correction window** (CGST §37(3), §39(9), §16(4)): 30 November following the FY, **or
   the date GSTR-9 was furnished, whichever is EARLIER**. Filing the annual return early
   shuts the window early. `compliance_engine.correction_window_closes()` is the function

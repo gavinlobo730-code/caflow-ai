@@ -64,20 +64,49 @@ class ITCReversal:
     """Credit already taken that is being given back in this period.
 
     `reclaimable` is the whole classification, and it is the one GSTR-3B asks
-    for (Notification 14/2022, Circular 170/02/2022-GST, live on the portal for
-    periods from August 2022):
+    for (Notification 14/2022-Central Tax, Circular 170/02/2022-GST, live on
+    the portal from 01-09-2022 and so for periods from August 2022).
 
-      False -> Table 4(B)(1), permanent. Rules 38, 42 and 43, CGST Act §17(5),
-               and any other reversal that will never come back — a purchase
-               cancelled after its credit was taken, stock written off.
-      True  -> Table 4(B)(2), "Others". Reversals that MAY be reclaimed later:
-               Rule 37 / 37A (supplier unpaid past 180 days), §16(2)(b) and
-               §16(2)(c). When the condition is met the credit is taken again
-               through Table 4(A)(5), and 4(D)(1) reports the reclaim.
+    THE CIRCULAR'S OWN TEST, which is what to reason from when a new kind of
+    reversal appears and none of the named rules fits it:
+
+      4(B)(1)  "reversal of ITC that are absolute in nature and not
+               reclaimable ... such as those on account of rule 38 (reversal of
+               credit by a banking company or a financial institution), rule 42
+               (reversal on input and input services on account of supply of
+               exempted goods or services), rule 43 (reversal on capital goods
+               on account of supply of exempted goods or services) of the CGST
+               Rules and for reporting ineligible ITC under section 17(5) of
+               the CGST Act."
+
+      4(B)(2)  "ITC that is to be reclaimed or may be reclaimed on a future
+               date should be reported in Table 4(B)(2)" — headed "ITC
+               reversed - Others" — and "at the time of reclaim, ITC can be
+               reclaimed through Table 4A(5) with additional disclosure in
+               Table 4D(1)."
+
+    Note "such as": the 4(B)(1) list is illustrative, not exhaustive. The test
+    is ABSOLUTE AND NOT RECLAIMABLE, so a reversal that meets it belongs there
+    whether or not the circular names it. Rule 37 / 37A (supplier unpaid past
+    180 days) and §16(2)(b) and (c) are the everyday 4(B)(2) cases: the credit
+    comes back when the supplier is paid.
+
+    So:
+      False -> 4(B)(1). Rules 38/42/43, §17(5), and anything else that is gone
+               for good — a purchase cancelled after its credit was taken,
+               stock written off.
+      True  -> 4(B)(2). Comes back later through 4(A)(5), reported in 4(D)(1).
 
     Getting the side wrong is not a rounding matter: 4(B)(2) tells the portal a
     credit is coming back, and the electronic credit reversal and re-claimed
-    statement reconciles against it.
+    statement reconciles against it. A permanent reversal declared there leaves
+    a balance in that statement which never clears.
+
+    PROVENANCE: the wording above is quoted from secondary sources reproducing
+    the circular (GSTN's 02-09-2022 Table 4 advisory, Taxguru, ClearTax, VJM
+    Global). cbic-gst.gov.in and taxinformation.cbic.gov.in are unreachable
+    from this repo's build environment, so the text has not been diffed against
+    the CBIC PDF itself. Anyone who can reach it should do that once.
     """
     igst_paise: int = 0
     cgst_paise: int = 0
@@ -264,11 +293,21 @@ class GSTR3BResult:
             # Notification 14/2022-Central Tax and Circular 170/02/2022-GST:
             #
             #   4(A)    ALL ITC availed, including credit that is then reversed.
-            #           Auto-populated from GSTR-2B on the portal, so a figure
-            #           that omits blocked credit does not tie to 2B.
-            #   4(B)(1) permanent reversals — Rules 38/42/43 and §17(5).
-            #   4(B)(2) reclaimable reversals — Rule 37/37A, §16(2)(b)/(c).
-            #   4(C)    net ITC available = 4(A) - 4(B).
+            #           "Table 4(A) now gets auto-populated with the total
+            #           figure from the GSTR-2B, including ineligible ITC" — so
+            #           a 4(A) that omits blocked credit cannot tie to 2B, and
+            #           the taxpayer is asked to explain a difference that is
+            #           only a difference of definition.
+            #   4(B)(1) reversals "absolute in nature and not reclaimable ...
+            #           such as those on account of rule 38 ... rule 42 ...
+            #           rule 43 ... and for reporting ineligible ITC under
+            #           section 17(5)". "Such as" — the list illustrates the
+            #           test, it does not exhaust it. See ITCReversal.
+            #   4(B)(2) "ITC that is to be reclaimed or may be reclaimed on a
+            #           future date" — Rule 37/37A, §16(2)(b)/(c).
+            #   4(C)    net ITC available = 4(A) - 4(B). "Table 4A captures
+            #           gross ITC, Table 4B shows reversals, and Table 4C is
+            #           the net ITC flowing to the credit ledger."
             #   4(D)(1) reclaims of amounts reversed earlier under 4(B)(2).
             #   4(D)(2) ineligible under §16(4) and the place-of-supply rules.
             #
@@ -313,10 +352,13 @@ class GSTR3BResult:
                     "csamt": r(self.itc_net_cess),
                 },
                 # Table 4(D)(2) — ineligible under §16(4) and the PoS rules.
-                # Zero because neither is tracked yet; §17(5) is NOT reported
-                # here any more (it moved to 4(B)(1) above), and the circular is
-                # explicit that once §17(5) is shown in 4(B) it is not to be
-                # repeated in 4(D).
+                # Zero because neither is tracked yet. §17(5) is NOT reported
+                # here any more; it moved to 4(B)(1) above, and the circular
+                # leaves no room: "The reversal of ITC of ineligible credit
+                # under section 17(5) or any other provisions is required to be
+                # made under Table 4(B) and not under Table 4(D) of FORM
+                # GSTR-3B." Reporting it in both overstates the ineligible
+                # credit the portal shows against the taxpayer.
                 "itc_inelg": [
                     {"ty": "OTH", "iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
                 ],
