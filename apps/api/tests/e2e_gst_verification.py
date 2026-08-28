@@ -498,7 +498,14 @@ check("sup_details.osup_nil_exmp present", "osup_nil_exmp" in g3b_payload.get("s
 check("itc_elg.itc_avl is list", isinstance(g3b_payload.get("itc_elg", {}).get("itc_avl"), list))
 check("itc_elg.itc_net present", "itc_net" in g3b_payload.get("itc_elg", {}))
 check("intr_ltfee present (interest and late fee)", "intr_ltfee" in g3b_payload)
-check("inward_sup.isup_details present (RCM)", "isup_details" in g3b_payload.get("inward_sup", {}))
+# inward_sup is section 5 of the form — exempt / nil-rated / non-GST INWARD
+# supplies, typed GST and NONGST — not reverse charge. The reverse-charge
+# liability is Table 3.1(d), sup_details.isup_rev.
+check("inward_sup.isup_details is the GST/NONGST block",
+      [x.get("ty") for x in g3b_payload.get("inward_sup", {}).get("isup_details", [])]
+      == ["GST", "NONGST"])
+check("sup_details.isup_rev present (reverse charge)",
+      "isup_rev" in g3b_payload.get("sup_details", {}))
 
 osup = g3b_payload["sup_details"]["osup_det"]
 check("osup_det has iamt/camt/samt/csamt/txval keys",
@@ -506,10 +513,17 @@ check("osup_det has iamt/camt/samt/csamt/txval keys",
 
 # txval in osup_det should be sum of all outward taxable amounts
 # GSTN spec: txval is outward taxable value (not tax)
-itc_avl = g3b_payload["itc_elg"]["itc_avl"][0]
-check("itc_avl[0] has ty=ISRC", itc_avl.get("ty") == "ISRC")
-check("itc_avl iamt/camt/samt present",
-      all(k in itc_avl for k in ["iamt", "camt", "samt", "csamt"]))
+# Table 4(A) is five rows, one per row of the form, in the order GSTN's own
+# offline utility writes them (V5.8 VBA, sheet rows 31-35). This used to check
+# that itc_avl[0] was typed ISRC — Inward Supplies Reverse Charge — which was
+# the bug: the whole credit was being declared on the reverse-charge row.
+itc_avl_rows = g3b_payload["itc_elg"]["itc_avl"]
+check("itc_avl has the five form rows in order",
+      [x.get("ty") for x in itc_avl_rows] == ["IMPG", "IMPS", "ISRC", "ISD", "OTH"])
+check("itc_avl iamt/camt/samt present on every row",
+      all(k in row for row in itc_avl_rows for k in ["iamt", "camt", "samt", "csamt"]))
+check("itc_inelg has both 4(D) rows",
+      [x.get("ty") for x in g3b_payload["itc_elg"].get("itc_inelg", [])] == ["RUL", "OTH"])
 
 
 # ── STEP 4: GSTR-1 Build ──────────────────────────────────────

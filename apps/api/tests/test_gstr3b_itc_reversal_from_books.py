@@ -97,6 +97,11 @@ def _rev(out):
     return {r["ty"]: r for r in out["payload"]["itc_elg"]["itc_rev"]}
 
 
+def _avl(out, ty="OTH"):
+    """Table 4(A) is five rows; ordinary purchase credit is "All other ITC"."""
+    return {r["ty"]: r for r in out["payload"]["itc_elg"]["itc_avl"]}[ty]
+
+
 # ── the fixture has to actually move the ledger ──────────────────────────────
 
 def test_the_cancellation_really_reverses_the_ledger(monkeypatch):
@@ -151,11 +156,11 @@ def test_july_reconciles_to_the_ledger_after_the_reversal(monkeypatch):
 def test_the_original_month_still_claims_the_credit_it_claimed(monkeypatch):
     db = _setup(monkeypatch)
     bill = _receive_bill(db, "B-1", 5_00000, "2025-06-12")
-    before = _3b(db, JUNE)["payload"]["itc_elg"]["itc_avl"][0]["camt"]
+    before = _avl(_3b(db, JUNE))["camt"]
     _cancel_on(monkeypatch, bill, "2025-07-15")
     after = _3b(db, JUNE)
 
-    assert after["payload"]["itc_elg"]["itc_avl"][0]["camt"] == before == 45000 // 100, (
+    assert _avl(after)["camt"] == before == 45000 // 100, (
         "cancelling in July retroactively removed the bill from June's Table "
         "4(A) — a return that was filed claiming that credit")
     assert after["reconciliation"]["itc"]["books_paise"] == BILL_TAX
@@ -175,7 +180,7 @@ def test_a_bill_cancelled_in_its_own_month_reverses_nothing(monkeypatch):
     _cancel_on(monkeypatch, bill, "2025-07-20")
 
     out = _3b(db, JULY)
-    assert out["payload"]["itc_elg"]["itc_avl"][0]["camt"] == 0
+    assert _avl(out)["camt"] == 0
     assert _rev(out)["RUL"]["camt"] == 0
     itc = out["reconciliation"]["itc"]
     assert itc["ledger_paise"] == 0 and itc["books_paise"] == 0
