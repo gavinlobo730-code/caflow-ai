@@ -5,6 +5,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -320,21 +321,41 @@ function FilingSimulationModal({
                 </ul>
               )}
 
-              {/* 6 — where the portal shows an ARN and "Filed" */}
+              {/* 6 — the portal's success screen, mimicked to the same standard
+                  as the stages before it. The ARN shown is realistic in SHAPE
+                  (the owner's call — a demo ending on an obviously fake string
+                  undercuts the walk-through) and is labelled SPECIMEN at the
+                  point of display, which was the condition of that call. The
+                  honest SIM reference stays below for anything copied out. */}
               {stage === "done" && (
-                <div className="rounded border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
-                  <p className="text-sm font-bold text-amber-900">NOT FILED — this was a demo</p>
-                  <p className="text-xs text-amber-900">
-                    The portal would show an ARN here and set the return to Filed. This
-                    reference is deliberately not ARN-shaped: a realistic one could be
-                    pasted into a client email or a portal field and believed.
-                  </p>
-                  <p className="text-xs font-mono text-amber-900 break-all">{data.acknowledgement}</p>
-                  <p className="text-xs text-amber-900">{data.disclaimer}</p>
-                  <p className="text-xs text-amber-900">
-                    To file for real: download the JSON, upload and sign it on gst.gov.in,
-                    then record the ARN here with <strong>Mark Filed</strong>.
-                  </p>
+                <div className="space-y-3">
+                  <div className="rounded border-2 border-green-300 bg-green-50 p-4 space-y-2">
+                    <p className="text-sm font-bold text-green-800">
+                      ✓ Filing successful
+                      <span className="ml-2 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">DEMO</span>
+                    </p>
+                    <div>
+                      <p className="text-[11px] text-green-800">Acknowledgement Reference Number (ARN)</p>
+                      <p className="text-lg font-mono font-semibold tracking-wider text-green-900">
+                        {data.specimen_arn}
+                        <span className="ml-2 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">SPECIMEN</span>
+                      </p>
+                      <p className="text-[11px] text-amber-800">{data.specimen_note}</p>
+                    </div>
+                    <p className="text-xs text-green-800">
+                      GSTR-3B for {period} — on the real portal, the return status would
+                      now read <strong>Filed</strong> and this ARN would arrive by SMS and email.
+                    </p>
+                  </div>
+                  <div className="rounded border border-amber-300 bg-amber-50 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-amber-900">Nothing was filed.</p>
+                    <p className="text-xs font-mono text-amber-900 break-all">{data.acknowledgement}</p>
+                    <p className="text-xs text-amber-900">{data.disclaimer}</p>
+                    <p className="text-xs text-amber-900">
+                      To file for real: download the JSON, upload and sign it on gst.gov.in,
+                      then record the ARN here with <strong>Mark Filed</strong>.
+                    </p>
+                  </div>
                 </div>
               )}
             </>
@@ -522,6 +543,10 @@ interface SimulationData {
   signature_methods: { key: string; label: string; note: string }[];
   steps: { key: string; label: string }[];
   acknowledgement: string;
+  /** Realistic ARN shape for the success panel — always rendered with its
+   *  SPECIMEN badge and specimen_note; the honest SIM reference stays too. */
+  specimen_arn: string;
+  specimen_note: string;
   disclaimer: string;
 }
 
@@ -720,6 +745,11 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
 
+  // The generic filing walk-through (services/filing_demo/gstr1). Offered
+  // only where the server says the demo exists — the dead-control rule.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
@@ -740,6 +770,13 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   async function saveNew() {
     setSaving(true);
@@ -816,6 +853,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      {demo && (
+        <FilingDemoWizard
+          flow="gstr1"
+          clientId={clientId}
+          refData={{ return_id: demo.id }}
+          onClose={() => setDemo(null)}
+        />
+      )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-1 Returns</h3>
         <div className="flex gap-2">
@@ -931,6 +976,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
                   )}
+                  {/* Only on an approved statement, and only where the server
+                      says the walk-through exists — the dead-control rule. */}
+                  {r.status === "ca_approved" && demoFlows.includes("gstr1") && (
+                    <button onClick={() => setDemo({ id: r.id as string })}
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+                      File (demo)
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -1027,16 +1080,25 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   }
 
   async function updateStatus(id: string, status: string) {
+    // busyRow while in flight, for two reasons reported from the deployed app:
+    // the API sleeps on Render's free tier, so a first click can take many
+    // seconds while the instance wakes; and approving now runs a books-check
+    // server-side, which is a full from-books computation. A button that looks
+    // dead for that long invites repeated clicking — so it disables and says
+    // it is working, and a second click is impossible rather than discouraged.
+    setBusyRow(id);
     setRowError(null);
-    const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ca_approved: true }),
-    });
-    // The server refuses to APPROVE a return whose figures the books no longer
-    // support. Surfacing that error is the whole point of the refusal — a
-    // silent failure would leave the CA thinking they had approved it.
-    if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return; }
-    load();
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, ca_approved: true }),
+      });
+      // The server refuses to APPROVE a return whose figures the books no longer
+      // support. Surfacing that error is the whole point of the refusal — a
+      // silent failure would leave the CA thinking they had approved it.
+      if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return; }
+      load();
+    } finally { setBusyRow(null); }
   }
 
   /** Ask whether a saved return still matches the books. Never writes. */
@@ -1390,11 +1452,16 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
                     <button onClick={() => updateStatus(r.id as string, "validated")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Validate</button>
+                      disabled={busyRow === r.id}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9] disabled:opacity-40">
+                      {busyRow === r.id ? "Working…" : "Validate"}</button>
                   )}
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
+                      disabled={busyRow === r.id}
+                      title="Approval re-checks the return against the books first, which can take a few seconds"
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700 disabled:opacity-40">
+                      {busyRow === r.id ? "Checking books…" : "CA Approve"}</button>
                   )}
                   {/* Only on an approved return, because that is where real
                       filing would sit — and only where the server says the

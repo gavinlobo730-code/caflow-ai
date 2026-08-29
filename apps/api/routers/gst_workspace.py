@@ -307,15 +307,43 @@ def _table_61(summary: dict) -> dict:
     return {"rows": rows, "total_cash_paise": total_cash}
 
 
-def filing_simulation_enabled() -> bool:
-    return os.environ.get("ENABLE_FILING_SIMULATION", "false").strip().lower() in (
-        "1", "true", "yes", "on")
+# One flag for every filing demo in the product — GSTR-3B's here and the
+# shared framework's in routers/filing_demo.py. Canonical definition (and the
+# default-ON rationale) lives in services/filing_demo/common.py; imported so
+# there is exactly one reading of the switch.
+from services.filing_demo.common import filing_simulation_enabled  # noqa: E402,F401
+
+
+# The check character a specimen reference ends with, drawn deterministically
+# so the same return always demos the same specimen.
+_SPECIMEN_CHECK = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def _specimen_arn(gstin: str, period: str, return_id: str) -> str:
+    """A reference in the real ARN's SHAPE, for the demo's success panel.
+
+    A genuine return ARN is 15 alphanumerics: two letters, the 2-digit state,
+    MMYY, a 6-digit serial, a check character. The owner chose realism for the
+    final panel — a demo that ends on an obviously fake string undercuts the
+    walk-through — ON CONDITION the panel labels it SPECIMEN wherever it
+    appears. Every response carrying specimen_arn therefore also carries
+    specimen_note, and the honest SIM-NOT-FILED reference stays alongside in
+    `acknowledgement` for anything that logs or copies the response.
+
+    Deterministic on (gstin, period, return_id): re-running a demo shows the
+    same specimen, and nothing here needs a clock or randomness.
+    """
+    state = gstin[:2] if len(gstin) >= 2 and gstin[:2].isdigit() else "27"
+    mmyy = (period[:2] + period[4:6]) if len(period) == 6 else "0000"
+    digits = "".join(c for c in str(return_id) if c.isdigit())[:6].ljust(6, "0")
+    check = _SPECIMEN_CHECK[sum(ord(c) for c in str(return_id)) % len(_SPECIMEN_CHECK)]
+    return f"AA{state}{mmyy}{digits}{check}"
 
 
 def _simulated_ack(period: str, return_id: str) -> str:
-    """Deliberately not ARN-shaped. A real ARN is 15 characters, AA<state><MMYYYY>
-    then a serial; anything that pattern-matches could be pasted into a portal
-    field or a client email and be believed. This cannot be mistaken for one."""
+    """Deliberately not ARN-shaped — the honest reference that travels beside
+    the specimen. Anything that logs or copies the response gets a string that
+    says on its face it was never filed."""
     return f"SIM-NOT-FILED-{period}-{return_id[:8]}"
 
 
@@ -1443,6 +1471,11 @@ def simulate_gstr3b_filing(
         ],
         "steps": [{"key": k, "label": l} for k, l in _SIMULATION_STEPS],
         "acknowledgement": _simulated_ack(period, return_id),
+        # Realism for the success panel, honesty in the same object: the two
+        # keys travel together and the UI shows the note wherever the ARN is.
+        "specimen_arn": _specimen_arn(rec.get("gstin") or "", period, return_id),
+        "specimen_note": ("SPECIMEN — real ARN format, but not issued by GSTN. "
+                          "Nothing was filed."),
         # Carried in the payload rather than left to the UI: a caller that
         # forgets to render a disclaimer still cannot claim this was filed.
         "disclaimer": (

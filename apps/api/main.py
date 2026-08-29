@@ -279,6 +279,10 @@ app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)
 app.include_router(party_credits.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence_v1.router, dependencies=_CLIENT_GUARD)
 app.include_router(gst_workspace.router, dependencies=_CLIENT_GUARD)
+# Filing-demo walk-throughs (services/filing_demo/) — read-only, portal-
+# faithful, cannot transmit. Same client guard as every client-scoped router.
+from routers import filing_demo as filing_demo_router  # noqa: E402
+app.include_router(filing_demo_router.router, dependencies=_CLIENT_GUARD)
 app.include_router(tds_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(mca_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence_v2.router, dependencies=_CLIENT_GUARD)
