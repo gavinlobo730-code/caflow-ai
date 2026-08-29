@@ -125,21 +125,23 @@ services:
         value: "true"
 
       # --- Demo -------------------------------------------------------------
-      # OFF, and it must stay off in production.
+      # ON — reversed from the original default by the owner (2026-08-29).
       #
-      # PracticeSync does not file returns. It prepares them and produces the
-      # GSTN JSON; the CA uploads and signs on gst.gov.in. This flag exposes
-      # POST /gst-workspace/gstr3b/{id}/simulate-filing, which plays back what
-      # filing WILL look like once real filing is built — so the flow can be
-      # shown in a demo. It transmits nothing, contacts no government system,
-      # and changes no stored status; every acknowledgement it returns is
-      # prefixed SIM-NOT-FILED.
+      # PracticeSync does not file returns. It prepares them; the CA uploads
+      # and signs on the government portal. This flag exposes the demo filing
+      # walk-throughs — portal-faithful sequences that transmit nothing,
+      # contact no government system, and change no stored status. Every
+      # response carries an honest SIM-NOT-FILED reference alongside any
+      # SPECIMEN-labelled display reference.
       #
-      # Off by default because a screen that says "Filed" when nothing was
-      # filed is how a return gets missed, and §47 charges Rs 50 a day from the
-      # real due date. Turn it on only on a demo instance.
+      # Originally off by default, because a screen that says "Filed" when
+      # nothing was filed is how a return gets missed. The owner then made the
+      # walk-throughs a core product capability: this deployment records no
+      # real filings, and every screen of the flow carries DEMO labelling,
+      # which is the operative safeguard. This flag is now the KILL SWITCH —
+      # set it to "false" on any deployment that records real filings.
       - key: ENABLE_FILING_SIMULATION
-        value: "false"
+        value: "true"
 
       # --- Reporting -------------------------------------------------------
       # Reporting passbook: serve accrual Trial Balance / P&L / Balance Sheet from

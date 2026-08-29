@@ -5,6 +5,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -320,21 +321,41 @@ function FilingSimulationModal({
                 </ul>
               )}
 
-              {/* 6 — where the portal shows an ARN and "Filed" */}
+              {/* 6 — the portal's success screen, mimicked to the same standard
+                  as the stages before it. The ARN shown is realistic in SHAPE
+                  (the owner's call — a demo ending on an obviously fake string
+                  undercuts the walk-through) and is labelled SPECIMEN at the
+                  point of display, which was the condition of that call. The
+                  honest SIM reference stays below for anything copied out. */}
               {stage === "done" && (
-                <div className="rounded border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
-                  <p className="text-sm font-bold text-amber-900">NOT FILED — this was a demo</p>
-                  <p className="text-xs text-amber-900">
-                    The portal would show an ARN here and set the return to Filed. This
-                    reference is deliberately not ARN-shaped: a realistic one could be
-                    pasted into a client email or a portal field and believed.
-                  </p>
-                  <p className="text-xs font-mono text-amber-900 break-all">{data.acknowledgement}</p>
-                  <p className="text-xs text-amber-900">{data.disclaimer}</p>
-                  <p className="text-xs text-amber-900">
-                    To file for real: download the JSON, upload and sign it on gst.gov.in,
-                    then record the ARN here with <strong>Mark Filed</strong>.
-                  </p>
+                <div className="space-y-3">
+                  <div className="rounded border-2 border-green-300 bg-green-50 p-4 space-y-2">
+                    <p className="text-sm font-bold text-green-800">
+                      ✓ Filing successful
+                      <span className="ml-2 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">DEMO</span>
+                    </p>
+                    <div>
+                      <p className="text-[11px] text-green-800">Acknowledgement Reference Number (ARN)</p>
+                      <p className="text-lg font-mono font-semibold tracking-wider text-green-900">
+                        {data.specimen_arn}
+                        <span className="ml-2 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">SPECIMEN</span>
+                      </p>
+                      <p className="text-[11px] text-amber-800">{data.specimen_note}</p>
+                    </div>
+                    <p className="text-xs text-green-800">
+                      GSTR-3B for {period} — on the real portal, the return status would
+                      now read <strong>Filed</strong> and this ARN would arrive by SMS and email.
+                    </p>
+                  </div>
+                  <div className="rounded border border-amber-300 bg-amber-50 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-amber-900">Nothing was filed.</p>
+                    <p className="text-xs font-mono text-amber-900 break-all">{data.acknowledgement}</p>
+                    <p className="text-xs text-amber-900">{data.disclaimer}</p>
+                    <p className="text-xs text-amber-900">
+                      To file for real: download the JSON, upload and sign it on gst.gov.in,
+                      then record the ARN here with <strong>Mark Filed</strong>.
+                    </p>
+                  </div>
                 </div>
               )}
             </>
@@ -522,6 +543,10 @@ interface SimulationData {
   signature_methods: { key: string; label: string; note: string }[];
   steps: { key: string; label: string }[];
   acknowledgement: string;
+  /** Realistic ARN shape for the success panel — always rendered with its
+   *  SPECIMEN badge and specimen_note; the honest SIM reference stays too. */
+  specimen_arn: string;
+  specimen_note: string;
   disclaimer: string;
 }
 
@@ -720,9 +745,17 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
 
+  // The generic filing walk-through (services/filing_demo/gstr1). Offered
+  // only where the server says the demo exists — the dead-control rule.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
+    // return_type=gstr1 — the gstr1_returns store also holds GSTR-9 annual
+    // drafts (return_type='gstr9'); without the filter they render here as
+    // monthly returns with an "FY2025-26" period.
+    apiFetch(`/api/gst-workspace/returns?client_id=${clientId}&return_type=gstr1`)
       .then((r) => {
         if (r.success) {
           setReturns((r.data as { gstr1: Record<string, unknown>[] }).gstr1);
@@ -740,6 +773,13 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   async function saveNew() {
     setSaving(true);
@@ -816,6 +856,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      {demo && (
+        <FilingDemoWizard
+          flow="gstr1"
+          clientId={clientId}
+          refData={{ return_id: demo.id }}
+          onClose={() => setDemo(null)}
+        />
+      )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-1 Returns</h3>
         <div className="flex gap-2">
@@ -931,6 +979,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
                   )}
+                  {/* Only on an approved statement, and only where the server
+                      says the walk-through exists — the dead-control rule. */}
+                  {r.status === "ca_approved" && demoFlows.includes("gstr1") && (
+                    <button onClick={() => setDemo({ id: r.id as string })}
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+                      File (demo)
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -1027,16 +1083,25 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   }
 
   async function updateStatus(id: string, status: string) {
+    // busyRow while in flight, for two reasons reported from the deployed app:
+    // the API sleeps on Render's free tier, so a first click can take many
+    // seconds while the instance wakes; and approving now runs a books-check
+    // server-side, which is a full from-books computation. A button that looks
+    // dead for that long invites repeated clicking — so it disables and says
+    // it is working, and a second click is impossible rather than discouraged.
+    setBusyRow(id);
     setRowError(null);
-    const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ca_approved: true }),
-    });
-    // The server refuses to APPROVE a return whose figures the books no longer
-    // support. Surfacing that error is the whole point of the refusal — a
-    // silent failure would leave the CA thinking they had approved it.
-    if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return; }
-    load();
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, ca_approved: true }),
+      });
+      // The server refuses to APPROVE a return whose figures the books no longer
+      // support. Surfacing that error is the whole point of the refusal — a
+      // silent failure would leave the CA thinking they had approved it.
+      if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return; }
+      load();
+    } finally { setBusyRow(null); }
   }
 
   /** Ask whether a saved return still matches the books. Never writes. */
@@ -1390,11 +1455,16 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
                     <button onClick={() => updateStatus(r.id as string, "validated")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Validate</button>
+                      disabled={busyRow === r.id}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9] disabled:opacity-40">
+                      {busyRow === r.id ? "Working…" : "Validate"}</button>
                   )}
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
+                      disabled={busyRow === r.id}
+                      title="Approval re-checks the return against the books first, which can take a few seconds"
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700 disabled:opacity-40">
+                      {busyRow === r.id ? "Checking books…" : "CA Approve"}</button>
                   )}
                   {/* Only on an approved return, because that is where real
                       filing would sit — and only where the server says the
@@ -1638,37 +1708,153 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
 
 // ── GSTR-9 ─────────────────────────────────────────────────────────────────
 
-function GSTR9Tab() {
+// FY strings the picker offers: from GST's first full year up to the last
+// COMPLETED financial year — the one a GSTR-9 is actually due for (CGST Act
+// §44: due 31 December following the FY; the due-date arithmetic itself lives
+// in services/compliance_engine.py, not here).
+function completedFinancialYears(): string[] {
+  const now = new Date();
+  const lastCompletedStart =
+    now.getMonth() + 1 >= 4 ? now.getFullYear() - 1 : now.getFullYear() - 2;
+  const out: string[] = [];
+  for (let y = lastCompletedStart; y >= 2017; y--) {
+    out.push(`${y}-${String((y + 1) % 100).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+function GSTR9Tab({ clientId }: { clientId: string }) {
+  const fyOptions = completedFinancialYears();
+  const [fy, setFy] = useState(fyOptions[0]);
+  const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no GSTR-9 draft for this FY yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // The filing walk-through (services/filing_demo/gstr9). Offered only where
+  // the server says the demo exists — the dead-control rule.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    apiFetch(`/api/gst-workspace/gstr9?client_id=${clientId}&financial_year=${encodeURIComponent(fy)}`)
+      .then((r) => {
+        if (r.success) {
+          setDraft((r.data as Record<string, unknown> | null) ?? null);
+          setLoadError(null);
+        } else {
+          setDraft(null);
+          setLoadError(r.error ?? "Couldn't load the GSTR-9 draft.");
+        }
+      })
+      .catch(() => {
+        setDraft(null);
+        setLoadError("Couldn't load the GSTR-9 draft. Please try again.");
+      })
+      .finally(() => setLoading(false));
+  }, [clientId, fy]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="space-y-4">
-      <h3 className="font-medium">GSTR-9 Annual Return</h3>
+      {demo && (
+        <FilingDemoWizard
+          flow="gstr9"
+          clientId={clientId}
+          refData={{ return_id: demo.id }}
+          onClose={() => setDemo(null)}
+        />
+      )}
+      <div className="flex justify-between items-center">
+        <h3 className="font-medium">GSTR-9 Annual Return</h3>
+        <select value={fy} onChange={(e) => setFy(e.target.value)}
+          className="border rounded px-2 py-1.5 text-sm">
+          {fyOptions.map((y) => (
+            <option key={y} value={y}>FY {y}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="rounded border p-4 bg-amber-50 text-sm text-amber-800">
         <p className="font-medium">⚠ CA Review Required</p>
-        <p className="mt-1">GSTR-9 is generated as a read-only draft. The CA must review all data before filing.
-          CGST Act §44 — Annual return must be filed by 31st December.</p>
+        <p className="mt-1">CGST Act §44 — the annual return is due 31 December following the
+          financial year, and filing it closes the year&apos;s correction window early
+          (§37(3)/§39(9): 30 November or the GSTR-9 filing date, whichever is earlier).</p>
       </div>
-      <p className="text-sm text-[#475569]">
-        GSTR-9 is auto-computed from your GSTR-1 and GSTR-3B returns for the financial year.
-        Navigate to GSTR-1 and GSTR-3B tabs to review monthly returns first.
-      </p>
-      <p className="text-xs text-[#94A3B8]">Draft generation from filed monthly returns will be available once GSTR-1/3B returns are CA approved.</p>
+
+      {loading ? (
+        <TableSkeleton cols={4} bare />
+      ) : loadError ? (
+        <div className="space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={load}
+            className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">
+            Retry
+          </button>
+        </div>
+      ) : !draft ? (
+        <p className="text-sm text-[#94A3B8]">
+          No GSTR-9 draft for FY {fy} yet. Drafts are saved from the year&apos;s
+          reviewed GSTR-1 and GSTR-3B returns.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-mono text-xs">{draft.gstin as string}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[draft.status as string] ?? ""}`}>
+              {draft.status as string}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
+            {([
+              ["Taxable value", draft.total_taxable_paise],
+              ["IGST", draft.total_igst_paise],
+              ["CGST", draft.total_cgst_paise],
+              ["SGST", draft.total_sgst_paise],
+              ["Total tax", draft.total_tax_paise],
+            ] as [string, unknown][]).map(([label, paise]) => (
+              <div key={label} className="rounded border p-3">
+                <p className="text-xs text-[#64748B]">{label}</p>
+                <p className="font-medium">{rupees((paise as number) ?? 0)}</p>
+              </div>
+            ))}
+          </div>
+          {/* Only where the server says the walk-through exists AND a draft
+              is loaded — the dead-control rule. */}
+          {demoFlows.includes("gstr9") && (
+            <button onClick={() => setDemo({ id: draft.id as string })}
+              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+              File (demo)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-// GSTR-9 is intentionally hidden for Closed Beta (Beta-readiness Part 1):
-// GSTR9Tab() below has no computation logic behind it (no gstr9_builder in
-// apps/api/domain/gst, unlike GSTR-1/GSTR-3B) — it only ever rendered a
-// static "not available yet" message. GSTR-9's own due-date obligation is
-// still tracked correctly via the Compliance workspace/dashboard; only this
-// decorative preparation tab is hidden. Component kept, not deleted, so it
-// can be wired to a real builder and re-added to TABS later.
+// GSTR-9 was hidden during Closed Beta while GSTR9Tab was a static
+// placeholder. It now loads the saved annual draft (GET /gst-workspace/gstr9)
+// and offers the filing walk-through (services/filing_demo/gstr9), so it is
+// back in TABS. There is still no gstr9 computation builder in
+// apps/api/domain/gst — drafts are saved via POST /gst-workspace/gstr9, not
+// derived here.
 const TABS: { id: GSTTab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "gstr1", label: "GSTR-1" },
   { id: "gstr3b", label: "GSTR-3B" },
+  { id: "gstr9", label: "GSTR-9" },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
 ];
@@ -1709,7 +1895,7 @@ export default function GSTWorkspacePage() {
         {tab === "gstr3b" && <GSTR3BTab clientId={clientId} />}
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}
-        {tab === "gstr9" && <GSTR9Tab />}
+        {tab === "gstr9" && <GSTR9Tab clientId={clientId} />}
       </div>
     </div>
   );

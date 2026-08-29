@@ -271,7 +271,7 @@ export default function Form26ASPage() {
         <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
           <p className="text-xs font-semibold text-[#334155]">Upload 26AS Text</p>
           <p className="text-[11px] text-[#64748B]">
-            Download Form 26AS from TRACES portal (trace.gov.in), convert PDF to text, and paste below.
+            Download Form 26AS from the TRACES portal (tdscpc.gov.in) or via the e-filing portal login, convert PDF to text, and paste below.
           </p>
           <textarea
             value={rawText}

@@ -268,7 +268,7 @@ function AddDeductionModal({ firmId, clientId, onClose, onAdded }: {
         </div>
         <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-          Deposit TDS to government account via TRACES portal. PracticeSync does not auto-submit.
+          Deposit TDS to the government account via e-Pay Tax on incometax.gov.in (challan ITNS 281). PracticeSync does not auto-submit.
         </p>
       </div>
     </div>
@@ -652,7 +652,7 @@ export default function TDSPage() {
           <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
             {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-700">File 24Q/26Q returns manually on TRACES portal (traces.gov.in). PracticeSync does not auto-submit to any government portal.</p>
+            <p className="text-sm text-amber-700">File 24Q/26Q returns manually on the Income Tax e-filing portal (incometax.gov.in), under the deductor&apos;s TAN login. TRACES is post-filing only (Form 16/16A, defaults, corrections). PracticeSync does not auto-submit to any government portal.</p>
           </div>
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">

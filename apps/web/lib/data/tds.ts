@@ -5,7 +5,9 @@
  * IT Act Section 194 — TDS on non-salary (Form 26Q)
  * IT Act Section 203 — TDS Certificates (Form 16 / 16A)
  *
- * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
+ * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to the e-filing portal or any
+ * government portal. Returns are uploaded manually on incometax.gov.in;
+ * TRACES is post-filing only.
  * All amounts in integer paise. Never float.
  */
 import { getSupabaseClient } from "@/lib/supabase/client";

@@ -7,10 +7,12 @@
  * IT Act Section 194 — Non-salary TDS (Form 26Q)
  * IT Act Section 203 — TDS Certificates (Form 16/16A)
  *
- * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
+ * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to the e-filing portal or any
+ * government portal. Returns are uploaded manually on incometax.gov.in
+ * (TRACES is post-filing only: Form 16/16A, defaults, corrections).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FileText, CheckCircle, AlertTriangle, Download,
   Info, X,
@@ -18,6 +20,7 @@ import {
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import {
   getTDSDeductions, getTDSChallans,
   compute26Q, compute24Q, approveTDSReturn, markTDSFiled,
@@ -63,6 +66,33 @@ export default function TDSReturnsPage() {
   const [ackNumber, setAckNumber] = useState("");
 
   const [tab, setTab] = useState<"summary" | "deductees" | "challans" | "json">("summary");
+
+  // The generic filing walk-through (services/filing_demo/tds_return).
+  // Offered only where the server says the demo exists — the dead-control
+  // rule: a failed probe means the button simply never renders.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [showDemo, setShowDemo] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // A computed return belongs to the client it was computed for. Switching
+  // the picker without this reset left Approve / Mark Filed / File (demo)
+  // pointing at the previous client's return while the screen showed the new
+  // one — Mark Filed would even PATCH the old return.
+  useEffect(() => {
+    setResult(null);
+    setReturnId(null);
+    setFilingStatus("pending");
+    setShowDemo(false);
+    setShowFiledModal(false);
+    setError(null);
+  }, [clientId]);
 
   async function handleCompute() {
     if (!clientId) { setError("Select a client"); return; }
@@ -168,6 +198,14 @@ export default function TDSReturnsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+      {showDemo && returnId && clientId && (
+        <FilingDemoWizard
+          flow="tds"
+          clientId={clientId}
+          refData={{ return_id: returnId }}
+          onClose={() => setShowDemo(false)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/tds" className="text-[#94A3B8] hover:text-[#475569] text-sm">← TDS</Link>
@@ -178,7 +216,7 @@ export default function TDSReturnsPage() {
       <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
         <p className="text-sm text-amber-800">
-          <strong>CA Review Required.</strong> Review all figures before filing. Do not submit to TRACES without explicit CA approval. Download JSON for manual submission via TRACES portal.
+          <strong>CA Review Required.</strong> Review all figures before filing. Do not upload without explicit CA approval. Returns are filed manually on the Income Tax e-filing portal (incometax.gov.in) under the deductor&apos;s TAN login — not on TRACES, which is post-filing only (Form 16/16A, defaults, corrections).
         </p>
       </div>
 
@@ -409,7 +447,15 @@ export default function TDSReturnsPage() {
               <button onClick={() => result && downloadTDSJSON(result)}
                 className="flex items-center gap-2 bg-white border border-gray-300 text-[#334155] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#F8FAFC]">
                 <Download size={15} />
-                Download JSON (for TRACES)
+                Download JSON (for e-filing upload)
+              </button>
+            )}
+            {/* Only on an approved return, and only where the server says
+                the walk-through exists — the dead-control rule. */}
+            {filingStatus === "ca_approved" && returnId && demoFlows.includes("tds") && (
+              <button onClick={() => setShowDemo(true)}
+                className="flex items-center gap-2 bg-white border border-amber-300 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-50">
+                File (demo)
               </button>
             )}
             {filingStatus === "ca_approved" && (
@@ -429,11 +475,11 @@ export default function TDSReturnsPage() {
           <div className="absolute inset-0 bg-[#0F172A]/60" onClick={() => setShowFiledModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
             <h3 className="font-semibold text-[#0F172A]">Mark {returnType} as Filed</h3>
-            <p className="text-sm text-[#64748B]">Enter the details from TRACES after successful submission.</p>
+            <p className="text-sm text-[#64748B]">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
             <div>
               <label className="block text-xs font-medium text-[#334155] mb-1">PRN (Provisional Receipt Number) *</label>
               <input value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
-                placeholder="Enter PRN from TRACES"
+                placeholder="Token / PRN from the e-filing portal"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div>

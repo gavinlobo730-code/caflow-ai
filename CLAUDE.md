@@ -314,12 +314,19 @@ through the app is intended, and needs:
   reference recorded before the call and checked after a timeout, never a blind
   retry.
 
-`POST /gst-workspace/gstr3b/{id}/simulate-filing` exists to SHOW this flow in a
-demo. It is behind `ENABLE_FILING_SIMULATION` (default off), transmits nothing,
-writes nothing, and returns references prefixed `SIM-NOT-FILED`. **When real
-filing is built it is a new endpoint and the simulation is deleted** — never
-repointed at a live portal, because everything that makes it safe is the fact
-that it cannot file.
+Demo filing walk-throughs exist to SHOW these flows before they are real —
+`POST /gst-workspace/gstr3b/{id}/simulate-filing` for GSTR-3B, and the shared
+filing-demo framework for the other statutory filings. They are portal-faithful
+in sequence, transmit nothing, write nothing, and every response carries an
+honest `SIM-NOT-FILED` reference; any realistic-looking reference they display
+is labelled SPECIMEN at the point of display. `ENABLE_FILING_SIMULATION`
+defaults **on** — an owner decision of 2026-08-29, reversing the original
+default-off, because demo filing is a core product capability and this
+deployment records no real filings. The flag is the KILL SWITCH: set it to
+`false` on any deployment that records real filings. **When real filing is
+built it is a new endpoint and the simulation is deleted** — never repointed at
+a live portal, because everything that makes it safe is the fact that it cannot
+file.
 
 The genuine path today is unchanged and stays: the CA files on the portal, then
 records it here (`PATCH /gstr3b/{id}/status` with `status=submitted`), which

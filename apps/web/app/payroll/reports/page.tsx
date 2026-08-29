@@ -243,10 +243,10 @@ function buildStatutoryCalendar(fy: string, today: Date): StatutoryDueRow[] {
     rows.push({
       id: `tds-${q.label.replace(/\s+/g, "-")}`,
       label: q.label,
-      description: "Quarterly TDS return on salary — IT Act Section 192 — TRACES/NSDL",
+      description: "Quarterly TDS return on salary — IT Act Section 192 — e-filing portal (incometax.gov.in)",
       dueDate: q.due.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
       dueDateObj: q.due,
-      portal: "TRACES / NSDL",
+      portal: "e-filing portal (incometax.gov.in)",
       status: dueDateStatus(q.due, today),
       category: "TDS",
     });

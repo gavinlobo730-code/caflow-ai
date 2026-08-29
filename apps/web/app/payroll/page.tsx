@@ -249,10 +249,10 @@ function getStatutoryDeadlines(today: Date): {
   deadlines.push({
     id: "tds-24q",
     label: `TDS 24Q — ${tdsQuarter}`,
-    description: "Quarterly TDS return on salary — IT Act Section 192 — filed via TRACES/NSDL",
+    description: "Quarterly TDS return on salary — IT Act Section 192 — filed on the e-filing portal (incometax.gov.in)",
     dueDate: tdsDue,
     status: getDueDateStatus(tdsDue, today),
-    portal: "TRACES / NSDL",
+    portal: "e-filing portal (incometax.gov.in)",
   });
 
   return deadlines;
@@ -330,7 +330,7 @@ function generateEsiStatement(slips: PayrollSlip[], month: string): string {
  */
 function generateTds24QData(slips: PayrollSlip[], quarter: string): string {
   // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-  const header = `# TDS 24Q Summary — ${quarter}\n# IT Act Section 192 — TDS on Salary\n# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT\n# This data must be reviewed and filed via TRACES/NSDL by a qualified CA\n`;
+  const header = `# TDS 24Q Summary — ${quarter}\n# IT Act Section 192 — TDS on Salary\n# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT\n# This data must be reviewed and filed on the e-filing portal (incometax.gov.in) by a qualified CA\n`;
   const csvHeader = "Employee Name,PAN,Designation,Gross Salary (Rs),TDS Deducted (Rs),Quarter";
   const rows = slips.map(s => {
     const emp = s.employee!;
@@ -934,7 +934,7 @@ function StatutoryReturnsTab({
                 </div>
                 <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
                   <p className="font-medium text-[#334155] mb-1">TDS 24Q (.csv)</p>
-                  <p>Quarterly TDS data per IT Act Section 192. Must be filed via TRACES/NSDL. CA review mandatory before submission.</p>
+                  <p>Quarterly TDS data per IT Act Section 192. Must be filed on the e-filing portal (incometax.gov.in) under the deductor’s TAN. CA review mandatory before submission.</p>
                 </div>
               </div>
             </div>

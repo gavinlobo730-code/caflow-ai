@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -77,6 +78,11 @@ export default function ITRFilingPage() {
   const [transitioning, setTransitioning] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
+  // The generic filing walk-through (services/filing_demo/itr). Offered
+  // only where the server says the demo exists — the dead-control rule.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+
   // Ack form
   const [showAck, setShowAck] = useState(false);
   const [ackNumber, setAckNumber] = useState("");
@@ -110,6 +116,13 @@ export default function ITRFilingPage() {
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleCreate() {
     setCreating(true);
@@ -177,6 +190,14 @@ export default function ITRFilingPage() {
 
   return (
     <div className="p-6 max-w-3xl space-y-4">
+      {demo && (
+        <FilingDemoWizard
+          flow="itr"
+          clientId={clientId}
+          refData={{ filing_id: demo.id }}
+          onClose={() => setDemo(null)}
+        />
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#1E293B]">ITR Preparation</h2>
@@ -337,6 +358,16 @@ export default function ITRFilingPage() {
               >
                 {transitioning && <Loader2 size={10} className="animate-spin" />}
                 Move to {STATUS_LABEL[nextStatus(selectedFiling.status)!]}
+              </button>
+            )}
+            {/* Only on a return that is ready to file, and only where the
+                server says the walk-through exists — the dead-control rule. */}
+            {selectedFiling.status === "ready_for_filing" && demoFlows.includes("itr") && (
+              <button
+                onClick={() => setDemo({ id: selectedFiling.id })}
+                className="text-xs px-4 py-2 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800"
+              >
+                File (demo)
               </button>
             )}
             {selectedFiling.status === "ready_for_filing" && !showAck && (

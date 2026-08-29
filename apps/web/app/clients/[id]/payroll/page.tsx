@@ -15,6 +15,7 @@ import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -67,7 +68,10 @@ interface Employee {
 interface PayrollRun {
   id: string;
   month: string;
-  status: "draft" | "review" | "finalized";
+  // 'paid' since migration 225 (salary disbursement) — a paid run has had
+  // its accrual AND disbursement journals posted and is just as terminal
+  // as a finalized one.
+  status: "draft" | "review" | "finalized" | "paid";
   headcount: number;
   total_gross_paise: number;
   total_net_paise: number;
@@ -438,6 +442,13 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   const [createError, setCreateError] = useState<string | null>(null);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
+  // The generic filing walk-throughs (services/filing_demo/pf_ecr and .../esi).
+  // Offered only where the server says the demo exists — the dead-control rule.
+  // ONE demo slot for both flows, so the PF and ESI wizards can never be open
+  // at the same time.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ flow: "pf" | "esi"; runId: string } | null>(null);
+
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
@@ -457,6 +468,13 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   async function createRun() {
     setCreating(true);
@@ -520,6 +538,14 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
 
   return (
     <div className="p-5 space-y-4">
+      {demo && (
+        <FilingDemoWizard
+          flow={demo.flow}
+          clientId={clientId}
+          refData={{ run_id: demo.runId }}
+          onClose={() => setDemo(null)}
+        />
+      )}
       <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
         <p className="text-[12px] font-semibold text-[#1E293B] mb-3">Create New Run</p>
         <div className="flex items-end gap-3">
@@ -563,14 +589,30 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
                 <button onClick={() => loadSlips(r.id)} className="text-[11px] text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
                   {selectedRun === r.id ? "Hide Slips" : "View Slips"}
                 </button>
-                {r.status !== "finalized" && (
+                {r.status !== "finalized" && r.status !== "paid" && (
                   <button onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
                     className="flex items-center gap-1 text-[11px] px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     <CheckCircle size={11} /> {finalizing === r.id ? "Finalizing…" : "Finalize"}
                   </button>
                 )}
-                {r.status === "finalized" && (
-                  <span className="text-[11px] text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> Finalized</span>
+                {(r.status === "finalized" || r.status === "paid") && (
+                  <span className="text-[11px] text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalized"}</span>
+                )}
+                {/* The statutory walk-throughs — only on a settled run, and
+                    only where the server says the demo exists (dead-control
+                    rule). Both buttons share ONE demo slot, so the two
+                    wizards can never be open at once. */}
+                {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("pf") && (
+                  <button onClick={() => setDemo({ flow: "pf", runId: r.id })}
+                    className="text-[11px] px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
+                    PF ECR (demo)
+                  </button>
+                )}
+                {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("esi") && (
+                  <button onClick={() => setDemo({ flow: "esi", runId: r.id })}
+                    className="text-[11px] px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
+                    ESI (demo)
+                  </button>
                 )}
               </div>
             </div>
@@ -721,6 +763,7 @@ function StatusBadge({ status }: { status: string }) {
     draft:     "bg-[#F1F5F9] text-[#64748B]",
     review:    "bg-amber-50 text-amber-600",
     finalized: "bg-emerald-50 text-emerald-600",
+    paid:      "bg-sky-50 text-sky-600",
   };
   return <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded capitalize", map[status] || map.draft)}>{status}</span>;
 }

@@ -307,15 +307,43 @@ def _table_61(summary: dict) -> dict:
     return {"rows": rows, "total_cash_paise": total_cash}
 
 
-def filing_simulation_enabled() -> bool:
-    return os.environ.get("ENABLE_FILING_SIMULATION", "false").strip().lower() in (
-        "1", "true", "yes", "on")
+# One flag for every filing demo in the product — GSTR-3B's here and the
+# shared framework's in routers/filing_demo.py. Canonical definition (and the
+# default-ON rationale) lives in services/filing_demo/common.py; imported so
+# there is exactly one reading of the switch.
+from services.filing_demo.common import filing_simulation_enabled  # noqa: E402,F401
+
+
+# The check character a specimen reference ends with, drawn deterministically
+# so the same return always demos the same specimen.
+_SPECIMEN_CHECK = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def _specimen_arn(gstin: str, period: str, return_id: str) -> str:
+    """A reference in the real ARN's SHAPE, for the demo's success panel.
+
+    A genuine return ARN is 15 alphanumerics: two letters, the 2-digit state,
+    MMYY, a 6-digit serial, a check character. The owner chose realism for the
+    final panel — a demo that ends on an obviously fake string undercuts the
+    walk-through — ON CONDITION the panel labels it SPECIMEN wherever it
+    appears. Every response carrying specimen_arn therefore also carries
+    specimen_note, and the honest SIM-NOT-FILED reference stays alongside in
+    `acknowledgement` for anything that logs or copies the response.
+
+    Deterministic on (gstin, period, return_id): re-running a demo shows the
+    same specimen, and nothing here needs a clock or randomness.
+    """
+    state = gstin[:2] if len(gstin) >= 2 and gstin[:2].isdigit() else "27"
+    mmyy = (period[:2] + period[4:6]) if len(period) == 6 else "0000"
+    digits = "".join(c for c in str(return_id) if c.isdigit())[:6].ljust(6, "0")
+    check = _SPECIMEN_CHECK[sum(ord(c) for c in str(return_id)) % len(_SPECIMEN_CHECK)]
+    return f"AA{state}{mmyy}{digits}{check}"
 
 
 def _simulated_ack(period: str, return_id: str) -> str:
-    """Deliberately not ARN-shaped. A real ARN is 15 characters, AA<state><MMYYYY>
-    then a serial; anything that pattern-matches could be pasted into a portal
-    field or a client email and be believed. This cannot be mistaken for one."""
+    """Deliberately not ARN-shaped — the honest reference that travels beside
+    the specimen. Anything that logs or copies the response gets a string that
+    says on its face it was never filed."""
     return f"SIM-NOT-FILED-{period}-{return_id[:8]}"
 
 
@@ -390,23 +418,46 @@ def gst_dashboard(
 @router.get("/returns")
 def list_returns(
     client_id: str = Query(...),
+    return_type: Optional[str] = Query(
+        None, description="Filter the gstr1_returns store by return_type "
+        "('gstr1' or 'gstr9'). The store holds BOTH since migration 053, so "
+        "without this filter GSTR-9 annual rows appear in the 'gstr1' list. "
+        "gstr3b_returns is single-type and unaffected."),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
-    """List all GST returns (GSTR-1 + GSTR-3B) for a client."""
+    """List all GST returns (GSTR-1 + GSTR-3B) for a client.
+
+    Omitting return_type keeps the historical behaviour (every row of the
+    shared store, GSTR-9 drafts included) for any caller relying on it.
+    """
+    # Unit tests call this function directly, where an omitted parameter is
+    # FastAPI's truthy Query default object, not None — normalise so a direct
+    # call without the argument behaves like an HTTP request without it.
+    if not isinstance(return_type, str):
+        return_type = None
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             g1 = [r for r in _MOCK_GSTR1.values() if r["client_id"] == client_id]
+            if return_type:
+                # A row saved before migration 053 carries no return_type;
+                # the column's DB default is 'gstr1', so absence means the
+                # same thing here as it does in Postgres.
+                g1 = [r for r in g1
+                      if (r.get("return_type") or "gstr1") == return_type]
             g3b = [r for r in _MOCK_GSTR3B.values() if r["client_id"] == client_id]
             g1 = g1[offset:offset + limit]
             g3b = g3b[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+            q1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
+            if return_type:
+                q1 = q1.eq("return_type", return_type)
+            g1 = q1.range(offset, offset + limit - 1).execute().data or []
             g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
 
         return api_response(True, {"gstr1": g1, "gstr3b": g3b})
@@ -1443,6 +1494,11 @@ def simulate_gstr3b_filing(
         ],
         "steps": [{"key": k, "label": l} for k, l in _SIMULATION_STEPS],
         "acknowledgement": _simulated_ack(period, return_id),
+        # Realism for the success panel, honesty in the same object: the two
+        # keys travel together and the UI shows the note wherever the ARN is.
+        "specimen_arn": _specimen_arn(rec.get("gstin") or "", period, return_id),
+        "specimen_note": ("SPECIMEN — real ARN format, but not issued by GSTN. "
+                          "Nothing was filed."),
         # Carried in the payload rather than left to the UI: a caller that
         # forgets to render a disclaimer still cannot claim this was filed.
         "disclaimer": (

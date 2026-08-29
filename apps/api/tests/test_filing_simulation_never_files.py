@@ -28,16 +28,25 @@ def sim_on(monkeypatch):
     return True
 
 
-# ── Off by default ──────────────────────────────────────────────────────────
+# ── On by default, with a kill switch ───────────────────────────────────────
+#
+# REVERSED from the original design, by the owner's explicit decision
+# (2026-08-29). The first version shipped default-OFF so a filing demo could
+# never appear in production by accident; the owner then made demo filing a
+# core product capability — every statutory module gets a portal-faithful
+# walk-through, the deployment records no real filings, and the DEMO labelling
+# inside the flow is the operative safeguard. The flag is now the kill switch
+# for any future deployment that records real filings.
 
-def test_it_is_off_unless_switched_on(monkeypatch):
-    """A demo affordance that ships enabled is a demo affordance in production."""
+def test_it_is_on_unless_switched_off(monkeypatch):
     monkeypatch.delenv("ENABLE_FILING_SIMULATION", raising=False)
-    assert gw.filing_simulation_enabled() is False
+    assert gw.filing_simulation_enabled() is True
 
 
 @pytest.mark.parametrize("value", ["false", "0", "no", "off", "", "  ", "maybe"])
-def test_only_an_explicit_yes_turns_it_on(monkeypatch, value):
+def test_the_kill_switch_kills_it(monkeypatch, value):
+    """Anything that is not an explicit yes disables. On a deployment with real
+    filings, `false` must reliably remove every demo affordance."""
     monkeypatch.setenv("ENABLE_FILING_SIMULATION", value)
     assert gw.filing_simulation_enabled() is False
 
@@ -65,6 +74,61 @@ def test_the_reference_cannot_be_mistaken_for_an_arn():
 
 def test_the_reference_names_the_period_so_a_demo_is_reproducible():
     assert "042026" in gw._simulated_ack("042026", "abcdef1234")
+
+
+# ── The specimen ARN: realism, on condition of labelling ────────────────────
+#
+# The owner chose a realistic ARN for the success panel — a demo ending on an
+# obviously fake string undercuts the walk-through — on condition it is marked
+# SPECIMEN wherever it appears. So the specimen exists, its shape is right,
+# and the tests below hold the condition: it never travels without its label,
+# and the honest SIM-NOT-FILED reference stays alongside.
+
+def test_the_specimen_has_the_real_arn_shape():
+    arn = gw._specimen_arn("27ABCDE1234F1Z5", "042026", "fd8d8ae1-ea4a-47d7")
+    assert len(arn) == 15, arn
+    assert arn.startswith("AA27"), "two letters then the GSTIN's state code"
+    assert arn[4:8] == "0426", "MMYY of the period"
+    assert arn[8:14].isdigit(), "six-digit serial"
+    assert arn[14].isalpha(), "check character"
+
+
+def test_the_specimen_is_deterministic_so_a_demo_replays_identically():
+    a = gw._specimen_arn("27ABCDE1234F1Z5", "042026", "fd8d8ae1-ea4a-47d7")
+    b = gw._specimen_arn("27ABCDE1234F1Z5", "042026", "fd8d8ae1-ea4a-47d7")
+    assert a == b
+    c = gw._specimen_arn("27ABCDE1234F1Z5", "052026", "fd8d8ae1-ea4a-47d7")
+    assert a != c, "a different period must yield a different specimen"
+
+
+def test_a_missing_gstin_or_odd_period_still_yields_a_wellformed_specimen():
+    """An older record may lack a GSTIN. The demo must not crash or emit a
+    ragged string that betrays the fallback."""
+    arn = gw._specimen_arn("", "042026", "row-1")
+    assert len(arn) == 15 and arn.startswith("AA27")
+    assert len(gw._specimen_arn("27ABCDE1234F1Z5", "bad", "row-1")) == 15
+
+
+def test_the_specimen_never_travels_without_its_label():
+    """The condition the realism was granted on. If specimen_arn is in the
+    response, specimen_note must be beside it, and the honest acknowledgement
+    must still be present."""
+    import inspect
+    src = inspect.getsource(gw.simulate_gstr3b_filing)
+    assert '"specimen_arn"' in src
+    assert '"specimen_note"' in src, (
+        "the specimen is in the response without its SPECIMEN label"
+    )
+    assert '"acknowledgement": _simulated_ack' in src, (
+        "the honest SIM-NOT-FILED reference must stay alongside the specimen"
+    )
+
+
+def test_the_label_says_specimen_and_not_issued():
+    import inspect
+    src = inspect.getsource(gw.simulate_gstr3b_filing)
+    assert "SPECIMEN" in src
+    assert "not issued" in src
 
 
 # ── The response must carry its own disclaimer ──────────────────────────────
