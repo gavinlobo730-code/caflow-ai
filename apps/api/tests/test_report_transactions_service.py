@@ -277,66 +277,125 @@ def test_a_party_from_another_firm_does_not_resolve_to_a_name():
 
 # ── GST summary ──────────────────────────────────────────────────────────────
 
-def test_gst_summary_splits_output_tax_and_input_credit():
-    db = _db(sales=[_sale(invoice_date="2026-04-10")],
-             bills=[_bill(bill_date="2026-04-12")])
+# ── The GST summary now DELEGATES, and these pin that it really does ────────
+#
+# It used to sum invoices and bills here and subtract per head. That was a
+# second, quieter GST summary than the one a CA files from, and it differed in
+# four ways that all understate or overstate real money: it ignored credit and
+# debit notes on both sides; "net" was a raw per-head difference rather than the
+# §49(5) set-off; it never reconciled to the General Ledger; and it keyed on a
+# calendar month while the return keys on MMYYYY.
+#
+# The tests that used to live here asserted exactly that arithmetic — including
+# `net_igst == -3_000`, a signed negative standing in for a carry-forward. They
+# are gone rather than adjusted, because the behaviour they described was the
+# defect. What replaces them asserts the new contract: one computation, and this
+# is a view of it.
+#
+# They run through the real from-books harness rather than the query stub above,
+# which was built for list_transactions and cannot serve the return's path.
 
-    s = svc.gst_summary(db, FIRM, "c1", "2026-04")
-
-    assert s["gstr3b"]["output_cgst"] == 9_000
-    assert s["gstr3b"]["output_sgst"] == 9_000
-    assert s["gstr3b"]["itc_igst"] == 9_000
-    assert s["gstr1"]["taxable"] == 100_000
-    assert s["tds_deducted"] == 5_000
-
-
-def test_net_liability_is_output_less_credit_and_stays_signed():
-    """CGST Act Section 49. A negative head means credit carried forward;
-    flooring it at zero would hide the carry-forward from the screen."""
-    db = _db(sales=[_sale(igst_paise=1_000, cgst_paise=0, sgst_paise=0)],
-             bills=[_bill(igst_paise=4_000)])
-
-    s = svc.gst_summary(db, FIRM, "c1", "2026-04")
-
-    assert s["gstr3b"]["net_igst"] == -3_000
+import tests.test_gstr3b_itc_reversal_from_books as E   # noqa: E402
+from _pytest.monkeypatch import MonkeyPatch              # noqa: E402
 
 
-def test_the_month_window_excludes_the_next_month():
-    db = _db(sales=[_sale(id="in", invoice_date="2026-04-30"),
-                    _sale(id="out", invoice_date="2026-05-01")])
-
-    s = svc.gst_summary(db, FIRM, "c1", "2026-04")
-
-    assert [r["id"] for r in s["gstr1"]["lines"]] == ["in"]
-
-
-def test_december_rolls_over_into_the_next_year():
-    """The case a naive `month + 1` gets wrong: December's exclusive end is
-    January of the FOLLOWING year, not month 13."""
-    db = _db(sales=[_sale(id="dec", invoice_date="2026-12-31"),
-                    _sale(id="jan", invoice_date="2027-01-01")])
-
-    s = svc.gst_summary(db, FIRM, "c1", "2026-12")
-
-    assert [r["id"] for r in s["gstr1"]["lines"]] == ["dec"]
+@pytest.fixture()
+def books():
+    mp = MonkeyPatch()
+    try:
+        db = E._setup(mp)
+        E._receive_bill(db, "B-1", 5_00000, "2025-07-04")
+        yield db
+    finally:
+        mp.undo()
 
 
-def test_a_short_month_includes_its_last_day():
-    """The replaced code used `${month}-31` as the end. February has no 31st;
-    the window has to come from the month, not a fixed number."""
-    db = _db(sales=[_sale(id="feb29", invoice_date="2028-02-29")])
-
-    s = svc.gst_summary(db, FIRM, "c1", "2028-02")
-
-    assert [r["id"] for r in s["gstr1"]["lines"]] == ["feb29"]
+def _month_of(period: str) -> str:
+    return f"{period[2:]}-{period[:2]}"
 
 
-def test_the_summary_is_marked_as_needing_ca_review():
-    """These are working figures for a screen, not a filed return. The filing
-    path is /api/gst/*/from-books, which also reconciles to the ledger."""
-    s = svc.gst_summary(_db(sales=[_sale()]), FIRM, "c1", "2026-04")
+def test_the_summary_and_the_return_report_the_same_figures(books):
+    """The whole point. Two GST summaries in one product is worse than one
+    imperfect summary: a CA who spots the difference cannot tell which is
+    wrong, and one of them is what they filed."""
+    ret = E._3b(books, E.JULY)
+    rep = svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))
 
-    assert s["ca_review_required"] is True
+    w = ret["working"]
+    assert rep["gstr3b"]["output_igst"] == w["outward"]["taxable_igst_paise"]
+    assert rep["gstr3b"]["output_cgst"] == w["outward"]["taxable_cgst_paise"]
+    assert rep["gstr3b"]["output_sgst"] == w["outward"]["taxable_sgst_paise"]
+    assert rep["gstr3b"]["itc_igst"] == w["itc"]["net_igst_paise"]
+    assert rep["gstr3b"]["itc_cgst"] == w["itc"]["net_cgst_paise"]
+    assert rep["gstr3b"]["itc_sgst"] == w["itc"]["net_sgst_paise"]
+    assert rep["gstr1"]["taxable"] == w["outward"]["taxable_value_paise"]
+
+
+def test_net_tax_is_the_section_49_set_off_not_a_per_head_subtraction(books):
+    """The old code returned output minus credit per head, signed. That can show
+    tax payable on one head while credit sits unused on another, because §49(5)
+    cross-utilises IGST credit against CGST and SGST. Net is now the return's
+    own figure and is never negative."""
+    ret = E._3b(books, E.JULY)
+    rep = svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))
+
+    for head in ("igst", "cgst", "sgst"):
+        assert rep["gstr3b"][f"net_{head}"] == ret["working"]["net_payable"][f"{head}_paise"]
+        assert rep["gstr3b"][f"net_{head}"] >= 0
+
+
+def test_a_carry_forward_is_reported_rather_than_hidden_in_a_negative(books):
+    """What the signed negative was standing in for. Credit that exceeds
+    liability now has a field of its own, and it matches the return's."""
+    ret = E._3b(books, E.JULY)
+    rep = svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))
+
+    assert rep["gstr3b"]["itc_carried_forward"] == ret["itc_carried_forward_paise"]
+    assert rep["gstr3b"]["itc_carried_forward"] > 0, (
+        "this fixture posts a bill and no sales, so credit must carry"
+    )
+
+
+def test_the_summary_carries_the_ledger_reconciliation_it_never_had(books):
+    """The old arithmetic could not offer this at all: it summed documents and
+    never looked at the GL, so a books-vs-ledger difference was invisible on the
+    one screen a partner might read instead of the return."""
+    rep = svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))
+    assert rep["reconciliation"] is not None
+    assert "output_gst" in rep["reconciliation"]
+    assert rep["source"] == "posted_general_ledger"
+
+
+def test_the_lines_are_the_documents_behind_the_figure_and_sum_to_it(books):
+    """`lines` used to be a separate listing that happened to sit near the
+    totals. It is now the 3.1(a) detail from the same fetchers, so the listing
+    adds up to the figure printed above it — which is the property that makes a
+    detail report worth having."""
+    rep = svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))
+    lines = rep["gstr1"]["lines"]
+    assert sum(int(r["taxable_paise"]) for r in lines) == rep["gstr1"]["taxable"]
+    assert sum(int(r["igst_paise"]) for r in lines) == rep["gstr3b"]["output_igst"]
+
+
+def test_the_month_is_converted_to_the_return_period(books):
+    """The screen sends YYYY-MM; the return keys on MMYYYY. Converting at the
+    caller was how the two could point at different windows."""
+    rep = svc.gst_summary(books, E.FIRM, "CLI", "2025-07")
+    assert rep["period"] == "2025-07"
+    assert rep["return_period"] == "072025"
+
+
+def test_the_summary_is_marked_as_needing_ca_review(books):
+    """Working figures for a screen, not a filed return."""
+    assert svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))["ca_review_required"] is True
+
+
+def test_tds_is_still_reported_alongside(books):
+    """Not part of the GST return, so gstr3b_from_books does not compute it —
+    but the screen has always shown it and removing a figure is a different
+    change from correcting the ones that were wrong."""
+    rep = svc.gst_summary(books, E.FIRM, "CLI", _month_of(E.JULY))
+    assert isinstance(rep["tds_deducted"], int)
 
 
 @pytest.mark.parametrize("field", ["taxable_amount_paise", "cgst_paise", "total_paise"])

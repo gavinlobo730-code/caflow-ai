@@ -154,3 +154,57 @@ def test_each_reversal_reason_carries_what_the_list_prints(working):
             assert key in row, f"reason row is missing {key}: {row}"
         assert isinstance(row["reason"], str) and row["reason"]
         assert isinstance(row["reclaimable"], bool)
+
+
+# ── The right panel, not just the right fields ──────────────────────────────
+
+def test_the_gstr3b_breakdown_lives_in_the_gstr3b_tab():
+    """It shipped inside GSTR1Tab, and nothing noticed.
+
+    The client workspace has two compute panels — GSTR-1 and GSTR-3B — and both
+    end with the same "Save as Draft" button. A text anchor on that button put
+    the Table 3.1/4/6 breakdown into the GSTR-1 panel, where `working` is a
+    different shape entirely: every figure would have rendered as zero, under
+    headings naming Table 4(A) and Table 6, on a screen a CA reviews before
+    filing. Type-checking cannot see it (both are Record<string, unknown>),
+    every backend test passed, and the build was clean.
+
+    So the placement is asserted, not just the field names.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[2] / "web" / "app" / "clients" / "[id]"
+           / "compliance" / "gst" / "page.tsx").read_text()
+
+    def body_of(name: str) -> str:
+        start = src.index(f"function {name}(")
+        after = src[start + 10:]
+        nxt = after.find("\nfunction ")
+        return after if nxt == -1 else after[:nxt]
+
+    gstr3b = body_of("GSTR3BTab")
+    gstr1 = body_of("GSTR1Tab")
+
+    assert "Table-by-table breakdown" in gstr3b, (
+        "the GSTR-3B breakdown is not in GSTR3BTab"
+    )
+    assert "Table-by-table breakdown" not in gstr1, (
+        "the GSTR-3B breakdown is in the GSTR-1 panel, where working.outward and "
+        "working.itc do not exist — every figure would render as zero"
+    )
+    # Same for the carry-forward, which belongs to the 3B return only.
+    assert "itc_carried_forward_paise" in gstr3b
+    assert "itc_carried_forward_paise" not in gstr1
+
+
+def test_that_placement_detector_can_tell_the_panels_apart():
+    """A guard on absence passes when it cannot find either function."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[2] / "web" / "app" / "clients" / "[id]"
+           / "compliance" / "gst" / "page.tsx").read_text()
+    assert "function GSTR1Tab(" in src
+    assert "function GSTR3BTab(" in src
+    assert src.index("function GSTR1Tab(") < src.index("function GSTR3BTab("), (
+        "the detector assumes GSTR1Tab is declared first; if that changed, "
+        "body_of would slice the wrong region"
+    )

@@ -8,7 +8,7 @@ Data is passed in from frontend (which reads Supabase directly).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
@@ -369,6 +369,39 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
     try:
         data = gst_return_service.gstr3b_from_books(db, firm_id, req.client_id, req.period, gstin)
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    return api_response(True, data)
+
+
+@router.get("/gstr3b/detail")
+def gstr3b_detail_endpoint(
+    client_id: str = Query(...),
+    period: str = Query(..., description="MMYYYY e.g. 042026"),
+    line: str = Query(..., description="One of 3.1a, 4A, 4B1, 4B2"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """The documents behind one GSTR-3B figure — the detail half of the return.
+
+    GSTR-1 has had this since it shipped (B2B/B2CS/B2CL/HSN, invoice by invoice).
+    GSTR-3B had nothing: a CA could see ITC of Rs 54,32,625.99 with no way to ask
+    which bills that was. The summary is what gets filed; this is what gets
+    checked before filing.
+
+    Reads the SAME fetchers gstr3b_from_books uses, so the detail and the summary
+    cannot disagree, and returns its own totals so the screen can print both.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    errs = _validator.validate_period(period)
+    if errs:
+        raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
+    try:
+        data = gst_return_service.gstr3b_detail(
+            db, current_user.get("firm_id"), client_id, period, line)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     return api_response(True, data)

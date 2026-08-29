@@ -409,6 +409,210 @@ def _recipient_type(cust: dict | None) -> str:
     return "registered" if (cust or {}).get("gstin") else "unregistered"
 
 
+# ── GSTR-3B detail: the documents behind each figure ─────────────────────────
+#
+# WHY THIS EXISTS
+#   Asked for by name, from experience of UK VAT under MTD: there you get a VAT
+#   Return (the nine boxes) AND a VAT Detail report listing every transaction
+#   behind each box. PracticeSync had the first and not the second.
+#
+#   GSTR-1 already has it — the firm-level screen lists B2B, B2CS, B2CL and HSN
+#   invoice by invoice. GSTR-3B had nothing at all: a CA could see ITC of
+#   Rs 54,32,625.99 and had no way to ask which 54 bills that was. The summary
+#   is what gets filed; the detail is what gets CHECKED before filing, and it
+#   was the half that did not exist.
+#
+# WHY IT REUSES THE RETURN'S OWN FETCHERS RATHER THAN QUERYING AFRESH
+#   A detail report that disagrees with the summary it sits under is worse than
+#   no detail report: it turns one trusted figure into two untrusted ones. So
+#   this calls _posted_sales, _posted_bills and the rest — the same functions
+#   gstr3b_from_books calls, with the same period bounds and the same status
+#   rules, including the awkward ones (a bill cancelled AFTER period end still
+#   belongs to 4(A); a bill cancelled DURING it is a 4(B)(1) reversal).
+#
+#   It also returns its own total, so the screen can print the detail's sum
+#   beside the summary's figure. If they ever drift, it is visible on the
+#   screen rather than discovered at a notice.
+#
+# ON THE REPORTING PERFORMANCE RULE (CLAUDE.md)
+#   "What crosses the wire must be proportional to the size of the ANSWER."
+#   Here the answer IS the documents, so returning them is the point — but only
+#   ONE line is fetched per request, scoped to one period. Apex's April is 347
+#   invoices for 3.1(a) or 54 bills for 4(A); nothing walks the ledger.
+
+GSTR3B_DETAIL_LINES = ("3.1a", "4A", "4B1", "4B2")
+
+
+def _detail_row(doc: dict, kind: str, no_field: str, date_field: str,
+                party: str = "", sign: int = 1) -> dict:
+    """One line of a detail report, in the shape the screen renders.
+
+    `sign` is -1 for a credit note: it REDUCES the figure it sits under, and a
+    detail report that lists a reduction as a positive number does not add up to
+    the summary above it.
+    """
+    taxable = int(doc.get("taxable_amount_paise") or 0) * sign
+    igst = int(doc.get("igst_paise") or 0) * sign
+    cgst = int(doc.get("cgst_paise") or 0) * sign
+    sgst = int(doc.get("sgst_paise") or 0) * sign
+    return {
+        "id": doc.get("id"),
+        "kind": kind,
+        "document_no": doc.get(no_field) or "",
+        "document_date": str(doc.get(date_field) or "")[:10],
+        "party": party,
+        "taxable_paise": taxable,
+        "igst_paise": igst,
+        "cgst_paise": cgst,
+        "sgst_paise": sgst,
+        "tax_paise": igst + cgst + sgst,
+        "status": doc.get("status") or "",
+    }
+
+
+def _party_ids(rows: list[dict], fk: str) -> list[str]:
+    return sorted({r.get(fk) for r in rows if r.get(fk)})
+
+
+_PARTY_CHUNK = 200
+
+
+def _customer_names(db, firm_id: str, rows: list[dict]) -> dict:
+    """{id: name} for the customers on these documents.
+
+    Spelled out per table rather than parameterised on the table name, and that
+    is not stylistic: tests/test_backend_columns_exist_pg.py reads select lists
+    against the real schema, and `db.table(table)` with a variable is invisible
+    to it. A column renamed out from under a dynamic reference fails in
+    production instead of in CI, which is the whole point of that check.
+
+    One query for the ids actually present, not the whole party list — a client
+    with 4,000 customers and 54 bills fetches 54 names.
+    """
+    ids = _party_ids(rows, "customer_id")
+    out: dict = {}
+    for i in range(0, len(ids), _PARTY_CHUNK):
+        got = (db.table("customers").select("id, name")
+               .eq("firm_id", firm_id).in_("id", ids[i:i + _PARTY_CHUNK])
+               .execute().data) or []
+        out.update({r["id"]: r.get("name") or "" for r in got})
+    return out
+
+
+def _vendor_names(db, firm_id: str, rows: list[dict]) -> dict:
+    """{id: name} for the vendors on these documents. See _customer_names."""
+    ids = _party_ids(rows, "vendor_id")
+    out: dict = {}
+    for i in range(0, len(ids), _PARTY_CHUNK):
+        got = (db.table("vendors").select("id, name")
+               .eq("firm_id", firm_id).in_("id", ids[i:i + _PARTY_CHUNK])
+               .execute().data) or []
+        out.update({r["id"]: r.get("name") or "" for r in got})
+    return out
+
+
+def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> dict:
+    """The documents behind one GSTR-3B line, with their own total.
+
+    line is one of GSTR3B_DETAIL_LINES:
+      3.1a  outward taxable supplies — invoices and sales debit notes, less credit notes
+      4A    ITC available — purchase bills, gross of any s.17(5) blocked portion
+      4B1   permanent reversals — bills cancelled in the period, and blocked credit
+      4B2   reclaimable reversals — the ITC reversal register
+    """
+    if line not in GSTR3B_DETAIL_LINES:
+        raise ValueError(f"unknown GSTR-3B line {line!r}; expected one of {GSTR3B_DETAIL_LINES}")
+
+    start, end = _period_bounds(period)
+    rows: list[dict] = []
+
+    if line == "3.1a":
+        invoices = _posted_sales(db, firm_id, client_id, start, end)
+        sdns = _issued_sales_debit_notes(db, firm_id, client_id, start, end)
+        cns = _issued_credit_notes(db, firm_id, client_id, start, end)
+        names = _customer_names(db, firm_id, invoices + sdns + cns)
+        rows += [_detail_row(i, "Invoice", "invoice_no", "invoice_date",
+                             names.get(i.get("customer_id"), "")) for i in invoices]
+        rows += [_detail_row(d, "Debit note", "debit_note_no", "debit_note_date",
+                             names.get(d.get("customer_id"), "")) for d in sdns]
+        # CGST §34: a credit note reduces outward tax, so it carries a minus.
+        rows += [_detail_row(c, "Credit note", "credit_note_no", "credit_note_date",
+                             names.get(c.get("customer_id"), ""), sign=-1) for c in cns]
+
+    elif line == "4A":
+        bills = _posted_bills(db, firm_id, client_id, start, end)
+        dns = _issued_debit_notes(db, firm_id, client_id, start, end)
+        pcns = _issued_purchase_credit_notes(db, firm_id, client_id, start, end)
+        names = _vendor_names(db, firm_id, bills + dns + pcns)
+        rows += [_detail_row(b, "Bill", "bill_no", "bill_date",
+                             names.get(b.get("vendor_id"), "")) for b in bills]
+        rows += [_detail_row(d, "Debit note", "debit_note_no", "debit_note_date",
+                             names.get(d.get("vendor_id"), "")) for d in dns]
+        rows += [_detail_row(c, "Credit note", "credit_note_no", "credit_note_date",
+                             names.get(c.get("vendor_id"), ""), sign=-1) for c in pcns]
+
+    elif line == "4B1":
+        cancelled = _bills_cancelled_in(db, firm_id, client_id, start, end)
+        names = _vendor_names(db, firm_id, cancelled)
+        rows += [_detail_row(b, "Cancelled bill", "bill_no", "bill_date",
+                             names.get(b.get("vendor_id"), "")) for b in cancelled]
+        # §17(5) blocked credit is a portion of a LIVE bill, not a document of
+        # its own, so it is listed against the bill that carries it.
+        for b in _posted_bills(db, firm_id, client_id, start, end):
+            blocked_i = int(b.get("ineligible_itc_igst_paise") or 0)
+            blocked_c = int(b.get("ineligible_itc_cgst_paise") or 0)
+            blocked_s = int(b.get("ineligible_itc_sgst_paise") or 0)
+            if blocked_i + blocked_c + blocked_s == 0:
+                continue
+            vend = _vendor_names(db, firm_id, [b])
+            rows.append({
+                "id": b.get("id"),
+                "kind": "Blocked ITC (s.17(5))",
+                "document_no": b.get("bill_no") or "",
+                "document_date": str(b.get("bill_date") or "")[:10],
+                "party": vend.get(b.get("vendor_id"), ""),
+                "taxable_paise": 0,
+                "igst_paise": blocked_i,
+                "cgst_paise": blocked_c,
+                "sgst_paise": blocked_s,
+                "tax_paise": blocked_i + blocked_c + blocked_s,
+                "status": b.get("status") or "",
+            })
+
+    elif line == "4B2":
+        from services import itc_register_service
+        reg = itc_register_service.for_period(db, firm_id, client_id, period)
+        for r in reg.get("reversals", []):
+            i, c, sg = (int(r.get("igst_paise") or 0), int(r.get("cgst_paise") or 0),
+                        int(r.get("sgst_paise") or 0))
+            rows.append({
+                "id": r.get("id"),
+                "kind": f"Reversal ({r.get('reason_code')})",
+                "document_no": str(r.get("journal_entry_id") or "")[:8],
+                "document_date": str(r.get("created_at") or "")[:10],
+                "party": r.get("notes") or "",
+                "taxable_paise": 0,
+                "igst_paise": i, "cgst_paise": c, "sgst_paise": sg,
+                "tax_paise": i + c + sg,
+                "status": "registered",
+            })
+
+    rows.sort(key=lambda r: (r["document_date"], r["document_no"]))
+    return {
+        "period": period,
+        "line": line,
+        "rows": rows,
+        "count": len(rows),
+        # The detail's own arithmetic, for the screen to print beside the
+        # summary figure. Two numbers that must match, shown together.
+        "total_taxable_paise": sum(r["taxable_paise"] for r in rows),
+        "total_igst_paise": sum(r["igst_paise"] for r in rows),
+        "total_cgst_paise": sum(r["cgst_paise"] for r in rows),
+        "total_sgst_paise": sum(r["sgst_paise"] for r in rows),
+        "total_tax_paise": sum(r["tax_paise"] for r in rows),
+    }
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger."""
     start, end = _period_bounds(period)
