@@ -124,6 +124,11 @@ class SaveGSTR3BRequest(BaseModel):
 class UpdateStatusRequest(BaseModel):
     status: str
     ca_approved: bool = False
+    # Approving a return whose books have moved is refused by default. This is
+    # the deliberate override — a CA who has looked at the difference and wants
+    # the figures as computed. It is NOT defaulted true and NOT settable by
+    # omission, because the whole point is that the refusal is seen.
+    acknowledge_stale: bool = False
     # The acknowledgement the portal returns. Optional because the CA files on
     # the GST portal and may not have it to hand when they mark it submitted
     # here; recorded on both the return and the filings row when supplied.
@@ -685,8 +690,42 @@ def update_gstr3b_status(
         # Read first. Moving a return to "submitted" is the write this router
         # exists to gate (CGST §37/§39) — a check that happens after it has
         # already moved is not a check.
-        if _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id) is None:
+        existing = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
+        if existing is None:
             return api_response(False, None, "Not found")
+
+        # ── The books may have moved since this return was computed ──────────
+        #
+        # A CA computes April, saves it, then corrects an invoice. The saved
+        # figures now describe a period that no longer exists, and nothing said
+        # so. Approval is the CA stating these figures are right, so approval is
+        # where that has to be caught.
+        #
+        # Only ca_approved is blocked. "submitted" is NOT: it records something
+        # that already happened on the portal, and refusing to let a CA write
+        # down reality — because our copy drifted — would be the wrong failure.
+        # A stale submitted return is reported instead, in stale_at_submission,
+        # so the difference is on the record rather than lost.
+        stale_state = None
+        if body.status in ("ca_approved", "submitted") and not _USE_MOCK:
+            try:
+                stale_state = _staleness(existing, _books_now(current_user, existing))
+            except Exception:  # noqa: BLE001
+                # A comparison that cannot be made must not block a CA from
+                # recording a filing. Logged, not swallowed silently.
+                _logger.exception("staleness check failed for gstr3b %s", return_id)
+
+        if (body.status == "ca_approved" and stale_state and stale_state["stale"]
+                and not body.acknowledge_stale):
+            d = stale_state["differences"]
+            parts = ", ".join(
+                f"{k.replace('_paise', '').replace('_', ' ')} "
+                f"{v['saved_paise'] / 100:,.2f} -> {v['books_paise'] / 100:,.2f}"
+                for k, v in d.items())
+            return api_response(False, None,
+                "The books have changed since this return was computed, so these "
+                f"figures no longer match them ({parts}). Recompute it before "
+                "approving, or delete it and compute again.")
 
         # Record WHAT was filed, not merely that the status moved. submitted_at,
         # the approver and the ARN are columns migration 036 created and nothing
@@ -727,15 +766,28 @@ def update_gstr3b_status(
                     "filings row not written for %s %s/%s — the period lock will "
                     "not cover this return", FILING_TYPE_GSTR3B, rec.get("client_id"), rec.get("period"))
 
+        submitted_stale = bool(body.status == "submitted" and stale_state
+                               and stale_state["stale"])
+        if submitted_stale:
+            _logger.warning(
+                "gstr3b %s submitted while its figures differ from the books: %s",
+                return_id, stale_state["differences"])
+
         log_event(firm_id, "gstr3b_return", return_id, "status_change",
-                  actor_id=current_user.get("id"), new_data={"status": body.status})
+                  actor_id=current_user.get("id"),
+                  new_data={"status": body.status},
+                  metadata=({"stale_at_submission": stale_state["differences"]}
+                            if submitted_stale else None))
         if body.status == "submitted":
             timeline_service.log_timeline_event(
                 client_id=rec.get("client_id", ""), firm_id=firm_id,
                 financial_year="", category="gst", event_type="gstr3b_filed",
                 title=f"GSTR-3B filed for {rec.get('period', '')}",
             )
-        return api_response(True, rec)
+        # Reported, not hidden: what was filed differs from what the books now
+        # say, and the CA should see that on the screen they filed from.
+        return api_response(True, {**rec, "stale_at_submission":
+                                   stale_state["differences"] if submitted_stale else None})
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
@@ -1331,3 +1383,208 @@ def simulate_gstr3b_filing(
         ),
         "status_unchanged": rec.get("status"),
     })
+
+
+# ── A draft return is not a filing, and must be deletable ────────────────────
+#
+# WHY THESE EXIST
+#   A CA presses Compute from Books to SEE a number — what does April owe? —
+#   and saving is the only way to keep it. That leaves a row behind that looks
+#   like a return in progress, and there was no way to remove it. Worse, the
+#   books move afterwards: an invoice is corrected, a bill is received late, and
+#   the saved figures quietly stop describing the period they are named after.
+#
+#   Three things follow, and they are one feature:
+#     delete      — a draft nobody filed is a working note, not a record
+#     recompute   — re-derive it from the books as they are now
+#     the gate    — refuse to APPROVE a return whose figures the books no
+#                   longer support, because approval is the CA saying they are
+#                   right
+#
+# WHAT IS NEVER DELETABLE
+#   A submitted return. It carries the real ARN and the gst_filings row that
+#   journal_period_lock_reason (migration 266) reads to refuse edits inside a
+#   filed period. Deleting it would silently unlock a filed period and let the
+#   books move under a return already with the government. There is no override
+#   flag for that: it is refused, and the CA is told to record reality instead.
+
+_DELETABLE_STATUSES = ("draft", "validated", "ca_approved")
+
+
+def _delete_return(current_user: dict, table: str, mock_store: dict,
+                   return_id: str, kind: str, rec: Optional[dict] = None):
+    """Delete an unfiled return, writing what it held to the audit log first.
+
+    `rec` is resolved by the CALLER via _load_return_or_none rather than here.
+    tests/test_router_client_scope.py reads each endpoint's own source for a
+    scope check, and a guard buried one call deep is a guard the next person
+    editing the endpoint cannot see. It is also the right shape: the endpoint
+    that owns the route owns the question of who may reach the row.
+    """
+    if rec is None:
+        rec = _load_return_or_none(current_user, table, mock_store, return_id)
+    if rec is None:
+        return api_response(False, None, "Not found")
+
+    status = rec.get("status") or "draft"
+    if status not in _DELETABLE_STATUSES:
+        return api_response(False, None,
+            f"This {kind} is marked {status} and cannot be deleted. A filed return "
+            "carries its ARN and the filing record that locks the period; removing "
+            "it would unlock a period already filed with the government. If it was "
+            "not actually filed, correct the status first.")
+
+    firm_id = current_user["firm_id"]
+    # Logged BEFORE the delete and with the whole row, so what was removed is
+    # recoverable from the log rather than merely noted as having happened.
+    log_event(
+        firm_id=firm_id, entity_type=table, entity_id=return_id,
+        action="delete", actor_id=current_user.get("id"),
+        actor_email=current_user.get("email"), old_data=rec,
+        metadata={"period": rec.get("period"), "status": status,
+                  "reason": "unfiled return deleted by user"},
+    )
+
+    if _USE_MOCK:
+        mock_store.pop(return_id, None)
+    else:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        # Written out per table rather than `.table(table)`. The same reason as
+        # _customer_names in gst_return_service: a dynamic table name is
+        # invisible to tests/test_backend_columns_exist_pg.py, and this one
+        # DELETES — the reference the schema check would least like to lose
+        # sight of.
+        if table == "gstr3b_returns":
+            db.table("gstr3b_returns").delete().eq("id", return_id).eq("firm_id", firm_id).execute()
+        elif table == "gstr1_returns":
+            db.table("gstr1_returns").delete().eq("id", return_id).eq("firm_id", firm_id).execute()
+        else:
+            # Refused rather than executed: reaching here means a caller passed
+            # a table this helper has never been reviewed against, and a delete
+            # is not the operation to be permissive about.
+            _logger.error("refusing to delete from unexpected table %r", table)
+            return api_response(False, None, "Unable to complete GST operation. Please try again.")
+    return api_response(True, {"deleted": True, "id": return_id,
+                               "period": rec.get("period")})
+
+
+def _books_now(current_user: dict, rec: dict) -> dict:
+    """The figures this period's books produce RIGHT NOW."""
+    from core.supabase_client import get_supabase
+    from services import gst_return_service
+    return gst_return_service.gstr3b_from_books(
+        get_supabase(), current_user["firm_id"], rec.get("client_id") or "",
+        rec.get("period") or "", rec.get("gstin") or "")
+
+
+_COMPARED = ("tax_liability_paise", "itc_claimed_paise", "net_tax_paise")
+
+
+def _staleness(rec: dict, fresh: dict) -> dict:
+    """How the saved return differs from the books as they stand.
+
+    Compares the three figures the screen shows and the row stores. A return
+    whose books have not moved is not stale; one whose books have is, and by
+    how much — "changed" alone tells a CA nothing about whether it matters.
+    """
+    diffs = {}
+    for k in _COMPARED:
+        saved, now = int(rec.get(k) or 0), int(fresh.get(k) or 0)
+        if saved != now:
+            diffs[k] = {"saved_paise": saved, "books_paise": now,
+                        "difference_paise": now - saved}
+    return {
+        "stale": bool(diffs),
+        "differences": diffs,
+        "saved": {k: int(rec.get(k) or 0) for k in _COMPARED},
+        "books": {k: int(fresh.get(k) or 0) for k in _COMPARED},
+    }
+
+
+@router.delete("/gstr3b/{return_id}")
+def delete_gstr3b(return_id: str,
+                  current_user: dict = Depends(rbac("gst", "compute"))):
+    """Delete an unfiled GSTR-3B. Refused once submitted — see the block above."""
+    rec = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
+    if rec is None:
+        return api_response(False, None, "Not found")
+    return _delete_return(current_user, "gstr3b_returns", _MOCK_GSTR3B,
+                          return_id, "GSTR-3B", rec)
+
+
+@router.delete("/gstr1/{return_id}")
+def delete_gstr1(return_id: str,
+                 current_user: dict = Depends(rbac("gst", "compute"))):
+    """Delete an unfiled GSTR-1. Refused once submitted."""
+    rec = _load_return_or_none(current_user, "gstr1_returns", _MOCK_GSTR1, return_id)
+    if rec is None:
+        return api_response(False, None, "Not found")
+    return _delete_return(current_user, "gstr1_returns", _MOCK_GSTR1,
+                          return_id, "GSTR-1", rec)
+
+
+@router.post("/gstr3b/{return_id}/recompute")
+def recompute_gstr3b(return_id: str,
+                     dry_run: bool = Query(True, description="Compare only; do not write"),
+                     current_user: dict = Depends(rbac("gst", "compute"))):
+    """Re-derive a saved GSTR-3B from the books as they stand now.
+
+    dry_run=true (the default) answers "have the books moved since this was
+    saved, and by how much" without touching the row. The default is the
+    read-only one deliberately: a CA asking whether a figure is still right
+    should never have that question change the figure.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    rec = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
+    if rec is None:
+        return api_response(False, None, "Not found")
+    if _USE_MOCK:
+        return api_response(False, None, "Recompute needs a live database.")
+
+    fresh = _books_now(current_user, rec)
+    state = _staleness(rec, fresh)
+
+    if dry_run:
+        return api_response(True, {**state, "written": False,
+                                   "period": rec.get("period")})
+
+    if (rec.get("status") or "draft") not in _DELETABLE_STATUSES:
+        return api_response(False, None,
+            "This return is submitted. A filed return's figures are fixed — a "
+            "correction is declared in a later period's amendment tables "
+            "(CGST §37(3), §39(9)), not by rewriting what was filed.")
+
+    from core.supabase_client import get_supabase
+    # Written as a literal rather than built into a variable and passed in.
+    # tests/_backend_query_parser reads the keys of an inline dict and checks
+    # every one against the real schema; `.update(patch)` with a Name hides all
+    # nine, so a column renamed underneath this would fail in production. Same
+    # lesson as the dynamic table name a few lines up, and as _customer_names.
+    get_supabase().table("gstr3b_returns").update({
+        "tax_liability_paise": int(fresh.get("tax_liability_paise") or 0),
+        "itc_claimed_paise": int(fresh.get("itc_claimed_paise") or 0),
+        "net_tax_paise": int(fresh.get("net_tax_paise") or 0),
+        "payload_json": fresh.get("payload"),
+        "summary_json": fresh.get("working"),
+        "updated_at": datetime.utcnow().isoformat(),
+        # Recomputing changes what the return says, so any approval of the
+        # earlier figures no longer applies to it.
+        "status": "draft",
+        "ca_approved_by": None,
+        "ca_approved_at": None,
+    }).eq("id", return_id).eq("firm_id", current_user["firm_id"]).execute()
+    written = {k: int(fresh.get(k) or 0) for k in _COMPARED}
+    log_event(
+        firm_id=current_user["firm_id"], entity_type="gstr3b_returns",
+        entity_id=return_id, action="recompute", actor_id=current_user.get("id"),
+        actor_email=current_user.get("email"),
+        old_data={k: rec.get(k) for k in _COMPARED},
+        new_data=written,
+        metadata={"period": rec.get("period"), "was_stale": state["stale"]},
+    )
+    return api_response(True, {**state, "written": True,
+                               "period": rec.get("period"),
+                               "status": "draft"})
+

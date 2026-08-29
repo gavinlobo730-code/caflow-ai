@@ -297,6 +297,22 @@ function GSTR3BDetailDrawer({
   );
 }
 
+/** Statuses where nothing has been filed, so the working may still be changed. */
+const UNFILED = ["draft", "validated", "ca_approved"];
+
+const LABEL_OF: Record<string, string> = {
+  tax_liability_paise: "Tax liability",
+  itc_claimed_paise: "ITC claimed",
+  net_tax_paise: "Net tax",
+};
+
+/** What the recompute endpoint answers when asked, without writing. */
+interface Staleness {
+  stale: boolean;
+  differences: Record<string, {
+    saved_paise: number; books_paise: number; difference_paise: number }>;
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 interface GSTDashboardData {
@@ -722,6 +738,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   // Which GSTR-3B line the detail drawer is open on, if any.
   const [detail, setDetail] = useState<
     { period: string; line: string; label: string; expected: number | null } | null>(null);
+  // Per-return: whether the books have moved since it was computed, and what
+  // the row is currently busy doing. Keyed by return id so one row's spinner
+  // does not freeze the table.
+  const [freshness, setFreshness] = useState<Record<string, Staleness>>({});
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
   // Distinguishes "fetch failed" from "no GSTR-3B returns yet".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -777,11 +799,55 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   }
 
   async function updateStatus(id: string, status: string) {
-    await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
+    setRowError(null);
+    const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status, ca_approved: true }),
     });
+    // The server refuses to APPROVE a return whose figures the books no longer
+    // support. Surfacing that error is the whole point of the refusal — a
+    // silent failure would leave the CA thinking they had approved it.
+    if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return; }
     load();
+  }
+
+  /** Ask whether a saved return still matches the books. Never writes. */
+  async function recheck(id: string) {
+    setBusyRow(id);
+    setRowError(null);
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/recompute?dry_run=true`,
+                               { method: "POST" });
+      if (!r.success) { setRowError(r.error ?? "Couldn't check this return."); return; }
+      setFreshness((f) => ({ ...f, [id]: r.data as Staleness }));
+    } finally { setBusyRow(null); }
+  }
+
+  /** Re-derive it from the books as they stand, and save that. */
+  async function recompute(id: string) {
+    setBusyRow(id);
+    setRowError(null);
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/recompute?dry_run=false`,
+                               { method: "POST" });
+      if (!r.success) { setRowError(r.error ?? "Couldn't recompute this return."); return; }
+      setFreshness((f) => { const n = { ...f }; delete n[id]; return n; });
+      load();
+    } finally { setBusyRow(null); }
+  }
+
+  async function deleteReturn(id: string, period: string) {
+    if (!window.confirm(
+      `Delete the GSTR-3B for ${period}?\n\nThis removes the saved working only. ` +
+      `Nothing has been filed, and the underlying invoices and bills are untouched — ` +
+      `you can compute it again at any time.`)) return;
+    setBusyRow(id);
+    setRowError(null);
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}`, { method: "DELETE" });
+      if (!r.success) { setRowError(r.error ?? "Couldn't delete this return."); return; }
+      load();
+    } finally { setBusyRow(null); }
   }
 
   useEffect(() => {
@@ -866,6 +932,16 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           period={simulate.period}
           onClose={() => setSimulate(null)}
         />
+      )}
+      {/* Refusals from the row actions. The approval gate's message is the
+          point of the gate — swallowing it would leave a CA believing they had
+          approved a return the server declined. */}
+      {rowError && (
+        <div className="text-sm px-3 py-2 rounded bg-amber-50 text-amber-900 border border-amber-200 flex items-start justify-between gap-3">
+          <span>{rowError}</span>
+          <button onClick={() => setRowError(null)}
+            className="text-xs underline shrink-0">Dismiss</button>
+        </div>
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-3B Returns</h3>
@@ -1072,7 +1148,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             </tr>
           </thead>
           <tbody>
-            {returns.map((r) => (
+            {returns.flatMap((r) => [
               <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2">{r.period as string}</td>
                 <td className="px-3 py-2">{rupees((r.tax_liability_paise as number) ?? 0)}</td>
@@ -1102,9 +1178,66 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       Preview filing (demo)
                     </button>
                   )}
+                  {/* Unfiled only. A submitted return carries its ARN and the
+                      filing record that locks the period — the server refuses
+                      both of these for it, and offering them here would be a
+                      control that exists only to be told no. */}
+                  {UNFILED.includes(r.status as string) && (
+                    <>
+                      <button onClick={() => recheck(r.id as string)}
+                        disabled={busyRow === r.id}
+                        title="Check whether the books have changed since this was computed"
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9] disabled:opacity-40">
+                        {busyRow === r.id ? "…" : "Recheck"}
+                      </button>
+                      <button onClick={() => deleteReturn(r.id as string, r.period as string)}
+                        disabled={busyRow === r.id}
+                        title="Delete this saved working. Nothing has been filed."
+                        className="text-xs px-2 py-0.5 border border-red-200 rounded hover:bg-red-50 text-red-700 disabled:opacity-40">
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </td>
-              </tr>
-            ))}
+              </tr>,
+              freshness[r.id as string] ? (
+                <tr key={`${r.id}-fresh`}>
+                  <td colSpan={6} className="px-3 pb-3">
+                    {freshness[r.id as string].stale ? (
+                      <div className="text-xs bg-amber-50 text-amber-900 border border-amber-200 rounded px-3 py-2 space-y-1">
+                        <p className="font-semibold">
+                          The books have changed since this return was computed.
+                        </p>
+                        {Object.entries(freshness[r.id as string].differences).map(([k, v]) => (
+                          <p key={k}>
+                            {LABEL_OF[k] ?? k}: saved {rupees(v.saved_paise)} · books now{" "}
+                            {rupees(v.books_paise)}{" "}
+                            <span className="font-mono">
+                              ({v.difference_paise > 0 ? "+" : ""}{rupees(v.difference_paise)})
+                            </span>
+                          </p>
+                        ))}
+                        <div className="pt-1">
+                          <button onClick={() => recompute(r.id as string)}
+                            disabled={busyRow === r.id}
+                            className="text-xs px-2 py-0.5 border border-amber-400 rounded hover:bg-amber-100 disabled:opacity-40">
+                            {busyRow === r.id ? "Recomputing…" : "Recompute from books"}
+                          </button>
+                          <span className="ml-2 text-[11px]">
+                            Recomputing replaces the saved figures and returns this to draft,
+                            because an approval of the old ones no longer applies.
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+                        Still matches the books.
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              ) : null,
+            ])}
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
