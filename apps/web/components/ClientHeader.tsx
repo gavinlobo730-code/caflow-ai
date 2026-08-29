@@ -79,7 +79,8 @@ export function ClientHeader() {
 
       {/* Health badge */}
       {health && (
-        <HealthBadge score={health.overall_score} size="sm" trend={health.trend} />
+        <HealthBadge score={health.overall_score} size="sm" showLabel trend={health.trend}
+                     href={`/clients/${clientId}/health/`} />
       )}
 
     </header>

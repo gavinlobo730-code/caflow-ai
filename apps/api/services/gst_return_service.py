@@ -641,6 +641,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         # so it has to be the one the return claims, not the gross 4(A).
         "itc_claimed_paise": result.itc_net_igst + result.itc_net_cgst + result.itc_net_sgst,
         "net_tax_paise": result.net_igst + result.net_cgst + result.net_sgst,
+        # What this return leaves behind. net_tax_paise of 0 is true both when
+        # liability and credit cancel out and when credit exceeds liability by
+        # lakhs; without this the screen cannot say which, and the difference
+        # is the client's money. Computed in apps/api like every other
+        # statutory figure — the screen renders it and derives nothing.
+        "itc_carried_forward_paise": result.itc_carried_forward_paise,
         "payload": result.as_gstn_payload(gstin, period),
         "working": {
             "outward": {
@@ -718,6 +724,15 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 "cgst_paise": result.net_cgst,
                 "sgst_paise": result.net_sgst,
                 "total_paise": result.net_igst + result.net_cgst + result.net_sgst,
+            },
+            # The other side of Table 6, which the form itself never states:
+            # credit available, credit spent, credit left. Derived from the
+            # net_payable figures directly above rather than by a second
+            # set-off pass, so the two cannot drift apart.
+            "itc_utilisation": {
+                "available_paise": result.itc_available_paise,
+                "consumed_paise": result.itc_consumed_paise,
+                "carried_forward_paise": result.itc_carried_forward_paise,
             },
         },
         "reconciliation": {
