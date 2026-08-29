@@ -130,3 +130,51 @@ def test_a_registered_buyer_is_b2b_whatever_the_value():
         invoice_type="Regular", place_of_supply="29",
         invoice_value_paise=5_90_000_00, transaction_date="2026-04-10")
     assert classify_transaction(txn) == GSTInvoiceCategory.B2B
+
+
+# ── The rule as the CA reads it on screen ───────────────────────────────────
+
+def test_the_screen_does_not_quote_a_threshold_the_code_stopped_using():
+    """The classifier was corrected to Rs 1 lakh and Rule 59(4); the GSTR-1
+    screen went on telling the CA it used Rs 2.5 lakh and Rule 59(2).
+
+    That is worse than either being wrong on its own. The app computed one rule
+    and documented another, so a CA reconciling an unexpected B2CL row against
+    the explanation printed beside it would conclude the software was broken —
+    and there is nothing in a test of the OUTPUT that notices prose.
+
+    Scanned rather than eyeballed because this drifted once already: the code
+    was fixed and the sentence was not, in the same change.
+    """
+    from pathlib import Path
+
+    web = Path(__file__).resolve().parents[2] / "web"
+    screens = [web / "app" / "gst" / "gstr1" / "page.tsx"]
+    for f in screens:
+        assert f.exists(), f
+        src = f.read_text()
+        assert "Rule 59(2)" not in src, (
+            f"{f.name} cites CGST Rule 59(2) for the B2CL threshold. The "
+            "invoice-wise reporting rule is 59(4); 59(2) is a different provision."
+        )
+        # The superseded figure may only appear where it is explained as the
+        # pre-01-08-2024 limit, never as the current one.
+        if "2.5 lakh" in src or "2,50,000" in src or "2.5L" in src:
+            assert "1 August 2024" in src or "01-08-2024" in src, (
+                f"{f.name} states the old Rs 2.5 lakh limit without saying it was "
+                "superseded. Notification 12/2024-Central Tax cut it to Rs 1 lakh "
+                "with effect from 1 August 2024."
+            )
+        assert "₹1 lakh" in src or "1 lakh" in src, (
+            f"{f.name} explains B2CL without naming the Rs 1 lakh limit the "
+            "classifier actually applies"
+        )
+
+
+def test_that_scanner_would_catch_the_text_it_was_written_for():
+    """A guard on absence passes against a file it cannot find. This pins the
+    detector against the exact sentence that was wrong."""
+    stale = ("No B2CL invoices. B2CL applies to inter-state unregistered "
+             "invoices above ₹2.5L (CGST Rule 59(2)).")
+    assert "Rule 59(2)" in stale
+    assert not ("1 lakh" in stale)

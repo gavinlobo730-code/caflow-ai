@@ -26,7 +26,10 @@ from core.validators import validate_gstin
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
-from services.compliance_engine import gstr1_due_date, gstr3b_due_date
+from services.compliance_engine import (
+    gstr1_due_date, gstr3b_due_date, pmt06_due_date, iff_due_date,
+    gst_state_category, gst_period_month_in_quarter, MONTHLY, QUARTERLY,
+)
 from services.gst_filing_record_service import (
     FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, record_filing, return_status_patch,
 )
@@ -47,16 +50,49 @@ _MOCK_GSTR2B: dict[str, dict] = {}
 # services/compliance_engine.py already computes canonically (and every other
 # caller of due dates already uses) — now thin string<->date adapters over it.
 
-def _gstr1_due_date(period: str) -> str:
-    """CGST Act §37 — GSTR-1 due 11th of month following the return period."""
+def _gstr1_due_date(period: str, frequency: str = MONTHLY) -> str:
+    """CGST Act §37 with Rule 59 — 11th of the following month, or the 13th of
+    the month after the QUARTER for a QRMP filer."""
     mm, yyyy = int(period[:2]), int(period[2:])
-    return gstr1_due_date(yyyy, mm).isoformat()
+    return gstr1_due_date(yyyy, mm, frequency).isoformat()
 
 
-def _gstr3b_due_date(period: str) -> str:
-    """CGST Act §39 — GSTR-3B due 20th of month following the return period."""
+def _gstr3b_due_date(period: str, frequency: str = MONTHLY,
+                     state_code: Optional[str] = None) -> str:
+    """CGST Act §39 with Rule 61 — 20th of the following month, or the 22nd/24th
+    of the month after the quarter for a QRMP filer, by state."""
     mm, yyyy = int(period[:2]), int(period[2:])
-    return gstr3b_due_date(yyyy, mm).isoformat()
+    return gstr3b_due_date(yyyy, mm, frequency, state_code).isoformat()
+
+
+def _gst_regime(client_id: str, firm_id: str) -> dict:
+    """What filing regime this client is on, and everything that follows from it.
+
+    clients.gst_filing_frequency has existed since migration 001 and was
+    settable on the client form, but no code read it: every client was quoted
+    the monthly 11th and 20th. A QRMP filer's GSTR-1 is due the 13th of the
+    month after the QUARTER and their GSTR-3B the 22nd or 24th by state, and
+    they owe PMT-06 challans a monthly filer does not. §47 charges Rs 50 a day
+    for filing late, so quoting the wrong date is not a display bug.
+
+    `state_category` is null when the client has no state_code. That is not an
+    error to swallow: the quarterly GSTR-3B date genuinely cannot be determined
+    without it, so the date returned is the EARLIER of the two and the screen
+    is told to present it as assumed.
+    """
+    from repositories.client_repository import client_repo
+    try:
+        c = client_repo.find_by_id(client_id, firm_id=firm_id) or {}
+    except Exception:  # noqa: BLE001
+        c = {}
+    freq = (c.get("gst_filing_frequency") or MONTHLY).strip().lower()
+    if freq not in (MONTHLY, QUARTERLY):
+        freq = MONTHLY
+    return {
+        "frequency": freq,
+        "state_code": c.get("state_code"),
+        "state_category": gst_state_category(c.get("state_code")) if freq == QUARTERLY else None,
+    }
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
@@ -171,6 +207,58 @@ def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
     return _visible_or_none(current_user, rec)
 
 
+# ── Filing simulation (demo only) ────────────────────────────────────────────
+#
+# WHAT THIS IS, AND WHAT IT IS EMPHATICALLY NOT
+#   PracticeSync prepares GSTR-1 and GSTR-3B and produces the GSTN JSON. The CA
+#   uploads that to gst.gov.in and signs it there with a DSC or EVC. There is no
+#   API filing: that needs GSP registration, and CLAUDE.md's rule stands either
+#   way — never auto-submit anything to a government portal.
+#
+#   This endpoint exists so the intended flow can be SHOWN — walked through in a
+#   demo — before it exists. It transmits nothing, reaches no government system,
+#   and changes no stored status. Every acknowledgement number it returns is
+#   prefixed SIM- and every response carries simulated=true.
+#
+# WHY IT IS BUILT THIS WAY RATHER THAN JUST FAKING IT IN THE BROWSER
+#   Because a screen that says "Filed" when nothing was filed is how a return
+#   gets missed, and §47 charges Rs 50 a day from the real due date. The person
+#   demoing knows it is a mock; the person who walks past the laptop afterwards,
+#   or opens the same screen next week, does not. So:
+#
+#     * it is OFF unless ENABLE_FILING_SIMULATION is set, so it cannot appear
+#       for a real user by accident;
+#     * it never writes gstr3b_returns.status, never writes a gst_filings row,
+#       and therefore never moves journal_period_lock_reason. The return's real
+#       status is exactly what it was before;
+#     * the disclaimer is part of the RESPONSE, not something the UI is trusted
+#       to remember to render.
+#
+#   The genuine "this was filed on the portal" path already exists and is
+#   untouched: PATCH /gstr3b/{id}/status with status=submitted, which records
+#   the real ARN, the filing date and the filings row the period lock reads.
+
+_SIMULATION_STEPS = [
+    ("validate", "Validating return against GSTN schema"),
+    ("authenticate", "Authenticating with GST portal"),
+    ("upload", "Uploading return payload"),
+    ("process", "Awaiting GSTN processing"),
+    ("acknowledge", "Receiving acknowledgement"),
+]
+
+
+def filing_simulation_enabled() -> bool:
+    return os.environ.get("ENABLE_FILING_SIMULATION", "false").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _simulated_ack(period: str, return_id: str) -> str:
+    """Deliberately not ARN-shaped. A real ARN is 15 characters, AA<state><MMYYYY>
+    then a serial; anything that pattern-matches could be pasted into a portal
+    field or a client email and be believed. This cannot be mistaken for one."""
+    return f"SIM-NOT-FILED-{period}-{return_id[:8]}"
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/")
@@ -184,6 +272,7 @@ def gst_dashboard(
         firm_id = current_user["firm_id"]
         today = ist_today()
         current_period = f"{today.month:02d}{today.year}"
+        regime = _gst_regime(client_id, firm_id)
 
         if _USE_MOCK:
             gstr1_list = [r for r in _MOCK_GSTR1.values() if r["client_id"] == client_id]
@@ -197,9 +286,27 @@ def gst_dashboard(
         return api_response(True, {
             "gstr1_returns": gstr1_list,
             "gstr3b_returns": gstr3b_list,
+            "regime": regime,
             "upcoming_due_dates": {
-                "gstr1": _gstr1_due_date(current_period),
-                "gstr3b": _gstr3b_due_date(current_period),
+                "gstr1": _gstr1_due_date(current_period, regime["frequency"]),
+                "gstr3b": _gstr3b_due_date(current_period, regime["frequency"],
+                                           regime["state_code"]),
+                # Rule 61A: a QRMP filer still pays monthly by challan for the
+                # first two months of the quarter. Null in month 3, and for a
+                # monthly filer, because nothing is due — not because it is
+                # unknown.
+                "pmt06": (pmt06_due_date(int(current_period[2:]), int(current_period[:2])).isoformat()
+                          if regime["frequency"] == QUARTERLY
+                          and pmt06_due_date(int(current_period[2:]), int(current_period[:2]))
+                          else None),
+                # Optional (Rule 59(2)), offered so the recipient's ITC does not
+                # wait a quarter. Reported as a date, never as an obligation.
+                "iff_optional": (iff_due_date(int(current_period[2:]), int(current_period[:2])).isoformat()
+                                 if regime["frequency"] == QUARTERLY
+                                 and iff_due_date(int(current_period[2:]), int(current_period[:2]))
+                                 else None),
+                "month_in_quarter": (gst_period_month_in_quarter(int(current_period[:2]))
+                                     if regime["frequency"] == QUARTERLY else None),
                 "current_period": current_period,
             },
         })
@@ -1160,3 +1267,43 @@ def rule37_itc_reversal(
     from services.itc_reversal_service import rule37_report
     return api_response(True, rule37_report(
         get_supabase(), current_user["firm_id"], client_id, as_of=as_of))
+
+
+@router.post("/gstr3b/{return_id}/simulate-filing")
+def simulate_gstr3b_filing(
+    return_id: str,
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """Play back what filing WILL look like. Files nothing. See the block above.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Nothing here contacts any government system. When real filing is built it
+    will be a different endpoint, behind GSP registration and an explicit CA
+    confirmation click, and this one should be deleted rather than pointed at it.
+    """
+    if not filing_simulation_enabled():
+        return api_response(False, None,
+            "Filing simulation is not enabled. This build cannot file returns; "
+            "download the JSON and upload it on gst.gov.in.")
+
+    rec = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
+    if rec is None:
+        return api_response(False, None, "Not found")
+
+    period = rec.get("period") or ""
+    return api_response(True, {
+        "simulated": True,
+        "filed": False,
+        "return_id": return_id,
+        "period": period,
+        "steps": [{"key": k, "label": l} for k, l in _SIMULATION_STEPS],
+        "acknowledgement": _simulated_ack(period, return_id),
+        # Carried in the payload rather than left to the UI: a caller that
+        # forgets to render a disclaimer still cannot claim this was filed.
+        "disclaimer": (
+            "SIMULATION — nothing was sent to GSTN and this return has NOT been "
+            "filed. PracticeSync prepares the return; the CA files it on "
+            "gst.gov.in. The status of this return is unchanged."
+        ),
+        "status_unchanged": rec.get("status"),
+    })

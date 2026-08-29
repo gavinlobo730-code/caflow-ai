@@ -6,9 +6,11 @@ from repositories.compliance_repository import compliance_repo
 from repositories.client_repository import client_repo
 from services.compliance_engine import (
     gstr1_due_date, gstr3b_due_date, gstr9_due_date,
+    gst_state_category, MONTHLY, QUARTERLY,
     itr_due_date, advance_tax_due_dates, enrich_compliance_task
 )
 from datetime import date
+from typing import Optional
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -80,9 +82,25 @@ def seed_compliance_calendar(
 
     fy_end = financial_year + 1  # calendar year when March 31 falls
 
+    # The client's own GST regime. clients.gst_filing_frequency has existed
+    # since migration 001 and is settable on the client form, but nothing read
+    # it — every client was seeded the monthly 11th/20th, including QRMP
+    # filers, whose GSTR-1 is due the 13th of the month after the QUARTER and
+    # whose GSTR-3B is the 22nd or 24th by state. Under §47 a wrong due date
+    # costs Rs 50 a day.
+    from services.compliance_obligation_service import gst_profile_for
+    gst_freq, gst_state = gst_profile_for(client_id, firm_id)
+
     tasks_to_seed = []
 
-    # Monthly GSTR-1 and GSTR-3B for each month of the financial year (Apr–Mar)
+    # GSTR-1 and GSTR-3B for each month of the financial year (Apr-Mar).
+    # NOTE: a QRMP client owes four of each, not twelve, plus eight PMT-06
+    # challans. This endpoint is the LEGACY per-month seeder;
+    # compliance_obligation_service._gst_obligations is the generator that
+    # models the quarterly set properly and is what new work should use. The
+    # due dates below are at least correct for the client's regime now —
+    # twelve rows carrying the right quarterly date rather than the wrong
+    # monthly one — but the row COUNT is still monthly-shaped here.
     for month_offset in range(12):
         period_month = ((3 + month_offset) % 12) + 1  # Apr=4 .. Mar=3
         period_year = financial_year if period_month >= 4 else fy_end
@@ -99,7 +117,7 @@ def seed_compliance_calendar(
                 "compliance_type": "GSTR1",
                 "period_start": period_start.isoformat(),
                 "period_end": period_end.isoformat(),
-                "due_date": gstr1_due_date(period_year, period_month).isoformat(),
+                "due_date": gstr1_due_date(period_year, period_month, gst_freq).isoformat(),
                 "status": "pending",
             },
             {
@@ -108,7 +126,7 @@ def seed_compliance_calendar(
                 "compliance_type": "GSTR3B",
                 "period_start": period_start.isoformat(),
                 "period_end": period_end.isoformat(),
-                "due_date": gstr3b_due_date(period_year, period_month).isoformat(),
+                "due_date": gstr3b_due_date(period_year, period_month, gst_freq, gst_state).isoformat(),
                 "status": "pending",
             },
         ]
@@ -164,16 +182,28 @@ def seed_compliance_calendar(
 
 
 @router.get("/due-dates/calculate")
-def calculate_due_dates(year: int, month: int, current_user: dict = Depends(rbac("compliance_record", "read"))):
+def calculate_due_dates(year: int, month: int,
+                        frequency: str = MONTHLY,
+                        state_code: Optional[str] = None,
+                        current_user: dict = Depends(rbac("compliance_record", "read"))):
     """
     Calculate all GST due dates for a given month.
-    Ref: CGST Act 2017, Sections 37 and 39.
+    Ref: CGST Act 2017, Sections 37 and 39; Rule 61A for QRMP.
+
+    `frequency` is monthly or quarterly (QRMP). A quarterly GSTR-3B falls on the
+    22nd or the 24th depending on the state of registration, so `state_code` is
+    what decides it; `gstr3b_state_category` in the response is null when the
+    state is unknown, which means the date returned is the earlier of the two
+    and should be presented as assumed rather than known.
     """
     fy_end = year if month <= 3 else year + 1
+    freq = QUARTERLY if str(frequency).lower() == QUARTERLY else MONTHLY
     return api_response(True, {
         "period": f"{year}-{month:02d}",
-        "gstr1_due_date": gstr1_due_date(year, month).isoformat(),
-        "gstr3b_due_date": gstr3b_due_date(year, month).isoformat(),
+        "frequency": freq,
+        "gstr1_due_date": gstr1_due_date(year, month, freq).isoformat(),
+        "gstr3b_due_date": gstr3b_due_date(year, month, freq, state_code).isoformat(),
+        "gstr3b_state_category": gst_state_category(state_code) if freq == QUARTERLY else None,
         "gstr9_due_date": gstr9_due_date(fy_end).isoformat(),
         "itr_due_date": itr_due_date(fy_end).isoformat(),
         "advance_tax_schedule": advance_tax_due_dates(fy_end),

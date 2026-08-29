@@ -24,6 +24,7 @@ from fastapi import HTTPException
 from core.ist_clock import ist_today, ist_fy_label
 from services import compliance_engine as ce
 from repositories.compliance_records_repository import compliance_records_repo
+from repositories.client_repository import client_repo
 from repositories.engagement_repository import engagement_repo
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -60,19 +61,88 @@ def _spec(obligation_type, compliance_type, period_label, period_start, period_e
     }
 
 
-def _gst_obligations(financial_year: str) -> list[dict]:
+def fy_quarters(financial_year: str) -> list[tuple[int, int, int, int]]:
+    """The four GST quarters of an Indian FY as (start_year, start_month,
+    end_year, end_month): Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar."""
+    start = int(str(financial_year)[:4])
+    return [
+        (start, 4, start, 6),
+        (start, 7, start, 9),
+        (start, 10, start, 12),
+        (start + 1, 1, start + 1, 3),
+    ]
+
+
+_QUARTER_LABEL = {4: "Q1 Apr-Jun", 7: "Q2 Jul-Sep", 10: "Q3 Oct-Dec", 1: "Q4 Jan-Mar"}
+
+
+def _gst_obligations(financial_year: str,
+                     frequency: str = ce.MONTHLY,
+                     state_code: Optional[str] = None) -> list[dict]:
+    """The GST obligations one client owes for one FY.
+
+    A QRMP (quarterly) client owes a DIFFERENT SET, not the same set less
+    often: four GSTR-1s and four GSTR-3Bs instead of twelve each, plus eight
+    PMT-06 challans, because tax is still paid monthly under Rule 61A. Emitting
+    twelve monthly returns for a quarterly filer would put eight deadlines in
+    their calendar that do not exist, and omit the eight that do.
+
+    IFF is deliberately NOT generated. It is optional — nothing is due if it is
+    not used — and an obligation nobody owes, appearing every month, is how a
+    compliance calendar stops being read.
+    """
     fye = fy_end_year(financial_year)
     out: list[dict] = []
-    for (y, m) in fy_months(financial_year):
-        ps = date(y, m, 1)
-        pe = ce.last_day_of_month(y, m)
-        lbl = f"{month_name[m]} {y}"
-        out.append(_spec("GSTR1", "GST", f"GSTR-1 {lbl}", ps, pe, ce.gstr1_due_date(y, m)))
-        out.append(_spec("GSTR3B", "GST", f"GSTR-3B {lbl}", ps, pe, ce.gstr3b_due_date(y, m)))
-    # Annual GSTR-9
+
+    if frequency == ce.QUARTERLY:
+        for (sy, sm, ey, em) in fy_quarters(financial_year):
+            ps = date(sy, sm, 1)
+            pe = ce.last_day_of_month(ey, em)
+            lbl = f"{_QUARTER_LABEL[sm]} {ey}"
+            out.append(_spec("GSTR1", "GST", f"GSTR-1 {lbl}", ps, pe,
+                             ce.gstr1_due_date(sy, sm, ce.QUARTERLY)))
+            out.append(_spec("GSTR3B", "GST", f"GSTR-3B {lbl}", ps, pe,
+                             ce.gstr3b_due_date(sy, sm, ce.QUARTERLY, state_code)))
+        # Rule 61A — months 1 and 2 of each quarter are paid by challan.
+        for (y, m) in fy_months(financial_year):
+            due = ce.pmt06_due_date(y, m)
+            if due is None:
+                continue
+            out.append(_spec("PMT06", "GST", f"PMT-06 {month_name[m]} {y}",
+                             date(y, m, 1), ce.last_day_of_month(y, m), due))
+    else:
+        for (y, m) in fy_months(financial_year):
+            ps = date(y, m, 1)
+            pe = ce.last_day_of_month(y, m)
+            lbl = f"{month_name[m]} {y}"
+            out.append(_spec("GSTR1", "GST", f"GSTR-1 {lbl}", ps, pe,
+                             ce.gstr1_due_date(y, m)))
+            out.append(_spec("GSTR3B", "GST", f"GSTR-3B {lbl}", ps, pe,
+                             ce.gstr3b_due_date(y, m)))
+
+    # Annual GSTR-9, the same either way.
     out.append(_spec("GSTR9", "GST", f"GSTR-9 FY {financial_year}",
                      date(fye - 1, 4, 1), date(fye, 3, 31), ce.gstr9_due_date(fye)))
     return out
+
+
+def gst_profile_for(client_id: str, firm_id: Optional[str] = None) -> tuple[str, Optional[str]]:
+    """(frequency, state_code) for a client, defaulting to monthly.
+
+    Monthly is the safe default for an unset field: it is what a client above
+    the Rs 5 crore turnover threshold must file, and its due dates (11th/20th)
+    fall EARLIER than QRMP's, so a client wrongly treated as monthly is chased
+    early rather than late. §47 charges Rs 50 a day for late; nothing for early.
+    """
+    try:
+        c = client_repo.find_by_id(client_id, firm_id=firm_id) or {}
+    except Exception:  # noqa: BLE001 - a missing client must not stop generation
+        _logger.warning("gst_profile_for: could not read client %s", client_id)
+        return ce.MONTHLY, None
+    freq = (c.get("gst_filing_frequency") or ce.MONTHLY).strip().lower()
+    if freq not in (ce.MONTHLY, ce.QUARTERLY):
+        freq = ce.MONTHLY
+    return freq, c.get("state_code")
 
 
 def _tds_obligations(financial_year: str) -> list[dict]:
@@ -131,14 +201,16 @@ def ce_date(v) -> date:
 
 
 def obligations_for_service(service_type: str, financial_year: str,
-                            agm_date: Optional[str] = None) -> list[dict]:
+                            agm_date: Optional[str] = None,
+                            gst_frequency: str = ce.MONTHLY,
+                            gst_state_code: Optional[str] = None) -> list[dict]:
     """Deterministic, pure: the statutory obligations a service engagement implies for
     one FY. Keyword-matched on service_type. Non-statutory services (accounting /
     bookkeeping / payroll) imply no filing obligations and return []."""
     s = (service_type or "").lower()
     specs: list[dict] = []
     if "gst" in s:
-        specs += _gst_obligations(financial_year)
+        specs += _gst_obligations(financial_year, gst_frequency, gst_state_code)
     if "tds" in s:
         specs += _tds_obligations(financial_year)
     if "advance tax" in s:
@@ -243,7 +315,9 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     """Idempotently generate obligations for one engagement + FY. One obligation per
     (obligation_type, period_start); re-running creates no duplicates."""
     client_id = engagement["client_id"]
-    specs = obligations_for_service(engagement.get("service_type", ""), financial_year, agm_date)
+    freq, state_code = gst_profile_for(client_id, firm_id)
+    specs = obligations_for_service(engagement.get("service_type", ""), financial_year,
+                                    agm_date, freq, state_code)
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}
@@ -277,7 +351,8 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
 def generate_default_for_client(firm_id: str, client_id: str, financial_year: str,
                                 actor: Optional[dict] = None) -> dict:
     """No-engagement fallback. A client with zero active fee_engagements rows still
-    gets baseline GST obligations (GSTR-1 + GSTR-3B monthly, GSTR-9 annual) generated
+    gets baseline GST obligations (GSTR-1 + GSTR-3B at the client's own filing
+    frequency, PMT-06 where quarterly, GSTR-9 annual) generated
     directly against the client, engagement_id left NULL. This matches the
     pre-consolidation behaviour of the frontend's seedComplianceCalendar()/
     generateGSTDeadlines() — which seeded every visited client unconditionally,
@@ -287,7 +362,8 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
     engagement genuinely excludes GST should not receive it as a side effect of
     this fallback; see generate_due, which only applies this to clients with no
     ACTIVE engagement at all). Idempotent via the same dedup as generate_for_engagement."""
-    specs = _gst_obligations(financial_year)
+    freq, state_code = gst_profile_for(client_id, firm_id)
+    specs = _gst_obligations(financial_year, freq, state_code)
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}

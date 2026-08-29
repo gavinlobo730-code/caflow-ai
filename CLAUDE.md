@@ -287,6 +287,55 @@ Tally migration, and prepare-only e-invoice/e-way/XBRL rails.
 Don't infer scope from this list — ask. It is a description of what exists, not a
 licence to extend any of it.
 
+## Not built yet — known, deliberate, and not to be quietly started
+
+Two capabilities the product is expected to grow into. Both are recorded here so
+nobody re-derives them from scratch, and so nobody half-builds one as a side
+effect of another task. **Neither is in scope until asked for by name.**
+
+### Filing to the government portals through the software
+
+Today PracticeSync **prepares**: it computes GSTR-1 and GSTR-3B from the books,
+produces the GSTN JSON, and the CA uploads and signs on gst.gov.in. Filing
+through the app is intended, and needs:
+
+- **GSP registration.** GSTN's filing APIs are reached through a GST Suvidha
+  Provider; there is no direct public endpoint. That is a commercial and
+  compliance step, not a coding one, and it gates everything else.
+- **DSC / EVC signing.** A return is signed by the taxpayer's digital signature
+  or an EVC OTP to their registered mobile. The signature is the taxpayer's, not
+  the firm's — so the flow is "CA prepares → taxpayer or authorised signatory
+  signs", which is a different shape from every other screen in the app.
+- **The rule in "Code rules" still holds and gets stronger, not weaker.** Never
+  auto-submit. Real filing means an explicit confirmation click, per return,
+  every time — never a batch, never a scheduler, never a retry that resubmits.
+- **Idempotency.** A double-submitted return is not a duplicate row, it is a
+  second filing against a live portal. Any real implementation needs the
+  reference recorded before the call and checked after a timeout, never a blind
+  retry.
+
+`POST /gst-workspace/gstr3b/{id}/simulate-filing` exists to SHOW this flow in a
+demo. It is behind `ENABLE_FILING_SIMULATION` (default off), transmits nothing,
+writes nothing, and returns references prefixed `SIM-NOT-FILED`. **When real
+filing is built it is a new endpoint and the simulation is deleted** — never
+repointed at a live portal, because everything that makes it safe is the fact
+that it cannot file.
+
+The genuine path today is unchanged and stays: the CA files on the portal, then
+records it here (`PATCH /gstr3b/{id}/status` with `status=submitted`), which
+writes the real ARN, the filing date, and the `gst_filings` row that
+`journal_period_lock_reason` reads to lock the period.
+
+### Live bank feeds through the Account Aggregator
+
+Fully specified already — see **"Bank data — the Account Aggregator is the only
+way in"** above. Nothing about it has been built: statement upload is the only
+path in today, and it stays at parity for years regardless.
+
+Restated here only so this list is complete: register as an FIU, go via a TSP,
+the consent is the CLIENT's and is time-bound and revocable, and **never
+screen-scrape net banking**. Read that section before touching any of it.
+
 ## Reporting times to the user
 
 - Always state times in IST (UTC + 5:30), never UTC. This applies to everything you tell the user — CI timings, when a job ran, when a check-in fires, timestamps read out of the database. Convert before reporting; don't make the user do the arithmetic.
