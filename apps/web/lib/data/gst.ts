@@ -125,6 +125,17 @@ export interface GSTR3BWorking {
     sgst_paise: number;
     total_paise: number;
   };
+  /** The other side of Table 6, which the form itself never states: credit
+   *  available, credit spent, credit left. Net tax of zero is true both when
+   *  liability and credit cancel out and when credit exceeds liability by
+   *  lakhs, and only this tells the two apart. Derived in apps/api as the
+   *  residual of the same set-off that produced net_payable, so the pair
+   *  cannot drift. */
+  itc_utilisation: {
+    available_paise: number;
+    consumed_paise: number;
+    carried_forward_paise: number;
+  };
 }
 
 export interface HeadAmounts {

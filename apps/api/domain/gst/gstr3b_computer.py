@@ -310,6 +310,57 @@ class GSTR3BResult:
     net_sgst: int = 0
     net_cess: int = 0
 
+    # ── What is LEFT of the credit once Table 6 has set off what it can ──────
+    #
+    # WHY THIS EXISTS
+    #   Net tax of zero has two entirely different meanings and the return
+    #   cannot tell them apart on its own:
+    #
+    #       liability and credit cancelled out, nothing carries forward
+    #       credit exceeded liability, and the excess sits in the ledger
+    #
+    #   Apex, April 2026: liability Rs 17,77,664.34, credit Rs 54,32,625.99,
+    #   net tax Rs 0 — and Rs 36,54,961.65 of that credit carrying into May with
+    #   nothing on screen saying so. Both readings of that zero are consistent
+    #   with the figures shown, and the difference is a third of a crore.
+    #
+    #   The set-off itself is unchanged. §49(4) allows payment only out of
+    #   credit available in the electronic credit ledger, and net tax already
+    #   floors at zero because there is no such thing as negative tax payable.
+    #   What was missing was the residual, not a correction.
+    #
+    # WHY IT IS DERIVED FROM net_* RATHER THAN RECOMPUTED
+    #   Credit consumed is (what was owed) minus (what is still payable). Taking
+    #   the residual from the same net_* figures the screen displays means the
+    #   balance cannot drift from them — a second set-off calculation, run
+    #   beside the first and printed next to it, is exactly the kind of pair
+    #   that disagrees six months later.
+    #
+    # NOT the electronic credit ledger balance. That is a portal figure and
+    # carries every earlier period's closing balance; this is the credit this
+    # ONE return leaves behind.
+
+    @property
+    def itc_consumed_paise(self) -> int:
+        """Credit actually used to discharge this period's liability."""
+        owed = (self.outward_taxable_igst + self.outward_taxable_cgst
+                + self.outward_taxable_sgst + self.outward_taxable_cess)
+        still_payable = self.net_igst + self.net_cgst + self.net_sgst + self.net_cess
+        return max(owed - still_payable, 0)
+
+    @property
+    def itc_available_paise(self) -> int:
+        """Table 4(C) across all heads — credit this return may actually spend."""
+        return (self.itc_net_igst + self.itc_net_cgst
+                + self.itc_net_sgst + self.itc_net_cess)
+
+    @property
+    def itc_carried_forward_paise(self) -> int:
+        """4(C) less what Table 6 spent. Floors at zero: the set-off can never
+        spend credit that is not there, and a negative here would be a bug
+        reported as a refund."""
+        return max(self.itc_available_paise - self.itc_consumed_paise, 0)
+
     def as_gstn_payload(self, gstin: str, period: str) -> dict:
         """Return GSTN-compatible GSTR-3B JSON.
 

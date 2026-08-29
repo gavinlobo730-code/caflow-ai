@@ -429,6 +429,28 @@ export default function GSTR3BPage() {
                 </div>
               ))}
             </div>
+            {/* A total of zero says nothing about whether credit was exhausted
+                or barely touched. Apex, April 2026: nil payable over
+                Rs 36,54,961.65 of unused credit. */}
+            <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
+              {[
+                { label: "Credit available (4C)", value: w.itc_utilisation.available_paise },
+                { label: "Set off against tax", value: w.itc_utilisation.consumed_paise },
+                { label: "Carried forward", value: w.itc_utilisation.carried_forward_paise,
+                  accent: w.itc_utilisation.carried_forward_paise > 0 ? "text-emerald-700" : "" },
+              ].map(item => (
+                <div key={item.label}>
+                  <p className="text-[11px] text-[#94A3B8]">{item.label}</p>
+                  <p className={`text-sm font-semibold font-mono ${item.accent ?? ""}`}>{r(item.value)}</p>
+                </div>
+              ))}
+            </div>
+            {w.itc_utilisation.carried_forward_paise > 0 && (
+              <p className="px-5 pb-3 text-xs text-[#64748B]">
+                Credit exceeded this period&apos;s liability, so nothing is payable and
+                the balance carries into the next return. It is not a refund.
+              </p>
+            )}
           </section>
 
           {/* Rule 37 — reported beside the return, never folded into it */}

@@ -477,6 +477,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         tax_liability_paise: d.tax_liability_paise,
         itc_claimed_paise: d.itc_claimed_paise,
         net_tax_paise: d.net_tax_paise,
+        // The carry-forward is NOT sent as its own field: SaveGSTR3BRequest has
+        // no such parameter, and Pydantic would drop it without complaint —
+        // a value that looks saved and is not. It rides in summary_json, which
+        // is `working` and now carries working.itc_utilisation.
       }),
     });
     setSavingComputed(false);
@@ -528,6 +532,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             const output = rec?.output_gst as Record<string, number>;
             const itc = rec?.itc as Record<string, number>;
             const reconciled = Boolean(rec?.reconciled);
+            const cf = (computeResult.itc_carried_forward_paise as number) ?? 0;
             return (
               <div className="border-t pt-3 space-y-2">
                 <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
@@ -543,11 +548,27 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-4 gap-3 text-sm">
                   <div><p className="text-xs text-[#64748B]">Tax Liability</p><p className="font-medium">{rupees(computeResult.tax_liability_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">ITC Claimed</p><p className="font-medium">{rupees(computeResult.itc_claimed_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">Net Tax</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
+                  {/* Net Tax of zero is true both when liability and credit cancel
+                      out and when credit exceeds liability by lakhs. Apex's April
+                      2026 showed zero over Rs 36,54,961.65 of unused credit, with
+                      nothing on screen to tell the two apart. The figure is
+                      computed in apps/api as the residual of the same set-off
+                      that produced Net Tax, so the two cannot disagree. */}
+                  <div>
+                    <p className="text-xs text-[#64748B]">Credit Carried Forward</p>
+                    <p className={cf > 0 ? "font-medium text-emerald-700" : "font-medium"}>{rupees(cf)}</p>
+                  </div>
                 </div>
+                {cf > 0 && (
+                  <p className="text-xs text-[#64748B]">
+                    Input credit exceeded this period&apos;s liability, so there is no tax to
+                    pay and {rupees(cf)} carries into the next return.
+                  </p>
+                )}
                 <button onClick={saveComputed} disabled={savingComputed}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}

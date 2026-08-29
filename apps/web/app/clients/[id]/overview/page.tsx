@@ -191,7 +191,8 @@ export default function OverviewPage() {
               Health Score
             </p>
             <div className="flex items-center gap-2">
-              <HealthBadge score={health.overall_score} size="md" trend={health.trend} />
+              <HealthBadge score={health.overall_score} size="md" showLabel trend={health.trend}
+                           href={`/clients/${clientId}/health/`} />
             </div>
             <div className="space-y-1.5 mt-1">
               {Object.entries(health.dimensions).map(([key, dim]) => (
