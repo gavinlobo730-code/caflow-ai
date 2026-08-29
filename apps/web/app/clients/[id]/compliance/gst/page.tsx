@@ -141,6 +141,162 @@ function FilingSimulationModal({
   );
 }
 
+
+/**
+ * The documents behind one GSTR-3B figure — the detail half of the return.
+ *
+ * WHY IT SHOWS THE DETAIL'S OWN TOTAL NEXT TO THE SUMMARY'S
+ *   A detail report that disagrees with the summary above it is worse than no
+ *   detail report: it turns one trusted figure into two untrusted ones. The
+ *   endpoint reuses the return's own document fetchers and returns its own
+ *   sum, and this prints both side by side. If they ever drift it is visible
+ *   here rather than discovered at a notice.
+ */
+function GSTR3BDetailDrawer({
+  clientId, period, line, label, expectedPaise, onClose,
+}: {
+  clientId: string; period: string; line: string; label: string;
+  expectedPaise: number | null; onClose: () => void;
+}) {
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const [totals, setTotals] = useState<Record<string, number> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch(
+          `/api/gst/gstr3b/detail?client_id=${encodeURIComponent(clientId)}` +
+          `&period=${encodeURIComponent(period)}&line=${encodeURIComponent(line)}`);
+        if (cancelled) return;
+        if (!r.success) { setError(r.error ?? "Couldn't load the detail."); return; }
+        const d = r.data as { rows: Record<string, unknown>[]; [k: string]: unknown };
+        setRows(d.rows);
+        setTotals({
+          taxable: Number(d.total_taxable_paise ?? 0),
+          igst: Number(d.total_igst_paise ?? 0),
+          cgst: Number(d.total_cgst_paise ?? 0),
+          sgst: Number(d.total_sgst_paise ?? 0),
+          tax: Number(d.total_tax_paise ?? 0),
+        });
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load the detail.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId, period, line]);
+
+  function exportCsv() {
+    if (!rows) return;
+    const cols = ["document_date", "kind", "document_no", "party",
+                  "taxable_paise", "igst_paise", "cgst_paise", "sgst_paise", "tax_paise"];
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const body = [cols.join(","),
+      ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gstr3b-${period}-${line}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const matches = expectedPaise === null || totals === null
+    ? null
+    : totals.tax === expectedPaise;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
+      <div className="bg-white w-full max-w-4xl h-full overflow-y-auto shadow-xl">
+        <div className="sticky top-0 bg-white border-b px-5 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#1E293B]">{label}</p>
+            <p className="text-xs text-[#64748B]">Period {period} · the documents behind this figure</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={exportCsv} disabled={!rows?.length}
+              className="text-xs px-3 py-1.5 border rounded hover:bg-[#F8FAFC] disabled:opacity-40">
+              Export CSV
+            </button>
+            <button onClick={onClose}
+              className="text-xs px-3 py-1.5 border rounded hover:bg-[#F8FAFC]">Close</button>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-3">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          {totals && (
+            <div className={`text-xs px-3 py-2 rounded ${
+              matches === false ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-700"}`}>
+              {matches === false
+                ? `These documents total ${rupees(totals.tax)}, but the return shows ${rupees(expectedPaise ?? 0)}. They should agree — review before filing.`
+                : `${rows?.length ?? 0} document${rows?.length === 1 ? "" : "s"}, totalling ${rupees(totals.tax)} tax — matches the return.`}
+            </div>
+          )}
+
+          {rows === null && !error && <TableSkeleton rows={6} />}
+
+          {rows && rows.length === 0 && (
+            <p className="text-sm text-[#94A3B8]">
+              No documents for this line in {period}. That is a real answer, not a failure —
+              nothing was posted here.
+            </p>
+          )}
+
+          {rows && rows.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-[#F8FAFC] text-[#64748B]">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Date</th>
+                    <th className="px-3 py-2 text-left font-medium">Type</th>
+                    <th className="px-3 py-2 text-left font-medium">Number</th>
+                    <th className="px-3 py-2 text-left font-medium">Party</th>
+                    <th className="px-3 py-2 text-right font-medium">Taxable</th>
+                    <th className="px-3 py-2 text-right font-medium">IGST</th>
+                    <th className="px-3 py-2 text-right font-medium">CGST</th>
+                    <th className="px-3 py-2 text-right font-medium">SGST</th>
+                    <th className="px-3 py-2 text-right font-medium">Tax</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={String(r.id ?? i)} className="border-t hover:bg-[#F8FAFC]">
+                      <td className="px-3 py-1.5">{String(r.document_date ?? "")}</td>
+                      <td className="px-3 py-1.5 text-[#64748B]">{String(r.kind ?? "")}</td>
+                      <td className="px-3 py-1.5 font-mono">{String(r.document_no ?? "")}</td>
+                      <td className="px-3 py-1.5">{String(r.party ?? "")}</td>
+                      <td className="px-3 py-1.5 text-right font-mono">{rupees(Number(r.taxable_paise ?? 0))}</td>
+                      <td className="px-3 py-1.5 text-right font-mono">{rupees(Number(r.igst_paise ?? 0))}</td>
+                      <td className="px-3 py-1.5 text-right font-mono">{rupees(Number(r.cgst_paise ?? 0))}</td>
+                      <td className="px-3 py-1.5 text-right font-mono">{rupees(Number(r.sgst_paise ?? 0))}</td>
+                      <td className="px-3 py-1.5 text-right font-mono font-semibold">{rupees(Number(r.tax_paise ?? 0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {totals && (
+                  <tfoot className="bg-[#F8FAFC] font-semibold">
+                    <tr className="border-t-2">
+                      <td className="px-3 py-2" colSpan={4}>Total</td>
+                      <td className="px-3 py-2 text-right font-mono">{rupees(totals.taxable)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{rupees(totals.igst)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{rupees(totals.cgst)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{rupees(totals.sgst)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{rupees(totals.tax)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 interface GSTDashboardData {
@@ -470,69 +626,6 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   <div><p className="text-xs text-[#64748B]">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
                 </div>
-                {/* THE TABLES, not just the totals.
-                    The GSTN offline utility is table by table, and a CA
-                    reviewing before filing is checking 3.1 and 4, not a single
-                    liability figure. This panel showed four numbers and the
-                    only way to see the breakdown was the separate firm-level
-                    GSTR-3B screen, which most people never reach from a client.
-                    Everything below already came back in `working` — it was
-                    fetched and thrown away. */}
-                <details className="border rounded">
-                  <summary className="px-3 py-2 text-sm font-medium cursor-pointer select-none text-[#334155]">
-                    Table-by-table breakdown
-                  </summary>
-                  {(() => {
-                    const w = computeResult.working as Record<string, Record<string, number>> | undefined;
-                    if (!w) return <p className="px-3 pb-3 text-xs text-[#94A3B8]">No working available.</p>;
-                    const out = w.outward ?? {};
-                    const itcW = w.itc ?? {};
-                    const revP = (w.itc_reversal as unknown as { permanent_paise?: Record<string, number> })?.permanent_paise ?? {};
-                    const revR = (w.itc_reversal as unknown as { reclaimable_paise?: Record<string, number> })?.reclaimable_paise ?? {};
-                    const np = w.net_payable ?? {};
-                    const row = (label: string, i?: number, c?: number, sg?: number) => (
-                      <tr key={label} className="border-t">
-                        <td className="px-3 py-1.5 text-[#475569]">{label}</td>
-                        <td className="px-3 py-1.5 text-right font-mono">{rupees(i ?? 0)}</td>
-                        <td className="px-3 py-1.5 text-right font-mono">{rupees(c ?? 0)}</td>
-                        <td className="px-3 py-1.5 text-right font-mono">{rupees(sg ?? 0)}</td>
-                      </tr>
-                    );
-                    return (
-                      <div className="px-3 pb-3 overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead className="text-[#94A3B8]">
-                            <tr>
-                              <th className="px-3 py-1.5 text-left font-medium">&nbsp;</th>
-                              <th className="px-3 py-1.5 text-right font-medium">IGST</th>
-                              <th className="px-3 py-1.5 text-right font-medium">CGST</th>
-                              <th className="px-3 py-1.5 text-right font-medium">SGST</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row("3.1(a) Outward taxable supplies",
-                                 out.taxable_igst_paise, out.taxable_cgst_paise, out.taxable_sgst_paise)}
-                            {row("4(A) ITC available (gross)",
-                                 itcW.avail_igst_paise, itcW.avail_cgst_paise, itcW.avail_sgst_paise)}
-                            {row("4(B)(1) Reversed — permanent",
-                                 revP.igst_paise, revP.cgst_paise, revP.sgst_paise)}
-                            {row("4(B)(2) Reversed — reclaimable",
-                                 revR.igst_paise, revR.cgst_paise, revR.sgst_paise)}
-                            {row("4(C) Net ITC available",
-                                 itcW.net_igst_paise, itcW.net_cgst_paise, itcW.net_sgst_paise)}
-                            {row("6 Tax payable after set-off",
-                                 np.igst_paise, np.cgst_paise, np.sgst_paise)}
-                          </tbody>
-                        </table>
-                        <p className="text-[10px] text-[#94A3B8] mt-2">
-                          Table 4 follows Notification 14/2022-Central Tax with Circular
-                          170/02/2022-GST: 4(A) is gross, §17(5) sits in 4(B)(1) and is not
-                          repeated in 4(D), and Table 6 sets off 4(C) — never 4(A).
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </details>
                 <button onClick={saveComputed} disabled={savingComputed}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
@@ -621,6 +714,14 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   // when the server has ENABLE_FILING_SIMULATION on — it files nothing either
   // way, but the button should not exist where the demo is not wanted.
   const [simulate, setSimulate] = useState<{ id: string; period: string } | null>(null);
+  // Whether this BUILD can run the walk-through at all. Only the server knows —
+  // it is an env flag on the API. Previously the button rendered
+  // unconditionally and errored on click when the flag was off, which is a dead
+  // control: the exact fault the health badge was fixed for a day earlier.
+  const [canSimulate, setCanSimulate] = useState(false);
+  // Which GSTR-3B line the detail drawer is open on, if any.
+  const [detail, setDetail] = useState<
+    { period: string; line: string; label: string; expected: number | null } | null>(null);
   // Distinguishes "fetch failed" from "no GSTR-3B returns yet".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -683,6 +784,23 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     load();
   }
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/gst-workspace/?client_id=${encodeURIComponent(clientId)}`);
+        if (cancelled) return;
+        const caps = (r.data as { capabilities?: { filing_simulation?: boolean } })?.capabilities;
+        setCanSimulate(Boolean(caps?.filing_simulation));
+      } catch {
+        // A capability that cannot be confirmed is treated as absent. Showing a
+        // control on a failed probe is how the dead button happened.
+        if (!cancelled) setCanSimulate(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
   // CGST Act §39 — GSTR-3B derived ENTIRELY from posted sales/purchase
   // documents (incl. issued credit/debit notes on both sides) and reconciled
   // to the General Ledger's GST control accounts (services/
@@ -732,6 +850,16 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      {detail && (
+        <GSTR3BDetailDrawer
+          clientId={clientId}
+          period={detail.period}
+          line={detail.line}
+          label={detail.label}
+          expectedPaise={detail.expected}
+          onClose={() => setDetail(null)}
+        />
+      )}
       {simulate && (
         <FilingSimulationModal
           returnId={simulate.id}
@@ -815,6 +943,92 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     pay and {rupees(cf)} carries into the next return.
                   </p>
                 )}
+                {/* THE TABLES, not just the totals.
+                    The GSTN offline utility is table by table, and a CA
+                    reviewing before filing is checking 3.1 and 4, not a single
+                    liability figure. This panel showed four numbers and the
+                    only way to see the breakdown was the separate firm-level
+                    GSTR-3B screen, which most people never reach from a client.
+                    Everything below already came back in `working` — it was
+                    fetched and thrown away. */}
+                <details className="border rounded">
+                  <summary className="px-3 py-2 text-sm font-medium cursor-pointer select-none text-[#334155]">
+                    Table-by-table breakdown
+                  </summary>
+                  {(() => {
+                    const w = computeResult.working as Record<string, Record<string, number>> | undefined;
+                    if (!w) return <p className="px-3 pb-3 text-xs text-[#94A3B8]">No working available.</p>;
+                    const out = w.outward ?? {};
+                    const itcW = w.itc ?? {};
+                    const revP = (w.itc_reversal as unknown as { permanent_paise?: Record<string, number> })?.permanent_paise ?? {};
+                    const revR = (w.itc_reversal as unknown as { reclaimable_paise?: Record<string, number> })?.reclaimable_paise ?? {};
+                    const np = w.net_payable ?? {};
+                    // A line is clickable only where documents exist behind it.
+                    // 4(C) and Table 6 are arithmetic over the lines above, not
+                    // things you can list — offering a drill-down that opened
+                    // an empty drawer would be the dead-control fault again.
+                    const row = (label: string, i?: number, c?: number, sg?: number,
+                                 drill?: string) => {
+                      const total = (i ?? 0) + (c ?? 0) + (sg ?? 0);
+                      return (
+                        <tr key={label} className="border-t hover:bg-[#F8FAFC]">
+                          <td className="px-3 py-1.5 text-[#475569]">
+                            {drill ? (
+                              <button
+                                onClick={() => setDetail({
+                                  period: computeResult.period as string,
+                                  line: drill, label, expected: total,
+                                })}
+                                className="text-blue-700 hover:underline text-left"
+                              >
+                                {label} →
+                              </button>
+                            ) : label}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono">{rupees(i ?? 0)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{rupees(c ?? 0)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{rupees(sg ?? 0)}</td>
+                        </tr>
+                      );
+                    };
+                    return (
+                      <div className="px-3 pb-3 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-[#94A3B8]">
+                            <tr>
+                              <th className="px-3 py-1.5 text-left font-medium">&nbsp;</th>
+                              <th className="px-3 py-1.5 text-right font-medium">IGST</th>
+                              <th className="px-3 py-1.5 text-right font-medium">CGST</th>
+                              <th className="px-3 py-1.5 text-right font-medium">SGST</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row("3.1(a) Outward taxable supplies",
+                                 out.taxable_igst_paise, out.taxable_cgst_paise, out.taxable_sgst_paise, "3.1a")}
+                            {row("4(A) ITC available (gross)",
+                                 itcW.avail_igst_paise, itcW.avail_cgst_paise, itcW.avail_sgst_paise, "4A")}
+                            {row("4(B)(1) Reversed — permanent",
+                                 revP.igst_paise, revP.cgst_paise, revP.sgst_paise, "4B1")}
+                            {row("4(B)(2) Reversed — reclaimable",
+                                 revR.igst_paise, revR.cgst_paise, revR.sgst_paise, "4B2")}
+                            {row("4(C) Net ITC available",
+                                 itcW.net_igst_paise, itcW.net_cgst_paise, itcW.net_sgst_paise)}
+                            {row("6 Tax payable after set-off",
+                                 np.igst_paise, np.cgst_paise, np.sgst_paise)}
+                          </tbody>
+                        </table>
+                        <p className="text-[10px] text-[#94A3B8] mt-2">
+                          Click a blue line to see the documents behind it — the detail
+                          report, which sums to the figure beside it. 4(C) and Table 6 are
+                          arithmetic over the lines above, so they have no documents of
+                          their own. Table 4 follows Notification 14/2022-Central Tax with
+                          Circular 170/02/2022-GST: 4(A) is gross, §17(5) sits in 4(B)(1)
+                          and is not repeated in 4(D), and Table 6 sets off 4(C) — never 4(A).
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </details>
                 <button onClick={saveComputed} disabled={savingComputed}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
@@ -879,9 +1093,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
                   )}
                   {/* Only on an approved return, because that is where real
-                      filing would sit. The endpoint 404s the button's intent
-                      when ENABLE_FILING_SIMULATION is off, and says why. */}
-                  {r.status === "ca_approved" && (
+                      filing would sit — and only where the server says the
+                      walk-through exists. A control that always errors is worse
+                      than no control. */}
+                  {r.status === "ca_approved" && canSimulate && (
                     <button onClick={() => setSimulate({ id: r.id as string, period: r.period as string })}
                       className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
                       Preview filing (demo)

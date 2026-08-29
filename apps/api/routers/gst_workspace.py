@@ -287,6 +287,18 @@ def gst_dashboard(
             "gstr1_returns": gstr1_list,
             "gstr3b_returns": gstr3b_list,
             "regime": regime,
+            # WHAT THIS BUILD CAN ACTUALLY DO.
+            # The "Preview filing (demo)" button used to render unconditionally
+            # and error on click when ENABLE_FILING_SIMULATION was off — a dead
+            # control, which is exactly the fault the health badge was fixed for
+            # a day earlier. A capability the server does not have should not be
+            # offered by the screen; the server is the only thing that knows.
+            "capabilities": {
+                "filing_simulation": filing_simulation_enabled(),
+                # Stated so no screen ever has to infer it. Real filing needs
+                # GSP registration and does not exist; see CLAUDE.md.
+                "real_filing": False,
+            },
             "upcoming_due_dates": {
                 "gstr1": _gstr1_due_date(current_period, regime["frequency"]),
                 "gstr3b": _gstr3b_due_date(current_period, regime["frequency"],
@@ -1291,11 +1303,23 @@ def simulate_gstr3b_filing(
         return api_response(False, None, "Not found")
 
     period = rec.get("period") or ""
+    # The walk-through shows this return's OWN figures. A demo over invented
+    # numbers teaches a CA nothing about their client, and the figures are
+    # already here — reading them costs nothing and transmits nothing.
+    liability = int(rec.get("tax_liability_paise") or 0)
+    itc = int(rec.get("itc_claimed_paise") or 0)
+    net = int(rec.get("net_tax_paise") or 0)
     return api_response(True, {
         "simulated": True,
         "filed": False,
         "return_id": return_id,
         "period": period,
+        "gstin": rec.get("gstin") or "",
+        "figures": {
+            "tax_liability_paise": liability,
+            "itc_claimed_paise": itc,
+            "net_tax_paise": net,
+        },
         "steps": [{"key": k, "label": l} for k, l in _SIMULATION_STEPS],
         "acknowledgement": _simulated_ack(period, return_id),
         # Carried in the payload rather than left to the UI: a caller that
