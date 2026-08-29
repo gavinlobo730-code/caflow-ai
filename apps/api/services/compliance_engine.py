@@ -24,16 +24,149 @@ def next_month(year: int, month: int) -> tuple[int, int]:
     return year, month + 1
 
 
-# CGST Act, Section 37 — GSTR-1 due on 11th of following month
-def gstr1_due_date(period_year: int, period_month: int) -> date:
+# ── QRMP: monthly filing is not the only way, and was the only one modelled ──
+#
+# Rule 61A with §39(1) and its proviso. From 01-01-2021 (Notifications 82, 84
+# and 85/2020-Central Tax, 10-11-2020) a registered person whose aggregate
+# turnover in the PRECEDING financial year was up to Rs 5 crore may opt to
+# furnish GSTR-1 and GSTR-3B QUARTERLY while paying tax MONTHLY. Above Rs 5
+# crore, monthly is compulsory.
+#
+# QRMP is not simply "the same return, three times less often". For a quarterly
+# filer:
+#
+#   GSTR-1    13th of the month following the quarter
+#   GSTR-3B   22nd or 24th of the month following the quarter, BY STATE
+#   PMT-06    25th of the following month, for months 1 and 2 of the quarter,
+#             because tax is still paid monthly. Month 3 is paid with the return.
+#   IFF       optional, months 1 and 2, B2B only, up to Rs 50 lakh a month, by
+#             the 13th — so the RECIPIENT's credit does not wait a quarter.
+#
+# What this module used to do was return the 11th and the 20th for everybody.
+# clients.gst_filing_frequency has existed since migration 001 and is settable
+# on the client form, but nothing read it, so a quarterly client was quoted
+# monthly dates and never told about PMT-06 at all. Late filing is Rs 50 a day
+# under §47, so a wrong due date is not cosmetic.
+#
+# GST quarters follow the financial year: Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar.
+
+MONTHLY = "monthly"
+QUARTERLY = "quarterly"
+
+# The two due-date groups for a quarterly GSTR-3B. The split is the same one
+# the staggered monthly due dates used (Notification 29/2020-Central Tax) and
+# lands cleanly on the state code: 01-21 and 38 are the northern/eastern group,
+# 22-37 the southern/western one.
+#
+#   22nd  Chhattisgarh(22) MP(23) Gujarat(24) Daman & Diu(25) DNHDD(26)
+#         Maharashtra(27) Andhra(28, old) Karnataka(29) Goa(30) Lakshadweep(31)
+#         Kerala(32) Tamil Nadu(33) Puducherry(34) Andaman & Nicobar(35)
+#         Telangana(36) Andhra Pradesh(37)
+#   24th  J&K(01) HP(02) Punjab(03) Chandigarh(04) Uttarakhand(05) Haryana(06)
+#         Delhi(07) Rajasthan(08) UP(09) Bihar(10) Sikkim(11) Arunachal(12)
+#         Nagaland(13) Manipur(14) Mizoram(15) Tripura(16) Meghalaya(17)
+#         Assam(18) West Bengal(19) Jharkhand(20) Odisha(21) Ladakh(38)
+GST_STATE_CATEGORY_X = frozenset(f"{n:02d}" for n in range(22, 38))   # 22nd
+GST_STATE_CATEGORY_Y = frozenset(f"{n:02d}" for n in range(1, 22)) | {"38"}  # 24th
+
+
+def gst_state_category(state_code: Optional[str]) -> Optional[str]:
+    """'X' (22nd), 'Y' (24th), or None when the state is unknown.
+
+    None is a real answer and callers should surface it: the due date for a
+    quarterly GSTR-3B cannot be stated without knowing the state, and a client
+    with no state_code is common enough (it is nullable) that guessing quietly
+    is the wrong behaviour.
+    """
+    code = (state_code or "").strip()[:2].zfill(2) if (state_code or "").strip() else ""
+    if code in GST_STATE_CATEGORY_X:
+        return "X"
+    if code in GST_STATE_CATEGORY_Y:
+        return "Y"
+    return None
+
+
+def gst_quarter_end_month(period_month: int) -> int:
+    """Last month of the GST quarter containing `period_month` (Apr-Jun etc)."""
+    # Apr(4)->Jun(6), Jul(7)->Sep(9), Oct(10)->Dec(12), Jan(1)->Mar(3)
+    return ((period_month - 4) % 12 // 3) * 3 + 6 if period_month >= 4 else 3
+
+
+def gst_quarter_bounds(period_year: int, period_month: int) -> tuple[int, int]:
+    """(year, month) of the quarter END for the period given.
+
+    Jan-Mar is the fourth quarter of the financial year that STARTED the
+    previous April, but it still ends in March of its own calendar year — so
+    the year only rolls forward for Oct-Dec, which ends in December.
+    """
+    end_month = gst_quarter_end_month(period_month)
+    return period_year, end_month
+
+
+def gst_period_month_in_quarter(period_month: int) -> int:
+    """1, 2 or 3 — where this month sits in its GST quarter.
+
+    PMT-06 is due for months 1 and 2 only; month 3's tax is paid with the
+    quarterly return itself.
+    """
+    return ((period_month - 4) % 3) + 1
+
+
+# CGST Act §37 with Rule 59 — GSTR-1.
+#   monthly    11th of the following month
+#   quarterly  13th of the month following the quarter (QRMP)
+def gstr1_due_date(period_year: int, period_month: int,
+                   frequency: str = MONTHLY) -> date:
+    if frequency == QUARTERLY:
+        qy, qm = gst_quarter_bounds(period_year, period_month)
+        ny, nm = next_month(qy, qm)
+        return nth_of_month(ny, nm, 13)
     ny, nm = next_month(period_year, period_month)
     return nth_of_month(ny, nm, 11)
 
 
-# CGST Act, Section 39 — GSTR-3B due on 20th of following month
-def gstr3b_due_date(period_year: int, period_month: int) -> date:
+# CGST Act §39 with Rule 61 — GSTR-3B.
+#   monthly    20th of the following month
+#   quarterly  22nd (category X) or 24th (category Y) of the month following
+#              the quarter, decided by the state of registration
+def gstr3b_due_date(period_year: int, period_month: int,
+                    frequency: str = MONTHLY,
+                    state_code: Optional[str] = None) -> date:
+    if frequency != QUARTERLY:
+        ny, nm = next_month(period_year, period_month)
+        return nth_of_month(ny, nm, 20)
+
+    qy, qm = gst_quarter_bounds(period_year, period_month)
+    ny, nm = next_month(qy, qm)
+    # An unknown state gets the EARLIER of the two dates. Being early costs
+    # nothing; being late is Rs 50 a day under §47, so a guess must never be
+    # the generous one. gst_state_category() returns None for the same input,
+    # which is how a caller knows to say the date is assumed rather than known.
+    return nth_of_month(ny, nm, 24 if gst_state_category(state_code) == "Y" else 22)
+
+
+def pmt06_due_date(period_year: int, period_month: int) -> Optional[date]:
+    """Rule 61A — monthly tax payment for a QRMP filer, 25th of the following
+    month. None for the third month of a quarter, whose tax is paid with the
+    quarterly GSTR-3B rather than by a separate challan."""
+    if gst_period_month_in_quarter(period_month) == 3:
+        return None
     ny, nm = next_month(period_year, period_month)
-    return nth_of_month(ny, nm, 20)
+    return nth_of_month(ny, nm, 25)
+
+
+def iff_due_date(period_year: int, period_month: int) -> Optional[date]:
+    """Invoice Furnishing Facility — Rule 59(2), optional, months 1 and 2 of a
+    quarter, B2B only, 13th of the following month. None for month 3, which is
+    covered by the quarterly GSTR-1 itself.
+
+    Optional in the strict sense: nothing is due if it is not used. It is
+    offered because the recipient's ITC otherwise waits for the quarter.
+    """
+    if gst_period_month_in_quarter(period_month) == 3:
+        return None
+    ny, nm = next_month(period_year, period_month)
+    return nth_of_month(ny, nm, 13)
 
 
 # CGST Act, Section 44 — GSTR-9 annual return due 31st December

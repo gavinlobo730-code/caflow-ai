@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
-import { toLocalISO } from "@/lib/dateMath";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
@@ -43,49 +41,172 @@ const STATUS_COLORS: Record<string, string> = {
   submitted: "bg-emerald-100 text-emerald-800",
 };
 
+
+/**
+ * A walk-through of what filing WILL look like. It files nothing.
+ *
+ * PracticeSync prepares the return and produces the GSTN JSON; the CA uploads
+ * and signs it on gst.gov.in. Real API filing needs GSP registration and does
+ * not exist yet. This plays the steps so the flow can be shown before it does.
+ *
+ * WHY THE WARNINGS ARE UNMISSABLE RATHER THAN TASTEFUL
+ *   Whoever is demoing knows it is a mock. The person who glances at the screen
+ *   over their shoulder, or opens the same return next week, does not — and a
+ *   return believed filed and not filed accrues Rs 50 a day under §47 from its
+ *   real due date, with the §37(3)/§39(9) correction window running out
+ *   regardless. So the banner is above the steps, the final state says NOT
+ *   FILED rather than Filed, and the reference is the server's SIM-NOT-FILED
+ *   string verbatim. The endpoint is also off unless ENABLE_FILING_SIMULATION
+ *   is set, so this button only appears where somebody switched it on.
+ */
+function FilingSimulationModal({
+  returnId, period, onClose,
+}: { returnId: string; period: string; onClose: () => void }) {
+  const [steps, setSteps] = useState<{ key: string; label: string }[]>([]);
+  const [done, setDone] = useState(-1);
+  const [ack, setAck] = useState<string | null>(null);
+  const [disclaimer, setDisclaimer] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/gst-workspace/gstr3b/${returnId}/simulate-filing`, { method: "POST" });
+        if (cancelled) return;
+        if (!r.success) { setError(r.error ?? "Could not start the demo."); return; }
+        const d = r.data as { steps: { key: string; label: string }[]; acknowledgement: string; disclaimer: string };
+        setSteps(d.steps);
+        setDisclaimer(d.disclaimer);
+        // Paced so the sequence is legible, not to imitate a real round trip.
+        d.steps.forEach((_, i) => {
+          timers.push(setTimeout(() => { if (!cancelled) setDone(i); }, 700 * (i + 1)));
+        });
+        timers.push(setTimeout(() => { if (!cancelled) setAck(d.acknowledgement); }, 700 * (d.steps.length + 1)));
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not start the demo.");
+      }
+    })();
+    return () => { cancelled = true; timers.forEach(clearTimeout); };
+  }, [returnId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+        <div className="px-5 py-3 bg-amber-100 border-b-2 border-amber-400">
+          <p className="text-sm font-bold text-amber-900">DEMO — nothing is being filed</p>
+          <p className="text-xs text-amber-900 mt-0.5">
+            This is a preview of a feature that does not exist yet. No data leaves
+            PracticeSync and no government system is contacted.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-xs text-[#64748B]">GSTR-3B · period {period}</p>
+          {error ? (
+            <p className="text-sm text-red-600">{error}</p>
+          ) : (
+            <ul className="space-y-2">
+              {steps.map((st, i) => (
+                <li key={st.key} className="flex items-center gap-2 text-sm">
+                  <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-[#CBD5E1]"}`}>
+                    {i <= done ? "✓" : "○"}
+                  </span>
+                  <span className={i <= done ? "text-[#334155]" : "text-[#94A3B8]"}>{st.label}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {ack && (
+            <div className="rounded border-2 border-amber-400 bg-amber-50 p-3 space-y-1">
+              <p className="text-sm font-bold text-amber-900">NOT FILED — this was a demo</p>
+              <p className="text-xs font-mono text-amber-900 break-all">{ack}</p>
+              <p className="text-xs text-amber-900">{disclaimer}</p>
+              <p className="text-xs text-amber-900">
+                To file for real: download the JSON and upload it on gst.gov.in, then
+                record the ARN here with <strong>Mark Filed</strong>.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t flex justify-end">
+          <button onClick={onClose}
+            className="px-3 py-1.5 text-sm border rounded hover:bg-[#F8FAFC]">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
+interface GSTDashboardData {
+  gstr1Count: number;
+  gstr3bCount: number;
+  frequency: "monthly" | "quarterly";
+  stateCategory: "X" | "Y" | null;
+  gstr1Due: string;
+  gstr3bDue: string;
+  pmt06Due: string | null;
+  iffDue: string | null;
+  monthInQuarter: number | null;
+  currentPeriod: string;
+}
+
+/**
+ * WHY THIS NOW ASKS THE SERVER FOR ITS DATES
+ *
+ * It used to compute them here:
+ *
+ *     const dueDateOf = (day) => toLocalISO(new Date(nextYear, nextMonth - 1, day));
+ *     gstr1Due: dueDateOf(11), gstr3bDue: dueDateOf(20)
+ *
+ * That was a THIRD copy of CGST §37/§39 — after compliance_engine.py and the
+ * adapters in gst_workspace.py — living in the browser, which CLAUDE.md puts
+ * off limits for exactly this reason: it could not be corrected in one place.
+ *
+ * And it was wrong. A QRMP filer (Rule 61A: turnover up to Rs 5 crore, opted
+ * in) files GSTR-1 by the 13th of the month after the QUARTER and GSTR-3B by
+ * the 22nd or 24th depending on their state, and owes PMT-06 challans monthly
+ * that a monthly filer does not. The 11th and the 20th are simply not their
+ * dates, and §47 charges Rs 50 a day for filing late.
+ *
+ * The endpoint reads clients.gst_filing_frequency and clients.state_code and
+ * returns the whole regime. This renders it and derives nothing.
+ */
 function GSTDashboard({ clientId }: { clientId: string }) {
-  const [data, setData] = useState<{
-    gstr1Count: number; gstr3bCount: number; gstr1Due: string; gstr3bDue: string;
-  } | null>(null);
+  const [data, setData] = useState<GSTDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const supabase = getSupabaseClient();
       try {
-        const [{ data: g1, error: e1 }, { data: g3b, error: e2 }] = await Promise.all([
-          selectAll(() => supabase.from("gstr1_returns").select("id").eq("client_id", clientId)),
-          selectAll(() => supabase.from("gstr3b_returns").select("id").eq("client_id", clientId)),
-        ]);
+        const r = await apiFetch(`/api/gst-workspace/?client_id=${encodeURIComponent(clientId)}`);
         if (cancelled) return;
-        if (e1 || e2) {
-          setData(null);
-          return;
-        }
-
-        // Due-date math mirrors gst_workspace.py::gst_dashboard, which resolves
-        // the CURRENT calendar period (today's month/year) and computes:
-        //   CGST Act §37 — GSTR-1 due 11th of the month following the period
-        //   CGST Act §39 — GSTR-3B due 20th of the month following the period
-        // (services/compliance_engine.py::gstr1_due_date/gstr3b_due_date).
-        const today = new Date();
-        let nextMonth = today.getMonth() + 2; // getMonth() is 0-indexed; +1 for "next", +1 to 1-index
-        let nextYear = today.getFullYear();
-        if (nextMonth > 12) {
-          nextMonth -= 12;
-          nextYear += 1;
-        }
-        const dueDateOf = (day: number) => toLocalISO(new Date(nextYear, nextMonth - 1, day));
-
+        if (!r.success) { setData(null); return; }
+        const d = r.data as {
+          gstr1_returns?: unknown[];
+          gstr3b_returns?: unknown[];
+          regime?: { frequency?: string; state_category?: string | null };
+          upcoming_due_dates?: Record<string, string | number | null>;
+        };
+        const due = d.upcoming_due_dates ?? {};
         setData({
-          gstr1Count: (g1 ?? []).length,
-          gstr3bCount: (g3b ?? []).length,
-          gstr1Due: dueDateOf(11),
-          gstr3bDue: dueDateOf(20),
+          gstr1Count: (d.gstr1_returns ?? []).length,
+          gstr3bCount: (d.gstr3b_returns ?? []).length,
+          frequency: d.regime?.frequency === "quarterly" ? "quarterly" : "monthly",
+          stateCategory: (d.regime?.state_category as "X" | "Y" | null) ?? null,
+          gstr1Due: String(due.gstr1 ?? ""),
+          gstr3bDue: String(due.gstr3b ?? ""),
+          pmt06Due: due.pmt06 ? String(due.pmt06) : null,
+          iffDue: due.iff_optional ? String(due.iff_optional) : null,
+          monthInQuarter: due.month_in_quarter == null ? null : Number(due.month_in_quarter),
+          currentPeriod: String(due.current_period ?? ""),
         });
       } catch {
         if (!cancelled) setData(null);   // renders "Failed to load GST dashboard."
@@ -102,18 +223,69 @@ function GSTDashboard({ clientId }: { clientId: string }) {
   if (loading) return <DashboardSkeleton cards={4} />;
   if (!data) return <p className="text-sm text-red-500">Failed to load GST dashboard.</p>;
 
+  const quarterly = data.frequency === "quarterly";
+
   return (
     <div className="space-y-4">
+      {/* Which regime this client is on, said out loud. The dates below mean
+          different things under each, and until now the screen showed monthly
+          dates for everyone without ever naming the assumption. */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className={`px-2 py-1 rounded-full font-medium ring-1 ${
+          quarterly ? "bg-purple-50 text-purple-700 ring-purple-200"
+                    : "bg-blue-50 text-blue-700 ring-blue-200"}`}>
+          {quarterly ? "QRMP — quarterly returns, monthly payment" : "Monthly filer"}
+        </span>
+        <span className="text-[#94A3B8]">Period {data.currentPeriod}</span>
+        {quarterly && data.monthInQuarter && (
+          <span className="text-[#94A3B8]">· month {data.monthInQuarter} of the quarter</span>
+        )}
+        {quarterly && data.stateCategory === null && (
+          <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+            State not set — GSTR-3B date shown is the earlier of the two (22nd)
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded border p-4 bg-blue-50">
-          <p className="text-xs text-[#64748B]">GSTR-1 due date</p>
+          <p className="text-xs text-[#64748B]">
+            GSTR-1 due date{quarterly ? " (quarter)" : ""}
+          </p>
           <p className="font-semibold">{data.gstr1Due}</p>
         </div>
         <div className="rounded border p-4 bg-amber-50">
-          <p className="text-xs text-[#64748B]">GSTR-3B due date</p>
+          <p className="text-xs text-[#64748B]">
+            GSTR-3B due date{quarterly ? " (quarter)" : ""}
+          </p>
           <p className="font-semibold">{data.gstr3bDue}</p>
         </div>
       </div>
+
+      {/* Rule 61A. A QRMP filer still pays every month, by challan, for the
+          first two months of the quarter — the single most missed thing about
+          the scheme, and previously not mentioned anywhere in this product. */}
+      {quarterly && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded border p-4 bg-red-50">
+            <p className="text-xs text-[#64748B]">PMT-06 challan (tax is still paid monthly)</p>
+            <p className="font-semibold">
+              {data.pmt06Due ?? "Not due — this month's tax is paid with the quarterly return"}
+            </p>
+          </div>
+          <div className="rounded border p-4">
+            <p className="text-xs text-[#64748B]">IFF — optional, B2B only</p>
+            <p className="font-semibold">
+              {data.iffDue ?? "Not applicable in the last month of a quarter"}
+            </p>
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              Upload B2B invoices so the customer&apos;s ITC does not wait for the quarter.
+              Nothing is due if it is not used.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div className="rounded border p-4">
           <p className="font-medium">GSTR-1 returns</p>
@@ -298,6 +470,69 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   <div><p className="text-xs text-[#64748B]">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
                 </div>
+                {/* THE TABLES, not just the totals.
+                    The GSTN offline utility is table by table, and a CA
+                    reviewing before filing is checking 3.1 and 4, not a single
+                    liability figure. This panel showed four numbers and the
+                    only way to see the breakdown was the separate firm-level
+                    GSTR-3B screen, which most people never reach from a client.
+                    Everything below already came back in `working` — it was
+                    fetched and thrown away. */}
+                <details className="border rounded">
+                  <summary className="px-3 py-2 text-sm font-medium cursor-pointer select-none text-[#334155]">
+                    Table-by-table breakdown
+                  </summary>
+                  {(() => {
+                    const w = computeResult.working as Record<string, Record<string, number>> | undefined;
+                    if (!w) return <p className="px-3 pb-3 text-xs text-[#94A3B8]">No working available.</p>;
+                    const out = w.outward ?? {};
+                    const itcW = w.itc ?? {};
+                    const revP = (w.itc_reversal as unknown as { permanent_paise?: Record<string, number> })?.permanent_paise ?? {};
+                    const revR = (w.itc_reversal as unknown as { reclaimable_paise?: Record<string, number> })?.reclaimable_paise ?? {};
+                    const np = w.net_payable ?? {};
+                    const row = (label: string, i?: number, c?: number, sg?: number) => (
+                      <tr key={label} className="border-t">
+                        <td className="px-3 py-1.5 text-[#475569]">{label}</td>
+                        <td className="px-3 py-1.5 text-right font-mono">{rupees(i ?? 0)}</td>
+                        <td className="px-3 py-1.5 text-right font-mono">{rupees(c ?? 0)}</td>
+                        <td className="px-3 py-1.5 text-right font-mono">{rupees(sg ?? 0)}</td>
+                      </tr>
+                    );
+                    return (
+                      <div className="px-3 pb-3 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-[#94A3B8]">
+                            <tr>
+                              <th className="px-3 py-1.5 text-left font-medium">&nbsp;</th>
+                              <th className="px-3 py-1.5 text-right font-medium">IGST</th>
+                              <th className="px-3 py-1.5 text-right font-medium">CGST</th>
+                              <th className="px-3 py-1.5 text-right font-medium">SGST</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row("3.1(a) Outward taxable supplies",
+                                 out.taxable_igst_paise, out.taxable_cgst_paise, out.taxable_sgst_paise)}
+                            {row("4(A) ITC available (gross)",
+                                 itcW.avail_igst_paise, itcW.avail_cgst_paise, itcW.avail_sgst_paise)}
+                            {row("4(B)(1) Reversed — permanent",
+                                 revP.igst_paise, revP.cgst_paise, revP.sgst_paise)}
+                            {row("4(B)(2) Reversed — reclaimable",
+                                 revR.igst_paise, revR.cgst_paise, revR.sgst_paise)}
+                            {row("4(C) Net ITC available",
+                                 itcW.net_igst_paise, itcW.net_cgst_paise, itcW.net_sgst_paise)}
+                            {row("6 Tax payable after set-off",
+                                 np.igst_paise, np.cgst_paise, np.sgst_paise)}
+                          </tbody>
+                        </table>
+                        <p className="text-[10px] text-[#94A3B8] mt-2">
+                          Table 4 follows Notification 14/2022-Central Tax with Circular
+                          170/02/2022-GST: 4(A) is gross, §17(5) sits in 4(B)(1) and is not
+                          repeated in 4(D), and Table 6 sets off 4(C) — never 4(A).
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </details>
                 <button onClick={saveComputed} disabled={savingComputed}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
@@ -382,6 +617,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 function GSTR3BTab({ clientId }: { clientId: string }) {
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  // The filing walk-through. Only reachable on a ca_approved return, and only
+  // when the server has ENABLE_FILING_SIMULATION on — it files nothing either
+  // way, but the button should not exist where the demo is not wanted.
+  const [simulate, setSimulate] = useState<{ id: string; period: string } | null>(null);
   // Distinguishes "fetch failed" from "no GSTR-3B returns yet".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -493,6 +732,13 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      {simulate && (
+        <FilingSimulationModal
+          returnId={simulate.id}
+          period={simulate.period}
+          onClose={() => setSimulate(null)}
+        />
+      )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-3B Returns</h3>
         <div className="flex gap-2">
@@ -631,6 +877,15 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
+                  )}
+                  {/* Only on an approved return, because that is where real
+                      filing would sit. The endpoint 404s the button's intent
+                      when ENABLE_FILING_SIMULATION is off, and says why. */}
+                  {r.status === "ca_approved" && (
+                    <button onClick={() => setSimulate({ id: r.id as string, period: r.period as string })}
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+                      Preview filing (demo)
+                    </button>
                   )}
                 </td>
               </tr>

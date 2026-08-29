@@ -3,8 +3,9 @@
 /**
  * GSTR-1 Review UI — Invoice classification review, CA approval, JSON download.
  *
- * CGST Act Section 37 — Details of outward supplies, due 11th of following month.
- * CGST Rule 59(2) — B2CS/B2CL classification thresholds.
+ * CGST Act Section 37 — Details of outward supplies. Due the 11th of the
+ * following month, or the 13th of the month after the quarter for a QRMP filer.
+ * CGST Rule 59(4) — B2CS/B2CL classification threshold.
  *
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to any government portal.
  * The Download JSON button produces a file for manual upload to gst.gov.in.
@@ -492,7 +493,11 @@ export default function GSTR1Page() {
                 <div className="overflow-x-auto">
                   {(b2cl as { pos: string; inv: Record<string, unknown>[] }[]).length === 0 ? (
                     <p className="p-6 text-sm text-[#94A3B8] text-center">
-                      No B2CL invoices. B2CL applies to inter-state unregistered invoices above ₹2.5L (CGST Rule 59(2)).
+                      No B2CL invoices. B2CL applies to inter-state supplies to unregistered
+                      persons where the INVOICE VALUE exceeds ₹1 lakh — CGST Rule 59(4), as
+                      substituted by Notification 12/2024-Central Tax with effect from
+                      1 August 2024. Invoices dated before that are tested against the old
+                      ₹2.5 lakh limit.
                     </p>
                   ) : (
                     <table className="w-full text-sm">
