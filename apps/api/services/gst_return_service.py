@@ -470,20 +470,43 @@ def _detail_row(doc: dict, kind: str, no_field: str, date_field: str,
     }
 
 
-def _party_names(db, firm_id: str, table: str, rows: list[dict], fk: str) -> dict:
-    """{id: name} for the customers or vendors on these documents.
+def _party_ids(rows: list[dict], fk: str) -> list[str]:
+    return sorted({r.get(fk) for r in rows if r.get(fk)})
+
+
+_PARTY_CHUNK = 200
+
+
+def _customer_names(db, firm_id: str, rows: list[dict]) -> dict:
+    """{id: name} for the customers on these documents.
+
+    Spelled out per table rather than parameterised on the table name, and that
+    is not stylistic: tests/test_backend_columns_exist_pg.py reads select lists
+    against the real schema, and `db.table(table)` with a variable is invisible
+    to it. A column renamed out from under a dynamic reference fails in
+    production instead of in CI, which is the whole point of that check.
 
     One query for the ids actually present, not the whole party list — a client
-    with 4,000 customers and 54 bills should fetch 54 vendors' worth of names.
+    with 4,000 customers and 54 bills fetches 54 names.
     """
-    ids = sorted({r.get(fk) for r in rows if r.get(fk)})
-    if not ids:
-        return {}
+    ids = _party_ids(rows, "customer_id")
     out: dict = {}
-    CHUNK = 200
-    for i in range(0, len(ids), CHUNK):
-        got = (db.table(table).select("id, name")
-               .eq("firm_id", firm_id).in_("id", ids[i:i + CHUNK]).execute().data) or []
+    for i in range(0, len(ids), _PARTY_CHUNK):
+        got = (db.table("customers").select("id, name")
+               .eq("firm_id", firm_id).in_("id", ids[i:i + _PARTY_CHUNK])
+               .execute().data) or []
+        out.update({r["id"]: r.get("name") or "" for r in got})
+    return out
+
+
+def _vendor_names(db, firm_id: str, rows: list[dict]) -> dict:
+    """{id: name} for the vendors on these documents. See _customer_names."""
+    ids = _party_ids(rows, "vendor_id")
+    out: dict = {}
+    for i in range(0, len(ids), _PARTY_CHUNK):
+        got = (db.table("vendors").select("id, name")
+               .eq("firm_id", firm_id).in_("id", ids[i:i + _PARTY_CHUNK])
+               .execute().data) or []
         out.update({r["id"]: r.get("name") or "" for r in got})
     return out
 
@@ -507,7 +530,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
         invoices = _posted_sales(db, firm_id, client_id, start, end)
         sdns = _issued_sales_debit_notes(db, firm_id, client_id, start, end)
         cns = _issued_credit_notes(db, firm_id, client_id, start, end)
-        names = _party_names(db, firm_id, "customers", invoices + sdns + cns, "customer_id")
+        names = _customer_names(db, firm_id, invoices + sdns + cns)
         rows += [_detail_row(i, "Invoice", "invoice_no", "invoice_date",
                              names.get(i.get("customer_id"), "")) for i in invoices]
         rows += [_detail_row(d, "Debit note", "debit_note_no", "debit_note_date",
@@ -520,7 +543,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
         bills = _posted_bills(db, firm_id, client_id, start, end)
         dns = _issued_debit_notes(db, firm_id, client_id, start, end)
         pcns = _issued_purchase_credit_notes(db, firm_id, client_id, start, end)
-        names = _party_names(db, firm_id, "vendors", bills + dns + pcns, "vendor_id")
+        names = _vendor_names(db, firm_id, bills + dns + pcns)
         rows += [_detail_row(b, "Bill", "bill_no", "bill_date",
                              names.get(b.get("vendor_id"), "")) for b in bills]
         rows += [_detail_row(d, "Debit note", "debit_note_no", "debit_note_date",
@@ -530,7 +553,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
 
     elif line == "4B1":
         cancelled = _bills_cancelled_in(db, firm_id, client_id, start, end)
-        names = _party_names(db, firm_id, "vendors", cancelled, "vendor_id")
+        names = _vendor_names(db, firm_id, cancelled)
         rows += [_detail_row(b, "Cancelled bill", "bill_no", "bill_date",
                              names.get(b.get("vendor_id"), "")) for b in cancelled]
         # §17(5) blocked credit is a portion of a LIVE bill, not a document of
@@ -541,7 +564,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
             blocked_s = int(b.get("ineligible_itc_sgst_paise") or 0)
             if blocked_i + blocked_c + blocked_s == 0:
                 continue
-            vend = _party_names(db, firm_id, "vendors", [b], "vendor_id")
+            vend = _vendor_names(db, firm_id, [b])
             rows.append({
                 "id": b.get("id"),
                 "kind": "Blocked ITC (s.17(5))",
