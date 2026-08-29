@@ -243,13 +243,68 @@ def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
 #   untouched: PATCH /gstr3b/{id}/status with status=submitted, which records
 #   the real ARN, the filing date and the filings row the period lock reads.
 
+# The portal's own sequence, in its own order. gst.gov.in takes a GSTR-3B
+# through: Returns Dashboard -> Prepare Online -> SAVE -> PREVIEW DRAFT ->
+# PROCEED TO PAYMENT (Table 6.1, offset ITC then cash) -> PROCEED TO FILE ->
+# declaration + authorised signatory -> FILE WITH DSC / FILE WITH EVC -> OTP or
+# emSigner -> an irreversibility warning -> ARN.
+#
+# A walk-through that skips the middle teaches a CA nothing they will recognise
+# when they get there. What follows is the same order, and the transmission
+# steps below are only the last stage of it.
 _SIMULATION_STEPS = [
-    ("validate", "Validating return against GSTN schema"),
-    ("authenticate", "Authenticating with GST portal"),
+    ("validate", "Validating return against the GSTN schema"),
+    ("authenticate", "Authenticating with the GST portal"),
     ("upload", "Uploading return payload"),
     ("process", "Awaiting GSTN processing"),
     ("acknowledge", "Receiving acknowledgement"),
 ]
+
+# CGST Rule 61 — the declaration a taxpayer signs on every GSTR-3B, verbatim
+# from the form. Shown because it is the moment that matters: the person
+# ticking it is making a statement to the department, and it is the taxpayer's
+# statement, not the CA's.
+_GSTR3B_DECLARATION = (
+    "I/We hereby solemnly affirm and declare that the information given herein "
+    "above is true and correct to the best of my/our knowledge and belief and "
+    "nothing has been concealed therefrom."
+)
+
+_FILING_WARNING = (
+    "Once filed, GSTR-3B cannot be revised. Any correction is declared in a "
+    "later period's return (CGST Act §39(9))."
+)
+
+
+def _table_61(summary: dict) -> dict:
+    """Table 6.1 — Payment of tax, per head.
+
+    The portal's most-misread screen: liability on the left, how much of it is
+    discharged from the credit ledger, and what is left to pay in CASH. A CA
+    who has only ever seen a net figure has not seen the decision they actually
+    make here.
+
+    Derived from the return's own working — liability is 3.1(a), what remains
+    payable is Table 6 after the §49(5) set-off, and the difference is what the
+    credit paid.
+    """
+    out = (summary or {}).get("outward") or {}
+    net = (summary or {}).get("net_payable") or {}
+    rows = []
+    total_cash = 0
+    for head, out_key in (("IGST", "taxable_igst_paise"),
+                          ("CGST", "taxable_cgst_paise"),
+                          ("SGST", "taxable_sgst_paise")):
+        liability = int(out.get(out_key) or 0)
+        cash = int(net.get(f"{head.lower()}_paise") or 0)
+        rows.append({
+            "head": head,
+            "liability_paise": liability,
+            "paid_through_itc_paise": max(liability - cash, 0),
+            "paid_in_cash_paise": cash,
+        })
+        total_cash += cash
+    return {"rows": rows, "total_cash_paise": total_cash}
 
 
 def filing_simulation_enabled() -> bool:
@@ -1372,6 +1427,20 @@ def simulate_gstr3b_filing(
             "itc_claimed_paise": itc,
             "net_tax_paise": net,
         },
+        # The portal's Table 6.1 — liability, what credit pays, what cash pays.
+        "table_61": _table_61(rec.get("summary_json") or {}),
+        "declaration": _GSTR3B_DECLARATION,
+        "filing_warning": _FILING_WARNING,
+        # Real filing offers both. The signature is the TAXPAYER's — their DSC
+        # or an EVC OTP to the mobile on their GST registration — never the
+        # firm's, which is the single most important thing this walk-through
+        # has to convey and the reason it cannot simply be a Submit button.
+        "signature_methods": [
+            {"key": "evc", "label": "File with EVC",
+             "note": "OTP to the authorised signatory's registered mobile and email"},
+            {"key": "dsc", "label": "File with DSC",
+             "note": "Class 3 digital signature via emSigner; mandatory for companies and LLPs"},
+        ],
         "steps": [{"key": k, "label": l} for k, l in _SIMULATION_STEPS],
         "acknowledgement": _simulated_ack(period, return_id),
         # Carried in the payload rather than left to the UI: a caller that

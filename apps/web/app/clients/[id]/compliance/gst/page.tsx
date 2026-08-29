@@ -62,77 +62,289 @@ const STATUS_COLORS: Record<string, string> = {
 function FilingSimulationModal({
   returnId, period, onClose,
 }: { returnId: string; period: string; onClose: () => void }) {
-  const [steps, setSteps] = useState<{ key: string; label: string }[]>([]);
-  const [done, setDone] = useState(-1);
-  const [ack, setAck] = useState<string | null>(null);
-  const [disclaimer, setDisclaimer] = useState("");
+  type Stage = "summary" | "payment" | "declare" | "sign" | "confirm" | "processing" | "done";
+  const [stage, setStage] = useState<Stage>("summary");
+  const [data, setData] = useState<SimulationData | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [declared, setDeclared] = useState(false);
+  const [signatory, setSignatory] = useState("");
+  const [method, setMethod] = useState<"evc" | "dsc">("evc");
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [done, setDone] = useState(-1);
 
   useEffect(() => {
     let cancelled = false;
-    const timers: ReturnType<typeof setTimeout>[] = [];
     (async () => {
       try {
-        const r = await apiFetch(`/api/gst-workspace/gstr3b/${returnId}/simulate-filing`, { method: "POST" });
+        const r = await apiFetch(`/api/gst-workspace/gstr3b/${returnId}/simulate-filing`,
+                                 { method: "POST" });
         if (cancelled) return;
         if (!r.success) { setError(r.error ?? "Could not start the demo."); return; }
-        const d = r.data as { steps: { key: string; label: string }[]; acknowledgement: string; disclaimer: string };
-        setSteps(d.steps);
-        setDisclaimer(d.disclaimer);
-        // Paced so the sequence is legible, not to imitate a real round trip.
-        d.steps.forEach((_, i) => {
-          timers.push(setTimeout(() => { if (!cancelled) setDone(i); }, 700 * (i + 1)));
-        });
-        timers.push(setTimeout(() => { if (!cancelled) setAck(d.acknowledgement); }, 700 * (d.steps.length + 1)));
+        setData(r.data as SimulationData);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not start the demo.");
       }
     })();
-    return () => { cancelled = true; timers.forEach(clearTimeout); };
+    return () => { cancelled = true; };
   }, [returnId]);
+
+  // The transmission stage. Paced so the sequence is legible, not to imitate a
+  // real round trip — nothing is being transmitted.
+  useEffect(() => {
+    if (stage !== "processing" || !data) return;
+    let cancelled = false;
+    const timers = data.steps.map((_, i) =>
+      setTimeout(() => { if (!cancelled) setDone(i); }, 650 * (i + 1)));
+    timers.push(setTimeout(() => { if (!cancelled) setStage("done"); },
+                           650 * (data.steps.length + 1)));
+    return () => { cancelled = true; timers.forEach(clearTimeout); };
+  }, [stage, data]);
+
+  function verifyOtp() {
+    // Any six digits pass. There is no OTP to be right about — inventing a
+    // "correct" one would teach a CA a number that means nothing, and refusing
+    // a wrong one would imply something checked it.
+    if (!/^\d{6}$/.test(otp)) { setOtpError("Enter the 6-digit OTP."); return; }
+    setOtpError(null);
+    setStage("confirm");
+  }
+
+  const t61 = data?.table_61;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
-        <div className="px-5 py-3 bg-amber-100 border-b-2 border-amber-400">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        {/* Never scrolls away. Whoever glances at this screen — including the
+            person who did not watch it start — has to see what it is. */}
+        <div className="sticky top-0 px-5 py-3 bg-amber-100 border-b-2 border-amber-400 z-10">
           <p className="text-sm font-bold text-amber-900">DEMO — nothing is being filed</p>
           <p className="text-xs text-amber-900 mt-0.5">
-            This is a preview of a feature that does not exist yet. No data leaves
-            PracticeSync and no government system is contacted.
+            A walk-through of the gst.gov.in filing sequence. No data leaves PracticeSync
+            and no government system is contacted.
           </p>
         </div>
 
-        <div className="px-5 py-4 space-y-3">
-          <p className="text-xs text-[#64748B]">GSTR-3B · period {period}</p>
-          {error ? (
-            <p className="text-sm text-red-600">{error}</p>
-          ) : (
-            <ul className="space-y-2">
-              {steps.map((st, i) => (
-                <li key={st.key} className="flex items-center gap-2 text-sm">
-                  <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-[#CBD5E1]"}`}>
-                    {i <= done ? "✓" : "○"}
-                  </span>
-                  <span className={i <= done ? "text-[#334155]" : "text-[#94A3B8]"}>{st.label}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="px-5 py-4 space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          {!data && !error && <TableSkeleton rows={5} />}
 
-          {ack && (
-            <div className="rounded border-2 border-amber-400 bg-amber-50 p-3 space-y-1">
-              <p className="text-sm font-bold text-amber-900">NOT FILED — this was a demo</p>
-              <p className="text-xs font-mono text-amber-900 break-all">{ack}</p>
-              <p className="text-xs text-amber-900">{disclaimer}</p>
-              <p className="text-xs text-amber-900">
-                To file for real: download the JSON and upload it on gst.gov.in, then
-                record the ARN here with <strong>Mark Filed</strong>.
-              </p>
-            </div>
+          {data && (
+            <>
+              <div className="flex items-baseline justify-between border-b pb-2">
+                <p className="text-sm font-semibold text-[#1E293B]">GSTR-3B · {period}</p>
+                <p className="text-xs font-mono text-[#64748B]">{data.gstin}</p>
+              </div>
+
+              {/* 1 — what the portal shows before you can proceed */}
+              {stage === "summary" && (
+                <>
+                  <p className="text-xs text-[#64748B]">
+                    On the portal this is the saved return, after Prepare Online and
+                    Save, with a Preview Draft PDF beside it.
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div><p className="text-xs text-[#64748B]">Tax liability</p>
+                      <p className="font-medium">{rupees(data.figures.tax_liability_paise)}</p></div>
+                    <div><p className="text-xs text-[#64748B]">ITC claimed</p>
+                      <p className="font-medium">{rupees(data.figures.itc_claimed_paise)}</p></div>
+                    <div><p className="text-xs text-[#64748B]">Net tax</p>
+                      <p className="font-medium">{rupees(data.figures.net_tax_paise)}</p></div>
+                  </div>
+                  <button onClick={() => setStage("payment")}
+                    className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                    Proceed to payment
+                  </button>
+                </>
+              )}
+
+              {/* 2 — Table 6.1, the screen CAs most often have not seen laid out */}
+              {stage === "payment" && t61 && (
+                <>
+                  <p className="text-sm font-semibold text-[#334155]">Table 6.1 — Payment of tax</p>
+                  <p className="text-xs text-[#64748B]">
+                    What the credit ledger pays, and what is left to pay in cash. Cash is
+                    paid by challan (PMT-06) before the return can be filed.
+                  </p>
+                  <table className="w-full text-xs">
+                    <thead className="bg-[#F8FAFC] text-[#64748B]">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Head</th>
+                        <th className="px-3 py-2 text-right font-medium">Liability</th>
+                        <th className="px-3 py-2 text-right font-medium">Paid through ITC</th>
+                        <th className="px-3 py-2 text-right font-medium">Paid in cash</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {t61.rows.map((r) => (
+                        <tr key={r.head} className="border-t">
+                          <td className="px-3 py-1.5 font-medium">{r.head}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{rupees(r.liability_paise)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{rupees(r.paid_through_itc_paise)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{rupees(r.paid_in_cash_paise)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-[#334155]">
+                    {t61.total_cash_paise > 0
+                      ? <>Cash payable: <strong>{rupees(t61.total_cash_paise)}</strong> — a challan
+                         would be created and paid before filing.</>
+                      : <>Nothing payable in cash — the credit ledger covers the whole liability.</>}
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setStage("declare")}
+                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      Proceed to file
+                    </button>
+                    <button onClick={() => setStage("summary")}
+                      className="px-3 py-2 border rounded text-sm">Back</button>
+                  </div>
+                </>
+              )}
+
+              {/* 3 — the declaration and WHOSE signature this is */}
+              {stage === "declare" && (
+                <>
+                  <label className="flex gap-2 items-start text-xs text-[#334155]">
+                    <input type="checkbox" checked={declared} className="mt-0.5"
+                      onChange={(e) => setDeclared(e.target.checked)} />
+                    <span>{data.declaration}</span>
+                  </label>
+                  <div>
+                    <label className="text-xs text-[#64748B] block mb-1">Authorised signatory</label>
+                    <select value={signatory} onChange={(e) => setSignatory(e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border rounded">
+                      <option value="">Select…</option>
+                      <option value="taxpayer">Authorised signatory on the GST registration</option>
+                    </select>
+                    <p className="text-[11px] text-amber-800 mt-1">
+                      This is the <strong>taxpayer&apos;s</strong> signatory, not the firm&apos;s.
+                      PracticeSync prepares the return; the taxpayer signs it. That is why
+                      filing cannot be a single button on this side.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {data.signature_methods.map((m) => (
+                      <button key={m.key}
+                        onClick={() => { setMethod(m.key as "evc" | "dsc"); setStage("sign"); }}
+                        disabled={!declared || !signatory}
+                        title={m.note}
+                        className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-40">
+                        {m.label}
+                      </button>
+                    ))}
+                    <button onClick={() => setStage("payment")}
+                      className="px-3 py-2 border rounded text-sm">Back</button>
+                  </div>
+                  {(!declared || !signatory) && (
+                    <p className="text-[11px] text-[#94A3B8]">
+                      The portal keeps both buttons disabled until the declaration is ticked
+                      and a signatory chosen.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* 4 — EVC OTP or DSC */}
+              {stage === "sign" && method === "evc" && (
+                <>
+                  <p className="text-sm text-[#334155]">
+                    An OTP would now be sent to the authorised signatory&apos;s mobile and
+                    email as registered on the GST portal.
+                  </p>
+                  <input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    inputMode="numeric" placeholder="6-digit OTP" aria-label="EVC OTP"
+                    className="px-3 py-2 border rounded text-sm font-mono tracking-widest w-40" />
+                  {otpError && <p className="text-xs text-red-600">{otpError}</p>}
+                  <p className="text-[11px] text-[#94A3B8]">
+                    Any six digits will do here — there is no OTP to be right about.
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={verifyOtp}
+                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      Verify OTP
+                    </button>
+                    <button onClick={() => setStage("declare")}
+                      className="px-3 py-2 border rounded text-sm">Back</button>
+                  </div>
+                </>
+              )}
+
+              {stage === "sign" && method === "dsc" && (
+                <>
+                  <p className="text-sm text-[#334155]">
+                    The portal would open emSigner and ask the signatory to select their
+                    Class 3 certificate and enter its PIN. Mandatory for companies and LLPs;
+                    optional for others, who may use EVC.
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setStage("confirm")}
+                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      Sign with certificate
+                    </button>
+                    <button onClick={() => setStage("declare")}
+                      className="px-3 py-2 border rounded text-sm">Back</button>
+                  </div>
+                </>
+              )}
+
+              {/* 5 — the warning the portal shows last */}
+              {stage === "confirm" && (
+                <>
+                  <div className="border-2 border-amber-400 bg-amber-50 rounded p-3">
+                    <p className="text-sm font-semibold text-amber-900">{data.filing_warning}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setStage("processing")}
+                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      File GSTR-3B
+                    </button>
+                    <button onClick={() => setStage("declare")}
+                      className="px-3 py-2 border rounded text-sm">Cancel</button>
+                  </div>
+                </>
+              )}
+
+              {stage === "processing" && (
+                <ul className="space-y-2">
+                  {data.steps.map((st, i) => (
+                    <li key={st.key} className="flex items-center gap-2 text-sm">
+                      <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-[#CBD5E1]"}`}>
+                        {i <= done ? "✓" : "○"}
+                      </span>
+                      <span className={i <= done ? "text-[#334155]" : "text-[#94A3B8]"}>{st.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* 6 — where the portal shows an ARN and "Filed" */}
+              {stage === "done" && (
+                <div className="rounded border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
+                  <p className="text-sm font-bold text-amber-900">NOT FILED — this was a demo</p>
+                  <p className="text-xs text-amber-900">
+                    The portal would show an ARN here and set the return to Filed. This
+                    reference is deliberately not ARN-shaped: a realistic one could be
+                    pasted into a client email or a portal field and believed.
+                  </p>
+                  <p className="text-xs font-mono text-amber-900 break-all">{data.acknowledgement}</p>
+                  <p className="text-xs text-amber-900">{data.disclaimer}</p>
+                  <p className="text-xs text-amber-900">
+                    To file for real: download the JSON, upload and sign it on gst.gov.in,
+                    then record the ARN here with <strong>Mark Filed</strong>.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        <div className="px-5 py-3 border-t flex justify-end">
+        <div className="px-5 py-3 border-t flex justify-between items-center">
+          <span className="text-[11px] text-[#94A3B8]">
+            {stage === "done" ? "Nothing was transmitted." : "Step through as the portal would."}
+          </span>
           <button onClick={onClose}
             className="px-3 py-1.5 text-sm border rounded hover:bg-[#F8FAFC]">Close</button>
         </div>
@@ -295,6 +507,22 @@ function GSTR3BDetailDrawer({
       </div>
     </div>
   );
+}
+
+interface SimulationData {
+  gstin: string;
+  figures: { tax_liability_paise: number; itc_claimed_paise: number; net_tax_paise: number };
+  table_61: {
+    rows: { head: string; liability_paise: number;
+            paid_through_itc_paise: number; paid_in_cash_paise: number }[];
+    total_cash_paise: number;
+  };
+  declaration: string;
+  filing_warning: string;
+  signature_methods: { key: string; label: string; note: string }[];
+  steps: { key: string; label: string }[];
+  acknowledgement: string;
+  disclaimer: string;
 }
 
 /** Statuses where nothing has been filed, so the working may still be changed. */

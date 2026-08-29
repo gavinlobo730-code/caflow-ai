@@ -125,3 +125,103 @@ def test_the_real_filing_path_still_demands_an_explicit_ca_confirmation():
     src = inspect.getsource(gw.update_gstr3b_status)
     assert "ca_approved" in src
     assert "DO NOT AUTO-SUBMIT" in src
+
+
+# ── It has to mimic the portal's actual sequence ────────────────────────────
+#
+# A walk-through that invents its own order teaches a CA nothing they will
+# recognise when they reach gst.gov.in. The portal's order is: saved return ->
+# PROCEED TO PAYMENT (Table 6.1) -> PROCEED TO FILE -> declaration + authorised
+# signatory -> FILE WITH DSC / FILE WITH EVC -> OTP or emSigner -> an
+# irreversibility warning -> ARN.
+
+def test_table_61_splits_liability_into_credit_and_cash():
+    """The portal's most-misread screen, and the decision a CA actually makes
+    there: how much of the liability the credit ledger discharges and how much
+    has to be paid in cash by challan. A net figure alone hides it."""
+    t = gw._table_61({
+        "outward": {"taxable_igst_paise": 100000, "taxable_cgst_paise": 50000,
+                    "taxable_sgst_paise": 50000},
+        "net_payable": {"igst_paise": 30000, "cgst_paise": 0, "sgst_paise": 0},
+    })
+    by_head = {r["head"]: r for r in t["rows"]}
+    assert by_head["IGST"]["liability_paise"] == 100000
+    assert by_head["IGST"]["paid_through_itc_paise"] == 70000
+    assert by_head["IGST"]["paid_in_cash_paise"] == 30000
+    assert by_head["CGST"]["paid_through_itc_paise"] == 50000, "credit covered it all"
+    assert by_head["CGST"]["paid_in_cash_paise"] == 0
+    assert t["total_cash_paise"] == 30000
+
+
+def test_every_head_adds_up():
+    """Liability = what credit paid + what cash paid, per head. A split that
+    does not reconcile is worse than no split."""
+    t = gw._table_61({
+        "outward": {"taxable_igst_paise": 123456, "taxable_cgst_paise": 7000,
+                    "taxable_sgst_paise": 7000},
+        "net_payable": {"igst_paise": 456, "cgst_paise": 7000, "sgst_paise": 0},
+    })
+    for r in t["rows"]:
+        assert r["paid_through_itc_paise"] + r["paid_in_cash_paise"] == r["liability_paise"], r
+
+
+def test_a_return_with_no_working_yields_zeros_rather_than_an_error():
+    """An older saved return may have no summary_json. The demo must still open."""
+    t = gw._table_61({})
+    assert t["total_cash_paise"] == 0
+    assert [r["head"] for r in t["rows"]] == ["IGST", "CGST", "SGST"]
+
+
+def test_credit_can_never_be_shown_paying_more_than_the_liability():
+    """max(liability - cash, 0). If Table 6 ever exceeded 3.1(a) — which would
+    be a bug elsewhere — this must not render a negative ITC contribution."""
+    t = gw._table_61({
+        "outward": {"taxable_igst_paise": 1000},
+        "net_payable": {"igst_paise": 5000},
+    })
+    assert t["rows"][0]["paid_through_itc_paise"] == 0
+
+
+def test_the_declaration_is_the_form_s_own_wording():
+    """Shown because it is the moment that matters: the person ticking it makes
+    a statement to the department. Paraphrasing it would misrepresent what they
+    are agreeing to."""
+    d = gw._GSTR3B_DECLARATION
+    assert "solemnly affirm and declare" in d
+    assert "true and correct to the best of my/our knowledge" in d
+    assert "nothing has been concealed therefrom" in d
+
+
+def test_the_irreversibility_warning_names_the_correction_route():
+    """"Cannot be revised" on its own reads as a dead end. §39(9) is the route,
+    and a CA who does not know it will look for an edit button that is not
+    there."""
+    w = gw._FILING_WARNING
+    assert "cannot be revised" in w
+    assert "39(9)" in w
+
+
+def test_both_signature_methods_are_offered_and_say_whose_signature_it_is():
+    """The single most important thing this walk-through conveys: the signature
+    is the TAXPAYER's — their DSC, or an EVC OTP to the mobile on their GST
+    registration — never the firm's. That is why filing cannot be one button on
+    our side, and it is why the demo has a signatory step at all."""
+    import inspect
+    src = inspect.getsource(gw.simulate_gstr3b_filing)
+    assert '"evc"' in src and '"dsc"' in src
+    assert "registered mobile" in src
+    assert "TAXPAYER" in src or "taxpayer" in src
+    assert "emSigner" in src, "DSC filing goes through emSigner; naming it is the point"
+
+
+def test_the_steps_are_only_the_last_stage_not_the_whole_flow():
+    """The transmission steps used to BE the demo. They are now what happens
+    after the declaration is signed, and the stages before them are the part a
+    CA has never seen laid out."""
+    import inspect
+    src = inspect.getsource(gw)
+    i = src.index("_SIMULATION_STEPS = [")
+    preamble = src[max(0, i - 1200):i]
+    assert "PROCEED TO PAYMENT" in preamble
+    assert "PROCEED TO FILE" in preamble
+    assert "Table 6.1" in preamble
