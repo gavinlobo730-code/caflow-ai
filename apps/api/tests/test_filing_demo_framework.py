@@ -220,11 +220,19 @@ def test_capabilities_filters_flows_by_role(monkeypatch):
 
 
 def test_a_stub_flow_refuses_with_its_own_words():
-    """The six not-yet-built flows answer honestly instead of 500ing, so the
-    endpoint can ship ahead of them."""
-    from services.filing_demo import tds_return
-    with pytest.raises(ValueError, match="not built yet"):
-        tds_return.build(FakeDB(), FIRM, CLIENT, {})
+    """A not-yet-built flow answers honestly instead of 500ing, so the
+    endpoint can ship ahead of it. Stubs are DISCOVERED rather than named:
+    the flow modules are being replaced one by one, and naming a particular
+    module here made this test wrong the moment that flow was built (it
+    originally pinned tds_return). When no stub remains, nothing is held to
+    this rule and the loop is simply empty."""
+    import importlib
+    for name, src in _package_sources().items():
+        if name in ("common.py", "__init__.py") or "not built yet" not in src:
+            continue
+        mod = importlib.import_module(f"services.filing_demo.{name[:-3]}")
+        with pytest.raises(ValueError, match="not built yet"):
+            mod.build(FakeDB(), FIRM, CLIENT, {})
 
 
 def test_the_preview_endpoint_names_its_client_scope_check():

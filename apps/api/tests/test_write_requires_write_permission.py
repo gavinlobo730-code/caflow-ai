@@ -72,6 +72,11 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
 
     ALLOWED = {
         # Compute-only: POST purely because the request carries a JSON body.
+        # The filing-demo preview builds a walk-through script and writes
+        # nothing by design — test_filing_demo_framework.py scans every flow
+        # module and the router for write markers, so this claim is enforced,
+        # not just asserted.
+        "/api/filing-demo/{flow}/preview",
         "/api/banking/reconciliations/{recon_id}/preview",
         "/api/banking/transactions/{txn_id}/posting-preview",
         "/api/billing/preview-run",

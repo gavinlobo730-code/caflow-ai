@@ -32,9 +32,9 @@ _logger = logging.getLogger("caflow.filing_demo")
 
 class PreviewRequest(BaseModel):
     client_id: str
-    # Flow-specific addressing — e.g. {"return_id": ...} for GST returns,
-    # {"quarter": ..., "fy": ...} for TDS, {"month": ...} for PF/ESI. Each
-    # flow module documents and validates what it needs.
+    # Flow-specific addressing, as built: {"return_id": ...} for gstr1/gstr9
+    # and tds, {"filing_id": ...} for itr and mca, {"run_id": ...} for pf and
+    # esi. Each flow module documents and validates what it needs.
     ref: dict = Field(default_factory=dict)
 
 

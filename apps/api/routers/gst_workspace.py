@@ -418,23 +418,46 @@ def gst_dashboard(
 @router.get("/returns")
 def list_returns(
     client_id: str = Query(...),
+    return_type: Optional[str] = Query(
+        None, description="Filter the gstr1_returns store by return_type "
+        "('gstr1' or 'gstr9'). The store holds BOTH since migration 053, so "
+        "without this filter GSTR-9 annual rows appear in the 'gstr1' list. "
+        "gstr3b_returns is single-type and unaffected."),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
-    """List all GST returns (GSTR-1 + GSTR-3B) for a client."""
+    """List all GST returns (GSTR-1 + GSTR-3B) for a client.
+
+    Omitting return_type keeps the historical behaviour (every row of the
+    shared store, GSTR-9 drafts included) for any caller relying on it.
+    """
+    # Unit tests call this function directly, where an omitted parameter is
+    # FastAPI's truthy Query default object, not None — normalise so a direct
+    # call without the argument behaves like an HTTP request without it.
+    if not isinstance(return_type, str):
+        return_type = None
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             g1 = [r for r in _MOCK_GSTR1.values() if r["client_id"] == client_id]
+            if return_type:
+                # A row saved before migration 053 carries no return_type;
+                # the column's DB default is 'gstr1', so absence means the
+                # same thing here as it does in Postgres.
+                g1 = [r for r in g1
+                      if (r.get("return_type") or "gstr1") == return_type]
             g3b = [r for r in _MOCK_GSTR3B.values() if r["client_id"] == client_id]
             g1 = g1[offset:offset + limit]
             g3b = g3b[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+            q1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
+            if return_type:
+                q1 = q1.eq("return_type", return_type)
+            g1 = q1.range(offset, offset + limit - 1).execute().data or []
             g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
 
         return api_response(True, {"gstr1": g1, "gstr3b": g3b})

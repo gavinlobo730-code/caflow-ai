@@ -752,7 +752,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch(`/api/gst-workspace/returns?client_id=${clientId}`)
+    // return_type=gstr1 — the gstr1_returns store also holds GSTR-9 annual
+    // drafts (return_type='gstr9'); without the filter they render here as
+    // monthly returns with an "FY2025-26" period.
+    apiFetch(`/api/gst-workspace/returns?client_id=${clientId}&return_type=gstr1`)
       .then((r) => {
         if (r.success) {
           setReturns((r.data as { gstr1: Record<string, unknown>[] }).gstr1);
@@ -1705,37 +1708,153 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
 
 // ── GSTR-9 ─────────────────────────────────────────────────────────────────
 
-function GSTR9Tab() {
+// FY strings the picker offers: from GST's first full year up to the last
+// COMPLETED financial year — the one a GSTR-9 is actually due for (CGST Act
+// §44: due 31 December following the FY; the due-date arithmetic itself lives
+// in services/compliance_engine.py, not here).
+function completedFinancialYears(): string[] {
+  const now = new Date();
+  const lastCompletedStart =
+    now.getMonth() + 1 >= 4 ? now.getFullYear() - 1 : now.getFullYear() - 2;
+  const out: string[] = [];
+  for (let y = lastCompletedStart; y >= 2017; y--) {
+    out.push(`${y}-${String((y + 1) % 100).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+function GSTR9Tab({ clientId }: { clientId: string }) {
+  const fyOptions = completedFinancialYears();
+  const [fy, setFy] = useState(fyOptions[0]);
+  const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "no GSTR-9 draft for this FY yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // The filing walk-through (services/filing_demo/gstr9). Offered only where
+  // the server says the demo exists — the dead-control rule.
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    apiFetch(`/api/gst-workspace/gstr9?client_id=${clientId}&financial_year=${encodeURIComponent(fy)}`)
+      .then((r) => {
+        if (r.success) {
+          setDraft((r.data as Record<string, unknown> | null) ?? null);
+          setLoadError(null);
+        } else {
+          setDraft(null);
+          setLoadError(r.error ?? "Couldn't load the GSTR-9 draft.");
+        }
+      })
+      .catch(() => {
+        setDraft(null);
+        setLoadError("Couldn't load the GSTR-9 draft. Please try again.");
+      })
+      .finally(() => setLoading(false));
+  }, [clientId, fy]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="space-y-4">
-      <h3 className="font-medium">GSTR-9 Annual Return</h3>
+      {demo && (
+        <FilingDemoWizard
+          flow="gstr9"
+          clientId={clientId}
+          refData={{ return_id: demo.id }}
+          onClose={() => setDemo(null)}
+        />
+      )}
+      <div className="flex justify-between items-center">
+        <h3 className="font-medium">GSTR-9 Annual Return</h3>
+        <select value={fy} onChange={(e) => setFy(e.target.value)}
+          className="border rounded px-2 py-1.5 text-sm">
+          {fyOptions.map((y) => (
+            <option key={y} value={y}>FY {y}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="rounded border p-4 bg-amber-50 text-sm text-amber-800">
         <p className="font-medium">⚠ CA Review Required</p>
-        <p className="mt-1">GSTR-9 is generated as a read-only draft. The CA must review all data before filing.
-          CGST Act §44 — Annual return must be filed by 31st December.</p>
+        <p className="mt-1">CGST Act §44 — the annual return is due 31 December following the
+          financial year, and filing it closes the year&apos;s correction window early
+          (§37(3)/§39(9): 30 November or the GSTR-9 filing date, whichever is earlier).</p>
       </div>
-      <p className="text-sm text-[#475569]">
-        GSTR-9 is auto-computed from your GSTR-1 and GSTR-3B returns for the financial year.
-        Navigate to GSTR-1 and GSTR-3B tabs to review monthly returns first.
-      </p>
-      <p className="text-xs text-[#94A3B8]">Draft generation from filed monthly returns will be available once GSTR-1/3B returns are CA approved.</p>
+
+      {loading ? (
+        <TableSkeleton cols={4} bare />
+      ) : loadError ? (
+        <div className="space-y-2">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <button onClick={load}
+            className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">
+            Retry
+          </button>
+        </div>
+      ) : !draft ? (
+        <p className="text-sm text-[#94A3B8]">
+          No GSTR-9 draft for FY {fy} yet. Drafts are saved from the year&apos;s
+          reviewed GSTR-1 and GSTR-3B returns.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-mono text-xs">{draft.gstin as string}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[draft.status as string] ?? ""}`}>
+              {draft.status as string}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
+            {([
+              ["Taxable value", draft.total_taxable_paise],
+              ["IGST", draft.total_igst_paise],
+              ["CGST", draft.total_cgst_paise],
+              ["SGST", draft.total_sgst_paise],
+              ["Total tax", draft.total_tax_paise],
+            ] as [string, unknown][]).map(([label, paise]) => (
+              <div key={label} className="rounded border p-3">
+                <p className="text-xs text-[#64748B]">{label}</p>
+                <p className="font-medium">{rupees((paise as number) ?? 0)}</p>
+              </div>
+            ))}
+          </div>
+          {/* Only where the server says the walk-through exists AND a draft
+              is loaded — the dead-control rule. */}
+          {demoFlows.includes("gstr9") && (
+            <button onClick={() => setDemo({ id: draft.id as string })}
+              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+              File (demo)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-// GSTR-9 is intentionally hidden for Closed Beta (Beta-readiness Part 1):
-// GSTR9Tab() below has no computation logic behind it (no gstr9_builder in
-// apps/api/domain/gst, unlike GSTR-1/GSTR-3B) — it only ever rendered a
-// static "not available yet" message. GSTR-9's own due-date obligation is
-// still tracked correctly via the Compliance workspace/dashboard; only this
-// decorative preparation tab is hidden. Component kept, not deleted, so it
-// can be wired to a real builder and re-added to TABS later.
+// GSTR-9 was hidden during Closed Beta while GSTR9Tab was a static
+// placeholder. It now loads the saved annual draft (GET /gst-workspace/gstr9)
+// and offers the filing walk-through (services/filing_demo/gstr9), so it is
+// back in TABS. There is still no gstr9 computation builder in
+// apps/api/domain/gst — drafts are saved via POST /gst-workspace/gstr9, not
+// derived here.
 const TABS: { id: GSTTab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "gstr1", label: "GSTR-1" },
   { id: "gstr3b", label: "GSTR-3B" },
+  { id: "gstr9", label: "GSTR-9" },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
 ];
@@ -1776,7 +1895,7 @@ export default function GSTWorkspacePage() {
         {tab === "gstr3b" && <GSTR3BTab clientId={clientId} />}
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}
-        {tab === "gstr9" && <GSTR9Tab />}
+        {tab === "gstr9" && <GSTR9Tab clientId={clientId} />}
       </div>
     </div>
   );

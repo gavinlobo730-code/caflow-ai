@@ -1138,3 +1138,119 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         },
         "ca_review_required": True,   # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     }
+
+
+# ── GSTR-9 annual summary (CGST Act §44) ─────────────────────────────────────
+#
+# There is no gstr9 computation builder in domain/gst yet: nothing derives the
+# annual return's tables from the books. What CAN be derived honestly today is
+# the picture the portal itself starts from — which months of the FY have a
+# filed GSTR-1 and GSTR-3B, which are missing, and the year's totals from the
+# filed GSTR-1 headers. That is at most 24 HEADER rows for a year (CLAUDE.md:
+# rows proportional to the answer, never per-line transaction data), and the
+# aggregation is pure so it is testable without a database.
+
+# April-first month labels of an Indian financial year (1 April – 31 March).
+_FY_MONTH_LABELS = ("Apr", "May", "Jun", "Jul", "Aug", "Sep",
+                    "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")
+
+
+def gstr9_fy_periods(financial_year: str) -> list[str]:
+    """'2025-26' → the twelve MMYYYY period strings of that FY, April first.
+
+    The financial year runs 1 April to 31 March (the CGST Act leaves
+    "financial year" to the General Clauses Act 1897 §3(21), which starts it
+    on 1 April), so FY 2025-26 is 042025..122025 then 012026..032026. Raises ValueError in plain words on a malformed FY string
+    so a demo endpoint can answer instead of 500ing.
+    """
+    parts = str(financial_year or "").split("-")
+    if (len(parts) != 2 or len(parts[0]) != 4 or not parts[0].isdigit()
+            or len(parts[1]) != 2 or not parts[1].isdigit()):
+        raise ValueError(
+            f"Financial year {financial_year!r} is not in the '2025-26' form "
+            "this return stores.")
+    start_year = int(parts[0])
+    if int(parts[1]) != (start_year + 1) % 100:
+        raise ValueError(
+            f"Financial year {financial_year!r} does not name two consecutive "
+            "years — expected e.g. '2025-26'.")
+    return ([f"{mm:02d}{start_year}" for mm in range(4, 13)]
+            + [f"{mm:02d}{start_year + 1}" for mm in range(1, 4)])
+
+
+def gstr9_summary_from_returns(financial_year: str, gstr1_rows: list[dict],
+                               gstr3b_rows: list[dict]) -> dict:
+    """The annual picture GSTR-9 is auto-populated from, out of the year's
+    monthly return HEADER rows.
+
+    CGST Act §44 read with Rule 80(1): the annual return consolidates the
+    financial year's GSTR-1 and GSTR-3B, and the portal opens FORM GSTR-9 for
+    filing only once every one of them is filed. So per month the demo needs:
+    is there a filed GSTR-1, is there a filed GSTR-3B — and the FY totals of
+    the FILED GSTR-1 headers, in integer paise throughout.
+
+    "Filed" means status == 'submitted' — the status the genuine
+    record-it-after-filing-on-the-portal path writes. A draft or approved
+    return is prepared, not filed, and does not count.
+
+    Pure: rows in, dict out, no database. gstr1_rows may contain rows of any
+    return_type (the gstr1_returns store also holds GSTR-9 rows since
+    migration 053, and rows predating that migration carry no return_type at
+    all — the column's DB default is 'gstr1'); anything that is not a monthly
+    GSTR-1 of this FY is ignored.
+    """
+    periods = gstr9_fy_periods(financial_year)
+    in_fy = set(periods)
+
+    g1_by_period: dict[str, dict] = {}
+    for r in gstr1_rows:
+        if (r.get("return_type") or "gstr1") != "gstr1":
+            continue
+        p = str(r.get("period") or "")
+        if p in in_fy:
+            g1_by_period[p] = r
+    g3b_by_period: dict[str, dict] = {}
+    for r in gstr3b_rows:
+        p = str(r.get("period") or "")
+        if p in in_fy:
+            g3b_by_period[p] = r
+
+    months: list[dict] = []
+    missing_gstr1: list[str] = []
+    missing_gstr3b: list[str] = []
+    gstr1_filed = gstr3b_filed = 0
+    totals = {"taxable_paise": 0, "igst_paise": 0, "cgst_paise": 0,
+              "sgst_paise": 0, "cess_paise": 0}
+
+    for i, p in enumerate(periods):
+        label = f"{_FY_MONTH_LABELS[i]} {p[2:]}"
+        g1 = g1_by_period.get(p)
+        g3b = g3b_by_period.get(p)
+        g1_status = (g1 or {}).get("status")
+        g3b_status = (g3b or {}).get("status")
+        if g1_status == "submitted":
+            gstr1_filed += 1
+            totals["taxable_paise"] += int(g1.get("total_taxable_paise") or 0)
+            totals["igst_paise"] += int(g1.get("total_igst_paise") or 0)
+            totals["cgst_paise"] += int(g1.get("total_cgst_paise") or 0)
+            totals["sgst_paise"] += int(g1.get("total_sgst_paise") or 0)
+            totals["cess_paise"] += int(g1.get("total_cess_paise") or 0)
+        else:
+            missing_gstr1.append(label)
+        if g3b_status == "submitted":
+            gstr3b_filed += 1
+        else:
+            missing_gstr3b.append(label)
+        months.append({"period": p, "label": label,
+                       "gstr1_status": g1_status, "gstr3b_status": g3b_status})
+
+    return {
+        "financial_year": financial_year,
+        "periods": periods,
+        "months": months,
+        "gstr1_filed_months": gstr1_filed,
+        "gstr3b_filed_months": gstr3b_filed,
+        "missing_gstr1": missing_gstr1,
+        "missing_gstr3b": missing_gstr3b,
+        "totals": totals,
+    }

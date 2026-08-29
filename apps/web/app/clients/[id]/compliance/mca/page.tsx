@@ -6,6 +6,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -327,6 +328,13 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   const eventForms = ["DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"];
   const formOptions = category === "annual" ? annualForms : eventForms;
 
+  // The generic filing walk-through (services/filing_demo/mca) — annual
+  // forms only, and offered only where the server says the demo exists (the
+  // dead-control rule: a button whose endpoint would refuse must be absent).
+  const demoForms = ["AOC-4", "MGT-7", "MGT-7A", "ADT-1"];
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/mca-workspace/filings?client_id=${clientId}`)
@@ -345,6 +353,15 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   }, [clientId, category]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Event forms have no walk-through, so the event tab never probes.
+    if (category !== "annual") return;
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => {
+      if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, [category]);
 
   async function saveNew() {
     await apiFetch("/api/mca-workspace/filings", {
@@ -402,6 +419,14 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
 
   return (
     <div className="space-y-4">
+      {demo && (
+        <FilingDemoWizard
+          flow="mca"
+          clientId={clientId}
+          refData={{ filing_id: demo.id }}
+          onClose={() => setDemo(null)}
+        />
+      )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">{category === "annual" ? "Annual" : "Event"} Filings</h3>
         <button onClick={() => setShowNew(true)}
@@ -468,6 +493,15 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                     <button onClick={() => openConfirmFiling(r)}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">
                       Mark Filed (CA)
+                    </button>
+                  )}
+                  {/* Annual forms not yet filed, and only where the server
+                      says the walk-through exists — the dead-control rule. */}
+                  {category === "annual" && r.status !== "filed" &&
+                    demoFlows.includes("mca") && demoForms.includes(r.form_type as string) && (
+                    <button onClick={() => setDemo({ id: r.id as string })}
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+                      File (demo)
                     </button>
                   )}
                 </td>
