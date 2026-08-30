@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Loader2, Calendar, ChevronRight, FileCode } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -42,9 +43,13 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 export default function YearEndPage() {
-  const params = useParams<{ id: string }>();
   const router = useRouter();
-  const clientId = params.id;
+  // NOT useParams(): under `output: export` plus Cloudflare's
+  // rewrite-to-_placeholder hosting, the App Router's params stay anchored to
+  // the build-time "_placeholder" segment, so useParams().id never resolves to
+  // a real client (see lib/workspace/ClientNavContext.tsx). useClientNav reads
+  // the id out of window.location, which is always the real browser URL.
+  const { clientId } = useClientNav();
 
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +60,12 @@ export default function YearEndPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
+    // Never query the static-export placeholder id. clientId is "" only in the
+    // build-time render, where no effect runs at all — so if we get here
+    // without one, nothing is coming and the skeleton must come down. Leaving
+    // `loading` true here is what put three permanent skeleton rows on this
+    // screen in production.
+    if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {

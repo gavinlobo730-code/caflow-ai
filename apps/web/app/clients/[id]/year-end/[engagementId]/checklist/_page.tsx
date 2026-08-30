@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-react";
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 // ── Status cycle: pending → in_progress → complete ─────────────────────────
 const STATUS_CYCLE: Record<ChecklistItemStatus, ChecklistItemStatus> = {
@@ -37,8 +37,9 @@ function StatusIcon({ status }: { status: ChecklistItemStatus }) {
 }
 
 export default function ChecklistPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);

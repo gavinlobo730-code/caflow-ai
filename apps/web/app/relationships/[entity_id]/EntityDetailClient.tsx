@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,9 +78,26 @@ type TabId = "overview" | "roles" | "relationships" | "matches";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+function getEntityIdFromLocation(): string {
+  if (typeof window === "undefined") return "";
+  const m = window.location.pathname.match(/^\/relationships\/([^/]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
 export default function EntityDetailPage() {
-  const params = useParams();
-  const entityId = params.entity_id as string;
+  // NOT useParams(): apps/web is a static export and Cloudflare's 200-rewrite
+  // serves the pre-rendered "_placeholder" HTML for every real
+  // /relationships/{id} URL (see scripts/generate-redirects.js), so
+  // useParams().entity_id is the literal string "_placeholder" — both fetches
+  // below then requested entity "_placeholder" and the page showed "Entity not
+  // found" for every entity. window.location.pathname is always the real
+  // browser URL; usePathname() is only a re-run trigger, since its own value is
+  // the placeholder segment. This route is outside /clients/[id]/**, so there
+  // is no ClientNavProvider to borrow — same fix as
+  // lib/workspace/ClientNavContext.tsx, done locally.
+  const pathname = usePathname();
+  const [entityId, setEntityId] = useState<string>(getEntityIdFromLocation);
+  useEffect(() => { setEntityId(getEntityIdFromLocation()); }, [pathname]);
 
   const [entity, setEntity] = useState<Entity | null>(null);
   const [roles, setRoles] = useState<EntityRole[]>([]);
@@ -133,7 +150,12 @@ export default function EntityDetailPage() {
   }, [entityId, loadMatches]);
 
   useEffect(() => {
-    if (entityId) loadAll();
+    // "" until the effect above resolves the id, "_placeholder" only if the
+    // build-time shell URL is opened directly. Neither can load anything, so
+    // clear the skeleton and fall through to the "Entity not found" panel
+    // below rather than leaving a skeleton up forever.
+    if (!entityId || entityId === "_placeholder") { setLoading(false); return; }
+    loadAll();
   }, [entityId, loadAll]);
 
   async function handleMatchAction(matchId: string, action: "confirm" | "dismiss") {

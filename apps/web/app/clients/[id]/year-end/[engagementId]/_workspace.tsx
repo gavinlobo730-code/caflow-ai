@@ -27,7 +27,7 @@
  */
 
 import { useEffect, useState, Suspense } from "react";
-import { useParams, useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   CheckSquare2,
@@ -39,7 +39,9 @@ import {
   Download,
 } from "lucide-react";
 import { yearEndApi, type YearEndEngagement, type EngagementStatus } from "@/lib/api/yearEnd";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "./_engagementId";
 
 import DashboardStage from "./dashboard/_page";
 import ChecklistStage from "./checklist/_page";
@@ -93,11 +95,17 @@ function StatusBadge({ status }: { status: EngagementStatus }) {
 // ── Workspace ──────────────────────────────────────────────────────────────
 
 function YearEndWorkspaceInner() {
-  const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const pathname = usePathname();
-  const engagementId = params.engagementId as string;
+  // Neither id comes from useParams(), and the tab URL is not built from
+  // usePathname(): under `output: export` plus Cloudflare's
+  // rewrite-to-_placeholder hosting all of those are the build-time
+  // "_placeholder" shell, not this engagement (see _engagementId.ts and
+  // lib/workspace/ClientNavContext.tsx). Opening a stage off usePathname()
+  // rewrote the address bar to /clients/_placeholder/year-end/_placeholder,
+  // which then broke every id on the screen.
+  const { clientId } = useClientNav();
+  const engagementId = useEngagementId();
 
   const [engagement, setEngagement] = useState<YearEndEngagement | null>(null);
 
@@ -106,18 +114,29 @@ function YearEndWorkspaceInner() {
   const tabParam = searchParams.get("tab");
   const stage: StageId = isStageId(tabParam) ? tabParam : DEFAULT_STAGE;
 
+  const basePath = `/clients/${clientId}/year-end/${engagementId}/`;
+
   function openStage(next: StageId) {
     const q = new URLSearchParams(searchParams.toString());
     if (next === DEFAULT_STAGE) q.delete("tab");
     else q.set("tab", next);
     const qs = q.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    router.replace(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
   }
 
+  // `engagement` starts null and the header renders skeleton chips while it is
+  // null, so every path out of this effect has to reach a terminal state —
+  // otherwise the header keeps the exact permanent-skeleton defect this whole
+  // change set exists to remove, just in a smaller box.
+  const [headerResolved, setHeaderResolved] = useState(false);
   useEffect(() => {
-    yearEndApi.engagements.get(engagementId).then((res) => {
-      if (res.success) setEngagement(res.data);
-    });
+    // Never query the static-export placeholder id.
+    if (!engagementId || engagementId === "_placeholder") { setHeaderResolved(true); return; }
+    yearEndApi.engagements
+      .get(engagementId)
+      .then((res) => { if (res.success) setEngagement(res.data); })
+      .catch(() => { /* header degrades to its plain title below */ })
+      .finally(() => setHeaderResolved(true));
   }, [engagementId]);
 
   const ActiveStage = (STAGES.find((s) => s.id === stage) ?? STAGES[0]).Component;
@@ -165,6 +184,10 @@ function YearEndWorkspaceInner() {
                 </span>
               )}
             </>
+          ) : headerResolved ? (
+            // Resolved, but there is no engagement to describe. Say nothing
+            // rather than animating a row that will never fill.
+            <span className="text-xs text-[#94A3B8]">Year End</span>
           ) : (
             <div className="flex items-center gap-3">
               <Skeleton className="h-3.5 w-16" />

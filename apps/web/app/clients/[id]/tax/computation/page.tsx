@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -70,8 +70,13 @@ interface BFLoss {
 }
 
 export default function TaxComputationPage() {
-  const params = useParams<{ id: string }>();
-  const clientId = params.id;
+  // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
+  // serves the pre-rendered "_placeholder" HTML for every real client URL, so
+  // useParams().id was the literal string "_placeholder" — the load below bailed
+  // on its own guard and the workspace rendered permanently empty, while Compute
+  // and Add Disallowance posted "_placeholder" as client_id. useClientNav reads
+  // the real UUID out of window.location.
+  const { clientId } = useClientNav();
 
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [ay, setAy] = useState(AY_OPTIONS[0]);

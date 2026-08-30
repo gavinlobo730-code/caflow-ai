@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { yearEndApi, type Adjustment, type AdjustmentType, type AdjustmentStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -58,8 +58,9 @@ const ADJ_TYPES: AdjustmentType[] = [
 ];
 
 export default function AdjustmentsPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);

@@ -1,7 +1,8 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Calculator, FileText, RefreshCw, ArrowRight, AlertTriangle } from "lucide-react";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 const MODULES = [
   {
@@ -31,9 +32,13 @@ const MODULES = [
 ];
 
 export default function TaxPage() {
-  const params = useParams<{ id: string }>();
+  // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
+  // serves the pre-rendered "_placeholder" HTML for every real client URL, so
+  // useParams().id is the literal string "_placeholder" — every card below then
+  // pushed to /clients/_placeholder/tax/... , a dead route. useClientNav reads
+  // the real UUID out of window.location.
+  const { clientId } = useClientNav();
   const router = useRouter();
-  const clientId = params.id;
 
   return (
     <div className="p-6 max-w-3xl space-y-6">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   CheckSquare2,
   SlidersHorizontal,
@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { EngagementStatus, YearEndEvent } from "@/lib/api/yearEnd";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { Skeleton, DashboardSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -95,9 +97,12 @@ interface DashboardData {
 }
 
 export default function YearEndDashboardPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
   const router = useRouter();
-  const { id: clientId, engagementId } = params;
+  // Both ids come from window.location, not useParams(): the static export is
+  // served from a shell whose every dynamic segment is "_placeholder" (see
+  // ../_engagementId.ts and lib/workspace/ClientNavContext.tsx).
+  const { clientId } = useClientNav();
+  const engagementId = useEngagementId();
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -239,6 +244,12 @@ export default function YearEndDashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Stage shortcuts below go to `${base}/?tab=<stage>`, not `${base}/<stage>`.
+  // The eight stage routes were collapsed into this one route behind ?tab=
+  // (see _workspace.tsx's DEEP LINKS note); the old path form no longer exists
+  // and Cloudflare serves 404.html for it. The placeholder-id bug hid that —
+  // the links were dead for a different reason — so fixing the ids alone would
+  // have turned every card on this dashboard into an honest 404.
   const base = `/clients/${clientId}/year-end/${engagementId}`;
 
   if (loading) {
@@ -293,7 +304,7 @@ export default function YearEndDashboardPage() {
         {/* Checklist progress */}
         <div
           className="bg-white rounded-xl border border-[#F1F5F9] p-4 cursor-pointer hover:shadow-sm transition-shadow"
-          onClick={() => router.push(`${base}/checklist`)}
+          onClick={() => router.push(`${base}/?tab=checklist`)}
         >
           <div className="flex items-center gap-2 mb-3">
             <CheckSquare2 size={15} className="text-[#64748B]" />
@@ -316,7 +327,7 @@ export default function YearEndDashboardPage() {
         {/* Adjustments */}
         <div
           className="bg-white rounded-xl border border-[#F1F5F9] p-4 cursor-pointer hover:shadow-sm transition-shadow"
-          onClick={() => router.push(`${base}/adjustments`)}
+          onClick={() => router.push(`${base}/?tab=adjustments`)}
         >
           <div className="flex items-center gap-2 mb-3">
             <SlidersHorizontal size={15} className="text-[#64748B]" />
@@ -331,7 +342,7 @@ export default function YearEndDashboardPage() {
         {/* Financial Statements */}
         <div
           className="bg-white rounded-xl border border-[#F1F5F9] p-4 cursor-pointer hover:shadow-sm transition-shadow"
-          onClick={() => router.push(`${base}/financial-statements`)}
+          onClick={() => router.push(`${base}/?tab=financial-statements`)}
         >
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 size={15} className="text-[#64748B]" />
@@ -358,19 +369,19 @@ export default function YearEndDashboardPage() {
         <p className="text-xs font-semibold text-[#334155] mb-3">Quick Actions</p>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => router.push(`${base}/checklist`)}
+            onClick={() => router.push(`${base}/?tab=checklist`)}
             className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#475569]"
           >
             <CheckSquare2 size={12} /> Go to Checklist <ArrowRight size={10} />
           </button>
           <button
-            onClick={() => router.push(`${base}/adjustments`)}
+            onClick={() => router.push(`${base}/?tab=adjustments`)}
             className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#475569]"
           >
             <SlidersHorizontal size={12} /> Pass Adjustment <ArrowRight size={10} />
           </button>
           <button
-            onClick={() => router.push(`${base}/financial-statements`)}
+            onClick={() => router.push(`${base}/?tab=financial-statements`)}
             className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
           >
             <TrendingUp size={12} /> Generate Statements <ArrowRight size={10} />

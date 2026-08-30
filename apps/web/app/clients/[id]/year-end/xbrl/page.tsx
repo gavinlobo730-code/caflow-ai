@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { Plus, Loader2, AlertTriangle, CheckCircle, XCircle, Code } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -45,8 +45,12 @@ interface XBRLPackage {
 }
 
 export default function XBRLPage() {
-  const params = useParams<{ id: string }>();
-  const clientId = params.id;
+  // NOT useParams(): under `output: export` plus Cloudflare's
+  // rewrite-to-_placeholder hosting, the App Router's params stay anchored to
+  // the build-time "_placeholder" segment, so useParams().id never resolves to
+  // a real client (see lib/workspace/ClientNavContext.tsx). useClientNav reads
+  // the id out of window.location, which is always the real browser URL.
+  const { clientId } = useClientNav();
 
   const [packages, setPackages] = useState<XBRLPackage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +64,11 @@ export default function XBRLPage() {
   const [validating, setValidating] = useState(false);
 
   const load = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
+    // Never query the static-export placeholder id — but do clear the
+    // skeleton. clientId is "" only in the build-time render, where no effect
+    // runs, so arriving here without one means nothing is coming; returning
+    // with `loading` still true left this page on its skeleton forever.
+    if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     // Plain filtered select (xbrl_packages, RLS-scoped to the firm) — no
     // server-side computation, so read directly instead of round-tripping

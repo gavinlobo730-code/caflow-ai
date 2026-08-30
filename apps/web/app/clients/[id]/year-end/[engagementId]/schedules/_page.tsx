@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "—";
@@ -62,8 +62,9 @@ async function fetchSchedule(engagementId: string, type: ScheduleType): Promise<
 }
 
 export default function SchedulesPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [tab, setTab] = useState<ScheduleType>("cash_bank");
   const [scheduleData, setScheduleData] = useState<Record<ScheduleType, ScheduleData | null>>({
