@@ -124,6 +124,9 @@ def _line(account_id, debit, credit, entry_date, client_id=CLIENT, firm_id=FIRM,
     }
 
 
+_RETAINED = {"account_id": "retained", "firm_id": FIRM,
+             "schedule_line": "reserves_and_surplus", "normal_balance": "credit"}
+
 _MAPPINGS = [
     {"account_id": "bank", "firm_id": FIRM, "schedule_line": "cash_and_bank", "normal_balance": "debit"},
     {"account_id": "capital", "firm_id": FIRM, "schedule_line": "share_capital", "normal_balance": "credit"},
@@ -330,3 +333,187 @@ def test_a_tax_write_back_keeps_its_sign():
     pl = stmts["profit_loss"]
     assert pl["tax_expense_paise"] == -5_000_00
     assert pl["profit_after_tax_paise"] == 100_000_00 + 5_000_00
+
+
+# ── Previous-year comparatives (Schedule III General Instructions para 5) ────
+#
+# "except in the case of the first Financial Statements laid before the
+# Company after incorporation, the corresponding amounts (comparatives) for
+# the immediately preceding reporting period for all items shown in the
+# Financial Statements including notes shall also be given."
+#
+# There was no prior-period field at any layer: the service returned one
+# {line: paise} dict per section, the PDF printed two columns, and the web
+# table headed them "Particulars | Amount". A one-column balance sheet is not
+# a Schedule III financial statement — it cannot be laid before members,
+# attached to AOC-4, or given to an auditor.
+#
+# These fixtures keep each year's revenue equal to its expense (so profit is
+# nil and the sheet balances trivially), following the convention
+# test_profit_and_loss_stays_fy_windowed already established: it keeps these
+# assertions clear of the PAT-to-reserves mechanics, which are a separate and
+# still-open problem for multi-year clients.
+
+
+def test_the_preceding_period_is_reported_beside_the_current_one():
+    lines = [
+        _line("bank", 60_000_00, 0, "2023-06-01"),
+        _line("capital", 0, 60_000_00, "2023-06-01"),
+        # FY 2023-24 — the preceding period
+        _line("revenue", 0, 40_000_00, "2023-09-01"),
+        _line("expense", 40_000_00, 0, "2023-09-01"),
+        # FY 2024-25 — the current period
+        _line("revenue", 0, 25_000_00, "2024-09-01"),
+        _line("expense", 25_000_00, 0, "2024-09-01"),
+    ]
+    stmts = generate_financial_statements(
+        StubSupabase(lines, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31",
+    )
+    comp = stmts["comparatives"]
+    assert comp is not None, "no comparative column was produced"
+    assert (comp["fy_start"], comp["fy_end"]) == ("2023-04-01", "2024-03-31")
+
+    # Each column shows its own year's revenue, not the other's.
+    assert comp["profit_loss"]["income"]["revenue_from_operations"] == 40_000_00
+    assert stmts["profit_loss"]["income"]["revenue_from_operations"] == 25_000_00
+    assert comp["profit_loss"]["expenses"]["other_expenses"] == 40_000_00
+    assert stmts["profit_loss"]["expenses"]["other_expenses"] == 25_000_00
+
+
+def test_the_comparative_balance_sheet_is_cumulative_to_its_own_period_end():
+    """A Balance Sheet carries forward; a P&L does not. The preceding period
+    obeys the same rule — cumulative to 31 March 2024, and excluding
+    everything posted after it."""
+    lines = [
+        _line("bank", 60_000_00, 0, "2023-06-01"),
+        _line("capital", 0, 60_000_00, "2023-06-01"),
+        # Current-year capital introduction — must NOT reach the comparative
+        _line("bank", 15_000_00, 0, "2024-06-01"),
+        _line("capital", 0, 15_000_00, "2024-06-01"),
+    ]
+    stmts = generate_financial_statements(
+        StubSupabase(lines, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31",
+    )
+    assert stmts["balance_sheet"]["assets"]["cash_and_bank"] == 75_000_00
+    comp_bs = stmts["comparatives"]["balance_sheet"]
+    assert comp_bs["assets"]["cash_and_bank"] == 60_000_00, (
+        "the comparative column includes postings made after the period it "
+        "reports on"
+    )
+    assert comp_bs["equity_and_liabilities"]["share_capital"] == 60_000_00
+
+
+def test_the_first_statements_after_incorporation_carry_no_comparatives():
+    """Para 5's own exception. A column of zeros would assert a preceding
+    period that existed and was nil — a different claim, and a false one."""
+    lines = [
+        _line("bank", 10_000_00, 0, "2024-06-01"),
+        _line("capital", 0, 10_000_00, "2024-06-01"),
+    ]
+    stmts = generate_financial_statements(
+        StubSupabase(lines, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31",
+    )
+    assert stmts["comparatives"] is None, (
+        "a first-year company was given a comparative column of zeros"
+    )
+
+
+def test_the_comparative_period_is_the_one_immediately_preceding():
+    """Not merely 'an earlier year'. A P&L posting two years back belongs to
+    neither column, though the balance sheet still carries its cash."""
+    lines = [
+        _line("bank", 99_000_00, 0, "2022-06-01"),
+        _line("capital", 0, 99_000_00, "2022-06-01"),
+        _line("revenue", 0, 77_000_00, "2022-09-01"),   # FY 2022-23 — neither column
+        _line("expense", 77_000_00, 0, "2022-09-01"),
+        _line("revenue", 0, 40_000_00, "2023-09-01"),   # FY 2023-24 — comparative
+        _line("expense", 40_000_00, 0, "2023-09-01"),
+        _line("revenue", 0, 25_000_00, "2024-09-01"),   # FY 2024-25 — current
+        _line("expense", 25_000_00, 0, "2024-09-01"),
+    ]
+    stmts = generate_financial_statements(
+        StubSupabase(lines, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31",
+    )
+    comp_pl = stmts["comparatives"]["profit_loss"]
+    assert comp_pl["income"]["revenue_from_operations"] == 40_000_00, (
+        "the comparative P&L is not windowed to the immediately preceding year"
+    )
+    assert comp_pl["income"]["revenue_from_operations"] != 77_000_00 + 40_000_00
+
+
+def test_the_comparative_tax_charge_is_also_read_not_invented():
+    """The comparative is struck by the same code, so the tax fix holds on
+    both years rather than only the one anybody looked at."""
+    lines = [
+        _line("bank", 60_000_00, 0, "2023-06-01"),
+        _line("capital", 0, 60_000_00, "2023-06-01"),
+        _line("revenue", 0, 40_000_00, "2023-09-01"),
+        _line("expense", 40_000_00, 0, "2023-09-01"),
+        _line("revenue", 0, 25_000_00, "2024-09-01"),
+        _line("expense", 25_000_00, 0, "2024-09-01"),
+    ]
+    stmts = generate_financial_statements(
+        StubSupabase(lines, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31",
+    )
+    comp_pl = stmts["comparatives"]["profit_loss"]
+    assert comp_pl["tax_expense_paise"] == 0
+    assert comp_pl["tax_expense_is_provided"] is False
+    assert comp_pl["profit_after_tax_paise"] == comp_pl["profit_before_tax_paise"]
+
+
+def test_the_comparative_reports_whether_it_balanced_rather_than_refusing():
+    """The CURRENT year's imbalance still refuses — that check is unchanged.
+    A PRECEDING year's is a fact about history the CA needs to see; refusing
+    to render the current year over it would withhold the statements they
+    came for."""
+    lines = [
+        _line("bank", 60_000_00, 0, "2023-06-01"),
+        _line("capital", 0, 60_000_00, "2023-06-01"),
+        _line("revenue", 0, 25_000_00, "2024-09-01"),
+        _line("expense", 25_000_00, 0, "2024-09-01"),
+    ]
+    stmts = generate_financial_statements(
+        StubSupabase(lines, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31",
+    )
+    assert stmts["comparatives"]["balance_sheet"]["is_balanced"] is True
+
+
+def test_one_ledger_read_serves_both_periods():
+    """The comparative must not cost a second pass over the ledger. CLAUDE.md:
+    no report may fetch rows proportional to transaction volume — and this
+    function used to make TWO fetches for one year, so adding a whole extra
+    year while going down to one is the point."""
+    lines = [
+        _line("bank", 10_000_00, 0, "2023-06-01"),
+        _line("capital", 0, 10_000_00, "2023-06-01"),
+    ]
+    stub = StubSupabase(lines, _MAPPINGS)
+    calls = {"journal_lines": 0}
+    original = stub.table
+
+    def counting_table(name):
+        if name == "journal_lines":
+            calls["journal_lines"] += 1
+        return original(name)
+
+    stub.table = counting_table
+    generate_financial_statements(stub, CLIENT, FIRM,
+                                  fy_start="2024-04-01", fy_end="2025-03-31")
+    assert calls["journal_lines"] == 1, (
+        f"the ledger was read {calls['journal_lines']} times for two periods"
+    )
+
+
+def test_the_prior_period_helper_shifts_both_ends_by_a_year():
+    from services.year_end_financial_service import _prior_period
+    assert _prior_period("2024-04-01", "2025-03-31") == ("2023-04-01", "2024-03-31")
+    # A non-standard first period still gets the period actually preceding it.
+    assert _prior_period("2024-07-15", "2025-03-31") == ("2023-07-15", "2024-03-31")
+    # 29 February has no counterpart in the preceding year.
+    assert _prior_period("2024-03-01", "2024-02-29") == ("2023-03-01", "2023-02-28")
