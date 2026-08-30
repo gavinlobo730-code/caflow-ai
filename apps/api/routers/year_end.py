@@ -250,6 +250,76 @@ def get_engagement(
     })
 
 
+class EngagementUdinIn(BaseModel):
+    """The UDIN the signing member obtained from ICAI's portal.
+
+    None clears a number recorded in error — a wrong UDIN on an issued
+    document is worse than none, so removing one must be possible.
+    """
+    udin: Optional[str] = None
+
+
+@router.patch("/engagements/{engagement_id}/udin")
+def record_engagement_udin(
+    engagement_id: str,
+    data: EngagementUdinIn,
+    current_user: dict = Depends(rbac("year_end", "write")),
+):
+    """Record the UDIN for this year-end set. RECORDED, NEVER GENERATED.
+
+    A UDIN is issued by ICAI's UDIN portal to the member in practice who signs
+    the document, against their own membership credentials. Nothing here may
+    produce one: a number minted by this software would be a fabricated
+    attestation reference on a document asserting that a CA signed it, which is
+    exactly what the number exists to prevent.
+
+    So this endpoint takes what the member obtained and checks only that its
+    SHAPE could be a UDIN. It cannot and does not confirm the number was issued,
+    is still live, or belongs to this document — only ICAI's portal can, and the
+    pack says so where it prints the number.
+    """
+    from domain.udin import describe_udin_format, is_valid_udin, normalise_udin
+
+    udin = normalise_udin(data.udin)
+    if udin is not None and not is_valid_udin(udin):
+        raise HTTPException(status_code=422, detail=describe_udin_format())
+
+    eng = _assert_engagement_scope(current_user, engagement_id)
+    # Deliberately NOT gated on _check_engagement_locked: the UDIN is obtained
+    # AFTER the statements are signed, which is after the year is locked. A
+    # lock that prevented recording it would make the field unreachable in the
+    # only state it is ever used in.
+    now = datetime.now(timezone.utc).isoformat()
+    recorded_at = now if udin else None
+    recorded_by = current_user.get("id") if udin else None
+    patch = {
+        "udin": udin,
+        "udin_recorded_at": recorded_at,
+        "udin_recorded_by": recorded_by,
+    }
+
+    if _USE_MOCK:
+        eng.update(patch)
+        eng["updated_at"] = now
+        return api_response(True, eng)
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    # The column names are written out rather than spread from `patch`, so
+    # tests/test_backend_columns_exist_pg can read them and check them against
+    # the real schema — the same reason the accounting-policies reads are
+    # spelled out. A spread dict is invisible to that checker, and these three
+    # columns are new in migration 290.
+    updated = (db.table("year_end_engagements")
+               .update({"udin": udin,
+                        "udin_recorded_at": recorded_at,
+                        "udin_recorded_by": recorded_by,
+                        "updated_at": now})
+               .eq("id", engagement_id).eq("firm_id", current_user["firm_id"])
+               .execute().data or [])
+    return api_response(True, updated[0] if updated else {**eng, **patch})
+
+
 @router.patch("/engagements/{engagement_id}/status")
 def update_engagement_status(
     engagement_id: str,
