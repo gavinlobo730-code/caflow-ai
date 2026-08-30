@@ -90,6 +90,13 @@ export interface FinancialStatementSnapshotData {
     total_equity_and_liabilities_paise: number;
     total_assets_paise: number;
     is_balanced: boolean;
+    // Schedule III's Reserves and Surplus note: opening balance, add profit
+    // for the period, closing balance. reserves_and_surplus above is the
+    // CLOSING figure; these say how it got there, so the equity number is
+    // checkable rather than one the CA has to take on trust.
+    surplus_brought_forward_paise?: number;
+    profit_for_the_year_paise?: number;
+    surplus_carried_forward_paise?: number;
   };
   profit_loss: {
     income: Record<string, number>;
@@ -110,6 +117,13 @@ export interface FinancialStatementSnapshotData {
     balance_sheet: FinancialStatementSnapshotData["balance_sheet"];
     profit_loss: FinancialStatementSnapshotData["profit_loss"];
   } | null;
+  // Dates in this period carrying an entry that closes Profit & Loss accounts
+  // into equity. Such an entry is dated at the year end, so it sits inside
+  // this year's P&L window and cancels the revenue and expenses it closes —
+  // the P&L then reads nil while the balance sheet stays correct. Empty for
+  // the majority of clients, who do not close their own books; non-empty means
+  // the P&L needs a CA's eye before it is relied on.
+  closing_entry_dates?: string[];
   trial_balance_hash: string;
   fy_start: string;
   fy_end: string;

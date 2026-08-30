@@ -156,15 +156,25 @@ def test_balance_sheet_carries_forward_prior_year_balance():
 def test_profit_and_loss_stays_fy_windowed():
     """P&L must NOT carry forward -- a prior year's revenue/expense must not
     leak into a later year's P&L (only the CURRENT year's movement counts).
-    Revenue == expense (PBT/PAT = 0) so the sheet balances trivially without
-    entangling this assertion with the PAT-to-reserves mechanics tested
-    elsewhere."""
+
+    Every posting below is a BALANCED double entry. It did not used to be: the
+    FY23-24 revenue line had no counter-leg, so ₹1,00,000 of income existed
+    with no asset to show for it, and the fixture balanced only because BOTH
+    sides were missing it. _create_journal asserts debits == credits before
+    insert, so no real ledger can be in that state — and once the surplus
+    carried into equity became cumulative (it is now every prior period's
+    profit, not just this year's), the phantom income showed up in equity with
+    no matching asset and the sheet correctly refused. The counter-legs make
+    this a ledger the kernel could actually have written."""
     lines = [
         _line("bank", 20_000_00, 0, "2020-01-01"),
         _line("capital", 0, 20_000_00, "2020-01-01"),
-        _line("revenue", 0, 100_000_00, "2023-06-01"),   # FY23-24 revenue — must be excluded
+        _line("bank", 100_000_00, 0, "2023-06-01"),      # FY23-24 revenue — must be excluded
+        _line("revenue", 0, 100_000_00, "2023-06-01"),
         _line("expense", 50_000_00, 0, "2024-06-01"),    # FY24-25 expense — must be included
-        _line("revenue", 0, 50_000_00, "2024-06-01"),    # FY24-25 revenue — must be included
+        _line("bank", 0, 50_000_00, "2024-06-01"),
+        _line("bank", 50_000_00, 0, "2024-06-01"),       # FY24-25 revenue — must be included
+        _line("revenue", 0, 50_000_00, "2024-06-01"),
     ]
     stub = StubSupabase(lines, _MAPPINGS)
 
@@ -517,3 +527,315 @@ def test_the_prior_period_helper_shifts_both_ends_by_a_year():
     assert _prior_period("2024-07-15", "2025-03-31") == ("2023-07-15", "2024-03-31")
     # 29 February has no counterpart in the preceding year.
     assert _prior_period("2024-03-01", "2024-02-29") == ("2023-03-01", "2023-02-28")
+
+
+# ── The surplus carried into equity is cumulative ─────────────────────────────
+# A multi-year client could not produce financial statements at all: every
+# balance-sheet line was struck cumulatively but equity received only the
+# CURRENT year's profit, so the sheet was out by the sum of every prior
+# period's PAT and generate_financial_statements raised. Downstream that was
+# HTTP 422 from the statements endpoint, the snapshot, the PDF and the audit
+# pack — and year_end_notes swallowed it, so the auto-generated notes silently
+# fell back to "requires CA review" with no figures.
+
+# Three financial years of ordinary trading, every posting a balanced double
+# entry so the ledger's own trial balance is nil by construction. Any imbalance
+# the statement reports is manufactured by the statement, not by the ledger.
+#   FY22-23: capital 1,00,000; revenue 30,000; expense 10,000  -> PAT 20,000
+#   FY23-24: revenue 50,000;   expense 20,000                  -> PAT 30,000
+#   FY24-25: revenue 40,000;   expense 15,000                  -> PAT 25,000
+_MULTI_YEAR = [
+    _line("bank",    100_000_00, 0,          "2022-05-01"),
+    _line("capital", 0,          100_000_00, "2022-05-01"),
+    _line("bank",    30_000_00,  0,          "2022-09-01"),
+    _line("revenue", 0,          30_000_00,  "2022-09-01"),
+    _line("expense", 10_000_00,  0,          "2022-11-01"),
+    _line("bank",    0,          10_000_00,  "2022-11-01"),
+    _line("bank",    50_000_00,  0,          "2023-09-01"),
+    _line("revenue", 0,          50_000_00,  "2023-09-01"),
+    _line("expense", 20_000_00,  0,          "2023-11-01"),
+    _line("bank",    0,          20_000_00,  "2023-11-01"),
+    _line("bank",    40_000_00,  0,          "2024-09-01"),
+    _line("revenue", 0,          40_000_00,  "2024-09-01"),
+    _line("expense", 15_000_00,  0,          "2024-11-01"),
+    _line("bank",    0,          15_000_00,  "2024-11-01"),
+]
+
+
+def test_a_second_year_of_trading_produces_statements_at_all():
+    """The headline defect. Year two used to raise, short by year one's PAT."""
+    stub = StubSupabase(_MULTI_YEAR, _MAPPINGS)
+    stmts = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2023-04-01", fy_end="2024-03-31")
+    assert stmts["balance_sheet"]["is_balanced"] is True
+
+
+def test_the_third_year_balances_too_over_two_prior_years():
+    """The shortfall accumulated over ALL prior years, not just the last one,
+    so a fix that carried only one year back would still fail here."""
+    stub = StubSupabase(_MULTI_YEAR, _MAPPINGS)
+    stmts = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2024-04-01", fy_end="2025-03-31")
+    bs = stmts["balance_sheet"]
+    assert bs["is_balanced"] is True
+    # Bank: 1,00,000 + 30,000 - 10,000 + 50,000 - 20,000 + 40,000 - 15,000
+    assert bs["assets"]["cash_and_bank"] == 175_000_00
+    # Capital 1,00,000 + accumulated profit 20,000 + 30,000 + 25,000
+    assert bs["equity_and_liabilities"]["share_capital"] == 100_000_00
+    assert bs["equity_and_liabilities"]["reserves_and_surplus"] == 75_000_00
+
+
+def test_the_profit_and_loss_still_shows_only_this_year():
+    """Equity went cumulative; the P&L must NOT follow it. Schedule III Part II
+    is a statement for the period, and a CA reading 40,000 of revenue for
+    FY24-25 must not be shown 1,20,000 because equity now accumulates."""
+    stub = StubSupabase(_MULTI_YEAR, _MAPPINGS)
+    pl = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2024-04-01", fy_end="2025-03-31")["profit_loss"]
+    assert pl["income"]["revenue_from_operations"] == 40_000_00
+    assert pl["expenses"]["other_expenses"] == 15_000_00
+    assert pl["profit_after_tax_paise"] == 25_000_00
+
+
+def test_the_reserves_movement_reconciles_to_the_closing_balance():
+    """Schedule III's Reserves and Surplus note is opening + profit = closing.
+    Publishing the closing figure without the movement asks the CA to take a
+    derived number on trust."""
+    stub = StubSupabase(_MULTI_YEAR, _MAPPINGS)
+    bs = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2024-04-01", fy_end="2025-03-31")["balance_sheet"]
+    assert bs["surplus_brought_forward_paise"] == 50_000_00   # 20,000 + 30,000
+    assert bs["profit_for_the_year_paise"] == 25_000_00
+    assert bs["surplus_carried_forward_paise"] == 75_000_00
+    assert (bs["surplus_brought_forward_paise"] + bs["profit_for_the_year_paise"]
+            == bs["surplus_carried_forward_paise"])
+
+
+def test_a_manually_posted_closing_entry_is_not_double_counted():
+    """The objection that kept this unfixed, answered.
+
+    A CA who closes their own books posts Dr Revenue / Cr Expense / Cr Retained
+    Earnings. That credit lands in posted equity, so deriving the accumulated
+    profit on top of it looks like it would count the same rupees twice.
+
+    It does not, and the cancellation is exact rather than approximate. The
+    closing entry debits income by I_c and credits expenses by E_c, which
+    reduces CUMULATIVE profit by exactly P = I_c - E_c — the same P it credits
+    to equity. Whatever the derivation gains, the posted balance loses.
+
+    Both ledgers below are the same trading history; one has been closed by
+    hand at 31-03-2023 and one has not. The balance sheet must be identical."""
+    mappings = _MAPPINGS + [{"account_id": "reserves", "firm_id": FIRM,
+                             "schedule_line": "reserves_and_surplus",
+                             "normal_balance": "credit"}]
+    closing = [
+        _line("revenue",  30_000_00, 0,         "2023-03-31"),
+        _line("expense",  0,         10_000_00, "2023-03-31"),
+        _line("reserves", 0,         20_000_00, "2023-03-31"),
+    ]
+    fy = dict(fy_start="2023-04-01", fy_end="2024-03-31")
+
+    bare = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, mappings), CLIENT, FIRM, **fy)["balance_sheet"]
+    closed = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR + closing, mappings), CLIENT, FIRM, **fy)["balance_sheet"]
+
+    assert bare["is_balanced"] is True
+    assert closed["is_balanced"] is True
+    assert closed["total_equity_and_liabilities_paise"] == bare["total_equity_and_liabilities_paise"]
+    assert closed["equity_and_liabilities"]["reserves_and_surplus"] == \
+           bare["equity_and_liabilities"]["reserves_and_surplus"]
+    assert closed["total_assets_paise"] == bare["total_assets_paise"]
+
+
+def test_the_comparative_year_carries_its_own_accumulated_surplus():
+    """The comparative column is struck by the same code, so it accumulates
+    too — a previous-year column that balanced only because its own history
+    was nil would be the same defect one column to the right."""
+    stub = StubSupabase(_MULTI_YEAR, _MAPPINGS)
+    comp = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2024-04-01", fy_end="2025-03-31")["comparatives"]
+    assert comp["fy_end"] == "2024-03-31"
+    assert comp["balance_sheet"]["is_balanced"] is True
+    # FY23-24 closing surplus: FY22-23's 20,000 brought forward + 30,000 earned
+    assert comp["balance_sheet"]["surplus_brought_forward_paise"] == 20_000_00
+    assert comp["balance_sheet"]["profit_for_the_year_paise"] == 30_000_00
+    assert comp["balance_sheet"]["equity_and_liabilities"]["reserves_and_surplus"] == 50_000_00
+
+
+def test_a_loss_making_history_reduces_equity():
+    """Sign. An accumulated LOSS must reduce reserves, not be floored at zero —
+    a debit balance on the Statement of Profit and Loss is shown as a negative
+    figure under Reserves and Surplus, per Schedule III."""
+    ledger = [
+        _line("bank",    100_000_00, 0,          "2022-05-01"),
+        _line("capital", 0,          100_000_00, "2022-05-01"),
+        _line("expense", 40_000_00,  0,          "2022-11-01"),   # FY22-23 loss
+        _line("bank",    0,          40_000_00,  "2022-11-01"),
+    ]
+    stub = StubSupabase(ledger, _MAPPINGS)
+    bs = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2023-04-01", fy_end="2024-03-31")["balance_sheet"]
+    assert bs["is_balanced"] is True
+    assert bs["assets"]["cash_and_bank"] == 60_000_00
+    assert bs["equity_and_liabilities"]["reserves_and_surplus"] == -40_000_00
+    assert bs["surplus_brought_forward_paise"] == -40_000_00
+    assert bs["profit_for_the_year_paise"] == 0
+
+
+def test_mock_mode_serves_a_balance_sheet_that_balances():
+    """Dev, demo and every test that runs without SUPABASE_URL take this path.
+    It used to add a mock PAT to reserves with no asset to match it and then
+    report is_balanced=False — and unlike the real path it never validates, so
+    nothing said so."""
+    import services.year_end_financial_service as yefs
+    s = yefs._mock_statements(CLIENT, FIRM, "2024-04-01", "2025-03-31")
+    bs = s["balance_sheet"]
+    assert bs["total_assets_paise"] == bs["total_equity_and_liabilities_paise"]
+    assert bs["is_balanced"] is True
+
+
+def test_mock_mode_returns_the_same_shape_as_the_real_path():
+    """A mock whose shape differs from production hides the bugs it exists to
+    surface. 'comparatives' was absent entirely; both readers reach for it
+    defensively, so nothing crashed and nothing noticed."""
+    import services.year_end_financial_service as yefs
+    mock = yefs._mock_statements(CLIENT, FIRM, "2024-04-01", "2025-03-31")
+    real = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+    assert set(mock) == set(real), (
+        f"mock-only keys {set(mock) - set(real)}, real-only keys {set(real) - set(mock)}"
+    )
+    assert set(mock["balance_sheet"]) == set(real["balance_sheet"])
+    # Schedule III para 5's first-statements exception: an explicit None, not
+    # a column of zeros, which would assert a period that existed and was nil.
+    assert mock["comparatives"] is None
+
+
+# ── A hand-posted close blanks its own year's P&L ─────────────────────────────
+# Pre-existing and silent. A closing entry is dated at the year end, so it sits
+# INSIDE that year's P&L window and cancels the revenue and expenses it closes.
+# The Balance Sheet stays correct — the entry is balanced — so nothing raises
+# and the CA is shown a nil Statement of Profit and Loss for a year that traded.
+
+_CLOSED_MAPPINGS = _MAPPINGS + [{"account_id": "reserves", "firm_id": FIRM,
+                                 "schedule_line": "reserves_and_surplus",
+                                 "normal_balance": "credit"}]
+_FY23 = [
+    _line("bank",    100_000_00, 0,          "2022-05-01"),
+    _line("capital", 0,          100_000_00, "2022-05-01"),
+    _line("bank",    30_000_00,  0,          "2022-09-01"),
+    _line("revenue", 0,          30_000_00,  "2022-09-01"),
+    _line("expense", 10_000_00,  0,          "2022-11-01"),
+    _line("bank",    0,          10_000_00,  "2022-11-01"),
+]
+_HAND_CLOSE = [
+    _line("revenue",  30_000_00, 0,         "2023-03-31"),
+    _line("expense",  0,         10_000_00, "2023-03-31"),
+    _line("reserves", 0,         20_000_00, "2023-03-31"),
+]
+
+
+def test_a_hand_posted_close_is_reported_on_the_period_it_falls_in():
+    """The figures are NOT silently altered — a heuristic that misfired would
+    delete a real transaction from the P&L and report a plausible number
+    instead of an obviously nil one. It is named instead, so the nil is
+    explained rather than merely wrong."""
+    s = generate_financial_statements(
+        StubSupabase(_FY23 + _HAND_CLOSE, _CLOSED_MAPPINGS), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")
+    assert s["closing_entry_dates"] == ["2023-03-31"]
+    # The symptom the flag exists to explain: the year traded, the P&L is nil.
+    assert s["profit_loss"]["income"]["revenue_from_operations"] == 0
+    # ...and the Balance Sheet is still right, which is why nothing raised.
+    assert s["balance_sheet"]["is_balanced"] is True
+    assert s["balance_sheet"]["equity_and_liabilities"]["reserves_and_surplus"] == 20_000_00
+
+
+def test_an_ordinary_ledger_reports_no_closing_entries():
+    """The flag must stay empty for the overwhelming majority of clients, who
+    do not close their own books. A false positive here would tell a CA their
+    P&L is suspect when it is fine."""
+    s = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+    assert s["closing_entry_dates"] == []
+
+
+def test_an_entry_touching_an_asset_is_never_taken_for_a_close():
+    """Every ordinary transaction has an asset or liability leg — a sale hits
+    revenue and a receivable, an expense hits bank. Requiring that the entry
+    touch ONLY profit-and-loss and equity accounts is what keeps those out."""
+    ledger = _FY23 + [
+        # Revenue settled straight to capital account AND bank — three legs,
+        # one of them an asset, so not a close however it is dated.
+        _line("bank",    5_000_00, 0,        "2023-03-31"),
+        _line("capital", 0,        1_000_00, "2023-03-31"),
+        _line("revenue", 0,        4_000_00, "2023-03-31"),
+    ]
+    s = generate_financial_statements(
+        StubSupabase(ledger, _CLOSED_MAPPINGS), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")
+    assert s["closing_entry_dates"] == []
+
+
+def test_a_reclassification_between_two_expense_accounts_is_not_a_close():
+    """Both legs are Profit & Loss accounts and neither is equity, so nothing
+    has been closed INTO anything — the year's profit is unchanged. Requiring
+    an equity leg is what separates a close from an ordinary reclassification,
+    which a CA may post any number of times while tidying a ledger."""
+    ledger = _FY23 + [
+        _line("expense", 2_000_00, 0,        "2023-02-01"),
+        _line("revenue", 0,        2_000_00, "2023-02-01"),   # both P&L, no equity
+    ]
+    s = generate_financial_statements(
+        StubSupabase(ledger, _CLOSED_MAPPINGS), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")
+    assert s["closing_entry_dates"] == []
+
+
+def test_partners_remuneration_is_not_taken_for_a_close():
+    """Shape alone is not enough, and this is the case that proves it.
+
+    "Dr Partners' Remuneration / Cr Partner's Current Account" puts a Profit &
+    Loss leg against an equity leg and nothing else — exactly a close's shape —
+    and a partnership or LLP posts one every year. Partnerships and LLPs are a
+    large share of an Indian practice's clients, so flagging these would tell
+    most CAs their P&L is suspect when it is fine.
+
+    What separates them is EFFECT, not shape: a close brings the accounts it
+    closes to nil. Remuneration leaves the expense account carrying its
+    balance."""
+    mappings = _MAPPINGS + [
+        {"account_id": "remuneration", "firm_id": FIRM,
+         "schedule_line": "employee_benefit_expense", "normal_balance": "debit"},
+        {"account_id": "partner_current", "firm_id": FIRM,
+         "schedule_line": "reserves_and_surplus", "normal_balance": "credit"},
+    ]
+    ledger = _FY23 + [
+        _line("remuneration",    12_000_00, 0,         "2023-03-31"),
+        _line("partner_current", 0,         12_000_00, "2023-03-31"),
+    ]
+    s = generate_financial_statements(
+        StubSupabase(ledger, mappings), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")
+    assert s["closing_entry_dates"] == []
+    # The remuneration is a real charge and must still reach the P&L.
+    assert s["profit_loss"]["expenses"]["employee_benefit_expense"] == 12_000_00
+
+
+def test_the_movement_ties_to_the_reserves_actually_shown_after_a_close():
+    """For a firm that closed its own books, cumulative profit is nil — the
+    close moved it into a posted equity account — while reserves carries the
+    whole surplus. Striking the note from cumulative profit printed
+    "0 + 0 = 0" beside a reserves line of 20,000. A note that does not tie to
+    the face of the balance sheet is worse than no note."""
+    bs = generate_financial_statements(
+        StubSupabase(_FY23 + _HAND_CLOSE, _CLOSED_MAPPINGS), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")["balance_sheet"]
+    shown = bs["equity_and_liabilities"]["reserves_and_surplus"]
+    assert shown == 20_000_00
+    assert bs["surplus_carried_forward_paise"] == shown
+    assert (bs["surplus_brought_forward_paise"] + bs["profit_for_the_year_paise"]
+            == bs["surplus_carried_forward_paise"])
