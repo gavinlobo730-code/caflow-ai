@@ -307,20 +307,87 @@ def _accounting_policies_text(data: dict) -> str:
 def _compute_gl_schedule_balances(
     db, firm_id: str, client_id: str, fy_start: Optional[str], fy_end: Optional[str],
 ) -> Optional[dict]:
-    """Share Capital / Borrowings balances straight from the General Ledger,
+    """Balance Sheet schedule-line balances straight from the General Ledger,
     via the SAME account_group_mappings-driven engine the Balance Sheet
     itself uses (services.year_end_financial_service) — single source of
     truth, never a fabricated placeholder. Returns None if unavailable (e.g.
     the books don't balance yet), so callers fall back to an honest
-    CA-review note rather than a wrong number."""
+    CA-review note rather than a wrong number.
+
+    BOTH sides are returned, flattened into one dict. The schedule-line
+    vocabularies do not overlap (BS_EQUITY_LIABILITY_LINES and BS_ASSET_LINES
+    are disjoint), so a flat mapping is unambiguous and every existing
+    `.get("share_capital")` caller is unaffected. Assets are needed because a
+    note has to be checked against the face of the Balance Sheet, and the
+    Fixed Assets note is struck from the asset REGISTER — a different source
+    from the ledger, which is exactly why the two can disagree."""
     if db is None or not fy_start or not fy_end:
         return None
     from services.year_end_financial_service import generate_financial_statements
     try:
         result = generate_financial_statements(db, client_id, firm_id, fy_start, fy_end)
-    except Exception:
+    except Exception as exc:
+        capture_soft_failure(exc, operation="year_end_notes.gl_schedule_balances",
+                             firm_id=firm_id, client_id=client_id)
         return None
-    return result.get("balance_sheet", {}).get("equity_and_liabilities", {})
+    bs = result.get("balance_sheet", {})
+    return {**(bs.get("equity_and_liabilities") or {}), **(bs.get("assets") or {})}
+
+
+def _tie_to_balance_sheet(note_total_paise, gl: Optional[dict], *schedule_lines: str) -> dict:
+    """Check a note's total against the face of the Balance Sheet.
+
+    A sub-schedule that does not agree with the figure it supports is worse
+    than no sub-schedule: it is a second, contradictory number over the same
+    signature, and whichever one the reader believes, the other is in the same
+    document saying otherwise.
+
+    It matters most for Fixed Assets, which is the only auto note struck from a
+    source INDEPENDENT of the ledger — the asset register — so the two can
+    genuinely drift. Share Capital and Borrowings are read from the general
+    ledger through the same engine the Balance Sheet uses, so they tie by
+    construction; checking them anyway is cheap and stops a later refactor
+    quietly breaking that.
+
+    Reported, never reconciled. Nothing here knows WHICH side is right: an
+    asset bought and entered in the register but never posted, and one posted
+    but never registered, produce the same difference with opposite fixes.
+    Silently adopting either number would hide the discrepancy that is the
+    whole point of checking.
+    """
+    if gl is None or note_total_paise is None:
+        return {
+            "checked": False,
+            "reason": "General Ledger balance unavailable — the note could not be "
+                      "checked against the Balance Sheet.",
+        }
+    bs_total = sum(int(gl.get(line, 0) or 0) for line in schedule_lines)
+    difference = int(note_total_paise) - bs_total
+    return {
+        "checked": True,
+        "schedule_lines": list(schedule_lines),
+        "note_total_paise": int(note_total_paise),
+        "balance_sheet_paise": bs_total,
+        "difference_paise": difference,
+        "ties": difference == 0,
+    }
+
+
+def _tie_out_sentence(tie: dict, what: str) -> str:
+    """One plain sentence a CA can act on. Never softened — a note that does
+    not tie is a finding, not a formatting detail."""
+    if not tie.get("checked"):
+        return f" {tie.get('reason', '')}".rstrip()
+    if tie["ties"]:
+        return f" This note agrees with {what} on the Balance Sheet."
+    diff = tie["difference_paise"]
+    direction = "more than" if diff > 0 else "less than"
+    return (
+        f" THIS NOTE DOES NOT AGREE WITH THE BALANCE SHEET: it shows "
+        f"{abs(diff)} paise {direction} {what} "
+        f"({tie['note_total_paise']} against {tie['balance_sheet_paise']}). "
+        f"The difference must be resolved before these statements are issued."
+    )
 
 
 # ── Note content generators ───────────────────────────────────────────────────
@@ -334,6 +401,25 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
     gl = computed.get("gl_balances")
 
     policies = computed.get("accounting_policies") or {}
+
+    # Each auto note that carries a figure is checked against the face of the
+    # Balance Sheet. Fixed Assets is the one that can genuinely disagree — it
+    # is struck from the asset REGISTER, an independent source from the ledger.
+    # Its carrying amount supports three Schedule III lines together, because a
+    # register does not distinguish tangible from intangible from capital
+    # work-in-progress; splitting it would compare the wrong things.
+    _fa = computed.get("fixed_assets") or {}
+    _fa_tie = _tie_to_balance_sheet(
+        _fa.get("net_block_paise"), gl,
+        "tangible_assets", "intangible_assets", "capital_wip")
+    _sc_tie = _tie_to_balance_sheet(
+        (gl or {}).get("share_capital") if gl is not None else None, gl,
+        "share_capital")
+    _lt = (gl or {}).get("long_term_borrowings", 0) if gl is not None else None
+    _st = (gl or {}).get("short_term_borrowings", 0) if gl is not None else None
+    _loan_tie = _tie_to_balance_sheet(
+        None if _lt is None else _lt + _st, gl,
+        "long_term_borrowings", "short_term_borrowings")
 
     _note_templates: dict[str, dict] = {
         "accounting_policies": {
@@ -355,8 +441,9 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
                 f"The depreciation basis is disclosed in the Significant Accounting "
                 f"Policies note. Useful lives follow Companies Act 2013, Schedule II. "
                 f"Financial year: {fy}."
+                + _tie_out_sentence(_fa_tie, "the carrying amount of fixed assets")
             ),
-            "note_data": computed["fixed_assets"],
+            "note_data": {**computed["fixed_assets"], "ties_to_balance_sheet": _fa_tie},
         },
         "share_capital": {
             "title":   "Share Capital",
@@ -364,6 +451,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
                 f"Details of authorised, issued, subscribed and paid-up share capital "
                 f"as at 31st March of FY {fy}. "
                 f"[Reference: Companies Act 2013, §64]"
+                + _tie_out_sentence(_sc_tie, "Share Capital")
             ),
             "note_data": {
                 "authorised_paise":  None,   # Memorandum/Articles fact — not a GL balance
@@ -372,6 +460,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
                 "paid_up_paise":     (gl or {}).get("share_capital", 0) if gl is not None else None,
                 "note_type":         "share_capital",
                 "is_auto_generated": True,
+                "ties_to_balance_sheet": _sc_tie,
                 "requires_ca_review": True,
                 "review_note": (
                     "Paid-up capital is computed from the General Ledger (share_capital "
@@ -387,6 +476,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
             "content": (
                 f"Secured and unsecured loans as at 31st March of FY {fy}. "
                 f"Secured loans are against hypothecation of assets."
+                + _tie_out_sentence(_loan_tie, "total borrowings")
             ),
             "note_data": {
                 "long_term_total_paise":  (gl or {}).get("long_term_borrowings", 0) if gl is not None else None,
@@ -397,6 +487,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
                 "short_term_unsecured_paise": None,
                 "note_type": "loans",
                 "is_auto_generated": True,
+                "ties_to_balance_sheet": _loan_tie,
                 "requires_ca_review": True,
                 "review_note": (
                     "Totals are computed from the General Ledger (long_term_borrowings / "
