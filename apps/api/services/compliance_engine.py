@@ -211,8 +211,21 @@ def correction_window_closes(
     return statutory
 
 
-# IT Act, Section 139 — ITR due date (non-audit: 31 July; audit: 31 Oct)
-def itr_due_date(financial_year_end: int, is_audit: bool = False) -> date:
+# IT Act, Section 139(1) — ITR due date.
+#   31 July    — the ordinary case, no audit
+#   31 October — where accounts must be audited under the Act or any other law
+#   30 November — where a report under §92E (transfer pricing) is required
+#
+# The third case was missing, and it is not a rarity that can be left to a CA's
+# memory: it governs any assessee with an international or specified domestic
+# transaction. It matters beyond the return itself, because §115BAC(6) hangs
+# Form 10-IEA's deadline on this same date — a taxpayer told 31 October when
+# the Act allows 30 November is pushed to file a month early or, worse, told
+# they are late when they are not.
+def itr_due_date(financial_year_end: int, is_audit: bool = False,
+                 has_transfer_pricing_report: bool = False) -> date:
+    if has_transfer_pricing_report:
+        return date(financial_year_end, 11, 30)
     if is_audit:
         return date(financial_year_end, 10, 31)
     return date(financial_year_end, 7, 31)
