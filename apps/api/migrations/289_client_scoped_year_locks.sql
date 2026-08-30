@@ -95,3 +95,12 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.is_client_fy_locked(uuid, uuid, date)
   TO authenticated, service_role;
+
+-- The API runs as `authenticated` under USE_USER_JWT, and the posting kernel
+-- reads this table on every GL write. A table the backend reads that
+-- `authenticated` cannot is a 403 from PostgREST and a 500 from the endpoint —
+-- the exact outage migration 287 exists to prevent, and
+-- test_itc_reversal_register_grants_pg.py enforces it. RLS above still scopes
+-- every row to the caller's firm; the grant only makes the table reachable.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.client_year_locks TO authenticated;
+GRANT ALL                            ON public.client_year_locks TO service_role;
