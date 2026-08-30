@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { Upload, RefreshCw, Loader2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -48,8 +48,13 @@ interface Reconciliation {
 }
 
 export default function Form26ASPage() {
-  const params = useParams<{ id: string }>();
-  const clientId = params.id;
+  // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
+  // serves the pre-rendered "_placeholder" HTML for every real client URL, so
+  // useParams().id was the literal string "_placeholder" — the load below bailed
+  // on its own guard and the page rendered permanently empty (no upload history,
+  // no reconciliation), while Upload & Parse posted "_placeholder" as client_id.
+  // useClientNav reads the real UUID out of window.location.
+  const { clientId } = useClientNav();
 
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [uploads, setUploads] = useState<Upload26AS[]>([]);

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } from "lucide-react";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
@@ -56,8 +56,13 @@ interface Filing {
 }
 
 export default function ITRFilingPage() {
-  const params = useParams<{ id: string }>();
-  const clientId = params.id;
+  // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
+  // serves the pre-rendered "_placeholder" HTML for every real client URL, so
+  // useParams().id was the literal string "_placeholder" — the load below bailed
+  // on its own guard and the page sat on its skeleton forever. useClientNav reads
+  // the real UUID out of window.location; it is also the client_id the filing
+  // demo posts, so a placeholder made every preview refuse.
+  const { clientId } = useClientNav();
 
   const [filings, setFilings] = useState<Filing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +95,9 @@ export default function ITRFilingPage() {
   const [savingAck, setSavingAck] = useState(false);
 
   const load = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
+    // Clearing loading matters: this returns while the id is still unresolved,
+    // and leaving loading true stranded the skeleton with nothing to resolve it.
+    if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     // Plain read — routed directly to Supabase (RLS: firm_isolation) instead
     // of through the FastAPI backend, which cold-starts. Mirrors the exact

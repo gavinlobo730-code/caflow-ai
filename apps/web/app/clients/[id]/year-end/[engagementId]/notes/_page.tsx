@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { yearEndApi, type NoteToAccount } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -22,8 +22,9 @@ function noteNumber(note: NoteToAccount): number {
 }
 
 export default function NotesPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [notes, setNotes] = useState<NoteToAccount[]>([]);
   const [loading, setLoading] = useState(true);

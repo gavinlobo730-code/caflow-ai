@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { FileText, BarChart3, Package, Download, Loader2, AlertTriangle } from "lucide-react";
 import { yearEndApi, type ExportRecord, type EngagementStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -52,8 +52,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function ExportsPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [exports, setExports] = useState<ExportRecord[]>([]);
   const [loading, setLoading] = useState(true);

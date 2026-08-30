@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { RefreshCw, Camera, ChevronDown, ChevronRight } from "lucide-react";
 import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData } from "@/lib/api/yearEnd";
 import { StatementSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 /** Format paise → ₹ Indian number format (Companies Act §128: accounts in INR) */
 function fmt(paise: number): string {
@@ -128,8 +128,9 @@ function mapProfitLossLines(pl: FinancialStatementSnapshotData["profit_loss"] | 
 }
 
 export default function FinancialStatementsPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [tab, setTab] = useState<FinTab>("balance_sheet");
   const [liveData, setLiveData] = useState<FinancialStatementSnapshotData | null>(null);

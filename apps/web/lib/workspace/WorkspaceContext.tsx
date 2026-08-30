@@ -70,6 +70,11 @@ function sanitizeLastRoute(raw: unknown): Record<WorkspaceId, string> {
   for (const [key, route] of Object.entries(raw as Record<string, unknown>)) {
     if (!KNOWN_WORKSPACE_IDS.has(key as WorkspaceId)) continue;
     if (typeof route !== "string" || !route.startsWith("/")) continue;
+    // A "_placeholder" segment is the static export's build-time stand-in, not
+    // a real record. matchesKnownRoute() accepts it (":client_id" matches any
+    // segment), so it has to be rejected by name or a value written by the
+    // pre-fix build keeps navigating returning users to a dead URL forever.
+    if (route.split("/").includes("_placeholder")) continue;
     if (getActiveWorkspaceForPathname(route) !== key) continue;
     if (!matchesKnownRoute(route, KNOWN_ROUTE_SHAPES)) continue;
     out[key as WorkspaceId] = route;
@@ -132,9 +137,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // lastRoute; previously this fell through to "home", so visiting e.g.
   // /copilot before it was mapped would silently overwrite Home's
   // remembered route.
+  // usePathname() is the FlightRouterState path, which under `output: export`
+  // + Cloudflare's rewrite hosting is anchored to the "_placeholder" build
+  // param for every dynamic segment (see AppShell.tsx and ClientNavContext.tsx
+  // for the same hazard). Storing it verbatim persisted "/health/_placeholder"
+  // into localStorage, where it survived sanitizeLastRoute — ":client_id"
+  // matches "_placeholder" as happily as a UUID — so the rail's Health and
+  // Relationships icons pushed a dead URL, in this session and every later
+  // one. Use pathname only as the re-run trigger; store the real browser path.
   useEffect(() => {
-    const ws = getActiveWorkspaceForPathname(pathname);
-    if (ws) dispatch({ type: "UPDATE_LAST_ROUTE", workspaceId: ws, route: pathname });
+    const realPath =
+      typeof window === "undefined" ? pathname : window.location.pathname;
+    const ws = getActiveWorkspaceForPathname(realPath);
+    if (ws) dispatch({ type: "UPDATE_LAST_ROUTE", workspaceId: ws, route: realPath });
   }, [pathname]);
 
   // The rail highlight is derived fresh from the pathname on every render —

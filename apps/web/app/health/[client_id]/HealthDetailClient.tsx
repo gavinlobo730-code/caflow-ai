@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -323,9 +323,25 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+function getClientIdFromLocation(): string {
+  if (typeof window === "undefined") return "";
+  const m = window.location.pathname.match(/^\/health\/([^/]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
 export default function ClientHealthDetailPage() {
-  const params = useParams();
-  const clientId = params.client_id as string;
+  // NOT useParams(): apps/web is a static export and Cloudflare's 200-rewrite
+  // serves the pre-rendered "_placeholder" HTML for every real /health/{id}
+  // URL (see scripts/generate-redirects.js), so useParams().client_id is the
+  // literal string "_placeholder" — every select below then filtered a uuid
+  // column on it and the page showed "Failed to load" instead of the client.
+  // window.location.pathname is always the real browser URL; usePathname() is
+  // only a re-run trigger, since its own value is the placeholder segment.
+  // This route is outside /clients/[id]/**, so there is no ClientNavProvider
+  // to borrow — same fix as lib/workspace/ClientNavContext.tsx, done locally.
+  const pathname = usePathname();
+  const [clientId, setClientId] = useState<string>(getClientIdFromLocation);
+  useEffect(() => { setClientId(getClientIdFromLocation()); }, [pathname]);
 
   const [health, setHealth] = useState<ClientHealthDetail | null>(null);
   const [history, setHistory] = useState<HealthHistoryRecord[]>([]);
@@ -425,7 +441,12 @@ export default function ClientHealthDetailPage() {
   }, [clientId]);
 
   useEffect(() => {
-    if (clientId) loadAll();
+    // "" until the effect above resolves the id, "_placeholder" only if the
+    // build-time shell URL is opened directly. Neither can load anything, so
+    // clear the skeleton and fall through to the "Client not found" panel
+    // below rather than leaving a skeleton up forever.
+    if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
+    loadAll();
   }, [clientId, loadAll]);
 
   async function handleAddOverride() {

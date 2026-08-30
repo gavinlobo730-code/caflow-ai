@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
 import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";
 import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } from "@/lib/api/yearEnd";
 import { Skeleton, FormSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { useEngagementId } from "../_engagementId";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -36,8 +36,9 @@ interface ReviewData {
 }
 
 export default function ReviewPage() {
-  const params = useParams<{ id: string; engagementId: string }>();
-  const { engagementId } = params;
+  // window.location, not useParams(): on the deployed static export every
+  // dynamic segment is "_placeholder" (see ../_engagementId.ts).
+  const engagementId = useEngagementId();
 
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
   const [loading, setLoading] = useState(true);
