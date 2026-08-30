@@ -189,12 +189,68 @@ def _cover_page(elements, st, eng: dict, doc_title: str, is_draft: bool):
 
 # ── Balance Sheet section ─────────────────────────────────────────────────────
 
-def _bs_section(elements, st, bs_data: dict, comp: dict | None = None):
+def _presentation(statements: dict):
+    """How the statements are to be presented, and in what unit.
+
+    Schedule III, Division I, General Instructions para 4 requires the figures
+    to be rounded — "shall be rounded off" since the 24 March 2021 amendment —
+    to a unit chosen from a set the statute fixes by total income. This PDF
+    used to print to the rupee and caption it "All figures in Indian Rupees",
+    which is not one of the permitted presentations.
+
+    The rounded figures are struck ONCE, in the statements service, so the PDF
+    and the web page cannot disagree about a number the CA has signed. This
+    only chooses between them and names the unit.
+
+    A snapshot taken before rounding existed has no "rounding" block. Those
+    fall back to the old rupee presentation rather than failing to render:
+    refusing to open a statement a CA already has is the worse outcome, and
+    re-generating it picks up the new presentation.
+    """
+    comparatives = statements.get("comparatives") or {}
+    rounding = statements.get("rounding")
+
+    if not rounding:
+        def _bs(d):
+            if not d:
+                return None
+            return {"equity_and_liabilities": d.get("equity_and_liabilities", {}),
+                    "assets": d.get("assets", {}),
+                    "total_equity_and_liabilities": d.get("total_equity_and_liabilities_paise", 0),
+                    "total_assets": d.get("total_assets_paise", 0)}
+
+        def _pl(d):
+            if not d:
+                return None
+            return {"income": d.get("income", {}), "expenses": d.get("expenses", {}),
+                    "total_income": d.get("total_income_paise", 0),
+                    "total_expense": d.get("total_expense_paise", 0),
+                    "profit_before_tax": d.get("profit_before_tax_paise", 0),
+                    "tax_expense": d.get("tax_expense_paise", 0),
+                    "profit_after_tax": d.get("profit_after_tax_paise", 0)}
+
+        return (_bs(statements.get("balance_sheet")), _bs(comparatives.get("balance_sheet")),
+                _pl(statements.get("profit_loss")), _pl(comparatives.get("profit_loss")),
+                _rs, "All figures in Indian Rupees (₹).")
+
+    comp = rounding.get("comparative")
+    return (rounding["current"]["balance_sheet"],
+            comp["balance_sheet"] if comp else None,
+            rounding["current"]["profit_loss"],
+            comp["profit_loss"] if comp else None,
+            _format_indian,
+            f"All figures {rounding['label']}, rounded under Schedule III "
+            f"General Instructions para 4.")
+
+
+def _bs_section(elements, st, bs_data: dict, comp: dict | None = None,
+                fmt=None, caption: str | None = None):
+    fmt = fmt or _rs
     elements.append(Paragraph("BALANCE SHEET", st["section"]))
     elements.append(
         Paragraph(
             "As per Schedule III, Companies Act 2013. "
-            "All figures in Indian Rupees (₹). Amounts in paise are converted to rupees for display.",
+            + (caption or "All figures in Indian Rupees (₹)."),
             st["note"],
         )
     )
@@ -239,33 +295,32 @@ def _bs_section(elements, st, bs_data: dict, comp: dict | None = None):
     # incorporation, which para 5 excepts.
     comp_eq = (comp or {}).get("equity_and_liabilities", {})
     comp_assets = (comp or {}).get("assets", {})
-    prev_hdr = "Previous year ₹"
+    prev_hdr = "Previous year"
 
     # Equity & Liabilities table
-    eq_rows = [["Equity & Liabilities", "₹"] + ([prev_hdr] if comp else [])]
+    eq_rows = [["Equity & Liabilities", "Amount"] + ([prev_hdr] if comp else [])]
     for k, label in _EQUITY_LABELS.items():
-        row = [label, _rs(eq_lib.get(k, 0))]
+        row = [label, fmt(eq_lib.get(k, 0))]
         if comp:
-            row.append(_rs(comp_eq.get(k, 0)))
+            row.append(fmt(comp_eq.get(k, 0)))
         eq_rows.append(row)
-    total_el = bs_data.get("total_equity_and_liabilities_paise", sum(eq_lib.values()))
-    total_row = ["TOTAL EQUITY AND LIABILITIES", _rs(total_el)]
+    total_el = bs_data.get("total_equity_and_liabilities", sum(eq_lib.values()))
+    total_row = ["TOTAL EQUITY AND LIABILITIES", fmt(total_el)]
     if comp:
-        total_row.append(_rs(comp.get("total_equity_and_liabilities_paise",
-                                      sum(comp_eq.values()))))
+        total_row.append(fmt(comp.get("total_equity_and_liabilities", sum(comp_eq.values()))))
     eq_rows.append(total_row)
 
     # Assets table
-    asset_rows = [["Assets", "₹"] + ([prev_hdr] if comp else [])]
+    asset_rows = [["Assets", "Amount"] + ([prev_hdr] if comp else [])]
     for k, label in _ASSET_LABELS.items():
-        row = [label, _rs(assets.get(k, 0))]
+        row = [label, fmt(assets.get(k, 0))]
         if comp:
-            row.append(_rs(comp_assets.get(k, 0)))
+            row.append(fmt(comp_assets.get(k, 0)))
         asset_rows.append(row)
-    total_a = bs_data.get("total_assets_paise", sum(assets.values()))
-    total_arow = ["TOTAL ASSETS", _rs(total_a)]
+    total_a = bs_data.get("total_assets", sum(assets.values()))
+    total_arow = ["TOTAL ASSETS", fmt(total_a)]
     if comp:
-        total_arow.append(_rs(comp.get("total_assets_paise", sum(comp_assets.values()))))
+        total_arow.append(fmt(comp.get("total_assets", sum(comp_assets.values()))))
     asset_rows.append(total_arow)
 
     avail = PAGE_W - 60 * mm
@@ -281,12 +336,14 @@ def _bs_section(elements, st, bs_data: dict, comp: dict | None = None):
 
 # ── P&L section ───────────────────────────────────────────────────────────────
 
-def _pl_section(elements, st, pl_data: dict, comp: dict | None = None):
+def _pl_section(elements, st, pl_data: dict, comp: dict | None = None,
+                fmt=None, caption: str | None = None):
+    fmt = fmt or _rs
     elements.append(Paragraph("STATEMENT OF PROFIT AND LOSS", st["section"]))
     elements.append(
         Paragraph(
             "As per Schedule III, Companies Act 2013. "
-            "All figures in Indian Rupees (₹).",
+            + (caption or "All figures in Indian Rupees (₹)."),
             st["note"],
         )
     )
@@ -317,33 +374,33 @@ def _pl_section(elements, st, pl_data: dict, comp: dict | None = None):
 
     def _p(v):
         """A cell in the previous-year column, or nothing when there is none."""
-        return [_rs(v)] if comp else []
+        return [fmt(v)] if comp else []
 
-    rows = [["Particulars", "₹"] + (["Previous year ₹"] if comp else [])]
+    rows = [["Particulars", "Amount"] + (["Previous year"] if comp else [])]
     rows.append(["I. INCOME", ""] + ([""] if comp else []))
     for k, label in _INCOME_LABELS.items():
-        rows.append([f"   {label}", _rs(income.get(k, 0))] + _p(c_income.get(k, 0)))
-    total_income = pl_data.get("total_income_paise", sum(income.values()))
-    rows.append(["   Total Income", _rs(total_income)]
-                + _p((comp or {}).get("total_income_paise", 0)))
+        rows.append([f"   {label}", fmt(income.get(k, 0))] + _p(c_income.get(k, 0)))
+    total_income = pl_data.get("total_income", sum(income.values()))
+    rows.append(["   Total Income", fmt(total_income)]
+                + _p((comp or {}).get("total_income", 0)))
 
     rows.append(["II. EXPENSES", ""] + ([""] if comp else []))
     for k, label in _EXPENSE_LABELS.items():
-        rows.append([f"   {label}", _rs(expense.get(k, 0))] + _p(c_expense.get(k, 0)))
-    total_expense = pl_data.get("total_expense_paise", sum(expense.values()))
-    rows.append(["   Total Expenses", _rs(total_expense)]
-                + _p((comp or {}).get("total_expense_paise", 0)))
+        rows.append([f"   {label}", fmt(expense.get(k, 0))] + _p(c_expense.get(k, 0)))
+    total_expense = pl_data.get("total_expense", sum(expense.values()))
+    rows.append(["   Total Expenses", fmt(total_expense)]
+                + _p((comp or {}).get("total_expense", 0)))
 
-    pbt = pl_data.get("profit_before_tax_paise", total_income - total_expense)
-    tax = pl_data.get("tax_expense_paise", 0)
-    pat = pl_data.get("profit_after_tax_paise", pbt - tax)
+    pbt = pl_data.get("profit_before_tax", total_income - total_expense)
+    tax = pl_data.get("tax_expense", 0)
+    pat = pl_data.get("profit_after_tax", pbt - tax)
 
-    rows.append(["III. Profit Before Tax (I - II)",  _rs(pbt)]
-                + _p((comp or {}).get("profit_before_tax_paise", 0)))
-    rows.append(["IV.  Tax Expense",                  _rs(tax)]
-                + _p((comp or {}).get("tax_expense_paise", 0)))
-    rows.append(["V.   Profit After Tax (III - IV)",  _rs(pat)]
-                + _p((comp or {}).get("profit_after_tax_paise", 0)))
+    rows.append(["III. Profit Before Tax (I - II)",  fmt(pbt)]
+                + _p((comp or {}).get("profit_before_tax", 0)))
+    rows.append(["IV.  Tax Expense",                  fmt(tax)]
+                + _p((comp or {}).get("tax_expense", 0)))
+    rows.append(["V.   Profit After Tax (III - IV)",  fmt(pat)]
+                + _p((comp or {}).get("profit_after_tax", 0)))
 
     avail = PAGE_W - 60 * mm
     col_w = ([avail * 0.52, avail * 0.24, avail * 0.24] if comp
@@ -373,11 +430,10 @@ def generate_financial_statements_pdf(engagement_data: dict, statements_data: di
     _cover_page(elements, st, engagement_data, "Financial Statements", is_draft)
     elements.append(PageBreak())
 
-    _bs_section(elements, st, statements_data.get("balance_sheet", {}),
-                (statements_data.get("comparatives") or {}).get("balance_sheet"))
+    bs, comp_bs, pl, comp_pl, fmt, caption = _presentation(statements_data)
+    _bs_section(elements, st, bs, comp_bs, fmt, caption)
     elements.append(PageBreak())
-    _pl_section(elements, st, statements_data.get("profit_loss", {}),
-                (statements_data.get("comparatives") or {}).get("profit_loss"))
+    _pl_section(elements, st, pl, comp_pl, fmt, caption)
 
     doc.build(elements)
     return buf.getvalue()
@@ -465,15 +521,20 @@ def generate_complete_pack_pdf(
     elements.append(PageBreak())
 
     # ── Balance Sheet ────────────────────────────────────────────────────────
+    # One presentation for the whole pack: para 4's proviso requires the unit
+    # to be used uniformly, and a pack whose Balance Sheet is in lakhs and
+    # whose P&L is in rupees is not one set of financial statements.
+    (_ap_bs, _ap_comp_bs, _ap_pl, _ap_comp_pl,
+     _ap_fmt, _ap_caption) = _presentation(statements_data)
     if is_draft:
         elements.append(Paragraph("DRAFT — NOT FOR DISTRIBUTION", st["watermark"]))
-    _bs_section(elements, st, statements_data.get("balance_sheet", {}))
+    _bs_section(elements, st, _ap_bs, _ap_comp_bs, _ap_fmt, _ap_caption)
     elements.append(PageBreak())
 
     # ── P&L ─────────────────────────────────────────────────────────────────
     if is_draft:
         elements.append(Paragraph("DRAFT — NOT FOR DISTRIBUTION", st["watermark"]))
-    _pl_section(elements, st, statements_data.get("profit_loss", {}))
+    _pl_section(elements, st, _ap_pl, _ap_comp_pl, _ap_fmt, _ap_caption)
     elements.append(PageBreak())
 
     # ── Notes to Accounts ────────────────────────────────────────────────────

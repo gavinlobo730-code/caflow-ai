@@ -83,6 +83,29 @@ export interface FinancialStatementVersion {
 // {line_code: amount_paise} dicts (BS_EQUITY_LIABILITY_LINES/BS_ASSET_LINES/
 // PL_INCOME_LINES/PL_EXPENSE_LINES), not pre-grouped or labelled; the
 // frontend maps line codes to Schedule III groups/labels for display.
+/** One period's figures rounded to the Schedule III para 4 unit. Whole units,
+ *  never paise — do not divide these by 100. */
+export interface RoundedPeriod {
+  balance_sheet: {
+    equity_and_liabilities: Record<string, number>;
+    assets: Record<string, number>;
+    total_equity_and_liabilities: number;
+    total_assets: number;
+    surplus_brought_forward: number;
+    profit_for_the_year: number;
+    surplus_carried_forward: number;
+  };
+  profit_loss: {
+    income: Record<string, number>;
+    expenses: Record<string, number>;
+    total_income: number;
+    total_expense: number;
+    profit_before_tax: number;
+    tax_expense: number;
+    profit_after_tax: number;
+  };
+}
+
 export interface FinancialStatementSnapshotData {
   balance_sheet: {
     equity_and_liabilities: Record<string, number>;
@@ -124,6 +147,22 @@ export interface FinancialStatementSnapshotData {
   // the majority of clients, who do not close their own books; non-empty means
   // the P&L needs a CA's eye before it is relied on.
   closing_entry_dates?: string[];
+  // Schedule III, Division I, General Instructions para 4. Rounding is
+  // MANDATORY since the 24 March 2021 amendment ("may be rounded off" became
+  // "shall"), the permitted units depend on TOTAL INCOME, and the proviso
+  // requires one unit uniformly across the statements — so `current` and
+  // `comparative` are both struck in `unit`.
+  //
+  // The figures here are already rounded, in whole units, NOT paise. Absent on
+  // a snapshot taken before rounding existed; those still render in rupees.
+  rounding?: {
+    unit: string;
+    label: string;
+    permitted_units: string[];
+    total_income_paise: number;
+    current: RoundedPeriod;
+    comparative: RoundedPeriod | null;
+  };
   trial_balance_hash: string;
   fy_start: string;
   fy_end: string;

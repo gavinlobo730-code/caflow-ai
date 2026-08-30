@@ -183,6 +183,28 @@ def _mock_statements(client_id: str, firm_id: str, fy_start: str, fy_end: str) -
         # hand-posted close. Present so the shape matches the real path —
         # test_mock_mode_returns_the_same_shape_as_the_real_path.
         "closing_entry_dates":  [],
+        # Schedule III para 4 applies to the mock statements too — a demo that
+        # presents to the rupee shows a presentation the statute no longer
+        # permits. Struck by the same helper as the real path, so the two
+        # cannot drift.
+        "rounding": _rounding_block(
+            total_income,
+            None,
+            {
+                "bs_eq_lib": balance_sheet["equity_and_liabilities"],
+                "bs_assets": balance_sheet["assets"],
+                "pl_income": profit_loss["income"],
+                "pl_expense": profit_loss["expenses"],
+                "total_eq_lib": total_equity_liabilities,
+                "total_assets": total_assets,
+                "total_income": total_income,
+                "total_expense": total_expenses,
+                "pbt": pbt, "tax": tax, "pat": pat,
+                "surplus_brought_forward": surplus_brought_forward,
+                "surplus_carried_forward": surplus_brought_forward + pat,
+            },
+            None,
+        ),
         "trial_balance_hash":   compute_trial_balance_hash(raw_balances),
         "fy_start":             fy_start,
         "fy_end":               fy_end,
@@ -260,6 +282,74 @@ def _closing_entries_in(raw_lines: list, mapping_lookup: dict,
     return sorted(set(found))
 
 
+def _rounding_block(total_income_paise: int, requested_unit, cur, prior) -> dict:
+    """The Schedule III para 4 presentation unit, and the statements rounded to
+    it.
+
+    Rounding is MANDATORY since the 24 March 2021 amendment — "may be rounded
+    off" became "shall" — and the least coarse unit the statute offers is the
+    nearest hundred, so presenting figures to the rupee (which is what the PDF
+    did) is no longer one of the choices.
+
+    A unit the CA asks for is honoured only if para 4 permits it for this total
+    income; an impermissible one is REFUSED rather than quietly swapped, because
+    silently presenting in a different unit from the one requested is how a
+    statement ends up captioned wrongly.
+
+    The proviso — "once a unit of measurement is used, it shall be used
+    uniformly in the Financial Statements" — is why one unit is chosen here and
+    handed to every section, including the comparative period. Rounding the
+    comparative to its own year's unit would put two scales in one table.
+    """
+    from domain.reporting.schedule_iii import (
+        ROUNDING_LABELS, default_rounding_unit, permitted_rounding_units,
+        round_section, round_to_unit,
+    )
+
+    permitted = permitted_rounding_units(total_income_paise)
+    if requested_unit is None:
+        unit = default_rounding_unit(total_income_paise)
+    elif requested_unit in permitted:
+        unit = requested_unit
+    else:
+        raise ValueError(
+            f"Schedule III General Instructions para 4 does not permit rounding "
+            f"to {requested_unit!r} at a total income of {total_income_paise} "
+            f"paise; permitted units are {permitted}."
+        )
+
+    def _period(st: dict) -> dict:
+        return {
+            "balance_sheet": {
+                "equity_and_liabilities": round_section(st["bs_eq_lib"], unit),
+                "assets":                 round_section(st["bs_assets"], unit),
+                "total_equity_and_liabilities": round_to_unit(st["total_eq_lib"], unit),
+                "total_assets":                 round_to_unit(st["total_assets"], unit),
+                "surplus_brought_forward": round_to_unit(st["surplus_brought_forward"], unit),
+                "profit_for_the_year":     round_to_unit(st["pat"], unit),
+                "surplus_carried_forward": round_to_unit(st["surplus_carried_forward"], unit),
+            },
+            "profit_loss": {
+                "income":         round_section(st["pl_income"], unit),
+                "expenses":       round_section(st["pl_expense"], unit),
+                "total_income":   round_to_unit(st["total_income"], unit),
+                "total_expense":  round_to_unit(st["total_expense"], unit),
+                "profit_before_tax": round_to_unit(st["pbt"], unit),
+                "tax_expense":       round_to_unit(st["tax"], unit),
+                "profit_after_tax":  round_to_unit(st["pat"], unit),
+            },
+        }
+
+    return {
+        "unit": unit,
+        "label": ROUNDING_LABELS[unit],
+        "permitted_units": permitted,
+        "total_income_paise": total_income_paise,
+        "current": _period(cur),
+        "comparative": None if prior is None else _period(prior),
+    }
+
+
 def _prior_period(fy_start: str, fy_end: str) -> tuple[str, str]:
     """The immediately preceding reporting period, as ISO dates.
 
@@ -286,6 +376,7 @@ def generate_financial_statements(
     firm_id: str,
     fy_start: str,
     fy_end: str,
+    rounding_unit: str | None = None,
 ) -> Dict[str, Any]:
     """
     Generate Schedule III financial statements from the General Ledger.
@@ -639,7 +730,23 @@ def generate_financial_statements(
             f"normal_balance that disagrees with its schedule_line."
         )
 
+    # ── Rounding off — Schedule III General Instructions para 4 ─────────────
+    # The figures stay in integer paise, exactly as every other caller of this
+    # service expects; what is added is the UNIT the statements must be
+    # presented in, and the same figures already rounded to it. Doing the
+    # rounding here rather than in the PDF and the web page keeps one
+    # implementation of a statutory rule — CLAUDE.md, zero business logic in
+    # the frontend — and, more practically, keeps the two renderings from
+    # disagreeing about a figure a CA has signed.
+    #
+    # The basis is TOTAL INCOME, which para 4 has used since the 24 March 2021
+    # amendment; the pre-2021 text said turnover, and the difference bites a
+    # company whose other income carries it over the threshold its revenue
+    # alone never reaches.
+    rounding = _rounding_block(total_income, rounding_unit, cur, prior)
+
     return {
+        "rounding": rounding,
         "balance_sheet": {
             "equity_and_liabilities": bs_eq_lib,
             "assets":                 bs_assets,
