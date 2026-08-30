@@ -92,7 +92,10 @@ def test_generating_notes_for_an_own_clients_engagement_is_allowed(deny):
     _seed_engagement("E-MINE", MINE)
     resp = yen.generate_notes("E-MINE", current_user=MANAGER_USER)
     assert resp["success"] is True
-    assert len(resp["data"]) == 6
+    # This test is about client SCOPE, not about which notes exist, so it
+    # asserts the full set rather than a bare count — a count breaks every
+    # time a note is added, which says nothing about scoping.
+    assert {n["note_type"] for n in resp["data"]} == yen._ALL_NOTE_TYPES
 
 
 def test_generating_notes_on_a_hidden_clients_locked_engagement_is_404_not_403(deny):
