@@ -102,7 +102,13 @@ _CAPTION_TO_SCHEDULE_LINE = {
     "Employee Benefit Expense":    "employee_benefit_expense",
     "Finance Costs":               "finance_costs",
     "Depreciation & Amortisation": "depreciation_and_amortisation",
-    "Tax Expense":                 "other_expenses",
+    # Schedule III Part II item VII — struck AFTER profit before tax, so it is
+    # NOT an operating expense. Mapping it to other_expenses subtracted a real
+    # tax provision inside PBT and then charged tax on the reduced figure
+    # again.
+    "Tax Expense":                 "current_tax",
+    "Current Tax":                 "current_tax",
+    "Deferred Tax":                "deferred_tax",
     "Other Expenses":              "other_expenses",
 }
 
@@ -141,6 +147,11 @@ _LINE_NORMAL_BALANCE = {
     "finance_costs":                 "debit",
     "depreciation_and_amortisation": "debit",
     "other_expenses":                "debit",
+    # Schedule III Part II item VII. Debit-normal like any expense; a credit
+    # balance here is a tax WRITE-BACK, which is legitimate and must keep its
+    # sign rather than be floored away.
+    "current_tax":                   "debit",
+    "deferred_tax":                  "debit",
     # Liabilities / Income / Equity → credit normal
     "share_capital":                 "credit",
     "reserves_and_surplus":          "credit",
