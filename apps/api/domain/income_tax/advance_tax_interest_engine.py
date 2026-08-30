@@ -170,3 +170,186 @@ def compute_234c_interest(
         total += interest
 
     return AdvanceTaxInterestResult(installments=tuple(results), total_interest_paise=total)
+
+
+# ── Sections 234A and 234B ───────────────────────────────────────────────────
+#
+# The module above implements Section 234C. These two complete the trio, and
+# the reason they are here rather than in a module of their own is that all
+# three share one rate and one rounding convention — 1% per month or part of a
+# month, on integer paise — and splitting them would be the first step to those
+# drifting apart.
+#
+# What must NOT be shared is the shape. The three sections charge different
+# amounts over different periods, and conflating them is the mistake this
+# module's own header records the frontend having made: it computed 234C as a
+# function of actual delay, which is 234B's shape, not 234C's.
+#
+#   234A  LATE FILING. From the day after the Section 139(1) due date to the
+#         date the return is actually furnished. Base: tax on total income less
+#         TDS/TCS, advance tax paid and reliefs.
+#   234B  ADVANCE-TAX SHORTFALL. From 1 April of the ASSESSMENT year to the
+#         date of assessment. Base: the shortfall. Charged ONLY where advance
+#         tax plus TDS is BELOW 90% of assessed tax.
+#   234C  DEFERMENT of individual instalments. Fixed 3/3/3/1-month periods,
+#         regardless of when payment was actually made.
+
+# Section 234B(1) — the gate. Interest arises only where advance tax paid is
+# LESS THAN this percentage of assessed tax. At exactly 90% no interest arises
+# at all, which is the part most easily missed: a taxpayer who has paid 90.0%
+# is fully compliant, not marginally in default.
+_S234B_COMPLIANCE_THRESHOLD_PERCENT = 90
+
+
+def _months_or_part(from_date: date, to_date: date) -> int:
+    """Whole months between two dates, counting any PART of a month as a whole
+    one — the convention all three sections use ("every month or part of a
+    month").
+
+    A period ending on the same day of a later month is that many whole
+    months; one day beyond adds another. Nil where to_date is not after
+    from_date, so a return filed early cannot earn negative interest.
+    """
+    if to_date <= from_date:
+        return 0
+    months = (to_date.year - from_date.year) * 12 + (to_date.month - from_date.month)
+    if to_date.day > from_date.day:
+        months += 1
+    return max(1, months)
+
+
+@dataclass(frozen=True)
+class SectionInterestResult:
+    section: str
+    applies: bool
+    base_paise: int
+    months: int
+    interest_paise: int
+    from_date: date | None
+    to_date: date | None
+    reasons: tuple[str, ...]
+
+
+def compute_234a_interest(
+    *,
+    tax_on_total_income_paise: int,
+    tds_tcs_paise: int = 0,
+    advance_tax_paid_paise: int = 0,
+    relief_paise: int = 0,
+    due_date: date,
+    return_furnished_on: date | None,
+    assessment_date: date | None = None,
+) -> SectionInterestResult:
+    """Section 234A — interest for defaulting in furnishing the return.
+
+    1% per month or part, from the day AFTER the Section 139(1) due date until
+    the return is furnished, on the tax on total income reduced by TDS/TCS,
+    advance tax paid and any relief.
+
+    A return NOT YET furnished still accrues: `return_furnished_on=None` runs
+    the period to `assessment_date` where one is supplied. Reporting nil for an
+    unfiled return would tell a CA the cheapest moment to file is never.
+    """
+    reasons: list[str] = []
+    net = max(0, tax_on_total_income_paise - tds_tcs_paise
+              - advance_tax_paid_paise - relief_paise)
+
+    end = return_furnished_on or assessment_date
+    if end is None:
+        return SectionInterestResult(
+            section="234A", applies=False, base_paise=net, months=0,
+            interest_paise=0, from_date=due_date, to_date=None,
+            reasons=("The return has not been furnished and no assessment date "
+                     "was supplied, so the period cannot be closed. Interest is "
+                     "still running.",),
+        )
+
+    if end <= due_date:
+        return SectionInterestResult(
+            section="234A", applies=False, base_paise=net, months=0,
+            interest_paise=0, from_date=due_date, to_date=end,
+            reasons=("The return was furnished on or before the §139(1) due "
+                     "date, so no §234A interest arises.",),
+        )
+
+    if net <= 0:
+        return SectionInterestResult(
+            section="234A", applies=False, base_paise=0,
+            months=_months_or_part(due_date, end), interest_paise=0,
+            from_date=due_date, to_date=end,
+            reasons=("Tax on total income is fully covered by TDS, advance tax "
+                     "and reliefs, so there is no amount for §234A to charge "
+                     "interest on — the delay itself is not what is taxed.",),
+        )
+
+    months = _months_or_part(due_date, end)
+    interest = net * _INTEREST_RATE_PERCENT_PER_MONTH * months // 100
+    reasons.append(
+        f"§234A charges {_INTEREST_RATE_PERCENT_PER_MONTH}% per month or part "
+        f"for {months} month(s) from the day after {due_date.isoformat()} to "
+        f"{end.isoformat()}, on {net} paise of tax net of TDS, advance tax and "
+        f"relief."
+    )
+    return SectionInterestResult(
+        section="234A", applies=True, base_paise=net, months=months,
+        interest_paise=interest, from_date=due_date, to_date=end,
+        reasons=tuple(reasons),
+    )
+
+
+def compute_234b_interest(
+    *,
+    assessed_tax_paise: int,
+    advance_tax_paid_paise: int = 0,
+    tds_tcs_paise: int = 0,
+    assessment_year_start: date,
+    assessment_date: date,
+) -> SectionInterestResult:
+    """Section 234B — interest for default in payment of advance tax.
+
+    Charged ONLY where advance tax plus TDS falls BELOW 90% of assessed tax.
+    At exactly 90% nothing arises: a taxpayer who has paid 90.0% is compliant,
+    not marginally in default, and treating the threshold as a floor to clear
+    rather than a line not to fall below charges interest to people who owe
+    none.
+
+    The period runs from 1 APRIL OF THE ASSESSMENT YEAR — not from the end of
+    the financial year, and not from any instalment date — to the date of
+    assessment. `assessment_year_start` is that 1 April.
+
+    Unlike §234C, which charges fixed notional periods per instalment, §234B
+    charges the actual elapsed months. That difference is the whole reason the
+    two are separate sections.
+    """
+    assessed = max(0, assessed_tax_paise)
+    paid = max(0, advance_tax_paid_paise) + max(0, tds_tcs_paise)
+
+    # Compared by cross-multiplication so no division rounds a taxpayer across
+    # the 90% line.
+    compliant = paid * 100 >= assessed * _S234B_COMPLIANCE_THRESHOLD_PERCENT
+    if assessed <= 0 or compliant:
+        return SectionInterestResult(
+            section="234B", applies=False, base_paise=0, months=0,
+            interest_paise=0, from_date=assessment_year_start,
+            to_date=assessment_date,
+            reasons=(f"Advance tax and TDS of {paid} paise is at least "
+                     f"{_S234B_COMPLIANCE_THRESHOLD_PERCENT}% of assessed tax "
+                     f"of {assessed} paise, so no §234B interest arises.",),
+        )
+
+    shortfall = assessed - paid
+    months = _months_or_part(assessment_year_start, assessment_date)
+    interest = shortfall * _INTEREST_RATE_PERCENT_PER_MONTH * months // 100
+    return SectionInterestResult(
+        section="234B", applies=True, base_paise=shortfall, months=months,
+        interest_paise=interest, from_date=assessment_year_start,
+        to_date=assessment_date,
+        reasons=(
+            f"Advance tax and TDS of {paid} paise is below "
+            f"{_S234B_COMPLIANCE_THRESHOLD_PERCENT}% of assessed tax of "
+            f"{assessed} paise, so §234B charges "
+            f"{_INTEREST_RATE_PERCENT_PER_MONTH}% per month or part on the "
+            f"shortfall of {shortfall} paise for {months} month(s) from "
+            f"{assessment_year_start.isoformat()}.",
+        ),
+    )
