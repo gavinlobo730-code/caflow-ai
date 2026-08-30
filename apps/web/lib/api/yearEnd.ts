@@ -100,6 +100,16 @@ export interface FinancialStatementSnapshotData {
     tax_expense_paise: number;
     profit_after_tax_paise: number;
   };
+  // Schedule III, Division I, General Instructions para 5: the corresponding
+  // amounts for the immediately preceding reporting period must be given for
+  // every item. null means there is genuinely no preceding period — the first
+  // statements after incorporation, which para 5 excepts — not that it was nil.
+  comparatives: {
+    fy_start: string;
+    fy_end: string;
+    balance_sheet: FinancialStatementSnapshotData["balance_sheet"];
+    profit_loss: FinancialStatementSnapshotData["profit_loss"];
+  } | null;
   trial_balance_hash: string;
   fy_start: string;
   fy_end: string;

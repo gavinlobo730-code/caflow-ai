@@ -189,7 +189,7 @@ def _cover_page(elements, st, eng: dict, doc_title: str, is_draft: bool):
 
 # ── Balance Sheet section ─────────────────────────────────────────────────────
 
-def _bs_section(elements, st, bs_data: dict):
+def _bs_section(elements, st, bs_data: dict, comp: dict | None = None):
     elements.append(Paragraph("BALANCE SHEET", st["section"]))
     elements.append(
         Paragraph(
@@ -231,23 +231,46 @@ def _bs_section(elements, st, bs_data: dict):
         "other_current_assets":         "Other Current Assets",
     }
 
+    # Schedule III's prescribed format has a "Figures as at the end of the
+    # previous reporting period" column, and General Instructions para 5 makes
+    # it mandatory for every item. A two-column balance sheet is not the
+    # prescribed format and cannot be laid before members or attached to
+    # AOC-4. `comp` is None only for the first statements after
+    # incorporation, which para 5 excepts.
+    comp_eq = (comp or {}).get("equity_and_liabilities", {})
+    comp_assets = (comp or {}).get("assets", {})
+    prev_hdr = "Previous year ₹"
+
     # Equity & Liabilities table
-    eq_rows = [["Equity & Liabilities", "₹"]]
+    eq_rows = [["Equity & Liabilities", "₹"] + ([prev_hdr] if comp else [])]
     for k, label in _EQUITY_LABELS.items():
-        v = eq_lib.get(k, 0)
-        eq_rows.append([label, _rs(v)])
+        row = [label, _rs(eq_lib.get(k, 0))]
+        if comp:
+            row.append(_rs(comp_eq.get(k, 0)))
+        eq_rows.append(row)
     total_el = bs_data.get("total_equity_and_liabilities_paise", sum(eq_lib.values()))
-    eq_rows.append(["TOTAL EQUITY AND LIABILITIES", _rs(total_el)])
+    total_row = ["TOTAL EQUITY AND LIABILITIES", _rs(total_el)]
+    if comp:
+        total_row.append(_rs(comp.get("total_equity_and_liabilities_paise",
+                                      sum(comp_eq.values()))))
+    eq_rows.append(total_row)
 
     # Assets table
-    asset_rows = [["Assets", "₹"]]
+    asset_rows = [["Assets", "₹"] + ([prev_hdr] if comp else [])]
     for k, label in _ASSET_LABELS.items():
-        v = assets.get(k, 0)
-        asset_rows.append([label, _rs(v)])
+        row = [label, _rs(assets.get(k, 0))]
+        if comp:
+            row.append(_rs(comp_assets.get(k, 0)))
+        asset_rows.append(row)
     total_a = bs_data.get("total_assets_paise", sum(assets.values()))
-    asset_rows.append(["TOTAL ASSETS", _rs(total_a)])
+    total_arow = ["TOTAL ASSETS", _rs(total_a)]
+    if comp:
+        total_arow.append(_rs(comp.get("total_assets_paise", sum(comp_assets.values()))))
+    asset_rows.append(total_arow)
 
-    col_w = [(PAGE_W - 60 * mm) * 0.70, (PAGE_W - 60 * mm) * 0.30]
+    avail = PAGE_W - 60 * mm
+    col_w = ([avail * 0.52, avail * 0.24, avail * 0.24] if comp
+             else [avail * 0.70, avail * 0.30])
 
     for rows in [eq_rows, asset_rows]:
         t = Table(rows, colWidths=col_w)
@@ -258,7 +281,7 @@ def _bs_section(elements, st, bs_data: dict):
 
 # ── P&L section ───────────────────────────────────────────────────────────────
 
-def _pl_section(elements, st, pl_data: dict):
+def _pl_section(elements, st, pl_data: dict, comp: dict | None = None):
     elements.append(Paragraph("STATEMENT OF PROFIT AND LOSS", st["section"]))
     elements.append(
         Paragraph(
@@ -286,28 +309,45 @@ def _pl_section(elements, st, pl_data: dict):
     income  = pl_data.get("income", {})
     expense = pl_data.get("expenses", {})
 
-    rows = [["Particulars", "₹"]]
-    rows.append(["I. INCOME", ""])
-    for k, label in _INCOME_LABELS.items():
-        rows.append([f"   {label}", _rs(income.get(k, 0))])
-    total_income = pl_data.get("total_income_paise", sum(income.values()))
-    rows.append(["   Total Income", _rs(total_income)])
+    # Schedule III General Instructions para 5 — the corresponding amounts for
+    # the preceding period, for every item. None only for the first statements
+    # after incorporation, which para 5 excepts.
+    c_income = (comp or {}).get("income", {})
+    c_expense = (comp or {}).get("expenses", {})
 
-    rows.append(["II. EXPENSES", ""])
+    def _p(v):
+        """A cell in the previous-year column, or nothing when there is none."""
+        return [_rs(v)] if comp else []
+
+    rows = [["Particulars", "₹"] + (["Previous year ₹"] if comp else [])]
+    rows.append(["I. INCOME", ""] + ([""] if comp else []))
+    for k, label in _INCOME_LABELS.items():
+        rows.append([f"   {label}", _rs(income.get(k, 0))] + _p(c_income.get(k, 0)))
+    total_income = pl_data.get("total_income_paise", sum(income.values()))
+    rows.append(["   Total Income", _rs(total_income)]
+                + _p((comp or {}).get("total_income_paise", 0)))
+
+    rows.append(["II. EXPENSES", ""] + ([""] if comp else []))
     for k, label in _EXPENSE_LABELS.items():
-        rows.append([f"   {label}", _rs(expense.get(k, 0))])
+        rows.append([f"   {label}", _rs(expense.get(k, 0))] + _p(c_expense.get(k, 0)))
     total_expense = pl_data.get("total_expense_paise", sum(expense.values()))
-    rows.append(["   Total Expenses", _rs(total_expense)])
+    rows.append(["   Total Expenses", _rs(total_expense)]
+                + _p((comp or {}).get("total_expense_paise", 0)))
 
     pbt = pl_data.get("profit_before_tax_paise", total_income - total_expense)
     tax = pl_data.get("tax_expense_paise", 0)
     pat = pl_data.get("profit_after_tax_paise", pbt - tax)
 
-    rows.append(["III. Profit Before Tax (I - II)",  _rs(pbt)])
-    rows.append(["IV.  Tax Expense",                  _rs(tax)])
-    rows.append(["V.   Profit After Tax (III - IV)",  _rs(pat)])
+    rows.append(["III. Profit Before Tax (I - II)",  _rs(pbt)]
+                + _p((comp or {}).get("profit_before_tax_paise", 0)))
+    rows.append(["IV.  Tax Expense",                  _rs(tax)]
+                + _p((comp or {}).get("tax_expense_paise", 0)))
+    rows.append(["V.   Profit After Tax (III - IV)",  _rs(pat)]
+                + _p((comp or {}).get("profit_after_tax_paise", 0)))
 
-    col_w = [(PAGE_W - 60 * mm) * 0.70, (PAGE_W - 60 * mm) * 0.30]
+    avail = PAGE_W - 60 * mm
+    col_w = ([avail * 0.52, avail * 0.24, avail * 0.24] if comp
+             else [avail * 0.70, avail * 0.30])
     t = Table(rows, colWidths=col_w)
     t.setStyle(_table_style(has_total_row=False))
     elements.append(t)
@@ -333,9 +373,11 @@ def generate_financial_statements_pdf(engagement_data: dict, statements_data: di
     _cover_page(elements, st, engagement_data, "Financial Statements", is_draft)
     elements.append(PageBreak())
 
-    _bs_section(elements, st, statements_data.get("balance_sheet", {}))
+    _bs_section(elements, st, statements_data.get("balance_sheet", {}),
+                (statements_data.get("comparatives") or {}).get("balance_sheet"))
     elements.append(PageBreak())
-    _pl_section(elements, st, statements_data.get("profit_loss", {}))
+    _pl_section(elements, st, statements_data.get("profit_loss", {}),
+                (statements_data.get("comparatives") or {}).get("profit_loss"))
 
     doc.build(elements)
     return buf.getvalue()
