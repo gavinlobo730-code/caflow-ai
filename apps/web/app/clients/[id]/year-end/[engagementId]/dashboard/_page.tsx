@@ -254,7 +254,7 @@ export default function YearEndDashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5 max-w-4xl">
+      <div className="p-6 space-y-5 max-w-4xl mx-auto">
         <Skeleton className="h-16 rounded-xl" />
         <DashboardSkeleton cards={3} className="grid-cols-1 sm:grid-cols-3" />
       </div>
@@ -286,7 +286,7 @@ export default function YearEndDashboardPage() {
     : null;
 
   return (
-    <div className="p-6 space-y-5 max-w-4xl">
+    <div className="p-6 space-y-5 max-w-4xl mx-auto">
 
       {/* Status card */}
       <div className={`rounded-xl px-5 py-4 flex items-center gap-4 ${STATUS_COLOR[engagement.status]}`}>

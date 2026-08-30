@@ -1,31 +1,84 @@
 """The filing demo must never be able to claim a return was filed.
 
 WHY THIS EXISTS
-    PracticeSync prepares GSTR-1 and GSTR-3B and produces the GSTN JSON. The CA
-    uploads it to gst.gov.in and signs there. Real API filing needs GSP
-    registration and is not built.
+    PracticeSync prepares every Indian statutory filing and produces the
+    payload. The CA uploads it to the authority's own portal and signs there.
+    Real API filing needs registrations that do not exist (a GSP for GST, ERI
+    for ITR) and is not built.
 
-    So that the intended flow can be SHOWN before it exists, there is a
-    simulation endpoint that plays back the steps. That is a reasonable thing to
-    demo and a dangerous thing to leave lying around: the person demoing knows
-    it is a mock; whoever opens the same screen next week does not. A return
-    believed filed and not filed accrues Rs 50 a day under §47 from its real due
-    date, and the correction window under §37(3)/§39(9) runs out regardless.
+    So that the intended flow can be SHOWN before it exists, there are demo
+    walk-throughs. That is a reasonable thing to demo and a dangerous thing to
+    leave lying around: the person demoing knows it is a mock; whoever opens
+    the same screen next week does not. A return believed filed and not filed
+    accrues Rs 50 a day under §47 from its real due date, and the correction
+    window under §37(3)/§39(9) runs out regardless.
 
-    Everything below is therefore about what the simulation must NOT do. The
-    steps it returns are decoration; these are the contract.
+    Everything below is therefore about what the demo must NOT do. The stages
+    it returns are decoration; these are the contract.
+
+WHERE THE CONTRACT NOW LIVES, AND WHAT MOVED
+    This file was written against POST /gst-workspace/gstr3b/{id}/
+    simulate-filing, the first walk-through built, when it was the only one.
+    Every statutory filing now runs through the shared framework in
+    services/filing_demo/, GSTR-3B included, and that endpoint has been
+    deleted rather than left beside its replacement — CLAUDE.md's own rule for
+    a superseded simulation, and the only way two demos of one return cannot
+    drift apart.
+
+    The contract did not move with it; it was retargeted. The kill switch,
+    the honest reference, the specimen and its label, the no-network scan and
+    the no-write scan are all below, now asserted against the framework and
+    the GSTR-3B flow that replaced the endpoint.
+
+    What is NOT here any more is the shape of that endpoint's JSON — its
+    table_61 dict, its steps list, its declaration constant. Those are stages
+    now, and tests/test_filing_demo_gstr3b.py pins each of them harder than
+    this file ever did: the payment stage's per-head arithmetic, that Table 6
+    sets off 4(C) and never 4(A), the declaration verbatim, the §39(9) freeze
+    warning, and both signature methods. Nothing was dropped; read the two
+    files together.
 """
 from __future__ import annotations
 
+import inspect
+import pathlib
+
 import pytest
 
+import routers.filing_demo as fd_router
+import services.filing_demo as fd
 from routers import gst_workspace as gw
+from services.filing_demo import common, gstr3b
+from tests.e2e_harness import FakeDB
+
+FIRM = "FIRM-A"
+CLIENT = "CLI"
+GSTIN = "27ABCDE1234F1Z5"
+PERIOD = "042026"
 
 
 @pytest.fixture()
 def sim_on(monkeypatch):
     monkeypatch.setenv("ENABLE_FILING_SIMULATION", "true")
     return True
+
+
+def _demo_sources() -> dict:
+    pkg = pathlib.Path(fd.__file__).parent
+    return {p.name: p.read_text() for p in sorted(pkg.glob("*.py"))}
+
+
+def _gstr3b_demo() -> dict:
+    """The walk-through that replaced the deleted endpoint, over a return with
+    real figures on it."""
+    db = FakeDB()
+    db.seed("gstr3b_returns", {
+        "id": "R3B", "firm_id": FIRM, "client_id": CLIENT,
+        "period": PERIOD, "gstin": GSTIN, "status": "ca_approved",
+        "tax_liability_paise": 1_80_000_00, "itc_claimed_paise": 1_00_000_00,
+        "net_tax_paise": 80_000_00, "summary_json": {},
+    })
+    return gstr3b.build(db, FIRM, CLIENT, {"return_id": "R3B"})
 
 
 # ── On by default, with a kill switch ───────────────────────────────────────
@@ -57,23 +110,44 @@ def test_the_usual_yeses_all_work(monkeypatch, value):
     assert gw.filing_simulation_enabled() is True
 
 
+def test_there_is_exactly_one_reading_of_the_switch(monkeypatch):
+    """The GST dashboard's capability flag and the filing-demo endpoints must
+    never be able to disagree about whether demos are on — a screen that shows
+    a button the preview endpoint refuses is the dead-control fault."""
+    assert gw.filing_simulation_enabled is common.filing_simulation_enabled
+    monkeypatch.setenv("ENABLE_FILING_SIMULATION", "false")
+    assert fd_router.capabilities({"role": "Partner", "firm_id": FIRM})[
+        "data"]["enabled"] is False
+
+
 # ── The acknowledgement must not pass for a real one ────────────────────────
 
 def test_the_reference_cannot_be_mistaken_for_an_arn():
-    """A real ARN is 15 characters — AA, state code, MMYYYY, then a serial. A
-    simulated reference that pattern-matches could be pasted into a portal field
-    or a client email and be believed."""
-    ack = gw._simulated_ack("042026", "abcdef12-3456-7890-abcd-ef1234567890")
+    """A real ARN is 15 characters — AA, state code, MMYY, a serial, a check
+    character. A simulated reference that pattern-matches could be pasted into
+    a portal field or a client email and be believed."""
+    ack = common.honest_reference("gstr3b", "abcdef12-3456-7890-abcd-ef1234567890")
     assert ack.startswith("SIM-NOT-FILED-")
     assert len(ack) != 15
     assert not ack[:2].isalpha() or not ack[2:4].isdigit(), (
-        "the reference looks ARN-shaped at the start"
-    )
+        "the reference looks ARN-shaped at the start")
     assert "NOT-FILED" in ack, "the string itself has to say it is not filed"
 
 
-def test_the_reference_names_the_period_so_a_demo_is_reproducible():
-    assert "042026" in gw._simulated_ack("042026", "abcdef1234")
+def test_the_reference_names_the_flow_and_record_so_a_demo_is_reproducible():
+    """It used to carry the period, because the only demo was a GSTR-3B one.
+    The framework's reference carries the FLOW and the record id instead —
+    which identifies a walk-through across eight filings, where a period could
+    not."""
+    ack = _gstr3b_demo()["acknowledgement"]
+    assert ack.startswith("SIM-NOT-FILED-GSTR3B-")
+    assert "R3B" in ack
+
+
+def test_every_flows_reference_says_not_filed():
+    """Not just GSTR-3B's. A flow added later inherits this or fails here."""
+    for flow in fd.FLOWS:
+        assert common.honest_reference(flow, "seed").startswith("SIM-NOT-FILED-")
 
 
 # ── The specimen ARN: realism, on condition of labelling ────────────────────
@@ -85,7 +159,7 @@ def test_the_reference_names_the_period_so_a_demo_is_reproducible():
 # and the honest SIM-NOT-FILED reference stays alongside.
 
 def test_the_specimen_has_the_real_arn_shape():
-    arn = gw._specimen_arn("27ABCDE1234F1Z5", "042026", "fd8d8ae1-ea4a-47d7")
+    arn = common.specimen_gstn_arn(GSTIN, PERIOD, "fd8d8ae1-ea4a-47d7")
     assert len(arn) == 15, arn
     assert arn.startswith("AA27"), "two letters then the GSTIN's state code"
     assert arn[4:8] == "0426", "MMYY of the period"
@@ -94,198 +168,132 @@ def test_the_specimen_has_the_real_arn_shape():
 
 
 def test_the_specimen_is_deterministic_so_a_demo_replays_identically():
-    a = gw._specimen_arn("27ABCDE1234F1Z5", "042026", "fd8d8ae1-ea4a-47d7")
-    b = gw._specimen_arn("27ABCDE1234F1Z5", "042026", "fd8d8ae1-ea4a-47d7")
+    a = common.specimen_gstn_arn(GSTIN, PERIOD, "fd8d8ae1-ea4a-47d7")
+    b = common.specimen_gstn_arn(GSTIN, PERIOD, "fd8d8ae1-ea4a-47d7")
     assert a == b
-    c = gw._specimen_arn("27ABCDE1234F1Z5", "052026", "fd8d8ae1-ea4a-47d7")
+    c = common.specimen_gstn_arn(GSTIN, "052026", "fd8d8ae1-ea4a-47d7")
     assert a != c, "a different period must yield a different specimen"
 
 
 def test_a_missing_gstin_or_odd_period_still_yields_a_wellformed_specimen():
     """An older record may lack a GSTIN. The demo must not crash or emit a
     ragged string that betrays the fallback."""
-    arn = gw._specimen_arn("", "042026", "row-1")
+    arn = common.specimen_gstn_arn("", PERIOD, "row-1")
     assert len(arn) == 15 and arn.startswith("AA27")
-    assert len(gw._specimen_arn("27ABCDE1234F1Z5", "bad", "row-1")) == 15
+    assert len(common.specimen_gstn_arn(GSTIN, "bad", "row-1")) == 15
 
 
 def test_the_specimen_never_travels_without_its_label():
-    """The condition the realism was granted on. If specimen_arn is in the
-    response, specimen_note must be beside it, and the honest acknowledgement
-    must still be present."""
-    import inspect
-    src = inspect.getsource(gw.simulate_gstr3b_filing)
-    assert '"specimen_arn"' in src
-    assert '"specimen_note"' in src, (
-        "the specimen is in the response without its SPECIMEN label"
-    )
-    assert '"acknowledgement": _simulated_ack' in src, (
-        "the honest SIM-NOT-FILED reference must stay alongside the specimen"
-    )
+    """The condition the realism was granted on, asserted on the response a
+    screen actually receives: if a specimen is in it, its SPECIMEN note is
+    beside it and the honest acknowledgement is still present."""
+    out = _gstr3b_demo()
+    result = next(s for s in out["stages"] if s["kind"] == "result")
+    assert result["specimen"]
+    assert "SPECIMEN" in result["specimen_note"]
+    assert "not issued" in result["specimen_note"]
+    assert out["acknowledgement"].startswith("SIM-NOT-FILED-")
+    assert out["filed"] is False and out["simulated"] is True
+    assert "nothing has been filed" in out["disclaimer"]
 
 
-def test_the_label_says_specimen_and_not_issued():
-    import inspect
-    src = inspect.getsource(gw.simulate_gstr3b_filing)
-    assert "SPECIMEN" in src
-    assert "not issued" in src
+def test_no_flows_result_stage_can_omit_the_note():
+    """The stage constructor derives the note from the authority itself, so a
+    flow author cannot forget it — stronger than reminding them."""
+    for name, src in _demo_sources().items():
+        assert '"specimen_note"' not in src or name == "common.py", (
+            f"services/filing_demo/{name} sets specimen_note by hand; it must "
+            "come from common.result_stage, which cannot omit it")
 
 
-# ── The response must carry its own disclaimer ──────────────────────────────
+# ── Nothing reaches a government system ─────────────────────────────────────
 
-def test_the_steps_describe_a_filing_without_claiming_one():
-    keys = [k for k, _ in gw._SIMULATION_STEPS]
-    assert keys == ["validate", "authenticate", "upload", "process", "acknowledge"]
-    joined = " ".join(l for _, l in gw._SIMULATION_STEPS).lower()
-    assert "gstn" in joined or "gst portal" in joined
+def test_no_demo_module_can_reach_a_government_host():
+    """The walk-throughs are scripted text. If a URL or an HTTP client ever
+    appears in this package, something is trying to actually talk to a
+    portal — which is the one thing that would make a demo able to file."""
+    for name, src in _demo_sources().items():
+        for marker in ("http://", "https://", "requests.", "httpx.", "urllib",
+                       "socket."):
+            assert marker not in src, (
+                f"services/filing_demo/{name} references {marker!r}")
 
 
-def test_the_module_never_reaches_a_government_host():
-    """The simulation is scripted text. If a URL ever appears in this module,
-    something is trying to actually talk to a portal."""
-    import inspect
+def test_the_deleted_endpoint_has_not_come_back():
+    """The GSTR-3B walk-through lives in services/filing_demo/gstr3b.py and is
+    served by the shared preview endpoint. A second one in the GST router is
+    what this change removed, and re-adding it would put two demos — with two
+    safety arguments — against one return."""
     src = inspect.getsource(gw)
-    start = src.index("_SIMULATION_STEPS = [")
-    end = src.index("def _simulated_ack")
-    region = src[start:end]
-    for host in ("gst.gov.in", "http://", "https://", "requests.", "httpx."):
-        assert host not in region, f"the simulation block references {host!r}"
+    assert "simulate-filing" not in src.replace(
+        "# GSTR-3B used to carry its own walk-through — POST "
+        "/gstr3b/{id}/simulate-filing", ""), (
+        "a filing-simulation endpoint is back in routers/gst_workspace.py")
+    assert "gstr3b" in fd.FLOWS
 
 
 # ── It must not write anything ──────────────────────────────────────────────
 
-def test_the_simulation_writes_nothing_at_all():
-    """The whole safety argument. If this endpoint ever gains a write, a demo
-    click starts changing a real return's status — and the period lock
-    (migration 266) keys off exactly that.
-    """
-    import inspect
-    src = inspect.getsource(gw.simulate_gstr3b_filing)
-    for write in (".update(", ".insert(", ".upsert(", ".delete(",
-                  "record_filing", "return_status_patch", "_MOCK_GSTR3B["):
-        assert write not in src, (
-            f"simulate_gstr3b_filing performs {write!r} — it must be read-only. "
-            "The real 'this was filed on the portal' path is "
-            "PATCH /gstr3b/{id}/status with status=submitted, which records the "
-            "genuine ARN and the filings row the period lock reads."
-        )
+_WRITES = (".update(", ".insert(", ".upsert(", ".delete(", "record_filing",
+           "return_status_patch", "_MOCK_GSTR3B[")
+
+
+def test_the_demo_writes_nothing_at_all():
+    """The whole safety argument. If a demo ever gains a write, a click starts
+    changing a real return's status — and the period lock (migration 266) keys
+    off exactly that."""
+    for name, src in _demo_sources().items():
+        for write in _WRITES:
+            assert write not in src, (
+                f"services/filing_demo/{name} performs {write!r} — it must be "
+                "read-only. The real 'this was filed on the portal' path is "
+                "PATCH /gstr3b/{id}/status with status=submitted, which records "
+                "the genuine ARN and the filings row the period lock reads.")
+    endpoint = inspect.getsource(fd_router)
+    for write in _WRITES:
+        assert write not in endpoint, f"routers/filing_demo.py performs {write!r}"
 
 
 def test_that_write_detector_would_catch_a_real_write():
     """A guard on absence passes against an empty string. This pins the detector
     against the function that legitimately DOES write."""
-    import inspect
     real = inspect.getsource(gw.update_gstr3b_status)
     assert any(w in real for w in (".update(", "record_filing", "return_status_patch")), (
         "the detector found no write in the endpoint that certainly has one, so "
-        "the assertion above proves nothing"
-    )
+        "the assertion above proves nothing")
+
+
+def test_the_demo_cannot_move_a_returns_status():
+    """Belt and braces on the scan above: the walk-through is built from a
+    seeded return and the row is unchanged afterwards."""
+    db = FakeDB()
+    row = {"id": "R3B", "firm_id": FIRM, "client_id": CLIENT,
+           "period": PERIOD, "gstin": GSTIN, "status": "ca_approved",
+           "tax_liability_paise": 0, "itc_claimed_paise": 0,
+           "net_tax_paise": 0, "summary_json": {}}
+    db.seed("gstr3b_returns", dict(row))
+    gstr3b.build(db, FIRM, CLIENT, {"return_id": "R3B"})
+    after = db.table("gstr3b_returns").select("*").eq("id", "R3B").execute().data[0]
+    assert after["status"] == "ca_approved"
+    assert {k: after[k] for k in row} == row, "the demo changed the saved return"
 
 
 def test_the_real_filing_path_still_demands_an_explicit_ca_confirmation():
-    """CLAUDE.md: never auto-submit to a government portal. Adding a simulation
-    must not have loosened the thing it sits next to."""
-    import inspect
+    """CLAUDE.md: never auto-submit to a government portal. Replacing the
+    simulation must not have loosened the thing it sat next to."""
     src = inspect.getsource(gw.update_gstr3b_status)
     assert "ca_approved" in src
     assert "DO NOT AUTO-SUBMIT" in src
 
 
-# ── It has to mimic the portal's actual sequence ────────────────────────────
-#
-# A walk-through that invents its own order teaches a CA nothing they will
-# recognise when they reach gst.gov.in. The portal's order is: saved return ->
-# PROCEED TO PAYMENT (Table 6.1) -> PROCEED TO FILE -> declaration + authorised
-# signatory -> FILE WITH DSC / FILE WITH EVC -> OTP or emSigner -> an
-# irreversibility warning -> ARN.
-
-def test_table_61_splits_liability_into_credit_and_cash():
-    """The portal's most-misread screen, and the decision a CA actually makes
-    there: how much of the liability the credit ledger discharges and how much
-    has to be paid in cash by challan. A net figure alone hides it."""
-    t = gw._table_61({
-        "outward": {"taxable_igst_paise": 100000, "taxable_cgst_paise": 50000,
-                    "taxable_sgst_paise": 50000},
-        "net_payable": {"igst_paise": 30000, "cgst_paise": 0, "sgst_paise": 0},
-    })
-    by_head = {r["head"]: r for r in t["rows"]}
-    assert by_head["IGST"]["liability_paise"] == 100000
-    assert by_head["IGST"]["paid_through_itc_paise"] == 70000
-    assert by_head["IGST"]["paid_in_cash_paise"] == 30000
-    assert by_head["CGST"]["paid_through_itc_paise"] == 50000, "credit covered it all"
-    assert by_head["CGST"]["paid_in_cash_paise"] == 0
-    assert t["total_cash_paise"] == 30000
-
-
-def test_every_head_adds_up():
-    """Liability = what credit paid + what cash paid, per head. A split that
-    does not reconcile is worse than no split."""
-    t = gw._table_61({
-        "outward": {"taxable_igst_paise": 123456, "taxable_cgst_paise": 7000,
-                    "taxable_sgst_paise": 7000},
-        "net_payable": {"igst_paise": 456, "cgst_paise": 7000, "sgst_paise": 0},
-    })
-    for r in t["rows"]:
-        assert r["paid_through_itc_paise"] + r["paid_in_cash_paise"] == r["liability_paise"], r
-
-
-def test_a_return_with_no_working_yields_zeros_rather_than_an_error():
-    """An older saved return may have no summary_json. The demo must still open."""
-    t = gw._table_61({})
-    assert t["total_cash_paise"] == 0
-    assert [r["head"] for r in t["rows"]] == ["IGST", "CGST", "SGST"]
-
-
-def test_credit_can_never_be_shown_paying_more_than_the_liability():
-    """max(liability - cash, 0). If Table 6 ever exceeded 3.1(a) — which would
-    be a bug elsewhere — this must not render a negative ITC contribution."""
-    t = gw._table_61({
-        "outward": {"taxable_igst_paise": 1000},
-        "net_payable": {"igst_paise": 5000},
-    })
-    assert t["rows"][0]["paid_through_itc_paise"] == 0
-
-
-def test_the_declaration_is_the_form_s_own_wording():
-    """Shown because it is the moment that matters: the person ticking it makes
-    a statement to the department. Paraphrasing it would misrepresent what they
-    are agreeing to."""
-    d = gw._GSTR3B_DECLARATION
-    assert "solemnly affirm and declare" in d
-    assert "true and correct to the best of my/our knowledge" in d
-    assert "nothing has been concealed therefrom" in d
-
-
-def test_the_irreversibility_warning_names_the_correction_route():
-    """"Cannot be revised" on its own reads as a dead end. §39(9) is the route,
-    and a CA who does not know it will look for an edit button that is not
-    there."""
-    w = gw._FILING_WARNING
-    assert "cannot be revised" in w
-    assert "39(9)" in w
-
-
-def test_both_signature_methods_are_offered_and_say_whose_signature_it_is():
-    """The single most important thing this walk-through conveys: the signature
-    is the TAXPAYER's — their DSC, or an EVC OTP to the mobile on their GST
-    registration — never the firm's. That is why filing cannot be one button on
-    our side, and it is why the demo has a signatory step at all."""
-    import inspect
-    src = inspect.getsource(gw.simulate_gstr3b_filing)
-    assert '"evc"' in src and '"dsc"' in src
-    assert "registered mobile" in src
-    assert "TAXPAYER" in src or "taxpayer" in src
-    assert "emSigner" in src, "DSC filing goes through emSigner; naming it is the point"
-
-
-def test_the_steps_are_only_the_last_stage_not_the_whole_flow():
-    """The transmission steps used to BE the demo. They are now what happens
-    after the declaration is signed, and the stages before them are the part a
-    CA has never seen laid out."""
-    import inspect
-    src = inspect.getsource(gw)
-    i = src.index("_SIMULATION_STEPS = [")
-    preamble = src[max(0, i - 1200):i]
-    assert "PROCEED TO PAYMENT" in preamble
-    assert "PROCEED TO FILE" in preamble
-    assert "Table 6.1" in preamble
+def test_the_preview_endpoint_refuses_when_the_switch_is_off(monkeypatch):
+    """The kill switch has to bite at the endpoint, not only in the capability
+    probe — a deployment with real filings must not be able to serve a
+    walk-through to a caller that asks for one directly."""
+    monkeypatch.setenv("ENABLE_FILING_SIMULATION", "false")
+    out = fd_router.preview(
+        "gstr3b", fd_router.PreviewRequest(client_id=CLIENT, ref={"return_id": "R3B"}),
+        {"role": "Partner", "firm_id": FIRM, "id": "U1",
+         "email": "partner@example.com"})
+    assert out["success"] is False
+    assert "switched off" in (out["error"] or "")

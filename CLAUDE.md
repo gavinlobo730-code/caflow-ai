@@ -314,9 +314,14 @@ through the app is intended, and needs:
   reference recorded before the call and checked after a timeout, never a blind
   retry.
 
-Demo filing walk-throughs exist to SHOW these flows before they are real —
-`POST /gst-workspace/gstr3b/{id}/simulate-filing` for GSTR-3B, and the shared
-filing-demo framework for the other statutory filings. They are portal-faithful
+Demo filing walk-throughs exist to SHOW these flows before they are real. There
+is exactly ONE implementation: the shared filing-demo framework —
+`services/filing_demo/` (a flow per statutory filing, GSTR-3B included), served
+by `POST /api/filing-demo/{flow}/preview` and rendered by
+`components/FilingDemoWizard.tsx`. GSTR-3B used to carry a second, bespoke one
+at `POST /gst-workspace/gstr3b/{id}/simulate-filing`; it was the first built and
+has been deleted rather than left beside its replacement, because two demos of
+one return drift and each needs its own safety argument. They are portal-faithful
 in sequence, transmit nothing, write nothing, and every response carries an
 honest `SIM-NOT-FILED` reference; any realistic-looking reference they display
 is labelled SPECIMEN at the point of display. `ENABLE_FILING_SIMULATION`

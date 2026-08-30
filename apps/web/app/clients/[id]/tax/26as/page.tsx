@@ -163,7 +163,7 @@ export default function Form26ASPage() {
   const parsedUploads = uploads.filter(u => u.parse_status === "parsed");
 
   return (
-    <div className="p-6 max-w-3xl space-y-4">
+    <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#1E293B]">Form 26AS Reconciliation</h2>

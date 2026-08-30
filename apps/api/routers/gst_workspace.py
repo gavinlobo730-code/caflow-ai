@@ -212,139 +212,27 @@ def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
     return _visible_or_none(current_user, rec)
 
 
-# ── Filing simulation (demo only) ────────────────────────────────────────────
+# ── Filing demos live in services/filing_demo/, not here ─────────────────────
 #
-# WHAT THIS IS, AND WHAT IT IS EMPHATICALLY NOT
-#   PracticeSync prepares GSTR-1 and GSTR-3B and produces the GSTN JSON. The CA
-#   uploads that to gst.gov.in and signs it there with a DSC or EVC. There is no
-#   API filing: that needs GSP registration, and CLAUDE.md's rule stands either
-#   way — never auto-submit anything to a government portal.
+# GSTR-3B used to carry its own walk-through — POST /gstr3b/{id}/simulate-filing
+# with a bespoke modal in the GST page — because it was the first one built.
+# Every other statutory filing then went through the shared framework, and a
+# second implementation of the same idea is exactly what CLAUDE.md warns
+# against: two demos of one return drift, and the safety argument has to be
+# re-made for each. The endpoint and its specimen/declaration/Table 6.1 helpers
+# are gone; services/filing_demo/gstr3b.py is the walk-through, served by
+# POST /api/filing-demo/gstr3b/preview like every other flow.
 #
-#   This endpoint exists so the intended flow can be SHOWN — walked through in a
-#   demo — before it exists. It transmits nothing, reaches no government system,
-#   and changes no stored status. Every acknowledgement number it returns is
-#   prefixed SIM- and every response carries simulated=true.
+# What stays here is the genuine path, untouched by any of it: PATCH
+# /gstr3b/{id}/status with status=submitted, which records the real ARN, the
+# filing date and the gst_filings row that journal_period_lock_reason reads.
 #
-# WHY IT IS BUILT THIS WAY RATHER THAN JUST FAKING IT IN THE BROWSER
-#   Because a screen that says "Filed" when nothing was filed is how a return
-#   gets missed, and §47 charges Rs 50 a day from the real due date. The person
-#   demoing knows it is a mock; the person who walks past the laptop afterwards,
-#   or opens the same screen next week, does not. So:
-#
-#     * it is OFF unless ENABLE_FILING_SIMULATION is set, so it cannot appear
-#       for a real user by accident;
-#     * it never writes gstr3b_returns.status, never writes a gst_filings row,
-#       and therefore never moves journal_period_lock_reason. The return's real
-#       status is exactly what it was before;
-#     * the disclaimer is part of the RESPONSE, not something the UI is trusted
-#       to remember to render.
-#
-#   The genuine "this was filed on the portal" path already exists and is
-#   untouched: PATCH /gstr3b/{id}/status with status=submitted, which records
-#   the real ARN, the filing date and the filings row the period lock reads.
-
-# The portal's own sequence, in its own order. gst.gov.in takes a GSTR-3B
-# through: Returns Dashboard -> Prepare Online -> SAVE -> PREVIEW DRAFT ->
-# PROCEED TO PAYMENT (Table 6.1, offset ITC then cash) -> PROCEED TO FILE ->
-# declaration + authorised signatory -> FILE WITH DSC / FILE WITH EVC -> OTP or
-# emSigner -> an irreversibility warning -> ARN.
-#
-# A walk-through that skips the middle teaches a CA nothing they will recognise
-# when they get there. What follows is the same order, and the transmission
-# steps below are only the last stage of it.
-_SIMULATION_STEPS = [
-    ("validate", "Validating return against the GSTN schema"),
-    ("authenticate", "Authenticating with the GST portal"),
-    ("upload", "Uploading return payload"),
-    ("process", "Awaiting GSTN processing"),
-    ("acknowledge", "Receiving acknowledgement"),
-]
-
-# CGST Rule 61 — the declaration a taxpayer signs on every GSTR-3B, verbatim
-# from the form. Shown because it is the moment that matters: the person
-# ticking it is making a statement to the department, and it is the taxpayer's
-# statement, not the CA's.
-_GSTR3B_DECLARATION = (
-    "I/We hereby solemnly affirm and declare that the information given herein "
-    "above is true and correct to the best of my/our knowledge and belief and "
-    "nothing has been concealed therefrom."
-)
-
-_FILING_WARNING = (
-    "Once filed, GSTR-3B cannot be revised. Any correction is declared in a "
-    "later period's return (CGST Act §39(9))."
-)
-
-
-def _table_61(summary: dict) -> dict:
-    """Table 6.1 — Payment of tax, per head.
-
-    The portal's most-misread screen: liability on the left, how much of it is
-    discharged from the credit ledger, and what is left to pay in CASH. A CA
-    who has only ever seen a net figure has not seen the decision they actually
-    make here.
-
-    Derived from the return's own working — liability is 3.1(a), what remains
-    payable is Table 6 after the §49(5) set-off, and the difference is what the
-    credit paid.
-    """
-    out = (summary or {}).get("outward") or {}
-    net = (summary or {}).get("net_payable") or {}
-    rows = []
-    total_cash = 0
-    for head, out_key in (("IGST", "taxable_igst_paise"),
-                          ("CGST", "taxable_cgst_paise"),
-                          ("SGST", "taxable_sgst_paise")):
-        liability = int(out.get(out_key) or 0)
-        cash = int(net.get(f"{head.lower()}_paise") or 0)
-        rows.append({
-            "head": head,
-            "liability_paise": liability,
-            "paid_through_itc_paise": max(liability - cash, 0),
-            "paid_in_cash_paise": cash,
-        })
-        total_cash += cash
-    return {"rows": rows, "total_cash_paise": total_cash}
-
-
-# One flag for every filing demo in the product — GSTR-3B's here and the
-# shared framework's in routers/filing_demo.py. Canonical definition (and the
-# default-ON rationale) lives in services/filing_demo/common.py; imported so
-# there is exactly one reading of the switch.
+# The flag below is still read here, for the dashboard capability the screens
+# probe. Canonical definition (and the default-ON rationale) lives in
+# services/filing_demo/common.py; imported so there is exactly one reading of
+# the switch, and it remains the KILL SWITCH for any deployment that records
+# real filings.
 from services.filing_demo.common import filing_simulation_enabled  # noqa: E402,F401
-
-
-# The check character a specimen reference ends with, drawn deterministically
-# so the same return always demos the same specimen.
-_SPECIMEN_CHECK = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-
-
-def _specimen_arn(gstin: str, period: str, return_id: str) -> str:
-    """A reference in the real ARN's SHAPE, for the demo's success panel.
-
-    A genuine return ARN is 15 alphanumerics: two letters, the 2-digit state,
-    MMYY, a 6-digit serial, a check character. The owner chose realism for the
-    final panel — a demo that ends on an obviously fake string undercuts the
-    walk-through — ON CONDITION the panel labels it SPECIMEN wherever it
-    appears. Every response carrying specimen_arn therefore also carries
-    specimen_note, and the honest SIM-NOT-FILED reference stays alongside in
-    `acknowledgement` for anything that logs or copies the response.
-
-    Deterministic on (gstin, period, return_id): re-running a demo shows the
-    same specimen, and nothing here needs a clock or randomness.
-    """
-    state = gstin[:2] if len(gstin) >= 2 and gstin[:2].isdigit() else "27"
-    mmyy = (period[:2] + period[4:6]) if len(period) == 6 else "0000"
-    digits = "".join(c for c in str(return_id) if c.isdigit())[:6].ljust(6, "0")
-    check = _SPECIMEN_CHECK[sum(ord(c) for c in str(return_id)) % len(_SPECIMEN_CHECK)]
-    return f"AA{state}{mmyy}{digits}{check}"
-
-
-def _simulated_ack(period: str, return_id: str) -> str:
-    """Deliberately not ARN-shaped — the honest reference that travels beside
-    the specimen. Anything that logs or copies the response gets a string that
-    says on its face it was never filed."""
-    return f"SIM-NOT-FILED-{period}-{return_id[:8]}"
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -1437,77 +1325,6 @@ def rule37_itc_reversal(
     from services.itc_reversal_service import rule37_report
     return api_response(True, rule37_report(
         get_supabase(), current_user["firm_id"], client_id, as_of=as_of))
-
-
-@router.post("/gstr3b/{return_id}/simulate-filing")
-def simulate_gstr3b_filing(
-    return_id: str,
-    current_user: dict = Depends(rbac("gst", "compute")),
-):
-    """Play back what filing WILL look like. Files nothing. See the block above.
-
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    Nothing here contacts any government system. When real filing is built it
-    will be a different endpoint, behind GSP registration and an explicit CA
-    confirmation click, and this one should be deleted rather than pointed at it.
-    """
-    if not filing_simulation_enabled():
-        return api_response(False, None,
-            "Filing simulation is not enabled. This build cannot file returns; "
-            "download the JSON and upload it on gst.gov.in.")
-
-    rec = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
-    if rec is None:
-        return api_response(False, None, "Not found")
-
-    period = rec.get("period") or ""
-    # The walk-through shows this return's OWN figures. A demo over invented
-    # numbers teaches a CA nothing about their client, and the figures are
-    # already here — reading them costs nothing and transmits nothing.
-    liability = int(rec.get("tax_liability_paise") or 0)
-    itc = int(rec.get("itc_claimed_paise") or 0)
-    net = int(rec.get("net_tax_paise") or 0)
-    return api_response(True, {
-        "simulated": True,
-        "filed": False,
-        "return_id": return_id,
-        "period": period,
-        "gstin": rec.get("gstin") or "",
-        "figures": {
-            "tax_liability_paise": liability,
-            "itc_claimed_paise": itc,
-            "net_tax_paise": net,
-        },
-        # The portal's Table 6.1 — liability, what credit pays, what cash pays.
-        "table_61": _table_61(rec.get("summary_json") or {}),
-        "declaration": _GSTR3B_DECLARATION,
-        "filing_warning": _FILING_WARNING,
-        # Real filing offers both. The signature is the TAXPAYER's — their DSC
-        # or an EVC OTP to the mobile on their GST registration — never the
-        # firm's, which is the single most important thing this walk-through
-        # has to convey and the reason it cannot simply be a Submit button.
-        "signature_methods": [
-            {"key": "evc", "label": "File with EVC",
-             "note": "OTP to the authorised signatory's registered mobile and email"},
-            {"key": "dsc", "label": "File with DSC",
-             "note": "Class 3 digital signature via emSigner; mandatory for companies and LLPs"},
-        ],
-        "steps": [{"key": k, "label": l} for k, l in _SIMULATION_STEPS],
-        "acknowledgement": _simulated_ack(period, return_id),
-        # Realism for the success panel, honesty in the same object: the two
-        # keys travel together and the UI shows the note wherever the ARN is.
-        "specimen_arn": _specimen_arn(rec.get("gstin") or "", period, return_id),
-        "specimen_note": ("SPECIMEN — real ARN format, but not issued by GSTN. "
-                          "Nothing was filed."),
-        # Carried in the payload rather than left to the UI: a caller that
-        # forgets to render a disclaimer still cannot claim this was filed.
-        "disclaimer": (
-            "SIMULATION — nothing was sent to GSTN and this return has NOT been "
-            "filed. PracticeSync prepares the return; the CA files it on "
-            "gst.gov.in. The status of this return is unchanged."
-        ),
-        "status_unchanged": rec.get("status"),
-    })
 
 
 # ── A draft return is not a filing, and must be deletable ────────────────────

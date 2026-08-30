@@ -129,7 +129,7 @@ export default function SchedulesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
-        <div className="max-w-5xl space-y-3">
+        <div className="max-w-5xl mx-auto space-y-3">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>

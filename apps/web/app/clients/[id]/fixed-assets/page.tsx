@@ -197,7 +197,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
   const totalWDV   = totalCost - totalAccum;
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl mx-auto">
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
@@ -518,7 +518,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
   const totalAnnual = assets.reduce((s, a) => s + annualDepn(a), 0);
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl mx-auto">
       {/* Period + Post All */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4 flex items-center justify-between">
         <div className="space-y-1">
@@ -679,7 +679,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4 max-w-3xl mx-auto">
       <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex gap-2">
         <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
         <div>
@@ -828,7 +828,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   // report is never mistaken for a client that genuinely holds no assets (M17).
   if (loadFailed) {
     return (
-      <div className="space-y-5 max-w-4xl">
+      <div className="space-y-5 max-w-4xl mx-auto">
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the fixed-asset report — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
@@ -838,7 +838,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   }
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-4xl mx-auto">
       {/* Summary */}
       <div className="grid grid-cols-4 gap-4">
         {[

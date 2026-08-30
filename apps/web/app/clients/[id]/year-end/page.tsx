@@ -7,6 +7,8 @@ import { Plus, Loader2, Calendar, ChevronRight, FileCode } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
+import { isCompaniesActCompany, usesScheduleIII } from "@/lib/entityObligations";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -50,6 +52,8 @@ export default function YearEndPage() {
   // a real client (see lib/workspace/ClientNavContext.tsx). useClientNav reads
   // the id out of window.location, which is always the real browser URL.
   const { clientId } = useClientNav();
+  const entity = useClientEntityType(clientId);
+  const offerXbrl = offerWhenKnown(entity, isCompaniesActCompany);
 
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,19 +114,32 @@ export default function YearEndPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl space-y-4">
+    <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#1E293B]">Year-End Engagements</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Schedule III financial statements, notes, and audit pack</p>
+          {/* Year End is for every client — a proprietorship or a firm still
+              closes its books and still needs a balance sheet and a P&L, for
+              the ITR and for a §44AB tax audit. What is NOT universal is the
+              FORM: Schedule III (Companies Act 2013 §129) prescribes it for
+              companies only, so the label is claimed only where it binds.
+              lib/entityObligations.ts carries the rule. */}
+          <p className="text-xs text-[#94A3B8] mt-0.5">
+            {usesScheduleIII(entity.entityType) ? "Schedule III financial statements" : "Financial statements"}, notes, and audit pack
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/clients/${clientId}/year-end/xbrl`}
-            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
-          >
-            <FileCode size={12} /> XBRL Filing
-          </Link>
+          {/* AOC-4 XBRL is a filing to the MCA under §137 read with the
+              Companies (Filing of Documents and Forms in XBRL) Rules 2015 —
+              a company filing. Absent, not disabled, for anyone else. */}
+          {offerXbrl && (
+            <Link
+              href={`/clients/${clientId}/year-end/xbrl`}
+              className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            >
+              <FileCode size={12} /> XBRL Filing
+            </Link>
+          )}
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"

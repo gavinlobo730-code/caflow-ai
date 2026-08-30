@@ -192,7 +192,8 @@ def test_specimens_are_deterministic_and_seed_sensitive():
 
 def test_every_flow_is_registered_with_a_real_permission_resource():
     from core.permissions import PERMISSIONS
-    assert set(fd.FLOWS) == {"gstr1", "gstr9", "tds", "itr", "pf", "esi", "mca"}
+    assert set(fd.FLOWS) == {"gstr1", "gstr3b", "gstr9", "tds", "itr",
+                            "pf", "esi", "mca"}
     for flow, (builder, resource) in fd.FLOWS.items():
         assert callable(builder), flow
         assert resource in PERMISSIONS, (

@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientEntityType } from "@/lib/clients/useClientEntityType";
+import { isCompaniesActCompany, mcaRegime, mcaScopeNote } from "@/lib/entityObligations";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
@@ -624,12 +627,67 @@ const TABS: { id: MCATab; label: string }[] = [
   { id: "history", label: "Filing History" },
 ];
 
+/**
+ * What this page says to a client that cannot file the Companies Act forms.
+ *
+ * "No companies registered" was the old answer for a proprietorship, and it
+ * reads like missing data — as though somebody had forgotten to add the
+ * company. The obligation does not exist, so the page says which regime the
+ * client is actually in and why. lib/entityObligations.ts is the authority
+ * for both the classification and this wording.
+ */
+function McaOutOfScope({ clientId, entityType }: { clientId: string; entityType: string | null }) {
+  const regime = mcaRegime(entityType);
+  const note = mcaScopeNote(entityType);
+  return (
+    <div className="p-6 space-y-6">
+      <h2 className="text-xl font-semibold">MCA / ROC Compliance</h2>
+      <div className="max-w-2xl space-y-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-5">
+        <p className="text-sm font-medium text-[#0F172A]">
+          {regime === "llp-act"
+            ? "An LLP does not file the Companies Act annual forms."
+            : "This client has no filings with the Ministry of Corporate Affairs."}
+        </p>
+        <p className="text-xs leading-relaxed text-[#475569]">{note}</p>
+        {regime === "llp-act" && (
+          <p className="text-xs leading-relaxed text-[#475569]">
+            PracticeSync does not prepare Form 11 or Form 8 yet. Until it does, file them on
+            the MCA portal and record the SRN against the client here.
+          </p>
+        )}
+        <Link
+          href={`/clients/${clientId}/compliance/`}
+          className="inline-block text-xs font-medium text-blue-600 hover:underline"
+        >
+          Back to Compliance
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export default function MCAWorkspacePage() {
   const { clientId } = useClientNav();
+  // MCA/ROC is not universal: AOC-4 (§137), MGT-7 (§92) and ADT-1 (§139) bind
+  // companies incorporated under the Companies Act 2013, and those are the
+  // only forms this workspace implements. An LLP files on the MCA too, but
+  // Form 11 / Form 8 under the LLP Act 2008, so it is not a company here.
+  const entity = useClientEntityType(clientId);
   const [tab, setTab] = useState<MCATab>("companies");
 
   if (!clientId || clientId === "_placeholder") {
     return <p className="text-sm text-[#64748B] p-6">Select a client to view MCA workspace.</p>;
+  }
+
+  // Never flash the company workspace at a client that will not keep it: wait
+  // for the entity type before deciding. On a failed read we fall through to
+  // the workspace — the gate is an affordance, not an access control, and a
+  // transient failure must not lock a company's CA out of its own filings.
+  if (entity.loading) {
+    return <div className="p-6"><ListSkeleton rows={4} /></div>;
+  }
+  if (entity.error === null && !isCompaniesActCompany(entity.entityType)) {
+    return <McaOutOfScope clientId={clientId} entityType={entity.entityType} />;
   }
 
   return (
