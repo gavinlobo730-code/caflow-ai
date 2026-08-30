@@ -155,6 +155,14 @@ class ITRComputeRequest:
     # business income — before this field existed the workspace recorded them,
     # displayed them, and changed the computed tax by exactly nothing.
     disallowances_paise: int = 0
+    # Presumptive business income under §44AD / §44ADA / §44AE, computed by
+    # domain.income_tax.presumptive and supplied here as the already-determined
+    # figure. When set, it REPLACES business_income_paise rather than adding to
+    # it: under a presumptive scheme the statutory percentage IS the business
+    # income, and §44AD(2) / §44ADA(3) / §44AE(6) deem every deduction under
+    # §30 to §38 already allowed. Adding book profit on top would tax the same
+    # business twice.
+    presumptive_income_paise: Optional[int] = None
     capital_gains_stcg_paise: int = 0
     capital_gains_ltcg_paise: int = 0      # equity, 12.5% (Section 112A)
     capital_gains_ltcg_other_paise: int = 0  # property, debt MF etc, 12.5%/20%
@@ -278,7 +286,18 @@ class ITREngine:
         # Disallowed expenditure is added back to business income: the expense
         # was taken in the books but is not deductible, so taxable business
         # income is higher by that amount (§40A(3), §43B and the rest).
-        business_income = req.business_income_paise + max(0, req.disallowances_paise)
+        #
+        # A presumptive figure REPLACES both. §44AD(2), §44ADA(3) and §44AE(6)
+        # deem every deduction under §30 to §38 to have been allowed in
+        # computing the presumptive income, so there is nothing left to
+        # disallow — adding back a §40A(3) cash payment to a presumptive
+        # return would charge tax on an expense the section has already
+        # accounted for, and would do it invisibly because both numbers look
+        # reasonable on their own.
+        if req.presumptive_income_paise is not None:
+            business_income = max(0, req.presumptive_income_paise)
+        else:
+            business_income = req.business_income_paise + max(0, req.disallowances_paise)
 
         # Capital gains are computed separately (special rates)
         ordinary_income = (
