@@ -27,7 +27,7 @@ const MODULES = [
     desc: "Upload 26AS, match TDS credits, detect mismatches against books",
     icon: RefreshCw,
     href: "tax/26as",
-    badge: "IT Act §203AA",
+    badge: "IT Act §285BB",
   },
 ];
 

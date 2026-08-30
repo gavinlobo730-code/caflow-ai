@@ -1,6 +1,10 @@
 """
-Form 26AS Reconciliation Module.
-IT Act 1961 Section 203AA — Annual Tax Statement.
+Form 26AS Reconciliation routes.
+
+IT Act 1961 s.285BB with Rule 114-I — the Annual Information Statement, under
+which Form 26AS is issued. (s.203AA, cited here until now, was omitted by the
+Finance Act 2020 w.e.f. 01-06-2020.)
+
 # CA REVIEW REQUIRED — Reconciliation output must be reviewed before filing
 """
 from __future__ import annotations
@@ -24,7 +28,7 @@ def _assert_upload_scope(upload_id: str, current_user: dict) -> dict:
     mount-level guard never fires on them. They previously scoped on firm_id
     alone — and mark_26as_uploaded's mock branch checked nothing at all, so
     it did not even enforce the firm. A 26AS upload is the client's full
-    annual tax statement (IT Act s.203AA), so this is taxpayer data, not
+    annual tax statement (IT Act s.285BB), so this is taxpayer data, not
     metadata. ONE fixed message covers missing, wrong-firm and unassigned
     alike, so the response is not an existence oracle."""
     from domain.income_tax.form26as_service import get_upload
@@ -129,10 +133,19 @@ def run_reconciliation(
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """
-    Run 26AS reconciliation against TDS ledger.
-    Detects missing credits, mismatches, duplicates.
-    Creates AI insight if variance exceeds 1% threshold.
-    # CA REVIEW REQUIRED — Review results before acting.
+    Reconcile the client's parsed 26AS against the TDS credits in its books,
+    in BOTH directions.
+
+    26AS → books surfaces credits a deductor reported that the books do not
+    show. books → 26AS surfaces credits the books claim that no deductor
+    reported: under Rule 37BA(1) credit is given on the basis of the deductor's
+    own information, so those are not claimable in the return until the deductor
+    files a correction. That second direction is the one a CA acts on before
+    filing, and it is what `not_in_26as_count` / `unsupported_credit_paise`
+    carry.
+
+    # CA REVIEW REQUIRED — Review results before acting. Nothing here files
+    # anything; the output is a working paper.
     """
     assert_client_access(current_user, req.client_id)
     from domain.income_tax.form26as_service import list_uploads, run_reconciliation as _run
@@ -155,10 +168,21 @@ def run_reconciliation(
             client_id=req.client_id,
             category="tax",
             action="26as_reconciled",
-            description=f"26AS reconciliation completed for FY {req.financial_year}: "
-                        f"{result.get('matched_count',0)} matched, "
-                        f"{result.get('mismatch_count',0)} mismatches",
-            severity="success" if result.get("mismatch_count", 0) == 0 else "warning",
+            description=(
+                f"26AS reconciliation completed for FY {req.financial_year}: "
+                f"{result.get('matched_count', 0)} matched, "
+                f"{result.get('mismatch_count', 0)} with an amount variance, "
+                f"{result.get('missing_in_books_count', 0)} not in the books, "
+                f"{result.get('not_in_26as_count', 0)} in the books but not in 26AS"
+            ),
+            # Anything unreported by a deductor is a warning regardless of the
+            # amount variance — it is credit that cannot be claimed as things
+            # stand (Rule 37BA(1)), not a bookkeeping difference.
+            severity="success" if (
+                result.get("mismatch_count", 0) == 0
+                and result.get("missing_in_books_count", 0) == 0
+                and result.get("not_in_26as_count", 0) == 0
+            ) else "warning",
             metadata=result,
         )
         return api_response(True, {**result, "ca_review_required": True})
