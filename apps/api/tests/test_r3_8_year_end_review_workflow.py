@@ -90,14 +90,27 @@ class TestPathsAreReachable:
 class TestFinalApproveLocksTheYear:
     """The FY-lock behaviour only the unreachable year_end.py endpoint had."""
 
-    def test_final_approve_locks_the_financial_year(self, yer_app):
+    def test_final_approve_locks_the_financial_year_for_that_client(self, yer_app):
+        """Final approval closes the engagement's own client's year.
+
+        It used to lock firms.locked_financial_years — practice-wide, so every
+        other client's posting in that year stopped too, behind the firm lock
+        PIN. See migration 289."""
         app, db = yer_app
         _seed_engagement(db, status="approved")
         db.seed("firms", {"id": "F1", "locked_financial_years": [], "lock_pin": None})
         r = _client_for(app, PARTNER).post("/year-end/engagements/ENG1/reviews/final-approve", json={})
         assert r.status_code == 200
+
+        locks = [row for row in db.rows("client_year_locks")
+                 if row["firm_id"] == "F1" and row["financial_year"] == "2024-25"]
+        assert len(locks) == 1
+        assert locks[0]["client_id"] == "C1"
+
         firm = next(row for row in db.rows("firms") if row["id"] == "F1")
-        assert "2024-25" in firm["locked_financial_years"]
+        assert "2024-25" not in (firm.get("locked_financial_years") or []), (
+            "one client's year-end closed the whole firm's year"
+        )
 
 
 class TestReviewState:

@@ -359,6 +359,9 @@ def final_approve(
     lock_year_if_completing(
         db, firm_id, eng.get("financial_year"), "locked",
         actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        # The engagement's own client — a year-end closes one entity's year,
+        # never the whole practice's.
+        client_id=eng.get("client_id"),
     )
 
     return api_response(True, updated)

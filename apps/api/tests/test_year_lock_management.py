@@ -86,11 +86,43 @@ def test_get_state_never_leaks_pin(monkeypatch):
 
 # ── year-end integration ─────────────────────────────────────────────────────
 
-def test_year_end_completion_locks_the_year(monkeypatch):
+def test_year_end_completion_locks_that_client_only(monkeypatch):
+    """Finalising an engagement closes ONE client's year.
+
+    It used to write a FIRM-level lock (firms.locked_financial_years), so a
+    Partner finalising one client's FY 2024-25 stopped posting in that year for
+    every other client in the practice, and clearing it needed the firm lock
+    PIN. In March or September that is a practice-wide outage produced by a
+    routine click. An engagement belongs to one accounting entity, so the lock
+    it writes belongs to one entity (migration 289)."""
     db = _setup(monkeypatch, mods=[ye, yls])
     db.seed("year_end_engagements", {"id": "ENG", "firm_id": FIRM,
+                                     "client_id": "CLIENT-A",
                                      "financial_year": "2024-25", "status": "approved"})
     res = ye.update_engagement_status("ENG", EngagementStatusIn(status="locked"), PARTNER)
     assert res["success"] is True
-    row = next(r for r in db.rows("firms") if r["id"] == FIRM)
-    assert "2024-25" in row["locked_financial_years"]
+
+    locks = [r for r in db.rows("client_year_locks")
+             if r["firm_id"] == FIRM and r["financial_year"] == "2024-25"]
+    assert len(locks) == 1, "the client's year was not closed"
+    assert locks[0]["client_id"] == "CLIENT-A"
+
+    firm = next(r for r in db.rows("firms") if r["id"] == FIRM)
+    assert "2024-25" not in (firm.get("locked_financial_years") or []), (
+        "one client's year-end locked the whole firm's financial year — the "
+        "practice-wide outage this change exists to remove"
+    )
+
+
+def test_a_year_end_without_a_client_locks_nothing(monkeypatch):
+    """There is no correct firm-wide fallback: locking the practice because a
+    client id is missing is the exact bug being removed, so it refuses."""
+    db = _setup(monkeypatch, mods=[ye, yls])
+    db.seed("year_end_engagements", {"id": "ENG2", "firm_id": FIRM,
+                                     "financial_year": "2024-25", "status": "approved"})
+    ye.update_engagement_status("ENG2", EngagementStatusIn(status="locked"), PARTNER)
+
+    firm = next(r for r in db.rows("firms") if r["id"] == FIRM)
+    assert "2024-25" not in (firm.get("locked_financial_years") or [])
+    assert not [r for r in db.rows("client_year_locks")
+                if r["financial_year"] == "2024-25"]

@@ -318,6 +318,9 @@ def update_engagement_status(
     lock_year_if_completing(
         db, firm_id, row.get("financial_year"), new_status,
         actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        # The engagement's own client — a year-end closes one entity's year,
+        # never the whole practice's.
+        client_id=row.get("client_id"),
     )
 
     return api_response(True, updated)
