@@ -7,7 +7,11 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
+// The years this build can actually compute are the server's to state — see
+// GET /api/income-tax/financial-years. Hard-coding them here is what let the
+// picker offer FY 2023-24 and FY 2024-25, which the engine has no rates for
+// and silently computed at the current year's instead.
+interface SupportedFY { fy: string; verified: boolean }
 const AY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
 const SECTION_OPTIONS = ["40A(3)", "43B_pf", "43B_gst", "43B_bonus", "43B_leave", "other"];
 
@@ -58,6 +62,12 @@ interface ComputeResult {
   tax: { total_tax_paise: number; rebate_87a_paise: number };
   payable: { net_payable_paise: number; is_refund: boolean };
   warnings: string[];
+  // The year whose rates were ACTUALLY applied, and whether they are
+  // confirmed against the Finance Act. The backend has always returned both;
+  // this screen used to discard them, which is how a computation at another
+  // year's rates could reach a CA looking entirely normal.
+  fy: string;
+  rates_verified: boolean;
 }
 
 interface BFLoss {
@@ -78,7 +88,8 @@ export default function TaxComputationPage() {
   // the real UUID out of window.location.
   const { clientId } = useClientNav();
 
-  const [fy, setFy] = useState(FY_OPTIONS[0]);
+  const [fyOptions, setFyOptions] = useState<SupportedFY[]>([]);
+  const [fy, setFy] = useState("");
   const [ay, setAy] = useState(AY_OPTIONS[0]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [disallowances, setDisallowances] = useState<Disallowance[]>([]);
@@ -156,10 +167,36 @@ export default function TaxComputationPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Which years this build can compute is the server's answer, not a constant
+  // in this file. A failed probe leaves the picker empty rather than guessing:
+  // an empty picker is visibly broken, whereas a wrong year computes silently.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch("/api/income-tax/financial-years");
+        if (cancelled || !r.success) return;
+        const years = (r.data?.financial_years ?? []) as SupportedFY[];
+        setFyOptions(years);
+        setFy((prev) => prev || r.data?.current_fy || years[0]?.fy || "");
+      } catch {
+        /* picker stays empty; Compute is gated on fy below */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   async function handleCompute() {
     setComputing(true);
     setComputeError(null);
     const toP = (v: string) => Math.round(parseFloat(v || "0") * 100);
+    // Accepted disallowances are an ADD-BACK to business income, so they have
+    // to reach the computation — not merely the snapshot. This total used to be
+    // computed after the compute call and saved alongside a figure it had not
+    // influenced, so accepting a disallowance changed the tax by exactly ₹0.
+    const totalDisall = disallowances
+      .filter(d => d.status === "accepted")
+      .reduce((s, d) => s + d.amount_paise, 0);
     try {
       // 1. Compute tax
       const computeRes = await apiFetch("/api/income-tax/compute", {
@@ -168,6 +205,7 @@ export default function TaxComputationPage() {
           fy,
           gross_salary_paise: toP(salary),
           business_income_paise: toP(businessIncome),
+          disallowances_paise: totalDisall,
           other_income_paise: toP(otherIncome),
           tds_deducted_paise: toP(tds),
           advance_tax_paid_paise: toP(advanceTax),
@@ -178,9 +216,6 @@ export default function TaxComputationPage() {
       setComputeResult(computeRes.data);
 
       // 2. Save snapshot
-      const totalDisall = disallowances
-        .filter(d => d.status === "accepted")
-        .reduce((s, d) => s + d.amount_paise, 0);
 
       await apiFetch("/api/itr/snapshots", {
         method: "POST",
@@ -253,7 +288,11 @@ export default function TaxComputationPage() {
           onChange={e => setFy(e.target.value)}
           className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
+          {fyOptions.map(o => (
+            <option key={o.fy} value={o.fy}>
+              {o.fy}{o.verified ? "" : " (provisional rates)"}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -360,7 +399,10 @@ export default function TaxComputationPage() {
 
             <button
               onClick={handleCompute}
-              disabled={computing}
+              // No year resolved means the server never told us which years it
+              // can compute. Posting fy:"" would take the engine's own default
+              // and put a figure on screen for a year nobody chose.
+              disabled={computing || !fy}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {computing && <Loader2 size={12} className="animate-spin" />}
@@ -368,6 +410,23 @@ export default function TaxComputationPage() {
               Compute &amp; Save Snapshot
             </button>
 
+            {computeResult && computeResult.fy && computeResult.fy !== fy && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                <p className="text-[11px] text-amber-800">
+                  Computed at <strong>FY {computeResult.fy}</strong> rates, not
+                  FY {fy} — this build has no rate table for the year you
+                  selected. Treat the figures as indicative only.
+                </p>
+              </div>
+            )}
+            {computeResult && computeResult.rates_verified === false && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                <p className="text-[11px] text-amber-800">
+                  FY {computeResult.fy} rates are <strong>provisional</strong> —
+                  carried forward pending the Finance Act.
+                </p>
+              </div>
+            )}
             {computeResult && (
               <div className="bg-[#F8FAFC] rounded-xl p-4 space-y-2">
                 <p className="text-xs font-semibold text-[#334155]">Result</p>

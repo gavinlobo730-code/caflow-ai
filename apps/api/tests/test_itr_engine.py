@@ -430,6 +430,117 @@ class TestSection24B:
         ))
         assert any("capped" in w.lower() for w in r.warnings)
 
+    def test_the_old_regime_cap_is_the_71_3a_limit_not_the_24b_one(self):
+        """Two ₹2,00,000 limits that are not the same rule: §24(b) caps a
+        DEDUCTION for interest, §71(3A) caps the SET-OFF of the resulting
+        loss. They are separate constants so neither can be "simplified"
+        into the other."""
+        from domain.income_tax.itr_engine import LIMIT_SET_OFF_71_3A_PAISE
+        r = engine.compute(req(
+            gross_salary_paise=10 * L,
+            use_new_regime=False,
+            house_property_income_paise=-3 * L,
+        ))
+        # ₹10L salary − ₹75k standard deduction − ₹2L set-off (not ₹3L).
+        no_loss = engine.compute(req(gross_salary_paise=10 * L, use_new_regime=False))
+        assert (no_loss.taxable_income_paise - r.taxable_income_paise
+                == LIMIT_SET_OFF_71_3A_PAISE)
+
+    def test_the_new_regime_allows_no_house_property_set_off_at_all(self):
+        """§115BAC(2): under the new regime a house property loss is not set
+        off against income under any other head — the ₹2,00,000 figure is the
+        OLD regime's §71(3A) cap and does not apply.
+
+        This is the default regime since AY 2024-25, so getting it wrong
+        understated the tax on the return most people now file — by up to
+        ₹2,00,000 of income, about ₹62,400 at the top marginal rate."""
+        with_loss = engine.compute(req(
+            gross_salary_paise=20 * L,
+            use_new_regime=True,
+            house_property_income_paise=-3 * L,
+        ))
+        without = engine.compute(req(
+            gross_salary_paise=20 * L,
+            use_new_regime=True,
+        ))
+        assert with_loss.taxable_income_paise == without.taxable_income_paise, (
+            "a house property loss reduced new-regime taxable income; "
+            "§115BAC(2) bars the set-off entirely"
+        )
+        assert with_loss.total_tax_paise == without.total_tax_paise
+        assert any("115BAC" in w for w in with_loss.warnings), (
+            "the CA must be told why the loss gave no relief"
+        )
+
+    def test_house_property_INCOME_is_still_taxed_under_the_new_regime(self):
+        """Only the LOSS set-off is barred. Positive income under the head is
+        taxable under both regimes — barring that too would understate nothing
+        and overstate everything."""
+        r = engine.compute(req(
+            gross_salary_paise=10 * L,
+            use_new_regime=True,
+            house_property_income_paise=2 * L,
+        ))
+        base = engine.compute(req(gross_salary_paise=10 * L, use_new_regime=True))
+        assert r.taxable_income_paise - base.taxable_income_paise == 2 * L
+
+
+# ── Disallowances (§40A(3), §43B) add back to business income ────────────────
+
+class TestDisallowances:
+    """The computation workspace records disallowances the CA accepts. Before
+    the engine had this field they changed the computed tax by exactly ₹0 —
+    the workspace looked like it was doing tax work and was inert."""
+
+    def test_a_disallowance_increases_taxable_income_by_its_amount(self):
+        # ₹20L, deliberately clear of the §87A rebate ceiling (₹12,00,000 of
+        # taxable income under the new regime for FY 2025-26) — inside it both
+        # computations correctly return nil tax and the assertion below would
+        # prove nothing.
+        base = engine.compute(req(business_income_paise=20 * L, use_new_regime=True))
+        with_addback = engine.compute(req(
+            business_income_paise=20 * L,
+            disallowances_paise=2 * L,
+            use_new_regime=True,
+        ))
+        assert (with_addback.taxable_income_paise - base.taxable_income_paise
+                == 2 * L), "a disallowance is an add-back; it must raise income"
+        assert with_addback.total_tax_paise > base.total_tax_paise, (
+            "and more income at a positive marginal rate means more tax"
+        )
+
+    def test_the_add_back_is_paise_exact(self):
+        r = engine.compute(req(
+            business_income_paise=7_77_777_00,
+            disallowances_paise=1_23_456_00,
+            use_new_regime=True,
+        ))
+        base = engine.compute(req(business_income_paise=7_77_777_00, use_new_regime=True))
+        assert r.taxable_income_paise - base.taxable_income_paise == 1_23_456_00
+
+    def test_a_disallowance_is_disclosed_in_the_warnings(self):
+        r = engine.compute(req(
+            business_income_paise=10 * L, disallowances_paise=2 * L,
+            use_new_regime=True,
+        ))
+        assert any("added back to business income" in w for w in r.warnings)
+
+    def test_no_disallowance_changes_nothing(self):
+        a = engine.compute(req(business_income_paise=10 * L, use_new_regime=True))
+        b = engine.compute(req(business_income_paise=10 * L, disallowances_paise=0,
+                               use_new_regime=True))
+        assert a.taxable_income_paise == b.taxable_income_paise
+        assert not any("added back" in w for w in b.warnings)
+
+    def test_a_negative_disallowance_cannot_reduce_income(self):
+        """Nothing should send one, but a disallowance is an add-back by
+        definition — letting a negative value through would turn the field
+        into an uncited deduction."""
+        r = engine.compute(req(business_income_paise=10 * L,
+                               disallowances_paise=-5 * L, use_new_regime=True))
+        base = engine.compute(req(business_income_paise=10 * L, use_new_regime=True))
+        assert r.taxable_income_paise == base.taxable_income_paise
+
 
 # ── FY resolution and verification flag ──────────────────────────────────────
 

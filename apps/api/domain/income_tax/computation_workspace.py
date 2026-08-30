@@ -264,17 +264,36 @@ def update_disallowance_status(
 
 
 def auto_detect_40a3(firm_id: str, client_id: str, financial_year: str, created_by: str) -> list[dict]:
-    """
-    IT Act Section 40A(3): Auto-detect cash payments exceeding ₹10,000 from ledger.
-    Scans journal_lines for cash/bank debit entries > ₹10,000.
+    """IT Act §40A(3): surface cash payments for the CA to review.
+
+    §40A(3) disallows expenditure where the payment — or the AGGREGATE of
+    payments made to a person in a day — exceeds ₹10,000 otherwise than by
+    account-payee cheque, draft or electronic mode.
+
+    WHAT THIS RETURNS, AND WHAT IT DOES NOT DECIDE
+        The scan reads the CREDIT side of cash accounts (money leaving; a cash
+        payment credits cash) aggregated per day per counterparty account. It
+        used to read the debit side, which is money coming IN — so it produced
+        the client's cash RECEIPTS as though they were disallowable payments,
+        and never surfaced a single real one. See migration 288.
+
+        The ledger carries no party dimension, so "aggregate paid to a person
+        in a day" is not derivable; the per-day-per-counterparty-account total
+        is the closest honest proxy and is what the amount reflects. Rule 6DD
+        exempts a long list of payments (banking companies, government where
+        legal tender is required, a producer for agricultural produce, a
+        village without banking facilities, and more), and the second proviso
+        raises the limit to ₹35,000 for plying, hiring or leasing goods
+        carriages — all facts about the payee that no ledger scan can settle.
+
+        So every row created here is a CANDIDATE for CA review, recorded with
+        status pending, never a determination. The CA accepts or rejects it.
     """
     LIMIT_PAISE = 1_000_000  # ₹10,000 = 1,000,000 paise
     if _USE_MOCK:
         return []  # No mock ledger data
 
     sb = _supabase()
-    # Scan journal entries: cash debit lines > ₹10,000
-    # Cash accounts typically have "cash" in name — firm-specific, so we do a best-effort scan
     cash_entries = sb.rpc("get_cash_payments_above_threshold", {
         "p_firm_id": firm_id,
         "p_client_id": client_id,
@@ -284,12 +303,26 @@ def auto_detect_40a3(firm_id: str, client_id: str, financial_year: str, created_
     created = []
     if cash_entries.data:
         for entry in cash_entries.data:
+            count = int(entry.get("entry_count") or 1)
+            account = entry.get("counterparty_account") or "Unallocated"
+            if count > 1:
+                # Name the aggregation, so a CA seeing a figure larger than any
+                # single voucher knows why it is larger.
+                description = (
+                    f"Cash payments to {account} on {entry.get('entry_date')} "
+                    f"— {count} vouchers aggregated (§40A(3) applies to the "
+                    f"day's total paid to one person)"
+                )
+            else:
+                description = (
+                    f"Cash payment: {entry.get('narration') or account}"
+                )
             d = create_disallowance(
                 firm_id=firm_id,
                 client_id=client_id,
                 financial_year=financial_year,
                 section="40A(3)",
-                description=f"Cash payment: {entry.get('narration', 'N/A')}",
+                description=description,
                 amount_paise=entry.get("amount_paise", 0),
                 created_by=created_by,
                 auto_detected=True,

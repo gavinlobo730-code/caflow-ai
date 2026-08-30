@@ -67,6 +67,15 @@ LIMIT_80TTB_PAISE: int = 50_000 * 100
 # IT Act Section 24(b) — home loan interest self-occupied
 LIMIT_24B_PAISE: int = 200_000 * 100
 
+# IT Act Section 71(3A) — the most house-property LOSS that may be set off
+# against income under any other head in a year, under the OLD regime. It is
+# ₹2,00,000 like §24(b) above and is a different rule about a different thing:
+# §24(b) caps a DEDUCTION for interest, §71(3A) caps a SET-OFF of the
+# resulting loss. Keeping one constant for both invited the next reader to
+# "simplify" two independent limits into one. Under the NEW regime §115BAC(2)
+# allows no such set-off at all, so this limit does not apply there.
+LIMIT_SET_OFF_71_3A_PAISE: int = 200_000 * 100
+
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -140,6 +149,12 @@ class ITRComputeRequest:
     other_income_paise: int = 0        # interest, dividend etc
     house_property_income_paise: int = 0   # negative = loss
     business_income_paise: int = 0
+    # Add-backs to business income accepted by the CA in the computation
+    # workspace: §40A(3) cash payments, §43B liabilities unpaid by the §139(1)
+    # due date, and anything else disallowed. A disallowance INCREASES taxable
+    # business income — before this field existed the workspace recorded them,
+    # displayed them, and changed the computed tax by exactly nothing.
+    disallowances_paise: int = 0
     capital_gains_stcg_paise: int = 0
     capital_gains_ltcg_paise: int = 0      # equity, 12.5% (Section 112A)
     capital_gains_ltcg_other_paise: int = 0  # property, debt MF etc, 12.5%/20%
@@ -242,15 +257,35 @@ class ITREngine:
 
         # 2. Gross Total Income
         # House property: capped at -2,00,000 if self-occupied (Section 71)
-        house_property = max(req.house_property_income_paise, -LIMIT_24B_PAISE)
+        # House property loss, and whether it may be set off at all.
+        #
+        # OLD regime: §71(3A) caps the set-off against other heads at
+        # ₹2,00,000 for the year.
+        # NEW regime: §115BAC(2) does not allow the set-off against any other
+        # head AT ALL. A loss under this head simply gives no relief this year.
+        #
+        # The distinction is worth up to ₹2,00,000 of income, and the new
+        # regime has been the DEFAULT since AY 2024-25 — so applying the old
+        # regime's cap to a new-regime filer understated the tax on the return
+        # most people now file.
+        if req.house_property_income_paise < 0 and req.use_new_regime:
+            house_property = 0
+        else:
+            house_property = max(req.house_property_income_paise,
+                                 -LIMIT_SET_OFF_71_3A_PAISE)
         salary_after_std_ded = max(0, req.gross_salary_paise - std_ded)
+
+        # Disallowed expenditure is added back to business income: the expense
+        # was taken in the books but is not deductible, so taxable business
+        # income is higher by that amount (§40A(3), §43B and the rest).
+        business_income = req.business_income_paise + max(0, req.disallowances_paise)
 
         # Capital gains are computed separately (special rates)
         ordinary_income = (
             salary_after_std_ded
             + req.other_income_paise
             + house_property
-            + req.business_income_paise
+            + business_income
         )
         gti = (ordinary_income + req.capital_gains_stcg_paise
                + req.capital_gains_ltcg_paise + req.capital_gains_ltcg_other_paise)
@@ -397,10 +432,23 @@ class ITREngine:
                 "Section 80C/80CCD(1B) deductions are not available under the new regime "
                 "(Section 80CCD(2), employer NPS, is — see the deductions breakdown)"
             )
-        if req.house_property_income_paise < -LIMIT_24B_PAISE:
+        if req.house_property_income_paise < 0:
+            loss = -req.house_property_income_paise
+            if req.use_new_regime:
+                result.warnings.append(
+                    f"House property loss of ₹{loss // 100:,} is NOT set off against "
+                    f"other income under the new regime (Section 115BAC(2)). It gives "
+                    f"no relief this year."
+                )
+            elif loss > LIMIT_SET_OFF_71_3A_PAISE:
+                result.warnings.append(
+                    f"House property loss capped at ₹2,00,000 (Section 71(3A)). Excess "
+                    f"loss ₹{(loss - LIMIT_SET_OFF_71_3A_PAISE) // 100:,} carried forward."
+                )
+        if req.disallowances_paise > 0:
             result.warnings.append(
-                f"House property loss capped at ₹2,00,000 (Section 71). Excess loss ₹"
-                f"{(-req.house_property_income_paise - LIMIT_24B_PAISE) // 100:,} carried forward."
+                f"₹{req.disallowances_paise // 100:,} of disallowed expenditure has "
+                f"been added back to business income."
             )
 
         return result
