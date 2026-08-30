@@ -1383,6 +1383,33 @@ class Phase2JournalService:
         if total_debit == 0:
             raise ValueError(f"Refusing to post a zero-value journal entry for ref={reference_no}")
 
+        # ── The client's own financial year must be open ─────────────────────
+        # Enforced HERE, in the kernel, rather than at the call sites: CLAUDE.md
+        # guarantees every accounting event that touches the GL is written by
+        # this method, so one check covers every path — sales, purchases,
+        # banking, payroll, fixed assets, opening balances, manual journals and
+        # reversals alike. Threading a client_id through
+        # validate_posting_date's 67 call sites would have been a far larger
+        # change for weaker coverage.
+        #
+        # The FIRM-level year lock is unchanged and still checked by those call
+        # sites; this is the client-scoped lock a year-end completion now
+        # writes (migration 289). A posting is refused if either applies.
+        if firm_id and client_id and entry_date:
+            from datetime import date as _date
+            from core.ist_clock import ist_fy_label
+            from services.year_lock_service import is_client_year_locked
+            try:
+                _d = _date.fromisoformat(str(entry_date)[:10])
+            except (TypeError, ValueError):
+                _d = None
+            fy = ist_fy_label(_d) if _d else None
+            if fy and is_client_year_locked(db, firm_id, client_id, fy):
+                raise ValueError(
+                    f"FY {fy} is closed for this client — its year-end has been "
+                    f"finalised. Reopen the year before posting to it."
+                )
+
         # ── Multi-Currency Phase 2 (foundation): resolve the currency metadata ────
         # Base currency is authoritative and always INR (Capability A). Everything
         # defaults to the INR / rate=1 identity, so INR postings are byte-for-byte
