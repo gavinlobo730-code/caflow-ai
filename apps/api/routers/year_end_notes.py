@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from core.observability import capture_soft_failure
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -39,7 +40,13 @@ router = APIRouter(prefix="/year-end", tags=["year-end-notes"])
 # share_capital/loans it genuinely cannot be computed here. It now gets the
 # same honest CA-input placeholder as related_party/contingent_liabilities
 # instead of a plausible-looking fabricated number.
-_AUTO_NOTE_TYPES   = {"fixed_assets", "share_capital", "loans"}
+# accounting_policies is "auto" in the same limited sense as the others:
+# part of it is read off the books (which depreciation methods the register
+# actually uses, whether stock is tracked), and the rest is named as the
+# CA's to complete. Schedule III, Division I, General Instructions require
+# the notes to disclose significant accounting policies, and there was no
+# such note at all.
+_AUTO_NOTE_TYPES   = {"accounting_policies", "fixed_assets", "share_capital", "loans"}
 _MANUAL_NOTE_TYPES = {"related_party", "contingent_liabilities", "gst_tds"}
 _ALL_NOTE_TYPES    = _AUTO_NOTE_TYPES | _MANUAL_NOTE_TYPES
 
@@ -103,6 +110,200 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
     }
 
 
+def _compute_accounting_policies_data(
+    db, firm_id: str, client_id: str, fy_end: Optional[str],
+) -> dict:
+    """What the books themselves say about the entity's accounting policies.
+
+    Schedule III, Division I, General Instructions require the notes to
+    disclose the significant accounting policies. Most of them are the CA's
+    JUDGEMENTS — revenue recognition, employee benefits, provisions, taxes on
+    income — and the system has no basis whatever for asserting them.
+
+    Two it genuinely knows, because they are facts about how these books were
+    kept rather than opinions about them:
+
+      * DEPRECIATION — every row in fixed_assets carries its own
+        depreciation_method (SL or WDV, models/accounting.DepreciationMethod),
+        so the methods actually in use are read off the register rather than
+        assumed. The Fixed Assets note used to assert "Written Down Value
+        method" as flat text for every client, which is simply false for any
+        client whose assets are on straight line.
+      * INVENTORY — domain/inventory_service implements moving-average
+        costing, by construction and not as a configurable option, so a
+        stock-tracked client's valuation basis is a property of the engine.
+
+    Everything else is left explicitly blank for the CA, following the pattern
+    task #240 established for gst_tds: an honest placeholder, never a
+    plausible-looking fabrication. A policies note is the WORST place to
+    invent text, because it reads as boilerplate — nobody re-reads it, and it
+    ends up attached to a filed AOC-4 asserting a policy the client does not
+    follow.
+    """
+    # Judgements no ledger can answer. Named individually so the CA is
+    # prompted for each rather than handed one blank box.
+    ca_input_required = [
+        "Basis of preparation and compliance with applicable accounting standards",
+        "Revenue recognition",
+        "Employee benefits",
+        "Provisions, contingent liabilities and contingent assets",
+        "Taxes on income, including deferred tax",
+        "Borrowing costs",
+        "Impairment of assets",
+    ]
+    blank = {
+        "entity_type": None,
+        "depreciation_methods": [],
+        "has_fixed_assets": False,
+        "inventory_is_stock_tracked": False,
+        "inventory_valuation_basis": None,
+        "has_foreign_currency_transactions": False,
+        "ca_input_required": ca_input_required,
+        "note_type": "accounting_policies",
+        "is_auto_generated": True,
+        # Always true, whatever was derived. The derived policies are a
+        # starting point the CA confirms, not a disclosure the software makes
+        # on their behalf.
+        "requires_ca_review": True,
+    }
+    if db is None:
+        blank["review_note"] = (
+            "Books unavailable — every accounting policy requires the CA's input."
+        )
+        return blank
+
+    data = dict(blank)
+
+    # Each read is written out in full rather than through a helper taking the
+    # table name as a parameter. A dynamic table name is invisible to
+    # tests/test_backend_columns_exist_pg, which checks every backend query
+    # against the real schema — and CLAUDE.md's whole point about renaming a
+    # column is that the breakage is silent. Four explicit queries the checker
+    # can read beat one tidy helper it cannot.
+    #
+    # Each is guarded on its own: a table this deployment lacks, or an
+    # unreachable one, must not fail note generation. The note is still useful
+    # with fewer derived policies, and every policy it cannot derive is named
+    # for the CA anyway.
+    try:
+        entity = (db.table("clients").select("entity_type")
+                  .eq("firm_id", firm_id).eq("id", client_id)
+                  .execute().data or [])
+        if entity:
+            data["entity_type"] = entity[0].get("entity_type")
+    except Exception as exc:
+        capture_soft_failure(exc, operation="accounting_policies.entity_type",
+                             firm_id=firm_id, client_id=client_id)
+
+    try:
+        assets = (db.table("fixed_assets").select("depreciation_method")
+                  .eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("is_disposed", False)
+                  .execute().data or [])
+    except Exception as exc:
+        capture_soft_failure(exc, operation="accounting_policies.depreciation_methods",
+                             firm_id=firm_id, client_id=client_id)
+        assets = []
+    if assets:
+        data["has_fixed_assets"] = True
+        data["depreciation_methods"] = sorted(
+            {a.get("depreciation_method") for a in assets if a.get("depreciation_method")}
+        )
+
+    try:
+        catalogue = (db.table("service_catalogue").select("kind")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .execute().data or [])
+    except Exception as exc:
+        capture_soft_failure(exc, operation="accounting_policies.inventory_basis",
+                             firm_id=firm_id, client_id=client_id)
+        catalogue = []
+    if any(i.get("kind") == "good" for i in catalogue):
+        data["inventory_is_stock_tracked"] = True
+        data["inventory_valuation_basis"] = "moving average"
+
+    # Multi-currency is dormant for most clients (migration 147 defaults
+    # txn_currency to INR), so this is normally False and the policy is
+    # omitted rather than stated as "nil".
+    #
+    # txn_currency is on journal_LINES, not journal_entries — migration 147
+    # adds it to the line because the rate is frozen per leg. Reading it off
+    # the entry compiles, returns nothing, and reports "no foreign currency"
+    # for every client in the practice; the backend column checker caught
+    # that, which is the whole reason these queries are written out where it
+    # can see them.
+    #
+    # Filtered and limited server-side rather than fetched and scanned: this
+    # answers a yes/no question, and CLAUDE.md's reporting rule is that what
+    # crosses the wire is proportional to the ANSWER, not to the ledger.
+    # txn_currency is NOT NULL DEFAULT 'INR' (migration 147), so neq is safe
+    # here — no row can carry a NULL for the comparison to swallow.
+    try:
+        foreign = (db.table("journal_lines")
+                   .select("txn_currency, journal_entries!inner(client_id, firm_id)")
+                   .eq("journal_entries.firm_id", firm_id)
+                   .eq("journal_entries.client_id", client_id)
+                   .neq("txn_currency", "INR")
+                   .limit(1)
+                   .execute().data or [])
+    except Exception as exc:
+        capture_soft_failure(exc, operation="accounting_policies.foreign_currency",
+                             firm_id=firm_id, client_id=client_id)
+        foreign = []
+    if foreign:
+        data["has_foreign_currency_transactions"] = True
+        data["ca_input_required"] = ca_input_required + [
+            "Foreign currency transactions and translation"
+        ]
+    return data
+
+
+def _accounting_policies_text(data: dict) -> str:
+    """The note as a CA would read it: what the books show, then what is
+    still needed. Derived policies are stated as derived; the rest are named
+    as outstanding rather than filled with boilerplate."""
+    _METHOD_NAMES = {"SL": "Straight Line", "WDV": "Written Down Value"}
+    lines: list[str] = []
+
+    if data.get("has_fixed_assets"):
+        methods = [_METHOD_NAMES.get(m, m) for m in data.get("depreciation_methods") or []]
+        if len(methods) == 1:
+            lines.append(
+                f"Depreciation — fixed assets are stated at cost less accumulated "
+                f"depreciation. Depreciation is provided on the {methods[0]} method, "
+                f"read from the fixed assets register."
+            )
+        elif len(methods) > 1:
+            # Worth saying plainly: mixed methods within one register are
+            # legitimate but a CA should be able to see it at a glance.
+            lines.append(
+                f"Depreciation — fixed assets are stated at cost less accumulated "
+                f"depreciation. The register uses more than one method "
+                f"({', '.join(methods)}); the basis for each class requires the "
+                f"CA's confirmation."
+            )
+        else:
+            lines.append(
+                "Depreciation — the fixed assets register records no depreciation "
+                "method, so the basis requires the CA's input."
+            )
+
+    if data.get("inventory_is_stock_tracked"):
+        lines.append(
+            "Inventories — valued on the moving average cost basis, which is how "
+            "stock movements are costed in these books."
+        )
+
+    outstanding = data.get("ca_input_required") or []
+    if outstanding:
+        lines.append(
+            "The following policies require the CA's input before these "
+            "statements are issued, and are deliberately left blank rather "
+            "than pre-filled: " + "; ".join(outstanding) + "."
+        )
+    return " ".join(lines)
+
+
 def _compute_gl_schedule_balances(
     db, firm_id: str, client_id: str, fy_start: Optional[str], fy_end: Optional[str],
 ) -> Optional[dict]:
@@ -132,18 +333,33 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
     fy = eng.get("financial_year", "")
     gl = computed.get("gl_balances")
 
+    policies = computed.get("accounting_policies") or {}
+
     _note_templates: dict[str, dict] = {
+        "accounting_policies": {
+            "title":   "Significant Accounting Policies",
+            "content": _accounting_policies_text(policies),
+            "note_data": policies,
+        },
         "fixed_assets": {
-            "title":   "Note 1 — Fixed Assets (Schedule III, Companies Act 2013)",
+            "title":   "Fixed Assets (Schedule III, Companies Act 2013)",
+            # The depreciation basis is NOT restated here. This used to read
+            # "Depreciation is provided on Written Down Value method" for every
+            # client, as flat text — false for any client whose register is on
+            # straight line, and every asset row carries its own
+            # depreciation_method. The basis now belongs to the Significant
+            # Accounting Policies note, derived from the register, and stating
+            # it twice is how the two come to disagree.
             "content": (
                 f"Fixed assets are stated at cost less accumulated depreciation. "
-                f"Depreciation is provided on Written Down Value method as per Companies Act 2013, "
-                f"Schedule II useful lives. Financial year: {fy}."
+                f"The depreciation basis is disclosed in the Significant Accounting "
+                f"Policies note. Useful lives follow Companies Act 2013, Schedule II. "
+                f"Financial year: {fy}."
             ),
             "note_data": computed["fixed_assets"],
         },
         "share_capital": {
-            "title":   "Note 2 — Share Capital",
+            "title":   "Share Capital",
             "content": (
                 f"Details of authorised, issued, subscribed and paid-up share capital "
                 f"as at 31st March of FY {fy}. "
@@ -167,7 +383,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
             },
         },
         "loans": {
-            "title":   "Note 3 — Long-term and Short-term Borrowings",
+            "title":   "Long-term and Short-term Borrowings",
             "content": (
                 f"Secured and unsecured loans as at 31st March of FY {fy}. "
                 f"Secured loans are against hypothecation of assets."
@@ -192,7 +408,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
             },
         },
         "gst_tds": {
-            "title":   "Note 4 — Statutory Dues (GST & TDS)",
+            "title":   "Statutory Dues (GST & TDS)",
             "content": (
                 f"GST and TDS dues as at 31st March of FY {fy}. "
                 f"PLACEHOLDER — CA to fill in from GSTR-3B and TDS return records for the FY. "
@@ -212,7 +428,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
             },
         },
         "related_party": {
-            "title":   "Note 5 — Related Party Transactions",
+            "title":   "Related Party Transactions",
             "content": (
                 "PLACEHOLDER — CA to fill in related party transactions. "
                 "[Companies Act 2013, §188; AS-18 / Ind AS 24]"
@@ -225,7 +441,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
             },
         },
         "contingent_liabilities": {
-            "title":   "Note 6 — Contingent Liabilities and Capital Commitments",
+            "title":   "Contingent Liabilities and Capital Commitments",
             "content": (
                 "PLACEHOLDER — CA to disclose contingent liabilities and capital commitments. "
                 "[AS-29; Companies Act 2013, Schedule III]"
@@ -240,7 +456,7 @@ def _generate_note_content(note_type: str, eng: dict, computed: dict) -> dict:
     }
 
     return _note_templates.get(note_type, {
-        "title":     f"Note — {note_type.replace('_', ' ').title()}",
+        "title":     note_type.replace("_", " ").title(),
         "content":   f"Auto-generated note for {note_type}.",
         "note_data": {"note_type": note_type, "is_auto_generated": True},
     })
@@ -301,6 +517,9 @@ def generate_notes(
         db = get_supabase()
 
     computed = {
+        "accounting_policies": _compute_accounting_policies_data(
+            db, current_user["firm_id"], eng.get("client_id", ""), eng.get("fy_end"),
+        ),
         "fixed_assets": _compute_fixed_assets_note_data(
             db, current_user["firm_id"], eng.get("client_id", ""), eng.get("fy_end"),
         ),
@@ -310,7 +529,11 @@ def generate_notes(
         ),
     }
 
+    # Significant Accounting Policies comes FIRST. Schedule III presents it
+    # ahead of the notes that depend on it — a reader has to know the
+    # depreciation basis before the Fixed Assets figures mean anything.
     note_types_ordered = [
+        "accounting_policies",
         "fixed_assets", "share_capital", "loans", "gst_tds",
         "related_party", "contingent_liabilities",
     ]
@@ -328,7 +551,12 @@ def generate_notes(
             # writes to, year_end_notes, orders by sequence_no and has no
             # note_number column — sending it makes PostgREST reject the insert.
             "sequence_no":   idx,
-            "title":         content["title"],
+            # Numbered from POSITION, not from a literal in the template.
+            # Every title used to carry its own hardcoded "Note 1 —", so
+            # inserting a note ahead of them left "Note 1 — Fixed Assets"
+            # sitting at sequence 2 and the note references in the statements
+            # pointing at the wrong note.
+            "title":         f"Note {idx} — {content['title']}",
             "content":       content["content"],
             "note_data":     content["note_data"],
             "is_locked":     False,
