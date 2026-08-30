@@ -343,17 +343,34 @@ def generate_notes(
         _MOCK_NOTES[engagement_id] = generated_notes
         return api_response(True, generated_notes)
 
-    # Delete existing notes and regenerate
-    db.table("year_end_notes").delete().eq("engagement_id", engagement_id).execute()
-    result = db.table("year_end_notes").insert(generated_notes).execute()
+    # Regenerate the unlocked notes only.
+    #
+    # This used to be an unfiltered DELETE over the engagement. A partner locks
+    # a note after reviewing its wording — the update endpoint refuses to touch
+    # a locked note for exactly that reason — and then anyone with
+    # year_end:write clicking "Generate Notes" replaced it with the empty
+    # placeholder, with no warning and no record of what it had said. The lock
+    # has to mean the same thing on both paths or it means nothing.
+    locked = (db.table("year_end_notes")
+              .select("note_type")
+              .eq("engagement_id", engagement_id)
+              .eq("is_locked", True)
+              .execute().data) or []
+    locked_types = {row.get("note_type") for row in locked}
+
+    db.table("year_end_notes").delete().eq(
+        "engagement_id", engagement_id).eq("is_locked", False).execute()
+    to_insert = [n for n in generated_notes if n["note_type"] not in locked_types]
+    result = db.table("year_end_notes").insert(to_insert).execute() if to_insert else None
+    inserted = result.data if result is not None else []
 
     log_event(
         current_user["firm_id"], "year_end_notes", engagement_id, "generate",
         actor_id=current_user.get("auth_user_id"),
         actor_email=current_user.get("email"),
-        new_data={"count": len(generated_notes)},
+        new_data={"count": len(inserted), "preserved_locked": len(locked_types)},
     )
-    return api_response(True, result.data)
+    return api_response(True, inserted)
 
 
 @router.get("/{engagement_id}/notes/{note_id}")

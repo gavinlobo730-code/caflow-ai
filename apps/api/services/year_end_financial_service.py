@@ -61,6 +61,16 @@ PL_EXPENSE_LINES = [
     "other_expenses",
 ]
 
+# Schedule III, Part II, item VII: "Tax expense: (1) Current tax
+# (2) Deferred tax" is its own item, struck AFTER profit before tax — not one
+# of the expenses that produce it. These lines are therefore deliberately NOT
+# in PL_EXPENSE_LINES: including them would subtract the tax charge twice,
+# once inside PBT and once from it.
+PL_TAX_LINES = [
+    "current_tax",
+    "deferred_tax",
+]
+
 # Account types that behave as credit-normal (liabilities, income, equity)
 # For assets/expenses: balance = SUM(debit_paise) - SUM(credit_paise)
 # For liabilities/income/equity: balance = SUM(credit_paise) - SUM(debit_paise)
@@ -110,7 +120,11 @@ def _mock_statements(client_id: str, firm_id: str, fy_start: str, fy_end: str) -
     total_income   = sum(profit_loss["income"].values())
     total_expenses = sum(profit_loss["expenses"].values())
     pbt  = total_income - total_expenses
-    tax  = max(0, int(pbt * 25 // 100))   # integer arithmetic — 25% mock tax rate
+    # Mock mode mirrors the real path: the charge is whatever is provided for,
+    # and nothing is provided for here. See the long note in
+    # generate_financial_statements — a flat percentage of book profit is not
+    # a tax computation under any Indian rate.
+    tax  = 0
     pat  = pbt - tax
 
     profit_loss["profit_before_tax_paise"] = pbt
@@ -299,8 +313,31 @@ def generate_financial_statements(
     total_expense = sum(pl_expense.values())  # integer paise
 
     pbt = total_income  - total_expense       # integer paise
-    # 25% tax — integer arithmetic. IT Act §115JB (MAT) not applied here.
-    tax = max(0, pbt * 25 // 100)             # integer paise
+
+    # THE TAX CHARGE IS READ, NEVER INVENTED.
+    #
+    # This used to be `tax = max(0, pbt * 25 // 100)` — a flat 25% with no
+    # basis in any statute. No Indian rate is 25% of book profit: a company
+    # pays 30%, or 22% under §115BAA, or 15% under §115BAB, each plus
+    # surcharge and 4% cess, with MAT under §115JB where applicable; a
+    # proprietorship's profit is taxed in the PROPRIETOR's hands at individual
+    # slabs and is not a charge on the business at all. And because the figure
+    # was struck from BOOK profit it carried none of the disallowances,
+    # depreciation differences or regime choices that produce a real one.
+    #
+    # It corrupted more than its own line. PAT flows into reserves below, so
+    # the balance sheet's equity inherited the invention — and any real tax
+    # provision already sitting in the GL was mapped to other_expenses, so it
+    # reduced PBT as an operating cost and was then taxed again at 25%.
+    #
+    # Schedule III Part II item VII wants "Tax expense: (1) Current tax
+    # (2) Deferred tax". For a company that has provided for tax, that is a
+    # posted GL figure, so it is read from the ledger like every other line.
+    # Where nothing is mapped the charge is nil and the note below says so —
+    # a stated nil a CA can act on, rather than a plausible number they cannot
+    # tell from a real one.
+    pl_tax = {line: schedule_balances.get(line, 0) for line in PL_TAX_LINES}
+    tax = sum(pl_tax.values())                # integer paise
     pat = pbt - tax                           # integer paise
 
     # Add PAT to reserves_and_surplus to close the P&L into BS
@@ -332,7 +369,10 @@ def generate_financial_statements(
             "total_income_paise":      total_income,
             "total_expense_paise":     total_expense,
             "profit_before_tax_paise": pbt,
+            "current_tax_paise":       pl_tax.get("current_tax", 0),
+            "deferred_tax_paise":      pl_tax.get("deferred_tax", 0),
             "tax_expense_paise":       tax,
+            "tax_expense_is_provided": tax != 0,
             "profit_after_tax_paise":  pat,
         },
         "trial_balance_hash": compute_trial_balance_hash(raw_balances),
