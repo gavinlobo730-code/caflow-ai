@@ -64,3 +64,51 @@ def test_two_different_explicit_fys_produce_different_responses():
     assert r1["data"]["fy"] == "2025-26"
     assert r2["data"]["fy"] == "2026-27"
     assert r1["data"]["rates_verified"] != r2["data"]["rates_verified"]
+
+
+# ── The picker may only offer years the engine can actually compute ──────────
+
+def test_supported_years_are_exactly_what_the_rate_registry_holds():
+    """The dead-control rule, applied to a dropdown.
+
+    The workspace's picker was a hard-coded ["2025-26", "2024-25", "2023-24"]
+    while RATES_BY_FY held two years, neither of them the last two. Selecting
+    FY 2024-25 or FY 2023-24 therefore computed at FY 2025-26 rates — rates_for
+    falls back to LATEST_VERIFIED_FY for anything unregistered — and the screen
+    discarded the `fy` the engine honestly returned, so nothing said so.
+
+    The list now comes from the registry itself, which is the only thing that
+    knows. If a year is added or removed, the picker follows without an edit
+    here or in the browser."""
+    out = it_router.supported_financial_years({"role": "Partner", "firm_id": "F1"})
+    assert out["success"] is True
+    offered = {row["fy"] for row in out["data"]["financial_years"]}
+    assert offered == set(RATES_BY_FY.keys()), (
+        "the picker would offer a year the engine has no rates for, or hide "
+        "one it does"
+    )
+
+
+def test_each_offered_year_declares_whether_its_rates_are_confirmed():
+    """A year carried forward pending the Finance Act is computable but not
+    settled, and a CA needs to know which they are looking at."""
+    out = it_router.supported_financial_years({"role": "Partner", "firm_id": "F1"})
+    for row in out["data"]["financial_years"]:
+        assert row["verified"] == RATES_BY_FY[row["fy"]].verified
+
+
+def test_the_current_year_is_named_so_the_picker_can_default_to_it():
+    out = it_router.supported_financial_years({"role": "Partner", "firm_id": "F1"})
+    assert out["data"]["current_fy"] == current_fy()
+
+
+def test_an_unregistered_year_still_reports_the_year_it_actually_used():
+    """The engine's own honesty, pinned. The substitution is defensible for a
+    FUTURE year; what was not defensible was the screen hiding it."""
+    from domain.income_tax.itr_engine import ITREngine, ITRComputeRequest
+    r = ITREngine().compute(ITRComputeRequest(gross_salary_paise=10_00_000_00,
+                                              fy="2019-20"))
+    assert r.fy in RATES_BY_FY
+    assert r.fy != "2019-20", (
+        "a year with no rate table cannot report itself as the year computed"
+    )

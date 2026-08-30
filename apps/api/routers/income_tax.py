@@ -73,6 +73,9 @@ class ComputeITRRequest(BaseModel):
     other_income_paise: int = 0
     house_property_income_paise: int = 0
     business_income_paise: int = 0
+    # Add-backs accepted in the computation workspace (§40A(3), §43B, ...).
+    # A disallowance increases taxable business income.
+    disallowances_paise: int = 0
     capital_gains_stcg_paise: int = 0
     capital_gains_ltcg_paise: int = 0
     capital_gains_ltcg_other_paise: int = 0
@@ -119,6 +122,7 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         other_income_paise=req.other_income_paise,
         house_property_income_paise=req.house_property_income_paise,
         business_income_paise=req.business_income_paise,
+        disallowances_paise=req.disallowances_paise,
         capital_gains_stcg_paise=req.capital_gains_stcg_paise,
         capital_gains_ltcg_paise=req.capital_gains_ltcg_paise,
         capital_gains_ltcg_other_paise=req.capital_gains_ltcg_other_paise,
@@ -205,6 +209,35 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         "validation_errors": result.validation_errors,
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "ca_review_required": True,
+    })
+
+
+@router.get("/financial-years")
+def supported_financial_years(current_user: dict = Depends(rbac("income_tax", "read"))):
+    """The financial years this build can actually compute.
+
+    THE DEAD-CONTROL RULE, applied to a dropdown.
+        statutory_rates.rates_for() falls back to the latest verified year for
+        any FY not in its registry. That is right for a FUTURE year — the
+        Finance Act has not been passed, so carrying the last known rates
+        forward and flagging them is the honest answer. It is wrong for a PAST
+        year, whose rates are settled, published and different: FY 2023-24 has
+        its own new-regime slabs, its own ₹7,00,000 §87A threshold and its own
+        pre-Budget-2024 capital gains rates.
+
+        The tax workspace's picker offered three years and the registry held
+        two of them, so two of the three silently computed at the wrong year's
+        rates with nothing on screen to say so. A screen must not offer a year
+        the engine cannot compute; only the server knows which those are.
+    """
+    from domain.income_tax.statutory_rates import RATES_BY_FY, current_fy
+    years = sorted(RATES_BY_FY.keys(), reverse=True)
+    return api_response(True, {
+        "financial_years": [
+            {"fy": fy, "verified": RATES_BY_FY[fy].verified}
+            for fy in years
+        ],
+        "current_fy": current_fy(),
     })
 
 

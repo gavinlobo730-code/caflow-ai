@@ -1314,6 +1314,10 @@ EXEMPT: dict[str, str] = {
     "/api/income-tax/hra/compute":
         "plain scalar query params (basic/hra/rent/is_metro) — Section "
         "10(13A) exemption math, nothing stored or read.",
+    "/api/income-tax/financial-years":
+        "the financial years this build holds rate tables for "
+        "(domain.income_tax.statutory_rates.RATES_BY_FY) — a property of the "
+        "software, identical for every firm and client, no stored data read.",
     "/api/income-tax/capital-gains/cii-table":
         "the statutory Cost Inflation Index table (Section 48 2nd proviso) "
         "— identical for every firm and client, no stored data read.",
@@ -1525,7 +1529,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
               "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
               "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
-              "/api/income-tax": 10, "/api/compliance": 12,
+              "/api/income-tax": 11, "/api/compliance": 12,
               "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
               "/api/public/engagement-letters": 3,
               "/api/receipts": 5, "/api/purchase-payments": 5,
