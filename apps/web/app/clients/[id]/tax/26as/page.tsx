@@ -23,6 +23,23 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
+const TALLY_TONES = {
+  green: "bg-green-50 text-green-700 text-green-600",
+  red: "bg-red-50 text-red-700 text-red-600",
+  amber: "bg-amber-50 text-amber-700 text-amber-600",
+  neutral: "bg-[#F8FAFC] text-[#334155] text-[#64748B]",
+} as const;
+
+function Tally({ value, label, tone }: { value: number; label: string; tone: keyof typeof TALLY_TONES }) {
+  const [bg, fg, labelFg] = TALLY_TONES[tone].split(" ");
+  return (
+    <div className={`${bg} rounded-lg p-3 text-center`}>
+      <p className={`text-lg font-bold ${fg}`}>{value}</p>
+      <p className={`text-[10px] ${labelFg}`}>{label}</p>
+    </div>
+  );
+}
+
 function paise(v: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v / 100);
 }
@@ -40,9 +57,30 @@ interface Reconciliation {
   matched_count: number;
   mismatch_count: number;
   missing_in_books_count: number;
+  // Book credits no deductor reported in 26AS. Under Rule 37BA(1) credit is
+  // given on the basis of the deductor's own information, so these are not
+  // claimable in the return until the deductor files a correction — the figure
+  // a CA acts on before filing.
+  not_in_26as_count: number;
+  unsupported_credit_paise: number;
+  // Rows matched on the deductor's NAME only, because no TAN is recorded on the
+  // customer. A human has to confirm the identity.
+  needs_confirmation_count: number;
+  // TDS on 26AS rows whose TRACES booking status is not F — the deductor
+  // reported the deduction but the challan is unmatched, overbooked or
+  // provisional, so the credit is not settled.
+  provisional_credit_paise: number;
   total_tds_26as_paise: number;
   total_tds_books_paise: number;
   variance_paise: number;
+  // TDS Receivable control-account movement for the year. Anything the
+  // receipt-by-receipt population does not explain lands in unreconciled_gl.
+  gl_control_paise: number;
+  unreconciled_gl_paise: number;
+  // NULL on rows produced before the reconciliation was rebuilt — those
+  // compared 26AS against the client's OWN vendor deductions, the opposite
+  // direction of TDS, and their figures mean nothing.
+  books_source: string | null;
   ai_insight_triggered: boolean;
   status: string;
 }
@@ -89,10 +127,15 @@ export default function Form26ASPage() {
         .select("id, financial_year, parse_status, total_records, uploaded_at")
         .eq("client_id", clientId)
         .eq("financial_year", fy)
+        // form_26as_uploads is shared with the TDS workspace's deductor-side
+        // comparison, which has no parse step. Its rows default to
+        // parse_status 'pending', so without this filter they show here as
+        // spinners that never resolve over "0 records". Migration 291.
+        .eq("source", "form_26as_pipeline")
         .order("uploaded_at", { ascending: false }),
       supabase
         .from("form_26as_reconciliations")
-        .select("total_26as_records, matched_count, mismatch_count, missing_in_books_count, total_tds_26as_paise, total_tds_books_paise, variance_paise, ai_insight_triggered, status")
+        .select("total_26as_records, matched_count, mismatch_count, missing_in_books_count, not_in_26as_count, unsupported_credit_paise, needs_confirmation_count, provisional_credit_paise, total_tds_26as_paise, total_tds_books_paise, variance_paise, gl_control_paise, unreconciled_gl_paise, books_source, ai_insight_triggered, status")
         .eq("client_id", clientId)
         .eq("financial_year", fy)
         .order("created_at", { ascending: false })
@@ -167,7 +210,7 @@ export default function Form26ASPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#1E293B]">Form 26AS Reconciliation</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">IT Act §203AA — Annual Tax Statement</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">IT Act §285BB — Annual Information Statement</p>
         </div>
         <select
           value={fy}
@@ -202,24 +245,63 @@ export default function Form26ASPage() {
             }`}>{recon.status}</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-green-50 rounded-lg p-3 text-center">
-              <p className="text-lg font-bold text-green-700">{recon.matched_count}</p>
-              <p className="text-[10px] text-green-600">Matched</p>
-            </div>
-            <div className={`rounded-lg p-3 text-center ${recon.mismatch_count > 0 ? "bg-red-50" : "bg-[#F8FAFC]"}`}>
-              <p className={`text-lg font-bold ${recon.mismatch_count > 0 ? "text-red-700" : "text-[#334155]"}`}>
-                {recon.mismatch_count}
+          {/* A row written before the reconciliation was rebuilt compared 26AS
+              against the client's OWN vendor deductions — the opposite
+              direction of TDS — so its figures mean nothing. books_source is
+              NULL on exactly those rows. */}
+          {!recon.books_source && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertTriangle size={14} className="text-amber-600 mt-px shrink-0" />
+              <p className="text-xs text-amber-800">
+                This result predates the current reconciliation and compared the wrong
+                side of TDS. Run it again before relying on any figure below.
               </p>
-              <p className={`text-[10px] ${recon.mismatch_count > 0 ? "text-red-600" : "text-[#64748B]"}`}>Mismatched</p>
             </div>
-            <div className={`rounded-lg p-3 text-center ${recon.missing_in_books_count > 0 ? "bg-amber-50" : "bg-[#F8FAFC]"}`}>
-              <p className={`text-lg font-bold ${recon.missing_in_books_count > 0 ? "text-amber-700" : "text-[#334155]"}`}>
-                {recon.missing_in_books_count}
-              </p>
-              <p className={`text-[10px] ${recon.missing_in_books_count > 0 ? "text-amber-600" : "text-[#64748B]"}`}>Missing in Books</p>
-            </div>
+          )}
+
+          <div className="grid grid-cols-4 gap-3">
+            <Tally value={recon.matched_count} label="Matched" tone={recon.matched_count > 0 ? "green" : "neutral"} />
+            <Tally value={recon.mismatch_count} label="Amount differs" tone={recon.mismatch_count > 0 ? "red" : "neutral"} />
+            <Tally value={recon.missing_in_books_count} label="Not in books" tone={recon.missing_in_books_count > 0 ? "amber" : "neutral"} />
+            <Tally value={recon.not_in_26as_count} label="Not in 26AS" tone={recon.not_in_26as_count > 0 ? "red" : "neutral"} />
           </div>
+
+          {/* The direction that decides what can be claimed. Rule 37BA(1) gives
+              credit on the basis of what the DEDUCTOR reported, so a credit
+              sitting only in the books is not claimable until they correct
+              their TDS statement. */}
+          {recon.unsupported_credit_paise > 0 && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
+              <XCircle size={14} className="text-red-500 mt-px shrink-0" />
+              <p className="text-xs text-red-700">
+                <span className="font-semibold">{paise(recon.unsupported_credit_paise)}</span>{" "}
+                of TDS credit in the books is not reported in 26AS. It cannot be claimed
+                in the return (Rule 37BA(1)) until the deductor files a correction.
+              </p>
+            </div>
+          )}
+
+          {recon.provisional_credit_paise > 0 && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertTriangle size={14} className="text-amber-600 mt-px shrink-0" />
+              <p className="text-xs text-amber-800">
+                <span className="font-semibold">{paise(recon.provisional_credit_paise)}</span>{" "}
+                sits on 26AS rows whose booking status is not final — the deductor has
+                reported it but the challan is unmatched, overbooked or provisional.
+              </p>
+            </div>
+          )}
+
+          {recon.needs_confirmation_count > 0 && (
+            <div className="flex items-start gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-3">
+              <AlertTriangle size={14} className="text-[#64748B] mt-px shrink-0" />
+              <p className="text-xs text-[#475569]">
+                {recon.needs_confirmation_count} row{recon.needs_confirmation_count === 1 ? "" : "s"}{" "}
+                matched on the deductor&apos;s name alone, because no TAN is recorded against
+                the customer. Confirm the identity, or add the TAN on the customer record.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-4 text-xs">
             <div>
@@ -238,11 +320,28 @@ export default function Form26ASPage() {
             </div>
           </div>
 
+          {/* The line-by-line population is receipts. A manual journal straight
+              to TDS Receivable is not one, so it would otherwise sit outside
+              the reconciliation with the summary still claiming to cover the
+              books. */}
+          {recon.unreconciled_gl_paise !== 0 && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertTriangle size={14} className="text-amber-600 mt-px shrink-0" />
+              <p className="text-xs text-amber-800">
+                The TDS Receivable ledger moved {paise(recon.gl_control_paise)} this year,
+                but only {paise(recon.total_tds_books_paise)} of that came through receipts.{" "}
+                <span className="font-semibold">{paise(Math.abs(recon.unreconciled_gl_paise))}</span>{" "}
+                is outside this reconciliation — most likely a manual journal.
+              </p>
+            </div>
+          )}
+
           {recon.ai_insight_triggered && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg p-3">
               <XCircle size={14} className="text-red-500" />
               <p className="text-xs text-red-700">
-                AI Insight triggered — variance exceeds 1% threshold. Review before filing.
+                Flagged for review — the variance exceeds the 1% threshold, or credit in
+                the books is unreported in 26AS. Review before filing.
               </p>
             </div>
           )}

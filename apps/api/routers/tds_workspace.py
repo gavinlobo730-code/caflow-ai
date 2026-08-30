@@ -593,8 +593,19 @@ def upload_form26as(
     current_user: dict = Depends(rbac("tds", "compute")),
 ):
     """
-    Save Form 26AS data and reconcile against tds_deductions. IT Act §203AA.
-    Matches by PAN + section + amount.
+    Save a Form 26AS extract the caller has already paired with its book side,
+    and record the comparison. IT Act s.285BB with Rule 114-I (s.203AA, cited
+    here until now, was omitted by the Finance Act 2020 w.e.f. 01-06-2020).
+
+    Both sides arrive in `raw_data` — `tds_entries` and `book_deductions` — and
+    are matched on (PAN, section) plus amount. NOTHING is read from the
+    database: despite what this docstring said, it does not reconcile against
+    `tds_deductions`, and it never has.
+
+    This is the CLIENT-AS-DEDUCTOR direction — a self-check on the TDS the
+    client withheld from its own vendors, which appears in each vendor's 26AS.
+    The client's OWN 26AS, listing tax others withheld from it, is reconciled by
+    domain/income_tax/form26as_service.py, which reads both sides itself.
     """
     try:
         assert_client_access(current_user, body.client_id)
@@ -616,7 +627,7 @@ def upload_form26as(
             key = (book_ded.get("deductee_pan", ""), book_ded.get("section", ""))
             if key in form26as_keys:
                 f26_entry = form26as_keys[key]
-                # IT Act §203AA — amounts must match; use integer paise
+                # Amounts must agree exactly; integer paise, never float
                 book_amt = book_ded.get("amount_paise", 0)
                 f26_amt = f26_entry.get("amount_paise", 0)
                 if book_amt == f26_amt:
@@ -656,6 +667,11 @@ def upload_form26as(
             "status": "reconciled",
             "created_by": current_user.get("id"),
             "uploaded_at": datetime.utcnow().isoformat(),
+            # Shared table, different feature (migration 291). Without this the
+            # row lands in the 26AS page's Upload History as a spinner that
+            # never resolves — parse_status defaults to 'pending' and this path
+            # has no parse step to move it on.
+            "source": "tds_workspace",
         }
 
         if _USE_MOCK:

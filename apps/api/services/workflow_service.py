@@ -64,7 +64,7 @@ WORKFLOW_TEMPLATES = [
         "is_template": True,
         "steps": [
             {"step_order": 1, "step_name": "Collect Documents", "step_description": "Gather Form 16, Form 26AS, AIS, bank statements, investment proofs", "required": True, "default_assignee_role": "staff", "estimated_hours": 2.0},
-            {"step_order": 2, "step_name": "Download AIS / Form 26AS", "step_description": "Download Annual Information Statement and verify TDS credits. Ref: IT Act Section 203AA", "required": True, "default_assignee_role": "staff", "estimated_hours": 0.5},
+            {"step_order": 2, "step_name": "Download AIS / Form 26AS", "step_description": "Download Annual Information Statement and verify TDS credits. Ref: IT Act s.285BB with Rule 114-I", "required": True, "default_assignee_role": "staff", "estimated_hours": 0.5},
             {"step_order": 3, "step_name": "Compute Income", "step_description": "Compute income under all 5 heads: Salary, House Property, Business, Capital Gains, Other Sources", "required": True, "default_assignee_role": "staff", "estimated_hours": 2.0},
             {"step_order": 4, "step_name": "Compute Deductions", "step_description": "Apply Chapter VI-A deductions: 80C, 80D, 80G, 80TTA etc. Verify limits.", "required": True, "default_assignee_role": "staff", "estimated_hours": 1.0},
             {"step_order": 5, "step_name": "Compute Tax Liability", "step_description": "Compute tax under old vs new regime. Recommend optimal regime.", "required": True, "default_assignee_role": "staff", "estimated_hours": 1.0},

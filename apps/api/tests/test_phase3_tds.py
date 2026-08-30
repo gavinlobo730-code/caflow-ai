@@ -148,7 +148,7 @@ def test_return_approval_requires_manager_role(client):
 
 
 def test_form26as_reconciliation(client):
-    """IT Act §203AA — 26AS reconciliation: 2 deductions, 1 mismatch."""
+    """IT Act s.285BB — 26AS reconciliation: 2 deductions, 1 mismatch."""
     body = {
         "client_id": _CLIENT_ID,
         "financial_year": "2025-26",
