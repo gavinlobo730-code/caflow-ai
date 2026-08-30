@@ -6,6 +6,9 @@ import { yearEndApi, type ExportRecord, type EngagementStatus } from "@/lib/api/
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientEntityType } from "@/lib/clients/useClientEntityType";
+import { usesScheduleIII } from "@/lib/entityObligations";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -27,7 +30,10 @@ const EXPORT_CONFIGS: {
   {
     type: "financial_statements",
     label: "Financial Statements PDF",
-    description: "Balance Sheet and P&L in Schedule III format",
+    // Filled per entity below — Schedule III is a Companies Act schedule
+    // (§129(1)) and naming it here for a proprietorship or firm would label
+    // the deliverable with a format that does not bind it.
+    description: "",
     icon: BarChart3,
   },
   {
@@ -55,6 +61,15 @@ export default function ExportsPage() {
   // window.location, not useParams(): on the deployed static export every
   // dynamic segment is "_placeholder" (see ../_engagementId.ts).
   const engagementId = useEngagementId();
+  const { clientId } = useClientNav();
+  const entity = useClientEntityType(clientId);
+  // Schedule III (Companies Act 2013 §129(1)) binds companies. Naming it on a
+  // deliverable a proprietorship or firm is about to hand its client would
+  // assert a format that does not apply — the same wrong claim the landing
+  // subtitle already gates. One predicate, both places.
+  const statementsDescription = usesScheduleIII(entity.entityType)
+    ? "Balance Sheet and P&L in Schedule III format"
+    : "Balance Sheet and P&L";
 
   const [exports, setExports] = useState<ExportRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +156,7 @@ export default function ExportsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-4xl">
+      <div className="p-6 space-y-4 max-w-4xl mx-auto">
         <CardGridSkeleton count={3} className="grid-cols-1 sm:grid-cols-3" />
       </div>
     );
@@ -159,7 +174,7 @@ export default function ExportsPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 max-w-4xl">
+    <div className="p-6 space-y-5 max-w-4xl mx-auto">
       {toast && (
         <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-red-50 border-red-100 text-red-700"}`}>
           {toast.msg}
@@ -181,6 +196,8 @@ export default function ExportsPage() {
         {EXPORT_CONFIGS.map((cfg) => {
           const latest = latestByType[cfg.type];
           const Icon = cfg.icon;
+          const description =
+            cfg.type === "financial_statements" ? statementsDescription : cfg.description;
           const isGenerating = generatingType === cfg.type;
 
           return (
@@ -196,7 +213,7 @@ export default function ExportsPage() {
                   <p className={`text-xs font-semibold ${cfg.primary ? "text-blue-700" : "text-[#334155]"}`}>
                     {cfg.label}
                   </p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">{cfg.description}</p>
+                  <p className="text-[10px] text-[#94A3B8] mt-0.5">{description}</p>
                 </div>
               </div>
 

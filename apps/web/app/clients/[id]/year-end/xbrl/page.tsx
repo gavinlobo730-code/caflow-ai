@@ -5,6 +5,9 @@ import { Plus, Loader2, AlertTriangle, CheckCircle, XCircle, Code } from "lucide
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
+import { useClientEntityType } from "@/lib/clients/useClientEntityType";
+import { isCompaniesActCompany } from "@/lib/entityObligations";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
@@ -51,6 +54,11 @@ export default function XBRLPage() {
   // a real client (see lib/workspace/ClientNavContext.tsx). useClientNav reads
   // the id out of window.location, which is always the real browser URL.
   const { clientId } = useClientNav();
+  // AOC-4 XBRL is a filing to the MCA under Companies Act 2013 §137 read with
+  // the Companies (Filing of Documents and Forms in XBRL) Rules 2015, and the
+  // package is tagged against Schedule III (§129) — both bind companies. An
+  // LLP files Form 8 under the LLP Act 2008, which is not XBRL and not this.
+  const entity = useClientEntityType(clientId);
 
   const [packages, setPackages] = useState<XBRLPackage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,8 +126,40 @@ export default function XBRLPage() {
     setValidating(false);
   }
 
+  // Reached by URL for a non-company: say so rather than offering a New
+  // Package button that would build a Companies Act filing the client cannot
+  // make. On a failed entity read we fall through — the gate is an affordance,
+  // not an access control.
+  if (entity.loading) {
+    return <div className="p-6 max-w-3xl mx-auto"><ListSkeleton rows={3} /></div>;
+  }
+  if (entity.error === null && !isCompaniesActCompany(entity.entityType)) {
+    const name = (entity.entityType ?? "").trim();
+    return (
+      <div className="p-6 max-w-3xl mx-auto space-y-4">
+        <h2 className="text-sm font-semibold text-[#1E293B]">XBRL Engine</h2>
+        <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-5">
+          <p className="text-sm font-medium text-[#0F172A]">XBRL filing does not apply to this client.</p>
+          <p className="text-xs leading-relaxed text-[#475569]">
+            {name ? `This client is a ${name}. ` : "This client's entity type is not recorded. "}
+            An XBRL package tags financial statements against Schedule III to the Companies Act 2013
+            (§129) for filing with AOC-4 under §137, read with the Companies (Filing of Documents and
+            Forms in XBRL) Rules 2015. Both bind companies, so there is nothing here to prepare.
+            Year-end statements, notes and the audit pack are unaffected.
+          </p>
+          <Link
+            href={`/clients/${clientId}/year-end/`}
+            className="inline-block text-xs font-medium text-blue-600 hover:underline"
+          >
+            Back to Year End
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 max-w-3xl space-y-4">
+    <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#1E293B]">XBRL Engine</h2>

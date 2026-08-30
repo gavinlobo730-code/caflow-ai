@@ -16,6 +16,8 @@ import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
+import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
+import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -191,6 +193,11 @@ export default function CompliancePage() {
   // year's feed. Nothing on this page is filtered by year, so there is no
   // picker to move here — only a wrong value to stop reading.
   const { clientId } = useClientNav();
+  // Which workspaces this entity can legitimately use. MCA/ROC is the one that
+  // is not universal — see lib/entityObligations.ts.
+  const entity = useClientEntityType(clientId);
+  const entityType = entity.entityType;
+  const offerMcaWorkspace = offerWhenKnown(entity, hasMcaObligations);
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no compliance obligations yet".
@@ -361,7 +368,23 @@ export default function CompliancePage() {
         {[
           { label: "GST Workspace", desc: "GSTR-1, GSTR-3B, 2B Reconciliation", path: "gst", color: "bg-green-50 border-green-200 hover:bg-green-100" },
           { label: "TDS Workspace", desc: "Challans, Returns, 26AS Reconciliation", path: "tds", color: "bg-blue-50 border-blue-200 hover:bg-blue-100" },
-          { label: "MCA Workspace", desc: "Company Master, Directors, Filings", path: "mca", color: "bg-purple-50 border-purple-200 hover:bg-purple-100" },
+          // The MCA card is absent, not disabled, for an entity with nothing to
+          // file with the Ministry of Corporate Affairs — a proprietorship has
+          // no registration with the Registrar of Companies, and a partnership
+          // firm is registered with the Registrar of FIRMS (Indian Partnership
+          // Act 1932) instead. lib/entityObligations.ts carries the rule and
+          // the citations. An LLP keeps the card but is described by what it
+          // actually files (LLP Act 2008), never by the company forms.
+          ...(offerMcaWorkspace
+            ? [{
+                label: "MCA Workspace",
+                desc: mcaRegime(entityType) === "llp-act"
+                  ? "Form 11 & Form 8 (LLP Act 2008)"
+                  : "Company Master, Directors, Filings",
+                path: "mca",
+                color: "bg-purple-50 border-purple-200 hover:bg-purple-100",
+              }]
+            : []),
         ].map(({ label, desc, path, color }) => (
           <button key={path}
             onClick={() => router.push(`/clients/${clientId}/compliance/${path}`)}

@@ -50,7 +50,7 @@ export default function ClientKnowledgePage() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Library size={18} className="text-[#182350]" />

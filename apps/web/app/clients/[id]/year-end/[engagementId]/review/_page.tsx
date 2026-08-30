@@ -87,7 +87,7 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5 max-w-2xl">
+      <div className="p-6 space-y-5 max-w-2xl mx-auto">
         {/* Three-step timeline placeholder */}
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">
           <Skeleton className="h-3 w-32 mb-4" />
@@ -128,7 +128,7 @@ export default function ReviewPage() {
   const currentStatus: ReviewStatus = (latestHistory?.to_status ?? "draft") as ReviewStatus;
 
   return (
-    <div className="p-6 space-y-5 max-w-2xl">
+    <div className="p-6 space-y-5 max-w-2xl mx-auto">
 
       {/* Three-step timeline */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">

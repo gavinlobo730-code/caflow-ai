@@ -121,7 +121,7 @@ export default function AdjustmentsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-4xl">
+      <div className="p-6 space-y-4 max-w-4xl mx-auto">
         <TableSkeleton cols={8} rows={4} />
       </div>
     );
@@ -139,7 +139,7 @@ export default function AdjustmentsPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 max-w-4xl">
+    <div className="p-6 space-y-5 max-w-4xl mx-auto">
       {toast && (
         <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-red-50 border-red-100 text-red-700"}`}>
           {toast.msg}

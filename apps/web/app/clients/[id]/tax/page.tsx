@@ -41,7 +41,7 @@ export default function TaxPage() {
   const router = useRouter();
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div>
         <h2 className="text-sm font-semibold text-[#1E293B]">Income Tax</h2>
         <p className="text-xs text-[#94A3B8] mt-0.5">

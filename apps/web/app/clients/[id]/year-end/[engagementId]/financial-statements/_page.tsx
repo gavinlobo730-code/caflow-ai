@@ -5,6 +5,9 @@ import { RefreshCw, Camera, ChevronDown, ChevronRight } from "lucide-react";
 import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData } from "@/lib/api/yearEnd";
 import { StatementSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientEntityType } from "@/lib/clients/useClientEntityType";
+import { usesScheduleIII } from "@/lib/entityObligations";
 
 /** Format paise → ₹ Indian number format (Companies Act §128: accounts in INR) */
 function fmt(paise: number): string {
@@ -131,6 +134,8 @@ export default function FinancialStatementsPage() {
   // window.location, not useParams(): on the deployed static export every
   // dynamic segment is "_placeholder" (see ../_engagementId.ts).
   const engagementId = useEngagementId();
+  const { clientId } = useClientNav();
+  const entity = useClientEntityType(clientId);
 
   const [tab, setTab] = useState<FinTab>("balance_sheet");
   const [liveData, setLiveData] = useState<FinancialStatementSnapshotData | null>(null);
@@ -219,7 +224,7 @@ export default function FinancialStatementsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-4xl">
+      <div className="p-6 space-y-4 max-w-4xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <StatementSkeleton sections={3} rowsPerSection={3} />
           <StatementSkeleton sections={2} rowsPerSection={4} />
@@ -240,7 +245,7 @@ export default function FinancialStatementsPage() {
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl">
+    <div className="p-6 space-y-4 max-w-4xl mx-auto">
       {/* Top bar */}
       <div className="flex items-center gap-3 flex-wrap">
         <button
@@ -313,7 +318,15 @@ export default function FinancialStatementsPage() {
       {tab === "profit_loss" && <ProfitLossView lines={pl} />}
 
       <p className="text-[10px] text-[#94A3B8]">
-        All values derived from the General Ledger. Companies Act 2013, Schedule III.
+        {/* Printed against the actual numbers, so the claim has to be true of
+            THIS client: Schedule III reaches financial statements through
+            Companies Act 2013 §129(1), which speaks of "a company". Asserting
+            it under a proprietorship's balance sheet states a format that does
+            not bind it. Same predicate as the landing subtitle and the export
+            card — one rule, every place it is claimed. */}
+        {usesScheduleIII(entity.entityType)
+          ? "All values derived from the General Ledger. Companies Act 2013, Schedule III."
+          : "All values derived from the General Ledger."}
       </p>
     </div>
   );
