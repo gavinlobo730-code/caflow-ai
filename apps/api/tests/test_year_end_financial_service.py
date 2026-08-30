@@ -793,3 +793,49 @@ def test_a_reclassification_between_two_expense_accounts_is_not_a_close():
         StubSupabase(ledger, _CLOSED_MAPPINGS), CLIENT, FIRM,
         fy_start="2022-04-01", fy_end="2023-03-31")
     assert s["closing_entry_dates"] == []
+
+
+def test_partners_remuneration_is_not_taken_for_a_close():
+    """Shape alone is not enough, and this is the case that proves it.
+
+    "Dr Partners' Remuneration / Cr Partner's Current Account" puts a Profit &
+    Loss leg against an equity leg and nothing else — exactly a close's shape —
+    and a partnership or LLP posts one every year. Partnerships and LLPs are a
+    large share of an Indian practice's clients, so flagging these would tell
+    most CAs their P&L is suspect when it is fine.
+
+    What separates them is EFFECT, not shape: a close brings the accounts it
+    closes to nil. Remuneration leaves the expense account carrying its
+    balance."""
+    mappings = _MAPPINGS + [
+        {"account_id": "remuneration", "firm_id": FIRM,
+         "schedule_line": "employee_benefit_expense", "normal_balance": "debit"},
+        {"account_id": "partner_current", "firm_id": FIRM,
+         "schedule_line": "reserves_and_surplus", "normal_balance": "credit"},
+    ]
+    ledger = _FY23 + [
+        _line("remuneration",    12_000_00, 0,         "2023-03-31"),
+        _line("partner_current", 0,         12_000_00, "2023-03-31"),
+    ]
+    s = generate_financial_statements(
+        StubSupabase(ledger, mappings), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")
+    assert s["closing_entry_dates"] == []
+    # The remuneration is a real charge and must still reach the P&L.
+    assert s["profit_loss"]["expenses"]["employee_benefit_expense"] == 12_000_00
+
+
+def test_the_movement_ties_to_the_reserves_actually_shown_after_a_close():
+    """For a firm that closed its own books, cumulative profit is nil — the
+    close moved it into a posted equity account — while reserves carries the
+    whole surplus. Striking the note from cumulative profit printed
+    "0 + 0 = 0" beside a reserves line of 20,000. A note that does not tie to
+    the face of the balance sheet is worse than no note."""
+    bs = generate_financial_statements(
+        StubSupabase(_FY23 + _HAND_CLOSE, _CLOSED_MAPPINGS), CLIENT, FIRM,
+        fy_start="2022-04-01", fy_end="2023-03-31")["balance_sheet"]
+    shown = bs["equity_and_liabilities"]["reserves_and_surplus"]
+    assert shown == 20_000_00
+    assert bs["surplus_carried_forward_paise"] == shown
+    assert (bs["surplus_brought_forward_paise"] + bs["profit_for_the_year_paise"]
+            == bs["surplus_carried_forward_paise"])

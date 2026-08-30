@@ -191,7 +191,8 @@ def _mock_statements(client_id: str, firm_id: str, fy_start: str, fy_end: str) -
     }
 
 
-def _closing_entries_in(raw_lines: list, mapping_lookup: dict) -> list:
+def _closing_entries_in(raw_lines: list, mapping_lookup: dict,
+                        settled_pl_accounts: set) -> list:
     """Posted entries in this window that look like a CLOSING or appropriation
     journal — every line lands on either a Profit & Loss account or an equity
     account, with at least one of each.
@@ -203,7 +204,7 @@ def _closing_entries_in(raw_lines: list, mapping_lookup: dict) -> list:
     correct and nothing raises. That is a silent wrong number, and it is why
     this is surfaced.
 
-    It is not silently netted out instead, because the shape above is a
+    It is not silently netted out instead, because the shape below is a
     heuristic and no field on journal_entries marks a close (entry_type is
     CHECK-constrained to Sales/Purchase/Payment/Receipt/Journal/Contra/Opening
     by migration 003, none of which means "closing"). A heuristic that misfires
@@ -211,6 +212,21 @@ def _closing_entries_in(raw_lines: list, mapping_lookup: dict) -> list:
     instead of an obviously nil one — the worse failure of the two. Excluding
     them properly means marking them at the point they are posted, which is a
     schema change and a CA-facing affordance, not a guess made at read time.
+
+    settled_pl_accounts is what keeps this off ordinary partnership entries.
+    Shape alone is NOT enough: "Dr Partners' Remuneration / Cr Partner's
+    Current Account" and "Dr Interest on Partner's Capital / Cr Partner's
+    Capital" both put a Profit & Loss leg against an equity leg and nothing
+    else, and a partnership or LLP posts them every year — flagging those would
+    tell a CA their P&L is suspect when it is fine. What distinguishes a close
+    is not which accounts it touches but its EFFECT: a close brings the
+    accounts it closes to nil, so every Profit & Loss account the entry touches
+    must have a cumulative balance of zero as at the period end. Remuneration
+    leaves the expense account carrying a balance, so it never qualifies.
+
+    The rule fails SAFE. An account closed in one year and traded again later
+    carries a balance again, so an older close stops being recognised rather
+    than a live transaction being wrongly named one.
     """
     by_entry: dict = {}
     for line in raw_lines:
@@ -226,6 +242,11 @@ def _closing_entries_in(raw_lines: list, mapping_lookup: dict) -> list:
             schedule_line = mapping["schedule_line"] if mapping else "other_current_assets"
             if schedule_line in PL_INCOME_LINES or schedule_line in PL_EXPENSE_LINES \
                     or schedule_line in PL_TAX_LINES:
+                if line["account_id"] not in settled_pl_accounts:
+                    # This account still carries a balance, so whatever this
+                    # entry did, it did not close it.
+                    has_pl = has_equity = False
+                    break
                 has_pl = True
             elif schedule_line in ("reserves_and_surplus", "share_capital"):
                 has_equity = True
@@ -539,6 +560,7 @@ def generate_financial_statements(
         bs_eq_lib["reserves_and_surplus"] = (
             bs_eq_lib.get("reserves_and_surplus", 0) + cumulative_pat)
         total_eq_lib += cumulative_pat
+        closing_reserves = bs_eq_lib["reserves_and_surplus"]
 
         return {
             "bs_eq_lib": bs_eq_lib, "bs_assets": bs_assets,
@@ -550,13 +572,32 @@ def generate_financial_statements(
             # single number a CA has to take on trust. Schedule III's Reserves
             # and Surplus note is written in exactly this shape: opening
             # balance, add profit for the period, closing balance.
-            "surplus_brought_forward": cumulative_pat - pat,
-            "surplus_carried_forward": cumulative_pat,
+            #
+            # Struck from the reserves figure ACTUALLY SHOWN, not from
+            # cumulative_pat. For a firm that has closed its own books,
+            # cumulative profit is nil — the close moved it into a posted
+            # equity account — while reserves carries the whole surplus. Taking
+            # the closing figure from cumulative_pat therefore printed
+            # "0 + 0 = 0" beside a reserves line of 20,000: a note that does
+            # not tie to the face of the balance sheet, which is worse than no
+            # note. Carried forward is the line above; brought forward is what
+            # it was before this year's profit.
+            "surplus_brought_forward": closing_reserves - pat,
+            "surplus_carried_forward": closing_reserves,
         }
 
     # Entries inside this year's window that look like a hand-posted close.
     # Reported, never netted out — see _closing_entries_in.
-    closing_dates = _closing_entries_in(fy_window_lines, mapping_lookup)
+    #
+    # A Profit & Loss account is "settled" when its cumulative balance at the
+    # period end is nil, which is what a close does to the accounts it closes.
+    # Computed from the totals already to hand, so no extra ledger read.
+    settled_pl_accounts = {
+        acct for acct in all_account_ids
+        if cum_debit_totals.get(acct, 0) == cum_credit_totals.get(acct, 0)
+    }
+    closing_dates = _closing_entries_in(
+        fy_window_lines, mapping_lookup, settled_pl_accounts)
 
     cur = _statement(schedule_balances, cumulative_balances)
     bs_eq_lib, bs_assets = cur["bs_eq_lib"], cur["bs_assets"]
@@ -578,12 +619,24 @@ def generate_financial_statements(
     # ── Validate BS balance (within 1 paise tolerance) ────────────────────────
     diff = abs(total_assets - total_eq_lib)
     if diff > 1:
+        # This raise used to fire for every multi-year client, because equity
+        # carried only one year's profit — and it blamed account_group_mappings
+        # for a shortfall the mappings had nothing to do with, sending CAs to
+        # check a table that was correct. With the surplus now cumulative, the
+        # identity A = L + PAT(<= fy_end) holds for ANY posted ledger by double
+        # entry alone, so reaching here means a mapping genuinely contradicts
+        # itself — most often a normal_balance that disagrees with its
+        # schedule_line, which flips one account's sign without flipping its
+        # side.
         raise ValueError(
             f"Balance Sheet does not balance: "
             f"Assets={total_assets} paise, "
             f"Equity+Liabilities={total_eq_lib} paise, "
             f"Difference={diff} paise. "
-            f"Check account_group_mappings for firm {firm_id}."
+            f"Every posted entry balances, and prior years' surplus is carried "
+            f"into equity, so this is a mapping fault rather than missing "
+            f"history: check account_group_mappings for firm {firm_id} for a "
+            f"normal_balance that disagrees with its schedule_line."
         )
 
     return {
