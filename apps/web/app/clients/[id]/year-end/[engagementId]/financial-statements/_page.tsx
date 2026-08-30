@@ -2,12 +2,25 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Camera, ChevronDown, ChevronRight } from "lucide-react";
-import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData } from "@/lib/api/yearEnd";
+import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData, type RoundedPeriod } from "@/lib/api/yearEnd";
 import { StatementSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
+
+/** Format a figure already rounded to a Schedule III para 4 unit. Whole units,
+ *  so no decimals and no division — dividing by 100 here would silently
+ *  restate every figure on the page by two orders of magnitude. */
+function fmtUnit(value: number): string {
+  if (value === 0) return "—";
+  const abs = Math.abs(value);
+  return (
+    (value < 0 ? "(" : "") +
+    new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(abs) +
+    (value < 0 ? ")" : "")
+  );
+}
 
 /** Format paise → ₹ Indian number format (Companies Act §128: accounts in INR) */
 function fmt(paise: number): string {
@@ -131,6 +144,35 @@ function mapBSGroups(
   });
 }
 
+function mapRoundedProfitLoss(
+  pl: RoundedPeriod["profit_loss"],
+  prev?: RoundedPeriod["profit_loss"],
+): PLLine[] {
+  const p = (v: number) => (prev ? v : undefined);
+  return [
+    { label: "I. Income", amount_paise: 0, is_header: true },
+    ...PL_INCOME_LABELS.map(([code, name]) => ({
+      label: name, amount_paise: pl.income[code] ?? 0,
+      previous_paise: p(prev?.income[code] ?? 0),
+    })),
+    { label: "Total Income", amount_paise: pl.total_income, is_subtotal: true,
+      previous_paise: p(prev?.total_income ?? 0) },
+    { label: "II. Expenses", amount_paise: 0, is_header: true },
+    ...PL_EXPENSE_LABELS.map(([code, name]) => ({
+      label: name, amount_paise: pl.expenses[code] ?? 0,
+      previous_paise: p(prev?.expenses[code] ?? 0),
+    })),
+    { label: "Total Expenses", amount_paise: pl.total_expense, is_subtotal: true,
+      previous_paise: p(prev?.total_expense ?? 0) },
+    { label: "Profit Before Tax", amount_paise: pl.profit_before_tax, is_subtotal: true,
+      previous_paise: p(prev?.profit_before_tax ?? 0) },
+    { label: "Tax Expense", amount_paise: pl.tax_expense,
+      previous_paise: p(prev?.tax_expense ?? 0) },
+    { label: "Profit After Tax", amount_paise: pl.profit_after_tax, is_subtotal: true,
+      previous_paise: p(prev?.profit_after_tax ?? 0) },
+  ];
+}
+
 function mapProfitLossLines(
   pl: FinancialStatementSnapshotData["profit_loss"] | undefined,
   prev?: FinancialStatementSnapshotData["profit_loss"],
@@ -248,15 +290,39 @@ export default function FinancialStatementsPage() {
   const activeData = selectedVersionId === "live" ? liveData : versionData[selectedVersionId] ?? null;
 
   const comp = activeData?.comparatives ?? null;
-  const bs = mapBSGroups(EQUITY_LIABILITY_GROUPS,
-                         activeData?.balance_sheet.equity_and_liabilities,
-                         comp?.balance_sheet.equity_and_liabilities);
-  const assets = mapBSGroups(ASSET_GROUPS, activeData?.balance_sheet.assets,
-                             comp?.balance_sheet.assets);
-  const totalEL = activeData?.balance_sheet.total_equity_and_liabilities_paise ?? 0;
-  const totalAssets = activeData?.balance_sheet.total_assets_paise ?? 0;
 
-  const pl = mapProfitLossLines(activeData?.profit_loss, comp?.profit_loss);
+  // Schedule III General Instructions para 4: the statements are presented in
+  // a rounded unit, chosen from a set the statute fixes by total income, and
+  // rounding has been mandatory since 1 April 2021. The backend strikes those
+  // figures once — the same ones the PDF prints — so the page and the signed
+  // document cannot disagree.
+  //
+  // A snapshot taken before rounding existed has no block; it keeps the old
+  // rupee presentation rather than failing to open.
+  const rounding = activeData?.rounding ?? null;
+  const money = rounding ? fmtUnit : fmt;
+  const amountHeader = rounding ? rounding.label : "Amount (₹)";
+  const previousHeader = rounding ? `Previous year (${rounding.label})` : "Previous year (₹)";
+
+  const bsSource = rounding ? rounding.current.balance_sheet : activeData?.balance_sheet;
+  const compBsSource = rounding
+    ? (rounding.comparative?.balance_sheet ?? undefined)
+    : comp?.balance_sheet;
+  const bs = mapBSGroups(EQUITY_LIABILITY_GROUPS,
+                         bsSource?.equity_and_liabilities,
+                         compBsSource?.equity_and_liabilities);
+  const assets = mapBSGroups(ASSET_GROUPS, bsSource?.assets, compBsSource?.assets);
+  const totalEL = rounding
+    ? rounding.current.balance_sheet.total_equity_and_liabilities
+    : activeData?.balance_sheet.total_equity_and_liabilities_paise ?? 0;
+  const totalAssets = rounding
+    ? rounding.current.balance_sheet.total_assets
+    : activeData?.balance_sheet.total_assets_paise ?? 0;
+
+  const pl = rounding
+    ? mapRoundedProfitLoss(rounding.current.profit_loss,
+                           rounding.comparative?.profit_loss)
+    : mapProfitLossLines(activeData?.profit_loss, comp?.profit_loss);
 
   const isBalanced = activeData?.balance_sheet.is_balanced ?? false;
 
@@ -353,10 +419,18 @@ export default function FinancialStatementsPage() {
       {tab === "balance_sheet" && (
         <BalanceSheetView equityLiabilities={bs} assets={assets}
           totalEL={totalEL} totalAssets={totalAssets}
-          previousTotalEL={comp?.balance_sheet.total_equity_and_liabilities_paise}
-          previousTotalAssets={comp?.balance_sheet.total_assets_paise} />
+          previousTotalEL={rounding
+            ? rounding.comparative?.balance_sheet.total_equity_and_liabilities
+            : comp?.balance_sheet.total_equity_and_liabilities_paise}
+          previousTotalAssets={rounding
+            ? rounding.comparative?.balance_sheet.total_assets
+            : comp?.balance_sheet.total_assets_paise}
+          money={money} amountHeader={amountHeader} previousHeader={previousHeader} />
       )}
-      {tab === "profit_loss" && <ProfitLossView lines={pl} />}
+      {tab === "profit_loss" && (
+        <ProfitLossView lines={pl} money={money}
+          amountHeader={amountHeader} previousHeader={previousHeader} />
+      )}
 
       <p className="text-[10px] text-[#94A3B8]">
         {/* Printed against the actual numbers, so the claim has to be true of
@@ -382,6 +456,9 @@ function BalanceSheetView({
   totalAssets,
   previousTotalEL,
   previousTotalAssets,
+  money,
+  amountHeader,
+  previousHeader,
 }: {
   equityLiabilities: BSGroup[];
   assets: BSGroup[];
@@ -389,6 +466,13 @@ function BalanceSheetView({
   totalAssets: number;
   previousTotalEL?: number;
   previousTotalAssets?: number;
+  // Threaded down rather than reached for globally, so the whole statement is
+  // rendered in ONE unit — Schedule III General Instructions para 4's proviso
+  // requires the unit to be used uniformly, and a table whose totals were
+  // formatted differently from its lines would breach it silently.
+  money: (v: number) => string;
+  amountHeader: string;
+  previousHeader: string;
 }) {
   // Undefined means no preceding period — the first statements after
   // incorporation, which Schedule III General Instructions para 5 excepts.
@@ -405,10 +489,12 @@ function BalanceSheetView({
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Equity & Liabilities */}
       <StatementCard title="I. Equity & Liabilities" groups={equityLiabilities}
-        grandTotal={totalEL} hasPrevious={hasPrevious} previousGrandTotal={previousTotalEL} />
+        grandTotal={totalEL} hasPrevious={hasPrevious} previousGrandTotal={previousTotalEL}
+        money={money} amountHeader={amountHeader} previousHeader={previousHeader} />
       {/* Assets */}
       <StatementCard title="II. Assets" groups={assets}
-        grandTotal={totalAssets} hasPrevious={hasPrevious} previousGrandTotal={previousTotalAssets} />
+        grandTotal={totalAssets} hasPrevious={hasPrevious} previousGrandTotal={previousTotalAssets}
+        money={money} amountHeader={amountHeader} previousHeader={previousHeader} />
     </div>
   );
 }
@@ -419,12 +505,18 @@ function StatementCard({
   grandTotal,
   hasPrevious,
   previousGrandTotal,
+  money,
+  amountHeader,
+  previousHeader,
 }: {
   title: string;
   groups: BSGroup[];
   grandTotal: number;
   hasPrevious: boolean;
   previousGrandTotal?: number;
+  money: (v: number) => string;
+  amountHeader: string;
+  previousHeader: string;
 }) {
   return (
     <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
@@ -435,22 +527,22 @@ function StatementCard({
         <thead>
           <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
             <th className="px-4 py-2 text-left font-semibold">Particulars</th>
-            <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+            <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
-              <th className="px-4 py-2 text-right font-semibold">Previous year (₹)</th>
+              <th className="px-4 py-2 text-right font-semibold">{previousHeader}</th>
             )}
           </tr>
         </thead>
         <tbody>
           {groups.map((group, gi) => (
-            <GroupRows key={gi} group={group} hasPrevious={hasPrevious} />
+            <GroupRows key={gi} group={group} hasPrevious={hasPrevious} money={money} />
           ))}
           <tr className="border-t-2 border-[#E2E8F0] font-bold bg-[#F8FAFC]">
             <td className="px-4 py-2.5 text-[#0F172A] text-sm">Total</td>
-            <td className="px-4 py-2.5 text-right font-mono text-[#0F172A] text-sm">{fmt(grandTotal)}</td>
+            <td className="px-4 py-2.5 text-right font-mono text-[#0F172A] text-sm">{money(grandTotal)}</td>
             {hasPrevious && (
               <td className="px-4 py-2.5 text-right font-mono text-[#64748B] text-sm">
-                {fmt(previousGrandTotal ?? 0)}
+                {money(previousGrandTotal ?? 0)}
               </td>
             )}
           </tr>
@@ -460,7 +552,8 @@ function StatementCard({
   );
 }
 
-function GroupRows({ group, hasPrevious }: { group: BSGroup; hasPrevious: boolean }) {
+function GroupRows({ group, hasPrevious, money }:
+    { group: BSGroup; hasPrevious: boolean; money: (v: number) => string }) {
   const [open, setOpen] = useState(true);
   return (
     <>
@@ -473,20 +566,20 @@ function GroupRows({ group, hasPrevious }: { group: BSGroup; hasPrevious: boolea
           {group.label}
         </td>
         <td className="px-4 py-2 text-right font-mono font-semibold text-[#334155]">
-          {fmt(group.total_paise)}
+          {money(group.total_paise)}
         </td>
         {hasPrevious && (
           <td className="px-4 py-2 text-right font-mono font-semibold text-[#64748B]">
-            {fmt(group.previous_total_paise ?? 0)}
+            {money(group.previous_total_paise ?? 0)}
           </td>
         )}
       </tr>
       {open && group.items.map((item, i) => (
         <tr key={i} className="text-[#94A3B8]">
           <td className="px-4 py-1.5 pl-8">{item.name}</td>
-          <td className="px-4 py-1.5 text-right font-mono">{fmt(item.amount_paise)}</td>
+          <td className="px-4 py-1.5 text-right font-mono">{money(item.amount_paise)}</td>
           {hasPrevious && (
-            <td className="px-4 py-1.5 text-right font-mono">{fmt(item.previous_paise ?? 0)}</td>
+            <td className="px-4 py-1.5 text-right font-mono">{money(item.previous_paise ?? 0)}</td>
           )}
         </tr>
       ))}
@@ -496,7 +589,9 @@ function GroupRows({ group, hasPrevious }: { group: BSGroup; hasPrevious: boolea
 
 // ── Profit & Loss (Schedule III, Part II) ─────────────────────────────────
 
-function ProfitLossView({ lines }: { lines: PLLine[] }) {
+function ProfitLossView({ lines, money, amountHeader, previousHeader }:
+    { lines: PLLine[]; money: (v: number) => string;
+      amountHeader: string; previousHeader: string }) {
   // Schedule III General Instructions para 5. Absent only for the first
   // statements after incorporation, which para 5 excepts.
   const hasPrevious = lines.some((l) => l.previous_paise !== undefined);
@@ -519,9 +614,9 @@ function ProfitLossView({ lines }: { lines: PLLine[] }) {
         <thead>
           <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
             <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-            <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+            <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
-              <th className="px-4 py-2 text-right font-semibold">Previous year (₹)</th>
+              <th className="px-4 py-2 text-right font-semibold">{previousHeader}</th>
             )}
           </tr>
         </thead>
@@ -532,11 +627,11 @@ function ProfitLossView({ lines }: { lines: PLLine[] }) {
                 <tr key={i} className={`border-t-2 border-[#E2E8F0] font-bold ${(line.amount_paise ?? 0) >= 0 ? "bg-green-50" : "bg-red-50"}`}>
                   <td className="px-5 py-2.5 text-[#0F172A] text-sm">{line.label}</td>
                   <td className={`px-4 py-2.5 text-right font-mono text-sm ${(line.amount_paise ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
-                    {fmt(line.amount_paise ?? 0)}
+                    {money(line.amount_paise ?? 0)}
                   </td>
                   {hasPrevious && (
                     <td className="px-4 py-2.5 text-right font-mono text-sm text-[#64748B]">
-                      {fmt(line.previous_paise ?? 0)}
+                      {money(line.previous_paise ?? 0)}
                     </td>
                   )}
                 </tr>
@@ -546,10 +641,10 @@ function ProfitLossView({ lines }: { lines: PLLine[] }) {
               return (
                 <tr key={i} className="border-t border-[#E2E8F0] font-semibold">
                   <td className="px-5 py-2 text-[#1E293B]">{line.label}</td>
-                  <td className="px-4 py-2 text-right font-mono text-[#0F172A]">{fmt(line.amount_paise ?? 0)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-[#0F172A]">{money(line.amount_paise ?? 0)}</td>
                   {hasPrevious && (
                     <td className="px-4 py-2 text-right font-mono text-[#64748B]">
-                      {fmt(line.previous_paise ?? 0)}
+                      {money(line.previous_paise ?? 0)}
                     </td>
                   )}
                 </tr>
@@ -568,7 +663,7 @@ function ProfitLossView({ lines }: { lines: PLLine[] }) {
             return (
               <tr key={i} className="hover:bg-[#F8FAFC]">
                 <td className="px-5 py-2 text-[#475569] pl-8">{line.label}</td>
-                <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(line.amount_paise ?? 0)}</td>
+                <td className="px-4 py-2 text-right font-mono text-[#334155]">{money(line.amount_paise ?? 0)}</td>
               </tr>
             );
           })}

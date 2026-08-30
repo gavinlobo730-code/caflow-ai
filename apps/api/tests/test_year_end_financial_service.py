@@ -839,3 +839,77 @@ def test_the_movement_ties_to_the_reserves_actually_shown_after_a_close():
     assert bs["surplus_carried_forward_paise"] == shown
     assert (bs["surplus_brought_forward_paise"] + bs["profit_for_the_year_paise"]
             == bs["surplus_carried_forward_paise"])
+
+
+# ── Schedule III para 4 rounding, applied to the statements ──────────────────
+
+def test_the_statements_carry_a_permitted_rounding_unit():
+    """Rounding is mandatory since the 24 March 2021 amendment ("may" became
+    "shall"), and the least coarse unit on offer is the nearest hundred — so
+    the rupee presentation the PDF used is no longer one of the choices."""
+    s = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+    r = s["rounding"]
+    assert r["unit"] in r["permitted_units"]
+    assert "₹" in r["label"]
+    # The basis is TOTAL INCOME, not turnover — the 2021 amendment changed it.
+    assert r["total_income_paise"] == s["profit_loss"]["total_income_paise"]
+
+
+def test_the_rounded_balance_sheet_still_balances_and_foots():
+    """Presentation must not knock the sheet out of balance, and each column
+    must add up on the page. Rounding line by line does neither."""
+    s = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+    bs = s["rounding"]["current"]["balance_sheet"]
+    assert bs["total_assets"] == bs["total_equity_and_liabilities"]
+    assert sum(bs["assets"].values()) == bs["total_assets"]
+    assert sum(bs["equity_and_liabilities"].values()) == bs["total_equity_and_liabilities"]
+
+
+def test_the_comparative_is_rounded_in_the_same_unit_as_the_current_year():
+    """Para 4's proviso: "once a unit of measurement is used, it shall be used
+    uniformly in the Financial Statements". Rounding the comparative to its own
+    year's unit would put two scales in one table, and a reader comparing the
+    columns would be comparing lakhs against thousands."""
+    s = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+    r = s["rounding"]
+    assert r["comparative"] is not None
+    comp_bs = r["comparative"]["balance_sheet"]
+    assert comp_bs["total_assets"] == comp_bs["total_equity_and_liabilities"]
+    # One unit governs both periods — there is a single "unit" key, and the
+    # comparative is struck with it rather than one of its own.
+    assert set(r) & {"comparative_unit"} == set()
+
+
+def test_a_ca_may_choose_any_permitted_unit():
+    s = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31", rounding_unit="lakhs")
+    assert s["rounding"]["unit"] == "lakhs"
+    assert s["rounding"]["label"] == "₹ in lakhs"
+
+
+def test_an_impermissible_unit_is_refused_rather_than_quietly_swapped():
+    """This client's total income is far below one hundred crore, so para 4(a)
+    governs and crores is not on offer. Silently substituting a permitted unit
+    would caption the statement with a scale the CA did not choose."""
+    with pytest.raises(ValueError, match="para 4"):
+        generate_financial_statements(
+            StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+            fy_start="2024-04-01", fy_end="2025-03-31", rounding_unit="crores")
+
+
+def test_the_paise_figures_are_untouched_by_rounding():
+    """Rounding is presentation. Every existing consumer reads integer paise
+    and must keep seeing exact figures — the rounded view sits beside them,
+    never in place of them."""
+    s = generate_financial_statements(
+        StubSupabase(_MULTI_YEAR, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+    assert s["balance_sheet"]["assets"]["cash_and_bank"] == 175_000_00
+    assert s["profit_loss"]["profit_after_tax_paise"] == 25_000_00

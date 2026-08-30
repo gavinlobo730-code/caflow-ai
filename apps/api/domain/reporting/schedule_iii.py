@@ -255,3 +255,153 @@ def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
             "profit_after_tax_paise": profit_after_tax,
         },
     }
+
+
+# ── Rounding off — Schedule III, Division I, General Instructions para 4 ──────
+#
+# "The figures appearing in the Financial Statements shall be rounded off as
+#  given below:
+#     (a) total income less than one hundred crore rupees — to the nearest
+#         hundreds, thousands, lakhs or millions, or decimals thereof;
+#     (b) total income of one hundred crore rupees or more — to the nearest
+#         lakhs, millions or crores, or decimals thereof.
+#  Provided that once a unit of measurement is used, it shall be used
+#  uniformly in the Financial Statements."
+#
+# Two things changed when MCA amended Schedule III on 24 March 2021, with
+# effect from 1 April 2021, and both matter here:
+#
+#   * the test became TOTAL INCOME, where the original 2013 text said
+#     TURNOVER. Total income is revenue from operations PLUS other income, so
+#     a company with modest sales and large other income can cross the
+#     threshold on a figure its turnover never reaches;
+#   * "may be rounded off" became "SHALL be rounded off". Presenting figures
+#     to the rupee is no longer one of the choices — the least coarse unit
+#     the statute now offers is the nearest hundred.
+#
+# The unit is the CA's to choose from the permitted set; the statute fixes
+# which set, not which member of it.
+
+# Paise per unit. 1 rupee = 100 paise; 1 lakh = 1,00,000 rupees;
+# 1 million = 10,00,000 rupees; 1 crore = 1,00,00,000 rupees.
+ROUNDING_UNITS: dict[str, int] = {
+    "hundreds":  100_00,
+    "thousands": 1_000_00,
+    "lakhs":     1_00_000_00,
+    "millions":  10_00_000_00,
+    "crores":    1_00_00_000_00,
+}
+
+# The caption that must appear on the face of the statements, so a reader
+# knows what the figures are denominated in.
+ROUNDING_LABELS: dict[str, str] = {
+    "hundreds":  "₹ in hundreds",
+    "thousands": "₹ in thousands",
+    "lakhs":     "₹ in lakhs",
+    "millions":  "₹ in millions",
+    "crores":    "₹ in crores",
+}
+
+# One hundred crore rupees, in paise — the para 4 threshold.
+HUNDRED_CRORE_PAISE = 100 * 1_00_00_000 * 100
+
+_UNITS_BELOW_THRESHOLD = ["hundreds", "thousands", "lakhs", "millions"]
+_UNITS_AT_OR_ABOVE_THRESHOLD = ["lakhs", "millions", "crores"]
+
+
+def permitted_rounding_units(total_income_paise: int) -> list[str]:
+    """The units para 4 allows for this total income, coarsest last.
+
+    The threshold is "one hundred crore rupees or more", so exactly one
+    hundred crore falls in limb (b) — a >= test, not >.
+    """
+    if total_income_paise >= HUNDRED_CRORE_PAISE:
+        return list(_UNITS_AT_OR_ABOVE_THRESHOLD)
+    return list(_UNITS_BELOW_THRESHOLD)
+
+
+def default_rounding_unit(total_income_paise: int) -> str:
+    """A sensible default from the permitted set, if the CA expresses no
+    preference. Chosen so the largest figures stay legible without collapsing
+    the small ones to nothing: broadly, keep four to six significant digits.
+
+    Para 4 does not prescribe a default — it fixes only the permitted set —
+    so this is a presentation choice and a CA may override it with any other
+    permitted unit.
+    """
+    permitted = permitted_rounding_units(total_income_paise)
+    # Coarsest unit that still leaves total income with at least three
+    # significant digits. Coarsest, because Indian statements are read in
+    # lakhs and crores far more often than in hundreds; three digits, because
+    # a unit so coarse that the headline figure reads "2" has thrown away the
+    # precision the reader came for.
+    for unit in reversed(permitted):
+        if abs(total_income_paise) // ROUNDING_UNITS[unit] >= 100:
+            return unit
+    # Every permitted unit swallows the figure — a dormant or tiny client.
+    # Take the finest one on offer.
+    return permitted[0]
+
+
+def round_to_unit(paise: int, unit: str) -> int:
+    """Round integer paise to the nearest whole `unit`, half away from zero.
+
+    Half AWAY FROM ZERO rather than half up, so a loss and a profit of the
+    same magnitude round to the same magnitude: -150 hundreds-of-paise and
+    +150 both go to 2, not to -1 and +2. Asymmetric rounding would make a
+    comparative column of losses drift against the profits beside it.
+
+    Integer arithmetic throughout — never float. CLAUDE.md: every rupee
+    calculation uses integer paise.
+    """
+    if unit not in ROUNDING_UNITS:
+        raise ValueError(
+            f"{unit!r} is not a Schedule III rounding unit; "
+            f"expected one of {sorted(ROUNDING_UNITS)}"
+        )
+    divisor = ROUNDING_UNITS[unit]
+    sign = -1 if paise < 0 else 1
+    return sign * ((abs(paise) + divisor // 2) // divisor)
+
+
+def round_section(lines: dict[str, int], unit: str) -> dict[str, int]:
+    """Round every line in a section so the lines still sum to the rounded
+    total of the section.
+
+    Rounding each line independently is the obvious implementation and it is
+    wrong for a financial statement: the rounded lines need not add up to the
+    rounded total, so the statement does not foot, and — worse — the rounded
+    Total Assets and rounded Total Equity & Liabilities can drift apart and
+    the Balance Sheet stops balancing on its face for no reason but
+    arithmetic.
+
+    So the section total is rounded from the TRUE total, and the residual is
+    handed out by largest remainder (the Hamilton apportionment): the lines
+    whose discarded fraction was biggest are the ones nudged. That keeps every
+    line within one unit of its own true value while making the column add up
+    exactly. Because both sides of the Balance Sheet are struck from the same
+    true totals, and those totals are equal, their rounded totals are equal
+    too — so the sheet still balances after rounding.
+    """
+    if not lines:
+        return {}
+    divisor = ROUNDING_UNITS[unit]
+    target = round_to_unit(sum(lines.values()), unit)
+
+    rounded = {k: round_to_unit(v, unit) for k, v in lines.items()}
+    residual = target - sum(rounded.values())
+    if residual == 0:
+        return rounded
+
+    # Distance from the value that was rounded to, as a fraction of a unit —
+    # the line rounded furthest is the one with most claim on an extra unit
+    # (or least on keeping one). Ties break on the line name so the result is
+    # deterministic rather than dict-order dependent.
+    def _remainder(name: str) -> tuple[int, str]:
+        return (abs(lines[name] - rounded[name] * divisor), name)
+
+    order = sorted(lines, key=_remainder, reverse=True)
+    step = 1 if residual > 0 else -1
+    for name in order[:abs(residual)]:
+        rounded[name] += step
+    return rounded
