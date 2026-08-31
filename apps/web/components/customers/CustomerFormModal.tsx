@@ -35,6 +35,17 @@ export function isValidPan(pan: string): boolean {
   return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan);
 }
 
+/** Validate TAN format: AAAA99999A (IT Act §203A).
+ *
+ * Note the shape differs from a PAN — 4 letters then 5 digits, where a PAN is
+ * 5 then 4 — and a TAN cannot be derived from a PAN. It has to be typed in.
+ * Form 26AS identifies a deductor by TAN and nothing else, so without this the
+ * 26AS reconciliation can only match on company name.
+ */
+export function isValidTan(tan: string): boolean {
+  return /^[A-Z]{4}[0-9]{5}[A-Z]{1}$/.test(tan);
+}
+
 const inputCls = "w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 export function CustomerFormModal({
@@ -53,6 +64,7 @@ export function CustomerFormModal({
   const [gstin, setGstin] = useState(existing?.gstin ?? "");
   const [stateCode, setStateCode] = useState(existing?.state_code ?? "");
   const [pan, setPan] = useState(existing?.pan ?? "");
+  const [tan, setTan] = useState(existing?.tan ?? "");
   const [email, setEmail] = useState(existing?.email ?? "");
   const [phone, setPhone] = useState(existing?.phone ?? "");
   const [city, setCity] = useState(existing?.city ?? "");
@@ -93,6 +105,7 @@ export function CustomerFormModal({
     if (!name.trim()) { fail("Name is required"); return; }
     if (gstin && !isValidGstin(gstin)) { fail("Invalid GSTIN format (e.g. 27AABCU9603R1ZX)"); return; }
     if (pan && !isValidPan(pan)) { fail("Invalid PAN format (e.g. ABCDE1234F)"); return; }
+    if (tan && !isValidTan(tan)) { fail("Invalid TAN format (e.g. MUMA12345B)"); return; }
 
     setSaving(true); setLocalError(null);
     try {
@@ -109,6 +122,7 @@ export function CustomerFormModal({
             gstin: gstin.trim(),
             state_code: stateCode,
             pan: pan.trim(),
+            tan: tan.trim(),
             email: email.trim(),
             phone: phone.trim(),
             city: city.trim(),
@@ -123,6 +137,7 @@ export function CustomerFormModal({
             gstin: gstin.trim() || undefined,
             state_code: stateCode || undefined,
             pan: pan.trim() || undefined,
+            tan: tan.trim() || undefined,
             email: email.trim() || undefined,
             phone: phone.trim() || undefined,
             city: city.trim() || undefined,
@@ -169,6 +184,21 @@ export function CustomerFormModal({
             placeholder="ABCDE1234F" maxLength={10}
             className={`${inputCls} font-mono ${pan && !isValidPan(pan) ? "border-red-300" : ""}`}
           />
+        </div>
+        {/* Only needed when this customer DEDUCTS TDS on what it pays the
+            client. Form 26AS names a deductor by TAN alone, so this is what
+            lets the 26AS reconciliation match on identity instead of on the
+            company name — which it can only flag for a human to confirm. */}
+        <div>
+          <label className="block text-xs font-medium text-[#475569] mb-1">
+            TAN <span className="text-[#94A3B8] font-normal">(if they deduct TDS)</span>
+          </label>
+          <input
+            value={tan} onChange={(e) => setTan(e.target.value.toUpperCase())}
+            placeholder="MUMA12345B" maxLength={10}
+            className={`${inputCls} font-mono ${tan && !isValidTan(tan) ? "border-red-300" : ""}`}
+          />
+          {tan && !isValidTan(tan) && <p className="text-[10px] text-red-500 mt-0.5">Invalid TAN</p>}
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Email</label>

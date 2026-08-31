@@ -334,7 +334,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       const [tplRes, { data: custData }] = await Promise.all([
         apiGet(`/api/recurring-invoices?client_id=${encodeURIComponent(clientId)}`, token),
         selectAll(() => supabase.from("customers")
-          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .select("id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
           .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
       ]);
       setTemplates((tplRes.data as RecurringTemplate[]) ?? []);
@@ -1338,7 +1338,7 @@ function SalesInvoices({
           .order("id")),
         selectAll(() => supabase
           .from("customers")
-          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .select("id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
           .eq("client_id", clientId)
           .eq("is_active", true)
           .order("name")
@@ -2526,7 +2526,7 @@ function Customers({
         supabase
           .from("customers")
           .select(
-            "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
+            "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
           )
           .eq("client_id", clientId)
           .order("name")
@@ -3105,7 +3105,7 @@ function Receipts({
           .order("id")),
         selectAll(() => supabase
           .from("customers")
-          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .select("id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
           .eq("client_id", clientId)
           .eq("is_active", true)
           .order("name")
@@ -3632,7 +3632,7 @@ function CreditNotes({
           .order("id")),
         selectAll(() => supabase
           .from("customers")
-          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .select("id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
           .eq("client_id", clientId)
           .eq("is_active", true)
           .order("name")
@@ -4061,7 +4061,7 @@ function SalesDebitNotes({
           .order("id")),
         selectAll(() => supabase
           .from("customers")
-          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .select("id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
           .eq("client_id", clientId)
           .eq("is_active", true)
           .order("name")

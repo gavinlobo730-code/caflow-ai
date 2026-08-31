@@ -2,10 +2,15 @@
 Pydantic request models for customer and vendor (party) endpoints.
 CGST Act §25: GSTIN format validation.
 IT Act §139A: PAN format validation.
+IT Act §203A: TAN format validation — on CUSTOMERS only. A customer's TAN is
+the number it quotes when IT deducts tax on what it pays the client, and Form
+26AS names a deductor by TAN and nothing else. Vendors do not carry one: there
+the client is the deductor, and its 26Q return reports the vendor's PAN.
 """
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
-from core.validators import validate_gstin, validate_pan, validate_phone, validate_email, validate_pincode
+from core.validators import (validate_gstin, validate_pan, validate_tan,
+                             validate_phone, validate_email, validate_pincode)
 
 
 class CustomerIn(BaseModel):
@@ -13,6 +18,11 @@ class CustomerIn(BaseModel):
     name: str
     gstin: Optional[str] = None
     pan: Optional[str] = None
+    # IT Act §203A. Set when this customer DEDUCTS tax on what it pays the
+    # client. Form 26AS names deductors by TAN and nothing else, so without it
+    # the 26AS reconciliation can only match on company name and must ask a
+    # human to confirm. A TAN cannot be derived from a PAN — it has to be typed.
+    tan: Optional[str] = None
     state_code: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -59,6 +69,12 @@ class CustomerIn(BaseModel):
             err = validate_pan(self.pan)
             if err:
                 errors.append(err)
+        if self.tan:
+            # IT Act §203A: TAN is canonically uppercase, same as the two above.
+            self.tan = self.tan.strip().upper()
+            err = validate_tan(self.tan)
+            if err:
+                errors.append(err)
         if self.email:
             err = validate_email(self.email)
             if err:
@@ -80,6 +96,7 @@ class CustomerUpdateIn(BaseModel):
     name: Optional[str] = None
     gstin: Optional[str] = None
     pan: Optional[str] = None
+    tan: Optional[str] = None          # IT Act §203A — see CustomerIn.tan
     state_code: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -109,6 +126,12 @@ class CustomerUpdateIn(BaseModel):
             # as GSTIN above.
             self.pan = self.pan.strip().upper()
             err = validate_pan(self.pan)
+            if err:
+                errors.append(err)
+        if self.tan:
+            # IT Act §203A: TAN is canonically uppercase, same as the two above.
+            self.tan = self.tan.strip().upper()
+            err = validate_tan(self.tan)
             if err:
                 errors.append(err)
         if self.email:
