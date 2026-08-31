@@ -24,6 +24,10 @@ export interface Customer {
   gstin: string | null;
   state_code: string | null;
   pan: string | null;
+  // IT Act §203A — set only when this customer DEDUCTS TDS on what it pays the
+  // client. Form 26AS names a deductor by TAN alone, so it is what lets the
+  // 26AS reconciliation match on identity rather than on the company name.
+  tan: string | null;
   email: string | null;
   phone: string | null;
   city: string | null;
