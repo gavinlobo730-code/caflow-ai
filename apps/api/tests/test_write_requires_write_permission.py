@@ -87,6 +87,11 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # and closes a PF account; none of that is something a preview should do
         # as a side effect, so the handler reads and returns and writes nothing.
         "/api/payroll/employees/{employee_id}/settlement",
+        # §89(1) relief is likewise computed and returned. Nothing is
+        # written and, in particular, Form 10E is not filed — the proviso
+        # to §89 requires it on the e-filing portal before the return, and
+        # that is the taxpayer's act, not payroll's.
+        "/api/payroll/employees/{employee_id}/arrears-relief",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

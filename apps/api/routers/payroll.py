@@ -40,6 +40,7 @@ from domain.payroll import gratuity as gratuity_domain
 from domain.payroll import bonus as bonus_domain
 from domain.payroll import leave_encashment as leave_domain
 from domain.payroll import settlement as settlement_domain
+from domain.payroll import arrears as arrears_domain
 from dataclasses import replace as _replace
 
 
@@ -2510,4 +2511,85 @@ def preview_settlement(
         "problems": s.problems,
         "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here is "
                       "written, paid or filed.",
+    })
+
+
+# ─── Arrears and §89(1) relief ───────────────────────────────────────────────
+
+class ArrearSliceIn(BaseModel):
+    fy: str
+    amount_paise: int
+    # The employee's total income for that year AS ORIGINALLY ASSESSED. It comes
+    # off their own return, not from payroll — the employer never held it.
+    total_income_that_year_paise: Optional[int] = None
+
+
+class ArrearsReliefIn(BaseModel):
+    client_id: str
+    receipt_fy: str
+    total_income_receipt_year_paise: int
+    arrears: list[ArrearSliceIn] = []
+    use_new_regime: bool = True
+    # The proviso to §89 read with Rule 21AA: no Form 10E, no relief.
+    form_10e_acknowledgement: Optional[str] = None
+
+
+@router.post("/employees/{employee_id}/arrears-relief")
+def arrears_relief(
+    employee_id: str,
+    body: ArrearsReliefIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """§89(1) relief on salary arrears, per Rule 21A(2).
+
+    Salary is taxed in the year of RECEIPT (§15), so a revision backdated three
+    years lands three years' arrears in one year's income and pushes the
+    employee through slabs they would never have reached. §89 compares the tax
+    with what would have been paid had each instalment fallen in its own year,
+    and relieves the excess.
+
+    Two refusals rather than plausible numbers:
+
+      * a year the statutory rate registry does not hold. rates_for() returns
+        the latest verified year's figures for a year it lacks — the documented
+        convention — and §89 is a comparison of years AT THEIR OWN RATES, so a
+        substitute turns the whole computation into a fiction that looks
+        reasonable.
+      * no Form 10E. The proviso to §89, read with Rule 21AA, bars relief
+        unless it was filed before the return; a return claiming §89 without one
+        draws a §143(1) intimation disallowing the relief in full. The amount is
+        still computed and shown, so the CA can see what filing the form is
+        worth.
+
+    Computes and returns; writes nothing.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+
+    result = arrears_domain.compute_relief(
+        receipt_fy=body.receipt_fy,
+        total_income_receipt_year_paise=body.total_income_receipt_year_paise,
+        arrears=[arrears_domain.ArrearSlice(
+            fy=a.fy, amount_paise=a.amount_paise,
+            total_income_that_year_paise=a.total_income_that_year_paise)
+            for a in body.arrears],
+        use_new_regime=body.use_new_regime,
+        form_10e_acknowledgement=body.form_10e_acknowledgement,
+    )
+    return api_response(True, {
+        "employee_id": employee_id,
+        "receipt_fy": body.receipt_fy,
+        "relief_paise": result.relief_paise,
+        "available": result.available,
+        "blocked_reason": result.blocked_reason,
+        "tax_with_arrears_paise": result.tax_on_receipt_year_with_arrears_paise,
+        "tax_without_arrears_paise": result.tax_on_receipt_year_without_arrears_paise,
+        "difference_a_paise": result.difference_a_paise,
+        "difference_b_paise": result.difference_b_paise,
+        "per_year": result.per_year,
+        "gaps": result.gaps,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Form 10E must be "
+                      "filed on the e-filing portal before the return; nothing "
+                      "here files it.",
     })
