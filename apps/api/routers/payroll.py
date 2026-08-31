@@ -26,6 +26,7 @@ import calendar
 
 from domain.payroll.ecr import build_ecr
 from domain.payroll.esic import build_esic_return
+from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
@@ -1406,6 +1407,92 @@ def form_24q_from_payroll(
         "ready": src.is_ready,
         "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Review every row, "
                       "then file on TRACES yourself.",
+    })
+
+
+@router.get("/24q-annexure-ii")
+def form_24q_annexure_ii(
+    client_id: str = Query(...),
+    financial_year: str = Query(..., description='e.g. "2026-27"'),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """The annual salary detail that TRACES turns into Form 16 Part B.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    THERE IS NO FORM 16 GENERATOR HERE, AND THERE SHOULD NOT BE. CBDT
+    Notification 09/2019 requires Part B of the salary TDS certificate to be
+    DOWNLOADED FROM TRACES for every deduction on or after 01-04-2018; Part A
+    had been TRACES-only for years. An employer who prints their own Form 16 has
+    issued nothing.
+
+    TRACES builds Part B from one input — Annexure II of the Q4 24Q return, in
+    the format Notification 36/2019 substituted. So this is the thing that
+    actually produces Form 16, and it is what payroll can honestly supply.
+
+    `gaps` names what payroll cannot know and the employee holds: §17(2)
+    perquisites, exemptions under §10, Chapter VI-A. They do not block — an
+    annexure with no Chapter VI-A is correct for someone who declared none — but
+    they are stated rather than left as silent zeroes.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"financial_year": financial_year, "rows": [],
+                                   "problems": [], "gaps": [], "totals": {},
+                                   "ready": False})
+
+    months = [m for q in ("Q1", "Q2", "Q3", "Q4")
+              for m in months_in_quarter(financial_year, q)]
+    runs = (db.table("payroll_runs").select("id, month, status")
+            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+            .in_("month", months).execute().data) or []
+    usable = [r for r in runs if r.get("status") in ("finalized", "paid")]
+
+    slips: list = []
+    emp_ids: set = set()
+    for run in usable:
+        rows = (db.table("payroll_slips").select("*")
+                .eq("run_id", run["id"]).execute().data) or []
+        slips.extend(rows)
+        emp_ids |= {r.get("employee_id") for r in rows if r.get("employee_id")}
+
+    employees = []
+    if emp_ids:
+        employees = (db.table("payroll_employees").select("id, name, pan")
+                     .eq("firm_id", current_user["firm_id"])
+                     .in_("id", list(emp_ids)).execute().data) or []
+
+    rates = rates_for(financial_year)
+    ann = build_annexure_ii(
+        slips=slips,
+        employees_by_id={e["id"]: e for e in employees},
+        standard_deduction_paise=rates.new_regime_standard_deduction_paise,
+        months_expected=len(usable) or 12,
+    )
+    missing_months = sorted(set(months) - {r["month"] for r in usable})
+    if missing_months:
+        ann.gaps.append(
+            "No finalised payroll for " + ", ".join(missing_months) + ". Annexure II "
+            "covers the whole year, so any month missing here is salary the "
+            "certificate will not show.")
+
+    return api_response(True, {
+        "client_id": client_id,
+        "financial_year": financial_year,
+        "rows": [{**r.__dict__,
+                  "gross_salary_paise": r.gross_salary_paise,
+                  "net_salary_paise": r.net_salary_paise,
+                  "income_under_salaries_paise": r.income_under_salaries_paise}
+                 for r in ann.rows],
+        "problems": ann.problems,
+        "gaps": ann.gaps,
+        "totals": ann.totals(),
+        "ready": ann.is_ready,
+        "form_16_note": "Form 16 itself is downloaded from TRACES after this Annexure "
+                        "II is filed with Q4 — CBDT Notification 09/2019. Nothing here "
+                        "issues a certificate.",
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.",
     })
 
 
