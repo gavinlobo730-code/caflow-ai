@@ -275,3 +275,33 @@ def test_a_failed_write_down_does_not_raise():
     payslip and on the loan list."""
     db = _DB({"payroll_slips": _Rows([], fail=True)})
     assert pr._apply_loan_recoveries(db, "f", "c", "run1") == 0
+
+
+def test_the_payslip_shows_every_deduction_that_reduced_net_pay():
+    """Gross minus the deductions SHOWN must equal the net shown. A recovery
+    that reduces net pay without appearing on the payslip is exactly the
+    difference an employee would have to work out for themselves."""
+    from services.payslip_pdf_service import deduction_lines
+
+    slip = {"gross_paise": 50_000_00, "pf_employee_paise": 1_800_00,
+            "esi_employee_paise": 0, "pt_paise": 200_00, "tds_paise": 5_000_00,
+            "loan_recovery_paise": 1_000_00}
+    rows, total = deduction_lines(slip)
+    assert total == 8_000_00
+    assert ["Loan / Advance Recovery", "₹1,000.00"] in rows
+    # And the payslip reconciles: gross less the deductions shown IS the net.
+    assert slip["gross_paise"] - total == 42_000_00
+
+
+def test_a_nil_recovery_is_not_a_row_on_everyone_s_payslip():
+    """The statutory four always show, so an employee can see PF or TDS was
+    considered and came to nothing. A zero advance line for everyone who has no
+    advance is only noise."""
+    from services.payslip_pdf_service import deduction_lines
+
+    rows, total = deduction_lines({"pf_employee_paise": 1_800_00,
+                                   "esi_employee_paise": 0, "pt_paise": 200_00,
+                                   "tds_paise": 5_000_00})
+    assert total == 7_000_00
+    assert len(rows) == 5           # header + the statutory four
+    assert not any("Loan" in r[0] for r in rows)
