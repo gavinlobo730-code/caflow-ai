@@ -22,13 +22,24 @@ careful. It read the wrong source, and no check could tell it so.
 This is that check. Migration 292 closed the 35 columns the first run found;
 this stops the set growing back.
 
+AND, SINCE MIGRATION 293, THAT NO COLUMN'S TYPE DISAGREES
+
+The seventeen type differences 293 closed were a milder fault than the
+nullability one — none of them rejects an insert outright — but two of them
+could still have produced a wrong answer rather than an error:
+tally_migration_jobs.source_file_size_bytes was integer in production and
+bigint here, so a Tally export over 2.1 GB overflowed there and passed here;
+the uuid-vs-text columns accepted a non-uuid string on one side and not the
+other. That set is at zero now, so it is cheap to hold there, and a type
+difference is always a bug in one of the two places.
+
 WHAT IT DELIBERATELY DOES NOT ASSERT
 
-Only that one direction. The same comparison reports six other categories —
-tables and columns present on one side only, type differences, the safe
-nullability direction — and every one of them is real drift worth knowing about.
-None of them can reject an insert, so none of them is a build failure. Asserting
-on all seven would make this test a permanent 156-item complaint that somebody
+Those two directions and no more. The same comparison reports five other
+categories — tables and columns present on one side only, the safe nullability
+direction — and every one of them is real drift worth knowing about. None can
+reject an insert or change an answer, so none is a build failure. Asserting on
+all seven would make this test a permanent 139-item complaint that somebody
 turns off.
 
 THE FIXTURE IS A SNAPSHOT
@@ -108,6 +119,19 @@ def test_no_column_is_required_in_production_and_optional_in_the_migrations(repo
         "green — which is exactly how form_26as_uploads.uploaded_by was lost.\n"
         "Declare them NOT NULL in a migration (see 292 for the pattern), or, if "
         "production is wrong, change production.\n  "
+        + "\n  ".join(offenders))
+
+
+@_NEEDS_PG
+def test_no_column_has_a_different_type_in_production(report):
+    offenders = report["type_differs"]
+    assert not offenders, (
+        "These columns have one type in the migrations and another in production. "
+        "Migration 293 took this set to zero; anything here is new drift.\n"
+        "Decide which side is right — production is not automatically correct, and "
+        "293 resolved its seventeen four different ways — then write a migration "
+        "that converges them. 293 is the pattern, including how to handle a column "
+        "an RLS policy references.\n  "
         + "\n  ".join(offenders))
 
 

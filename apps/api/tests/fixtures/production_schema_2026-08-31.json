@@ -1329,7 +1329,7 @@
     "actor_id": {
       "default": "",
       "nullable": "YES",
-      "type": "text"
+      "type": "uuid"
     },
     "created_at": {
       "default": "now()",
@@ -3483,7 +3483,7 @@
     "actor_id": {
       "default": "",
       "nullable": "YES",
-      "type": "text"
+      "type": "uuid"
     },
     "actor_name": {
       "default": "",
@@ -3508,7 +3508,7 @@
     "client_id": {
       "default": "",
       "nullable": "NO",
-      "type": "text"
+      "type": "uuid"
     },
     "created_at": {
       "default": "now()",
@@ -3528,7 +3528,7 @@
     "deleted_by": {
       "default": "",
       "nullable": "YES",
-      "type": "text"
+      "type": "uuid"
     },
     "description": {
       "default": "",
@@ -3538,7 +3538,7 @@
     "entity_id": {
       "default": "",
       "nullable": "YES",
-      "type": "text"
+      "type": "uuid"
     },
     "entity_type": {
       "default": "",
@@ -7210,7 +7210,7 @@
     "financial_year": {
       "default": "",
       "nullable": "NO",
-      "type": "text"
+      "type": "character varying"
     },
     "firm_id": {
       "default": "",
@@ -12429,7 +12429,7 @@
     "invited_by": {
       "default": "",
       "nullable": "YES",
-      "type": "text"
+      "type": "uuid"
     },
     "role": {
       "default": "",
@@ -15274,7 +15274,7 @@
     "source_file_size_bytes": {
       "default": "",
       "nullable": "YES",
-      "type": "integer"
+      "type": "bigint"
     },
     "started_at": {
       "default": "",
@@ -18221,7 +18221,7 @@
     "financial_year": {
       "default": "",
       "nullable": "NO",
-      "type": "text"
+      "type": "character varying"
     },
     "firm_id": {
       "default": "",
@@ -18328,7 +18328,7 @@
     "financial_year": {
       "default": "",
       "nullable": "NO",
-      "type": "text"
+      "type": "character varying"
     },
     "firm_id": {
       "default": "",

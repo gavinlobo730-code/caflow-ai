@@ -108,6 +108,110 @@ change. The code is the authority; keep this file in step with it.
 `services/compliance_engine.py` is the single source for every due date above. If prose
 and that module disagree, the module wins and the prose gets fixed.
 
+## What has to be updated every financial year
+
+Indian tax rates, limits and forms change annually. This is the complete list of
+what goes stale, where it lives, and how to tell. **It is deliberately short:
+only things that actually change by statute or notification are here.** If
+something is not on this list, it does not need an annual edit.
+
+### The trap that makes this list necessary
+
+Every rate lookup falls back rather than failing:
+
+```python
+def rates_for(fy):
+    if fy in RATES_BY_FY:
+        return RATES_BY_FY[fy]
+    return RATES_BY_FY[LATEST_VERIFIED_FY]   # <- silently LAST year's rates
+```
+
+`entity_rates`, `presumptive`, `minimum_tax`, `section_rates` and `cii_for` all
+do the same. So a missing year is **not an error — it is a confidently wrong
+number**, computed at last year's rates and presented with no warning. That is
+the whole reason this has to be a checklist someone works through, rather than
+something that surfaces on its own.
+
+There is one live instance right now. `CII_BY_FY` stops at 2025-26, so on any
+date in FY 2026-27 `cii_for("2026-27")` returns 380 — the 2025-26 index. Post
+Budget 2024 indexation survives only as the grandfathered option on immovable
+property, so the blast radius is small, but the number is wrong, not absent.
+
+### 1. The FY-versioned rate registries
+
+Same shape in each: a `*_BY_FY` dict, and a `LATEST_VERIFIED_FY` naming the last
+year a human checked against the Finance Act. **Add the new year's entry, then
+move `LATEST_VERIFIED_FY` — moving it without adding the entry silently promotes
+a guess to a verified figure.**
+
+| File | Holds | Changes with |
+|---|---|---|
+| `domain/income_tax/statutory_rates.py` | slabs (both regimes), §87A rebate, surcharge brackets and marginal relief, cess | Finance Act |
+| `domain/income_tax/entity_rates.py` | firm / LLP / domestic and foreign company rates | Finance Act |
+| `domain/income_tax/presumptive.py` | §44AD, §44ADA, §44AE turnover limits and deemed rates | Finance Act |
+| `domain/income_tax/minimum_tax.py` | MAT §115JB, AMT §115JC rates and thresholds | Finance Act |
+| `domain/tds/section_rates.py` | TDS rates AND per-section thresholds (`LATEST_VERIFIED_TDS_FY`) | Finance Act, and mid-year CBDT notifications |
+| `domain/income_tax/capital_gains_engine.py` | `CII_BY_FY` + `LATEST_CII_FY` | one CBDT notification, usually around June |
+
+CII is the odd one out: it is notified *partway through* the year it applies to,
+so at 1 April the entry legitimately does not exist yet. Check again mid-year.
+
+Print current coverage before deciding anything:
+
+```
+cd apps/api && python3 -c "
+from domain.income_tax import statutory_rates as s, entity_rates as e, presumptive as p, minimum_tax as m, capital_gains_engine as c
+from domain.tds import section_rates as t
+for n, d in [('slabs',s.RATES_BY_FY),('entity',e.RATES_BY_FY),('presumptive',p.LIMITS_BY_FY),
+             ('minimum tax',m.RATES_BY_FY),('TDS',t.TDS_RATES_BY_FY),('CII',c.CII_BY_FY)]:
+    print(f'{n:12} latest {max(d)}')"
+```
+
+### 2. The ITR JSON schemas — these must be downloaded by hand
+
+`domain/income_tax/schemas/`, wired up in `itr_schema.py`'s `SCHEMA_FILES`.
+
+The Income Tax Department publishes a new JSON schema per form per assessment
+year, at **incometax.gov.in → Downloads → Income Tax Returns**, and the filename
+carries a version that changes *within* a year too (the set on disk today spans
+V0.1 to V1.2). They cannot be generated or inferred — somebody downloads them.
+
+**So yes, this is an annual hand-off, and it is the only item on this list that
+cannot be done from inside the repo.** Replace the seven files, update
+`SCHEMA_FILES` to the new names, and re-run the field-path tests — the paths move
+between versions, and `itr_json.py` writes against them. A path that silently
+resolves to the wrong node is the failure mode here: an earlier version of this
+work picked `TaxPayableOnDeemedTI` (the §115JB/§115JC MAT branch) instead of
+`TaxPayableOnTI` on ITR-5 and ITR-6, which validated perfectly and reported the
+wrong tax.
+
+### 3. Payroll statutory limits — currently NOT versioned
+
+`routers/payroll.py` holds these as bare literals, with no `*_BY_FY` registry:
+
+- EPF wage ceiling ₹15,000 (`min(pf_wages_paise, 1500000)`) and the 12% rate
+- ESI wage ceiling ₹21,000 (`gross_paise > 2100000`) and its rates
+- the professional tax slab tables
+
+They change by EPFO / ESIC / state notification, not on an annual cycle, so they
+do not belong in the April sweep — but they also cannot be checked with the
+command above, because there is nothing to print. **Treat this as a known gap:
+when payroll is next worked on, these should move to the same FY-versioned shape
+as the rest.** Until then they need reading by eye.
+
+### 4. What does NOT need an annual edit
+
+Recorded so nobody goes looking:
+
+- **Due dates.** `services/compliance_engine.py` derives every one from the FY
+  by rule, not from a table. It needs touching only when a date is *changed* —
+  a CBDT or CBIC extension notification — never as routine.
+- **GST rate slabs.** Rates are per-line on the document, not a central table.
+- **The FY label itself.** Derived from the date (`ist_fy_label`), never stored
+  as a constant.
+- **Depreciation.** Schedule II rates come from the asset register's own
+  configuration, not a statutory table in code.
+
 ## Code rules — always follow
 
 - Never hardcode API keys — always use .env files
