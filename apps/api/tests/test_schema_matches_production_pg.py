@@ -33,14 +33,39 @@ the uuid-vs-text columns accepted a non-uuid string on one side and not the
 other. That set is at zero now, so it is cheap to hold there, and a type
 difference is always a bug in one of the two places.
 
-WHAT IT DELIBERATELY DOES NOT ASSERT
+A THIRD DIRECTION, ONCE MIGRATION 294 HAS APPLIED
 
-Those two directions and no more. The same comparison reports five other
-categories — tables and columns present on one side only, the safe nullability
-direction — and every one of them is real drift worth knowing about. None can
-reject an insert or change an answer, so none is a build failure. Asserting on
-all seven would make this test a permanent 139-item complaint that somebody
-turns off.
+An earlier version of this docstring said the remaining categories "cannot
+reject an insert, so none of them is a build failure". That was wrong about one
+of them, and the error cost four working features.
+
+columns_missing_from_live — a column the MIGRATIONS declare and production does
+not have — rejects the insert every time code writes to it. It is the exact
+mirror of the category above, and just as fatal:
+
+    year_end_adjustments.client_id            routers/year_end_adjustments.py:201
+    financial_statement_versions.statement_data   routers/year_end_statements.py:149
+    account_group_mappings.statement_type/account_name
+                                              routers/year_end_mappings.py:348-349
+    filings.firm_id                           services/gst_filing_record_service.py
+
+All four failed in production while this suite stayed green. The last is the
+worst: public.filings is what journal_period_lock_reason reads (266, 267), so a
+row that never gets written is a period that never locks, and entries stay
+editable after the return covering them is filed.
+
+Migration 294 adds all 32. The assertion belongs here the moment the refreshed
+production snapshot reflects it — see the fixtures README; until then this
+category is reported, not asserted, and the count should be falling, never
+rising.
+
+WHAT IT STILL DELIBERATELY DOES NOT ASSERT
+
+Tables present on one side only, and the safe nullability direction. Those are
+real drift worth knowing about, but a table the other side lacks breaks no
+write, and nullability in the safe direction accepts more than it must rather
+than less. Asserting on everything would make this a permanent triple-figure
+complaint that somebody turns off.
 
 THE FIXTURE IS A SNAPSHOT
 
