@@ -103,6 +103,22 @@ change. The code is the authority; keep this file in step with it.
   shuts the window early. `compliance_engine.correction_window_closes()` is the function
   to use — `november_30_cutoff()` is only the statutory outer limit and will tell a CA a
   correction is available when it is not.
+- **§192 withholding rests on THREE separate things, and conflating any two gets
+  it wrong.** (1) The employee's regime INTIMATION to the employer — CBDT
+  Circular 04/2023 — governs withholding only, and the same circular says
+  expressly that it "would not amount to exercising option in terms of
+  sub-section (6) of section 115BAC". (2) The §115BAC(6) ELECTION governs the
+  return: Form 10-IEA where there is business income, the return itself where
+  there is not (`domain/income_tax/regime_election.py`). (3) The Rule 26C
+  FORM 12BB statement is the evidence, and prescribes exactly four claims —
+  §10(13A), §10(5), §24(b) and Chapter VI-A. `domain/payroll/declarations.py`
+  keeps them apart; nothing sets one from another.
+- **Under the new regime §115BAC(2) allows §16(ia) and nothing else from
+  section 16** — professional tax under §16(iii) is NOT deductible, nor is
+  §10(13A) HRA, §10(5) LTA, or any Chapter VI-A head except §80CCD(2) (and
+  §80CCH(2)/§80JJAA, neither a salary declaration). Since payroll withholds on
+  the new regime by default, a deduction applied unconditionally is applied to
+  everyone it is not available to.
 - Never auto-submit anything to any government portal — always require explicit CA confirmation click
 
 `services/compliance_engine.py` is the single source for every due date above. If prose

@@ -91,12 +91,19 @@ class Deductions80C:
     fd_5yr_paise: int = 0
     sukanya_samriddhi_paise: int = 0
     ulip_paise: int = 0
+    # Anything eligible under §80C that is not one of the named buckets above —
+    # a term deposit with a scheduled bank, NPS under §80CCD(1), stamp duty on
+    # a house, and so on. §80C(2) runs to twenty-odd clauses and enumerating
+    # them all as fields would still miss one; the aggregate limit in §80CCE
+    # applies to the total either way, which is what total_paise feeds.
+    other_paise: int = 0
 
     def total_paise(self) -> int:
         return (self.ppf_paise + self.elss_paise + self.lic_paise
                 + self.nsc_paise + self.home_loan_principal_paise
                 + self.tuition_fees_paise + self.fd_5yr_paise
-                + self.sukanya_samriddhi_paise + self.ulip_paise)
+                + self.sukanya_samriddhi_paise + self.ulip_paise
+                + self.other_paise)
 
 
 @dataclass

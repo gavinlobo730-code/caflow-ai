@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Optional
 
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 
@@ -74,6 +75,12 @@ class AnnexureIIRow:
     chapter_vi_a_paise: int = 0         # employee's declarations, see gaps
     tds_deducted_paise: int = 0
 
+    # 24Q Annexure II carries "Whether opting for taxation u/s 115BAC" as a
+    # field of its own, and every deduction above has to be consistent with it.
+    # Defaults to the new regime because §115BAC(1A) is the default and an
+    # employee who intimated nothing is withheld on that basis.
+    uses_new_regime: bool = True
+
     @property
     def gross_salary_paise(self) -> int:
         return (self.salary_17_1_paise + self.perquisites_17_2_paise
@@ -84,12 +91,29 @@ class AnnexureIIRow:
         return self.gross_salary_paise - self.exempt_under_10_paise
 
     @property
+    def allowable_professional_tax_paise(self) -> int:
+        """§16(iii) professional tax, but only where the regime allows it.
+
+        §115BAC(2)(i) computes total income without any deduction under section
+        16 SAVE clause (ia) — the standard deduction, which Finance Act 2023 put
+        back for the new regime. Clause (ii) entertainment allowance and clause
+        (iii) professional tax stay excluded.
+
+        This was claimed for everyone until now, and since payroll withholds on
+        the new regime by default that meant it was claimed for everyone it was
+        NOT available to. It understates income under the salary head, so the
+        annexure disagrees with TRACES' own computation of Part B — a Form 16
+        that is wrong in the employee's favour and traceable to the employer.
+        """
+        return 0 if self.uses_new_regime else self.professional_tax_16_iii_paise
+
+    @property
     def income_under_salaries_paise(self) -> int:
         """§15-17 head total, after the §16 deductions. Floored at zero: the
         salary head cannot produce a loss."""
         return max(0, self.net_salary_paise
                    - self.standard_deduction_16_ia_paise
-                   - self.professional_tax_16_iii_paise)
+                   - self.allowable_professional_tax_paise)
 
 
 @dataclass
@@ -120,23 +144,75 @@ _SALARY_COMPONENTS = (
 )
 
 
+
+def _verified_reliefs(decl, salary_17_1_paise: int) -> tuple:
+    """(§10 exemptions, Chapter VI-A) a verified declaration supports.
+
+    Reads only what the CA actually verified. An unverified declaration
+    contributes nothing here even though it may have reduced withholding for the
+    first three quarters — the two are different questions. Withholding is an
+    estimate the year can still correct under §192(3); the annexure is the input
+    to a certificate, and there is no correcting that after TRACES issues it.
+
+    The regime gate is the same one the tax engine applies, restated in terms of
+    the annexure's own columns rather than recomputed: under §115BAC(2) the new
+    regime allows no §10(13A), no §10(5), and of Chapter VI-A only §80CCD(2).
+    """
+    from domain.payroll import declarations as _d
+
+    if not getattr(decl, "proofs_verified", False):
+        return 0, 0
+
+    if decl.uses_new_regime:
+        # §80CCD(2) is the one Chapter VI-A head that survives §115BAC(2) for a
+        # salaried employee.
+        return 0, decl.total_for(_d.SECTION_80CCD2, verified_only=True)
+
+    hra_exempt = 0
+    rent = decl.rent_paid(verified_only=True)
+    if rent > 0:
+        from domain.income_tax.itr_engine import HRADetails
+        hra_exempt = HRADetails(
+            basic_salary_paise=decl.hra_basic_plus_da_paise,
+            hra_received_paise=decl.hra_received_paise,
+            rent_paid_paise=rent,
+            is_metro=decl.rent_is_metro,
+        ).exemption_paise()
+    lta_exempt = decl.lta_verified_paise if decl.proofs_verified else 0
+    exempt_10 = min(hra_exempt + max(0, lta_exempt), salary_17_1_paise)
+
+    chapter_vi_a = sum(
+        decl.total_for(sec, verified_only=True) for sec in _d.VALID_SECTIONS)
+    return exempt_10, chapter_vi_a
+
+
 def build_annexure_ii(
     *,
     slips: list[dict],
     employees_by_id: dict[str, dict],
     standard_deduction_paise: int,
     months_expected: int = 12,
+    declarations_by_employee: Optional[dict] = None,
 ) -> AnnexureII:
     """Aggregate a financial year's finalised payslips into Annexure II rows.
 
     `slips` are every payroll_slips row for the year, across all twelve runs.
+
+    `declarations_by_employee` maps employee id to a
+    domain.payroll.declarations.Declaration. Where one exists it supplies the
+    regime and the reliefs the employee claimed — which is how three of the four
+    gaps below stop being gaps. Only VERIFIED figures are carried: an annexure
+    is the input TRACES generates a certificate from, and a certificate resting
+    on an unproved claim is the employer's exposure, not the employee's.
     """
     out = AnnexureII()
     by_emp: dict[str, list[dict]] = {}
     for s in slips:
         by_emp.setdefault(s.get("employee_id"), []).append(s)
 
+    declarations_by_employee = declarations_by_employee or {}
     perquisites_possible = False
+    any_undeclared = False
 
     for emp_id, emp_slips in sorted(by_emp.items(), key=lambda kv: str(kv[0])):
         emp = employees_by_id.get(emp_id) or {}
@@ -162,12 +238,30 @@ def build_annexure_ii(
         if salary > 0:
             perquisites_possible = True
 
+        decl = declarations_by_employee.get(emp_id)
+        if decl is None:
+            any_undeclared = True
+            uses_new_regime, exempt_10, chapter_vi_a = True, 0, 0
+        else:
+            uses_new_regime = decl.uses_new_regime
+            exempt_10, chapter_vi_a = _verified_reliefs(decl, salary)
+            if not decl.proofs_verified:
+                out.gaps.append(
+                    f"{label}: a declaration exists but its proofs were never "
+                    f"verified, so nothing from it is carried here. Verify it or "
+                    f"file the annexure without it — a certificate resting on an "
+                    f"unproved claim is the employer's exposure under §192(1)."
+                )
+
         out.rows.append(AnnexureIIRow(
             employee_id=str(emp_id),
             name=name.upper(),
             pan=pan,
             months_paid=len(emp_slips),
             salary_17_1_paise=salary,
+            uses_new_regime=uses_new_regime,
+            exempt_under_10_paise=exempt_10,
+            chapter_vi_a_paise=chapter_vi_a,
             standard_deduction_16_ia_paise=min(standard_deduction_paise, salary),
             professional_tax_16_iii_paise=pt,
             tds_deducted_paise=tds,
@@ -181,22 +275,23 @@ def build_annexure_ii(
             )
 
     if perquisites_possible:
+        # §17(2) is unconditional: no declaration collects perquisites, because
+        # their Rule 3 valuation is the employer's job and is not modelled.
         out.gaps.append(
             "§17(2) perquisites and §17(3) profits in lieu are recorded as nil for "
             "everyone, because this payroll module does not model them. Where a "
             "company car, accommodation, interest-free loan or ESOP applies, the "
             "value has to be added before Q4 is filed."
         )
+    if any_undeclared:
         out.gaps.append(
-            "Exemptions under §10 are nil for everyone. HRA under §10(13A) depends on "
-            "rent ACTUALLY PAID and LTA under §10(5) on journeys actually taken — an "
-            "HRA allowance on a payslip is not an HRA exemption, and treating one as "
-            "the other is the commonest way a Form 16 overstates relief."
-        )
-        out.gaps.append(
-            "Chapter VI-A deductions are nil for everyone. 80C, 80D and the rest are "
-            "the employee's declarations with proofs behind them, which this system "
-            "does not yet collect."
+            "Some employees filed no §192 declaration, so their §10 exemptions and "
+            "Chapter VI-A deductions are nil here. That is the correct figure for "
+            "someone who claimed nothing — and the wrong one for someone who simply "
+            "was never asked. HRA under §10(13A) needs rent ACTUALLY PAID and LTA "
+            "under §10(5) journeys actually taken; an HRA allowance on a payslip is "
+            "not an HRA exemption, and treating one as the other is the commonest "
+            "way a Form 16 overstates relief."
         )
 
     return out

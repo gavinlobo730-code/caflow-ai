@@ -60,10 +60,34 @@ def test_the_salary_head_is_computed_the_way_sections_15_to_17_say():
     r = a.rows[0]
     assert r.salary_17_1_paise == 12 * 70_000_00           # basic + HRA, 12 months
     assert r.standard_deduction_16_ia_paise == STD_DEDUCTION
+    # The PT actually deducted is always RECORDED — the annexure reports it
+    # either way, and a CA reconciling to the payslips needs to see it.
     assert r.professional_tax_16_iii_paise == 12 * 200_00
+    # But it is only ALLOWED under the old regime. This employee filed no
+    # declaration, so they were withheld on the §115BAC(1A) default, and
+    # §115BAC(2)(i) excludes every deduction under section 16 except clause
+    # (ia). Before this was gated, the annexure claimed §16(iii) for everyone —
+    # including everyone it was not available to, since payroll withholds on
+    # the new regime by default.
+    assert r.uses_new_regime is True
+    assert r.allowable_professional_tax_paise == 0
+    assert r.income_under_salaries_paise == 12 * 70_000_00 - STD_DEDUCTION
+    assert r.tds_deducted_paise == 12 * 5_000_00
+
+
+def test_professional_tax_is_allowed_under_the_old_regime():
+    """§16(iii) survives for an employee who intimated the old regime.
+
+    The mirror of the test above, and the reason the gate is on the REGIME and
+    not simply switched off: an old-regime employee is entitled to the
+    deduction, and dropping it for them would overstate their income instead.
+    """
+    a = _build()
+    r = a.rows[0]
+    r.uses_new_regime = False
+    assert r.allowable_professional_tax_paise == 12 * 200_00
     assert r.income_under_salaries_paise == (
         12 * 70_000_00 - STD_DEDUCTION - 12 * 200_00)
-    assert r.tds_deducted_paise == 12 * 5_000_00
 
 
 def test_salary_is_summed_from_components_not_from_gross():

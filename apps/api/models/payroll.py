@@ -302,3 +302,74 @@ class PayrollDisburseIn(BaseModel):
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", v.strip()):
             raise ValueError("payment_date must be YYYY-MM-DD.")
         return v.strip()
+
+
+# ── Employee income-tax declarations (IT Act §192, Rule 26C / Form 12BB) ──────
+
+class DeclarationItemIn(BaseModel):
+    """One Chapter VI-A line on the employee's declaration."""
+    section: str
+    label: Optional[str] = ""
+    amount_declared_paise: int = 0
+    # Only a verifier sets these; an employee's own submission leaves them alone.
+    amount_verified_paise: Optional[int] = None
+    status: Optional[str] = None
+    proof_reference: Optional[str] = ""
+
+
+class DeclarationIn(BaseModel):
+    """The employee's §192 declaration for one financial year.
+
+    `regime` is the intimation to the EMPLOYER under CBDT Circular 04/2023 and
+    governs withholding only — it is not the §115BAC(6) election, which is made
+    in Form 10-IEA or in the return itself.
+    """
+    client_id: str
+    employee_id: str
+    fy: str
+    regime: str = "new"
+
+    rent_paid_declared_paise: int = 0
+    landlord_name: Optional[str] = ""
+    landlord_address: Optional[str] = ""
+    landlord_pan: Optional[str] = ""
+    rent_is_metro: bool = False
+
+    lta_declared_paise: int = 0
+
+    home_loan_interest_declared_paise: int = 0
+    lender_name: Optional[str] = ""
+    lender_pan: Optional[str] = ""
+
+    other_income_declared_paise: int = 0
+    house_property_loss_declared_paise: int = 0
+
+    items: list[DeclarationItemIn] = []
+
+    @field_validator("landlord_pan", "lender_pan")
+    @classmethod
+    def _pan_shape(cls, v):
+        if not v:
+            return ""
+        s = str(v).strip().upper()
+        if not re.match(r"^[A-Z]{5}[0-9]{4}[A-Z]$", s):
+            raise ValueError("PAN must be in the form AAAAA9999A")
+        return s
+
+
+class DeclarationVerifyIn(BaseModel):
+    """The CA's verdict after going through the proofs.
+
+    Amounts here are what the PROOFS support, which may be less than was
+    claimed and never more. Anything not named keeps its declared figure and
+    stays unverified — so a partial verification cannot silently bless the
+    lines nobody looked at.
+    """
+    client_id: str
+    rent_paid_verified_paise: Optional[int] = None
+    lta_verified_paise: Optional[int] = None
+    home_loan_interest_verified_paise: Optional[int] = None
+    items: list[DeclarationItemIn] = []
+    # Set once every proof has been through. Until then the declared figures
+    # keep working for the first three quarters and stop working in the fourth.
+    proofs_verified: bool = False
