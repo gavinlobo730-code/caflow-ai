@@ -209,13 +209,23 @@ def test_save_gstr3b_insert_payload_succeeds(migrated_db):
 
 def test_form26as_create_upload_insert_succeeds(migrated_db):
     """Exact shape of the INSERT built in form26as_service.create_upload
-    (real, non-mock branch) must succeed against real PG."""
+    (real, non-mock branch) must succeed against real PG.
+
+    `uploaded_by` is named as well as `created_by`. This table's shape diverged
+    between migration 052 and the live database — 052 declares created_by and
+    no uploaded_by, production has uploaded_by NOT NULL and no created_by — so
+    the insert names both to satisfy either. Migration 291 added whichever
+    column each side lacked; 292 then declared uploaded_by NOT NULL, which is
+    what caught this test still asserting the pre-291 shape.
+    """
     upload_id = str(uuid.uuid4())
     insert_sql = f"""
     INSERT INTO public.form_26as_uploads
-        (id, firm_id, client_id, financial_year, document_id, created_by)
+        (id, firm_id, client_id, financial_year, document_id,
+         created_by, uploaded_by)
     VALUES
-        ('{upload_id}', '{FIRM}', '{CLIENT}', '2025-26', NULL, '{FIRM}');
+        ('{upload_id}', '{FIRM}', '{CLIENT}', '2025-26', NULL,
+         '{FIRM}', '{FIRM}');
     """
     r = _psql(migrated_db, insert_sql)
     assert r.returncode == 0, r.stderr
@@ -240,15 +250,19 @@ def test_form26as_create_upload_insert_succeeds(migrated_db):
 
 def test_tds_workspace_upload_form26as_insert_succeeds(migrated_db):
     """Exact shape of the INSERT built in tds_workspace.upload_form26as
-    (fixed to insert `record`, matching the real columns) must succeed."""
+    (fixed to insert `record`, matching the real columns) must succeed.
+
+    Names `uploaded_by` too — see the note on
+    test_form26as_create_upload_insert_succeeds above.
+    """
     upload_id = str(uuid.uuid4())
     insert_sql = f"""
     INSERT INTO public.form_26as_uploads
         (id, firm_id, client_id, financial_year, file_url, raw_data,
-         reconciliation_result, status, created_by, uploaded_at)
+         reconciliation_result, status, created_by, uploaded_by, uploaded_at)
     VALUES
         ('{upload_id}', '{FIRM}', '{CLIENT}', '2025-26', NULL, '{{}}'::jsonb,
-         '{{}}'::jsonb, 'reconciled', '{FIRM}', NOW());
+         '{{}}'::jsonb, 'reconciled', '{FIRM}', '{FIRM}', NOW());
     """
     r = _psql(migrated_db, insert_sql)
     assert r.returncode == 0, r.stderr
