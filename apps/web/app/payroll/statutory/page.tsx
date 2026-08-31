@@ -3,11 +3,27 @@
 /**
  * Statutory Deductions — PF / ESIC / Gratuity
  *
- * PF: Employees' Provident Funds and Misc. Provisions Act 1952
- * ESIC: Employees' State Insurance Act 1948
- * Gratuity: Payment of Gratuity Act 1972, Section 4
+ * THIS PAGE COMPUTES NOTHING, AND THAT IS THE POINT.
  *
- * All monetary values in integer paise — never float.
+ * It used to carry its own calcPF, calcESIC and calcGratuity in TypeScript,
+ * with its own copies of the ₹15,000 and ₹21,000 ceilings, against CLAUDE.md's
+ * rule that computation lives in apps/api. All three had drifted from the
+ * backend, each in a different direction:
+ *
+ *   - PF was computed on BASIC ALONE. EPF Act §6 says basic wages plus dearness
+ *     allowance. Every employee with a DA component had their PF understated.
+ *   - the employer's 12% was split as a flat 3.67% / 8.33%. EPS is capped at
+ *     8.33% of the ceiling (₹1,250), so above the ceiling that split is simply
+ *     not what happens — and eps_eligible was not considered at all, so a member
+ *     excluded by GSR 609(E) was shown a pension contribution they do not get.
+ *   - ESIC ignored Rule 50's contribution periods.
+ *   - gratuity read `emp.date_of_joining`, WHICH IS NOT A COLUMN — it is
+ *     joining_date. The page selected "*", so PostgREST returned rows without
+ *     that key instead of erroring, and gratuity displayed as ZERO FOR EVERY
+ *     EMPLOYEE, silently, for as long as this page has existed.
+ *
+ * Everything now comes from GET /api/payroll/statutory-summary, which has the
+ * tests. All monetary values are integer paise on the wire.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -18,112 +34,24 @@ import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
-
-// ── Types ──────────────────────────────────────────────────────────────────
+import { api, type StatutoryRow, type StatutorySummary } from "@/lib/api";
 
 type Client = { id: string; client_name: string };
 
-type Employee = {
-  id: string;
-  client_id: string;
-  name: string;
-  designation: string;
-  basic_paise: number;
-  hra_percent: number;
-  da_percent: number;
-  other_allowances_paise: number;
-  pf_applicable: boolean;
-  esi_applicable: boolean;
-  date_of_joining?: string; // ISO date string for gratuity calculation
-};
-
-type StatutoryRow = {
-  emp: Employee;
-  basicPaise: number;
-  grossPaise: number;
-  employeePF: number;
-  employerEPF: number;
-  employerEPS: number;
-  totalEmployerPF: number;
-  employeeESIC: number;
-  employerESIC: number;
-  gratuityPaise: number;
-  yearsOfService: number;
-};
-
-// ── PF Calculation ─────────────────────────────────────────────────────────
-// Provident Fund per Employees' Provident Funds and Misc. Provisions Act 1952
-// Employee contribution: 12% of Basic salary (capped at Rs 15,000 basic = Rs 1,800 max employee PF)
-// Employer contribution: 12% of Basic (3.67% to EPF, 8.33% to EPS)
-
-const PF_WAGE_CEILING_PAISE = 1500000; // Rs 15,000 in paise
-
-function calcPF(basicPaise: number, applicable: boolean): {
-  employeePF: number; employerEPF: number; employerEPS: number; total: number;
-} {
-  if (!applicable) return { employeePF: 0, employerEPF: 0, employerEPS: 0, total: 0 };
-  const pfBasis = Math.min(basicPaise, PF_WAGE_CEILING_PAISE);
-  const employeePF = Math.round(pfBasis * 12 / 100);      // 12% employee
-  const employerEPF = Math.round(pfBasis * 367 / 10000);  // 3.67% to EPF
-  const employerEPS = Math.round(pfBasis * 833 / 10000);  // 8.33% to EPS
-  const total = employeePF + employerEPF + employerEPS;
-  return { employeePF, employerEPF, employerEPS, total };
-}
-
-// ── ESIC Calculation ───────────────────────────────────────────────────────
-// ESIC per Employees' State Insurance Act 1948
-// Applicable if gross salary <= Rs 21,000/month
-// Employee: 0.75% of gross, Employer: 3.25% of gross
-
-const ESIC_CEILING_PAISE = 2100000; // Rs 21,000 in paise
-
-function calcESIC(grossPaise: number, applicable: boolean): {
-  employeeESIC: number; employerESIC: number;
-} {
-  if (!applicable || grossPaise > ESIC_CEILING_PAISE) {
-    return { employeeESIC: 0, employerESIC: 0 };
-  }
-  const employeeESIC = Math.round(grossPaise * 75 / 10000);   // 0.75%
-  const employerESIC = Math.round(grossPaise * 325 / 10000);  // 3.25%
-  return { employeeESIC, employerESIC };
-}
-
-// ── Gratuity Calculation ───────────────────────────────────────────────────
-// Gratuity per Payment of Gratuity Act 1972, Section 4
-// Applicable after 5 years of continuous service
-// Gratuity = (Last drawn salary / 26) * 15 * years of service
-// Max gratuity = Rs 20 lakh (2000000 rupees)
-
-const GRATUITY_MAX_PAISE = 200000000; // Rs 20,00,000 in paise
-const GRATUITY_MIN_SERVICE_YEARS = 5;
-
-function calcGratuity(basicPaise: number, dateOfJoining: string | undefined, asOfMonth: number, asOfYear: number): {
-  gratuityPaise: number; yearsOfService: number;
-} {
-  if (!dateOfJoining) return { gratuityPaise: 0, yearsOfService: 0 };
-  const joinDate = new Date(dateOfJoining);
-  const asOf = new Date(asOfYear, asOfMonth - 1, 1);
-  const diffMs = asOf.getTime() - joinDate.getTime();
-  const yearsOfService = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 365.25));
-  if (yearsOfService < GRATUITY_MIN_SERVICE_YEARS) return { gratuityPaise: 0, yearsOfService };
-  const dailyWagePaise = Math.round(basicPaise / 26); // 26 working days per month
-  const gratuityPaise = Math.min(
-    Math.round(dailyWagePaise * 15 * yearsOfService),
-    GRATUITY_MAX_PAISE,
-  );
-  return { gratuityPaise, yearsOfService };
-}
-
-// ── Format helpers ─────────────────────────────────────────────────────────
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 function fmtRs(paise: number): string {
   const rupees = Math.floor(paise / 100);
   const p = paise % 100;
-  return `₹${rupees.toLocaleString("en-IN")}.${p.toString().padStart(2, "0")}`;
+  const formatted = new Intl.NumberFormat("en-IN").format(rupees);
+  return p > 0 ? `₹${formatted}.${String(p).padStart(2, "0")}` : `₹${formatted}`;
 }
 
 function downloadCSV(content: string, filename: string) {
-  const blob = new Blob(["\uFEFF" + content], { type: "text/csv" });
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -132,114 +60,78 @@ function downloadCSV(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────
-
 export default function StatutoryPage() {
-  const today = new Date();
+  const now = new Date();
   const [clients, setClients] = useState<Client[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
-
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [selMonth, setSelMonth] = useState(today.getMonth() + 1);
-  const [selYear, setSelYear] = useState(today.getFullYear());
-  const [showChallan, setShowChallan] = useState(false);
-  // M17: a swallowed load failure previously rendered as an empty roster with
-  // ₹0 PF/ESIC/gratuity challan totals — indistinguishable from a client that
-  // genuinely has no employees. Surface the failure and offer a retry instead.
+  const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
+  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [summary, setSummary] = useState<StatutorySummary | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [showChallan, setShowChallan] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const sb = getSupabaseClient();
+        const fid = await getFirmId();
+        if (!fid) return;
+        const { data } = await sb.from("clients")
+          .select("id, client_name").eq("firm_id", fid).order("client_name");
+        setClients(data ?? []);
+      } catch (e) {
+        console.error("load clients:", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const load = useCallback(async () => {
+    if (!selectedClientId) { setSummary(null); return; }
     setLoading(true);
     setLoadFailed(false);
     try {
-      const fid = await getFirmId();
-      const sb = getSupabaseClient();
-      const [clientsRes, empRes] = await Promise.all([
-        sb.from("clients").select("id, client_name").eq("firm_id", fid),
-        sb.from("payroll_employees").select("*").eq("firm_id", fid),
-      ]);
-      if (clientsRes.error || empRes.error) throw clientsRes.error ?? empRes.error;
-      const cls: Client[] = clientsRes.data ?? [];
-      const emps: Employee[] = empRes.data ?? [];
-      setClients(cls);
-      setEmployees(emps);
-      if (cls.length > 0) setSelectedClientId(cls[0].id);
-    } catch {
+      const month = `${selYear}-${String(selMonth).padStart(2, "0")}`;
+      const res = await api.payroll.statutoryPosition(selectedClientId, month);
+      setSummary(res?.data ?? null);
+    } catch (e) {
+      console.error("load statutory summary:", e);
       setLoadFailed(true);
+      setSummary(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedClientId, selMonth, selYear]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const clientEmployees = employees.filter(e => e.client_id === selectedClientId);
-
-  const rows: StatutoryRow[] = clientEmployees.map(emp => {
-    const basicPaise = emp.basic_paise;
-    const hraPaise = Math.round(basicPaise * emp.hra_percent / 100);
-    const daPaise = Math.round(basicPaise * emp.da_percent / 100);
-    const grossPaise = basicPaise + hraPaise + daPaise + emp.other_allowances_paise;
-
-    const pf = calcPF(basicPaise, emp.pf_applicable);
-    const esic = calcESIC(grossPaise, emp.esi_applicable);
-    const gratuity = calcGratuity(basicPaise, emp.date_of_joining, selMonth, selYear);
-
-    return {
-      emp,
-      basicPaise,
-      grossPaise,
-      employeePF: pf.employeePF,
-      employerEPF: pf.employerEPF,
-      employerEPS: pf.employerEPS,
-      totalEmployerPF: pf.employerEPF + pf.employerEPS,
-      employeeESIC: esic.employeeESIC,
-      employerESIC: esic.employerESIC,
-      gratuityPaise: gratuity.gratuityPaise,
-      yearsOfService: gratuity.yearsOfService,
-    };
-  });
-
-  // Challan summary totals
-  const totalEmpPF = rows.reduce((s, r) => s + r.employeePF, 0);
-  const totalEmprPF = rows.reduce((s, r) => s + r.totalEmployerPF, 0);
-  const totalPF = totalEmpPF + totalEmprPF;
-  const totalEmpESIC = rows.reduce((s, r) => s + r.employeeESIC, 0);
-  const totalEmprESIC = rows.reduce((s, r) => s + r.employerESIC, 0);
-  const totalESIC = totalEmpESIC + totalEmprESIC;
-  const totalGratuity = rows.reduce((s, r) => s + r.gratuityPaise, 0);
-
-  const MONTHS = [
-    "January","February","March","April","May","June",
-    "July","August","September","October","November","December",
-  ];
+  const rows: StatutoryRow[] = summary?.rows ?? [];
+  const t = summary?.totals ?? {};
+  const totalEmpPF = t.pf_employee_paise ?? 0;
+  const totalEmprPF = t.pf_employer_paise ?? 0;
+  const totalEmpESIC = t.esi_employee_paise ?? 0;
+  const totalEmprESIC = t.esi_employer_paise ?? 0;
+  const totalGratuity = t.gratuity_paise ?? 0;
 
   function handleExport() {
-    const header = "Employee,Designation,Basic,Gross,Emp PF,Empr EPF,Empr EPS,Emp ESIC,Empr ESIC,Gratuity Liability,Years of Service";
-    const dataRows = rows.map(r => [
-      `"${r.emp.name}"`,
-      `"${r.emp.designation || ""}"`,
-      (r.basicPaise / 100).toFixed(2),
-      (r.grossPaise / 100).toFixed(2),
-      (r.employeePF / 100).toFixed(2),
-      (r.employerEPF / 100).toFixed(2),
-      (r.employerEPS / 100).toFixed(2),
-      (r.employeeESIC / 100).toFixed(2),
-      (r.employerESIC / 100).toFixed(2),
-      (r.gratuityPaise / 100).toFixed(2),
-      r.yearsOfService,
+    const header = "Employee,Basic,DA,Gross,Emp PF,Empr EPF,Empr EPS,EDLI,Admin,Emp ESIC,Empr ESIC,Gratuity,Service Yrs";
+    const dataRows = rows.map((r) => [
+      `"${r.name ?? ""}"`,
+      (r.basic_paise / 100).toFixed(2),
+      (r.da_paise / 100).toFixed(2),
+      (r.gross_paise / 100).toFixed(2),
+      (r.pf_employee_paise / 100).toFixed(2),
+      (r.pf_employer_epf_paise / 100).toFixed(2),
+      (r.pf_employer_eps_paise / 100).toFixed(2),
+      (r.edli_paise / 100).toFixed(2),
+      (r.pf_admin_paise / 100).toFixed(2),
+      (r.esi_employee_paise / 100).toFixed(2),
+      (r.esi_employer_paise / 100).toFixed(2),
+      (r.gratuity_payable_paise / 100).toFixed(2),
+      r.gratuity_years,
     ].join(","));
-    const footer = [
-      '"TOTAL","","","",',
-      `${(totalEmpPF / 100).toFixed(2)},`,
-      `${(totalEmprPF / 100).toFixed(2)},`,
-      `"",`,
-      `${(totalEmpESIC / 100).toFixed(2)},`,
-      `${(totalEmprESIC / 100).toFixed(2)},`,
-      `${(totalGratuity / 100).toFixed(2)},`,
-      `""`,
-    ].join("");
     const content = [
       `# Statutory Summary — ${MONTHS[selMonth - 1]} ${selYear}`,
       `# PF: Employees' Provident Funds and Misc. Provisions Act 1952`,
@@ -248,24 +140,8 @@ export default function StatutoryPage() {
       `# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT`,
       header,
       ...dataRows,
-      footer,
     ].join("\n");
     downloadCSV(content, `Statutory_${selYear}_${String(selMonth).padStart(2, "0")}.csv`);
-  }
-
-  if (loading) {
-    return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading...</p></div>;
-  }
-
-  if (loadFailed) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load statutory data — the request failed or timed out.</p>
-          <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -285,52 +161,36 @@ export default function StatutoryPage() {
           </div>
         </div>
 
-        {/* Filters */}
         <Card className="mb-4">
           <CardContent className="pt-5">
             <div className="flex flex-wrap gap-4 items-end justify-between">
               <div className="flex flex-wrap gap-4 items-end">
                 <div>
                   <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                  <ClientLookup
-                    clients={clients}
-                    value={selectedClientId}
-                    onChange={setSelectedClientId}
-                    ariaLabel="Client"
-                    placeholder="Select client…"
-                  />
+                  <ClientLookup clients={clients} value={selectedClientId}
+                    onChange={setSelectedClientId} ariaLabel="Client"
+                    placeholder="Select client…" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
-                  <select
-                    className="border rounded-lg px-3 py-2 text-sm"
-                    value={selMonth}
-                    onChange={e => setSelMonth(Number(e.target.value))}
-                  >
+                  <select className="border rounded-lg px-3 py-2 text-sm" value={selMonth}
+                    onChange={(e) => setSelMonth(Number(e.target.value))}>
                     {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#334155] mb-1">Year</label>
-                  <input
-                    type="number"
-                    className="border rounded-lg px-3 py-2 text-sm w-24"
-                    value={selYear}
-                    onChange={e => setSelYear(Number(e.target.value))}
-                    min={2020}
-                    max={2099}
-                  />
+                  <input type="number" className="border rounded-lg px-3 py-2 text-sm w-24"
+                    value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}
+                    min={2020} max={2099} />
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowChallan(v => !v)}
-                  className="flex items-center gap-1.5"
-                >
+                <Button variant="outline" onClick={() => setShowChallan((v) => !v)}>
                   {showChallan ? "Hide" : "Generate"} Challan Summary
                 </Button>
-                <Button onClick={handleExport} className="flex items-center gap-1.5">
+                <Button onClick={handleExport} disabled={!rows.length}
+                        className="flex items-center gap-1.5">
                   <Download size={14} />Export CSV
                 </Button>
               </div>
@@ -338,19 +198,44 @@ export default function StatutoryPage() {
           </CardContent>
         </Card>
 
-        {/* CA Review notice */}
         <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
           <AlertCircle size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-amber-800">
             {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-            <strong>CA Review Required.</strong> PF and ESIC challans must be reviewed and submitted
-            by a qualified Chartered Accountant. This page is for calculation reference only.
-            Gratuity is a liability estimate — actual payment subject to eligibility verification.
+            <strong>CA Review Required.</strong> PF and ESIC challans must be reviewed and
+            submitted by a qualified Chartered Accountant. Gratuity here is what would be
+            payable if the employee left at the end of the selected month — a provision,
+            not an instruction to pay.
           </p>
         </div>
 
-        {/* Challan Summary */}
-        {showChallan && (
+        {/* Anything the backend could not compute, named. A missing joining
+            date used to look identical to no entitlement. */}
+        {(summary?.gaps?.length ?? 0) > 0 && (
+          <div className="mb-4 space-y-1.5 p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-lg">
+            {summary!.gaps.map((g, i) => (
+              <p key={i} className="text-xs text-[#78350F]">{g}</p>
+            ))}
+          </div>
+        )}
+
+        {loading && (
+          <Card><CardContent className="py-12 text-center text-[#64748B]">Loading…</CardContent></Card>
+        )}
+
+        {!loading && loadFailed && (
+          <Card><CardContent className="py-12 text-center">
+            <p className="text-sm text-red-600 font-medium mb-2">
+              Couldn&apos;t load statutory data — the request failed or timed out.
+            </p>
+            <button onClick={() => void load()}
+              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+              Retry
+            </button>
+          </CardContent></Card>
+        )}
+
+        {!loading && !loadFailed && showChallan && rows.length > 0 && (
           <Card className="mb-4 border-blue-500/20 bg-blue-500/[0.08]">
             <CardHeader>
               <CardTitle className="text-base text-indigo-900">
@@ -361,45 +246,61 @@ export default function StatutoryPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white rounded-lg p-4 border border-blue-500/20">
                   <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan (EPF Act 1952)</p>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      <tr><td className="py-1 text-[#475569]">Employee PF (12%)</td><td className="text-right font-mono">{fmtRs(totalEmpPF)}</td></tr>
-                      <tr><td className="py-1 text-[#475569]">Employer EPF (3.67%)</td><td className="text-right font-mono">{fmtRs(rows.reduce((s, r) => s + r.employerEPF, 0))}</td></tr>
-                      <tr><td className="py-1 text-[#475569]">Employer EPS (8.33%)</td><td className="text-right font-mono">{fmtRs(rows.reduce((s, r) => s + r.employerEPS, 0))}</td></tr>
-                      <tr className="border-t font-bold"><td className="py-2">Total PF Payable</td><td className="text-right font-mono text-blue-600">{fmtRs(totalPF)}</td></tr>
-                    </tbody>
-                  </table>
+                  <table className="w-full text-sm"><tbody>
+                    <tr><td className="py-1 text-[#475569]">Employee PF</td><td className="text-right font-mono">{fmtRs(totalEmpPF)}</td></tr>
+                    <tr><td className="py-1 text-[#475569]">Employer EPF</td><td className="text-right font-mono">{fmtRs(t.pf_employer_epf_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-[#475569]">Employer EPS</td><td className="text-right font-mono">{fmtRs(t.pf_employer_eps_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-[#475569]">EDLI</td><td className="text-right font-mono">{fmtRs(t.edli_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-[#475569]">Admin charges</td><td className="text-right font-mono">{fmtRs(t.pf_admin_paise ?? 0)}</td></tr>
+                    <tr className="border-t font-bold"><td className="py-2">Total PF Payable</td>
+                      <td className="text-right font-mono text-blue-600">
+                        {fmtRs(totalEmpPF + totalEmprPF + (t.edli_paise ?? 0) + (t.pf_admin_paise ?? 0))}
+                      </td></tr>
+                  </tbody></table>
+                  <p className="text-xs text-[#94A3B8] mt-2">
+                    EDLI and admin charges are employer costs outside the 12%. The admin
+                    minimum of ₹500 is per establishment, so it is applied to this total
+                    and never to one payslip.
+                  </p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-green-100">
                   <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan (ESI Act 1948)</p>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      <tr><td className="py-1 text-[#475569]">Employee ESIC (0.75%)</td><td className="text-right font-mono">{fmtRs(totalEmpESIC)}</td></tr>
-                      <tr><td className="py-1 text-[#475569]">Employer ESIC (3.25%)</td><td className="text-right font-mono">{fmtRs(totalEmprESIC)}</td></tr>
-                      <tr className="border-t font-bold"><td className="py-2">Total ESIC Payable</td><td className="text-right font-mono text-green-700">{fmtRs(totalESIC)}</td></tr>
-                    </tbody>
-                  </table>
-                  <p className="text-xs text-[#94A3B8] mt-2">Applicable for employees with gross &le; ₹21,000/month</p>
+                  <table className="w-full text-sm"><tbody>
+                    <tr><td className="py-1 text-[#475569]">Employee ESIC (0.75%)</td><td className="text-right font-mono">{fmtRs(totalEmpESIC)}</td></tr>
+                    <tr><td className="py-1 text-[#475569]">Employer ESIC (3.25%)</td><td className="text-right font-mono">{fmtRs(totalEmprESIC)}</td></tr>
+                    <tr className="border-t font-bold"><td className="py-2">Total ESIC Payable</td>
+                      <td className="text-right font-mono text-green-700">{fmtRs(totalEmpESIC + totalEmprESIC)}</td></tr>
+                  </tbody></table>
+                  <p className="text-xs text-[#94A3B8] mt-2">
+                    Someone whose wages cross ₹21,000 part way through a contribution
+                    period stays in the scheme until that period ends (Rule 50).
+                  </p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-orange-100">
                   <p className="text-xs font-semibold uppercase text-orange-600 mb-3">Gratuity Liability (Gratuity Act 1972)</p>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      <tr><td className="py-1 text-[#475569]">Eligible Employees</td><td className="text-right font-mono">{rows.filter(r => r.yearsOfService >= 5).length}</td></tr>
-                      <tr className="border-t font-bold"><td className="py-2">Total Gratuity Liability</td><td className="text-right font-mono text-orange-700">{fmtRs(totalGratuity)}</td></tr>
-                    </tbody>
-                  </table>
-                  <p className="text-xs text-[#94A3B8] mt-2">Applicable after 5 years of continuous service. Max ₹20 lakh.</p>
+                  <table className="w-full text-sm"><tbody>
+                    <tr><td className="py-1 text-[#475569]">Eligible employees</td>
+                      <td className="text-right font-mono">{rows.filter((r) => r.gratuity_eligible).length}</td></tr>
+                    <tr className="border-t font-bold"><td className="py-2">Total gratuity liability</td>
+                      <td className="text-right font-mono text-orange-700">{fmtRs(totalGratuity)}</td></tr>
+                  </tbody></table>
+                  <p className="text-xs text-[#94A3B8] mt-2">
+                    Fifteen days&apos; wages per completed year on basic + DA, divided by 26.
+                    Five years&apos; service, except on death or disablement. Ceiling ₹20 lakh.
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Employee-wise statutory table */}
-        {clientEmployees.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-[#94A3B8]">No employees for this client.</CardContent></Card>
-        ) : (
+        {!loading && !loadFailed && selectedClientId && rows.length === 0 && (
+          <Card><CardContent className="py-12 text-center text-[#94A3B8]">
+            No active employees for this client.
+          </CardContent></Card>
+        )}
+
+        {!loading && !loadFailed && rows.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Employee-wise Statutory Deductions</CardTitle>
@@ -410,7 +311,7 @@ export default function StatutoryPage() {
                   <thead>
                     <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                       <th className="text-left py-3 px-4">Employee</th>
-                      <th className="text-right py-3 px-3">Basic</th>
+                      <th className="text-right py-3 px-3">Basic + DA</th>
                       <th className="text-right py-3 px-3">Gross</th>
                       <th className="text-right py-3 px-3">Emp PF</th>
                       <th className="text-right py-3 px-3">Empr PF</th>
@@ -421,43 +322,50 @@ export default function StatutoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(r => (
-                      <tr key={r.emp.id} className="border-b hover:bg-[#F8FAFC]">
+                    {rows.map((r) => (
+                      <tr key={r.employee_id} className="border-b hover:bg-[#F8FAFC]">
                         <td className="py-3 px-4">
-                          <div className="font-medium text-[#0F172A]">{r.emp.name}</div>
-                          {r.emp.designation && <div className="text-xs text-[#64748B]">{r.emp.designation}</div>}
+                          <div className="font-medium text-[#0F172A]">{r.name}</div>
                           <div className="flex gap-1 mt-0.5">
-                            {r.emp.pf_applicable && (
+                            {r.pf_applicable && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">PF</span>
                             )}
-                            {r.emp.esi_applicable && r.grossPaise <= ESIC_CEILING_PAISE && (
+                            {r.esi_applicable && r.esi_employee_paise > 0 && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">ESIC</span>
+                            )}
+                            {r.pf_applicable && !r.eps_eligible && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#475569]"
+                                    title="Excluded from EPS by GSR 609(E) — the whole employer 12% goes to EPF">
+                                No EPS
+                              </span>
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.basicPaise)}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.grossPaise)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.basic_paise + r.da_paise)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.gross_paise)}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">
-                          {r.employeePF > 0 ? fmtRs(r.employeePF) : <span className="text-[#CBD5E1]">—</span>}
+                          {r.pf_employee_paise > 0 ? fmtRs(r.pf_employee_paise) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">
-                          {r.totalEmployerPF > 0 ? fmtRs(r.totalEmployerPF) : <span className="text-[#CBD5E1]">—</span>}
+                          {r.pf_employer_paise > 0 ? fmtRs(r.pf_employer_paise) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">
-                          {r.employeeESIC > 0 ? fmtRs(r.employeeESIC) : <span className="text-[#CBD5E1]">—</span>}
+                          {r.esi_employee_paise > 0 ? fmtRs(r.esi_employee_paise) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">
-                          {r.employerESIC > 0 ? fmtRs(r.employerESIC) : <span className="text-[#CBD5E1]">—</span>}
+                          {r.esi_employer_paise > 0 ? fmtRs(r.esi_employer_paise) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-purple-700">
-                          {r.gratuityPaise > 0 ? fmtRs(r.gratuityPaise) : <span className="text-[#CBD5E1]">—</span>}
+                          {r.gratuity_payable_paise > 0
+                            ? fmtRs(r.gratuity_payable_paise)
+                            : <span className="text-[#CBD5E1]" title={r.gratuity_reasons[0] ?? ""}>—</span>}
                         </td>
                         <td className="py-3 px-3 text-center text-xs">
-                          {r.yearsOfService > 0 ? (
-                            <span className={r.yearsOfService >= 5 ? "text-green-700 font-medium" : "text-[#64748B]"}>
-                              {r.yearsOfService}y
-                            </span>
-                          ) : <span className="text-[#CBD5E1]">—</span>}
+                          {r.joining_date
+                            ? <span className={r.gratuity_eligible ? "text-green-700 font-medium" : "text-[#64748B]"}>
+                                {r.gratuity_years}y
+                              </span>
+                            : <span className="text-[#CBD5E1]" title="No joining date on record">—</span>}
                         </td>
                       </tr>
                     ))}
@@ -466,8 +374,10 @@ export default function StatutoryPage() {
                     <tfoot>
                       <tr className="border-t-2 font-bold bg-[#F8FAFC]">
                         <td className="py-3 px-4 text-[#334155]">Total</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(rows.reduce((s, r) => s + r.basicPaise, 0))}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(rows.reduce((s, r) => s + r.grossPaise, 0))}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">
+                          {fmtRs(rows.reduce((s, r) => s + r.basic_paise + r.da_paise, 0))}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">
+                          {fmtRs(rows.reduce((s, r) => s + r.gross_paise, 0))}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{fmtRs(totalEmpPF)}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">{fmtRs(totalEmprPF)}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{fmtRs(totalEmpESIC)}</td>
@@ -478,22 +388,6 @@ export default function StatutoryPage() {
                     </tfoot>
                   )}
                 </table>
-              </div>
-              <div className="p-4 border-t">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[#64748B]">
-                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
-                    <p className="font-medium text-[#334155] mb-1">PF Calculation (EPF Act 1952)</p>
-                    <p>Employee: 12% of basic (capped at ₹15,000 basic). Employer: 3.67% EPF + 8.33% EPS. Basic ceiling ₹15,000/month.</p>
-                  </div>
-                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
-                    <p className="font-medium text-[#334155] mb-1">ESIC (ESI Act 1948)</p>
-                    <p>Employee: 0.75% of gross. Employer: 3.25% of gross. Applicable only if gross salary ≤ ₹21,000/month.</p>
-                  </div>
-                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
-                    <p className="font-medium text-[#334155] mb-1">Gratuity (Gratuity Act 1972 Sec 4)</p>
-                    <p>= (Basic/26) × 15 × years. Applicable after 5 years continuous service. Maximum ₹20 lakh. Requires date of joining in employee record.</p>
-                  </div>
-                </div>
               </div>
             </CardContent>
           </Card>

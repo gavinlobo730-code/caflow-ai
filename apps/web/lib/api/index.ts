@@ -7,6 +7,41 @@ export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | 
 
 /** One employee's §192 declaration, as the payroll API returns it.
  *  Every amount is integer paise. */
+export type StatutoryRow = {
+  employee_id: string;
+  name: string | null;
+  basic_paise: number;
+  da_paise: number;
+  gross_paise: number;
+  pf_applicable: boolean;
+  esi_applicable: boolean;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  pf_employer_eps_paise: number;
+  pf_employer_epf_paise: number;
+  edli_paise: number;
+  pf_admin_paise: number;
+  eps_eligible: boolean;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+  joining_date: string | null;
+  gratuity_payable_paise: number;
+  gratuity_eligible: boolean;
+  gratuity_years: number;
+  /** Why no gratuity is payable — under five years, no joining date, no
+   *  wages. A zero and "we do not know when they joined" must not look the
+   *  same, which is exactly the bug this replaced. */
+  gratuity_reasons: string[];
+};
+
+export type StatutorySummary = {
+  month: string;
+  financial_year: string | null;
+  rows: StatutoryRow[];
+  totals: Record<string, number>;
+  gaps: string[];
+};
+
 export type DeclarationItemRow = {
   id: string;
   section: string;
@@ -809,6 +844,13 @@ export const api = {
     saveDeclaration: (body: unknown) =>
       request<ApiResp<{ declaration_id: string; problems: string[]; notices: string[] }>>(
         "/api/payroll/declarations", { method: "PUT", body: JSON.stringify(body) }),
+    // PF, ESI and gratuity for a client's employees as at a month. Computed in
+    // apps/api — the page used to carry its own TypeScript copies of all three,
+    // which had drifted four ways (see the endpoint's docstring).
+    statutoryPosition: (clientId: string, month: string) =>
+      request<ApiResp<StatutorySummary>>(
+        `/api/payroll/statutory-position?client_id=${encodeURIComponent(clientId)}` +
+        `&month=${encodeURIComponent(month)}`),
     verifyDeclaration: (declarationId: string, body: unknown) =>
       request<ApiResp<{ declaration_id: string; problems: string[] }>>(
         `/api/payroll/declarations/${declarationId}/verify`,

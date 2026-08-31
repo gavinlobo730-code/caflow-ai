@@ -36,6 +36,7 @@ from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
 from domain.payroll import declarations as decl_domain
+from domain.payroll import gratuity as gratuity_domain
 from dataclasses import replace as _replace
 
 
@@ -565,6 +566,19 @@ def _compute_esi(gross_paise: int, fy: Optional[str] = None,
     return {"employee": employee, "employer": employer}
 
 
+def _percent_of(base_paise: int, percent) -> int:
+    """A percentage of a paise amount, half-rounded up, in exact decimal.
+
+    Module level rather than nested in _compute_slip because the statutory
+    summary derives HRA and DA the same way, and two derivations of one
+    percentage drift. Decimal, not float: `float(hra_percent)` produced verified
+    off-by-one-paise mismatches against exact arithmetic.
+    """
+    pct = _Decimal(str(percent or 0))
+    return int((_Decimal(base_paise) * pct / 100).quantize(
+        _Decimal("1"), rounding=_ROUND_HALF_UP))
+
+
 def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None,
                   esi_covered_at_period_start: bool = False,
                   pt_month: Optional[int] = None,
@@ -600,10 +614,6 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
 
     def _prorate(amount_paise) -> int:
         return (int(amount_paise or 0) * present_days) // working_days
-
-    def _percent_of(base_paise: int, percent) -> int:
-        pct = _Decimal(str(percent or 0))
-        return int((_Decimal(base_paise) * pct / 100).quantize(_Decimal("1"), rounding=_ROUND_HALF_UP))
 
     basic     = _prorate(emp.get("basic_paise", 0))
     hra       = _percent_of(basic, emp.get("hra_percent", 0))
@@ -2161,3 +2171,157 @@ def verify_declaration(
         actor_id=current_user.get("auth_user_id"))
 
     return api_response(True, {"declaration_id": declaration_id, "problems": []})
+
+
+# ─── Statutory position, computed here rather than in the browser ─────────────
+
+@router.get("/statutory-position")
+def statutory_position(
+    client_id: str = Query(...),
+    month: str = Query(..., description='"YYYY-MM"'),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """PF, ESI and gratuity for every employee of a client, as at a month.
+
+    Distinct from /reports/statutory-summary, which reports what a FINALISED RUN
+    actually deducted. This one projects from the employee master and answers
+    "where does each employee stand today" — including people no run has covered
+    yet, and gratuity, which no run computes.
+
+    THIS EXISTS BECAUSE THE FRONTEND WAS COMPUTING IT
+
+    app/payroll/statutory/page.tsx carried its own calcPF, calcESIC and
+    calcGratuity in TypeScript, with its own copies of the ₹15,000 and ₹21,000
+    ceilings — against CLAUDE.md's rule that computation lives in apps/api. They
+    had drifted from the backend in four ways, each of them wrong in a
+    different direction:
+
+      * PF was computed on BASIC ALONE. §6 of the EPF Act says basic wages plus
+        dearness allowance, which task #229 fixed on the backend and never here.
+        Every employee with a DA component had their PF understated.
+      * the employer's 12% was split as a flat 3.67% / 8.33%. The EPS half is
+        capped at 8.33% of the ceiling (₹1,250), so above the ceiling the split
+        is not 3.67/8.33 at all — and eps_eligible (migration 295) was not
+        considered, so a member excluded from EPS by GSR 609(E) was shown a
+        pension contribution they do not get.
+      * ESI ignored Rule 50: someone whose wages cross the ceiling mid-period
+        stays in the scheme until the period ends.
+      * gratuity read `emp.date_of_joining`, WHICH IS NOT A COLUMN. The column
+        is joining_date (migration 093). Because the page selected "*", PostgREST
+        returned rows without that key rather than erroring, so the value was
+        undefined for everyone and GRATUITY DISPLAYED AS ZERO FOR EVERY
+        EMPLOYEE, silently, for as long as the page has existed.
+
+    All four are now one implementation, here, with the tests that already
+    guard it.
+
+    `as at a month` matters for gratuity: length of service is measured to the
+    end of that month, so the figure is "what would be payable if they left
+    now" — which is what a provision is for.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"month": month, "rows": [], "totals": {},
+                                   "gaps": []})
+
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=422, detail='month must be "YYYY-MM"')
+    as_at = date(y, m, calendar.monthrange(y, m)[1])
+    fy = _fy_for_month(month)
+
+    emps = (db.table("payroll_employees").select("*")
+            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+            .eq("status", "active").execute().data) or []
+
+    esi_covered_earlier = _members_contributing_earlier_this_period(
+        db, current_user["firm_id"], client_id, month)
+
+    rows: list[dict] = []
+    gaps: list[str] = []
+    totals = {"pf_employee_paise": 0, "pf_employer_paise": 0,
+              "pf_employer_eps_paise": 0, "pf_employer_epf_paise": 0,
+              "edli_paise": 0, "pf_admin_paise": 0,
+              "esi_employee_paise": 0, "esi_employer_paise": 0,
+              "gratuity_paise": 0}
+
+    for emp in emps:
+        basic = int(emp.get("basic_paise") or 0)
+        da = _percent_of(basic, emp.get("da_percent", 0))
+        hra = _percent_of(basic, emp.get("hra_percent", 0))
+        gross = (basic + hra + da
+                 + int(emp.get("lta_paise") or 0)
+                 + int(emp.get("medical_paise") or 0)
+                 + int(emp.get("special_allowance_paise") or 0)
+                 + int(emp.get("other_allowances_paise") or 0))
+
+        pf = (_compute_pf(basic + da, fy, eps_eligible=emp.get("eps_eligible", True))
+              if emp.get("pf_applicable")
+              else {"employee": 0, "employer": 0, "employer_eps": 0,
+                    "employer_epf": 0, "edli": 0, "admin": 0})
+        esi = (_compute_esi(gross, fy,
+                            covered_at_period_start=emp["id"] in esi_covered_earlier)
+               if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
+
+        joining = emp.get("joining_date")
+        grat = gratuity_domain.compute(
+            basic_plus_da_paise=basic + da,
+            joining=date.fromisoformat(str(joining)) if joining else None,
+            leaving=as_at,
+            covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+        )
+        for r in grat.reasons:
+            # Not eligible yet is the ordinary case, not a problem worth
+            # reporting for every junior employee in the firm. A MISSING
+            # joining date is, because it is the one that looks identical.
+            if not joining:
+                gaps.append(f"{emp.get('name') or emp['id']}: {r}")
+
+        rows.append({
+            "employee_id": emp["id"],
+            "name": emp.get("name"),
+            "basic_paise": basic,
+            "da_paise": da,
+            "gross_paise": gross,
+            "pf_applicable": bool(emp.get("pf_applicable")),
+            "esi_applicable": bool(emp.get("esi_applicable")),
+            "pf_employee_paise": pf["employee"],
+            "pf_employer_paise": pf["employer"],
+            "pf_employer_eps_paise": pf["employer_eps"],
+            "pf_employer_epf_paise": pf["employer_epf"],
+            "edli_paise": pf["edli"],
+            "pf_admin_paise": pf["admin"],
+            "eps_eligible": bool(emp.get("eps_eligible", True)),
+            "esi_employee_paise": esi["employee"],
+            "esi_employer_paise": esi["employer"],
+            "joining_date": joining,
+            "gratuity_payable_paise": grat.payable_paise,
+            "gratuity_eligible": grat.eligible,
+            "gratuity_years": grat.service_years_counted,
+            "gratuity_reasons": grat.reasons,
+        })
+        totals["pf_employee_paise"] += pf["employee"]
+        totals["pf_employer_paise"] += pf["employer"]
+        totals["pf_employer_eps_paise"] += pf["employer_eps"]
+        totals["pf_employer_epf_paise"] += pf["employer_epf"]
+        totals["edli_paise"] += pf["edli"]
+        totals["pf_admin_paise"] += pf["admin"]
+        totals["esi_employee_paise"] += esi["employee"]
+        totals["esi_employer_paise"] += esi["employer"]
+        totals["gratuity_paise"] += grat.payable_paise
+
+    # The EPF administrative charge has a statutory MINIMUM of ₹500 a month per
+    # ESTABLISHMENT, not per member — so it can only be settled on the run
+    # total, never on one payslip.
+    rates = payroll_rates_for(fy)
+    if totals["pf_admin_paise"] and totals["pf_admin_paise"] < rates.pf.admin_minimum_paise:
+        totals["pf_admin_paise"] = rates.pf.admin_minimum_paise
+
+    return api_response(True, {
+        "month": month, "financial_year": fy,
+        "rows": rows, "totals": totals, "gaps": gaps,
+    })
