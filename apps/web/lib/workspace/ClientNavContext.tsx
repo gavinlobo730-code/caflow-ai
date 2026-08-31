@@ -21,6 +21,7 @@ export type ClientSection =
   | "fixed-assets"
   | "year-end"
   | "tax"
+  | "reports"
   | "documents"
   | "tasks"
   | "portal"
@@ -37,16 +38,21 @@ export interface ClientSectionConfig {
   href: (clientId: string) => string;
 }
 
-// "reports" is omitted, and its route no longer exists. It was a static
-// "Coming in Phase 1" placeholder with no data behind it, already pulled from
-// this list for Closed Beta (Beta-readiness Part 1) because every client saw a
-// permanent dead nav link. The page was kept around for a future revival, but
-// it was costing 2 of Cloudflare Pages' 100 dynamic _redirects rules to serve a
-// card nobody could navigate to — and that budget is the binding constraint on
-// adding real routes (see scripts/generate-redirects.js). Deleted when the Bank
-// section needed a slot. Per-client reporting lands in the Accounting Reports
-// hub, not here; the firm-wide /reports/ page is a separate, fully working
-// feature and is unaffected.
+// "reports" IS BACK, and the reasons it was pulled are worth keeping in view.
+// It was a static "Coming in Phase 1" placeholder with no data behind it, so
+// every client saw a permanent dead nav link, and it cost 2 of Cloudflare Pages'
+// 100 dynamic _redirects rules to serve a card nobody could use — that budget is
+// the binding constraint on adding real routes (see scripts/generate-redirects.js),
+// and overrunning it once made the whole client workspace 404.
+//
+// What is different: it is not a placeholder this time. The section opens onto
+// the reports that ALREADY exist across the workspace, so it is useful on the
+// day it ships and has somewhere to grow, rather than promising a later phase.
+// The rule budget was checked before adding it back, not after — 88 of 100 in
+// use, and a section costs 2. Check it again before adding the next one.
+//
+// The firm-wide /reports/ page is a separate, fully working feature and is
+// unaffected.
 //
 // "products-services" is likewise omitted: Products & Services management
 // lives entirely inside ServiceCataloguePicker's "+ Add Product/Service"
@@ -67,6 +73,7 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/` },
   { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end/` },
   { id: "tax",          label: "Tax",           href: (id) => `/clients/${id}/tax/` },
+  { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports/` },
   { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },
   { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks/` },
   { id: "portal",        label: "Portal",         href: (id) => `/clients/${id}/portal/` },

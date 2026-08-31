@@ -612,13 +612,25 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
-  // Mirrors how QuickBooks/Xero/Zoho/Tally all scope their "Journal" screen to
-  // manually-created entries by default, keeping every auto-posted GL entry
-  // (invoices, bills, inventory COGS/capitalisation, opening balances, ...)
-  // out of the CA's view of their own adjusting entries. The full picture is
-  // still one click away via this toggle, or always visible per-account in
-  // the Trial Balance / Ledger drill-down.
-  const [showSystemEntries, setShowSystemEntries] = useState(false);
+  // THIS SCREEN SHOWS MANUAL ENTRIES ONLY, AND HAS NO WAY TO SHOW THE OTHERS.
+  //
+  // Every package a CA arrives from draws the same line. In TallyPrime the
+  // document IS the voucher — recording a sales invoice creates no separate
+  // journal behind it — and the Journal Register lists Journal-type vouchers
+  // only. QuickBooks, Xero and Zoho Books do post behind documents, and all
+  // three split it the same way: a Manual Journals list of what a human wrote,
+  // and a separate Journal/General Ledger REPORT carrying every posting.
+  //
+  // This is the authored list. An auto-posted entry — the COGS behind an
+  // invoice, the reversal behind a deleted one, opening balances — is the
+  // mechanism working, not something the CA wrote, and showing it here invites
+  // acting on it. There used to be a "Show system-generated entries" toggle;
+  // it is gone, because a control that reveals rows no action on this screen
+  // can touch is a trap rather than a feature.
+  //
+  // Those postings are not hidden, only moved to where they belong: per account
+  // in Trial Balance and the Ledger drill-down, and as an immutable record of
+  // who changed what in Settings -> Audit Log.
 
   // The date window that SCOPES THE SERVER QUERY — which entries load at all —
   // exactly as Sales Invoices and Purchase Bills do it. Search, sort and
@@ -633,8 +645,8 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
     [periodMode, customFrom, customTo, financialYear],
   );
   const visibleEntries = useMemo(
-    () => (showSystemEntries ? entries : entries.filter((e) => e.source_type === "manual")),
-    [entries, showSystemEntries]
+    () => entries.filter((e) => e.source_type === "manual"),
+    [entries]
   );
 
   const loadEntries = useCallback(async () => {
@@ -835,18 +847,6 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-1.5 text-xs text-[#64748B] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showSystemEntries}
-              onChange={(e) => setShowSystemEntries(e.target.checked)}
-              className="rounded border-[#CBD5E1]"
-            />
-            Show system-generated entries
-            <span className="text-[#94A3B8]">
-              ({entries.length - entries.filter((e) => e.source_type === "manual").length} auto-posted)
-            </span>
-          </label>
           <button
             onClick={() => router.push(journalEditorHref(clientId, "new"))}
             className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
@@ -883,10 +883,13 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
         initialSort={{ key: "entry_date", dir: "desc" }}
         exportFilename="journal"
         persistKey="accounting.journal"
-        emptyTitle={!showSystemEntries && entries.length > 0 ? "No manual journal entries" : "No journal entries"}
+        emptyTitle="No manual journal entries"
         emptyDescription={
-          !showSystemEntries && entries.length > 0
-            ? "This client has system-generated entries only — tick \u201CShow system-generated entries\u201D above to see them."
+          entries.length > 0
+            ? "Everything posted for this client so far came from a document — an invoice, "
+              + "a bill, a bank line, a year-end close. Those are on Trial Balance and in "
+              + "each account\u2019s ledger, and every change to them is in Settings \u2192 Audit Log. "
+              + "This list is for entries you write yourself."
             : "Use New Journal Entry to add one."
         }
       />
@@ -3118,109 +3121,6 @@ function VerifyBooks({ clientId }: { clientId: string }) {
 
 // ── Financial Reports ──────────────────────────────────────────────────────
 
-function YearEndClose({ financialYear }: { financialYear: string }) {
-  const [locked, setLocked] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  // A failed lock-status check must never default to "open" (M17-class bug):
-  // that would tell a CA it's safe to post into a FY that's actually locked,
-  // or vice versa. Keep `locked` unknown (null) and surface the failure
-  // instead of guessing.
-  const [checkFailed, setCheckFailed] = useState(false);
-
-  const check = useCallback(async () => {
-    setLoading(true);
-    try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const { data, error } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
-      if (error) throw error;
-      const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
-      setLocked(years.includes(financialYear));
-      setCheckFailed(false);
-    } catch {
-      setLocked(null);
-      setCheckFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [financialYear]);
-  useEffect(() => { check(); }, [check]);
-
-  async function toggleLock() {
-    setSaving(true);
-    try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const { data, error } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
-      // A failed read here must abort, not proceed with years=[] — this is a
-      // read-modify-write: writing back an empty/partial list would silently
-      // wipe out every OTHER financial year this firm had locked.
-      if (error) throw error;
-      const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
-      const updated = locked
-        ? years.filter((y) => y !== financialYear)
-        : Array.from(new Set([...years, financialYear]));
-      const { error: updErr } = await supabase.from("firms").update({ locked_financial_years: updated }).eq("id", firmId);
-      if (updErr) throw updErr;
-      setLocked(!locked);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update lock");
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-50">
-        <p className="text-xs font-semibold text-[#334155]">Year-End Close — FY {financialYear}</p>
-        <p className="text-[10px] text-[#94A3B8] mt-0.5">
-          Lock the financial year to prevent new journal entries. Locked years remain viewable.
-        </p>
-      </div>
-      <div className="px-5 py-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${loading ? "bg-[#E2E8F0]" : checkFailed ? "bg-amber-400" : locked ? "bg-red-400" : "bg-green-400"}`} />
-          <span className="text-sm text-[#334155]">
-            {loading ? "Checking…" : checkFailed ? `Couldn't verify FY ${financialYear}'s lock status` : locked ? `FY ${financialYear} is locked` : `FY ${financialYear} is open`}
-          </span>
-        </div>
-        {checkFailed ? (
-          <button onClick={check} className="text-xs px-4 py-2 rounded-lg font-medium border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#334155]">
-            Retry
-          </button>
-        ) : (
-          <button
-            onClick={toggleLock}
-            disabled={loading || saving}
-            className={`flex items-center gap-2 text-xs px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${
-              locked
-                ? "bg-green-600 text-white hover:bg-green-700"
-                : "bg-red-600 text-white hover:bg-red-700"
-            }`}
-          >
-            {saving ? "Saving…" : locked ? "🔓 Unlock FY" : "🔒 Lock FY (Year-End Close)"}
-          </button>
-        )}
-      </div>
-      {checkFailed && (
-        <div className="mx-5 mb-4 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-          <p className="text-xs text-amber-800">
-            Couldn&apos;t confirm whether FY {financialYear} is locked — the check failed or timed out.
-            Lock/unlock is disabled until this is verified, to avoid overwriting the real status.
-          </p>
-        </div>
-      )}
-      {locked && (
-        <div className="mx-5 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-          <p className="text-xs text-red-700">
-            <strong>Locked:</strong> No new journal entries can be posted to FY {financialYear}.
-            Corrections require unlocking or reversal entries in the next period.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Financial Reports ──────────────────────────────────────────────────────
 
@@ -3492,7 +3392,25 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       )}
 
       {/* ── Year-End ── */}
-      <YearEndClose financialYear={financialYear} />
+      {/* The "Year-End Close" panel that used to sit here has been REMOVED, not
+          moved. It wrote firms.locked_financial_years straight from the browser
+          — the very path services/year_lock_service.py was built to replace,
+          because RLS let any authenticated firm user write it and the lock PIN
+          was read down to the client, so a "Partner-only" control was neither.
+          Migration 136 then added trg_guard_locked_fy, which raises
+          'locked_financial_years can only be changed via the year-lock API
+          (Partner-only)' on any direct change — so this button had been DEAD in
+          production ever since, and its handler alert()ed that raw database
+          error at the CA.
+
+          It was also in the wrong place twice over: locking a year is not a
+          report, and that array is FIRM-WIDE, so a control sitting inside one
+          client's workspace closed the year for every client in the practice.
+
+          The real controls: the firm-wide lock is Accounting -> Lock Year,
+          which goes through the Partner-gated, PIN-verified, audited API; a
+          single client's year is closed in that client's Year End section,
+          which writes client_year_locks. */}
 
       {/* Schedule III note */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
