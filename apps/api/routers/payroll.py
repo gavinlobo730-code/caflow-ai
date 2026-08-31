@@ -15,6 +15,8 @@ import math
 
 from pydantic import BaseModel, EmailStr
 
+import logging
+
 from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn)
@@ -43,6 +45,15 @@ from domain.payroll import settlement as settlement_domain
 from domain.payroll import arrears as arrears_domain
 from domain.payroll import perquisites as perq_domain
 from dataclasses import replace as _replace
+
+
+# Every "read failed, carry on with the safe default" branch below logs through
+# this. It was referenced in five of them and never defined, so the first real
+# read failure would have raised NameError from inside the except — turning a
+# graceful degradation into a 500, and only ever on the day something was
+# already going wrong. The `caflow.` prefix matches the rest of the app's
+# logging (CLAUDE.md notes the prefix is legacy naming and stays).
+_logger = logging.getLogger("caflow.payroll")
 
 
 def _fy_for_month(month: str) -> Optional[str]:
@@ -346,6 +357,73 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
         return set()
 
 
+def _salary_in_force(db, firm_id: str, client_id: str, month: str) -> dict:
+    """{employee_id: the component set to pay them this month}.
+
+    An employee's pay lives on payroll_employees as one current value.
+    payroll_salary_revisions (migration 300) records what it was and from when,
+    so a month uses the LATEST revision effective on or before that month's
+    first day — which is what makes a revision enterable in advance, and a
+    backdated one recoverable as arrears.
+
+    An employee with no revision is absent from the result and the caller falls
+    back to the master. That is deliberate rather than a backfill: inventing an
+    effective date for the pay someone happens to be on today would put a fact
+    in the record that nobody established.
+
+    Empty on failure, which pays everyone their current master rate — the
+    behaviour before revisions existed, and never a stopped payroll.
+    """
+    try:
+        first_of_month = f"{month}-01"
+        rows = (db.table("payroll_salary_revisions").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute().data) or []
+        latest: dict = {}
+        for r in rows:
+            # Compared here rather than in the query: the row count is bounded
+            # by headcount times revisions, which is small, and an inequality
+            # filter is not part of the query surface the in-memory source
+            # implements. ISO dates compare correctly as strings.
+            if str(r.get("effective_from") or "") > first_of_month:
+                continue
+            emp = r.get("employee_id")
+            best = latest.get(emp)
+            if best is None or str(r.get("effective_from")) > str(best.get("effective_from")):
+                latest[emp] = r
+        return latest
+    except Exception:
+        _logger.exception("could not read salary revisions for %s %s", client_id, month)
+        return {}
+
+
+def _loan_instalments_for_run(db, firm_id: str, client_id: str) -> dict:
+    """{employee_id: instalment to recover this month}, capped at what is owed.
+
+    An instalment larger than the balance would over-recover, which is the
+    employer taking money they are not owed. Closed loans are excluded by the
+    query, not filtered afterwards, so a settled loan cannot come back.
+
+    Empty on failure — recovering nothing is recoverable next month; recovering
+    twice is not.
+    """
+    try:
+        rows = (db.table("payroll_loans").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .is_("closed_on", "null").execute().data) or []
+        out: dict = {}
+        for r in rows:
+            owed = int(r.get("outstanding_paise") or 0)
+            due = min(int(r.get("monthly_instalment_paise") or 0), max(0, owed))
+            if due > 0:
+                emp = r.get("employee_id")
+                out[emp] = out.get(emp, 0) + due
+        return out
+    except Exception:
+        _logger.exception("could not read employee loans for %s", client_id)
+        return {}
+
+
 def _declarations_for_run(db, firm_id: str, client_id: str,
                           fy: str) -> dict:
     """Every employee's §192 declaration for this financial year, by employee id.
@@ -589,7 +667,8 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
                   pt_month: Optional[int] = None,
                   declaration: Optional["decl_domain.Declaration"] = None,
                   tds_already_deducted_paise: int = 0,
-                  months_already_paid: int = 0) -> dict:
+                  months_already_paid: int = 0,
+                  loan_instalment_paise: int = 0) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
@@ -658,7 +737,17 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         months_already_paid=months_already_paid,
     )
 
-    deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
+    statutory_deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
+
+    # A loan instalment is recovered AFTER the statutory deductions and only out
+    # of what is left. An employer may not recover an advance from money that
+    # was never there: PF, ESI, professional tax and TDS are owed to somebody
+    # else and come first, and a recovery that pushed net pay below zero would
+    # be an overdrawn payslip rather than a debt collected.
+    loan_recovery = min(max(0, loan_instalment_paise),
+                        max(0, gross - statutory_deductions))
+
+    deductions = statutory_deductions + loan_recovery
     net = gross - deductions
 
     return {
@@ -682,6 +771,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "esi_employer_paise": esi["employer"],
         "pt_paise":           pt,
         "tds_paise":          tds_monthly,
+        "loan_recovery_paise": loan_recovery,
         "net_paise":          net,
         "working_days":       working_days,
         "days_present":       days_present,
@@ -1061,6 +1151,10 @@ def create_run(
     tds_ytd = _tds_already_deducted_this_fy(
         db, current_user["firm_id"], client_id, month, fy)
 
+    # The pay in force this month, and any advance being recovered from it.
+    revisions = _salary_in_force(db, current_user["firm_id"], client_id, month)
+    loan_due = _loan_instalments_for_run(db, current_user["firm_id"], client_id)
+
     # Statutory deductions this run did NOT compute because the state's rules are
     # not modelled. Collected per employee and returned with the run: a zero PT
     # for Delhi and a zero PT for Gujarat are the same number meaning opposite
@@ -1071,11 +1165,23 @@ def create_run(
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
+        # A revision in force REPLACES the master's components for this month.
+        # Merged over the employee row rather than substituted for it, so
+        # everything a revision does not carry — PF applicability, PT state,
+        # EPS eligibility — still comes from the master.
+        rev = revisions.get(emp["id"])
+        if rev:
+            emp = {**emp, **{k: rev[k] for k in (
+                "basic_paise", "hra_percent", "da_percent", "lta_paise",
+                "medical_paise", "special_allowance_paise", "other_allowances_paise")
+                if k in rev}}
+
         slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
                              esi_covered_at_period_start=emp["id"] in esi_covered_earlier,
                              declaration=declarations.get(emp["id"]),
                              tds_already_deducted_paise=tds_ytd.get(emp["id"], (0, 0))[0],
-                             months_already_paid=tds_ytd.get(emp["id"], (0, 0))[1])
+                             months_already_paid=tds_ytd.get(emp["id"], (0, 0))[1],
+                             loan_instalment_paise=loan_due.get(emp["id"], 0))
         statutory_gaps.extend(_statutory_gaps(emp))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -2797,3 +2903,194 @@ def record_perquisites(
 
     return api_response(True, {"employee_id": employee_id, "fy": body.fy,
                                "recorded": recorded})
+
+
+# ─── Salary revisions and employee loans ─────────────────────────────────────
+
+class SalaryRevisionIn(BaseModel):
+    """The whole component set as at an effective date, not a delta.
+
+    Deltas compose, and composing them across a backdated revision inserted
+    between two others gives a different answer depending on the order they
+    were entered.
+    """
+    client_id: str
+    effective_from: str                    # ISO date
+    basic_paise: int = 0
+    hra_percent: float = 0
+    da_percent: float = 0
+    lta_paise: int = 0
+    medical_paise: int = 0
+    special_allowance_paise: int = 0
+    other_allowances_paise: int = 0
+    reason: str = ""
+
+
+@router.post("/employees/{employee_id}/salary-revisions")
+def add_salary_revision(
+    employee_id: str,
+    body: SalaryRevisionIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record a salary revision effective from a date.
+
+    A month's payroll uses the latest revision effective on or before that
+    month's first day, so one may be entered in advance without affecting the
+    months before it — and a BACKDATED one, which is the ordinary case since
+    increments are usually agreed months after they take effect, gives arrears
+    something to be computed from.
+
+    Recording a revision does not re-run anything. Months already finalised keep
+    the figures they were paid on, because payroll_slips stores each component
+    as paid; what a backdated revision creates is a DIFFERENCE, and settling it
+    is a separate decision (see /arrears-relief for the §89 side).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id)
+    try:
+        effective = date.fromisoformat(body.effective_from)
+    except ValueError:
+        raise HTTPException(status_code=422,
+                            detail="effective_from must be ISO (YYYY-MM-DD)")
+    if body.basic_paise < 0:
+        raise HTTPException(status_code=422, detail="basic cannot be negative")
+
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "recorded": False})
+
+    row = (db.table("payroll_salary_revisions").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": body.client_id,
+        "employee_id": employee_id,
+        "effective_from": effective.isoformat(),
+        "basic_paise": body.basic_paise,
+        "hra_percent": body.hra_percent,
+        "da_percent": body.da_percent,
+        "lta_paise": body.lta_paise,
+        "medical_paise": body.medical_paise,
+        "special_allowance_paise": body.special_allowance_paise,
+        "other_allowances_paise": body.other_allowances_paise,
+        "reason": body.reason,
+        "created_by": current_user.get("id"),
+    }).execute().data or [{}])[0]
+
+    timeline_service.log(
+        body.client_id, "work", "Salary Revised",
+        f"Revision effective {effective.isoformat()}"
+        f"{': ' + body.reason if body.reason else ''}", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_employee", entity_id=employee_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"employee_id": employee_id,
+                               "revision_id": row.get("id"),
+                               "effective_from": effective.isoformat()})
+
+
+@router.get("/employees/{employee_id}/salary-revisions")
+def list_salary_revisions(
+    employee_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """An employee's pay history, newest first."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"revisions": []})
+    rows = (db.table("payroll_salary_revisions").select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .eq("employee_id", employee_id).execute().data) or []
+    rows.sort(key=lambda r: str(r.get("effective_from") or ""), reverse=True)
+    return api_response(True, {"revisions": rows})
+
+
+class EmployeeLoanIn(BaseModel):
+    client_id: str
+    principal_paise: int
+    monthly_instalment_paise: int
+    # Rule 3(7)(i): below the SBI rate for the same kind of loan, the shortfall
+    # is a perquisite. Zero means interest-free.
+    interest_rate_bps: int = 0
+    purpose: str = ""
+    started_on: Optional[str] = None
+
+
+@router.post("/employees/{employee_id}/loans")
+def add_employee_loan(
+    employee_id: str,
+    body: EmployeeLoanIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record a loan or advance to be recovered through the payslip.
+
+    Recovery happens AFTER the statutory deductions and only out of what is
+    left: PF, ESI, professional tax and TDS are owed to somebody else and come
+    first, and a recovery that pushed net pay below zero would be an overdrawn
+    payslip rather than a debt collected.
+
+    An interest-free or concessional loan is also a PERQUISITE under Rule
+    3(7)(i), valued at the SBI rate less what was charged. Recording the
+    recovery does not value it — that is /perquisites/value — and the response
+    says so when the rate is nil, because an employer who lends interest-free
+    and records only the recovery has an unvalued perquisite in the employee's
+    Form 16.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id)
+    if body.principal_paise <= 0:
+        raise HTTPException(status_code=422, detail="principal must be positive")
+    if body.monthly_instalment_paise <= 0:
+        raise HTTPException(status_code=422, detail="instalment must be positive")
+
+    db = _db()
+    notices = []
+    if body.interest_rate_bps == 0:
+        notices.append(
+            "This loan is interest-free, which makes it a perquisite under Rule "
+            "3(7)(i) — valued at the State Bank of India's rate for the same kind "
+            "of loan as on the first day of the previous year, less any interest "
+            "charged. Nothing is chargeable where the aggregate does not exceed "
+            "₹20,000. Value it before Q4 so it reaches the employee's Form 16."
+        )
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "notices": notices})
+
+    row = (db.table("payroll_loans").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": body.client_id,
+        "employee_id": employee_id,
+        "principal_paise": body.principal_paise,
+        "outstanding_paise": body.principal_paise,
+        "monthly_instalment_paise": body.monthly_instalment_paise,
+        "interest_rate_bps": body.interest_rate_bps,
+        "purpose": body.purpose,
+        "started_on": body.started_on,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).execute().data or [{}])[0]
+
+    return api_response(True, {"employee_id": employee_id,
+                               "loan_id": row.get("id"),
+                               "outstanding_paise": body.principal_paise,
+                               "notices": notices})
+
+
+@router.get("/employees/{employee_id}/loans")
+def list_employee_loans(
+    employee_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"loans": []})
+    rows = (db.table("payroll_loans").select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .eq("employee_id", employee_id).execute().data) or []
+    return api_response(True, {"loans": rows})
