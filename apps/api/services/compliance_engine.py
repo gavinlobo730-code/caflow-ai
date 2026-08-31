@@ -252,6 +252,84 @@ def tds_return_due_date(quarter: str, financial_year_end: int) -> date:
     return date(financial_year_end - 1, end_month + 1 if end_month < 12 else 1, due_day)
 
 
+# ── Payroll deposit dates ────────────────────────────────────────────────────
+# The three a payroll actually runs on every month, and the three this module
+# did not have. Missing any of them costs interest, and two of them cost it at a
+# rate that makes the omission expensive rather than embarrassing.
+
+# EPF Scheme 1952, para 38(1): the employer deposits contributions within
+# FIFTEEN DAYS of the close of the month. Late deposit draws interest under
+# §7Q at 12% a year plus damages under §14B of up to 100% of the arrear.
+EPF_DEPOSIT_DAY: int = 15
+
+# ESI (General) Regulations 1950, regulation 31: within FIFTEEN DAYS of the last
+# day of the calendar month. It was the 21st until the amendment of 2017, so a
+# figure copied from older material is a week late.
+ESI_DEPOSIT_DAY: int = 15
+
+# IT Act §192 with Rule 30(2): tax deducted is deposited by the SEVENTH of the
+# following month — except tax deducted in MARCH, which is due by 30 APRIL.
+# March is the exception that catches people out, and §201(1A)(ii) charges
+# 1.5% per month or part month on a late deposit, running from the date of
+# deduction rather than the due date.
+TDS_DEPOSIT_DAY: int = 7
+TDS_MARCH_DEPOSIT_MONTH_DAY: tuple[int, int] = (4, 30)
+
+
+def epf_deposit_due_date(period_year: int, period_month: int) -> date:
+    """EPF contributions for a wage month — para 38(1) of the EPF Scheme 1952."""
+    y, m = next_month(period_year, period_month)
+    return nth_of_month(y, m, EPF_DEPOSIT_DAY)
+
+
+def esi_deposit_due_date(period_year: int, period_month: int) -> date:
+    """ESI contributions for a wage month — regulation 31, ESI (General)
+    Regulations 1950. Fifteen days, not the pre-2017 twenty-one."""
+    y, m = next_month(period_year, period_month)
+    return nth_of_month(y, m, ESI_DEPOSIT_DAY)
+
+
+def tds_deposit_due_date(period_year: int, period_month: int) -> date:
+    """Salary TDS for a wage month — Rule 30(2).
+
+    The seventh of the following month, EXCEPT March: tax deducted in March is
+    due by 30 April, not 7 April. That single exception is the one most often
+    missed, and §201(1A)(ii) charges 1.5% a month on a late deposit from the
+    date of DEDUCTION, so being three weeks late on March costs two months of
+    interest, not one.
+    """
+    if period_month == 3:
+        month, day = TDS_MARCH_DEPOSIT_MONTH_DAY
+        return nth_of_month(period_year, month, day)
+    y, m = next_month(period_year, period_month)
+    return nth_of_month(y, m, TDS_DEPOSIT_DAY)
+
+
+def payroll_deposit_due_dates(period_year: int, period_month: int) -> list[dict]:
+    """Every statutory deposit arising from one month's payroll, soonest first.
+
+    Professional tax is deliberately absent: its due date is fixed by each
+    state and there is no single rule — Maharashtra differs from Karnataka
+    differs from West Bengal. Inventing one would put a wrong date in a CA's
+    calendar, which is worse than the date being missing, and the states this
+    module models PT for are already only four of twenty-two.
+    """
+    return sorted(
+        [
+            {"label": "EPF contribution", "authority": "EPFO",
+             "due_date": epf_deposit_due_date(period_year, period_month),
+             "statute": "EPF Scheme 1952, para 38(1)"},
+            {"label": "ESI contribution", "authority": "ESIC",
+             "due_date": esi_deposit_due_date(period_year, period_month),
+             "statute": "ESI (General) Regulations 1950, reg. 31"},
+            {"label": "TDS on salary", "authority": "Income Tax Department",
+             "due_date": tds_deposit_due_date(period_year, period_month),
+             "statute": "IT Act §192 with Rule 30(2)"},
+        ],
+        key=lambda d: d["due_date"],
+    )
+
+
 # IT Act, Section 211 — Advance tax due dates
 ADVANCE_TAX_SCHEDULE = [
     (6, 15, 15),   # 15% by 15 Jun
