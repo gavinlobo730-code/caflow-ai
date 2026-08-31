@@ -104,6 +104,17 @@ services:
       - key: GEMINI_API_KEY
         sync: false
 
+      # --- Income tax e-filing ---------------------------------------------
+      # The SW######## number the Income Tax Department issues to registered
+      # software providers. Every ITR JSON schema requires it in
+      # CreationInfo.SWCreatedBy / JSONCreatedBy, and the portal rejects a file
+      # without one. UNSET until PracticeSync is registered — and while it is
+      # unset domain/income_tax/itr_json.generate_itr_json refuses by name
+      # rather than writing a file that cannot be filed. sync: false because it
+      # identifies this provider specifically and does not belong in the repo.
+      - key: ITR_SOFTWARE_PROVIDER_ID
+        sync: false
+
       # --- Email -----------------------------------------------------------
       - key: RESEND_API_KEY
         sync: false
