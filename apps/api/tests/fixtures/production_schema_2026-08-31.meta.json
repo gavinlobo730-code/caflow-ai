@@ -1,0 +1,8 @@
+{
+  "captured_at_ist": "2026-08-31T23:44",
+  "applied_through_migration": 294,
+  "schema_md5": "28b0a6f294089a9c269c198cb053eedd",
+  "columns": 3637,
+  "tables": 249,
+  "note": "applied_through_migration is the highest migration recorded in production's schema_migrations when this snapshot was taken. The migrations in the repo are ALLOWED to be ahead of it by exactly the migrations not yet merged; test_schema_matches_production_pg.py uses this to tell a column that is in flight from a column that has been declared for months and never reached production. Refresh both files together."
+}

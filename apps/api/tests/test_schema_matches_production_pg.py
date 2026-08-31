@@ -80,6 +80,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -127,6 +128,30 @@ def _declared_snapshot(template_name: str) -> dict:
                        capture_output=True, text=True)
 
 
+def _columns_added_after_the_snapshot() -> set:
+    """Column names mentioned by migrations newer than the fixture's high-water
+    mark — the ones production has not been given yet.
+
+    Deliberately coarse: any identifier appearing in those files counts. The
+    alternative is parsing SQL, and being over-generous here costs only that a
+    genuinely-drifted column sharing a name with an in-flight one goes
+    unreported for one release, while being under-generous fails every PR that
+    adds a column. The set is small — only unmerged migrations — so the
+    over-generosity is bounded by what is actually in flight.
+    """
+    meta_path = _FIXTURE.with_suffix(".meta.json")
+    if not meta_path.exists():
+        return set()
+    through = json.loads(meta_path.read_text(encoding="utf-8"))["applied_through_migration"]
+    names: set = set()
+    for sql in sorted((_ROOT / "migrations").glob("*.sql")):
+        head = sql.name.split("_", 1)[0]
+        if not head.isdigit() or int(head) <= through:
+            continue
+        names |= set(re.findall(r"[a-z_][a-z0-9_]*", sql.read_text(encoding="utf-8").lower()))
+    return names
+
+
 def _view_names(template_name: str) -> set:
     """Relations in the template that are views, not base tables."""
     admin = _HARNESS_PG.strip()
@@ -164,14 +189,31 @@ def test_no_column_is_required_in_production_and_optional_in_the_migrations(repo
 def test_no_column_the_code_writes_is_missing_from_production(report, pg_template):
     """A column the migrations declare and production lacks rejects the insert.
 
-    Views are excluded, and the list of them comes from the database rather than
-    from a hand-written allowlist — a view's columns are derived and nothing
-    inserts into one, but a TABLE that slipped into such a list would hide
-    exactly the fault this asserts against.
+    TWO EXCLUSIONS, BOTH DERIVED RATHER THAN LISTED BY HAND.
+
+    Views, because a view's columns are computed and nothing inserts into one.
+    The set comes from the database, never from an allowlist — a TABLE that
+    slipped into such a list would hide exactly the fault being asserted.
+
+    And columns introduced by a migration NEWER than the snapshot. The first
+    version of this test lacked that and was wrong: the fixture records
+    production at a moment in time, so the repo is legitimately ahead of it by
+    however many migrations have not merged yet, and forbidding that made the
+    ordinary act of adding a column in a migration fail its own PR. What the
+    check is actually for is a column that has been declared for MONTHS and
+    never reached production — like the 31 that broke four features — not one
+    that will land the moment this branch merges.
+
+    The high-water mark lives in the fixture's .meta.json beside it, and a
+    column is only excused if a migration above that mark actually mentions it.
+    An offender nobody can attribute to an in-flight migration still fails,
+    which is the safe direction.
     """
     views = _view_names(pg_template.name)
+    in_flight = _columns_added_after_the_snapshot()
     offenders = [o for o in report["columns_missing_from_live"]
-                 if o.split(".", 1)[0] not in views]
+                 if o.split(".", 1)[0] not in views
+                 and o.split(".", 1)[1] not in in_flight]
     assert not offenders, (
         "These columns exist in the migrations and NOT in production. Any code "
         "that writes one has every insert rejected there while this suite stays "

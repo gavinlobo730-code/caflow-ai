@@ -22,7 +22,20 @@ from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services import employee_portal_service
 from services.internal_client_service import assert_not_internal_for_payroll
+import calendar
+
+from domain.payroll.ecr import build_ecr
 from domain.payroll.statutory import rates_for as payroll_rates_for
+
+
+def _fy_for_month(month: str) -> Optional[str]:
+    """Indian FY label for a "YYYY-MM" payroll month — April to March."""
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+    except (ValueError, IndexError):
+        return None
+    start = y if m >= 4 else y - 1
+    return f"{start}-{str(start + 1)[2:]}"
 from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
@@ -260,7 +273,8 @@ def _to_nearest_rupee(paise: int) -> int:
     return ((paise + 50) // 100) * 100
 
 
-def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None) -> dict:
+def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
+                eps_eligible: bool = True) -> dict:
     """
     PF per EPF & MP Act 1952 §6, SPLIT as the Employees' Pension Scheme requires.
 
@@ -311,6 +325,13 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None) -> dict:
     # notification moved the ceilings apart, the subtraction below must not go
     # negative and quietly credit EPF with a negative contribution.
     employer_eps = min(employer_eps, employer_total)
+    # EPS 1995 para 6, as amended by GSR 609(E) w.e.f. 01-09-2014: someone who
+    # joined EPF on or after that date with pay above the ceiling at JOINING is
+    # not a pension-scheme member at all, and the whole employer share stays in
+    # EPF. Carried on the employee master rather than derived — see migration
+    # 295 for why pay-today cannot answer a question about pay-at-joining.
+    if not eps_eligible:
+        employer_eps = 0
     employer_epf = employer_total - employer_eps
 
     edli = _to_nearest_rupee(min(pf_wages_paise, r.edli_ceiling_paise) * r.edli_rate_bps // 10000)
@@ -392,7 +413,10 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     gross     = basic + hra + da + lta + medical + special + other
 
     # EPF Act §6: PF wages = Basic + DA (task #229 — basic alone under-computed PF).
-    pf   = _compute_pf(basic + da) if emp.get("pf_applicable") else {"employee": 0, "employer": 0}
+    pf   = (_compute_pf(basic + da, fy, eps_eligible=emp.get("eps_eligible", True))
+            if emp.get("pf_applicable")
+            else {"employee": 0, "employer": 0, "employer_eps": 0,
+                  "employer_epf": 0, "edli": 0, "admin": 0})
     esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
     pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender")) if emp.get("pt_applicable") else 0
 
@@ -421,6 +445,12 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "other_allowances_paise":  other,
         "pf_employee_paise":  pf["employee"],
         "pf_employer_paise":  pf["employer"],
+        # Stored, not recomputed at ECR time: the return must agree with the
+        # ledger, and two implementations of one split drift. Migration 295.
+        "pf_employer_eps_paise": pf["employer_eps"],
+        "pf_employer_epf_paise": pf["employer_epf"],
+        "edli_paise":            pf["edli"],
+        "pf_admin_paise":        pf["admin"],
         "esi_employee_paise": esi["employee"],
         "esi_employer_paise": esi["employer"],
         "pt_paise":           pt,
@@ -1070,6 +1100,84 @@ def salary_register(
     run_id = run.data[0]["id"]
     slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department, bank_account_no, bank_ifsc)").eq("run_id", run_id).execute()
     return api_response(True, {"month": month, "run": run.data[0], "slips": slips.data or []})
+
+
+@router.get("/runs/{run_id}/ecr")
+def run_ecr(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Build the EPFO Electronic Challan cum Return for a finalised run.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Returns the file's text for a human to download and upload at
+    unifiedportal-emp.epfindia.gov.in. Nothing here transmits anything, and
+    nothing is written.
+
+    Every figure comes off the stored payslips. The split between EPS and EPF is
+    read, never recomputed — a return that disagreed with the general ledger
+    would be worse than no return, and two implementations of one statutory
+    split drift the first time a ceiling moves.
+
+    A run that is not yet finalised is refused rather than filed: the ECR is a
+    return of contributions actually made, and a draft run's figures can still
+    change. `problems` names every member the file cannot carry — no UAN, a
+    ceiling breached, absent all month yet contributing — so they are fixed
+    before the upload rather than after the portal rejects the batch.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"run_id": run_id, "lines": "", "members": [],
+                                   "problems": [], "totals": {}, "filable": False})
+    _assert_run_scope(db, current_user, run_id)
+
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.get("status") not in ("finalized", "paid"):
+        raise HTTPException(
+            status_code=409,
+            detail="This run is not finalised yet. The ECR reports contributions "
+                   "actually made, and a draft run's figures can still change.")
+
+    slips = (db.table("payroll_slips").select("*")
+             .eq("run_id", run_id).execute().data) or []
+    emp_ids = [s.get("employee_id") for s in slips if s.get("employee_id")]
+    employees = []
+    if emp_ids:
+        employees = (db.table("payroll_employees")
+                     .select("id, name, uan, pf_applicable, eps_eligible")
+                     .eq("firm_id", current_user["firm_id"])
+                     .in_("id", emp_ids).execute().data) or []
+    by_id = {e["id"]: e for e in employees}
+
+    month = str(run.get("month") or "")
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+        days_in_month = calendar.monthrange(y, m)[1]
+    except (ValueError, IndexError):
+        # An unparseable month must not silently become 31 and let a bad NCP
+        # figure through the day-count check.
+        raise HTTPException(status_code=422,
+                            detail=f"Run month {month!r} is not YYYY-MM; cannot bound NCP days.")
+
+    ceiling = payroll_rates_for(_fy_for_month(month)).pf.wage_ceiling_paise
+    ecr = build_ecr(slips=slips, employees_by_id=by_id,
+                    days_in_month=days_in_month, wage_ceiling_paise=ceiling)
+
+    return api_response(True, {
+        "run_id": run_id,
+        "month": month,
+        "filename": f"ECR_{month.replace('-', '')}.txt",
+        "lines": ecr.to_text(),
+        "members": [m.to_line() for m in ecr.members],
+        "problems": ecr.problems,
+        "totals": ecr.totals(),
+        "filable": ecr.is_filable,
+        "disclaimer": "CA REVIEW REQUIRED — upload this to the EPFO portal yourself. "
+                      "Nothing has been transmitted.",
+    })
 
 
 @router.get("/reports/statutory-summary")
