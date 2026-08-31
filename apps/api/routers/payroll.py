@@ -2134,7 +2134,7 @@ def upsert_declaration(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
 
     candidate = decl_domain.Declaration(
         employee_id=body.employee_id,
@@ -2452,17 +2452,22 @@ def statutory_position(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, client_id)
+
+    # Validated BEFORE the database is reached: whether the input is well formed
+    # has nothing to do with whether there is a database behind it, and a
+    # malformed month that returns an empty result instead of a 422 tells the
+    # caller their query found nothing rather than that they asked wrongly.
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+        as_at = date(y, m, calendar.monthrange(y, m)[1])
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=422, detail='month must be "YYYY-MM"')
+    fy = _fy_for_month(month)
+
     db = _db()
     if not db:
         return api_response(True, {"month": month, "rows": [], "totals": {},
                                    "gaps": []})
-
-    try:
-        y, m = int(month[:4]), int(month[5:7])
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=422, detail='month must be "YYYY-MM"')
-    as_at = date(y, m, calendar.monthrange(y, m)[1])
-    fy = _fy_for_month(month)
 
     emps = (db.table("payroll_employees").select("*")
             .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
@@ -2971,7 +2976,7 @@ def record_perquisites(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
     db = _db()
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": 0})
@@ -3057,7 +3062,7 @@ def add_salary_revision(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
     try:
         effective = date.fromisoformat(body.effective_from)
     except ValueError:
@@ -3151,7 +3156,7 @@ def add_employee_loan(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
     if body.principal_paise <= 0:
         raise HTTPException(status_code=422, detail="principal must be positive")
     if body.monthly_instalment_paise <= 0:
