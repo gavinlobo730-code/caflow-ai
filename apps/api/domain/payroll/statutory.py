@@ -114,6 +114,26 @@ RATES_BY_FY: dict[str, PayrollRates] = {
 LATEST_VERIFIED_FY = "2026-27"
 
 
+def esi_contribution_period(month: str) -> str:
+    """The ESI contribution period a "YYYY-MM" payroll month falls in.
+
+    ESI Rule 50 runs two six-month periods, April-September and October-March,
+    and they matter for more than reporting: an employee whose wages rise above
+    the ceiling PART WAY THROUGH a period does not leave the scheme then. They
+    remain an employee, and contributions continue on their actual wages, until
+    that period ends. Someone on 20,500 in April who is raised to 24,000 in May
+    contributes until September and leaves in October.
+
+    Returns a label like "2026-H1" (April-September 2026) or "2026-H2"
+    (October 2026 - March 2027). The label carries the year the period STARTED,
+    so October to March is one period rather than two.
+    """
+    y, m = int(month[:4]), int(month[5:7])
+    if 4 <= m <= 9:
+        return f"{y}-H1"
+    return f"{y}-H2" if m >= 10 else f"{y - 1}-H2"
+
+
 def rates_for(fy: str | None = None) -> PayrollRates:
     """Rates for an FY string ("2025-26"), falling back to the latest verified.
 

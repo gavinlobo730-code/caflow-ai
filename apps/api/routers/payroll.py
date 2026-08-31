@@ -25,6 +25,8 @@ from services.internal_client_service import assert_not_internal_for_payroll
 import calendar
 
 from domain.payroll.ecr import build_ecr
+from domain.payroll.esic import build_esic_return
+from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
 
 
@@ -273,6 +275,39 @@ def _to_nearest_rupee(paise: int) -> int:
     return ((paise + 50) // 100) * 100
 
 
+def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
+                                              month: str) -> set:
+    """Employee ids who already contributed to ESI in this contribution period.
+
+    ESI Rule 50's continuation only applies to someone who WAS covered when the
+    period began — not to a new joiner who starts above the ceiling, who is
+    simply outside the scheme. The distinction cannot be made from this month's
+    wage, so it is made from the months already run.
+
+    A failure here returns the empty set rather than raising: the run must still
+    be computable, and the empty set is the conservative answer (nobody is kept
+    in past the ceiling) rather than the one that over-deducts from people who
+    were never covered.
+    """
+    try:
+        period = esi_contribution_period(month)
+        runs = (db.table("payroll_runs").select("id, month")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute().data) or []
+        earlier = [r["id"] for r in runs
+                   if r.get("month") and r["month"] < month
+                   and esi_contribution_period(r["month"]) == period]
+        if not earlier:
+            return set()
+        slips = (db.table("payroll_slips").select("employee_id, esi_employee_paise")
+                 .in_("run_id", earlier).execute().data) or []
+        return {s["employee_id"] for s in slips
+                if int(s.get("esi_employee_paise") or 0) > 0}
+    except Exception:
+        _logger.exception("could not read ESI coverage history for %s %s", client_id, month)
+        return set()
+
+
 def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
                 eps_eligible: bool = True) -> dict:
     """
@@ -350,20 +385,44 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
     }
 
 
-def _compute_esi(gross_paise: int) -> dict:
+def _compute_esi(gross_paise: int, fy: Optional[str] = None,
+                 covered_at_period_start: bool = False) -> dict:
     """
-    ESI computation per ESI Act §2(9).
-    Applicable only if gross ≤ ₹21,000/month.
-    Employee: 0.75% of gross. Employer: 3.25% of gross.
+    ESI per ESI Act §2(9); rates from the notification of 13-06-2019.
+
+    Employee 0.75% and employer 3.25% of gross. The ₹21,000 figure is an
+    ELIGIBILITY threshold, not a cap — contribution is on the whole of a covered
+    member's wages, with no ceiling on the amount.
+
+    RULE 50: CROSSING THE CEILING DOES NOT END COVERAGE MID-PERIOD
+
+    This used to return zero the moment gross exceeded ₹21,000 in any month.
+    ESI Rule 50 says otherwise: contribution periods run April-September and
+    October-March, and an employee whose wages rise above the ceiling PART WAY
+    THROUGH a period remains an employee until that period ends. Someone on
+    ₹20,500 in April raised to ₹24,000 in May contributes on the full ₹24,000
+    every month to September, and leaves the scheme in October.
+
+    Dropping them in May under-deducts the employee, under-pays the employer's
+    share, and under-states the ESIC challan for five months — and it is the
+    employer who is liable for the shortfall with interest, not the employee.
+
+    `covered_at_period_start` is the caller's answer to "was this member
+    contributing earlier in this same contribution period?", which only the
+    payroll history knows. It defaults to False so a caller that has not been
+    taught the rule behaves as before rather than silently over-deducting
+    someone who was never covered.
     """
-    if gross_paise > 2100000:
+    r = payroll_rates_for(fy).esi
+    if gross_paise > r.wage_ceiling_paise and not covered_at_period_start:
         return {"employee": 0, "employer": 0}
-    employee = math.floor(gross_paise * 75 / 10000)
-    employer = math.floor(gross_paise * 325 / 10000)
+    employee = math.floor(gross_paise * r.employee_rate_bps / 10000)
+    employer = math.floor(gross_paise * r.employer_rate_bps / 10000)
     return {"employee": employee, "employer": employer}
 
 
 def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None,
+                  esi_covered_at_period_start: bool = False,
                   pt_month: Optional[int] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
@@ -417,7 +476,8 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
             if emp.get("pf_applicable")
             else {"employee": 0, "employer": 0, "employer_eps": 0,
                   "employer_epf": 0, "edli": 0, "admin": 0})
-    esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
+    esi  = (_compute_esi(gross, fy, covered_at_period_start=esi_covered_at_period_start)
+            if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
     pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender")) if emp.get("pt_applicable") else 0
 
     # IT Act §192: simplified monthly TDS = annual tax on (projected annual
@@ -709,11 +769,23 @@ def create_run(
     slips = []
     totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0}
 
+    # ESI Rule 50: someone whose wages rise above the ceiling PART WAY THROUGH a
+    # contribution period stays in the scheme until that period ends. Answering
+    # that needs the payroll history, which _compute_slip cannot see — so it is
+    # resolved once here, for the whole run, and passed in.
+    #
+    # "Was this member contributing earlier in THIS period?" is read off the
+    # slips already posted for the same period rather than inferred from their
+    # current wage, because the current wage is exactly the thing that changed.
+    esi_covered_earlier = _members_contributing_earlier_this_period(
+        db, current_user["firm_id"], client_id, month)
+
     for emp in emps:
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
-        slip = _compute_slip(emp, attendance, fy=fy, pt_month=m)
+        slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
+                             esi_covered_at_period_start=emp["id"] in esi_covered_earlier)
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
 
@@ -1176,6 +1248,72 @@ def run_ecr(
         "totals": ecr.totals(),
         "filable": ecr.is_filable,
         "disclaimer": "CA REVIEW REQUIRED — upload this to the EPFO portal yourself. "
+                      "Nothing has been transmitted.",
+    })
+
+
+@router.get("/runs/{run_id}/esic")
+def run_esic(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Build the ESIC monthly contribution return for a finalised run.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Returns CSV for a human to upload at esic.gov.in. Nothing transmits.
+
+    A member with no wages this month comes back as a PROBLEM rather than a row:
+    ESIC wants a reason code and, for some reasons, a last working day, and this
+    system does not record why somebody was unpaid. Guessing would be a false
+    statement about their service on a filed return. See domain/payroll/esic.py.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"run_id": run_id, "csv": "", "problems": [],
+                                   "totals": {}, "filable": False})
+    _assert_run_scope(db, current_user, run_id)
+
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.get("status") not in ("finalized", "paid"):
+        raise HTTPException(
+            status_code=409,
+            detail="This run is not finalised yet. The return reports contributions "
+                   "actually made, and a draft run's figures can still change.")
+
+    slips = (db.table("payroll_slips").select("*")
+             .eq("run_id", run_id).execute().data) or []
+    emp_ids = [s.get("employee_id") for s in slips if s.get("employee_id")]
+    employees = []
+    if emp_ids:
+        employees = (db.table("payroll_employees")
+                     .select("id, name, esi_number, esi_applicable")
+                     .eq("firm_id", current_user["firm_id"])
+                     .in_("id", emp_ids).execute().data) or []
+    by_id = {e["id"]: e for e in employees}
+
+    month = str(run.get("month") or "")
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+        days_in_month = calendar.monthrange(y, m)[1]
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=422,
+                            detail=f"Run month {month!r} is not YYYY-MM; cannot count days.")
+
+    ret = build_esic_return(slips=slips, employees_by_id=by_id,
+                            days_in_month=days_in_month)
+    return api_response(True, {
+        "run_id": run_id,
+        "month": month,
+        "contribution_period": esi_contribution_period(month),
+        "filename": f"ESIC_{month.replace('-', '')}.csv",
+        "csv": ret.to_csv(),
+        "problems": ret.problems,
+        "totals": ret.totals(),
+        "filable": ret.is_filable,
+        "disclaimer": "CA REVIEW REQUIRED — upload this to the ESIC portal yourself. "
                       "Nothing has been transmitted.",
     })
 
