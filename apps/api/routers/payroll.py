@@ -15,6 +15,8 @@ import math
 
 from pydantic import BaseModel, EmailStr
 
+import logging
+
 from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn)
@@ -36,7 +38,22 @@ from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
 from domain.payroll import declarations as decl_domain
+from domain.payroll import gratuity as gratuity_domain
+from domain.payroll import bonus as bonus_domain
+from domain.payroll import leave_encashment as leave_domain
+from domain.payroll import settlement as settlement_domain
+from domain.payroll import arrears as arrears_domain
+from domain.payroll import perquisites as perq_domain
 from dataclasses import replace as _replace
+
+
+# Every "read failed, carry on with the safe default" branch below logs through
+# this. It was referenced in five of them and never defined, so the first real
+# read failure would have raised NameError from inside the except — turning a
+# graceful degradation into a 500, and only ever on the day something was
+# already going wrong. The `caflow.` prefix matches the rest of the app's
+# logging (CLAUDE.md notes the prefix is legacy naming and stays).
+_logger = logging.getLogger("caflow.payroll")
 
 
 def _fy_for_month(month: str) -> Optional[str]:
@@ -340,6 +357,163 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
         return set()
 
 
+def _months_employed_in_fy(joining_date, fy: Optional[str]) -> int:
+    """How many months of THIS financial year this employee is paid for.
+
+    §192(1) requires TDS on "the estimated income of the assessee under the head
+    Salaries" FOR THAT FINANCIAL YEAR. For someone who joined on 1 October that
+    estimate is six months of salary, not twelve — and projecting twelve
+    over-deducts severely, because the excess cannot be recovered through §192(3)
+    (the projection itself is what is wrong) and is refundable only on
+    assessment, a year later.
+
+    Measured at ₹1,00,000 a month: an October joiner earning ₹6,00,000 in the
+    year owes nothing after the §16(ia) deduction and the §87A rebate, and a
+    twelve-month projection withholds ₹1,46,250 from them.
+
+    An unknown joining date returns 12. That is the pre-existing behaviour and
+    the safe direction — §192(1) makes the EMPLOYER liable for an under-
+    deduction — but it is also why the joining date is worth capturing: with it,
+    the employee keeps their money.
+    """
+    if not joining_date or not fy:
+        return 12
+    try:
+        joined = date.fromisoformat(str(joining_date)[:10])
+        fy_start_year = int(str(fy)[:4])
+    except (ValueError, TypeError):
+        return 12
+    fy_start = date(fy_start_year, 4, 1)
+    if joined <= fy_start:
+        return 12            # employed for the whole year
+    if joined >= date(fy_start_year + 1, 4, 1):
+        return 0             # joins after this year ends
+    # Inclusive count of the months from the joining month to March.
+    return 12 - ((joined.year - fy_start_year) * 12 + joined.month - 4)
+
+
+def _salary_in_force(db, firm_id: str, client_id: str, month: str) -> dict:
+    """{employee_id: the component set to pay them this month}.
+
+    An employee's pay lives on payroll_employees as one current value.
+    payroll_salary_revisions (migration 300) records what it was and from when,
+    so a month uses the LATEST revision effective on or before that month's
+    first day — which is what makes a revision enterable in advance, and a
+    backdated one recoverable as arrears.
+
+    An employee with no revision is absent from the result and the caller falls
+    back to the master. That is deliberate rather than a backfill: inventing an
+    effective date for the pay someone happens to be on today would put a fact
+    in the record that nobody established.
+
+    Empty on failure, which pays everyone their current master rate — the
+    behaviour before revisions existed, and never a stopped payroll.
+    """
+    try:
+        first_of_month = f"{month}-01"
+        rows = (db.table("payroll_salary_revisions").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute().data) or []
+        latest: dict = {}
+        for r in rows:
+            # Compared here rather than in the query: the row count is bounded
+            # by headcount times revisions, which is small, and an inequality
+            # filter is not part of the query surface the in-memory source
+            # implements. ISO dates compare correctly as strings.
+            if str(r.get("effective_from") or "") > first_of_month:
+                continue
+            emp = r.get("employee_id")
+            best = latest.get(emp)
+            if best is None or str(r.get("effective_from")) > str(best.get("effective_from")):
+                latest[emp] = r
+        return latest
+    except Exception:
+        _logger.exception("could not read salary revisions for %s %s", client_id, month)
+        return {}
+
+
+def _loan_instalments_for_run(db, firm_id: str, client_id: str) -> dict:
+    """{employee_id: instalment to recover this month}, capped at what is owed.
+
+    An instalment larger than the balance would over-recover, which is the
+    employer taking money they are not owed. Closed loans are excluded by the
+    query, not filtered afterwards, so a settled loan cannot come back.
+
+    Empty on failure — recovering nothing is recoverable next month; recovering
+    twice is not.
+    """
+    try:
+        rows = (db.table("payroll_loans").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .is_("closed_on", "null").execute().data) or []
+        out: dict = {}
+        for r in rows:
+            owed = int(r.get("outstanding_paise") or 0)
+            due = min(int(r.get("monthly_instalment_paise") or 0), max(0, owed))
+            if due > 0:
+                emp = r.get("employee_id")
+                out[emp] = out.get(emp, 0) + due
+        return out
+    except Exception:
+        _logger.exception("could not read employee loans for %s", client_id)
+        return {}
+
+
+def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str) -> int:
+    """Reduce each loan's outstanding balance by what this run recovered.
+
+    Done at FINALISATION and nowhere else. A draft run can be deleted and
+    recomputed, so reducing a balance when the slips are first computed would
+    let one recovery be applied twice — and the second application would look
+    exactly like the first. Finalisation is guarded against running twice
+    (status is checked and set), so this runs once per run.
+
+    A loan whose balance reaches zero is closed, so it stops being read at all
+    next month rather than being filtered out every time.
+
+    Returns how many loans were touched. Never raises: the run's journal has
+    already posted by the time this is called, and refusing to finalise a
+    correct payroll because a balance could not be written down would be the
+    worse failure. A missed write-down leaves the balance too high, which is
+    visible on the next payslip and on the loan list.
+    """
+    try:
+        recovered = {}
+        for sl in ((db.table("payroll_slips").select("employee_id, loan_recovery_paise")
+                    .eq("run_id", run_id).execute().data) or []):
+            amount = int(sl.get("loan_recovery_paise") or 0)
+            if amount:
+                recovered[sl["employee_id"]] = recovered.get(sl["employee_id"], 0) + amount
+        if not recovered:
+            return 0
+
+        loans = (db.table("payroll_loans").select("*")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .is_("closed_on", "null").execute().data) or []
+        touched = 0
+        for loan in loans:
+            left = recovered.get(loan.get("employee_id"), 0)
+            if left <= 0:
+                continue
+            owed = int(loan.get("outstanding_paise") or 0)
+            # Oldest-first is not modelled; where an employee has two loans the
+            # recovery is applied in the order the rows come back, and the
+            # instalments were summed the same way when it was computed.
+            applied = min(left, owed)
+            recovered[loan["employee_id"]] = left - applied
+            new_balance = owed - applied
+            db.table("payroll_loans").update({
+                "outstanding_paise": new_balance,
+                "closed_on": (str(date.today()) if new_balance == 0 else None),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", loan["id"]).execute()
+            touched += 1
+        return touched
+    except Exception:
+        _logger.exception("could not apply loan recoveries for run %s", run_id)
+        return 0
+
+
 def _declarations_for_run(db, firm_id: str, client_id: str,
                           fy: str) -> dict:
     """Every employee's §192 declaration for this financial year, by employee id.
@@ -421,7 +595,7 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                                   month: str, fy: str) -> dict:
     """TDS withheld so far this financial year, per employee.
 
-    Returns {employee_id: (tds_paise, months_paid)}. §192(3) adjusts "any excess
+    Returns {employee_id: (tds_paise, months_paid, gross_paise)}. §192(3) adjusts "any excess
     or deficiency arising out of any PREVIOUS deduction ... during the financial
     year", so the adjustment needs both halves: what was actually deducted in the
     FY's earlier months, and how many months those were. Not earlier years, and
@@ -444,8 +618,10 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                  .in_("run_id", earlier).execute().data) or []
         out: dict = {}
         for sl in slips:
-            paise, months = out.get(sl["employee_id"], (0, 0))
-            out[sl["employee_id"]] = (paise + int(sl.get("tds_paise") or 0), months + 1)
+            tds, months, gross = out.get(sl["employee_id"], (0, 0, 0))
+            out[sl["employee_id"]] = (tds + int(sl.get("tds_paise") or 0),
+                                      months + 1,
+                                      gross + int(sl.get("gross_paise") or 0))
         return out
     except Exception:
         _logger.exception("could not read YTD TDS for %s %s", client_id, month)
@@ -565,12 +741,28 @@ def _compute_esi(gross_paise: int, fy: Optional[str] = None,
     return {"employee": employee, "employer": employer}
 
 
+def _percent_of(base_paise: int, percent) -> int:
+    """A percentage of a paise amount, half-rounded up, in exact decimal.
+
+    Module level rather than nested in _compute_slip because the statutory
+    summary derives HRA and DA the same way, and two derivations of one
+    percentage drift. Decimal, not float: `float(hra_percent)` produced verified
+    off-by-one-paise mismatches against exact arithmetic.
+    """
+    pct = _Decimal(str(percent or 0))
+    return int((_Decimal(base_paise) * pct / 100).quantize(
+        _Decimal("1"), rounding=_ROUND_HALF_UP))
+
+
 def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None,
                   esi_covered_at_period_start: bool = False,
                   pt_month: Optional[int] = None,
                   declaration: Optional["decl_domain.Declaration"] = None,
                   tds_already_deducted_paise: int = 0,
-                  months_already_paid: int = 0) -> dict:
+                  months_already_paid: int = 0,
+                  loan_instalment_paise: int = 0,
+                  gross_already_paid_paise: int = 0,
+                  months_employed_in_fy: int = 12) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
@@ -601,10 +793,6 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     def _prorate(amount_paise) -> int:
         return (int(amount_paise or 0) * present_days) // working_days
 
-    def _percent_of(base_paise: int, percent) -> int:
-        pct = _Decimal(str(percent or 0))
-        return int((_Decimal(base_paise) * pct / 100).quantize(_Decimal("1"), rounding=_ROUND_HALF_UP))
-
     basic     = _prorate(emp.get("basic_paise", 0))
     hra       = _percent_of(basic, emp.get("hra_percent", 0))
     da        = _percent_of(basic, emp.get("da_percent", 0))
@@ -630,7 +818,13 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     # IT Act §192: TDS on salary, on the year's PROJECTED income. What the
     # employee declared decides the regime and the deductions; §192(3) decides
     # how the resulting annual figure is spread over what is left of the year.
-    annual_gross = gross * 12
+    # The year's ESTIMATED salary, not twelve times this month's. What has
+    # already been paid this year is a fact; the rest of the year is this
+    # month's pay times the months still to come — which for a mid-year joiner
+    # is fewer than twelve, and for a mid-year RAISE picks the new rate up for
+    # the remaining months without rewriting the ones already paid.
+    months_left = max(0, months_employed_in_fy - max(0, months_already_paid))
+    annual_gross = max(0, gross_already_paid_paise) + gross * months_left
     tds_monthly = _monthly_tds(
         declaration=declaration,
         annual_gross_paise=annual_gross,
@@ -643,7 +837,17 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         months_already_paid=months_already_paid,
     )
 
-    deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
+    statutory_deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
+
+    # A loan instalment is recovered AFTER the statutory deductions and only out
+    # of what is left. An employer may not recover an advance from money that
+    # was never there: PF, ESI, professional tax and TDS are owed to somebody
+    # else and come first, and a recovery that pushed net pay below zero would
+    # be an overdrawn payslip rather than a debt collected.
+    loan_recovery = min(max(0, loan_instalment_paise),
+                        max(0, gross - statutory_deductions))
+
+    deductions = statutory_deductions + loan_recovery
     net = gross - deductions
 
     return {
@@ -667,6 +871,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "esi_employer_paise": esi["employer"],
         "pt_paise":           pt,
         "tds_paise":          tds_monthly,
+        "loan_recovery_paise": loan_recovery,
         "net_paise":          net,
         "working_days":       working_days,
         "days_present":       days_present,
@@ -1026,7 +1231,8 @@ def create_run(
     fy = current_fy(date(y, m, 1))  # FY of the payroll period, not "today"
 
     slips = []
-    totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0}
+    totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0,
+              "loan_recovery": 0}
 
     # ESI Rule 50: someone whose wages rise above the ceiling PART WAY THROUGH a
     # contribution period stays in the scheme until that period ends. Answering
@@ -1046,6 +1252,10 @@ def create_run(
     tds_ytd = _tds_already_deducted_this_fy(
         db, current_user["firm_id"], client_id, month, fy)
 
+    # The pay in force this month, and any advance being recovered from it.
+    revisions = _salary_in_force(db, current_user["firm_id"], client_id, month)
+    loan_due = _loan_instalments_for_run(db, current_user["firm_id"], client_id)
+
     # Statutory deductions this run did NOT compute because the state's rules are
     # not modelled. Collected per employee and returned with the run: a zero PT
     # for Delhi and a zero PT for Gujarat are the same number meaning opposite
@@ -1056,11 +1266,26 @@ def create_run(
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
+        # A revision in force REPLACES the master's components for this month.
+        # Merged over the employee row rather than substituted for it, so
+        # everything a revision does not carry — PF applicability, PT state,
+        # EPS eligibility — still comes from the master.
+        rev = revisions.get(emp["id"])
+        if rev:
+            emp = {**emp, **{k: rev[k] for k in (
+                "basic_paise", "hra_percent", "da_percent", "lta_paise",
+                "medical_paise", "special_allowance_paise", "other_allowances_paise")
+                if k in rev}}
+
         slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
                              esi_covered_at_period_start=emp["id"] in esi_covered_earlier,
                              declaration=declarations.get(emp["id"]),
-                             tds_already_deducted_paise=tds_ytd.get(emp["id"], (0, 0))[0],
-                             months_already_paid=tds_ytd.get(emp["id"], (0, 0))[1])
+                             tds_already_deducted_paise=tds_ytd.get(emp["id"], (0, 0, 0))[0],
+                             months_already_paid=tds_ytd.get(emp["id"], (0, 0, 0))[1],
+                             gross_already_paid_paise=tds_ytd.get(emp["id"], (0, 0, 0))[2],
+                             months_employed_in_fy=_months_employed_in_fy(
+                                 emp.get("joining_date"), fy),
+                             loan_instalment_paise=loan_due.get(emp["id"], 0))
         statutory_gaps.extend(_statutory_gaps(emp))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -1072,6 +1297,7 @@ def create_run(
         totals["esi"]   += slip["esi_employee_paise"] + slip["esi_employer_paise"]
         totals["pt"]    += slip["pt_paise"]
         totals["tds"]   += slip["tds_paise"]
+        totals["loan_recovery"] += slip.get("loan_recovery_paise", 0)
 
     # Atomicity: the run header row was inserted first (above), but PostgREST
     # exposes no multi-statement transaction here — so if the slip insert
@@ -1093,6 +1319,7 @@ def create_run(
         "total_esi_paise":   totals["esi"],
         "total_pt_paise":    totals["pt"],
         "total_tds_paise":   totals["tds"],
+        "total_loan_recovery_paise": totals["loan_recovery"],
         "headcount":         len(emps),
     }).eq("id", run_id).execute()
 
@@ -1268,6 +1495,9 @@ def finalize_run(
         # safe: the kernel dedupes on reference_no=PAY-{month}). Prevents an
         # immutable "finalized" run with no GL entry reported as success.
         return api_response(False, None, "Payroll journal could not be posted. The run was not finalized; please retry.")
+
+    # The recovery is real now that the run has posted: write the balances down.
+    _apply_loan_recoveries(db, firm_id, client_id, run_id)
 
     db.table("payroll_runs").update({
         "status":          "finalized",
@@ -1753,6 +1983,15 @@ def form_24q_annexure_ii(
             hra_received_paise=sum(int(sl.get("hra_paise") or 0) for sl in emp_slips),
         )
 
+    # §17(2) perquisites, valued under Rule 3 and recorded for the year
+    # (migration 299). Read rather than recomputed: the annexure must agree with
+    # what the CA reviewed, and two implementations of one valuation drift.
+    perquisites: dict = {}
+    for row in ((db.table("payroll_perquisites").select("*")
+                 .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+                 .eq("fy", financial_year).execute().data) or []):
+        perquisites.setdefault(row.get("employee_id"), []).append(row)
+
     rates = rates_for(financial_year)
     ann = build_annexure_ii(
         slips=slips,
@@ -1760,6 +1999,7 @@ def form_24q_annexure_ii(
         standard_deduction_paise=rates.new_regime_standard_deduction_paise,
         months_expected=len(usable) or 12,
         declarations_by_employee=declarations,
+        perquisites_by_employee=perquisites,
     )
     missing_months = sorted(set(months) - {r["month"] for r in usable})
     if missing_months:
@@ -1894,7 +2134,7 @@ def upsert_declaration(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
 
     candidate = decl_domain.Declaration(
         employee_id=body.employee_id,
@@ -2017,12 +2257,19 @@ def list_declarations(
     fy: str = Query(...),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
-    """Every declaration for a client and financial year, with its notices.
+    """Every declaration for a client and financial year, with what is wrong
+    with it and what the CA must know about it.
 
-    The notices are the point of the list view: it is where a CA sees, in one
-    place, who intimated the old regime (and so may still need Form 10-IEA),
-    who claimed something the new regime does not allow, and whose proofs are
-    still outstanding with the fourth quarter approaching.
+    PROBLEMS are reasons a claim cannot be allowed as it stands — a missing
+    landlord PAN above the Rule 26C threshold, a section this module cannot
+    give effect to. NOTICES are things that do not block: an old-regime
+    intimation that still needs Form 10-IEA, a claim the new regime disallows,
+    proofs outstanding with the fourth quarter approaching.
+
+    Both are computed here rather than by the caller, and both matter for
+    portal-filed declarations especially: an employee writes these tables
+    directly through PostgREST and never passes through validate(), so this
+    list is the first place anyone sees what is wrong with what they filed.
     """
     assert_client_access(current_user, client_id)
     db = _db()
@@ -2044,6 +2291,14 @@ def list_declarations(
         d = _declaration_from_rows(h, items_by_decl.get(h["id"], []))
         out.append({**h,
                     "items": items_by_decl.get(h["id"], []),
+                    # PROBLEMS as well as notices, because an employee filing
+                    # through the portal writes the tables directly and never
+                    # passes through this module's validate(). Rule 26C lives
+                    # here, in one place; this list is where the person who has
+                    # to act on it sees it. A declaration missing the landlord's
+                    # PAN is a claim that cannot be allowed as it stands, and
+                    # the CA needs to know that before Q4, not after.
+                    "problems": decl_domain.validate(d),
                     "notices": decl_domain.notices(d)})
     return api_response(True, {"declarations": out})
 
@@ -2146,3 +2401,810 @@ def verify_declaration(
         actor_id=current_user.get("auth_user_id"))
 
     return api_response(True, {"declaration_id": declaration_id, "problems": []})
+
+
+# ─── Statutory position, computed here rather than in the browser ─────────────
+
+@router.get("/statutory-position")
+def statutory_position(
+    client_id: str = Query(...),
+    month: str = Query(..., description='"YYYY-MM"'),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """PF, ESI and gratuity for every employee of a client, as at a month.
+
+    Distinct from /reports/statutory-summary, which reports what a FINALISED RUN
+    actually deducted. This one projects from the employee master and answers
+    "where does each employee stand today" — including people no run has covered
+    yet, and gratuity, which no run computes.
+
+    THIS EXISTS BECAUSE THE FRONTEND WAS COMPUTING IT
+
+    app/payroll/statutory/page.tsx carried its own calcPF, calcESIC and
+    calcGratuity in TypeScript, with its own copies of the ₹15,000 and ₹21,000
+    ceilings — against CLAUDE.md's rule that computation lives in apps/api. They
+    had drifted from the backend in four ways, each of them wrong in a
+    different direction:
+
+      * PF was computed on BASIC ALONE. §6 of the EPF Act says basic wages plus
+        dearness allowance, which task #229 fixed on the backend and never here.
+        Every employee with a DA component had their PF understated.
+      * the employer's 12% was split as a flat 3.67% / 8.33%. The EPS half is
+        capped at 8.33% of the ceiling (₹1,250), so above the ceiling the split
+        is not 3.67/8.33 at all — and eps_eligible (migration 295) was not
+        considered, so a member excluded from EPS by GSR 609(E) was shown a
+        pension contribution they do not get.
+      * ESI ignored Rule 50: someone whose wages cross the ceiling mid-period
+        stays in the scheme until the period ends.
+      * gratuity read `emp.date_of_joining`, WHICH IS NOT A COLUMN. The column
+        is joining_date (migration 093). Because the page selected "*", PostgREST
+        returned rows without that key rather than erroring, so the value was
+        undefined for everyone and GRATUITY DISPLAYED AS ZERO FOR EVERY
+        EMPLOYEE, silently, for as long as the page has existed.
+
+    All four are now one implementation, here, with the tests that already
+    guard it.
+
+    `as at a month` matters for gratuity: length of service is measured to the
+    end of that month, so the figure is "what would be payable if they left
+    now" — which is what a provision is for.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+
+    # Validated BEFORE the database is reached: whether the input is well formed
+    # has nothing to do with whether there is a database behind it, and a
+    # malformed month that returns an empty result instead of a 422 tells the
+    # caller their query found nothing rather than that they asked wrongly.
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+        as_at = date(y, m, calendar.monthrange(y, m)[1])
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=422, detail='month must be "YYYY-MM"')
+    fy = _fy_for_month(month)
+
+    db = _db()
+    if not db:
+        return api_response(True, {"month": month, "rows": [], "totals": {},
+                                   "gaps": []})
+
+    emps = (db.table("payroll_employees").select("*")
+            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+            .eq("status", "active").execute().data) or []
+
+    esi_covered_earlier = _members_contributing_earlier_this_period(
+        db, current_user["firm_id"], client_id, month)
+
+    rows: list[dict] = []
+    gaps: list[str] = []
+    totals = {"pf_employee_paise": 0, "pf_employer_paise": 0,
+              "pf_employer_eps_paise": 0, "pf_employer_epf_paise": 0,
+              "edli_paise": 0, "pf_admin_paise": 0,
+              "esi_employee_paise": 0, "esi_employer_paise": 0,
+              "gratuity_paise": 0}
+
+    for emp in emps:
+        basic = int(emp.get("basic_paise") or 0)
+        da = _percent_of(basic, emp.get("da_percent", 0))
+        hra = _percent_of(basic, emp.get("hra_percent", 0))
+        gross = (basic + hra + da
+                 + int(emp.get("lta_paise") or 0)
+                 + int(emp.get("medical_paise") or 0)
+                 + int(emp.get("special_allowance_paise") or 0)
+                 + int(emp.get("other_allowances_paise") or 0))
+
+        pf = (_compute_pf(basic + da, fy, eps_eligible=emp.get("eps_eligible", True))
+              if emp.get("pf_applicable")
+              else {"employee": 0, "employer": 0, "employer_eps": 0,
+                    "employer_epf": 0, "edli": 0, "admin": 0})
+        esi = (_compute_esi(gross, fy,
+                            covered_at_period_start=emp["id"] in esi_covered_earlier)
+               if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
+
+        joining = emp.get("joining_date")
+        grat = gratuity_domain.compute(
+            basic_plus_da_paise=basic + da,
+            joining=date.fromisoformat(str(joining)) if joining else None,
+            leaving=as_at,
+            covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+        )
+        for r in grat.reasons:
+            # Not eligible yet is the ordinary case, not a problem worth
+            # reporting for every junior employee in the firm. A MISSING
+            # joining date is, because it is the one that looks identical.
+            if not joining:
+                gaps.append(f"{emp.get('name') or emp['id']}: {r}")
+
+        rows.append({
+            "employee_id": emp["id"],
+            "name": emp.get("name"),
+            "basic_paise": basic,
+            "da_paise": da,
+            "gross_paise": gross,
+            "pf_applicable": bool(emp.get("pf_applicable")),
+            "esi_applicable": bool(emp.get("esi_applicable")),
+            "pf_employee_paise": pf["employee"],
+            "pf_employer_paise": pf["employer"],
+            "pf_employer_eps_paise": pf["employer_eps"],
+            "pf_employer_epf_paise": pf["employer_epf"],
+            "edli_paise": pf["edli"],
+            "pf_admin_paise": pf["admin"],
+            "eps_eligible": bool(emp.get("eps_eligible", True)),
+            "esi_employee_paise": esi["employee"],
+            "esi_employer_paise": esi["employer"],
+            "joining_date": joining,
+            "gratuity_payable_paise": grat.payable_paise,
+            "gratuity_eligible": grat.eligible,
+            "gratuity_years": grat.service_years_counted,
+            "gratuity_reasons": grat.reasons,
+        })
+        totals["pf_employee_paise"] += pf["employee"]
+        totals["pf_employer_paise"] += pf["employer"]
+        totals["pf_employer_eps_paise"] += pf["employer_eps"]
+        totals["pf_employer_epf_paise"] += pf["employer_epf"]
+        totals["edli_paise"] += pf["edli"]
+        totals["pf_admin_paise"] += pf["admin"]
+        totals["esi_employee_paise"] += esi["employee"]
+        totals["esi_employer_paise"] += esi["employer"]
+        totals["gratuity_paise"] += grat.payable_paise
+
+    # The EPF administrative charge has a statutory MINIMUM of ₹500 a month per
+    # ESTABLISHMENT, not per member — so it can only be settled on the run
+    # total, never on one payslip.
+    rates = payroll_rates_for(fy)
+    if totals["pf_admin_paise"] and totals["pf_admin_paise"] < rates.pf.admin_minimum_paise:
+        totals["pf_admin_paise"] = rates.pf.admin_minimum_paise
+
+    return api_response(True, {
+        "month": month, "financial_year": fy,
+        "rows": rows, "totals": totals, "gaps": gaps,
+    })
+
+
+# ─── Full and final settlement ───────────────────────────────────────────────
+
+class SettlementIn(BaseModel):
+    """What only a human knows about a departure.
+
+    Everything else — length of service, wages, PF, the gratuity and leave
+    formulae — comes off the employee master and the year's payslips. These are
+    the facts no record holds: why they left, what the contract says about
+    notice, and what they still owe.
+    """
+    client_id: str
+    leaving_date: str                      # ISO
+    on_death_or_disablement: bool = False
+    on_retirement: bool = True             # decides §10(10AA) entirely
+    is_government_employee: bool = False
+
+    salary_to_last_day_paise: int = 0
+    leave_days_encashed: int = 0
+    leave_encashment_paise: int = 0
+
+    # §12 of the Bonus Act compares ₹7,000 with the minimum wage for the
+    # scheduled employment. There is no table of those; supplying it is a
+    # human step.
+    bonus_accounting_year: Optional[str] = None
+    bonus_rate_bps: int = 833
+    bonus_months_worked: int = 0
+    bonus_working_days: int = 0
+    minimum_wage_monthly_paise: Optional[int] = None
+
+    notice_pay_recovered_paise: int = 0
+    loans_outstanding_paise: int = 0
+    other_recoveries_paise: int = 0
+
+    # Lifetime limits under §10(10) and §10(10AA) are aggregated across
+    # employers. Absent, the full limit is assumed and the response says so.
+    gratuity_exemption_already_used_paise: Optional[int] = None
+    leave_exemption_already_used_paise: Optional[int] = None
+    gratuity_amount_actually_paid_paise: Optional[int] = None
+    average_last_ten_months_paise: Optional[int] = None
+
+
+@router.post("/employees/{employee_id}/settlement")
+def preview_settlement(
+    employee_id: str,
+    body: SettlementIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """What a leaver is owed — computed, not written.
+
+    A leaver's last payment is not a payslip with a different date on it. It is
+    a composition of separate entitlements, each with its own statute, its own
+    base and its own tax treatment, netted against what the employee owes back.
+    Each component is computed by the module that owns its statute
+    (domain/payroll/gratuity.py, leave_encashment.py, bonus.py) and composed by
+    settlement.py; nothing here re-derives any of them.
+
+    Read-only on purpose. Settling an employee ends their employment, releases
+    money and closes a PF account — it is not something a preview should do as a
+    side effect. The figures come back for a human to act on.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "components": [],
+                                   "deductions": [], "totals": {}, "gaps": [],
+                                   "problems": []})
+
+    emp = (db.table("payroll_employees").select("*")
+           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+           .maybe_single().execute().data)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    try:
+        leaving = date.fromisoformat(body.leaving_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="leaving_date must be ISO (YYYY-MM-DD)")
+
+    basic = int(emp.get("basic_paise") or 0)
+    da = _percent_of(basic, emp.get("da_percent", 0))
+    joining = emp.get("joining_date")
+
+    grat = gratuity_domain.compute(
+        basic_plus_da_paise=basic + da,
+        joining=date.fromisoformat(str(joining)) if joining else None,
+        leaving=leaving,
+        covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+        on_death_or_disablement=body.on_death_or_disablement,
+        amount_actually_paid_paise=body.gratuity_amount_actually_paid_paise,
+        exemption_already_used_paise=body.gratuity_exemption_already_used_paise,
+        average_last_ten_months_paise=body.average_last_ten_months_paise,
+    )
+
+    leave = None
+    if body.leave_encashment_paise or body.leave_days_encashed:
+        leave = leave_domain.compute(
+            amount_received_paise=body.leave_encashment_paise,
+            # §10(10AA)'s average is the last TEN MONTHS' basic + DA. Where the
+            # caller has not supplied it, the current rate stands in — and
+            # leave_encashment.py is where that substitution would be flagged if
+            # it mattered; here the current rate IS the last ten months for
+            # anyone whose pay did not change.
+            average_monthly_salary_paise=(body.average_last_ten_months_paise
+                                          if body.average_last_ten_months_paise is not None
+                                          else basic + da),
+            completed_years_of_service=grat.completed_years,
+            leave_days_encashed=body.leave_days_encashed,
+            on_retirement=body.on_retirement,
+            is_government_employee=body.is_government_employee,
+            exemption_already_used_paise=body.leave_exemption_already_used_paise,
+        )
+        if body.average_last_ten_months_paise is None:
+            leave.gaps.append(
+                "§10(10AA)'s 'average salary' is the average of the LAST TEN "
+                "MONTHS' basic and DA. The current rate was used instead. Where "
+                "pay changed in the final ten months the two differ, and the "
+                "average is the one the section asks for."
+            )
+
+    bon = None
+    if body.bonus_accounting_year:
+        bon = bonus_domain.compute(
+            accounting_year=body.bonus_accounting_year,
+            monthly_salary_paise=basic + da,
+            months_worked=body.bonus_months_worked,
+            working_days_in_year=body.bonus_working_days,
+            rate_bps=body.bonus_rate_bps,
+            minimum_wage_monthly_paise=body.minimum_wage_monthly_paise,
+        )
+
+    s = settlement_domain.build(
+        salary_to_last_day_paise=body.salary_to_last_day_paise,
+        gratuity=grat if (grat.eligible or grat.reasons) else None,
+        leave=leave,
+        bonus=bon,
+        notice_pay_recovered_paise=body.notice_pay_recovered_paise,
+        loans_outstanding_paise=body.loans_outstanding_paise,
+        other_recoveries_paise=body.other_recoveries_paise,
+    )
+    # A gratuity that is simply not due yet is an answer, not a gap — but it
+    # has to be visible, or a CA cannot tell "nil" from "not computed".
+    if grat.reasons:
+        s.gaps.extend(grat.reasons)
+
+    return api_response(True, {
+        "employee_id": employee_id,
+        "employee_name": emp.get("name"),
+        "leaving_date": body.leaving_date,
+        "components": [
+            {"label": c.label, "gross_paise": c.gross_paise,
+             "exempt_paise": c.exempt_paise, "taxable_paise": c.taxable_paise,
+             "statute": c.statute}
+            for c in s.components
+        ],
+        "deductions": [
+            {"label": d.label, "gross_paise": d.gross_paise, "statute": d.statute}
+            for d in s.deductions
+        ],
+        "totals": {
+            "gross_paise": s.gross_paise,
+            "exempt_paise": s.exempt_paise,
+            # What belongs in §17(1) for the year. Recoveries do not reduce it —
+            # taking notice pay back does not un-earn the salary.
+            "taxable_paise": s.taxable_paise,
+            "deductions_paise": s.deductions_paise,
+            "net_payable_paise": s.net_payable_paise,
+        },
+        "gratuity_detail": {
+            "eligible": grat.eligible,
+            "completed_years": grat.completed_years,
+            "years_counted": grat.service_years_counted,
+            "payable_paise": grat.payable_paise,
+            "exempt_paise": grat.exempt_paise,
+        },
+        "gaps": s.gaps,
+        "problems": s.problems,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here is "
+                      "written, paid or filed.",
+    })
+
+
+# ─── Arrears and §89(1) relief ───────────────────────────────────────────────
+
+class ArrearSliceIn(BaseModel):
+    fy: str
+    amount_paise: int
+    # The employee's total income for that year AS ORIGINALLY ASSESSED. It comes
+    # off their own return, not from payroll — the employer never held it.
+    total_income_that_year_paise: Optional[int] = None
+
+
+class ArrearsReliefIn(BaseModel):
+    client_id: str
+    receipt_fy: str
+    total_income_receipt_year_paise: int
+    arrears: list[ArrearSliceIn] = []
+    use_new_regime: bool = True
+    # The proviso to §89 read with Rule 21AA: no Form 10E, no relief.
+    form_10e_acknowledgement: Optional[str] = None
+
+
+@router.post("/employees/{employee_id}/arrears-relief")
+def arrears_relief(
+    employee_id: str,
+    body: ArrearsReliefIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """§89(1) relief on salary arrears, per Rule 21A(2).
+
+    Salary is taxed in the year of RECEIPT (§15), so a revision backdated three
+    years lands three years' arrears in one year's income and pushes the
+    employee through slabs they would never have reached. §89 compares the tax
+    with what would have been paid had each instalment fallen in its own year,
+    and relieves the excess.
+
+    Two refusals rather than plausible numbers:
+
+      * a year the statutory rate registry does not hold. rates_for() returns
+        the latest verified year's figures for a year it lacks — the documented
+        convention — and §89 is a comparison of years AT THEIR OWN RATES, so a
+        substitute turns the whole computation into a fiction that looks
+        reasonable.
+      * no Form 10E. The proviso to §89, read with Rule 21AA, bars relief
+        unless it was filed before the return; a return claiming §89 without one
+        draws a §143(1) intimation disallowing the relief in full. The amount is
+        still computed and shown, so the CA can see what filing the form is
+        worth.
+
+    Computes and returns; writes nothing.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+
+    result = arrears_domain.compute_relief(
+        receipt_fy=body.receipt_fy,
+        total_income_receipt_year_paise=body.total_income_receipt_year_paise,
+        arrears=[arrears_domain.ArrearSlice(
+            fy=a.fy, amount_paise=a.amount_paise,
+            total_income_that_year_paise=a.total_income_that_year_paise)
+            for a in body.arrears],
+        use_new_regime=body.use_new_regime,
+        form_10e_acknowledgement=body.form_10e_acknowledgement,
+    )
+    return api_response(True, {
+        "employee_id": employee_id,
+        "receipt_fy": body.receipt_fy,
+        "relief_paise": result.relief_paise,
+        "available": result.available,
+        "blocked_reason": result.blocked_reason,
+        "tax_with_arrears_paise": result.tax_on_receipt_year_with_arrears_paise,
+        "tax_without_arrears_paise": result.tax_on_receipt_year_without_arrears_paise,
+        "difference_a_paise": result.difference_a_paise,
+        "difference_b_paise": result.difference_b_paise,
+        "per_year": result.per_year,
+        "gaps": result.gaps,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Form 10E must be "
+                      "filed on the e-filing portal before the return; nothing "
+                      "here files it.",
+    })
+
+
+# ─── §17(2) perquisites, valued under Rule 3 ─────────────────────────────────
+
+class PerquisiteValuationIn(BaseModel):
+    """Rule 3's inputs. Each block is optional — an employee with a car and no
+    flat sends only the car."""
+    client_id: str
+    fy: str
+    salary_for_rule_3_paise: int = 0
+
+    # Rule 3(1) — accommodation
+    accommodation: bool = False
+    population_lakh: int = 0
+    accommodation_months: int = 12
+    employer_owns_accommodation: bool = True
+    actual_lease_rent_paise: int = 0
+    rent_recovered_from_employee_paise: int = 0
+
+    # Rule 3(2) — motor car
+    motor_car: bool = False
+    car_months: int = 12
+    engine_litres: float = 1.4
+    employer_bears_running_costs: bool = True
+    with_driver: bool = False
+    car_wholly_official: bool = False
+    car_wholly_personal: bool = False
+    car_amount_recovered_paise: int = 0
+
+    # Rule 3(7)(i) — concessional loan
+    loan: bool = False
+    loan_maximum_outstanding_paise: int = 0
+    # Published by SBI on the first day of the previous year. Not derivable —
+    # absent it the loan is refused rather than valued at a guess.
+    sbi_rate_bps: Optional[int] = None
+    loan_interest_charged_paise: int = 0
+    loan_months: int = 12
+    loan_for_specified_disease: bool = False
+
+    # Rule 3(7)(iii) and (iv)
+    meals_provided: int = 0
+    cost_per_meal_paise: int = 0
+    gifts_total_paise: int = 0
+
+
+@router.post("/employees/{employee_id}/perquisites/value")
+def value_perquisites(
+    employee_id: str,
+    body: PerquisiteValuationIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Value an employee's §17(2) perquisites under Rule 3. Computes only.
+
+    Separate from recording them, because the two are different decisions: what
+    Rule 3 says a benefit is worth, and whether the firm accepts that valuation
+    for the year. The second changes an employee's taxable salary and their Form
+    16, so it is an explicit act rather than a side effect of a calculation.
+
+    Anything Rule 3 needs and payroll cannot supply comes back as a gap rather
+    than a number: the SBI rate for a concessional loan, and the actual running
+    expenditure for a car used wholly privately.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+
+    result = perq_domain.PerquisiteResult()
+
+    if body.accommodation:
+        item, gaps = perq_domain.value_accommodation(
+            fy=body.fy,
+            salary_for_rule_3_paise=body.salary_for_rule_3_paise,
+            population_lakh=body.population_lakh,
+            months=body.accommodation_months,
+            employer_owns=body.employer_owns_accommodation,
+            actual_lease_rent_paise=body.actual_lease_rent_paise,
+            rent_recovered_from_employee_paise=body.rent_recovered_from_employee_paise,
+        )
+        result.items.append(item)
+        result.gaps.extend(gaps)
+
+    if body.motor_car:
+        item, gaps = perq_domain.value_motor_car(
+            months=body.car_months, engine_litres=body.engine_litres,
+            employer_bears_running_costs=body.employer_bears_running_costs,
+            with_driver=body.with_driver,
+            wholly_official=body.car_wholly_official,
+            wholly_personal=body.car_wholly_personal,
+            amount_recovered_paise=body.car_amount_recovered_paise,
+        )
+        if item is not None:
+            result.items.append(item)
+        result.gaps.extend(gaps)
+
+    if body.loan:
+        item, gaps = perq_domain.value_concessional_loan(
+            maximum_monthly_outstanding_paise=body.loan_maximum_outstanding_paise,
+            sbi_rate_bps_on_first_day=body.sbi_rate_bps,
+            interest_actually_charged_paise=body.loan_interest_charged_paise,
+            months=body.loan_months,
+            for_specified_disease=body.loan_for_specified_disease,
+        )
+        if item is not None:
+            result.items.append(item)
+        result.gaps.extend(gaps)
+
+    if body.meals_provided:
+        result.items.append(perq_domain.value_meals(
+            meals_provided=body.meals_provided,
+            cost_per_meal_paise=body.cost_per_meal_paise))
+
+    if body.gifts_total_paise:
+        result.items.append(perq_domain.value_gifts(
+            total_gifts_paise=body.gifts_total_paise))
+
+    return api_response(True, {
+        "employee_id": employee_id,
+        "fy": body.fy,
+        "items": [{"label": i.label, "value_paise": i.value_paise,
+                   "rule": i.rule, "note": i.note} for i in result.items],
+        "total_paise": result.total_paise,
+        "gaps": result.gaps,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing is "
+                      "recorded until it is saved separately.",
+    })
+
+
+class PerquisiteRecordIn(BaseModel):
+    client_id: str
+    fy: str
+    items: list[dict] = []
+
+
+@router.put("/employees/{employee_id}/perquisites")
+def record_perquisites(
+    employee_id: str,
+    body: PerquisiteRecordIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record the year's perquisite valuations for an employee.
+
+    Replaces the year's set wholesale rather than merging, for the same reason
+    a declaration's Chapter VI-A lines are replaced: this is a statement of the
+    whole year's position, and merging would leave a withdrawn benefit — a car
+    returned in June — valued for the full year.
+
+    These figures reach the employee's Form 16 through 24Q Annexure II, so they
+    are written at payroll:write, the same tier that edits pay.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "recorded": 0})
+
+    db.table("payroll_perquisites").delete() \
+        .eq("firm_id", current_user["firm_id"]) \
+        .eq("employee_id", employee_id).eq("fy", body.fy).execute()
+
+    recorded = 0
+    for item in body.items:
+        value = int(item.get("value_paise") or 0)
+        if value < 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{item.get('label')}: a perquisite cannot be negative.")
+        # Written out literally so tests/test_backend_columns_exist_pg.py can
+        # read the column names — see the declaration endpoints for why.
+        db.table("payroll_perquisites").insert({
+            "firm_id": current_user["firm_id"],
+            "client_id": body.client_id,
+            "employee_id": employee_id,
+            "fy": body.fy,
+            "label": str(item.get("label") or "Perquisite"),
+            "rule": str(item.get("rule") or ""),
+            "value_paise": value,
+            "note": str(item.get("note") or ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+        recorded += 1
+
+    timeline_service.log(
+        body.client_id, "work", "Perquisites Valued",
+        f"§17(2) perquisites recorded for {body.fy} ({recorded} line"
+        f"{'' if recorded == 1 else 's'})", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_employee", entity_id=employee_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"employee_id": employee_id, "fy": body.fy,
+                               "recorded": recorded})
+
+
+# ─── Salary revisions and employee loans ─────────────────────────────────────
+
+class SalaryRevisionIn(BaseModel):
+    """The whole component set as at an effective date, not a delta.
+
+    Deltas compose, and composing them across a backdated revision inserted
+    between two others gives a different answer depending on the order they
+    were entered.
+    """
+    client_id: str
+    effective_from: str                    # ISO date
+    basic_paise: int = 0
+    hra_percent: float = 0
+    da_percent: float = 0
+    lta_paise: int = 0
+    medical_paise: int = 0
+    special_allowance_paise: int = 0
+    other_allowances_paise: int = 0
+    reason: str = ""
+
+
+@router.post("/employees/{employee_id}/salary-revisions")
+def add_salary_revision(
+    employee_id: str,
+    body: SalaryRevisionIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record a salary revision effective from a date.
+
+    A month's payroll uses the latest revision effective on or before that
+    month's first day, so one may be entered in advance without affecting the
+    months before it — and a BACKDATED one, which is the ordinary case since
+    increments are usually agreed months after they take effect, gives arrears
+    something to be computed from.
+
+    Recording a revision does not re-run anything. Months already finalised keep
+    the figures they were paid on, because payroll_slips stores each component
+    as paid; what a backdated revision creates is a DIFFERENCE, and settling it
+    is a separate decision (see /arrears-relief for the §89 side).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    try:
+        effective = date.fromisoformat(body.effective_from)
+    except ValueError:
+        raise HTTPException(status_code=422,
+                            detail="effective_from must be ISO (YYYY-MM-DD)")
+    if body.basic_paise < 0:
+        raise HTTPException(status_code=422, detail="basic cannot be negative")
+
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "recorded": False})
+
+    row = (db.table("payroll_salary_revisions").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": body.client_id,
+        "employee_id": employee_id,
+        "effective_from": effective.isoformat(),
+        "basic_paise": body.basic_paise,
+        "hra_percent": body.hra_percent,
+        "da_percent": body.da_percent,
+        "lta_paise": body.lta_paise,
+        "medical_paise": body.medical_paise,
+        "special_allowance_paise": body.special_allowance_paise,
+        "other_allowances_paise": body.other_allowances_paise,
+        "reason": body.reason,
+        "created_by": current_user.get("id"),
+    }).execute().data or [{}])[0]
+
+    timeline_service.log(
+        body.client_id, "work", "Salary Revised",
+        f"Revision effective {effective.isoformat()}"
+        f"{': ' + body.reason if body.reason else ''}", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_employee", entity_id=employee_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"employee_id": employee_id,
+                               "revision_id": row.get("id"),
+                               "effective_from": effective.isoformat()})
+
+
+@router.get("/employees/{employee_id}/salary-revisions")
+def list_salary_revisions(
+    employee_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """An employee's pay history, newest first."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"revisions": []})
+    rows = (db.table("payroll_salary_revisions").select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .eq("employee_id", employee_id).execute().data) or []
+    rows.sort(key=lambda r: str(r.get("effective_from") or ""), reverse=True)
+    return api_response(True, {"revisions": rows})
+
+
+class EmployeeLoanIn(BaseModel):
+    client_id: str
+    principal_paise: int
+    monthly_instalment_paise: int
+    # Rule 3(7)(i): below the SBI rate for the same kind of loan, the shortfall
+    # is a perquisite. Zero means interest-free.
+    interest_rate_bps: int = 0
+    purpose: str = ""
+    started_on: Optional[str] = None
+
+
+@router.post("/employees/{employee_id}/loans")
+def add_employee_loan(
+    employee_id: str,
+    body: EmployeeLoanIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record a loan or advance to be recovered through the payslip.
+
+    Recovery happens AFTER the statutory deductions and only out of what is
+    left: PF, ESI, professional tax and TDS are owed to somebody else and come
+    first, and a recovery that pushed net pay below zero would be an overdrawn
+    payslip rather than a debt collected.
+
+    An interest-free or concessional loan is also a PERQUISITE under Rule
+    3(7)(i), valued at the SBI rate less what was charged. Recording the
+    recovery does not value it — that is /perquisites/value — and the response
+    says so when the rate is nil, because an employer who lends interest-free
+    and records only the recovery has an unvalued perquisite in the employee's
+    Form 16.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    if body.principal_paise <= 0:
+        raise HTTPException(status_code=422, detail="principal must be positive")
+    if body.monthly_instalment_paise <= 0:
+        raise HTTPException(status_code=422, detail="instalment must be positive")
+
+    db = _db()
+    notices = []
+    if body.interest_rate_bps == 0:
+        notices.append(
+            "This loan is interest-free, which makes it a perquisite under Rule "
+            "3(7)(i) — valued at the State Bank of India's rate for the same kind "
+            "of loan as on the first day of the previous year, less any interest "
+            "charged. Nothing is chargeable where the aggregate does not exceed "
+            "₹20,000. Value it before Q4 so it reaches the employee's Form 16."
+        )
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "notices": notices})
+
+    row = (db.table("payroll_loans").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": body.client_id,
+        "employee_id": employee_id,
+        "principal_paise": body.principal_paise,
+        "outstanding_paise": body.principal_paise,
+        "monthly_instalment_paise": body.monthly_instalment_paise,
+        "interest_rate_bps": body.interest_rate_bps,
+        "purpose": body.purpose,
+        "started_on": body.started_on,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).execute().data or [{}])[0]
+
+    return api_response(True, {"employee_id": employee_id,
+                               "loan_id": row.get("id"),
+                               "outstanding_paise": body.principal_paise,
+                               "notices": notices})
+
+
+@router.get("/employees/{employee_id}/loans")
+def list_employee_loans(
+    employee_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"loans": []})
+    rows = (db.table("payroll_loans").select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .eq("employee_id", employee_id).execute().data) or []
+    return api_response(True, {"loans": rows})

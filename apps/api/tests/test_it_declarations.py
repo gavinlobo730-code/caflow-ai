@@ -348,3 +348,57 @@ def test_professional_tax_reduces_tax_only_under_the_old_regime():
     new_with = _tax(_decl(regime=D.REGIME_NEW), 15_00_000 * 100, pt=pt)
     new_without = _tax(_decl(regime=D.REGIME_NEW), 15_00_000 * 100, pt=0)
     assert new_with == new_without
+
+
+# ── §192(1): the estimate is of THIS year's salary ───────────────────────────
+
+def test_a_mid_year_joiner_is_projected_over_the_months_they_will_work():
+    """§192(1) requires TDS on "the estimated income of the assessee under the
+    head Salaries" FOR THAT FINANCIAL YEAR.
+
+    For someone joining on 1 October that estimate is six months of salary, not
+    twelve. Projecting twelve over-deducts severely and §192(3) cannot recover
+    it, because the projection itself is what is wrong — the money comes back
+    only on assessment, a year later.
+
+    Measured before the fix: an October joiner on ₹2,00,000 a month, who earns
+    ₹12,00,000 in the year and owes nothing after the §16(ia) deduction and the
+    §87A rebate, had ₹1,46,250 withheld.
+    """
+    from routers.payroll import _months_employed_in_fy, _compute_slip
+
+    assert _months_employed_in_fy("2025-10-01", "2025-26") == 6
+    assert _months_employed_in_fy("2025-04-01", "2025-26") == 12
+    assert _months_employed_in_fy("2020-01-01", "2025-26") == 12
+    assert _months_employed_in_fy("2026-01-15", "2025-26") == 3
+    # Unknown falls back to twelve — the pre-existing behaviour, and the
+    # direction §192(1) makes the employer liable for getting wrong.
+    assert _months_employed_in_fy(None, "2025-26") == 12
+
+    emp = {"id": "e", "basic_paise": 2_00_000 * 100, "hra_percent": 0,
+           "da_percent": 0, "pf_applicable": False, "esi_applicable": False,
+           "pt_applicable": False}
+    joiner = _compute_slip(emp, fy=FY, pt_month=10, months_employed_in_fy=6)
+    full_year = _compute_slip(emp, fy=FY, pt_month=10, months_employed_in_fy=12)
+    assert joiner["tds_paise"] == 0
+    assert full_year["tds_paise"] == 24_375 * 100
+    assert (full_year["tds_paise"] - joiner["tds_paise"]) * 6 == 1_46_250 * 100
+
+
+def test_what_is_already_paid_this_year_is_a_fact_not_a_projection():
+    """The estimate is what HAS been paid plus what is still to come, so a
+    mid-year raise is picked up for the remaining months without rewriting the
+    months already paid."""
+    from routers.payroll import _compute_slip
+    emp = {"id": "e", "basic_paise": 3_00_000 * 100, "hra_percent": 0,
+           "da_percent": 0, "pf_applicable": False, "esi_applicable": False,
+           "pt_applicable": False}
+    # Six months already paid at ₹1,00,000, now raised to ₹3,00,000 for six more.
+    s = _compute_slip(emp, fy=FY, pt_month=10, months_employed_in_fy=12,
+                      months_already_paid=6,
+                      gross_already_paid_paise=6_00_000 * 100)
+    # The year is estimated at ₹6,00,000 + 6 x ₹3,00,000 = ₹24,00,000, not
+    # 12 x ₹3,00,000 = ₹36,00,000.
+    twelve_times_this_month = _compute_slip(emp, fy=FY, pt_month=10,
+                                            months_employed_in_fy=12)
+    assert s["tds_paise"] < twelve_times_this_month["tds_paise"]

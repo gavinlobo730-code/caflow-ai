@@ -9,7 +9,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
-import { User, FileText, Calendar, Download, Loader2 } from "lucide-react";
+import { User, FileText, Calendar, Download, Loader2, Receipt } from "lucide-react";
+import { TaxDeclarationTab } from "@/components/portal/TaxDeclarationTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ const LEAVE_TYPES: ReadonlyArray<{ label: string; key: keyof LeaveBalance }> = [
   { label: "Earned", key: "earned_leave_balance" },
 ];
 
-type TabId = "payslips" | "leave" | "profile";
+type TabId = "payslips" | "leave" | "declaration" | "profile";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -276,6 +277,7 @@ export default function EmployeePortalPage() {
   const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: "payslips", label: "Payslips", icon: <FileText size={15} /> },
     { id: "leave", label: "Leave Balance", icon: <Calendar size={15} /> },
+    { id: "declaration", label: "Tax Declaration", icon: <Receipt size={15} /> },
     { id: "profile", label: "Profile", icon: <User size={15} /> },
   ];
 
@@ -439,6 +441,11 @@ export default function EmployeePortalPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Tax declaration — the employee's own Form 12BB (Rule 26C). */}
+        {activeTab === "declaration" && (
+          <TaxDeclarationTab employeeId={employee.id} onToast={setToast} />
         )}
 
         {/* Profile Tab */}

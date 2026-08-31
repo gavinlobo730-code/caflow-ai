@@ -80,6 +80,22 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         "/api/banking/reconciliations/{recon_id}/preview",
         "/api/banking/transactions/{txn_id}/posting-preview",
         "/api/billing/preview-run",
+        # A leaver's settlement is COMPUTED and handed back for a human to act
+        # on. POST only because the request body carries the facts no record
+        # holds — why they left, what the contract says about notice, what they
+        # still owe. Settling an employee ends their employment, releases money
+        # and closes a PF account; none of that is something a preview should do
+        # as a side effect, so the handler reads and returns and writes nothing.
+        "/api/payroll/employees/{employee_id}/settlement",
+        # §89(1) relief is likewise computed and returned. Nothing is
+        # written and, in particular, Form 10E is not filed — the proviso
+        # to §89 requires it on the e-filing portal before the return, and
+        # that is the taxpayer's act, not payroll's.
+        "/api/payroll/employees/{employee_id}/arrears-relief",
+        # Rule 3 valuation is computed and returned. Recording it is a
+        # separate PUT at payroll:write, because accepting a valuation
+        # changes an employee's taxable salary and their Form 16.
+        "/api/payroll/employees/{employee_id}/perquisites/value",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

@@ -10,7 +10,7 @@ import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2, Upload,
-  Pencil, Ban, Trash2, RotateCcw,
+  Pencil, Ban, Trash2, RotateCcw, Receipt,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -1395,11 +1395,21 @@ export default function PayrollPage() {
             <h1 className="text-2xl font-bold text-[#0F172A]">Payroll</h1>
             <p className="text-sm text-[#64748B] mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
           </div>
-          <Link href="/payroll/reports">
-            <Button variant="outline" className="flex items-center gap-1.5">
-              <BarChart2 size={15} />Reports
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* IT Act §192 / Rule 26C — what each employee declared, and what
+                their proofs support. Its own page rather than a tab: it is a
+                per-client, per-financial-year review, not part of a run. */}
+            <Link href="/payroll/declarations">
+              <Button variant="outline" className="flex items-center gap-1.5">
+                <Receipt size={15} />Declarations
+              </Button>
+            </Link>
+            <Link href="/payroll/reports">
+              <Button variant="outline" className="flex items-center gap-1.5">
+                <BarChart2 size={15} />Reports
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <Tabs defaultValue="employees">

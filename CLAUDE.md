@@ -237,6 +237,27 @@ owes the right figure. **Adding a state is a human step**, like the ITR schemas:
 read the current state notification, add the table, move the code out of the
 unmodelled set.
 
+### 3b. The other statutory data a human has to supply
+
+Not annual — each moves on its own cycle — but all of it shares one shape: the
+code REFUSES rather than guessing, and the refusal comes back as a named gap in
+the response. Adding any of them is a human step, like the ITR schemas.
+
+| what | where it is refused | why it cannot be derived |
+|---|---|---|
+| minimum wage for §12 of the Bonus Act | `domain/payroll/bonus.py` | per state, per scheduled employment, per skill grade, revised twice yearly. §12 computes on ₹7,000 **or the minimum wage, whichever is HIGHER** — treating ₹7,000 as the ceiling underpays by half in most states |
+| SBI's rate for Rule 3(7)(i) | `domain/payroll/perquisites.py` | published by the bank on the first day of the previous year |
+| ESIC reason codes | `domain/payroll/esic.py` | ESIC's own list |
+| an earlier year's total income for §89 | `domain/payroll/arrears.py` | comes off the employee's return; the employer never held it |
+| prior gratuity / leave exemption used | `gratuity.py`, `leave_encashment.py` | §10(10) and §10(10AA) are LIFETIME limits across employers |
+
+**§89 also refuses a year the rate registry does not hold**, and that is worth
+knowing: `rates_for()` substitutes `LATEST_VERIFIED_FY` for a missing year, and
+§89 is a comparison of years AT THEIR OWN RATES — so a substitute makes the
+whole relief a fiction that looks entirely reasonable. Since the registry holds
+only 2025-26 and 2026-27, §89 does not work for most real arrears until the
+earlier years' Finance Acts are added.
+
 ### 4. What does NOT need an annual edit
 
 Recorded so nobody goes looking:
@@ -421,13 +442,21 @@ the batch completion reports are historical records, not current specs.
 ## Scope
 
 Well past MVP. Shipped and mounted: accounting/GL, GST (GSTR-1/3B/9, 2A/2B recon,
-amendments, ITC reversal), TDS, income tax/ITR, payroll, banking and reconciliation,
+amendments, ITC reversal), TDS, income tax/ITR, payroll (see below), banking and reconciliation,
 fixed assets, inventory, year-end and Schedule III, client and employee portals,
 relationship/health/lifecycle intelligence, AI copilot and memory, workflow automation,
 Tally migration, and prepare-only e-invoice/e-way/XBRL rails.
 
 Don't infer scope from this list — ask. It is a description of what exists, not a
 licence to extend any of it.
+
+**Payroll specifically** is walked end to end in
+`docs/audits/2026-09-01-payroll-can-it-run-a-year.md` — what works for a full
+year, what does not, and what each remaining gap would cost. The short version:
+the monthly cycle and the statutory returns work; the LEAVER'S SETTLEMENT is
+computed and nothing consumes it (no GL posting, no payslip, no §17(1) for the
+year), which is the largest remaining gap and a wiring job rather than a
+statutory one.
 
 ## Not built yet — known, deliberate, and not to be quietly started
 

@@ -831,6 +831,11 @@ class Phase2JournalService:
         esi = run["total_esi_paise"]
         pt = run["total_pt_paise"]
         tds = run["total_tds_paise"]
+        # Migration 300/301. Recovering an advance does not reduce the salary
+        # COST — it settles part of it by extinguishing a receivable instead of
+        # paying cash — so it is a credit leg like any other deduction, and the
+        # debit still equals the sum of the credits.
+        loans = int(run.get("total_loan_recovery_paise") or 0)
         month = run.get("month", "")
 
         # Payable credits — only include a line when the amount is non-zero.
@@ -845,6 +850,9 @@ class Phase2JournalService:
             credits.append((account_ids["pt"], pt, "Professional Tax payable — IT Act §16(iii)"))
         if tds > 0:
             credits.append((account_ids["tds"], tds, "TDS on salary payable 24Q — IT Act §192"))
+        if loans > 0:
+            credits.append((account_ids["loans"], loans,
+                            "Advances recovered from net pay — reduces the receivable"))
 
         total_cost = sum(amount for _, amount, _ in credits)  # = gross + employer PF/ESI
 
@@ -923,6 +931,13 @@ class Phase2JournalService:
             # Payroll accounts use name matching only — no system_account_key for these
             salary_exp_id  = self._find_account(db, firm_id, client_id, "%Salaries Expense%")
             net_sal_id     = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            # Looked up only when there IS a recovery. _find_account raises when
+            # an account is missing, and a run that recovers nothing must not
+            # require a receivable account it never touches — every firm whose
+            # chart predates migration 301 would otherwise fail to finalise.
+            loans_id = None
+            if int(run.get("total_loan_recovery_paise") or 0) > 0:
+                loans_id = self._find_account(db, firm_id, client_id, "%Employee Loans%")
             pf_id          = self._find_account(db, firm_id, client_id, "%PF Payable%")
             esi_id         = self._find_account(db, firm_id, client_id, "%ESI Payable%")
             pt_id          = self._find_account(db, firm_id, client_id, "%PT Payable%")
@@ -932,6 +947,7 @@ class Phase2JournalService:
                 {
                     "salary_exp": salary_exp_id, "net": net_sal_id, "pf": pf_id,
                     "esi": esi_id, "pt": pt_id, "tds": tds_sal_id,
+                    "loans": loans_id,
                 },
                 run,
             )

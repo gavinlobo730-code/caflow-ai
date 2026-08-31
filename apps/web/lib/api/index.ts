@@ -5,6 +5,87 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** One employee's §192 declaration, as the payroll API returns it.
+ *  Every amount is integer paise. */
+export type StatutoryRow = {
+  employee_id: string;
+  name: string | null;
+  basic_paise: number;
+  da_paise: number;
+  gross_paise: number;
+  pf_applicable: boolean;
+  esi_applicable: boolean;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  pf_employer_eps_paise: number;
+  pf_employer_epf_paise: number;
+  edli_paise: number;
+  pf_admin_paise: number;
+  eps_eligible: boolean;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+  joining_date: string | null;
+  gratuity_payable_paise: number;
+  gratuity_eligible: boolean;
+  gratuity_years: number;
+  /** Why no gratuity is payable — under five years, no joining date, no
+   *  wages. A zero and "we do not know when they joined" must not look the
+   *  same, which is exactly the bug this replaced. */
+  gratuity_reasons: string[];
+};
+
+export type StatutorySummary = {
+  month: string;
+  financial_year: string | null;
+  rows: StatutoryRow[];
+  totals: Record<string, number>;
+  gaps: string[];
+};
+
+export type DeclarationItemRow = {
+  id: string;
+  section: string;
+  label: string;
+  amount_declared_paise: number;
+  amount_verified_paise: number;
+  status: "declared" | "verified" | "rejected";
+  proof_reference: string;
+};
+
+export type DeclarationRow = {
+  id: string;
+  employee_id: string;
+  fy: string;
+  /** The intimation to the EMPLOYER (CBDT Circular 04/2023) — withholding
+   *  only. NOT the §115BAC(6) election, which is Form 10-IEA or the return. */
+  regime: "new" | "old";
+  status: "draft" | "submitted" | "verified";
+  rent_paid_declared_paise: number;
+  rent_paid_verified_paise: number;
+  landlord_name: string;
+  landlord_address: string;
+  landlord_pan: string;
+  rent_is_metro: boolean;
+  lta_declared_paise: number;
+  lta_verified_paise: number;
+  home_loan_interest_declared_paise: number;
+  home_loan_interest_verified_paise: number;
+  lender_name: string;
+  lender_pan: string;
+  other_income_declared_paise: number;
+  house_property_loss_declared_paise: number;
+  proofs_verified: boolean;
+  submitted_at: string | null;
+  verified_at: string | null;
+  items: DeclarationItemRow[];
+  /** Reasons this claim cannot be allowed as it stands — a missing landlord
+   *  PAN above the Rule 26C threshold, a section payroll cannot give effect
+   *  to. Computed by the backend, which is where Rule 26C lives. */
+  problems: string[];
+  /** Things the CA must know that do NOT block — see the API docstring. */
+  notices: string[];
+};
+
 /** A journal line as the editor reads and writes it. Integer paise only. */
 export type JournalLineIO = {
   id?: string;
@@ -750,6 +831,30 @@ export const api = {
                         invite_expires_at: string | null;
                         activated_at: string | null }>>(
         `/api/payroll/employees/${employeeId}/portal-status`),
+
+    // ── Employee income-tax declarations (§192, Rule 26C / Form 12BB) ──────
+    // The `notices` on each row are the reason this list exists rather than a
+    // plain table: they are where a CA sees who intimated the old regime and
+    // may still need Form 10-IEA, who claimed something the new regime does
+    // not allow, and whose proofs are outstanding with Q4 approaching.
+    listDeclarations: (clientId: string, fy: string) =>
+      request<ApiResp<{ declarations: DeclarationRow[] }>>(
+        `/api/payroll/declarations?client_id=${encodeURIComponent(clientId)}` +
+        `&fy=${encodeURIComponent(fy)}`),
+    saveDeclaration: (body: unknown) =>
+      request<ApiResp<{ declaration_id: string; problems: string[]; notices: string[] }>>(
+        "/api/payroll/declarations", { method: "PUT", body: JSON.stringify(body) }),
+    // PF, ESI and gratuity for a client's employees as at a month. Computed in
+    // apps/api — the page used to carry its own TypeScript copies of all three,
+    // which had drifted four ways (see the endpoint's docstring).
+    statutoryPosition: (clientId: string, month: string) =>
+      request<ApiResp<StatutorySummary>>(
+        `/api/payroll/statutory-position?client_id=${encodeURIComponent(clientId)}` +
+        `&month=${encodeURIComponent(month)}`),
+    verifyDeclaration: (declarationId: string, body: unknown) =>
+      request<ApiResp<{ declaration_id: string; problems: string[] }>>(
+        `/api/payroll/declarations/${declarationId}/verify`,
+        { method: "POST", body: JSON.stringify(body) }),
   },
   invoices: {
     downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),

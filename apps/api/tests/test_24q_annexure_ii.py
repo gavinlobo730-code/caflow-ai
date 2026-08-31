@@ -134,11 +134,31 @@ def test_an_employee_without_a_valid_pan_is_refused(bad):
 # ── what it declares rather than invents ─────────────────────────────────────
 
 def test_perquisites_and_exemptions_are_named_gaps_not_silent_zeroes():
+    """With nothing valued and nothing declared, both must be SAID rather than
+    reported as a confident nil."""
     a = _build()
     joined = " ".join(a.gaps)
-    assert "§17(2) perquisites" in joined
+    assert "§17(2) perquisite" in joined
     assert "§10(13A)" in joined and "rent ACTUALLY PAID" in joined
     assert "Chapter VI-A" in joined
+
+
+def test_a_valued_perquisite_reaches_the_row_and_stops_being_a_gap():
+    """Migration 299 and domain/payroll/perquisites.py close this gap for
+    anyone actually valued. It must both COUNT into §17(2) and stop being
+    reported as missing — a gap that persists after the work is done trains
+    people to ignore gaps."""
+    a = build_annexure_ii(
+        slips=[_slip()] * 12,
+        employees_by_id={"e1": _emp()},
+        standard_deduction_paise=STD_DEDUCTION,
+        perquisites_by_employee={
+            "e1": [{"value_paise": 1_20_000_00, "label": "Motor car"}]},
+    )
+    r = a.rows[0]
+    assert r.perquisites_17_2_paise == 1_20_000_00
+    assert r.gross_salary_paise == r.salary_17_1_paise + 1_20_000_00
+    assert not any("§17(2) perquisite" in g for g in a.gaps)
 
 
 def test_gaps_do_not_block_filing():

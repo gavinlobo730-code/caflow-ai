@@ -29,6 +29,41 @@ _MONTH_NAMES = [
 ]
 
 
+# Every deduction that reduced net pay has to appear on the payslip, or its own
+# arithmetic does not add up for the person reading it: gross minus the
+# deductions SHOWN would not equal the net shown, and an employee querying the
+# difference is the last person who should have to work it out.
+#
+# Pure and separate from the PDF so it can be tested as arithmetic rather than
+# by reading a rendered document.
+DEDUCTION_DEFS: tuple[tuple[str, str], ...] = (
+    ("Provident Fund (Employee)", "pf_employee_paise"),  # EPF Act
+    ("ESI (Employee)", "esi_employee_paise"),            # ESI Act §2(9)
+    ("Professional Tax", "pt_paise"),                    # IT Act §16(iii)
+    ("TDS on Salary", "tds_paise"),                      # IT Act §192
+    # Migration 300/301.
+    ("Loan / Advance Recovery", "loan_recovery_paise"),
+)
+
+# Rows suppressed when nil, because a zero line on every payslip for everyone
+# who has no advance is noise. The statutory four always show, so an employee
+# can see that PF or TDS was considered and came to nothing.
+_HIDE_WHEN_ZERO = {"loan_recovery_paise"}
+
+
+def deduction_lines(slip: dict) -> tuple[list[list[str]], int]:
+    """([["Deductions", "Amount (₹)"], [label, amount], ...], total_paise)."""
+    rows = [["Deductions", "Amount (₹)"]]
+    total = 0
+    for label, key in DEDUCTION_DEFS:
+        value = int(slip.get(key) or 0)
+        if value == 0 and key in _HIDE_WHEN_ZERO:
+            continue
+        total += value
+        rows.append([label, _paise_to_rupee_str(value)])
+    return rows, total
+
+
 def _paise_to_rupee_str(paise: int) -> str:
     """Format integer paise as a rupee string, e.g. 123456 -> '₹1,234.56'.
 
@@ -152,18 +187,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, firm: dict) -> byte
     story.append(Spacer(1, 4 * mm))
 
     # ─── Deductions ─────────────────────────────────────────────────────────
-    deduction_defs = [
-        ("Provident Fund (Employee)", "pf_employee_paise"),  # EPF Act
-        ("ESI (Employee)", "esi_employee_paise"),            # ESI Act §2(9)
-        ("Professional Tax", "pt_paise"),                    # IT Act §16(iii)
-        ("TDS on Salary", "tds_paise"),                      # IT Act §192
-    ]
-    total_deductions = 0
-    deduction_rows = [["Deductions", "Amount (₹)"]]
-    for label, key in deduction_defs:
-        val = int(slip.get(key) or 0)
-        total_deductions += val
-        deduction_rows.append([label, _paise_to_rupee_str(val)])
+    deduction_rows, total_deductions = deduction_lines(slip)
     deduction_rows.append(["Total Deductions", _paise_to_rupee_str(total_deductions)])
 
     deductions = Table(deduction_rows, colWidths=[120 * mm, 60 * mm])
