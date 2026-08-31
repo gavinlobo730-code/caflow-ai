@@ -41,6 +41,7 @@ from domain.payroll import bonus as bonus_domain
 from domain.payroll import leave_encashment as leave_domain
 from domain.payroll import settlement as settlement_domain
 from domain.payroll import arrears as arrears_domain
+from domain.payroll import perquisites as perq_domain
 from dataclasses import replace as _replace
 
 
@@ -1767,6 +1768,15 @@ def form_24q_annexure_ii(
             hra_received_paise=sum(int(sl.get("hra_paise") or 0) for sl in emp_slips),
         )
 
+    # §17(2) perquisites, valued under Rule 3 and recorded for the year
+    # (migration 299). Read rather than recomputed: the annexure must agree with
+    # what the CA reviewed, and two implementations of one valuation drift.
+    perquisites: dict = {}
+    for row in ((db.table("payroll_perquisites").select("*")
+                 .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+                 .eq("fy", financial_year).execute().data) or []):
+        perquisites.setdefault(row.get("employee_id"), []).append(row)
+
     rates = rates_for(financial_year)
     ann = build_annexure_ii(
         slips=slips,
@@ -1774,6 +1784,7 @@ def form_24q_annexure_ii(
         standard_deduction_paise=rates.new_regime_standard_deduction_paise,
         months_expected=len(usable) or 12,
         declarations_by_employee=declarations,
+        perquisites_by_employee=perquisites,
     )
     missing_months = sorted(set(months) - {r["month"] for r in usable})
     if missing_months:
@@ -2593,3 +2604,196 @@ def arrears_relief(
                       "filed on the e-filing portal before the return; nothing "
                       "here files it.",
     })
+
+
+# ─── §17(2) perquisites, valued under Rule 3 ─────────────────────────────────
+
+class PerquisiteValuationIn(BaseModel):
+    """Rule 3's inputs. Each block is optional — an employee with a car and no
+    flat sends only the car."""
+    client_id: str
+    fy: str
+    salary_for_rule_3_paise: int = 0
+
+    # Rule 3(1) — accommodation
+    accommodation: bool = False
+    population_lakh: int = 0
+    accommodation_months: int = 12
+    employer_owns_accommodation: bool = True
+    actual_lease_rent_paise: int = 0
+    rent_recovered_from_employee_paise: int = 0
+
+    # Rule 3(2) — motor car
+    motor_car: bool = False
+    car_months: int = 12
+    engine_litres: float = 1.4
+    employer_bears_running_costs: bool = True
+    with_driver: bool = False
+    car_wholly_official: bool = False
+    car_wholly_personal: bool = False
+    car_amount_recovered_paise: int = 0
+
+    # Rule 3(7)(i) — concessional loan
+    loan: bool = False
+    loan_maximum_outstanding_paise: int = 0
+    # Published by SBI on the first day of the previous year. Not derivable —
+    # absent it the loan is refused rather than valued at a guess.
+    sbi_rate_bps: Optional[int] = None
+    loan_interest_charged_paise: int = 0
+    loan_months: int = 12
+    loan_for_specified_disease: bool = False
+
+    # Rule 3(7)(iii) and (iv)
+    meals_provided: int = 0
+    cost_per_meal_paise: int = 0
+    gifts_total_paise: int = 0
+
+
+@router.post("/employees/{employee_id}/perquisites/value")
+def value_perquisites(
+    employee_id: str,
+    body: PerquisiteValuationIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Value an employee's §17(2) perquisites under Rule 3. Computes only.
+
+    Separate from recording them, because the two are different decisions: what
+    Rule 3 says a benefit is worth, and whether the firm accepts that valuation
+    for the year. The second changes an employee's taxable salary and their Form
+    16, so it is an explicit act rather than a side effect of a calculation.
+
+    Anything Rule 3 needs and payroll cannot supply comes back as a gap rather
+    than a number: the SBI rate for a concessional loan, and the actual running
+    expenditure for a car used wholly privately.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+
+    result = perq_domain.PerquisiteResult()
+
+    if body.accommodation:
+        item, gaps = perq_domain.value_accommodation(
+            fy=body.fy,
+            salary_for_rule_3_paise=body.salary_for_rule_3_paise,
+            population_lakh=body.population_lakh,
+            months=body.accommodation_months,
+            employer_owns=body.employer_owns_accommodation,
+            actual_lease_rent_paise=body.actual_lease_rent_paise,
+            rent_recovered_from_employee_paise=body.rent_recovered_from_employee_paise,
+        )
+        result.items.append(item)
+        result.gaps.extend(gaps)
+
+    if body.motor_car:
+        item, gaps = perq_domain.value_motor_car(
+            months=body.car_months, engine_litres=body.engine_litres,
+            employer_bears_running_costs=body.employer_bears_running_costs,
+            with_driver=body.with_driver,
+            wholly_official=body.car_wholly_official,
+            wholly_personal=body.car_wholly_personal,
+            amount_recovered_paise=body.car_amount_recovered_paise,
+        )
+        if item is not None:
+            result.items.append(item)
+        result.gaps.extend(gaps)
+
+    if body.loan:
+        item, gaps = perq_domain.value_concessional_loan(
+            maximum_monthly_outstanding_paise=body.loan_maximum_outstanding_paise,
+            sbi_rate_bps_on_first_day=body.sbi_rate_bps,
+            interest_actually_charged_paise=body.loan_interest_charged_paise,
+            months=body.loan_months,
+            for_specified_disease=body.loan_for_specified_disease,
+        )
+        if item is not None:
+            result.items.append(item)
+        result.gaps.extend(gaps)
+
+    if body.meals_provided:
+        result.items.append(perq_domain.value_meals(
+            meals_provided=body.meals_provided,
+            cost_per_meal_paise=body.cost_per_meal_paise))
+
+    if body.gifts_total_paise:
+        result.items.append(perq_domain.value_gifts(
+            total_gifts_paise=body.gifts_total_paise))
+
+    return api_response(True, {
+        "employee_id": employee_id,
+        "fy": body.fy,
+        "items": [{"label": i.label, "value_paise": i.value_paise,
+                   "rule": i.rule, "note": i.note} for i in result.items],
+        "total_paise": result.total_paise,
+        "gaps": result.gaps,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing is "
+                      "recorded until it is saved separately.",
+    })
+
+
+class PerquisiteRecordIn(BaseModel):
+    client_id: str
+    fy: str
+    items: list[dict] = []
+
+
+@router.put("/employees/{employee_id}/perquisites")
+def record_perquisites(
+    employee_id: str,
+    body: PerquisiteRecordIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record the year's perquisite valuations for an employee.
+
+    Replaces the year's set wholesale rather than merging, for the same reason
+    a declaration's Chapter VI-A lines are replaced: this is a statement of the
+    whole year's position, and merging would leave a withdrawn benefit — a car
+    returned in June — valued for the full year.
+
+    These figures reach the employee's Form 16 through 24Q Annexure II, so they
+    are written at payroll:write, the same tier that edits pay.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "recorded": 0})
+
+    db.table("payroll_perquisites").delete() \
+        .eq("firm_id", current_user["firm_id"]) \
+        .eq("employee_id", employee_id).eq("fy", body.fy).execute()
+
+    recorded = 0
+    for item in body.items:
+        value = int(item.get("value_paise") or 0)
+        if value < 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{item.get('label')}: a perquisite cannot be negative.")
+        # Written out literally so tests/test_backend_columns_exist_pg.py can
+        # read the column names — see the declaration endpoints for why.
+        db.table("payroll_perquisites").insert({
+            "firm_id": current_user["firm_id"],
+            "client_id": body.client_id,
+            "employee_id": employee_id,
+            "fy": body.fy,
+            "label": str(item.get("label") or "Perquisite"),
+            "rule": str(item.get("rule") or ""),
+            "value_paise": value,
+            "note": str(item.get("note") or ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+        recorded += 1
+
+    timeline_service.log(
+        body.client_id, "work", "Perquisites Valued",
+        f"§17(2) perquisites recorded for {body.fy} ({recorded} line"
+        f"{'' if recorded == 1 else 's'})", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_employee", entity_id=employee_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"employee_id": employee_id, "fy": body.fy,
+                               "recorded": recorded})

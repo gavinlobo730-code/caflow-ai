@@ -92,6 +92,10 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # to §89 requires it on the e-filing portal before the return, and
         # that is the taxpayer's act, not payroll's.
         "/api/payroll/employees/{employee_id}/arrears-relief",
+        # Rule 3 valuation is computed and returned. Recording it is a
+        # separate PUT at payroll:write, because accepting a valuation
+        # changes an employee's taxable salary and their Form 16.
+        "/api/payroll/employees/{employee_id}/perquisites/value",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

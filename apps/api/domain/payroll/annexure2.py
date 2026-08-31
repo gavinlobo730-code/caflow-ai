@@ -193,6 +193,7 @@ def build_annexure_ii(
     standard_deduction_paise: int,
     months_expected: int = 12,
     declarations_by_employee: Optional[dict] = None,
+    perquisites_by_employee: Optional[dict] = None,
 ) -> AnnexureII:
     """Aggregate a financial year's finalised payslips into Annexure II rows.
 
@@ -211,8 +212,10 @@ def build_annexure_ii(
         by_emp.setdefault(s.get("employee_id"), []).append(s)
 
     declarations_by_employee = declarations_by_employee or {}
+    perquisites_by_employee = perquisites_by_employee or {}
     perquisites_possible = False
     any_undeclared = False
+    any_unvalued_perquisites = False
 
     for emp_id, emp_slips in sorted(by_emp.items(), key=lambda kv: str(kv[0])):
         emp = employees_by_id.get(emp_id) or {}
@@ -235,8 +238,11 @@ def build_annexure_ii(
         pt = sum(int(s.get("pt_paise") or 0) for s in emp_slips)
         tds = sum(int(s.get("tds_paise") or 0) for s in emp_slips)
 
-        if salary > 0:
+        perquisite_value = sum(int(p.get("value_paise") or 0)
+                               for p in perquisites_by_employee.get(emp_id, []))
+        if salary > 0 and not perquisites_by_employee.get(emp_id):
             perquisites_possible = True
+            any_unvalued_perquisites = True
 
         decl = declarations_by_employee.get(emp_id)
         if decl is None:
@@ -260,6 +266,7 @@ def build_annexure_ii(
             months_paid=len(emp_slips),
             salary_17_1_paise=salary,
             uses_new_regime=uses_new_regime,
+            perquisites_17_2_paise=perquisite_value,
             exempt_under_10_paise=exempt_10,
             chapter_vi_a_paise=chapter_vi_a,
             standard_deduction_16_ia_paise=min(standard_deduction_paise, salary),
@@ -274,14 +281,16 @@ def build_annexure_ii(
                 f"under §192(2) belongs in this annexure and is not in these books."
             )
 
-    if perquisites_possible:
-        # §17(2) is unconditional: no declaration collects perquisites, because
-        # their Rule 3 valuation is the employer's job and is not modelled.
+    if any_unvalued_perquisites:
+        # Narrowed from "nil for everyone" to "nil for those with nothing
+        # valued": perquisites are now computed under Rule 3 and stored
+        # (migration 299), so an employee WITH a valuation is no longer a gap.
         out.gaps.append(
-            "§17(2) perquisites and §17(3) profits in lieu are recorded as nil for "
-            "everyone, because this payroll module does not model them. Where a "
-            "company car, accommodation, interest-free loan or ESOP applies, the "
-            "value has to be added before Q4 is filed."
+            "Some employees have no §17(2) perquisite valued for the year, so "
+            "nil is reported for them. That is correct for anyone with no "
+            "company car, accommodation, concessional loan or other benefit — "
+            "and wrong for anyone who has one and was never valued. §17(3) "
+            "profits in lieu are not modelled at all."
         )
     if any_undeclared:
         out.gaps.append(
