@@ -12,13 +12,15 @@ at build time would let the field names shift under the mapping silently.
 
 | File | Schema version | AY | Notes |
 |---|---|---|---|
+| `ITR1_2026_Main_V1.1.json` | Ver1.0 | 2026-27 | Resident individuals, salary/one house/other sources |
+| `ITR2_2026_Main_V1.2.json` | Ver1.0 | 2026-27 | Individuals/HUF without business income |
 | `ITR3_2026_Main_V1.1.json` | Ver1.0 | 2026-27 | Individuals/HUF with business or professional income |
 | `ITR4_2026_Main_V1.1.json` | Ver1.0 | 2026-27 | Presumptive income — §44AD / §44ADA / §44AE |
 | `ITR5_2026_Main_V1.1.json` | Ver1.0 | 2026-27 | Firms, LLPs, AOPs, BOIs |
 | `ITR6_2026_Main_V1.0.json` | Ver1.0 | 2026-27 | Companies other than those claiming §11 exemption |
 | `ITR7_2026_Main_V0.1.json` | Ver1.0 | 2026-27 | Trusts and institutions. File version V0.1 — a DRAFT |
 
-ITR-1 and ITR-2 are not here yet.
+All seven forms are here.
 
 ## Two things the schemas settle
 
@@ -43,6 +45,8 @@ portal revises schemas mid-year (ITR-1's page showed a first release of
 15-May-2026 and a latest of 30-Jun-2026).
 
 ```
+ITR1_2026_Main_V1.1.json  sha256:(see git)              148,921 bytes
+ITR2_2026_Main_V1.2.json  sha256:(see git)              390,622 bytes
 ITR3_2026_Main_V1.1.json  sha256:66f4bd705e0e0788…  1,060,874 bytes
 ITR4_2026_Main_V1.1.json  sha256:5e9af50083ad92fa…    252,342 bytes
 ITR5_2026_Main_V1.1.json  sha256:3bb5f158f63556c3…  1,027,777 bytes
@@ -52,3 +56,22 @@ ITR7_2026_Main_V0.1.json  sha256:481460087c828ab0…    424,421 bytes
 
 Do not hand-edit these files. They are the Department's, and a local edit would
 make the mapping agree with something the portal will not accept.
+
+## The filing due date the schemas pin
+
+Each schema fixes `ItrFilingDueDate` to a literal, and they do not all agree:
+
+| Form | Pinned due date |
+|---|---|
+| ITR-1, ITR-2 | `2026-07-31` |
+| ITR-4 | `2026-08-31` |
+| ITR-3, ITR-5, ITR-6, ITR-7 | not pinned |
+
+31 July is the §139(1) default and is what
+`services/compliance_engine.itr_due_date` returns. ITR-4 alone says 31 August.
+
+`compliance_engine` is deliberately NOT changed to match. A pattern in a schema
+file is not a CBDT notification, and two of the three forms that pin a date
+agree with the statute. If the August date reflects a real extension it should
+be recorded as an extension, against the circular that granted it — not adopted
+because one JSON file was convenient to read.
