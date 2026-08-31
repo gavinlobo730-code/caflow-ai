@@ -357,6 +357,41 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
         return set()
 
 
+def _months_employed_in_fy(joining_date, fy: Optional[str]) -> int:
+    """How many months of THIS financial year this employee is paid for.
+
+    §192(1) requires TDS on "the estimated income of the assessee under the head
+    Salaries" FOR THAT FINANCIAL YEAR. For someone who joined on 1 October that
+    estimate is six months of salary, not twelve — and projecting twelve
+    over-deducts severely, because the excess cannot be recovered through §192(3)
+    (the projection itself is what is wrong) and is refundable only on
+    assessment, a year later.
+
+    Measured at ₹1,00,000 a month: an October joiner earning ₹6,00,000 in the
+    year owes nothing after the §16(ia) deduction and the §87A rebate, and a
+    twelve-month projection withholds ₹1,46,250 from them.
+
+    An unknown joining date returns 12. That is the pre-existing behaviour and
+    the safe direction — §192(1) makes the EMPLOYER liable for an under-
+    deduction — but it is also why the joining date is worth capturing: with it,
+    the employee keeps their money.
+    """
+    if not joining_date or not fy:
+        return 12
+    try:
+        joined = date.fromisoformat(str(joining_date)[:10])
+        fy_start_year = int(str(fy)[:4])
+    except (ValueError, TypeError):
+        return 12
+    fy_start = date(fy_start_year, 4, 1)
+    if joined <= fy_start:
+        return 12            # employed for the whole year
+    if joined >= date(fy_start_year + 1, 4, 1):
+        return 0             # joins after this year ends
+    # Inclusive count of the months from the joining month to March.
+    return 12 - ((joined.year - fy_start_year) * 12 + joined.month - 4)
+
+
 def _salary_in_force(db, firm_id: str, client_id: str, month: str) -> dict:
     """{employee_id: the component set to pay them this month}.
 
@@ -422,6 +457,61 @@ def _loan_instalments_for_run(db, firm_id: str, client_id: str) -> dict:
     except Exception:
         _logger.exception("could not read employee loans for %s", client_id)
         return {}
+
+
+def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str) -> int:
+    """Reduce each loan's outstanding balance by what this run recovered.
+
+    Done at FINALISATION and nowhere else. A draft run can be deleted and
+    recomputed, so reducing a balance when the slips are first computed would
+    let one recovery be applied twice — and the second application would look
+    exactly like the first. Finalisation is guarded against running twice
+    (status is checked and set), so this runs once per run.
+
+    A loan whose balance reaches zero is closed, so it stops being read at all
+    next month rather than being filtered out every time.
+
+    Returns how many loans were touched. Never raises: the run's journal has
+    already posted by the time this is called, and refusing to finalise a
+    correct payroll because a balance could not be written down would be the
+    worse failure. A missed write-down leaves the balance too high, which is
+    visible on the next payslip and on the loan list.
+    """
+    try:
+        recovered = {}
+        for sl in ((db.table("payroll_slips").select("employee_id, loan_recovery_paise")
+                    .eq("run_id", run_id).execute().data) or []):
+            amount = int(sl.get("loan_recovery_paise") or 0)
+            if amount:
+                recovered[sl["employee_id"]] = recovered.get(sl["employee_id"], 0) + amount
+        if not recovered:
+            return 0
+
+        loans = (db.table("payroll_loans").select("*")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .is_("closed_on", "null").execute().data) or []
+        touched = 0
+        for loan in loans:
+            left = recovered.get(loan.get("employee_id"), 0)
+            if left <= 0:
+                continue
+            owed = int(loan.get("outstanding_paise") or 0)
+            # Oldest-first is not modelled; where an employee has two loans the
+            # recovery is applied in the order the rows come back, and the
+            # instalments were summed the same way when it was computed.
+            applied = min(left, owed)
+            recovered[loan["employee_id"]] = left - applied
+            new_balance = owed - applied
+            db.table("payroll_loans").update({
+                "outstanding_paise": new_balance,
+                "closed_on": (str(date.today()) if new_balance == 0 else None),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", loan["id"]).execute()
+            touched += 1
+        return touched
+    except Exception:
+        _logger.exception("could not apply loan recoveries for run %s", run_id)
+        return 0
 
 
 def _declarations_for_run(db, firm_id: str, client_id: str,
@@ -505,7 +595,7 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                                   month: str, fy: str) -> dict:
     """TDS withheld so far this financial year, per employee.
 
-    Returns {employee_id: (tds_paise, months_paid)}. §192(3) adjusts "any excess
+    Returns {employee_id: (tds_paise, months_paid, gross_paise)}. §192(3) adjusts "any excess
     or deficiency arising out of any PREVIOUS deduction ... during the financial
     year", so the adjustment needs both halves: what was actually deducted in the
     FY's earlier months, and how many months those were. Not earlier years, and
@@ -528,8 +618,10 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                  .in_("run_id", earlier).execute().data) or []
         out: dict = {}
         for sl in slips:
-            paise, months = out.get(sl["employee_id"], (0, 0))
-            out[sl["employee_id"]] = (paise + int(sl.get("tds_paise") or 0), months + 1)
+            tds, months, gross = out.get(sl["employee_id"], (0, 0, 0))
+            out[sl["employee_id"]] = (tds + int(sl.get("tds_paise") or 0),
+                                      months + 1,
+                                      gross + int(sl.get("gross_paise") or 0))
         return out
     except Exception:
         _logger.exception("could not read YTD TDS for %s %s", client_id, month)
@@ -668,7 +760,9 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
                   declaration: Optional["decl_domain.Declaration"] = None,
                   tds_already_deducted_paise: int = 0,
                   months_already_paid: int = 0,
-                  loan_instalment_paise: int = 0) -> dict:
+                  loan_instalment_paise: int = 0,
+                  gross_already_paid_paise: int = 0,
+                  months_employed_in_fy: int = 12) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
@@ -724,7 +818,13 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     # IT Act §192: TDS on salary, on the year's PROJECTED income. What the
     # employee declared decides the regime and the deductions; §192(3) decides
     # how the resulting annual figure is spread over what is left of the year.
-    annual_gross = gross * 12
+    # The year's ESTIMATED salary, not twelve times this month's. What has
+    # already been paid this year is a fact; the rest of the year is this
+    # month's pay times the months still to come — which for a mid-year joiner
+    # is fewer than twelve, and for a mid-year RAISE picks the new rate up for
+    # the remaining months without rewriting the ones already paid.
+    months_left = max(0, months_employed_in_fy - max(0, months_already_paid))
+    annual_gross = max(0, gross_already_paid_paise) + gross * months_left
     tds_monthly = _monthly_tds(
         declaration=declaration,
         annual_gross_paise=annual_gross,
@@ -1131,7 +1231,8 @@ def create_run(
     fy = current_fy(date(y, m, 1))  # FY of the payroll period, not "today"
 
     slips = []
-    totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0}
+    totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0,
+              "loan_recovery": 0}
 
     # ESI Rule 50: someone whose wages rise above the ceiling PART WAY THROUGH a
     # contribution period stays in the scheme until that period ends. Answering
@@ -1179,8 +1280,11 @@ def create_run(
         slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
                              esi_covered_at_period_start=emp["id"] in esi_covered_earlier,
                              declaration=declarations.get(emp["id"]),
-                             tds_already_deducted_paise=tds_ytd.get(emp["id"], (0, 0))[0],
-                             months_already_paid=tds_ytd.get(emp["id"], (0, 0))[1],
+                             tds_already_deducted_paise=tds_ytd.get(emp["id"], (0, 0, 0))[0],
+                             months_already_paid=tds_ytd.get(emp["id"], (0, 0, 0))[1],
+                             gross_already_paid_paise=tds_ytd.get(emp["id"], (0, 0, 0))[2],
+                             months_employed_in_fy=_months_employed_in_fy(
+                                 emp.get("joining_date"), fy),
                              loan_instalment_paise=loan_due.get(emp["id"], 0))
         statutory_gaps.extend(_statutory_gaps(emp))
         slip["run_id"]      = run_id
@@ -1193,6 +1297,7 @@ def create_run(
         totals["esi"]   += slip["esi_employee_paise"] + slip["esi_employer_paise"]
         totals["pt"]    += slip["pt_paise"]
         totals["tds"]   += slip["tds_paise"]
+        totals["loan_recovery"] += slip.get("loan_recovery_paise", 0)
 
     # Atomicity: the run header row was inserted first (above), but PostgREST
     # exposes no multi-statement transaction here — so if the slip insert
@@ -1214,6 +1319,7 @@ def create_run(
         "total_esi_paise":   totals["esi"],
         "total_pt_paise":    totals["pt"],
         "total_tds_paise":   totals["tds"],
+        "total_loan_recovery_paise": totals["loan_recovery"],
         "headcount":         len(emps),
     }).eq("id", run_id).execute()
 
@@ -1389,6 +1495,9 @@ def finalize_run(
         # safe: the kernel dedupes on reference_no=PAY-{month}). Prevents an
         # immutable "finalized" run with no GL entry reported as success.
         return api_response(False, None, "Payroll journal could not be posted. The run was not finalized; please retry.")
+
+    # The recovery is real now that the run has posted: write the balances down.
+    _apply_loan_recoveries(db, firm_id, client_id, run_id)
 
     db.table("payroll_runs").update({
         "status":          "finalized",

@@ -148,3 +148,130 @@ def test_recovery_cannot_push_net_pay_below_zero():
 
 def test_no_loan_leaves_the_slip_exactly_as_it_was():
     assert _slip()["loan_recovery_paise"] == 0
+
+
+# ── The recovery has to reach the ledger ─────────────────────────────────────
+
+def test_the_payroll_journal_balances_with_a_loan_recovery():
+    """The integration this nearly broke.
+
+    The accrual journal debits Salaries Expense with the SUM of its credits, so
+    a deduction with no credit leg makes the debit too small and understates
+    salary expense. _build_payroll_lines' own guard names this exact case — "a
+    future loan/advance recovery" — so finalising a run with a recovery would
+    have RAISED rather than posted a wrong journal. Loud, and still broken.
+
+    Recovering an advance does not reduce the salary cost; it settles part of it
+    by extinguishing a receivable instead of paying cash. So it is a credit leg
+    like any other deduction and the identity still holds.
+    """
+    from services.phase2_journal_service import Phase2JournalService
+
+    ids = {"salary_exp": "exp", "net": "net", "pf": "pf", "esi": "esi",
+           "pt": "pt", "tds": "tds", "loans": "loans"}
+    # gross 10,00,000; PF 1,20,000 (60,000 employee + 60,000 employer);
+    # PT 2,400; TDS 1,00,000 -> net is 8,37,600 before any recovery, and
+    # 8,17,600 after recovering 20,000.
+    run = {"month": "2026-07", "total_gross_paise": 10_00_000_00,
+           "total_net_paise": 8_17_600_00, "total_pf_paise": 1_20_000_00,
+           "total_esi_paise": 0, "total_pt_paise": 2_400_00,
+           "total_tds_paise": 1_00_000_00,
+           "total_loan_recovery_paise": 20_000_00}
+
+    lines = Phase2JournalService._build_payroll_lines(ids, run)
+    debits = sum(l["debit_paise"] for l in lines)
+    credits = sum(l["credit_paise"] for l in lines)
+    assert debits == credits, "the payroll accrual must balance"
+    # And the salary COST is unchanged by the recovery: 10,00,000 of gross plus
+    # 60,000 of employer PF. Booking the recovery as a reduction in expense
+    # would understate both the expense and the receivable, and the two errors
+    # would hide each other.
+    assert debits == 10_60_000_00
+
+    loan_line = [l for l in lines if l["account_id"] == "loans"]
+    assert len(loan_line) == 1
+    assert loan_line[0]["credit_paise"] == 20_000_00
+    assert loan_line[0]["debit_paise"] == 0
+
+
+def test_a_run_with_no_recovery_posts_exactly_as_before():
+    """No recovery, no line — and in particular no lookup of a receivable
+    account that a firm's chart may not have."""
+    from services.phase2_journal_service import Phase2JournalService
+
+    ids = {"salary_exp": "exp", "net": "net", "pf": "pf", "esi": "esi",
+           "pt": "pt", "tds": "tds", "loans": None}
+    run = {"month": "2026-07", "total_gross_paise": 10_00_000_00,
+           "total_net_paise": 8_37_600_00, "total_pf_paise": 1_20_000_00,
+           "total_esi_paise": 0, "total_pt_paise": 2_400_00,
+           "total_tds_paise": 1_00_000_00, "total_loan_recovery_paise": 0}
+
+    lines = Phase2JournalService._build_payroll_lines(ids, run)
+    assert sum(l["debit_paise"] for l in lines) == sum(l["credit_paise"] for l in lines)
+    assert not [l for l in lines if l["account_id"] is None]
+
+
+# ── The balance actually falls ───────────────────────────────────────────────
+
+class _Recording(_Rows):
+    """A _Rows that also remembers the updates written through it."""
+    def __init__(self, rows):
+        super().__init__(rows)
+        self.updates = []
+        self._pending = None
+
+    def update(self, payload):
+        self._pending = payload
+        return self
+
+    def eq(self, col, val):
+        if self._pending is not None:
+            self.updates.append((col, val, self._pending))
+            self._pending = None
+        return self
+
+
+def test_a_recovery_reduces_the_outstanding_balance():
+    """Without this the same instalment is deducted every month forever: the
+    balance is read to cap the instalment and was never written back."""
+    slips = _Rows([{"employee_id": "e1", "loan_recovery_paise": 5_000_00}])
+    loans = _Recording([{"id": "L1", "employee_id": "e1",
+                         "outstanding_paise": 20_000_00}])
+    db = _DB({"payroll_slips": slips, "payroll_loans": loans})
+
+    assert pr._apply_loan_recoveries(db, "f", "c", "run1") == 1
+    col, val, payload = loans.updates[0]
+    assert (col, val) == ("id", "L1")
+    assert payload["outstanding_paise"] == 15_000_00
+    assert payload["closed_on"] is None
+
+
+def test_a_loan_paid_off_is_closed():
+    """Closed so it stops being read at all next month, rather than being
+    filtered out every time."""
+    slips = _Rows([{"employee_id": "e1", "loan_recovery_paise": 20_000_00}])
+    loans = _Recording([{"id": "L1", "employee_id": "e1",
+                         "outstanding_paise": 20_000_00}])
+    pr._apply_loan_recoveries(_DB({"payroll_slips": slips, "payroll_loans": loans}),
+                              "f", "c", "run1")
+    payload = loans.updates[0][2]
+    assert payload["outstanding_paise"] == 0
+    assert payload["closed_on"] is not None
+
+
+def test_a_run_that_recovered_nothing_writes_nothing():
+    slips = _Rows([{"employee_id": "e1", "loan_recovery_paise": 0}])
+    loans = _Recording([{"id": "L1", "employee_id": "e1",
+                         "outstanding_paise": 20_000_00}])
+    assert pr._apply_loan_recoveries(
+        _DB({"payroll_slips": slips, "payroll_loans": loans}), "f", "c", "run1") == 0
+    assert loans.updates == []
+
+
+def test_a_failed_write_down_does_not_raise():
+    """The journal has already posted by the time this runs. Refusing to
+    finalise a correct payroll because a balance could not be written down
+    would be the worse failure; a missed write-down is visible on the next
+    payslip and on the loan list."""
+    db = _DB({"payroll_slips": _Rows([], fail=True)})
+    assert pr._apply_loan_recoveries(db, "f", "c", "run1") == 0
