@@ -29,7 +29,9 @@ import pytest
 WEB = Path(__file__).resolve().parents[3] / "apps" / "web"
 _MIG_DIR = Path(__file__).resolve().parents[1] / "migrations"
 MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
-                     _MIG_DIR / "261_role_aware_write_policies_part2.sql"]
+                     _MIG_DIR / "261_role_aware_write_policies_part2.sql",
+                     _MIG_DIR / "296_employee_income_tax_declarations.sql",
+                     _MIG_DIR / "297_let_an_employee_file_their_own_declaration.sql"]
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
@@ -42,6 +44,15 @@ GUARDED = {
     "tax_audits", "tax_planning_records", "shared_reports", "scheduled_reports",
     "client_documents", "document_requests", "suppliers", "msme_payments",
     "client_timeline_events",
+    # migrations 296 + 297 — the §192 declaration tables. Guarded differently
+    # from everything above, and deliberately: staff need Manager (payroll:write),
+    # but Rule 26C makes Form 12BB the EMPLOYEE's own statement, so 297 also
+    # admits an employee to their own unverified declaration and nothing else.
+    # The boundary is proved against real Postgres in
+    # tests/test_297_employee_declaration_rls_pg.py — row scope, column scope
+    # (an employee may declare an amount but never verify it) and time scope
+    # (verified is final as far as the employee is concerned).
+    "payroll_it_declarations", "payroll_it_declaration_items",
 }
 
 # Written from the browser and NOT yet role-guarded. An entry needs a product
@@ -130,13 +141,25 @@ def test_no_unaccounted_direct_write_table_appears():
 
 
 def test_guarded_tables_are_actually_in_the_migration():
-    """GUARDED is a claim about migration 260. Hold it to the file, so removing
-    a table from the migration cannot leave this test asserting protection that
-    no longer exists."""
+    """GUARDED is a claim about the migrations. Hold it to the files, so removing
+    a table from one cannot leave this test asserting protection that no longer
+    exists.
+
+    The table may be named in a loop's array (260/261 build their policies that
+    way) or spelled out in a CREATE POLICY (296/297 do, because the employee
+    branch differs per table). Either counts; what must not pass is a table
+    named in NEITHER.
+    """
     src = "\n".join(m.read_text(encoding="utf-8") for m in MIGRATION_SOURCES)
 
     for table in sorted(GUARDED):
-        assert re.search(rf"\[\s*'{table}'\s*,", src), (
+        in_loop_array = re.search(rf"[\[,]\s*'{table}'\s*[,\]]", src)
+        in_named_policy = re.search(
+            rf"CREATE POLICY[^;]*?AS RESTRICTIVE[^;]*?ON public\.{table}\b", src,
+            re.IGNORECASE | re.DOTALL)
+        in_named_policy_alt = re.search(
+            rf"ON public\.{table}\s+AS RESTRICTIVE", src, re.IGNORECASE)
+        assert in_loop_array or in_named_policy or in_named_policy_alt, (
             f"{table} is listed as guarded but no migration covers it"
         )
 

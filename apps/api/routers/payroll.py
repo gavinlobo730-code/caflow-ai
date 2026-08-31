@@ -2017,12 +2017,19 @@ def list_declarations(
     fy: str = Query(...),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
-    """Every declaration for a client and financial year, with its notices.
+    """Every declaration for a client and financial year, with what is wrong
+    with it and what the CA must know about it.
 
-    The notices are the point of the list view: it is where a CA sees, in one
-    place, who intimated the old regime (and so may still need Form 10-IEA),
-    who claimed something the new regime does not allow, and whose proofs are
-    still outstanding with the fourth quarter approaching.
+    PROBLEMS are reasons a claim cannot be allowed as it stands — a missing
+    landlord PAN above the Rule 26C threshold, a section this module cannot
+    give effect to. NOTICES are things that do not block: an old-regime
+    intimation that still needs Form 10-IEA, a claim the new regime disallows,
+    proofs outstanding with the fourth quarter approaching.
+
+    Both are computed here rather than by the caller, and both matter for
+    portal-filed declarations especially: an employee writes these tables
+    directly through PostgREST and never passes through validate(), so this
+    list is the first place anyone sees what is wrong with what they filed.
     """
     assert_client_access(current_user, client_id)
     db = _db()
@@ -2044,6 +2051,14 @@ def list_declarations(
         d = _declaration_from_rows(h, items_by_decl.get(h["id"], []))
         out.append({**h,
                     "items": items_by_decl.get(h["id"], []),
+                    # PROBLEMS as well as notices, because an employee filing
+                    # through the portal writes the tables directly and never
+                    # passes through this module's validate(). Rule 26C lives
+                    # here, in one place; this list is where the person who has
+                    # to act on it sees it. A declaration missing the landlord's
+                    # PAN is a claim that cannot be allowed as it stands, and
+                    # the CA needs to know that before Q4, not after.
+                    "problems": decl_domain.validate(d),
                     "notices": decl_domain.notices(d)})
     return api_response(True, {"declarations": out})
 
