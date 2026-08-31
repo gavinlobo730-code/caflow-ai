@@ -64,7 +64,7 @@ knowing about and not a live failure.
 
 ## What the first run found (31 August 2026)
 
-191 differences, of which the ones that matter:
+191 differences. The ones that mattered:
 
 | Category | Count |
 |---|---|
@@ -85,7 +85,51 @@ The 11 tables production has and no migration declares are mostly backups
 `test_migrations_apply.EXPECTED_MIGRATION_FAILURES`, which do not apply locally
 but did apply to production.
 
-The 35 remain. Each is a column production requires that a reader of the
-migrations would think optional. Whether each is a live bug depends on whether
-the code actually writes it — `form_26as_uploads.uploaded_by` was one and is
-now fixed. Working through the other 34 is a separate piece of work.
+## What was done about the 35
+
+Each was traced to its insert site — 19 tables, one backend insert each, no
+frontend writes. **Every one already writes every column production requires**,
+including the two that spread a caller's dict (`form_26as_records` from
+`parse_26as_text`, `workflow_steps` from a Pydantic model that makes the fields
+mandatory). So nothing was failing.
+
+That is luck, not safety. The hazard is the next reader: the migrations say
+"nullable", so code that omits the column passes every check here and is
+rejected in production. That is exactly how `form_26as_uploads.uploaded_by` was
+lost. **Migration 292 declares all 35 `SET NOT NULL`**, guarded per column on
+existing and currently being nullable, so it is idempotent and skips an
+environment where an earlier migration never applied. In production every one is
+already `NOT NULL`, so it changes the declaration and not the database.
+
+After 292 the category is **0**, and the total is 156.
+
+Applying it immediately caught two stale tests in
+`test_gst_tds_schema_drift_pg.py` that asserted the *pre-291* insert shape for
+`form_26as_uploads` — they had passed only because the column was still nullable
+in the template. Both now name `uploaded_by`, matching the real code.
+
+## Keeping it at zero
+
+`tests/test_schema_matches_production_pg.py` compares a database built from the
+migrations against `tests/fixtures/production_schema_2026-08-31.json` and fails
+if any column is required in production and optional in the migrations. It runs
+in the real-Postgres CI job and needs no production credentials.
+
+It asserts **only** that one direction. The other six categories are real drift
+worth knowing about, but none can reject an insert, and a test that failed on
+all 156 would be turned off within a week.
+
+The fixture is a point-in-time capture and goes stale by design — see
+`apps/api/tests/fixtures/README.md` for how to refresh it.
+
+## What is still drifted, and deliberately left alone
+
+156 differences remain: 7 tables absent from production, 11 present only there,
+32 columns the migrations declare that production lacks, 63 the reverse, 26
+nullability differences in the safe direction, and 17 type differences (mostly
+`uuid` vs `text` on the timeline and audit tables — those work but lose foreign
+key integrity and index efficiency).
+
+None can reject an insert. Fixing them is worthwhile and is a separate
+judgement per difference; making 156 schema changes off one run is how the next
+production failure gets written.
