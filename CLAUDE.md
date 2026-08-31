@@ -202,11 +202,24 @@ from domain.payroll.statutory import RATES_BY_FY, LATEST_VERIFIED_FY
 print('payroll     latest', max(RATES_BY_FY), '| verified', LATEST_VERIFIED_FY)"
 ```
 
-**Still a gap: the professional tax slab tables**, which remain bare literals in
-`routers/payroll.py`, and only for **Maharashtra and Tamil Nadu** — roughly
-eighteen other states levy PT and none of them are modelled. PT is set by each
-state, so it wants a per-state, per-FY table rather than a single registry.
-Read by eye until then.
+**Partly a gap: professional tax and the Labour Welfare Fund.** PT slabs are
+still bare literals in `routers/payroll.py`, covering **Maharashtra, Tamil Nadu,
+Karnataka and West Bengal** — four of the twenty-two states that levy it. LWF
+has no amounts at all.
+
+What is no longer a gap is the SILENCE. `domain/payroll/professional_tax.py` and
+`domain/payroll/lwf.py` carry which states levy each, so an unmodelled state now
+reports itself: creating a payroll run returns `statutory_gaps` naming every
+employee whose state levies a deduction the run did not compute. A zero for
+Delhi and a zero for Gujarat used to be the same number meaning opposite things.
+
+The amounts are deliberately not written from memory — twenty states' slabs and
+sixteen states' LWF figures, each moving by its own notification, would be
+thirty-six confidently wrong deductions in people's pay, and a wrong deduction
+is worse than a flagged gap: the employee is short-paid and the employer still
+owes the right figure. **Adding a state is a human step**, like the ITR schemas:
+read the current state notification, add the table, move the code out of the
+unmodelled set.
 
 ### 4. What does NOT need an annual edit
 

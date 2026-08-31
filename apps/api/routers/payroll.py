@@ -27,6 +27,8 @@ import calendar
 from domain.payroll.ecr import build_ecr
 from domain.payroll.esic import build_esic_return
 from domain.payroll.annexure2 import build_annexure_ii
+from domain.payroll.lwf import classify_state as classify_lwf_state
+from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
@@ -262,6 +264,29 @@ def _compute_pt(gross_paise: int, state: Optional[str] = None,
     if code == "TN":
         return _compute_pt_tn(gross_paise, month)
     return _slab_lookup(_PT_SLABS_BY_STATE.get(code, ()), gross_paise)
+
+
+def _statutory_gaps(emp: dict) -> list[str]:
+    """Statutory deductions this employee's state levies that we did not compute.
+
+    A zero PT for Delhi and a zero PT for Gujarat are the same number meaning
+    opposite things — "nothing is due" and "something is due and nobody worked
+    it out". _compute_pt cannot tell them apart, because it returns an int; this
+    does, so the run can report it.
+
+    LWF is here for a blunter reason: this module does not deduct it anywhere,
+    so every employer who owes it has been shown a payslip that quietly omits a
+    statutory deduction.
+    """
+    gaps: list[str] = []
+    if emp.get("pt_applicable"):
+        pt = classify_pt_state(emp.get("pt_state"))
+        if pt.is_gap:
+            gaps.append(f"{(emp.get('name') or emp.get('id') or 'employee')}: {pt.note}")
+    lwf = classify_lwf_state(emp.get("pt_state"))
+    if lwf.is_gap:
+        gaps.append(f"{(emp.get('name') or emp.get('id') or 'employee')}: {lwf.note}")
+    return gaps
 
 
 def _to_nearest_rupee(paise: int) -> int:
@@ -784,12 +809,19 @@ def create_run(
     esi_covered_earlier = _members_contributing_earlier_this_period(
         db, current_user["firm_id"], client_id, month)
 
+    # Statutory deductions this run did NOT compute because the state's rules are
+    # not modelled. Collected per employee and returned with the run: a zero PT
+    # for Delhi and a zero PT for Gujarat are the same number meaning opposite
+    # things, and only one of them is a liability nobody has settled.
+    statutory_gaps: list[str] = []
+
     for emp in emps:
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
         slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
                              esi_covered_at_period_start=emp["id"] in esi_covered_earlier)
+        statutory_gaps.extend(_statutory_gaps(emp))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
 
@@ -833,7 +865,9 @@ def create_run(
         entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"),
     )
-    return api_response(True, run)
+    # Returned WITH the run rather than logged: an omitted statutory deduction
+    # that only appears in a log is an omitted statutory deduction.
+    return api_response(True, {**run, "statutory_gaps": statutory_gaps})
 
 
 @router.get("/runs/{run_id}/slips")
