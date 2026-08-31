@@ -26,6 +26,9 @@ import calendar
 
 from domain.payroll.ecr import build_ecr
 from domain.payroll.esic import build_esic_return
+from domain.payroll.form24q import (
+    build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
+from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
 
@@ -1315,6 +1318,94 @@ def run_esic(
         "filable": ret.is_filable,
         "disclaimer": "CA REVIEW REQUIRED — upload this to the ESIC portal yourself. "
                       "Nothing has been transmitted.",
+    })
+
+
+@router.get("/24q-source")
+def form_24q_from_payroll(
+    client_id: str = Query(...),
+    financial_year: str = Query(..., description='e.g. "2026-27"'),
+    quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Assemble Form 24Q's deductee rows from finalised payroll.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    Until now routers/tds.py's compute_24q took every deductee from the request
+    body, so a CA who had just run payroll re-keyed each employee's name, PAN,
+    gross and tax by hand for all three months. Beyond the labour, that is where
+    the return stops agreeing with the books — and the mismatch surfaces as a
+    TRACES default months later.
+
+    Nothing here computes tax. The TDS is what payroll deducted and what the
+    ledger was credited; this only puts it in the shape 24Q wants.
+    """
+    assert_client_access(current_user, client_id)
+    if quarter not in QUARTER_MONTHS:
+        raise HTTPException(status_code=422, detail=f"Quarter must be one of {sorted(QUARTER_MONTHS)}.")
+
+    db = _db()
+    if not db:
+        return api_response(True, {"financial_year": financial_year, "quarter": quarter,
+                                   "deductees": [], "problems": [], "totals": {},
+                                   "ready": False})
+
+    months = months_in_quarter(financial_year, quarter)
+    runs = (db.table("payroll_runs")
+            .select("id, month, status")
+            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+            .in_("month", months).execute().data) or []
+    # Only finalised runs: a draft's figures can still change, and a return
+    # built on them would be filed against numbers that later moved.
+    usable = [r for r in runs if r.get("status") in ("finalized", "paid")]
+    draft_months = sorted(r["month"] for r in runs if r not in usable)
+
+    slips_by_month: dict = {}
+    emp_ids: set = set()
+    for run in usable:
+        rows = (db.table("payroll_slips").select("*")
+                .eq("run_id", run["id"]).execute().data) or []
+        slips_by_month.setdefault(run["month"], []).extend(rows)
+        emp_ids |= {r.get("employee_id") for r in rows if r.get("employee_id")}
+
+    employees = []
+    if emp_ids:
+        employees = (db.table("payroll_employees").select("id, name, pan")
+                     .eq("firm_id", current_user["firm_id"])
+                     .in_("id", list(emp_ids)).execute().data) or []
+
+    challans = (db.table("tds_challans")
+                .select("challan_no, bsr_code, payment_date, section, tds_paise")
+                .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+                .eq("financial_year", financial_year).eq("quarter", quarter)
+                .execute().data) or []
+
+    src = build_24q_from_payroll(
+        slips_by_month=slips_by_month,
+        employees_by_id={e["id"]: e for e in employees},
+        challans=challans,
+        record_cls=TDSDeducteeRecord,
+    )
+    if draft_months:
+        src.problems.append(
+            "Payroll for " + ", ".join(draft_months) + " is not finalised, so it is "
+            "not in this return. Finalise those runs first, or the quarter will be "
+            "short.")
+
+    return api_response(True, {
+        "client_id": client_id,
+        "financial_year": financial_year,
+        "quarter": quarter,
+        "months": months,
+        "deductees": [d.__dict__ for d in src.deductees],
+        "challans": src.challans,
+        "problems": src.problems,
+        "employees_with_nil_tds": src.employees_with_nil_tds,
+        "totals": src.totals(),
+        "ready": src.is_ready,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Review every row, "
+                      "then file on TRACES yourself.",
     })
 
 
