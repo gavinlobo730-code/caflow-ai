@@ -362,12 +362,25 @@ PART C
         assert upload["financial_year"] == "2025-26"
 
     def test_create_upload_real_branch_inserts_valid_columns(self, monkeypatch):
-        """task #226 audit finding: create_upload's real (_USE_MOCK=False)
-        branch used to write document_id/uploaded_by onto form_26as_uploads —
-        neither column exists (migration 052); uploaded_by must map onto the
-        real created_by column instead. Exercises the real insert path
-        directly against a fake db.table("form_26as_uploads").insert(...)
-        capture, since the mock-mode test above never reaches this branch."""
+        """The insert must name BOTH identity columns.
+
+        History, because this test asserted the opposite and was wrong. The
+        task #226 audit found create_upload writing uploaded_by, concluded
+        "neither column exists (migration 052)", and removed it — pinning
+        `"uploaded_by" not in captured`. That reasoned from the migration FILE.
+        The live database was never checked, and it has uploaded_by NOT NULL and
+        no created_by at all: migration 052's CREATE TABLE is not the table
+        production runs. So the #226 fix deleted the one column production
+        requires, and every 26AS upload has failed there since — form_26as_uploads
+        holds zero rows on the live database.
+
+        It stayed invisible because the CI template is built from the migrations
+        with --continue-on-error, so the template and every column check only
+        ever saw the 052 shape, and nothing compared the two.
+
+        Migration 291 converges them: each side gains whichever column it lacks,
+        nullable. Naming both satisfies production's NOT NULL and the template
+        alike, and that is what this now pins."""
         import domain.income_tax.form26as_service as mod
 
         captured = {}
@@ -391,7 +404,7 @@ PART C
         mod.create_upload("f1", "c1", "2025-26", "u1", document_id="doc-9")
 
         assert captured["created_by"] == "u1"
-        assert "uploaded_by" not in captured
+        assert captured["uploaded_by"] == "u1"
         assert captured["document_id"] == "doc-9"
 
     def test_save_parsed_records(self):

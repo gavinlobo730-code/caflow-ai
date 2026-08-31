@@ -84,7 +84,10 @@ def create_upload(
             "total_records": 0,
             "parse_errors": [],
             "source": UPLOAD_SOURCE,
+            # Both, mirroring the real insert below — see the comment there for
+            # why this table needs two names for one person.
             "uploaded_by": uploaded_by,
+            "created_by": uploaded_by,
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
         }
         _MOCK_UPLOADS[row["id"]] = row
@@ -97,9 +100,16 @@ def create_upload(
         "client_id": client_id,
         "financial_year": financial_year,
         "document_id": document_id,
-        # form_26as_uploads has no separate uploaded_by column — created_by
-        # is the real column (migration 052) and means the same thing here.
+        # BOTH, deliberately. This table's shape diverged between the CI
+        # template and the live database: migration 052 declares created_by and
+        # no uploaded_by, while production has uploaded_by NOT NULL and no
+        # created_by. This insert previously named created_by alone, so on the
+        # live database every 26AS upload violated a NOT NULL on a column the
+        # code did not know existed — form_26as_uploads holds zero rows there.
+        # Migration 291 adds whichever column each side is missing, nullable, so
+        # naming both satisfies production's NOT NULL and the template alike.
         "created_by": uploaded_by,
+        "uploaded_by": uploaded_by,
         "source": UPLOAD_SOURCE,
     }
     res = sb.table("form_26as_uploads").insert(row).execute()
