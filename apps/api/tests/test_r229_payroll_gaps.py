@@ -62,8 +62,16 @@ def test_compute_pf_zero_da_matches_basic_only_pf():
 
 
 def test_compute_pf_helper_accepts_wages_directly():
-    assert pr._compute_pf(1200000) == {"employee": 144000, "employer": 144000}
-    assert pr._compute_pf(2400000) == {"employee": 180000, "employer": 180000}  # ceiling
+    # Asserts the two figures this test is about, rather than the whole dict.
+    # _compute_pf also returns the EPS/EPF split of the employer's share plus
+    # EDLI and admin — see tests/test_pf_eps_split.py. Both values below are
+    # unchanged by that work; only the dict grew.
+    at_12k = pr._compute_pf(1200000)
+    assert at_12k["employee"] == 144000
+    assert at_12k["employer"] == 144000
+    at_ceiling = pr._compute_pf(2400000)
+    assert at_ceiling["employee"] == 180000
+    assert at_ceiling["employer"] == 180000
 
 
 # ── Finding #1: create_run duplicate-run race (check-then-act, no DB constraint

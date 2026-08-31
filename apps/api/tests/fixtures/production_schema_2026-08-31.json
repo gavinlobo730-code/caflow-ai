@@ -181,6 +181,11 @@
       "nullable": "NO",
       "type": "uuid"
     },
+    "account_name": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
     "account_type": {
       "default": "",
       "nullable": "YES",
@@ -201,6 +206,11 @@
       "nullable": "NO",
       "type": "uuid"
     },
+    "is_active": {
+      "default": "true",
+      "nullable": "NO",
+      "type": "boolean"
+    },
     "normal_balance": {
       "default": "'debit'::text",
       "nullable": "NO",
@@ -209,6 +219,21 @@
     "schedule_line": {
       "default": "",
       "nullable": "NO",
+      "type": "text"
+    },
+    "sequence_no": {
+      "default": "0",
+      "nullable": "NO",
+      "type": "integer"
+    },
+    "statement_type": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
+    "sub_line": {
+      "default": "",
+      "nullable": "YES",
       "type": "text"
     },
     "updated_at": {
@@ -1444,6 +1469,11 @@
       "default": "now()",
       "nullable": "NO",
       "type": "timestamp with time zone"
+    },
+    "firm_id": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
     },
     "id": {
       "default": "uuid_generate_v4()",
@@ -3069,6 +3099,11 @@
       "nullable": "NO",
       "type": "timestamp with time zone"
     },
+    "last_updated_at": {
+      "default": "now()",
+      "nullable": "YES",
+      "type": "timestamp with time zone"
+    },
     "missed_deadline_count": {
       "default": "0",
       "nullable": "NO",
@@ -3089,6 +3124,11 @@
       "nullable": "YES",
       "type": "text"
     },
+    "profile_data": {
+      "default": "'{}'::jsonb",
+      "nullable": "YES",
+      "type": "jsonb"
+    },
     "profile_version": {
       "default": "1",
       "nullable": "NO",
@@ -3103,6 +3143,16 @@
       "default": "",
       "nullable": "YES",
       "type": "text"
+    },
+    "segment": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
+    "tags": {
+      "default": "'{}'::text[]",
+      "nullable": "YES",
+      "type": "ARRAY"
     },
     "updated_at": {
       "default": "now()",
@@ -7140,6 +7190,11 @@
       "nullable": "NO",
       "type": "text"
     },
+    "firm_id": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
+    },
     "id": {
       "default": "uuid_generate_v4()",
       "nullable": "NO",
@@ -7187,6 +7242,11 @@
     }
   },
   "financial_statement_versions": {
+    "change_reason": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
     "client_id": {
       "default": "",
       "nullable": "NO",
@@ -7226,6 +7286,11 @@
       "default": "",
       "nullable": "YES",
       "type": "text"
+    },
+    "statement_data": {
+      "default": "",
+      "nullable": "NO",
+      "type": "jsonb"
     },
     "statements_data": {
       "default": "'{}'::jsonb",
@@ -7505,6 +7570,11 @@
       "nullable": "NO",
       "type": "timestamp with time zone"
     },
+    "last_updated_at": {
+      "default": "now()",
+      "nullable": "YES",
+      "type": "timestamp with time zone"
+    },
     "peak_workload_months": {
       "default": "'[]'::jsonb",
       "nullable": "YES",
@@ -7520,10 +7590,20 @@
       "nullable": "YES",
       "type": "text"
     },
+    "profile_data": {
+      "default": "'{}'::jsonb",
+      "nullable": "YES",
+      "type": "jsonb"
+    },
     "revenue_growth_trend": {
       "default": "'stable'::text",
       "nullable": "YES",
       "type": "text"
+    },
+    "settings": {
+      "default": "'{}'::jsonb",
+      "nullable": "YES",
+      "type": "jsonb"
     },
     "team_utilisation_trend": {
       "default": "'stable'::text",
@@ -12447,6 +12527,11 @@
       "default": "now()",
       "nullable": "NO",
       "type": "timestamp with time zone"
+    },
+    "firm_id": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
     },
     "granted_by": {
       "default": "",
@@ -17612,10 +17697,20 @@
       "nullable": "NO",
       "type": "timestamp with time zone"
     },
+    "default_assignee_role": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
     "description": {
       "default": "",
       "nullable": "YES",
       "type": "text"
+    },
+    "estimated_hours": {
+      "default": "",
+      "nullable": "YES",
+      "type": "numeric"
     },
     "false_branch_step_id": {
       "default": "",
@@ -17637,6 +17732,21 @@
       "nullable": "YES",
       "type": "uuid"
     },
+    "required": {
+      "default": "true",
+      "nullable": "NO",
+      "type": "boolean"
+    },
+    "step_description": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
+    "step_name": {
+      "default": "",
+      "nullable": "YES",
+      "type": "text"
+    },
     "step_order": {
       "default": "",
       "nullable": "NO",
@@ -17653,6 +17763,11 @@
       "type": "uuid"
     },
     "true_branch_step_id": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
+    },
+    "workflow_id": {
       "default": "",
       "nullable": "YES",
       "type": "uuid"
@@ -18009,6 +18124,11 @@
       "nullable": "YES",
       "type": "uuid"
     },
+    "client_id": {
+      "default": "",
+      "nullable": "NO",
+      "type": "uuid"
+    },
     "created_at": {
       "default": "now()",
       "nullable": "NO",
@@ -18088,6 +18208,16 @@
       "default": "",
       "nullable": "YES",
       "type": "text"
+    },
+    "reviewed_at": {
+      "default": "",
+      "nullable": "YES",
+      "type": "timestamp with time zone"
+    },
+    "reviewed_by": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
     },
     "status": {
       "default": "'draft'::text",
@@ -18248,6 +18378,26 @@
       "nullable": "YES",
       "type": "timestamp with time zone"
     },
+    "prepared_at": {
+      "default": "",
+      "nullable": "YES",
+      "type": "timestamp with time zone"
+    },
+    "prepared_by": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
+    },
+    "reviewed_at": {
+      "default": "",
+      "nullable": "YES",
+      "type": "timestamp with time zone"
+    },
+    "reviewed_by": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
+    },
     "revision_comment": {
       "default": "",
       "nullable": "YES",
@@ -18349,6 +18499,11 @@
       "default": "''::text",
       "nullable": "NO",
       "type": "text"
+    },
+    "version_id": {
+      "default": "",
+      "nullable": "YES",
+      "type": "uuid"
     }
   },
   "year_end_notes": {

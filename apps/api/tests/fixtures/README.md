@@ -47,3 +47,21 @@ production out-of-band would have shown up as a mismatch.
 Prefer a real re-capture when a libpq DSN is available. Use this route only
 where one is not, and only with the checksum shown — an unverified hand edit to
 this file would silently weaken every assertion that reads it.
+
+## Refreshed again, 31 August 2026, after migration 294
+
+294 added the 31 columns the migrations declared and production did not have —
+the drift category this file's own check had, wrongly, treated as harmless. Four
+features were failing in production because of them; see
+test_schema_matches_production_pg.py's docstring.
+
+Same route as the 293 refresh and the same proof: the 31 entries were copied
+from the migration-built template (294 made production match it), then the whole
+file was hashed against production the same way. Both sides
+28b0a6f294089a9c269c198cb053eedd, over 3,637 columns in 249 tables — 3,606 + 31.
+
+columns_missing_from_live is now asserted, and went 32 -> 1. The survivor is
+clients_external.is_test: clients_external is a VIEW on both sides whose two
+definitions select different columns. The assertion excludes views by asking the
+database which relations are views, never by naming them, so a table cannot fall
+through it.
