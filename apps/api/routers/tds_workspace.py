@@ -653,9 +653,13 @@ def upload_form26as(
             },
         }
 
-        # form_26as_uploads (migration 052) is file_url/raw_data/
-        # reconciliation_result/status/created_by/uploaded_at — record below
-        # already matches those real columns exactly, so it's inserted as-is.
+        # form_26as_uploads' shape diverged between migration 052 and the live
+        # database (see migration 291): 052 declares created_by and no
+        # uploaded_by, production has uploaded_by NOT NULL and none of
+        # status/file_url/raw_data/reconciliation_result. This record named only
+        # the 052 side, so on the live database every insert here failed — first
+        # on the missing columns, then on that NOT NULL. 291 adds whichever
+        # column each side lacks; naming both identity keys satisfies both.
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -666,6 +670,7 @@ def upload_form26as(
             "reconciliation_result": reconciliation_result,
             "status": "reconciled",
             "created_by": current_user.get("id"),
+            "uploaded_by": current_user.get("id"),
             "uploaded_at": datetime.utcnow().isoformat(),
             # Shared table, different feature (migration 291). Without this the
             # row lands in the 26AS page's Upload History as a spinner that

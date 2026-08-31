@@ -157,6 +157,42 @@ COMMENT ON COLUMN public.form_26as_records.variance_paise IS
 --     one table with incompatible semantics is.
 --
 --     `source` separates them, and list_uploads plus the page filter on it.
+--
+--     FIRST, THOUGH: this table's shape differs between the CI template and the
+--     live database, and the first cut of this migration failed in production
+--     because of it — "column status does not exist" on the backfill below.
+--
+--     Migration 052 declares form_26as_uploads with file_url / raw_data /
+--     reconciliation_result / status / created_by. Production's copy has none
+--     of those; it has uploaded_by (NOT NULL) instead. The CI template is built
+--     with --continue-on-error, so 052's shape is what every local run and
+--     every column check has seen, while the live table has always been the
+--     other one. Nothing compared the two, so the divergence was invisible.
+--
+--     The consequence is not cosmetic. create_upload writes created_by and
+--     never writes uploaded_by, so on the live database every 26AS upload
+--     insert violates a NOT NULL on a column the code does not know exists —
+--     which is why form_26as_uploads holds zero rows in production. The
+--     tds_workspace path writes status / file_url / raw_data /
+--     reconciliation_result and fails the same way.
+--
+--     So converge the two before touching anything else. Every ADD is
+--     IF NOT EXISTS and nullable, which makes this a no-op on whichever side
+--     already has the column and never re-imposes a constraint: production
+--     keeps its NOT NULL on uploaded_by, and the code now writes both keys.
+ALTER TABLE public.form_26as_uploads
+  ADD COLUMN IF NOT EXISTS uploaded_by           UUID,
+  ADD COLUMN IF NOT EXISTS created_by            UUID,
+  ADD COLUMN IF NOT EXISTS status                TEXT,
+  ADD COLUMN IF NOT EXISTS file_url              TEXT,
+  ADD COLUMN IF NOT EXISTS raw_data              JSONB,
+  ADD COLUMN IF NOT EXISTS reconciliation_result JSONB;
+
+COMMENT ON COLUMN public.form_26as_uploads.uploaded_by IS
+  'Who uploaded the statement. Present in the live database as NOT NULL and '
+  'absent from migration 052 — see migration 291. Written alongside created_by '
+  'so one insert satisfies both shapes.';
+
 ALTER TABLE public.form_26as_uploads
   ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'form_26as_pipeline';
 
@@ -169,6 +205,11 @@ COMMENT ON COLUMN public.form_26as_uploads.source IS
 -- Backfill on evidence, not on a guess: only the tds_workspace path writes a
 -- reconciliation_result, and only it sets status='reconciled'. The 26AS
 -- pipeline writes neither, so rows carrying both are unambiguously its.
+--
+-- Both columns are guaranteed to exist by the converging ALTER above, so this
+-- no longer depends on which shape the database started from. On the live
+-- database it matches nothing — those columns were only just added, and the
+-- table is empty because the insert has never succeeded there.
 UPDATE public.form_26as_uploads
    SET source = 'tds_workspace'
  WHERE source = 'form_26as_pipeline'

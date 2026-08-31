@@ -375,3 +375,63 @@ def test_the_26as_upload_list_excludes_the_tds_workspace_rows(seeded):
 def test_an_upload_this_module_creates_is_stamped_with_its_own_source(seeded):
     assert svc._MOCK_UPLOADS[seeded["id"]]["source"] == svc.UPLOAD_SOURCE
     assert svc.UPLOAD_SOURCE == "form_26as_pipeline"
+
+
+# ── The live-database shape (found when migration 291 failed in production) ───
+
+class _CapturingTable:
+    """Minimal PostgREST stand-in that records the row an insert was given."""
+
+    def __init__(self, sink):
+        self._sink = sink
+
+    def insert(self, row):
+        self._sink.append(row)
+        return self
+
+    def execute(self):
+        return type("Res", (), {"data": []})()
+
+
+class _CapturingClient:
+    def __init__(self):
+        self.rows: list[dict] = []
+
+    def table(self, name):
+        assert name == "form_26as_uploads"
+        return _CapturingTable(self.rows)
+
+
+def test_the_upload_insert_names_both_identity_columns(monkeypatch):
+    """form_26as_uploads' shape diverged between the repo and the live database.
+
+    Migration 052 declares `created_by` and no `uploaded_by`. Production has
+    `uploaded_by` NOT NULL and no `created_by`. The CI template is built from
+    the migrations, so every local run and every column check only ever saw the
+    052 shape — while the live table has always been the other one, and nothing
+    compared them.
+
+    That is not cosmetic: this insert named `created_by` alone, so on the live
+    database it violated a NOT NULL on a column the code did not know existed.
+    `form_26as_uploads` holds zero rows in production as a result. Migration 291
+    adds whichever column each side is missing, nullable, and the insert now
+    names both — which is what this test pins, so neither is tidied away.
+    """
+    client = _CapturingClient()
+    monkeypatch.setattr(svc, "_USE_MOCK", False)
+    monkeypatch.setattr(svc, "_supabase", lambda: client)
+
+    svc.create_upload("f1", "c1", "2025-26", "user-1")
+
+    assert len(client.rows) == 1
+    row = client.rows[0]
+    assert row["uploaded_by"] == "user-1"
+    assert row["created_by"] == "user-1"
+    assert row["source"] == svc.UPLOAD_SOURCE
+
+
+def test_mock_mode_builds_the_same_identity_columns_as_production(seeded):
+    """Mock mode must not be the only place the row looks right."""
+    row = svc._MOCK_UPLOADS[seeded["id"]]
+    assert row["uploaded_by"] == "u1"
+    assert row["created_by"] == "u1"
