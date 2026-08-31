@@ -37,6 +37,9 @@ from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
 from domain.payroll import declarations as decl_domain
 from domain.payroll import gratuity as gratuity_domain
+from domain.payroll import bonus as bonus_domain
+from domain.payroll import leave_encashment as leave_domain
+from domain.payroll import settlement as settlement_domain
 from dataclasses import replace as _replace
 
 
@@ -2324,4 +2327,187 @@ def statutory_position(
     return api_response(True, {
         "month": month, "financial_year": fy,
         "rows": rows, "totals": totals, "gaps": gaps,
+    })
+
+
+# ─── Full and final settlement ───────────────────────────────────────────────
+
+class SettlementIn(BaseModel):
+    """What only a human knows about a departure.
+
+    Everything else — length of service, wages, PF, the gratuity and leave
+    formulae — comes off the employee master and the year's payslips. These are
+    the facts no record holds: why they left, what the contract says about
+    notice, and what they still owe.
+    """
+    client_id: str
+    leaving_date: str                      # ISO
+    on_death_or_disablement: bool = False
+    on_retirement: bool = True             # decides §10(10AA) entirely
+    is_government_employee: bool = False
+
+    salary_to_last_day_paise: int = 0
+    leave_days_encashed: int = 0
+    leave_encashment_paise: int = 0
+
+    # §12 of the Bonus Act compares ₹7,000 with the minimum wage for the
+    # scheduled employment. There is no table of those; supplying it is a
+    # human step.
+    bonus_accounting_year: Optional[str] = None
+    bonus_rate_bps: int = 833
+    bonus_months_worked: int = 0
+    bonus_working_days: int = 0
+    minimum_wage_monthly_paise: Optional[int] = None
+
+    notice_pay_recovered_paise: int = 0
+    loans_outstanding_paise: int = 0
+    other_recoveries_paise: int = 0
+
+    # Lifetime limits under §10(10) and §10(10AA) are aggregated across
+    # employers. Absent, the full limit is assumed and the response says so.
+    gratuity_exemption_already_used_paise: Optional[int] = None
+    leave_exemption_already_used_paise: Optional[int] = None
+    gratuity_amount_actually_paid_paise: Optional[int] = None
+    average_last_ten_months_paise: Optional[int] = None
+
+
+@router.post("/employees/{employee_id}/settlement")
+def preview_settlement(
+    employee_id: str,
+    body: SettlementIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """What a leaver is owed — computed, not written.
+
+    A leaver's last payment is not a payslip with a different date on it. It is
+    a composition of separate entitlements, each with its own statute, its own
+    base and its own tax treatment, netted against what the employee owes back.
+    Each component is computed by the module that owns its statute
+    (domain/payroll/gratuity.py, leave_encashment.py, bonus.py) and composed by
+    settlement.py; nothing here re-derives any of them.
+
+    Read-only on purpose. Settling an employee ends their employment, releases
+    money and closes a PF account — it is not something a preview should do as a
+    side effect. The figures come back for a human to act on.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "components": [],
+                                   "deductions": [], "totals": {}, "gaps": [],
+                                   "problems": []})
+
+    emp = (db.table("payroll_employees").select("*")
+           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+           .maybe_single().execute().data)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    try:
+        leaving = date.fromisoformat(body.leaving_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="leaving_date must be ISO (YYYY-MM-DD)")
+
+    basic = int(emp.get("basic_paise") or 0)
+    da = _percent_of(basic, emp.get("da_percent", 0))
+    joining = emp.get("joining_date")
+
+    grat = gratuity_domain.compute(
+        basic_plus_da_paise=basic + da,
+        joining=date.fromisoformat(str(joining)) if joining else None,
+        leaving=leaving,
+        covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+        on_death_or_disablement=body.on_death_or_disablement,
+        amount_actually_paid_paise=body.gratuity_amount_actually_paid_paise,
+        exemption_already_used_paise=body.gratuity_exemption_already_used_paise,
+        average_last_ten_months_paise=body.average_last_ten_months_paise,
+    )
+
+    leave = None
+    if body.leave_encashment_paise or body.leave_days_encashed:
+        leave = leave_domain.compute(
+            amount_received_paise=body.leave_encashment_paise,
+            # §10(10AA)'s average is the last TEN MONTHS' basic + DA. Where the
+            # caller has not supplied it, the current rate stands in — and
+            # leave_encashment.py is where that substitution would be flagged if
+            # it mattered; here the current rate IS the last ten months for
+            # anyone whose pay did not change.
+            average_monthly_salary_paise=(body.average_last_ten_months_paise
+                                          if body.average_last_ten_months_paise is not None
+                                          else basic + da),
+            completed_years_of_service=grat.completed_years,
+            leave_days_encashed=body.leave_days_encashed,
+            on_retirement=body.on_retirement,
+            is_government_employee=body.is_government_employee,
+            exemption_already_used_paise=body.leave_exemption_already_used_paise,
+        )
+        if body.average_last_ten_months_paise is None:
+            leave.gaps.append(
+                "§10(10AA)'s 'average salary' is the average of the LAST TEN "
+                "MONTHS' basic and DA. The current rate was used instead. Where "
+                "pay changed in the final ten months the two differ, and the "
+                "average is the one the section asks for."
+            )
+
+    bon = None
+    if body.bonus_accounting_year:
+        bon = bonus_domain.compute(
+            accounting_year=body.bonus_accounting_year,
+            monthly_salary_paise=basic + da,
+            months_worked=body.bonus_months_worked,
+            working_days_in_year=body.bonus_working_days,
+            rate_bps=body.bonus_rate_bps,
+            minimum_wage_monthly_paise=body.minimum_wage_monthly_paise,
+        )
+
+    s = settlement_domain.build(
+        salary_to_last_day_paise=body.salary_to_last_day_paise,
+        gratuity=grat if (grat.eligible or grat.reasons) else None,
+        leave=leave,
+        bonus=bon,
+        notice_pay_recovered_paise=body.notice_pay_recovered_paise,
+        loans_outstanding_paise=body.loans_outstanding_paise,
+        other_recoveries_paise=body.other_recoveries_paise,
+    )
+    # A gratuity that is simply not due yet is an answer, not a gap — but it
+    # has to be visible, or a CA cannot tell "nil" from "not computed".
+    if grat.reasons:
+        s.gaps.extend(grat.reasons)
+
+    return api_response(True, {
+        "employee_id": employee_id,
+        "employee_name": emp.get("name"),
+        "leaving_date": body.leaving_date,
+        "components": [
+            {"label": c.label, "gross_paise": c.gross_paise,
+             "exempt_paise": c.exempt_paise, "taxable_paise": c.taxable_paise,
+             "statute": c.statute}
+            for c in s.components
+        ],
+        "deductions": [
+            {"label": d.label, "gross_paise": d.gross_paise, "statute": d.statute}
+            for d in s.deductions
+        ],
+        "totals": {
+            "gross_paise": s.gross_paise,
+            "exempt_paise": s.exempt_paise,
+            # What belongs in §17(1) for the year. Recoveries do not reduce it —
+            # taking notice pay back does not un-earn the salary.
+            "taxable_paise": s.taxable_paise,
+            "deductions_paise": s.deductions_paise,
+            "net_payable_paise": s.net_payable_paise,
+        },
+        "gratuity_detail": {
+            "eligible": grat.eligible,
+            "completed_years": grat.completed_years,
+            "years_counted": grat.service_years_counted,
+            "payable_paise": grat.payable_paise,
+            "exempt_paise": grat.exempt_paise,
+        },
+        "gaps": s.gaps,
+        "problems": s.problems,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here is "
+                      "written, paid or filed.",
     })

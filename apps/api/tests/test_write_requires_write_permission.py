@@ -80,6 +80,13 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         "/api/banking/reconciliations/{recon_id}/preview",
         "/api/banking/transactions/{txn_id}/posting-preview",
         "/api/billing/preview-run",
+        # A leaver's settlement is COMPUTED and handed back for a human to act
+        # on. POST only because the request body carries the facts no record
+        # holds — why they left, what the contract says about notice, what they
+        # still owe. Settling an employee ends their employment, releases money
+        # and closes a PF account; none of that is something a preview should do
+        # as a side effect, so the handler reads and returns and writes nothing.
+        "/api/payroll/employees/{employee_id}/settlement",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes
