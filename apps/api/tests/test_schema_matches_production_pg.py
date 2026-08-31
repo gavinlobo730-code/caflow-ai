@@ -33,7 +33,7 @@ the uuid-vs-text columns accepted a non-uuid string on one side and not the
 other. That set is at zero now, so it is cheap to hold there, and a type
 difference is always a bug in one of the two places.
 
-A THIRD DIRECTION, ONCE MIGRATION 294 HAS APPLIED
+A THIRD DIRECTION, ASSERTED SINCE MIGRATION 294
 
 An earlier version of this docstring said the remaining categories "cannot
 reject an insert, so none of them is a build failure". That was wrong about one
@@ -54,10 +54,12 @@ worst: public.filings is what journal_period_lock_reason reads (266, 267), so a
 row that never gets written is a period that never locks, and entries stay
 editable after the return covering them is filed.
 
-Migration 294 adds all 32. The assertion belongs here the moment the refreshed
-production snapshot reflects it — see the fixtures README; until then this
-category is reported, not asserted, and the count should be falling, never
-rising.
+Migration 294 added all 31 that are real, and the snapshot below was refreshed
+against production once it applied, so the set is now asserted. The 32nd,
+clients_external.is_test, is excluded on principle rather than by name:
+clients_external is a VIEW on both sides, its two definitions select different
+columns, and nothing inserts into it. The exclusion is derived by asking the
+database which relations are views, so a table can never fall through it.
 
 WHAT IT STILL DELIBERATELY DOES NOT ASSERT
 
@@ -125,6 +127,17 @@ def _declared_snapshot(template_name: str) -> dict:
                        capture_output=True, text=True)
 
 
+def _view_names(template_name: str) -> set:
+    """Relations in the template that are views, not base tables."""
+    admin = _HARNESS_PG.strip()
+    out = subprocess.run(
+        ["psql", f"{admin} dbname={template_name}", "-X", "-tA", "-c",
+         "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+         "WHERE n.nspname='public' AND c.relkind IN ('v','m');"],
+        capture_output=True, text=True, check=True)
+    return set(out.stdout.split())
+
+
 @pytest.fixture(scope="module")
 def report(pg_template):
     declared = _declared_snapshot(pg_template.name)
@@ -144,6 +157,29 @@ def test_no_column_is_required_in_production_and_optional_in_the_migrations(repo
         "green — which is exactly how form_26as_uploads.uploaded_by was lost.\n"
         "Declare them NOT NULL in a migration (see 292 for the pattern), or, if "
         "production is wrong, change production.\n  "
+        + "\n  ".join(offenders))
+
+
+@_NEEDS_PG
+def test_no_column_the_code_writes_is_missing_from_production(report, pg_template):
+    """A column the migrations declare and production lacks rejects the insert.
+
+    Views are excluded, and the list of them comes from the database rather than
+    from a hand-written allowlist — a view's columns are derived and nothing
+    inserts into one, but a TABLE that slipped into such a list would hide
+    exactly the fault this asserts against.
+    """
+    views = _view_names(pg_template.name)
+    offenders = [o for o in report["columns_missing_from_live"]
+                 if o.split(".", 1)[0] not in views]
+    assert not offenders, (
+        "These columns exist in the migrations and NOT in production. Any code "
+        "that writes one has every insert rejected there while this suite stays "
+        "green — that is how year-end adjustments, statement versions, account "
+        "mappings and the filings row behind period locking were all broken at "
+        "once.\n"
+        "Add them in a migration (294 is the pattern, including how to tighten a "
+        "NOT NULL only where it is safe).\n  "
         + "\n  ".join(offenders))
 
 
