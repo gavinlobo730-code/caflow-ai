@@ -185,19 +185,28 @@ work picked `TaxPayableOnDeemedTI` (the §115JB/§115JC MAT branch) instead of
 `TaxPayableOnTI` on ITR-5 and ITR-6, which validated perfectly and reported the
 wrong tax.
 
-### 3. Payroll statutory limits — currently NOT versioned
+### 3. Payroll statutory limits — PF and ESI are versioned; PT is not yet
 
-`routers/payroll.py` holds these as bare literals, with no `*_BY_FY` registry:
+`domain/payroll/statutory.py` now holds the EPF and ESI figures in the same
+`*_BY_FY` + `LATEST_VERIFIED_FY` shape as everything else: the ₹15,000 EPF
+ceiling and 12% rate, the EPS 8.33% / ₹1,250 diversion, EDLI and admin charges,
+and the ₹21,000 ESI ceiling with its 0.75% / 3.25% rates.
 
-- EPF wage ceiling ₹15,000 (`min(pf_wages_paise, 1500000)`) and the 12% rate
-- ESI wage ceiling ₹21,000 (`gross_paise > 2100000`) and its rates
-- the professional tax slab tables
+They change by EPFO / ESIC notification rather than on an annual cycle, so they
+do not belong in the April sweep — but they are now printable, so add them to
+any coverage check you run:
 
-They change by EPFO / ESIC / state notification, not on an annual cycle, so they
-do not belong in the April sweep — but they also cannot be checked with the
-command above, because there is nothing to print. **Treat this as a known gap:
-when payroll is next worked on, these should move to the same FY-versioned shape
-as the rest.** Until then they need reading by eye.
+```
+cd apps/api && python3 -c "
+from domain.payroll.statutory import RATES_BY_FY, LATEST_VERIFIED_FY
+print('payroll     latest', max(RATES_BY_FY), '| verified', LATEST_VERIFIED_FY)"
+```
+
+**Still a gap: the professional tax slab tables**, which remain bare literals in
+`routers/payroll.py`, and only for **Maharashtra and Tamil Nadu** — roughly
+eighteen other states levy PT and none of them are modelled. PT is set by each
+state, so it wants a per-state, per-FY table rather than a single registry.
+Read by eye until then.
 
 ### 4. What does NOT need an annual edit
 

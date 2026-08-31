@@ -394,10 +394,22 @@ class TestPFBoundary:
         assert result["employer"] == 180000
 
     def test_pf_one_paise_below_cap(self):
-        """Basic ₹14,999 → PF = 12% of ₹14,999 (not capped)."""
+        """Basic ₹14,999 → 12% of ₹14,999, ROUNDED TO THE RUPEE → ₹1,800.
+
+        This expected ₹1,799.88 — floor(1499900 * 12 / 100) — until the EPS
+        split work. EPFO rounds every member's contribution to the nearest
+        rupee and the ECR carries whole rupees only, so ₹1,799.88 is a figure
+        the portal will not take. The rounding is what makes the published
+        ceiling row read ₹1,250 EPS / ₹550 EPF rather than ₹1,249.50 / ₹550.50.
+
+        The cap is still doing its job here — the difference between this and
+        test_pf_one_paise_above_cap is now 12 paise of rounding rather than a
+        cap, so the two rows land on the same rupee. The cap itself is proved
+        at a wage far above the ceiling in tests/test_pf_eps_split.py.
+        """
         result = _compute_pf(1499900)
-        assert result["employee"] == 179988  # floor(1499900 * 12 / 100)
-        assert result["employer"] == 179988
+        assert result["employee"] == 180000
+        assert result["employer"] == 180000
 
     def test_pf_symmetry(self):
         """Employee and employer PF must always be equal."""

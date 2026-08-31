@@ -22,6 +22,7 @@ from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services import employee_portal_service
 from services.internal_client_service import assert_not_internal_for_payroll
+from domain.payroll.statutory import rates_for as payroll_rates_for
 from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
@@ -244,24 +245,88 @@ def _compute_pt(gross_paise: int, state: Optional[str] = None,
     return _slab_lookup(_PT_SLABS_BY_STATE.get(code, ()), gross_paise)
 
 
-def _compute_pf(pf_wages_paise: int) -> dict:
+def _to_nearest_rupee(paise: int) -> int:
+    """Round a contribution to the nearest rupee, half up, in integer paise.
+
+    EPFO requires each member's contributions to be rounded to the rupee, and
+    the difference is not cosmetic: 8.33% of the ₹15,000 ceiling is ₹1,249.50,
+    which is why every published EPF table says ₹1,250 EPS and ₹550 EPF rather
+    than ₹1,249.50 and ₹550.50. Carrying the paise through would put a figure
+    on the ECR that the portal does not accept and that no CA would recognise.
+
+    Integer arithmetic throughout — CLAUDE.md's rule, and the reason this is not
+    round(paise / 100) * 100.
     """
-    PF computation per EPF Act 1952 Section 6: contribution is 12% of "basic
-    wages, dearness allowance and retaining allowance (if any)" — the ₹15,000
-    statutory wage ceiling applies to that same Basic+DA base, not Basic
-    alone. task #229: the caller previously passed basic_paise only, silently
-    under-computing (and under-posting to the GL) both the employee and
-    employer contribution for any employee with a nonzero da_percent. No
-    retaining allowance is modelled by this payroll module (not a component
-    of the employee master), so pf_wages_paise is Basic + DA here.
-    Employee contribution: 12% of PF wages (capped at ₹15,000 → max ₹1,800).
-    Employer contribution: 12% of PF wages (same cap).
+    return ((paise + 50) // 100) * 100
+
+
+def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None) -> dict:
     """
-    # Cap PF wages at ₹15,000 for PF computation
-    capped = min(pf_wages_paise, 1500000)
-    employee = math.floor(capped * 12 / 100)
-    employer = math.floor(capped * 12 / 100)
-    return {"employee": employee, "employer": employer}
+    PF per EPF & MP Act 1952 §6, SPLIT as the Employees' Pension Scheme requires.
+
+    §6 sets the employee's contribution at 12% of "basic wages, dearness
+    allowance and retaining allowance (if any)", and the employer matches it.
+    The ₹15,000 ceiling applies to that same Basic+DA base, not Basic alone —
+    task #229 fixed a caller that passed basic_paise only and silently
+    under-computed both halves for anyone with a nonzero da_percent. No
+    retaining allowance is modelled here (it is not on the employee master), so
+    pf_wages_paise is Basic + DA.
+
+    WHAT CHANGED, AND WHY IT MATTERS BEYOND THE LEDGER
+
+    This used to return a flat {"employee": 12%, "employer": 12%}. The
+    employee's 12% is indeed all EPF, but the EMPLOYER's 12% is not: EPS 1995 ¶3
+    diverts 8.33% of PF wages — capped at 8.33% of ₹15,000, i.e. ₹1,250 — to the
+    pension fund, and only the remainder stays in EPF. At or below the ceiling
+    that is 8.33% pension + 3.67% provident fund; above it the pension amount
+    stops rising and the EPF half absorbs the rest.
+
+    Lumping the two together is not merely an imprecise trial balance. The
+    EPFO's ECR return carries EPF wages, EPS wages, the EPF contribution, the
+    EPS contribution and the difference between them as separate columns per
+    member, so a single employer figure cannot produce a valid return at all.
+
+    EDLI (0.5%, EDLI 1976) and administrative charges (0.5%) are returned too.
+    Both are employer costs OUTSIDE the 12% and are deducted from nobody. The
+    admin charge carries a minimum of ₹500 per ESTABLISHMENT per month, which no
+    single payslip can settle — the per-employee 0.5% is computed here and the
+    floor is applied when the run is totalled. EDLI admin has been nil since
+    01-04-2017.
+
+    Rates and ceilings come from domain/payroll/statutory.py, versioned by FY.
+    """
+    r = payroll_rates_for(fy).pf
+    capped = min(pf_wages_paise, r.wage_ceiling_paise)
+
+    # Employee's whole share is EPF.
+    employee = _to_nearest_rupee(capped * r.employee_rate_bps // 10000)
+
+    # Employer's share splits. EPS is computed on its OWN ceiling, which is why
+    # it is not simply 8.33% of `capped` — the two ceilings are separate figures
+    # in the statute even though both are ₹15,000 today.
+    employer_total = _to_nearest_rupee(capped * r.employer_rate_bps // 10000)
+    eps_wages = min(pf_wages_paise, r.eps_ceiling_paise)
+    employer_eps = _to_nearest_rupee(eps_wages * r.eps_rate_bps // 10000)
+    # Never let the pension half exceed the employer's total: if a future
+    # notification moved the ceilings apart, the subtraction below must not go
+    # negative and quietly credit EPF with a negative contribution.
+    employer_eps = min(employer_eps, employer_total)
+    employer_epf = employer_total - employer_eps
+
+    edli = _to_nearest_rupee(min(pf_wages_paise, r.edli_ceiling_paise) * r.edli_rate_bps // 10000)
+    admin = _to_nearest_rupee(capped * r.admin_rate_bps // 10000)
+
+    return {
+        "employee": employee,
+        # Kept so every existing caller and every stored slip keeps its meaning:
+        # the employer's total 12%, which is what "pf_employer_paise" has always
+        # held and what the GL credits in aggregate.
+        "employer": employer_total,
+        "employer_eps": employer_eps,
+        "employer_epf": employer_epf,
+        "edli": edli,
+        "admin": admin,
+    }
 
 
 def _compute_esi(gross_paise: int) -> dict:
