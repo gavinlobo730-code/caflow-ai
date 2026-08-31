@@ -16,7 +16,8 @@ import math
 from pydantic import BaseModel, EmailStr
 
 from models.common import api_response
-from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn, PayrollDisburseIn
+from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
+                           RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn)
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.timeline_service import timeline_service
@@ -34,6 +35,8 @@ from domain.payroll.form24q import (
 from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
+from domain.payroll import declarations as decl_domain
+from dataclasses import replace as _replace
 
 
 def _fy_for_month(month: str) -> Optional[str]:
@@ -337,6 +340,118 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
         return set()
 
 
+def _declarations_for_run(db, firm_id: str, client_id: str,
+                          fy: str) -> dict:
+    """Every employee's §192 declaration for this financial year, by employee id.
+
+    One query for the run rather than one per employee: the answer is bounded by
+    headcount, not by transaction volume, and the alternative is N round trips
+    to Mumbai from a service in Singapore (CLAUDE.md, "Reporting performance").
+
+    A failure returns {} — no declarations, so everyone is withheld on the
+    §115BAC(1A) default with only the standard deduction. That is the safe
+    direction: it is what payroll did before declarations existed, and it
+    over-deducts rather than under-deducts. An exception here must never stop a
+    month's payroll running.
+    """
+    try:
+        heads = (db.table("payroll_it_declarations").select("*")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .eq("fy", fy).execute().data) or []
+        if not heads:
+            return {}
+        items = (db.table("payroll_it_declaration_items").select("*")
+                 .in_("declaration_id", [h["id"] for h in heads])
+                 .execute().data) or []
+        by_decl: dict = {}
+        for it in items:
+            by_decl.setdefault(it.get("declaration_id"), []).append(it)
+        out: dict = {}
+        for h in heads:
+            # A draft is the employee still typing. It has no effect on payroll
+            # until they submit it — withholding on a half-filled form would be
+            # worse than withholding on the default.
+            if h.get("status") == decl_domain.STATUS_DRAFT:
+                continue
+            out[h["employee_id"]] = _declaration_from_rows(h, by_decl.get(h["id"], []))
+        return out
+    except Exception:
+        _logger.exception("could not read IT declarations for %s %s", client_id, fy)
+        return {}
+
+
+def _declaration_from_rows(head: dict, item_rows: list) -> "decl_domain.Declaration":
+    """Map the two tables onto the domain object. Kept in one place so the
+    endpoint and the payroll run cannot disagree about what a stored
+    declaration means."""
+    d = decl_domain.Declaration(
+        employee_id=str(head.get("employee_id") or ""),
+        fy=str(head.get("fy") or ""),
+        regime=head.get("regime") or decl_domain.REGIME_NEW,
+        status=head.get("status") or decl_domain.STATUS_DRAFT,
+        rent_paid_declared_paise=int(head.get("rent_paid_declared_paise") or 0),
+        rent_paid_verified_paise=int(head.get("rent_paid_verified_paise") or 0),
+        landlord_name=head.get("landlord_name") or "",
+        landlord_address=head.get("landlord_address") or "",
+        landlord_pan=head.get("landlord_pan") or "",
+        rent_is_metro=bool(head.get("rent_is_metro")),
+        lta_declared_paise=int(head.get("lta_declared_paise") or 0),
+        lta_verified_paise=int(head.get("lta_verified_paise") or 0),
+        home_loan_interest_declared_paise=int(head.get("home_loan_interest_declared_paise") or 0),
+        home_loan_interest_verified_paise=int(head.get("home_loan_interest_verified_paise") or 0),
+        lender_name=head.get("lender_name") or "",
+        lender_pan=head.get("lender_pan") or "",
+        other_income_declared_paise=int(head.get("other_income_declared_paise") or 0),
+        house_property_loss_declared_paise=int(head.get("house_property_loss_declared_paise") or 0),
+        proofs_verified=bool(head.get("proofs_verified")),
+    )
+    for r in item_rows:
+        d.items.append(decl_domain.DeclarationItem(
+            section=r.get("section") or "",
+            label=r.get("label") or "",
+            amount_declared_paise=int(r.get("amount_declared_paise") or 0),
+            amount_verified_paise=int(r.get("amount_verified_paise") or 0),
+            status=r.get("status") or decl_domain.ITEM_DECLARED,
+            proof_reference=r.get("proof_reference") or "",
+        ))
+    return d
+
+
+def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
+                                  month: str, fy: str) -> dict:
+    """TDS withheld so far this financial year, per employee.
+
+    Returns {employee_id: (tds_paise, months_paid)}. §192(3) adjusts "any excess
+    or deficiency arising out of any PREVIOUS deduction ... during the financial
+    year", so the adjustment needs both halves: what was actually deducted in the
+    FY's earlier months, and how many months those were. Not earlier years, and
+    not this month, which is the one being computed.
+
+    Empty on failure, which makes the month's tax the full annual figure spread
+    over the remaining months. That over-deducts rather than under-deducts, and
+    the employer's liability under §192(1) runs the other way.
+    """
+    try:
+        runs = (db.table("payroll_runs").select("id, month")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute().data) or []
+        earlier = [r["id"] for r in runs
+                   if r.get("month") and r["month"] < month
+                   and _fy_for_month(r["month"]) == fy]
+        if not earlier:
+            return {}
+        slips = (db.table("payroll_slips").select("employee_id, tds_paise")
+                 .in_("run_id", earlier).execute().data) or []
+        out: dict = {}
+        for sl in slips:
+            paise, months = out.get(sl["employee_id"], (0, 0))
+            out[sl["employee_id"]] = (paise + int(sl.get("tds_paise") or 0), months + 1)
+        return out
+    except Exception:
+        _logger.exception("could not read YTD TDS for %s %s", client_id, month)
+        return {}
+
+
 def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
                 eps_eligible: bool = True) -> dict:
     """
@@ -452,7 +567,10 @@ def _compute_esi(gross_paise: int, fy: Optional[str] = None,
 
 def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None,
                   esi_covered_at_period_start: bool = False,
-                  pt_month: Optional[int] = None) -> dict:
+                  pt_month: Optional[int] = None,
+                  declaration: Optional["decl_domain.Declaration"] = None,
+                  tds_already_deducted_paise: int = 0,
+                  months_already_paid: int = 0) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
@@ -509,16 +627,21 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
             if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
     pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender")) if emp.get("pt_applicable") else 0
 
-    # IT Act §192: simplified monthly TDS = annual tax on (projected annual
-    # gross - standard deduction) / 12. Standard deduction and slabs come
-    # from the FY-versioned registry (domain/income_tax/statutory_rates.py) —
-    # the new-regime figure applies since payroll withholding defaults to the
-    # new regime (see _compute_tds_192).
-    rates = rates_for(fy)
+    # IT Act §192: TDS on salary, on the year's PROJECTED income. What the
+    # employee declared decides the regime and the deductions; §192(3) decides
+    # how the resulting annual figure is spread over what is left of the year.
     annual_gross = gross * 12
-    std_deduction_paise = rates.new_regime_standard_deduction_paise
-    taxable_annual = max(0, annual_gross - std_deduction_paise)
-    tds_monthly = _compute_tds_192(taxable_annual, fy=fy)
+    tds_monthly = _monthly_tds(
+        declaration=declaration,
+        annual_gross_paise=annual_gross,
+        basic_plus_da_paise=(basic + da) * 12,
+        hra_received_paise=hra * 12,
+        professional_tax_paise=pt * 12,
+        fy=fy,
+        month=pt_month,
+        tds_already_deducted_paise=tds_already_deducted_paise,
+        months_already_paid=months_already_paid,
+    )
 
     deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
     net = gross - deductions
@@ -549,6 +672,113 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "days_present":       days_present,
         "lop_days":           lop_days,
     }
+
+
+def _months_remaining_for_spread(months_already_paid: int) -> int:
+    """Months to spread the year's outstanding tax over, this one included.
+
+    Deliberately counted from what THIS EMPLOYER has already paid in the
+    financial year, not from the calendar. §192(3) adjusts for "excess or
+    deficiency arising out of any previous deduction ... during the financial
+    year" — previous deductions by this deductor, which are the only ones it
+    knows or answers for.
+
+    Using the calendar instead is a trap with a factor-of-two blast radius. A
+    firm that onboards to this system in October has been deducting since April
+    through whatever they used before; those deductions are real, are on the
+    employee's 26AS, and are invisible here. Spreading the WHOLE year's tax over
+    the six months that remain would double every payslip's TDS, and nothing on
+    the payslip would look wrong.
+
+    Counting paid months instead degrades to 12 — a plain annual/12, exactly
+    what payroll did before §192(3) was applied — whenever this system has no
+    history for the year, which is precisely the case where it cannot know what
+    was withheld earlier.
+    """
+    return max(1, 12 - max(0, int(months_already_paid or 0)))
+
+
+def _monthly_tds(
+    *,
+    declaration,
+    annual_gross_paise: int,
+    basic_plus_da_paise: int,
+    hra_received_paise: int,
+    professional_tax_paise: int,
+    fy: Optional[str],
+    month: Optional[int],
+    tds_already_deducted_paise: int = 0,
+    months_already_paid: int = 0,
+) -> int:
+    """This month's TDS under §192, after §192(3).
+
+    §192(3) is the reason this is not simply annual-tax-over-twelve: "the person
+    responsible for paying may, at the time of making any deduction, increase or
+    reduce the amount to be deducted ... for the purpose of adjusting any excess
+    or deficiency arising out of any previous deduction or failure to deduct
+    during the financial year."
+
+    That subsection is what makes a declaration submitted in December work at
+    all. Without it, an employee who proves ₹1,50,000 of §80C in December has
+    Apr-Nov withheld at the undeclared rate and no mechanism ever gives it back
+    — the employer would have over-deducted and the employee would have to claim
+    a refund in their return, a year later. Spreading the REMAINING tax over the
+    REMAINING months settles it inside the year, which is what the section is
+    for and what every payroll department actually does.
+
+    The floor at zero is deliberate and is also the statute: §192 authorises
+    DEDUCTING tax, not paying it back. Where someone has already had more
+    withheld than the year now needs — a big declaration verified late — the
+    excess is refunded on assessment, not through the payslip.
+    """
+    if declaration is not None:
+        # The §10(13A) exemption is the least of three limbs and two of them —
+        # the HRA actually received and 50%/40% of salary — are the EMPLOYER's
+        # figures, not the employee's. Payroll supplies them here rather than
+        # asking the employee to retype what is already on their payslip.
+        # Copied, not mutated: a slip computation must not change the
+        # declaration its caller holds.
+        declaration = _replace(
+            declaration,
+            hra_basic_plus_da_paise=max(0, basic_plus_da_paise),
+            hra_received_paise=max(0, hra_received_paise),
+        )
+
+    annual_tax = decl_domain.withholding_tax_paise(
+        decl=declaration,
+        projected_annual_salary_paise=annual_gross_paise,
+        fy=fy,
+        # Whether a declaration may rest on what was merely CLAIMED, or only on
+        # what was proved, is a question about the month — see
+        # _verified_only_from_month.
+        verified_only=_verified_only_from_month(month, declaration),
+        professional_tax_paise=professional_tax_paise,
+    )
+
+    remaining_months = _months_remaining_for_spread(months_already_paid)
+    outstanding = annual_tax - max(0, tds_already_deducted_paise)
+    if outstanding <= 0:
+        return 0
+    return outstanding // max(1, remaining_months)
+
+
+# From this month of the financial year, a declaration stops being taken on
+# trust. Month 1 is April, so 10 is January — the point by which employers
+# collect proofs, and the last quarter in which a shortfall can still be
+# recovered from salary. §192(1) makes the employer answerable for a correct
+# deduction, so a claim with no proof behind it must stop reducing tax while
+# there is still salary left to correct it against.
+PROOF_CUTOFF_MONTH_OF_FY: int = 10
+
+
+def _verified_only_from_month(month: Optional[int], declaration) -> bool:
+    if declaration is None:
+        return False
+    if not month or not (1 <= int(month) <= 12):
+        return False
+    m = int(month)
+    index_in_fy = m - 3 if m >= 4 else m + 9
+    return index_in_fy >= PROOF_CUTOFF_MONTH_OF_FY
 
 
 def _compute_tds_192(taxable_annual_paise: int, fy: Optional[str] = None) -> int:
@@ -809,6 +1039,13 @@ def create_run(
     esi_covered_earlier = _members_contributing_earlier_this_period(
         db, current_user["firm_id"], client_id, month)
 
+    # What each employee declared under §192, and what has already been withheld
+    # from them this financial year. Both are read once for the whole run.
+    declarations = _declarations_for_run(
+        db, current_user["firm_id"], client_id, fy)
+    tds_ytd = _tds_already_deducted_this_fy(
+        db, current_user["firm_id"], client_id, month, fy)
+
     # Statutory deductions this run did NOT compute because the state's rules are
     # not modelled. Collected per employee and returned with the run: a zero PT
     # for Delhi and a zero PT for Gujarat are the same number meaning opposite
@@ -820,7 +1057,10 @@ def create_run(
         attendance = (att_res.data or [None])[0]
 
         slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
-                             esi_covered_at_period_start=emp["id"] in esi_covered_earlier)
+                             esi_covered_at_period_start=emp["id"] in esi_covered_earlier,
+                             declaration=declarations.get(emp["id"]),
+                             tds_already_deducted_paise=tds_ytd.get(emp["id"], (0, 0))[0],
+                             months_already_paid=tds_ytd.get(emp["id"], (0, 0))[1])
         statutory_gaps.extend(_statutory_gaps(emp))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -1497,12 +1737,29 @@ def form_24q_annexure_ii(
                      .eq("firm_id", current_user["firm_id"])
                      .in_("id", list(emp_ids)).execute().data) or []
 
+    # Each employee's declaration for the year, so the annexure can carry the
+    # regime they were withheld on and the reliefs their proofs supported. The
+    # §10(13A) formula needs the employer's own figures, so the year's basic+DA
+    # and HRA are totalled off the payslips and attached before the build.
+    declarations = _declarations_for_run(
+        db, current_user["firm_id"], client_id, financial_year)
+    for emp_id, decl in declarations.items():
+        emp_slips = [sl for sl in slips if sl.get("employee_id") == emp_id]
+        declarations[emp_id] = _replace(
+            decl,
+            hra_basic_plus_da_paise=sum(int(sl.get("basic_paise") or 0)
+                                        + int(sl.get("da_paise") or 0)
+                                        for sl in emp_slips),
+            hra_received_paise=sum(int(sl.get("hra_paise") or 0) for sl in emp_slips),
+        )
+
     rates = rates_for(financial_year)
     ann = build_annexure_ii(
         slips=slips,
         employees_by_id={e["id"]: e for e in employees},
         standard_deduction_paise=rates.new_regime_standard_deduction_paise,
         months_expected=len(usable) or 12,
+        declarations_by_employee=declarations,
     )
     missing_months = sorted(set(months) - {r["month"] for r in usable})
     if missing_months:
@@ -1606,3 +1863,286 @@ def employee_portal_status(
     _assert_employee_scope(_db(), current_user, employee_id)
     return api_response(True, employee_portal_service.portal_status(
         current_user["firm_id"], employee_id, actor=current_user))
+
+
+# ─── Employee income-tax declarations (IT Act §192, Rule 26C / Form 12BB) ─────
+#
+# Three statutory objects, kept apart — see domain/payroll/declarations.py for
+# why conflating any two of them gets §192 wrong:
+#   * the REGIME INTIMATION to the employer (Circular 04/2023) — withholding;
+#   * the §115BAC(6) ELECTION (Form 10-IEA or the return) — the assessment;
+#   * the FORM 12BB statement (Rule 26C) — the evidence.
+
+@router.put("/declarations")
+def upsert_declaration(
+    body: DeclarationIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record or replace an employee's declaration for a financial year.
+
+    Submitted, not draft: a declaration reaching this endpoint is one the
+    employee is standing behind, and payroll withholds on it from the next run.
+    Its Chapter VI-A lines are replaced wholesale rather than merged — a
+    declaration is a statement of the whole year's intent, and merging would
+    leave a withdrawn investment silently in place.
+
+    Validation refuses what cannot be given effect (a missing landlord PAN
+    above the Rule 26C threshold, a section this module does not compute) and
+    reports separately, without refusing, the things a CA must know — chiefly
+    that an old-regime intimation is not a §115BAC(6) election.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id)
+
+    candidate = decl_domain.Declaration(
+        employee_id=body.employee_id,
+        fy=body.fy,
+        regime=body.regime,
+        status=decl_domain.STATUS_SUBMITTED,
+        rent_paid_declared_paise=max(0, body.rent_paid_declared_paise),
+        landlord_name=body.landlord_name or "",
+        landlord_address=body.landlord_address or "",
+        landlord_pan=(body.landlord_pan or "").upper(),
+        rent_is_metro=bool(body.rent_is_metro),
+        lta_declared_paise=max(0, body.lta_declared_paise),
+        home_loan_interest_declared_paise=max(0, body.home_loan_interest_declared_paise),
+        lender_name=body.lender_name or "",
+        lender_pan=(body.lender_pan or "").upper(),
+        other_income_declared_paise=max(0, body.other_income_declared_paise),
+        house_property_loss_declared_paise=max(0, body.house_property_loss_declared_paise),
+    )
+    for it in body.items:
+        candidate.items.append(decl_domain.DeclarationItem(
+            section=it.section,
+            label=it.label or "",
+            amount_declared_paise=max(0, it.amount_declared_paise),
+            proof_reference=it.proof_reference or "",
+        ))
+
+    problems = decl_domain.validate(candidate)
+    if problems:
+        raise HTTPException(status_code=422, detail={"problems": problems})
+
+    db = _db()
+    if not db:
+        return api_response(True, {"declaration": None, "problems": [],
+                                   "notices": decl_domain.notices(candidate)})
+
+    now = datetime.now(timezone.utc).isoformat()
+    # Upserted on the (employee_id, fy) unique index from migration 296 rather
+    # than select-then-branch: one declaration per employee per year is the
+    # invariant, and a check-then-act would let two concurrent submissions each
+    # pass the check and both insert.
+    #
+    # Re-declaring RESETS the verification. The figures the CA checked are no
+    # longer the figures being claimed, and carrying the old verdict forward
+    # would let a raised claim inherit the proof for a smaller one.
+    #
+    # The payload is written out in full rather than assembled in a helper so
+    # tests/test_backend_columns_exist_pg.py can read the column names and check
+    # them against the real schema — these tables are new, and the frontend will
+    # write them directly through PostgREST where nothing else would catch a
+    # misspelt column.
+    row = (db.table("payroll_it_declarations").upsert({
+        "firm_id": current_user["firm_id"],
+        "client_id": body.client_id,
+        "employee_id": body.employee_id,
+        "fy": body.fy,
+        "regime": body.regime,
+        "status": decl_domain.STATUS_SUBMITTED,
+        "rent_paid_declared_paise": max(0, body.rent_paid_declared_paise),
+        "rent_paid_verified_paise": 0,
+        "landlord_name": body.landlord_name or "",
+        "landlord_address": body.landlord_address or "",
+        "landlord_pan": (body.landlord_pan or "").upper(),
+        "rent_is_metro": bool(body.rent_is_metro),
+        "lta_declared_paise": max(0, body.lta_declared_paise),
+        "lta_verified_paise": 0,
+        "home_loan_interest_declared_paise": max(0, body.home_loan_interest_declared_paise),
+        "home_loan_interest_verified_paise": 0,
+        "lender_name": body.lender_name or "",
+        "lender_pan": (body.lender_pan or "").upper(),
+        "other_income_declared_paise": max(0, body.other_income_declared_paise),
+        "house_property_loss_declared_paise": max(0, body.house_property_loss_declared_paise),
+        "proofs_verified": False,
+        "verified_at": None,
+        "verified_by": None,
+        "submitted_at": now,
+        "updated_at": now,
+    }, on_conflict="employee_id,fy").execute().data or [{}])[0]
+    decl_id = row.get("id")
+
+    # Chapter VI-A lines are replaced wholesale: a declaration states the whole
+    # year's intent, and merging would leave a withdrawn investment in place.
+    if decl_id:
+        db.table("payroll_it_declaration_items").delete().eq("declaration_id", decl_id).execute()
+
+    for i in candidate.items:
+        if not decl_id:
+            break
+        # One literal insert per line rather than a comprehension, for the same
+        # reason the header payload is spelled out: a comprehension is opaque to
+        # the column check, and these columns have nothing else guarding them.
+        db.table("payroll_it_declaration_items").insert({
+            "firm_id": current_user["firm_id"],
+            "declaration_id": decl_id,
+            "section": i.section,
+            "label": i.label,
+            "amount_declared_paise": i.amount_declared_paise,
+            "amount_verified_paise": 0,
+            "status": decl_domain.ITEM_DECLARED,
+            "proof_reference": i.proof_reference,
+        }).execute()
+
+    timeline_service.log(
+        body.client_id, "work", "IT Declaration Recorded",
+        f"§192 declaration recorded for {body.fy} on the "
+        f"{body.regime} regime", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_it_declaration", entity_id=decl_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {
+        "declaration_id": decl_id,
+        "problems": [],
+        "notices": decl_domain.notices(candidate),
+    })
+
+
+@router.get("/declarations")
+def list_declarations(
+    client_id: str = Query(...),
+    fy: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Every declaration for a client and financial year, with its notices.
+
+    The notices are the point of the list view: it is where a CA sees, in one
+    place, who intimated the old regime (and so may still need Form 10-IEA),
+    who claimed something the new regime does not allow, and whose proofs are
+    still outstanding with the fourth quarter approaching.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"declarations": []})
+
+    heads = (db.table("payroll_it_declarations").select("*")
+             .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+             .eq("fy", fy).execute().data) or []
+    items_by_decl: dict = {}
+    if heads:
+        rows = (db.table("payroll_it_declaration_items").select("*")
+                .in_("declaration_id", [h["id"] for h in heads]).execute().data) or []
+        for r in rows:
+            items_by_decl.setdefault(r.get("declaration_id"), []).append(r)
+
+    out = []
+    for h in heads:
+        d = _declaration_from_rows(h, items_by_decl.get(h["id"], []))
+        out.append({**h,
+                    "items": items_by_decl.get(h["id"], []),
+                    "notices": decl_domain.notices(d)})
+    return api_response(True, {"declarations": out})
+
+
+@router.post("/declarations/{declaration_id}/verify")
+def verify_declaration(
+    declaration_id: str,
+    body: DeclarationVerifyIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record what the proofs actually support.
+
+    A verified amount may be LESS than what was declared and never more; the
+    domain layer refuses the reverse and migration 296 carries the same rule as
+    a CHECK constraint, because the frontend writes these tables directly
+    through PostgREST where no endpoint validation runs at all.
+
+    `proofs_verified` is the switch that matters. Until it is set, the declared
+    figures keep reducing tax for the first three quarters; from the fourth they
+    stop, because §192(1) makes the EMPLOYER answerable for a correct deduction
+    and an unproved claim left in place becomes a Q4 shortfall with no salary
+    left to recover it from.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"declaration_id": declaration_id, "problems": []})
+
+    head = (db.table("payroll_it_declarations").select("*")
+            .eq("id", declaration_id).eq("firm_id", current_user["firm_id"])
+            .maybe_single().execute().data)
+    if not head:
+        raise HTTPException(status_code=404, detail="Declaration not found")
+
+    rows = (db.table("payroll_it_declaration_items").select("*")
+            .eq("declaration_id", declaration_id).execute().data) or []
+    by_section = {r.get("section"): r for r in rows}
+
+    def _proved(value, declared_field: str, label: str) -> int:
+        """A proof may support LESS than was claimed, never more."""
+        declared = int(head.get(declared_field) or 0)
+        if value is None:
+            return int(head.get(declared_field.replace("declared", "verified")) or 0)
+        if value > declared:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{label}: ₹{value / 100:,.2f} verified against "
+                       f"₹{declared / 100:,.2f} declared. A proof can support less "
+                       f"than was claimed, never more — raise the declaration first.")
+        return max(0, int(value))
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    for it in body.items:
+        row = by_section.get(it.section)
+        if not row:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No {it.section} line was declared, so there is nothing to "
+                       f"verify against it.")
+        declared = int(row.get("amount_declared_paise") or 0)
+        verified = int(it.amount_verified_paise or 0)
+        if verified > declared:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{it.section}: ₹{verified / 100:,.2f} verified against "
+                       f"₹{declared / 100:,.2f} declared. A proof can support less "
+                       f"than was claimed, never more — raise the declaration first.")
+        db.table("payroll_it_declaration_items").update({
+            "amount_verified_paise": max(0, verified),
+            "status": it.status or decl_domain.ITEM_VERIFIED,
+            "proof_reference": it.proof_reference or row.get("proof_reference") or "",
+        }).eq("id", row["id"]).execute()
+
+    # Spelled out rather than assembled, so the column check can read it.
+    db.table("payroll_it_declarations").update({
+        "proofs_verified": bool(body.proofs_verified),
+        "rent_paid_verified_paise": _proved(
+            body.rent_paid_verified_paise, "rent_paid_declared_paise", "Rent"),
+        "lta_verified_paise": _proved(
+            body.lta_verified_paise, "lta_declared_paise", "Leave travel"),
+        "home_loan_interest_verified_paise": _proved(
+            body.home_loan_interest_verified_paise,
+            "home_loan_interest_declared_paise", "Home loan interest"),
+        "status": (decl_domain.STATUS_VERIFIED if body.proofs_verified
+                   else head.get("status") or decl_domain.STATUS_SUBMITTED),
+        "verified_at": now if body.proofs_verified else head.get("verified_at"),
+        "verified_by": (current_user.get("id") if body.proofs_verified
+                        else head.get("verified_by")),
+        "updated_at": now,
+    }).eq("id", declaration_id).execute()
+
+    timeline_service.log(
+        body.client_id, "work", "IT Declaration Verified",
+        f"Investment proofs reviewed for {head.get('fy')}", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_it_declaration", entity_id=declaration_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    return api_response(True, {"declaration_id": declaration_id, "problems": []})
