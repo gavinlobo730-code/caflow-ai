@@ -258,6 +258,56 @@ export type ScheduleIiiRatioNote = {
   gaps: { code: string; message: string }[];
 };
 
+// ── The multi-year trend ─────────────────────────────────────────────────────
+// NOT a statutory statement. Schedule III General Instructions para 5 requires
+// the corresponding amounts for the IMMEDIATELY PRECEDING period only — one
+// comparative, which the statements themselves carry. A five-year trend has no
+// prescribed form and is unaudited, and `basis` says so on the document.
+//
+// Amounts are integer paise; ratio values are basis points (10,000 bps = 1.00);
+// movements are one shorter than the values, because the first year has nothing
+// to move from.
+
+export type TrendSeries = {
+  label: string;
+  key: string;
+  /** Presentation only — which direction to colour green. null where the
+   *  answer depends on the business (borrowings are not bad). */
+  higher_is_better: boolean | null;
+  values_paise: number[];
+  movement_paise: number[];
+  /** null for a movement off a zero base: undefined, not infinite. */
+  movement_bps: (number | null)[];
+};
+
+export type TrendRatioSeries = {
+  key: string;
+  label: string;
+  unit: "times" | "percent";
+  clause: string;
+  values_bps: (number | null)[];
+  movement_bps: (number | null)[];
+  unavailable_reason: string | null;
+};
+
+export type MultiYearTrend = {
+  fys: string[];
+  requested_fys: string[];
+  /** Years asked for that had nothing recorded. Left out rather than shown as
+   *  zeros, which would assert nil revenue and nil assets. */
+  dropped_fys: string[];
+  /** Years that FAILED to read. Deliberately separate from dropped_fys: "the
+   *  business had no 2024-25" and "2024-25 could not be read" look identical in
+   *  a shortened table and mean opposite things, and only the first is a
+   *  statement a CA should repeat to a client. */
+  unreadable_fys: string[];
+  basis: string;
+  profit_and_loss: TrendSeries[];
+  balance_sheet: TrendSeries[];
+  ratios: TrendRatioSeries[];
+  gaps: { code: string; message: string }[];
+};
+
 export type AgeingClassifyBody = {
   client_id: string;
   target: "invoice" | "bill" | "vendor";
@@ -623,6 +673,18 @@ export const api = {
     }) => request<ApiResp<{ fy: string; principal_repaid_paise: number | null }>>(
       "/api/accounting/schedule-iii/ratios/inputs",
       { method: "PUT", body: JSON.stringify(body) }),
+    /**
+     * Several financial years of Schedule III captions and clause (Q) ratios
+     * side by side. One backend call for the whole window: the service reads
+     * the client's buckets once and projects every year from them, so ten years
+     * costs what one costs. Asking for the years one at a time would undo that.
+     */
+    scheduleIiiTrend: (clientId: string, years?: number, toFy?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (years) q.set("years", String(years));
+      if (toFy) q.set("to_fy", toFy);
+      return request<ApiResp<MultiYearTrend>>(`/api/accounting/schedule-iii/trend?${q}`);
+    },
     cashFlow: (params?: Record<string, string>) => request(`/api/accounting/cash-flow${params ? "?" + new URLSearchParams(params) : ""}`),
     statementAnalysis: (params: Record<string, string>) => request(`/api/accounting/statement-analysis?${new URLSearchParams(params)}`),
     // Phase 3.5 — journal approval queue (Draft → Approve → Post)

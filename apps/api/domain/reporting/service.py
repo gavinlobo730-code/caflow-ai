@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import Iterator, Optional
 
-from core.ist_clock import ist_today
+from core.ist_clock import fy_bounds, ist_today
 
 from . import balance_cache
 from . import builders
@@ -373,6 +373,100 @@ class ReportingService:
 
         return schedule_iii_builder.build_schedule_iii(
             pl, bs, start, end, prior_pl, prior_bs, p_start, p_end)
+
+    def multi_year_trend(self, firm_id: str, client_id: Optional[str],
+                         fy_labels: list[str]) -> dict:
+        """N financial years of Schedule III captions and ratios, side by side.
+
+        WHY THIS IS NOT N CALLS TO schedule_iii()
+            It would be the obvious implementation and it is the wrong one. On
+            the passbook path every report starts by fetching the client's whole
+            bucket set — the same rows for every year — and schedule_iii now
+            computes its preceding year too, so five years would be twenty
+            passbook reads of one table. This fetches the accounts and the
+            buckets ONCE and projects each year's window from them in memory.
+
+            That is possible because a financial year is MONTH-ALIGNED: 1 April
+            to 31 March needs no partial edge month, so fetch_edge_month_entries
+            returns without a query (see its own docstring). The whole trend,
+            however many years, is two round trips.
+
+        THE LEGACY PATH HOLDS THE SAME LINE, and it has to
+            "Passbook off" is not a niche: it is mock mode, local dev, and every
+            deployment that has not turned the buckets on. Calling profit_loss()
+            and balance_sheet() per year there would be TWO snapshots a year, and
+            a balance-sheet snapshot is already unbounded (None..as_of) — so ten
+            years would be twenty full-history fetches to answer one question.
+
+            It takes ONE snapshot instead, over (None .. the latest year end),
+            and slices it per year in memory. That is the same rows the LAST
+            year's balance sheet needed on its own, so the whole trend costs what
+            one year of it cost. The slice is a date comparison on entry_date
+            because the trend is accrual-only, where a projected line is just the
+            posted line — no cash projection to redo per window.
+        """
+        from . import trend as trend_builder
+
+        if not fy_labels:
+            return trend_builder.build([], [])
+
+        def passbook_projector():
+            accounts = self.source._accounts(firm_id, client_id)
+            buckets = self.source.fetch_buckets(firm_id, client_id)
+
+            def one_year(start: str, end: str) -> tuple[dict, dict]:
+                pl_lines = self._passbook_lines(firm_id, client_id, start, end, buckets)
+                bs_lines = self._passbook_lines(firm_id, client_id, None, end, buckets)
+                return (builders.profit_loss(pl_lines, accounts, start, end, "accrual"),
+                        builders.balance_sheet(bs_lines, accounts, end, "accrual"))
+            return one_year
+
+        def replay_projector():
+            latest_end = max(fy_bounds(fy)[1] for fy in fy_labels)
+            snap = self.source.snapshot(firm_id, client_id, None, latest_end)
+            accounts = snap.accounts
+            history = sorted(snap.entries_in_range, key=lambda e: e.entry_date)
+
+            def flatten(entries) -> list[ProjectedLine]:
+                return [ProjectedLine(ln.account_id, ln.debit_paise, ln.credit_paise)
+                        for entry in entries for ln in entry.lines]
+
+            def one_year(start: str, end: str) -> tuple[dict, dict]:
+                upto = [e for e in history if e.entry_date <= end]
+                within = [e for e in upto if e.entry_date >= start]
+                return (builders.profit_loss(flatten(within), accounts, start, end, "accrual"),
+                        builders.balance_sheet(flatten(upto), accounts, end, "accrual"))
+            return one_year
+
+        # Same contract as _serve's: a missing or stale passbook degrades to the
+        # slow path, never to a wrong or a short document.
+        if self._passbook_applicable("accrual", client_id):
+            try:
+                one_year = passbook_projector()
+            except Exception as e:                              # noqa: BLE001
+                _logger.error("trend: passbook read failed for %s/%s — falling back to "
+                              "the replay: %s", firm_id, client_id, e)
+                one_year = replay_projector()
+        else:
+            one_year = replay_projector()
+
+        years: list[tuple[str, dict, dict]] = []
+        unreadable: list[str] = []
+        for fy in fy_labels:
+            start, end = fy_bounds(fy)
+            try:
+                pl, bs = one_year(start, end)
+            except Exception as e:                              # noqa: BLE001
+                # One unreadable year must not lose the other four — but it is
+                # reported as UNREADABLE, not as a year with nothing in it. The
+                # two look identical from here and mean opposite things to a CA.
+                _logger.error("trend: %s unavailable for %s/%s: %s", fy, firm_id, client_id, e)
+                unreadable.append(fy)
+                continue
+            if trend_builder.has_records(trend_builder.components_of(pl, bs)):
+                years.append((fy, pl, bs))
+
+        return trend_builder.build(years, list(fy_labels), unreadable)
 
     def cash_flow_statement(self, firm_id: str, client_id: Optional[str],
                             start_date: Optional[str], end_date: Optional[str],
