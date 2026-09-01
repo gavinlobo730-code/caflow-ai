@@ -12,7 +12,8 @@ from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, Journa
 from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from services.journal_posting_service import journal_posting_service
-from core.exceptions import NotFoundError, ValidationError, postgres_message
+from core.exceptions import (NotFoundError, ValidationError, postgres_message,
+                             document_failure_detail)
 from core.observability import capture_posting_failure, capture_soft_failure
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
@@ -46,17 +47,90 @@ _logger = logging.getLogger("caflow.accounting")
 
 
 @router.get("/accounts")
-def list_accounts(current_user: dict = Depends(rbac("accounting", "read"))):
-    return api_response(True, accounting_service.list_accounts())
+def list_accounts(
+    client_id: Optional[str] = Query(None, description="A client's chart, plus the firm-level accounts it shares"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The caller's own chart of accounts.
+
+    THIS USED TO SERVE DEMO DATA TO EVERY FIRM AND CLIENT. It called
+    accounting_service.list_accounts(), which returns the module-level
+    MOCK_ACCOUNTS list — no firm_id, no client_id, no database. Driving a full
+    year through the API found it returning 22 accounts for a client whose
+    chart_of_accounts table held zero rows. Nothing in the frontend calls it
+    (the screens read chart_of_accounts directly through PostgREST), so what it
+    cost was an endpoint that lied rather than a screen that did — but an
+    endpoint that lies is worth less than no endpoint.
+
+    The client_id filter is `client_id = X OR client_id IS NULL`, transcribed
+    from SupabaseLedgerSource._accounts, because chart_of_accounts.client_id
+    NULL means a firm-level account every client shares (migration 057) and
+    seed_firm_coa creates exactly those. Returning only the client's own rows
+    would show an empty chart for every client of a normally-seeded firm — a
+    different wrong answer from the one this replaces.
+
+    Falls back to the in-memory seed only when there is no database at all,
+    which is dev and demo, the same gate _reporting_service() uses.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+    db = _prod_db()
+    if db is None:
+        return api_response(True, accounting_service.list_accounts())
+    q = (db.table("chart_of_accounts")
+         .select("id, account_code, account_name, account_type, account_subtype, "
+                 "parent_id, client_id, is_active")
+         .eq("firm_id", current_user["firm_id"]))
+    if client_id:
+        q = q.or_(f"client_id.eq.{client_id},client_id.is.null")
+    return api_response(True, q.order("account_code").execute().data or [])
 
 
 @router.post("/accounts")
-def create_account(data: AccountIn, current_user: dict = Depends(rbac("accounting", "write"))):
+def create_account(
+    data: AccountIn,
+    client_id: Optional[str] = Query(None, description="Omit for a firm-level account every client shares"),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Add an account to the caller's chart.
+
+    Also used to write to MOCK_ACCOUNTS and report success, so an account
+    "created" through the API existed only until the process restarted, and
+    never for the firm that asked. It writes the real table now.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+    db = _prod_db()
+    if db is None:
+        try:
+            return api_response(True, accounting_service.create_account(data.model_dump()))
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    if not (data.code or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="An account code is required — it is what the chart is ordered "
+                   "and matched by, and UNIQUE (firm_id, client_id, account_code) "
+                   "enforces it.")
     try:
-        account = accounting_service.create_account(data.model_dump())
-        return api_response(True, account)
-    except ValidationError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        # Payload written INLINE with literal keys — see
+        # services/ageing_schedule_service._write for why.
+        res = db.table("chart_of_accounts").insert({
+            "firm_id": current_user["firm_id"],
+            "client_id": client_id,
+            "account_code": data.code.strip(),
+            "account_name": data.name,
+            "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
+            "parent_id": data.parent_id,
+            "is_active": data.is_active,
+        }).execute()
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("create_account failed for firm %s: %s", current_user.get("firm_id"), e)
+        raise HTTPException(status_code=422,
+                            detail=document_failure_detail(e, action="create the account"))
+    if not res.data:
+        raise HTTPException(status_code=502, detail="The account was not written.")
+    return api_response(True, res.data[0])
 
 
 def _assert_account_scope(current_user: dict, account_id: str) -> dict:
@@ -79,12 +153,58 @@ def _assert_account_scope(current_user: dict, account_id: str) -> dict:
 
 @router.patch("/accounts/{account_id}")
 def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
-    _assert_account_scope(current_user, account_id)
+    """Rename an account, recode it, or retire it.
+
+    Wrote to MOCK_ACCOUNTS before, so the change was reported as saved and was
+    not — for anyone, including the firm that asked."""
+    db = _prod_db()
+    if db is None:
+        _assert_account_scope(current_user, account_id)
+        try:
+            return api_response(True, accounting_service.update_account(
+                account_id, data.model_dump(exclude_none=True)))
+        except NotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    fields = data.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=422, detail="Nothing to change.")
+    # Firm-scoped on the write itself: the service-role key bypasses RLS, so
+    # this filter is the isolation (CLAUDE.md), and a foreign-firm account id
+    # must not be readable OR writable through here.
+    row = (db.table("chart_of_accounts")
+           .select("id, client_id").eq("id", account_id)
+           .eq("firm_id", current_user["firm_id"]).limit(1).execute().data)
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    if not can_access_client(current_user, row[0].get("client_id")):
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    # One literal-payload branch per field combination, so
+    # tests/test_backend_columns_exist_pg.py can read every column name.
+    update: dict = {}
+    if "name" in fields:
+        update["account_name"] = fields["name"]
+    if "code" in fields:
+        update["account_code"] = fields["code"]
+    if "is_active" in fields:
+        update["is_active"] = fields["is_active"]
+    if not update:
+        # `description` has no column on chart_of_accounts — accepting it and
+        # silently dropping it is the same lie this endpoint is being fixed for.
+        raise HTTPException(
+            status_code=422,
+            detail="Only name, code and is_active can be changed on an account.")
     try:
-        account = accounting_service.update_account(account_id, data.model_dump(exclude_none=True))
-        return api_response(True, account)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        res = (db.table("chart_of_accounts").update(update)
+               .eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute())
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("update_account failed for %s: %s", account_id, e)
+        raise HTTPException(status_code=422,
+                            detail=document_failure_detail(e, action="update the account"))
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    return api_response(True, res.data[0])
 
 
 @router.get("/journal")
