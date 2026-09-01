@@ -879,12 +879,13 @@ class AgeingClassifyIn(BaseModel):
     """One classification. `target` names what is being classified, and the
     service allows only the fields that belong to it."""
     client_id: str
-    target: str                                   # invoice | bill | vendor
+    target: str                                   # invoice | bill | vendor | account
     target_id: str
     is_disputed: Optional[bool] = None
     considered_doubtful: Optional[bool] = None
     msme_status: Optional[str] = None             # micro | small | medium | not_registered
     msme_registration_no: Optional[str] = None
+    unbilled_dues_side: Optional[str] = None      # receivable | payable
     # msme_status = None is a legitimate value (it puts a vendor back into the
     # unclassified gap), so the presence of the key has to be distinguishable
     # from its absence. Pydantic's exclude_unset does that for us in the handler.
@@ -927,8 +928,10 @@ def classify_for_ageing_schedule(
 ):
     """
     Record the disputed / doubtful / MSMED classification the ageing schedule
-    needs. Manager+ (accounting.write), because the MSMED one is a judgement
-    with a tax consequence under IT Act s.43B(h), not a display preference.
+    needs, or mark a GL account as holding unbilled dues. Manager+
+    (accounting.write), because the MSMED one is a judgement with a tax
+    consequence under IT Act s.43B(h), not a display preference — and marking an
+    account puts its balance into a statutory disclosure.
     """
     assert_client_access(current_user, data.client_id)
     fields = {k: v for k, v in data.model_dump(exclude_unset=True).items()
@@ -941,6 +944,46 @@ def classify_for_ageing_schedule(
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
               new_data=out["set"], metadata={"client_id": data.client_id})
+    return api_response(True, out)
+
+
+class UnbilledReviewIn(BaseModel):
+    """The statement that somebody has been through this client's chart of
+    accounts. `reviewed: false` withdraws it."""
+    client_id: str
+    reviewed: bool = True
+    note: Optional[str] = None
+
+
+@router.put("/schedule-iii/ageing/unbilled-review")
+def put_unbilled_review(
+    data: UnbilledReviewIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """
+    Record — or withdraw — the review that lets the unbilled-dues disclosure be
+    printed at all.
+
+    Both Schedule III ageing notes end "Unbilled dues shall be disclosed
+    separately" (MCA G.S.R. 207(E), 24-03-2021). Which accounts hold them is
+    marked per account through /ageing/classify; THIS says the marking is
+    complete, and it is a separate act because it makes a different assertion.
+    Marking accounts says "these hold unbilled dues". Only the review says "and
+    there are no others" — which is what the note claims, and what makes a nil
+    printable. Until it is recorded the figure is absent rather than zero,
+    because an unreviewed nil asserts the client has none when the truth is
+    that nobody has looked.
+
+    Manager+ (accounting.write): it is part of a signed disclosure.
+    """
+    assert_client_access(current_user, data.client_id)
+    out = ageing_schedule_service.review_unbilled(
+        _prod_db(), current_user["firm_id"], data.client_id,
+        data.reviewed, data.note, actor_id=current_user.get("id"))
+    log_event(current_user["firm_id"], "client", data.client_id,
+              "unbilled_dues_reviewed",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=out)
     return api_response(True, out)
 
 

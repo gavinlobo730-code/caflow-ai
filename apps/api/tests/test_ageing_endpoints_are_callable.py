@@ -226,7 +226,11 @@ def test_a_broken_function_falls_back_rather_than_500ing():
     db = _RpcDB(blow_up=True)
     out = svc.schedule(db, "f1", CLIENT, "2026-03-31")
     assert [c[0] for c in db.calls] == ["schedule_iii_ageing"], "it did try the function first"
-    assert set(db.tables) == {"client_sales_invoices", "purchase_bills", "vendors"}
+    assert set(db.tables) == {"client_sales_invoices", "purchase_bills", "vendors",
+                              "chart_of_accounts", "schedule_iii_unbilled_reviews"}
+    assert "journal_entries" not in db.tables, (
+        "no account is marked as holding unbilled dues, so there are no posting "
+        "lines to read — the ledger must not be touched to find that out")
     assert out["division"] == "I"
     assert out["receivables"]["total_paise"] == 0
 
@@ -254,3 +258,102 @@ def test_the_two_per_document_ageing_endpoints_answer_the_same_way_with_no_datab
     assert ar["success"] is ap["success"] is True
     assert ar["data"]["total_outstanding_paise"] == ap["data"]["total_outstanding_paise"] == 0
     assert ar["data"]["invoices"] == [] and ap["data"]["bills"] == []
+
+
+# ── Unbilled dues (migration 305) ────────────────────────────────────────────
+
+def test_marking_an_account_goes_through_the_guarded_classify_path():
+    """The marking puts a GL balance into a statutory disclosure, so it is a
+    write through rbac() like the MSMED classification beside it — not a direct
+    PostgREST update from the report screen."""
+    from services import ageing_schedule_service as svc
+    assert "account" in svc._ALLOWED_FIELDS
+    assert svc._ALLOWED_FIELDS["account"] == {"unbilled_dues_side"}
+
+
+def test_an_account_cannot_be_used_to_reach_any_other_column():
+    """The allow-list is the point: a caller with accounting.write must not be
+    able to rename an account or change its type through this endpoint."""
+    from services import ageing_schedule_service as svc
+    with pytest.raises(HTTPException) as e:
+        svc.classify(object(), "f1", CLIENT, "account", "a1",
+                     {"account_name": "Renamed"})
+    assert e.value.status_code == 422
+
+
+def test_a_nonsense_side_is_refused_with_the_two_that_mean_something():
+    from services import ageing_schedule_service as svc
+    with pytest.raises(HTTPException) as e:
+        svc.classify(object(), "f1", CLIENT, "account", "a1",
+                     {"unbilled_dues_side": "sideways"})
+    assert e.value.status_code == 422
+    assert "receivable" in e.value.detail and "payable" in e.value.detail
+
+
+def test_an_account_can_be_unmarked():
+    """None has to stay reachable. An account marked by mistake would otherwise
+    be stuck inside a statutory disclosure with no way out."""
+    from services import ageing_schedule_service as svc
+
+    class _DB:
+        def __init__(self): self.payload = None
+        def table(self, _t): return self
+        def update(self, p): self.payload = p; return self
+        def eq(self, *_a): return self
+        def execute(self): return type("R", (), {"data": [{"id": "a1"}]})()
+
+    db = _DB()
+    out = svc.classify(db, "f1", CLIENT, "account", "a1", {"unbilled_dues_side": None})
+    assert db.payload == {"unbilled_dues_side": None}
+    assert out["set"] == {"unbilled_dues_side": None}
+
+
+def test_the_review_endpoint_is_callable_both_ways():
+    """Recording the review is what makes a nil printable; withdrawing it puts
+    the disclosure back into its gap."""
+    import routers.accounting as ac
+
+    class _DB:
+        def __init__(self): self.ops = []
+        def table(self, t): self.ops.append(t); return self
+        def upsert(self, payload, on_conflict=None): self.ops.append(("upsert", payload)); return self
+        def delete(self): self.ops.append("delete"); return self
+        def eq(self, *_a): return self
+        def execute(self): return type("R", (), {"data": []})()
+
+    db = _DB()
+    ac._prod_db_backup = ac._prod_db
+    try:
+        ac._prod_db = lambda: db
+        out = ac.put_unbilled_review(
+            ac.UnbilledReviewIn(client_id=CLIENT, reviewed=True, note="Reviewed at year end"),
+            current_user=USER)
+        assert out["success"] and out["data"]["reviewed"] is True
+        assert out["data"]["reviewed_on"], "the note carries the date it was reviewed"
+        assert any(o[0] == "upsert" for o in db.ops if isinstance(o, tuple))
+
+        out = ac.put_unbilled_review(
+            ac.UnbilledReviewIn(client_id=CLIENT, reviewed=False), current_user=USER)
+        assert out["data"]["reviewed"] is False and out["data"]["reviewed_on"] is None
+        assert "delete" in db.ops
+    finally:
+        ac._prod_db = ac._prod_db_backup
+
+
+def test_the_review_date_is_ist_not_utc():
+    """CLAUDE.md's presentation rule, and it is not cosmetic here: the date goes
+    onto a note a CA signs, and a review recorded at 06:00 IST on 1 April is a
+    1 April review, not a 31 March one."""
+    from services import ageing_schedule_service as svc
+    from core.ist_clock import ist_today
+
+    class _DB:
+        def __init__(self): self.payload = None
+        def table(self, _t): return self
+        def upsert(self, p, on_conflict=None): self.payload = p; return self
+        def execute(self): return type("R", (), {"data": []})()
+
+    db = _DB()
+    out = svc.review_unbilled(db, "f1", CLIENT, True)
+    assert out["reviewed_on"] == ist_today().isoformat()
+    assert db.payload["reviewed_on"] == ist_today().isoformat()

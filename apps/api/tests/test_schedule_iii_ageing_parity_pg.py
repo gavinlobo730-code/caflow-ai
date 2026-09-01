@@ -304,6 +304,80 @@ INSERT INTO customers (id, firm_id, client_id, name)
     return "\n".join(out)
 
 
+# ── Unbilled dues (migration 305) ────────────────────────────────────────────
+# An unbilled due has no document — that is what makes it unbilled — so the
+# figure is a BALANCE on accounts somebody marked. Declared once here and fed to
+# both halves, exactly like the invoices and bills above.
+
+ACCT_AI = "a3050000-0000-0000-0000-000000000001"   # accrued income  (Asset)
+ACCT_AE = "a3050000-0000-0000-0000-000000000002"   # accrued expense (Liability)
+ACCT_PLAIN = "a3050000-0000-0000-0000-000000000003"  # marked by nobody
+
+UNBILLED_ACCOUNTS = [
+    (ACCT_AI, "1450", "Unbilled Revenue",  "Asset",     "receivable"),
+    (ACCT_AE, "2450", "Accrued Expenses",  "Liability", "payable"),
+    (ACCT_PLAIN, "5100", "Salaries",       "Expense",   None),
+]
+
+
+class Post:
+    """One posted accrual line. `posted` and `deleted` exist so the SQL half's
+    liveness filter can be exercised; see test_only_live_lines_reach_the_figure
+    for why they are not part of the parity comparison."""
+
+    def __init__(self, account: str, when: str, debit: int = 0, credit: int = 0,
+                 posted: bool = True, deleted: bool = False):
+        self.account, self.when = account, when
+        self.debit, self.credit = debit, credit
+        self.posted, self.deleted = posted, deleted
+
+    @property
+    def live(self) -> bool:
+        return self.posted and not self.deleted
+
+    def to_python(self) -> ageing.PostingLine:
+        # The date bound is the DOMAIN's rule and is pinned by parity; posted /
+        # deleted are the FETCH's and are pinned separately.
+        return ageing.PostingLine(account_id=self.account,
+                                  entry_date=date.fromisoformat(self.when),
+                                  debit_paise=self.debit, credit_paise=self.credit)
+
+
+def _unbilled_seed_sql(posts: list, reviewed_on: str | None,
+                       accounts=UNBILLED_ACCOUNTS) -> str:
+    out = []
+    for aid, code, name, typ, side in accounts:
+        out.append(
+            "INSERT INTO chart_of_accounts (id, firm_id, client_id, account_code, "
+            " account_name, account_type, unbilled_dues_side) VALUES ("
+            f"'{aid}', '{FIRM}', '{CLIENT}', {_q(code)}, {_q(name)}, {_q(typ)}, {_q(side)});")
+    for n, p in enumerate(posts):
+        eid = f"e3050000-0000-0000-0000-{n:012d}"
+        out.append(
+            "INSERT INTO journal_entries (id, firm_id, client_id, entry_date, narration, "
+            " entry_type, is_posted, deleted_at) VALUES ("
+            f"'{eid}', '{FIRM}', '{CLIENT}', {_q(p.when)}, 'accrual', 'Journal', "
+            f"{str(p.posted).lower()}, {'now()' if p.deleted else 'NULL'});")
+        out.append(
+            "INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, "
+            " credit_paise) VALUES ("
+            f"'{eid}', '{p.account}', {p.debit}, {p.credit});")
+    if reviewed_on:
+        out.append(
+            "INSERT INTO schedule_iii_unbilled_reviews (firm_id, client_id, reviewed_on) "
+            f"VALUES ('{FIRM}', '{CLIENT}', {_q(reviewed_on)});")
+    return "\n".join(out)
+
+
+def _python_unbilled(posts: list, reviewed_on: str | None, as_of: date, today: date,
+                     accounts=UNBILLED_ACCOUNTS) -> dict:
+    marked = [ageing.UnbilledAccount(aid, code, name, side)
+              for aid, code, name, _typ, side in accounts if side]
+    return ageing.build([], [], as_of, today, marked,
+                        [p.to_python() for p in posts if p.live],
+                        date.fromisoformat(reviewed_on) if reviewed_on else None)
+
+
 @pytest.fixture()
 def db(pg_template):
     admin = _ADMIN.strip()
@@ -361,6 +435,163 @@ def test_sql_matches_python(db, name, invoices, bills):
         f"  SQL:    {json.dumps(sql, indent=2, sort_keys=True)}\n"
         f"  Python: {json.dumps(py, indent=2, sort_keys=True)}"
     )
+
+
+UNBILLED_SCENARIOS = [
+    ("nobody has reviewed", [], None),
+    ("reviewed, nothing marked has a balance", [], "2026-04-02"),
+    ("both sides, each read on its own convention", [
+        Post(ACCT_AI, "2026-03-31", debit=8_00_000),
+        Post(ACCT_AE, "2026-03-31", credit=5_00_000),
+    ], "2026-04-02"),
+    ("an accrual raised after the reporting date is not in it", [
+        Post(ACCT_AI, "2026-03-31", debit=4_00_000),
+        Post(ACCT_AI, "2026-04-01", debit=6_00_000),
+    ], "2026-04-02"),
+    ("an accrual released before the date nets to nil", [
+        Post(ACCT_AI, "2026-01-31", debit=4_00_000),
+        Post(ACCT_AI, "2026-02-28", credit=4_00_000),
+    ], "2026-04-02"),
+    ("a contra balance is reported at its real figure", [
+        Post(ACCT_AI, "2026-02-01", credit=2_00_000),
+    ], "2026-04-02"),
+    ("a line on an unmarked account is not unbilled dues", [
+        Post(ACCT_PLAIN, "2026-02-01", debit=7_00_000),
+    ], "2026-04-02"),
+    ("several accounts on one side, ordered largest first", [
+        Post(ACCT_AI, "2026-02-01", debit=1_00_000),
+        Post(ACCT_AE, "2026-02-01", credit=9_00_000),
+    ], "2026-04-02"),
+]
+
+
+@pytest.mark.parametrize("name,posts,reviewed", UNBILLED_SCENARIOS,
+                         ids=[s[0] for s in UNBILLED_SCENARIOS])
+def test_unbilled_dues_sql_matches_python(db, name, posts, reviewed):
+    """The other half of migration 305's parity. The SQL aggregates the marked
+    accounts' posting lines in the database; domain/reporting/ageing.py does the
+    same arithmetic in memory, and both must produce the same disclosure — the
+    figure, the composition, its ordering, and the gaps."""
+    seed = _psql(db, _seed_sql([], []) + "\n" + _unbilled_seed_sql(posts, reviewed))
+    assert seed.returncode == 0, f"seed failed: {seed.stderr}"
+
+    sql = _sql_schedule(db)
+    py = _python_unbilled(posts, reviewed, AS_OF, _db_today(db))
+
+    assert sql == py, (
+        f"SQL and Python disagree on unbilled dues '{name}'.\n"
+        f"  SQL:    {json.dumps(sql, indent=2, sort_keys=True)}\n"
+        f"  Python: {json.dumps(py, indent=2, sort_keys=True)}"
+    )
+
+
+def test_only_live_lines_reach_the_figure(db):
+    """Posted and not deleted, transcribed from cash_flow_report. NOT a parity
+    assertion: that filter lives in the SQL function on one side and in
+    ageing_schedule_service._fetch_unbilled's query on the other, so neither
+    half can prove the other. This pins the one production runs."""
+    seed = _psql(db, _seed_sql([], []) + "\n" + _unbilled_seed_sql([
+        Post(ACCT_AI, "2026-02-01", debit=3_00_000),
+        Post(ACCT_AI, "2026-02-01", debit=9_00_000, posted=False),
+        Post(ACCT_AI, "2026-02-01", debit=9_00_000, deleted=True),
+    ], "2026-04-02"))
+    assert seed.returncode == 0, f"seed failed: {seed.stderr}"
+    assert _sql_schedule(db)["receivables"]["unbilled_dues_paise"] == 3_00_000
+
+
+def test_the_marking_must_match_the_account_type(db):
+    """The CHECK is what makes the pairing structural. Accrued income is an
+    asset and accrued expenses are a liability; a revenue account holds neither,
+    and marking the P&L leg of an accrual would double the disclosure."""
+    _psql(db, _seed_sql([], []))
+    for code, typ, side in (("9001", "Liability", "receivable"),
+                            ("9002", "Asset", "payable"),
+                            ("9003", "Revenue", "receivable"),
+                            ("9004", "Asset", "sideways")):
+        r = _psql(db, "INSERT INTO chart_of_accounts (firm_id, client_id, account_code, "
+                      " account_name, account_type, unbilled_dues_side) VALUES ("
+                      f"'{FIRM}', '{CLIENT}', '{code}', 'x', '{typ}', '{side}');")
+        assert r.returncode != 0, f"{typ} account accepted side {side!r}"
+        assert "unbilled_dues_side_check" in r.stderr
+
+    ok = _psql(db, "INSERT INTO chart_of_accounts (firm_id, client_id, account_code, "
+                   " account_name, account_type, unbilled_dues_side) VALUES ("
+                   f"'{FIRM}', '{CLIENT}', '9005', 'x', 'Asset', 'receivable');")
+    assert ok.returncode == 0, ok.stderr
+
+
+def test_another_clients_marked_account_stays_out_of_this_note(db):
+    """The marking is per account and accounts are client-scoped. A sibling
+    client's accrual reaching this disclosure would put one company's unbilled
+    revenue on another's balance sheet."""
+    other = "c3050000-0000-0000-0000-0000000000aa"
+    seed = _psql(db, _seed_sql([], []) + f"""
+        INSERT INTO clients (id, firm_id, client_name, entity_type)
+          VALUES ('{other}', '{FIRM}', 'Sibling Co', 'Private Limited');
+        INSERT INTO chart_of_accounts (id, firm_id, client_id, account_code, account_name,
+                                       account_type, unbilled_dues_side)
+          VALUES ('a3050000-0000-0000-0000-0000000000aa', '{FIRM}', '{other}',
+                  '1450', 'Unbilled Revenue', 'Asset', 'receivable');
+        INSERT INTO journal_entries (id, firm_id, client_id, entry_date, narration,
+                                     entry_type, is_posted)
+          VALUES ('e3050000-0000-0000-0000-0000000000aa', '{FIRM}', '{other}',
+                  '2026-02-01', 'accrual', 'Journal', true);
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise)
+          VALUES ('e3050000-0000-0000-0000-0000000000aa',
+                  'a3050000-0000-0000-0000-0000000000aa', 5_00_000, 0);
+        INSERT INTO schedule_iii_unbilled_reviews (firm_id, client_id, reviewed_on)
+          VALUES ('{FIRM}', '{CLIENT}', '2026-04-02');
+    """)
+    assert seed.returncode == 0, f"seed failed: {seed.stderr}"
+    doc = _sql_schedule(db)
+    assert doc["receivables"]["unbilled_dues_paise"] == 0
+    assert doc["receivables"]["unbilled_accounts"] == []
+
+
+def test_a_misposted_line_on_this_clients_account_stays_out(db):
+    """journal_lines.account_id has no cross-check against its entry's client,
+    so an entry belonging to another client — or another FIRM — can in principle
+    carry a line on this client's account. Nothing should ever write one; the
+    filter is defence in depth behind the app-layer scope, exactly as CLAUDE.md
+    describes it.
+
+    Written because a negative control found the hole: removing the client scope
+    from the SQL broke nothing, since every other scenario keeps the ACCOUNT on
+    the wrong client and `unbilled_acct` already excludes those. Only a line
+    posted the wrong way round exercises the filter, and one wrong accrual
+    lands another company's unbilled revenue on this balance sheet.
+    """
+    sibling = "c3050000-0000-0000-0000-0000000000bb"
+    stranger = "c3050000-0000-0000-0000-0000000000cc"
+    seed = _psql(db, _seed_sql([], []) + "\n" + _unbilled_seed_sql([
+        Post(ACCT_AI, "2026-02-01", debit=3_00_000),
+    ], "2026-04-02") + f"""
+        INSERT INTO clients (id, firm_id, client_name, entity_type) VALUES
+          ('{sibling}',  '{FIRM}',       'Sibling Co',  'Private Limited'),
+          ('{stranger}', '{OTHER_FIRM}', 'Stranger Co', 'Private Limited');
+        -- Both lines hit THIS client's marked accrued-income account.
+        -- firm_id and client_id are separate FKs with no composite check, so the
+        -- third row below — this client under the WRONG FIRM — is insertable and
+        -- is the only shape that exercises the firm scope: the client scope
+        -- alone already excludes the first two.
+        INSERT INTO journal_entries (id, firm_id, client_id, entry_date, narration,
+                                     entry_type, is_posted) VALUES
+          ('e3050000-0000-0000-0000-0000000000bb', '{FIRM}',       '{sibling}',
+           '2026-02-01', 'misposted', 'Journal', true),
+          ('e3050000-0000-0000-0000-0000000000cc', '{OTHER_FIRM}', '{stranger}',
+           '2026-02-01', 'misposted', 'Journal', true),
+          ('e3050000-0000-0000-0000-0000000000dd', '{OTHER_FIRM}', '{CLIENT}',
+           '2026-02-01', 'misposted', 'Journal', true);
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise) VALUES
+          ('e3050000-0000-0000-0000-0000000000bb', '{ACCT_AI}', 40_00_000, 0),
+          ('e3050000-0000-0000-0000-0000000000cc', '{ACCT_AI}', 70_00_000, 0),
+          ('e3050000-0000-0000-0000-0000000000dd', '{ACCT_AI}', 90_00_000, 0);
+    """)
+    assert seed.returncode == 0, f"seed failed: {seed.stderr}"
+    doc = _sql_schedule(db)
+    assert doc["receivables"]["unbilled_dues_paise"] == 3_00_000, (
+        "a line posted from another client or firm reached this client's "
+        "unbilled-dues disclosure")
 
 
 @pytest.mark.parametrize("as_of", CLAMP_DATES)

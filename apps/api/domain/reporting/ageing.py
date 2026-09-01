@@ -98,12 +98,59 @@ MSME_ROW_STATUSES = frozenset({"micro", "small"})
 # Named, not silent. A zero and "not modelled" are opposite claims, and the
 # unclassified-vendor one is the reason msme_status has no default at all.
 
-GAP_UNBILLED = (
-    "unbilled_dues_not_modelled",
+# UNBILLED DUES, AND WHY THEY WERE LOOKED FOR IN THE WRONG PLACE
+#
+# Both notes end "Unbilled dues shall be disclosed separately." This used to
+# report a permanent gap saying the platform held no unbilled-revenue document
+# keyed to a party. That was true and it was beside the point: an unbilled due
+# has NO DOCUMENT — having no document is what makes it unbilled. The accrual
+# lives in the ledger, as the balance on an accrued-income or accrued-liability
+# account, and Schedule III asks for one figure disclosed separately under each
+# table rather than an aged or party-attributed one. An account balance is
+# exactly that shape.
+#
+# WHY THEY ARE NOT AGED. The tables age from the due date of payment, or where
+# none is specified from the date of the transaction. An unbilled due has
+# neither — no invoice, no due date — which is precisely why the statute says
+# "separately" rather than giving it a row. So it is one figure beside the
+# table, never a bucket.
+#
+# WHICH ACCOUNTS HOLD THEM IS A HUMAN STEP, like the MSMED classification and
+# the ITR schemas. No keyword on an account name can be trusted to decide it:
+# "Accrued Interest" may be income receivable or an expense payable, and reading
+# it wrong puts a liability in the receivables note. So an account carries an
+# explicit `unbilled_dues_side` and nothing infers one.
+#
+# AND AN UNREVIEWED NIL IS NOT A NIL. If no account is marked, the honest answer
+# is not zero — nobody has looked. A zero on a signed note asserts the client
+# has no unbilled dues. So the figure stays NULL until a human records that they
+# have been through this client's chart of accounts, after which zero is a real
+# answer they have affirmed.
+
+# 'receivable' is an ASSET balance (accrued income / unbilled revenue);
+# 'payable' is a LIABILITY balance (accrued expenses / goods received not
+# invoiced). The database enforces the pairing so a revenue account cannot be
+# marked at all.
+UNBILLED_SIDES: tuple[str, ...] = ("receivable", "payable")
+
+GAP_UNBILLED_NOT_REVIEWED = (
+    "unbilled_dues_not_reviewed",
     "Schedule III requires unbilled dues to be disclosed separately under both "
-    "ageing schedules. This platform has no unbilled revenue or accrued-"
-    "liability document keyed to a customer or vendor, so there is nothing to "
-    "report from and no figure is shown. A zero would claim there are none.",
+    "ageing schedules, and nobody has yet been through this client's chart of "
+    "accounts to say which accounts hold them. No figure is shown, because a "
+    "zero would claim there are none rather than that nobody has looked. Mark "
+    "the accrued-income and accrued-liability accounts, then record the review "
+    "— if there genuinely are none, recording the review discloses a nil that "
+    "somebody has affirmed.",
+)
+
+GAP_UNBILLED_WRONG_SIGN = (
+    "unbilled_account_in_contra_balance",
+    "An account marked as holding unbilled dues has a balance on the wrong "
+    "side — accrued income in credit, or an accrued liability in debit. The "
+    "figure below includes it at its real (negative) balance rather than "
+    "hiding it, but a contra balance on an accrual account is usually a "
+    "reversal that was posted twice or an accrual that was never released.",
 )
 
 GAP_UNCLASSIFIED = (
@@ -214,7 +261,75 @@ class Payable:
     vendor_name: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class UnbilledAccount:
+    """A GL account somebody has marked as holding unbilled dues. `side` is one
+    of UNBILLED_SIDES and is recorded, never inferred from the name."""
+    account_id: str
+    account_code: str
+    account_name: str
+    side: str
+
+
+@dataclass(frozen=True)
+class PostingLine:
+    """One posted journal line against one of those accounts. Raw debit and
+    credit rather than a signed figure, because which way round they net is the
+    rule this module owns — see unbilled_composition."""
+    account_id: str
+    entry_date: Optional[date]
+    debit_paise: int = 0
+    credit_paise: int = 0
+
+
 # ── The schedules ────────────────────────────────────────────────────────────
+
+def unbilled_composition(accounts: Iterable[UnbilledAccount],
+                         lines: Iterable[PostingLine],
+                         as_of: date) -> dict[str, list[dict]]:
+    """Each marked account's balance as at `as_of`, per side.
+
+    THE SIGN IS THE RULE, and it is per side rather than global. Accrued income
+    is an asset and reads debit less credit; an accrued liability reads credit
+    less debit. Using one convention for both would report every payable
+    accrual as a negative receivable — the same money with the sign inverted,
+    which on a note beside a balance sheet is not a rounding difference.
+
+    Bounded by `as_of` inclusively, on the entry date, so the figure is the
+    balance on the reporting date rather than today's. A line with no date
+    cannot be placed in time and is left out; the ledger does not produce one.
+
+    Accounts with no postings still appear, at zero. Somebody marked them, and a
+    marked account missing from the composition reads as an account nobody
+    marked.
+    """
+    totals: dict[str, int] = {}
+    by_account: dict[str, UnbilledAccount] = {a.account_id: a for a in accounts}
+    for ln in lines:
+        acct = by_account.get(ln.account_id)
+        if acct is None or ln.entry_date is None or ln.entry_date > as_of:
+            continue
+        debit, credit = int(ln.debit_paise or 0), int(ln.credit_paise or 0)
+        signed = debit - credit if acct.side == "receivable" else credit - debit
+        totals[acct.account_id] = totals.get(acct.account_id, 0) + signed
+
+    out: dict[str, list[dict]] = {side: [] for side in UNBILLED_SIDES}
+    for a in by_account.values():
+        if a.side not in out:
+            continue
+        out[a.side].append({
+            "account_id": a.account_id,
+            "account_code": a.account_code,
+            "account_name": a.account_name,
+            "balance_paise": totals.get(a.account_id, 0),
+        })
+    # Largest first, then by CODE in byte order — the SQL half sorts
+    # `ORDER BY balance DESC, account_code COLLATE "C"` so the two agree
+    # without depending on the database's locale.
+    for side in out:
+        out[side].sort(key=lambda r: (-r["balance_paise"], r["account_code"].encode()))
+    return out
+
 
 def _empty(buckets) -> dict[str, int]:
     return {key: 0 for key, _label, _prescribed in buckets}
@@ -224,7 +339,8 @@ def _bucket_json(buckets) -> list[dict]:
     return [{"key": k, "label": lb, "prescribed": p} for k, lb, p in buckets]
 
 
-def _table(rows, buckets, tallies: dict[str, dict[str, int]]) -> dict:
+def _table(rows, buckets, tallies: dict[str, dict[str, int]],
+           unbilled: Optional[list[dict]]) -> dict:
     out_rows = []
     for key, label in rows:
         amounts = tallies.get(key) or _empty(buckets)
@@ -241,19 +357,31 @@ def _table(rows, buckets, tallies: dict[str, dict[str, int]]) -> dict:
         "rows": out_rows,
         "column_totals": column_totals,
         "total_paise": sum(r["total_paise"] for r in out_rows),
-        # Not zero. Schedule III wants unbilled dues disclosed separately and
-        # nothing in this schema holds them — see GAP_UNBILLED.
-        "unbilled_dues_paise": None,
+        # Beside the table, never inside it — the statute says "separately",
+        # and an unbilled due has no due date to age from. None (not zero)
+        # until somebody has reviewed the chart of accounts: see
+        # GAP_UNBILLED_NOT_REVIEWED.
+        "unbilled_dues_paise": None if unbilled is None
+                               else sum(a["balance_paise"] for a in unbilled),
+        "unbilled_accounts": [] if unbilled is None else unbilled,
     }
 
 
 def build(receivables: Iterable[Receivable], payables: Iterable[Payable],
-          as_of: date, today: date) -> dict:
+          as_of: date, today: date,
+          unbilled_accounts: Iterable[UnbilledAccount] = (),
+          unbilled_lines: Iterable[PostingLine] = (),
+          unbilled_reviewed_on: Optional[date] = None) -> dict:
     """The two ageing schedules, in the shape public.schedule_iii_ageing returns.
 
     `today` is passed rather than read so the SQL half's CURRENT_DATE and this
     one can be held to the same value in the parity test; both mean the same
     thing, which is the date the outstanding balances are true as at.
+
+    `unbilled_reviewed_on` is the date somebody recorded that they had been
+    through this client's chart of accounts. None means nobody has, and that is
+    what makes the unbilled figure None rather than zero — the two are opposite
+    claims on a note somebody signs.
     """
     ar_tallies: dict[str, dict[str, int]] = {}
     for r in receivables:
@@ -278,10 +406,15 @@ def build(receivables: Iterable[Receivable], payables: Iterable[Payable],
         ap_tallies.setdefault(key, _empty(PAYABLE_BUCKETS))
         ap_tallies[key][payable_bucket(p.ref_date, as_of)] += amt
 
-    receivables_table = _table(RECEIVABLE_ROWS, RECEIVABLE_BUCKETS, ar_tallies)
+    composition = unbilled_composition(unbilled_accounts, unbilled_lines, as_of)
+    reviewed = unbilled_reviewed_on is not None
+
+    receivables_table = _table(RECEIVABLE_ROWS, RECEIVABLE_BUCKETS, ar_tallies,
+                               composition["receivable"] if reviewed else None)
     receivables_table["title"] = "Trade Receivables ageing schedule"
 
-    payables_table = _table(PAYABLE_ROWS, PAYABLE_BUCKETS, ap_tallies)
+    payables_table = _table(PAYABLE_ROWS, PAYABLE_BUCKETS, ap_tallies,
+                            composition["payable"] if reviewed else None)
     payables_table["title"] = "Trade Payables ageing schedule"
     payables_table["unclassified_paise"] = sum(unclassified.values())
     # Largest first, then by name in BYTE order — the SQL half sorts
@@ -293,7 +426,12 @@ def build(receivables: Iterable[Receivable], payables: Iterable[Payable],
                                        key=lambda kv: (-kv[1], kv[0][1].encode()))
     ]
 
-    gaps = [GAP_UNBILLED]
+    gaps = []
+    if not reviewed:
+        gaps.append(GAP_UNBILLED_NOT_REVIEWED)
+    elif any(a["balance_paise"] < 0
+             for side in composition.values() for a in side):
+        gaps.append(GAP_UNBILLED_WRONG_SIGN)
     if unclassified:
         gaps.append(GAP_UNCLASSIFIED)
     if as_of < today:
@@ -304,6 +442,7 @@ def build(receivables: Iterable[Receivable], payables: Iterable[Payable],
         "division": "I",
         "statute": STATUTE,
         "ageing_from": AGEING_FROM,
+        "unbilled_reviewed_on": unbilled_reviewed_on.isoformat() if reviewed else None,
         "receivables": receivables_table,
         "payables": payables_table,
         "gaps": [{"code": c, "message": m} for c, m in gaps],

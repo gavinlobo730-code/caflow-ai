@@ -207,14 +207,108 @@ def test_no_unclassified_vendor_means_no_gap():
     assert doc["payables"]["unclassified_vendors"] == []
 
 
-def test_unbilled_dues_are_null_not_zero():
-    """Schedule III requires unbilled dues to be disclosed separately under both
-    schedules. Nothing in this platform holds them, and a zero would claim there
-    are none."""
+# ── Unbilled dues ────────────────────────────────────────────────────────────
+# "Unbilled dues shall be disclosed separately" ends BOTH notes. An unbilled due
+# has no document — that is what makes it unbilled — so the figure is the
+# balance on accounts somebody has marked, and the marking is what these pin.
+
+ACCRUED_INCOME = ageing.UnbilledAccount("a-1", "1450", "Unbilled Revenue", "receivable")
+ACCRUED_EXPENSE = ageing.UnbilledAccount("l-1", "2450", "Accrued Expenses", "payable")
+
+
+def _reviewed(accounts=(), lines=(), as_of=date(2026, 3, 31), on=date(2026, 4, 2)):
+    return ageing.build([], [], as_of, as_of, accounts, lines, on)
+
+
+def test_unbilled_dues_are_absent_until_somebody_has_looked():
+    """NOT zero. A zero on a signed note asserts the client has no unbilled
+    dues; until somebody reviews the chart of accounts the truth is that nobody
+    has looked, and the two are opposite claims."""
     doc = _build()
     assert doc["receivables"]["unbilled_dues_paise"] is None
     assert doc["payables"]["unbilled_dues_paise"] is None
-    assert "unbilled_dues_not_modelled" in [g["code"] for g in doc["gaps"]]
+    assert doc["unbilled_reviewed_on"] is None
+    assert "unbilled_dues_not_reviewed" in [g["code"] for g in doc["gaps"]]
+
+
+def test_a_reviewed_client_with_no_marked_accounts_discloses_an_affirmed_nil():
+    """The other half of the same rule: once a human records the review, zero is
+    a real answer they have affirmed, and the gap goes away."""
+    doc = _reviewed()
+    assert doc["receivables"]["unbilled_dues_paise"] == 0
+    assert doc["payables"]["unbilled_dues_paise"] == 0
+    assert doc["unbilled_reviewed_on"] == "2026-04-02"
+    assert "unbilled_dues_not_reviewed" not in [g["code"] for g in doc["gaps"]]
+
+
+def test_the_sign_is_per_side_not_global():
+    """Accrued income is an asset and reads debit less credit; an accrued
+    liability reads credit less debit. One convention for both would report
+    every payable accrual as a NEGATIVE receivable — the same money with its
+    sign inverted, beside a balance sheet."""
+    doc = _reviewed(
+        accounts=[ACCRUED_INCOME, ACCRUED_EXPENSE],
+        lines=[ageing.PostingLine("a-1", date(2026, 3, 31), 8_00_000, 0),
+               ageing.PostingLine("l-1", date(2026, 3, 31), 0, 5_00_000)])
+    assert doc["receivables"]["unbilled_dues_paise"] == 8_00_000
+    assert doc["payables"]["unbilled_dues_paise"] == 5_00_000
+
+
+def test_they_are_disclosed_separately_and_never_aged():
+    """Both tables age from the due date, or where none is specified from the
+    transaction date. An unbilled due has neither, which is why the statute says
+    "separately" instead of giving it a row. A bucket would be an invented due
+    date."""
+    doc = _reviewed(accounts=[ACCRUED_INCOME],
+                    lines=[ageing.PostingLine("a-1", date(2020, 1, 1), 9_00_000, 0)])
+    assert doc["receivables"]["unbilled_dues_paise"] == 9_00_000
+    # Three-year-old money, and not a paisa of it reaches the ageing table.
+    assert doc["receivables"]["total_paise"] == 0
+    assert all(sum(r["amounts"].values()) == 0 for r in doc["receivables"]["rows"])
+
+
+def test_the_balance_stops_at_the_reporting_date():
+    """An accrual raised in April is not a March disclosure. Unlike the document
+    ageing beside it, this figure IS exact as at a past date — an account
+    balance is a sum over dated lines."""
+    doc = _reviewed(accounts=[ACCRUED_INCOME],
+                    lines=[ageing.PostingLine("a-1", date(2026, 3, 31), 4_00_000, 0),
+                           ageing.PostingLine("a-1", date(2026, 4, 1), 6_00_000, 0)])
+    assert doc["receivables"]["unbilled_dues_paise"] == 4_00_000
+
+
+def test_an_accrual_released_before_the_date_nets_out():
+    doc = _reviewed(accounts=[ACCRUED_INCOME],
+                    lines=[ageing.PostingLine("a-1", date(2026, 1, 31), 4_00_000, 0),
+                           ageing.PostingLine("a-1", date(2026, 2, 28), 0, 4_00_000)])
+    assert doc["receivables"]["unbilled_dues_paise"] == 0
+    assert doc["receivables"]["unbilled_accounts"][0]["balance_paise"] == 0
+
+
+def test_a_marked_account_with_no_postings_still_appears():
+    """Somebody marked it. An account missing from the composition reads as an
+    account nobody marked, which is a different statement about the review."""
+    doc = _reviewed(accounts=[ACCRUED_INCOME])
+    assert [a["account_code"] for a in doc["receivables"]["unbilled_accounts"]] == ["1450"]
+    assert doc["receivables"]["unbilled_accounts"][0]["balance_paise"] == 0
+
+
+def test_a_contra_balance_is_reported_and_flagged_not_hidden():
+    """Accrued income in credit is usually a reversal posted twice or an accrual
+    nobody released. Clamping it to zero would hide the error inside a
+    disclosure; the figure is real and the gap names it."""
+    doc = _reviewed(accounts=[ACCRUED_INCOME],
+                    lines=[ageing.PostingLine("a-1", date(2026, 2, 1), 0, 2_00_000)])
+    assert doc["receivables"]["unbilled_dues_paise"] == -2_00_000
+    assert "unbilled_account_in_contra_balance" in [g["code"] for g in doc["gaps"]]
+
+
+def test_a_line_on_an_unmarked_account_is_not_unbilled_dues():
+    """Every posting line in the client's ledger would otherwise land in the
+    disclosure the moment one account is marked."""
+    doc = _reviewed(accounts=[ACCRUED_INCOME],
+                    lines=[ageing.PostingLine("some-other-account", date(2026, 2, 1), 7_00_000, 0)])
+    assert doc["receivables"]["unbilled_dues_paise"] == 0
 
 
 def test_a_past_reporting_date_says_what_it_excludes():
