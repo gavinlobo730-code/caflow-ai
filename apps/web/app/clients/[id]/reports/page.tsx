@@ -62,7 +62,7 @@ const GROUPS: ReportGroup[] = [
       { id: "cf", title: "Cash Flow", desc: "Indirect-method cash flow statement",
         href: "accounting?tab=cashflow", statute: "AS-3" },
       { id: "ageing", title: "Ageing schedules",
-        desc: "Trade receivables and trade payables ageing — the notes to the balance sheet, and the open documents behind them",
+        desc: "Trade receivables and trade payables ageing — the notes to the balance sheet, the unbilled dues each discloses separately, and the open documents behind them",
         href: "reports/ageing", statute: "Schedule III (2021 amendment)" },
       { id: "trend", title: "Multi-year trend",
         desc: "Three to ten years of Schedule III captions and the clause (Q) ratios side by side, with the movement between them — a management view, not the statements",
@@ -130,17 +130,23 @@ const GROUPS: ReportGroup[] = [
 
 /** Named honestly. These do NOT link anywhere, because they do not exist.
  *
- *  "Aged receivables & payables" used to be on this list and was wrong twice
- *  over: customer_statement_service.ar_aging and its AP mirror have existed for
- *  a long time and were made query-bounded by migration 278, and nothing in
- *  this app had ever called them — the computation was built and unreachable.
- *  They are now under Ageing schedules above, beside the statutory note that
- *  migration 303 added. Which is the lesson worth leaving here: check whether a
- *  report is missing a SCREEN before recording it as missing entirely. */
-const NOT_BUILT: { title: string; why: string }[] = [
-  { title: "Unbilled dues",
-    why: "Schedule III requires them disclosed separately under both ageing schedules. Nothing in this platform holds an unbilled revenue or accrued-liability document keyed to a party, so the ageing report says so rather than showing a zero." },
-];
+ *  EMPTY TODAY, and the mechanism stays because the next gap belongs here
+ *  rather than in nobody's head. Two entries have left it, each for a different
+ *  reason worth remembering:
+ *
+ *  "Aged receivables & payables" was wrong twice over:
+ *  customer_statement_service.ar_aging and its AP mirror had existed for a long
+ *  time and were made query-bounded by migration 278, and nothing in this app
+ *  had ever called them — the computation was built and unreachable. So check
+ *  whether a report is missing a SCREEN before recording it as missing
+ *  entirely.
+ *
+ *  "Unbilled dues" was recorded as unbuildable because nothing here held an
+ *  unbilled-revenue document keyed to a party. True, and beside the point: an
+ *  unbilled due HAS no document — that is what makes it unbilled — and the
+ *  accrual is a balance on an account. So check that a gap is described in the
+ *  shape the statute asks for, not in the shape the first idea took. */
+const NOT_BUILT: { title: string; why: string }[] = [];
 
 export default function ClientReportsPage() {
   // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
@@ -199,6 +205,7 @@ export default function ClientReportsPage() {
         );
       })}
 
+      {NOT_BUILT.length > 0 && (
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center flex-shrink-0">
@@ -220,6 +227,7 @@ export default function ClientReportsPage() {
           ))}
         </div>
       </div>
+      )}
 
       <div className="flex items-start gap-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
         <Users size={14} className="text-[#94A3B8] flex-shrink-0 mt-0.5" />

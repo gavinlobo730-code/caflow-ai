@@ -15,13 +15,18 @@ that is the difference between reading 5,655 invoices and reading the ones still
 open.
 
 CLASSIFICATION IS A WRITE, AND IT IS GUARDED HERE
-    Marking a receivable disputed or doubtful, and classifying a vendor under
-    the MSMED Act, are the three facts the note needs and the schema could not
-    supply. They are recorded through classify() rather than by a direct
-    PostgREST write from the report screen, because s.43B(h) of the IT Act makes
-    the micro/small classification a taxable-income question — it is a
-    judgement, and judgements go through rbac() and land in one place that
-    validates them.
+    Marking a receivable disputed or doubtful, classifying a vendor under the
+    MSMED Act, and marking a GL account as holding unbilled dues are the facts
+    the note needs and the schema could not supply. They are recorded through
+    classify() rather than by a direct PostgREST write from the report screen,
+    because s.43B(h) of the IT Act makes the micro/small classification a
+    taxable-income question and the account marking puts a balance into a
+    statutory disclosure — they are judgements, and judgements go through rbac()
+    and land in one place that validates them.
+
+    review_unbilled() is the fourth write and a different kind. The markings say
+    which accounts hold unbilled dues; only the review says there are no others,
+    which is the assertion the note makes and what lets a nil be printed at all.
 """
 from __future__ import annotations
 
@@ -31,6 +36,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.ist_clock import ist_today
 from domain.reporting import ageing
 
 _logger = logging.getLogger("caflow.ageing")
@@ -146,6 +152,55 @@ def _fetch_payables(db, firm_id: str, client_id: str, as_of: date) -> list:
     return out
 
 
+def _fetch_unbilled(db, firm_id: str, client_id: str, as_of: date):
+    """The marked accounts, their posting lines, and whether anybody has
+    reviewed the chart of accounts.
+
+    THE LINE FETCH IS BOUNDED BY THE MARKED ACCOUNTS, not by the ledger — the
+    `!inner` embed makes PostgREST return only entries that HAVE a line on one
+    of them, with only those lines attached, exactly as
+    SupabaseLedgerSource._entries does for the per-account drill-down. An
+    accrual account with four entries a year reads four entries however long
+    the client has been trading. Production does not come through here at all:
+    public.schedule_iii_ageing aggregates in the database, and this is the
+    fallback for local dev and a failed RPC.
+    """
+    accounts = _paginate_all(lambda: db.table("chart_of_accounts")
+            .select("id, account_code, account_name, unbilled_dues_side")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .not_.is_("unbilled_dues_side", "null"))
+    marked = [ageing.UnbilledAccount(
+                  account_id=a["id"],
+                  account_code=str(a.get("account_code") or ""),
+                  account_name=str(a.get("account_name") or ""),
+                  side=a["unbilled_dues_side"])
+              for a in accounts
+              if a.get("unbilled_dues_side") in ageing.UNBILLED_SIDES]
+
+    lines: list = []
+    if marked:
+        ids = [a.account_id for a in marked]
+        rows = _paginate_all(lambda: db.table("journal_entries")
+                .select("id, entry_date, journal_lines!inner(account_id, debit_paise, credit_paise)")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("is_posted", True).is_("deleted_at", "null")
+                .lte("entry_date", as_of.isoformat())
+                .in_("journal_lines.account_id", ids))
+        for e in rows:
+            when = _as_date(e.get("entry_date"))
+            for ln in (e.get("journal_lines") or []):
+                lines.append(ageing.PostingLine(
+                    account_id=ln.get("account_id"),
+                    entry_date=when,
+                    debit_paise=int(ln.get("debit_paise") or 0),
+                    credit_paise=int(ln.get("credit_paise") or 0)))
+
+    review = (db.table("schedule_iii_unbilled_reviews").select("reviewed_on")
+              .eq("firm_id", firm_id).eq("client_id", client_id)
+              .limit(1).execute().data or [])
+    return marked, lines, (_as_date(review[0].get("reviewed_on")) if review else None)
+
+
 # ── The report ───────────────────────────────────────────────────────────────
 
 def schedule(db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
@@ -176,9 +231,10 @@ def schedule(db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> d
             _logger.error("schedule_iii_ageing failed (%s %s %s) — falling back to "
                           "the Python rule: %s", firm_id, client_id, at, e)
 
+    marked, lines, reviewed_on = _fetch_unbilled(db, firm_id, client_id, at)
     return ageing.build(_fetch_receivables(db, firm_id, client_id, at),
                         _fetch_payables(db, firm_id, client_id, at),
-                        at, _today())
+                        at, _today(), marked, lines, reviewed_on)
 
 
 # ── Classification ───────────────────────────────────────────────────────────
@@ -190,6 +246,10 @@ _ALLOWED_FIELDS = {
     "invoice": {"is_disputed", "considered_doubtful"},
     "bill":    {"is_disputed"},
     "vendor":  {"msme_status", "msme_registration_no"},
+    # Which GL accounts hold unbilled dues. The database CHECK also refuses a
+    # side that does not match the account's own type, so a revenue account
+    # cannot be marked at all — see migration 305.
+    "account": {"unbilled_dues_side"},
 }
 
 
@@ -226,6 +286,12 @@ def _write(db, target: str, target_id: str, firm_id: str, client_id: str, update
                     .execute())
         return (db.table("client_sales_invoices")
                 .update({"considered_doubtful": update["considered_doubtful"]})
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute())
+
+    if target == "account":
+        return (db.table("chart_of_accounts")
+                .update({"unbilled_dues_side": update["unbilled_dues_side"]})
                 .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute())
 
@@ -293,6 +359,19 @@ def classify(db, firm_id: str, client_id: str, target: str, target_id: str,
                            f"small are row (i) of the Schedule III payables "
                            f"ageing schedule; medium is Others (MSMED s.22, s.2(n)).")
             update[k] = v
+        elif k == "unbilled_dues_side":
+            # None is the un-marking, and it has to stay available: an account
+            # marked by mistake would otherwise be stuck in a statutory
+            # disclosure with no way out.
+            if v is not None and v not in ageing.UNBILLED_SIDES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"unbilled_dues_side must be null or one of "
+                           f"{list(ageing.UNBILLED_SIDES)}; got {v!r}. "
+                           f"'receivable' is an ASSET balance (accrued income, "
+                           f"unbilled revenue); 'payable' is a LIABILITY balance "
+                           f"(accrued expenses, goods received not invoiced).")
+            update[k] = v
         elif k == "msme_registration_no":
             update[k] = (str(v).strip() or None) if v is not None else None
         else:
@@ -307,3 +386,45 @@ def classify(db, firm_id: str, client_id: str, target: str, target_id: str,
         raise HTTPException(status_code=404,
                             detail=f"{target} {target_id} not found for this client")
     return {"target": target, "target_id": target_id, "set": update}
+
+
+# ── The unbilled-dues review ─────────────────────────────────────────────────
+
+def review_unbilled(db, firm_id: str, client_id: str, reviewed: bool,
+                    note: Optional[str] = None,
+                    actor_id: Optional[str] = None) -> dict:
+    """Record — or withdraw — the statement that somebody has been through this
+    client's chart of accounts and marked every account holding unbilled dues.
+
+    This is what turns the disclosure from absent into a figure, and it is a
+    separate act from the marking on purpose. Marking accounts says "these hold
+    unbilled dues". Only this says "and there are no others" — which is the
+    assertion the note actually makes, and the one that lets a nil be printed.
+    A client with genuinely none records the review and marks nothing.
+
+    `reviewed=False` deletes the row and puts the disclosure back into its gap,
+    which is what a CA who no longer stands behind the review needs.
+    """
+    if db is None:
+        raise HTTPException(status_code=503,
+                            detail="No database configured — a review cannot be recorded")
+    if not client_id:
+        raise HTTPException(status_code=422, detail="client_id is required")
+
+    if not reviewed:
+        (db.table("schedule_iii_unbilled_reviews").delete()
+         .eq("firm_id", firm_id).eq("client_id", client_id).execute())
+        return {"reviewed": False, "reviewed_on": None, "note": None}
+
+    # IST, per CLAUDE.md: the date goes onto a note a CA signs, and the column
+    # is a date rather than a timestamp so there is no question which day a
+    # late-evening review belongs to.
+    on = ist_today().isoformat()
+    text = (note or "").strip() or None
+    # Payload written INLINE with literal keys — see _write() for why.
+    db.table("schedule_iii_unbilled_reviews").upsert(
+        {"firm_id": firm_id, "client_id": client_id, "reviewed_on": on,
+         "reviewed_by": actor_id, "note": text,
+         "updated_at": datetime.now(timezone.utc).isoformat()},
+        on_conflict="firm_id,client_id").execute()
+    return {"reviewed": True, "reviewed_on": on, "note": text}

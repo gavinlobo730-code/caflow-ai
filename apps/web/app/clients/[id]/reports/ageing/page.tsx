@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, ChevronDown,
+  ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, ChevronDown, Check,
 } from "lucide-react";
 import {
   api, type ApiResp, type AgeingSchedule, type AgeingTable, type AgeingDocument,
   type AgeingClassifyBody,
 } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 /**
@@ -42,15 +43,36 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
  *     small enterprise beyond the MSMED s.15 limit unless actually paid, so
  *     calling an unclassified vendor "Others" would change the client's taxable
  *     income. The note is not finished until that list is empty.
+ *
+ *  4. Unbilled dues sit BESIDE each table and are never aged. Both notes end
+ *     "Unbilled dues shall be disclosed separately", and the reason is the same
+ *     reason they get no bucket: the tables age from the due date, or where
+ *     none is specified the transaction date, and an unbilled due has neither.
+ *     The figure is absent rather than zero until somebody records that they
+ *     have been through the chart of accounts — an unreviewed nil claims the
+ *     client has none when the truth is that nobody has looked.
  */
 
-type Tab = "note" | "receivables" | "payables";
+type Tab = "note" | "receivables" | "payables" | "unbilled";
 
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: "note", label: "Schedule III note", hint: "The two prescribed tables" },
   { id: "receivables", label: "Receivables detail", hint: "Open invoices, and what to mark" },
   { id: "payables", label: "Payables detail", hint: "Open bills, and what to mark" },
+  { id: "unbilled", label: "Unbilled dues", hint: "Which accounts hold them, and the review that lets the figure be printed" },
 ];
+
+/** An account a CA can mark. Only assets and liabilities are offered: accrued
+ *  income is an asset and accrued expenses are a liability, and the database
+ *  CHECK refuses anything else — the P&L leg of an accrual is not the due, and
+ *  marking it would double the disclosure. */
+type MarkableAccount = {
+  id: string;
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  unbilled_dues_side: "receivable" | "payable" | null;
+};
 
 type MsmeStatus = NonNullable<AgeingClassifyBody["msme_status"]>;
 
@@ -156,6 +178,8 @@ export default function ClientAgeingSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<MarkableAccount[] | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -189,10 +213,75 @@ export default function ClientAgeingSchedulePage() {
     }
   }, [clientId, asOf]);
 
+  /** The client's asset and liability accounts, read directly — this is a read,
+   *  and RLS governs it (see CLAUDE.md on the frontend's second data path). The
+   *  WRITE goes through the guarded classify endpoint, because marking an
+   *  account puts its balance into a statutory disclosure. */
+  const loadAccounts = useCallback(async () => {
+    if (!clientId) return;
+    setDetailError(null);
+    try {
+      const sb = getSupabaseClient();
+      const { data, error: err } = await sb
+        .from("chart_of_accounts")
+        .select("id, account_code, account_name, account_type, unbilled_dues_side")
+        .eq("client_id", clientId)
+        .in("account_type", ["Asset", "Liability"])
+        .eq("is_active", true)
+        .order("account_code");
+      if (err) throw new Error(err.message);
+      setAccounts((data ?? []) as MarkableAccount[]);
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : "Could not load the chart of accounts");
+    }
+  }, [clientId]);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (tab !== "note" && invoices === null && bills === null) loadDetail();
+    if ((tab === "receivables" || tab === "payables")
+        && invoices === null && bills === null) loadDetail();
   }, [tab, invoices, bills, loadDetail]);
+  useEffect(() => {
+    if (tab === "unbilled" && accounts === null) loadAccounts();
+  }, [tab, accounts, loadAccounts]);
+
+  /** Mark or un-mark one account, then rebuild the note so the figure moves. */
+  const markAccount = useCallback(async (
+    account: MarkableAccount, side: "receivable" | "payable" | null,
+  ) => {
+    setSaving(account.id);
+    setDetailError(null);
+    try {
+      const r = await api.accounting.classifyForAgeing({
+        client_id: clientId, target: "account", target_id: account.id,
+        unbilled_dues_side: side,
+      });
+      if (!r.success) throw new Error(r.error ?? "Could not mark the account");
+      await Promise.all([load(), loadAccounts()]);
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : "Could not mark the account");
+    } finally {
+      setSaving(null);
+    }
+  }, [clientId, load, loadAccounts]);
+
+  /** Record — or withdraw — the review that lets the figure be printed. */
+  const setReviewed = useCallback(async (reviewed: boolean) => {
+    setSaving("review");
+    setDetailError(null);
+    try {
+      const r = await api.accounting.reviewUnbilledDues({
+        client_id: clientId, reviewed, note: reviewNote.trim() || null,
+      });
+      if (!r.success) throw new Error(r.error ?? "Could not record the review");
+      setReviewNote("");
+      await load();
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : "Could not record the review");
+    } finally {
+      setSaving(null);
+    }
+  }, [clientId, reviewNote, load]);
 
   /** Record one classification, then rebuild the note so the figures move. */
   const classify = useCallback(async (
@@ -218,10 +307,6 @@ export default function ClientAgeingSchedulePage() {
   }, [load, loadDetail, invoices, bills]);
 
   const unclassified = schedule?.payables.unclassified_vendors ?? [];
-  const gapsByCode = useMemo(
-    () => Object.fromEntries((schedule?.gaps ?? []).map((g) => [g.code, g.message])),
-    [schedule],
-  );
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
@@ -319,8 +404,9 @@ export default function ClientAgeingSchedulePage() {
                   </p>
                 </div>
                 <ScheduleTable table={schedule.receivables} />
-                <UnbilledLine paise={schedule.receivables.unbilled_dues_paise}
-                              why={gapsByCode["unbilled_dues_not_modelled"]} />
+                <UnbilledLine table={schedule.receivables}
+                              reviewedOn={schedule.unbilled_reviewed_on}
+                              onReview={() => setTab("unbilled")} />
               </section>
 
               {unclassified.length > 0 && (
@@ -372,8 +458,9 @@ export default function ClientAgeingSchedulePage() {
                   </p>
                 </div>
                 <ScheduleTable table={schedule.payables} />
-                <UnbilledLine paise={schedule.payables.unbilled_dues_paise}
-                              why={gapsByCode["unbilled_dues_not_modelled"]} />
+                <UnbilledLine table={schedule.payables}
+                              reviewedOn={schedule.unbilled_reviewed_on}
+                              onReview={() => setTab("unbilled")} />
               </section>
 
               <div className="flex items-start gap-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
@@ -389,7 +476,7 @@ export default function ClientAgeingSchedulePage() {
             </div>
           )}
 
-          {tab !== "note" && (
+          {(tab === "receivables" || tab === "payables") && (
             <DocumentList
               kind={tab}
               rows={(tab === "receivables" ? invoices : bills) ?? null}
@@ -398,21 +485,70 @@ export default function ClientAgeingSchedulePage() {
               clientId={clientId}
             />
           )}
+
+          {tab === "unbilled" && (
+            <UnbilledPanel
+              accounts={accounts}
+              reviewedOn={schedule.unbilled_reviewed_on}
+              note={reviewNote}
+              onNote={setReviewNote}
+              saving={saving}
+              onMark={markAccount}
+              onReviewed={setReviewed}
+            />
+          )}
         </>
       )}
     </div>
   );
 }
 
-function UnbilledLine({ paise, why }: { paise: number | null; why?: string }) {
+/** Beside the table, never inside it. Both notes end "Unbilled dues shall be
+ *  disclosed separately", and an unbilled due has no due date to age from — a
+ *  bucket here would be an invented one. */
+function UnbilledLine({ table, reviewedOn, onReview }: {
+  table: AgeingTable; reviewedOn: string | null; onReview: () => void;
+}) {
+  const paise = table.unbilled_dues_paise;
   return (
-    <div className="px-4 py-2.5 border-t border-gray-50 flex items-center gap-2">
-      <p className="text-[10px] text-[#94A3B8] flex-1">
-        Unbilled dues (disclosed separately under Schedule III)
-      </p>
-      <p className="text-[10px] text-[#94A3B8]" title={why}>
-        {paise === null ? "Not modelled — see the note above" : formatPaise(paise)}
-      </p>
+    <div className="px-4 py-2.5 border-t border-gray-50">
+      <div className="flex items-center gap-2">
+        <p className="text-[10px] text-[#64748B] flex-1">
+          Unbilled dues <span className="text-[#94A3B8]">(disclosed separately)</span>
+        </p>
+        {paise === null ? (
+          <button onClick={onReview}
+            className="text-[10px] border border-amber-200 bg-amber-50 text-amber-800 rounded-md px-2 py-0.5 hover:bg-amber-100">
+            Not reviewed — review the accounts
+          </button>
+        ) : (
+          <p className="text-[10px] tabular-nums text-[#1E293B] font-medium">
+            {formatPaise(paise)}
+          </p>
+        )}
+      </div>
+      {/* What the figure is made of. A CA signing the note needs to see which
+          accounts it came from, and it is a handful of them. */}
+      {table.unbilled_accounts.length > 0 && (
+        <div className="mt-1.5 space-y-0.5">
+          {table.unbilled_accounts.map((a) => (
+            <div key={a.account_id} className="flex items-center gap-2 pl-3">
+              <span className="text-[10px] text-[#94A3B8] tabular-nums">{a.account_code}</span>
+              <span className="text-[10px] text-[#94A3B8] flex-1 truncate">{a.account_name}</span>
+              <span className={`text-[10px] tabular-nums ${
+                a.balance_paise < 0 ? "text-red-600" : "text-[#94A3B8]"}`}>
+                {formatPaise(a.balance_paise)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {paise !== null && reviewedOn && (
+        <p className="text-[9px] text-[#CBD5E1] mt-1">
+          Chart of accounts reviewed {reviewedOn}
+          {table.unbilled_accounts.length === 0 && " — no account holds unbilled dues"}
+        </p>
+      )}
     </div>
   );
 }
@@ -558,5 +694,131 @@ function MarkToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick
     >
       {busy ? "…" : on ? "Yes" : "No"}
     </button>
+  );
+}
+
+
+/**
+ * Where the two human steps behind the unbilled disclosure are taken.
+ *
+ * THEY ARE TWO STEPS, AND THAT IS THE POINT. Marking accounts says "these hold
+ * unbilled dues". Only the review says "and there are no others" — which is
+ * what the note actually claims, and what makes a nil printable. A client with
+ * genuinely none marks nothing and records the review; a client nobody has
+ * looked at has no figure at all, which is the truth.
+ */
+function UnbilledPanel({
+  accounts, reviewedOn, note, onNote, saving, onMark, onReviewed,
+}: {
+  accounts: MarkableAccount[] | null;
+  reviewedOn: string | null;
+  note: string;
+  onNote: (v: string) => void;
+  saving: string | null;
+  onMark: (a: MarkableAccount, side: "receivable" | "payable" | null) => void;
+  onReviewed: (reviewed: boolean) => void;
+}) {
+  if (accounts === null) {
+    return (
+      <div className="flex items-center gap-2 text-[11px] text-[#94A3B8] py-8">
+        <Loader2 size={14} className="animate-spin" /> Loading the chart of accounts…
+      </div>
+    );
+  }
+  const marked = accounts.filter((a) => a.unbilled_dues_side);
+
+  return (
+    <div className="space-y-5">
+      <section className={`rounded-xl border overflow-hidden ${
+        reviewedOn ? "bg-white border-[#F1F5F9]" : "bg-amber-50/50 border-amber-200"}`}>
+        <div className="px-4 py-3">
+          <p className="text-xs font-semibold text-[#334155]">
+            {reviewedOn ? `Reviewed ${reviewedOn}` : "Not yet reviewed"}
+          </p>
+          <p className="text-[10px] text-[#64748B] mt-1">
+            {reviewedOn
+              ? `The note discloses ${marked.length === 0
+                  ? "nil unbilled dues, affirmed by somebody rather than assumed"
+                  : `the balances on ${marked.length} marked account${marked.length === 1 ? "" : "s"}`}.`
+              : "Until somebody records that they have been through this client's chart of "
+                + "accounts, the note shows no unbilled figure at all. A zero would claim the "
+                + "client has none, when the truth is that nobody has looked."}
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            {!reviewedOn && (
+              <input
+                value={note}
+                onChange={(e) => onNote(e.target.value)}
+                placeholder="Optional note — what you checked"
+                className="flex-1 text-[11px] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[#334155] bg-white"
+              />
+            )}
+            <button
+              onClick={() => onReviewed(!reviewedOn)}
+              disabled={saving === "review"}
+              className={`flex items-center gap-1.5 text-[11px] rounded-lg px-3 py-1.5 disabled:opacity-50 ${
+                reviewedOn
+                  ? "border border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9]"
+                  : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"}`}
+            >
+              {saving === "review" ? <Loader2 size={12} className="animate-spin" />
+                : reviewedOn ? null : <Check size={12} />}
+              {reviewedOn ? "Withdraw the review" : "I have marked every account that holds unbilled dues"}
+            </button>
+          </div>
+          {reviewedOn && (
+            <p className="text-[10px] text-[#94A3B8] mt-2">
+              Withdrawing puts the disclosure back into its gap — for when the chart of
+              accounts has moved on and the review no longer stands.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50">
+          <p className="text-xs font-semibold text-[#334155]">
+            Which accounts hold unbilled dues
+          </p>
+          <p className="text-[10px] text-[#94A3B8] mt-0.5">
+            Accrued income is an ASSET and goes under receivables; accrued expenses and
+            goods received not invoiced are a LIABILITY and go under payables. Only assets
+            and liabilities are listed — the P&amp;L leg of an accrual is not the due, and
+            marking it would count the same money twice.
+          </p>
+        </div>
+        {accounts.length === 0 ? (
+          <p className="px-4 py-6 text-[11px] text-[#94A3B8] text-center">
+            This client has no active asset or liability accounts.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {accounts.map((a) => (
+              <div key={a.id} className="px-4 py-2 flex items-center gap-3">
+                <span className="text-[10px] text-[#94A3B8] tabular-nums w-14 flex-shrink-0">
+                  {a.account_code}
+                </span>
+                <span className="text-[11px] text-[#334155] flex-1 truncate">{a.account_name}</span>
+                <span className="text-[10px] text-[#CBD5E1] w-16 flex-shrink-0">{a.account_type}</span>
+                <select
+                  value={a.unbilled_dues_side ?? ""}
+                  disabled={saving === a.id}
+                  onChange={(e) => onMark(
+                    a, (e.target.value || null) as "receivable" | "payable" | null)}
+                  className="text-[10px] border border-[#E2E8F0] rounded-md px-2 py-1 text-[#334155] bg-white disabled:opacity-50"
+                >
+                  <option value="">Not unbilled dues</option>
+                  {/* Offered per type, because the database refuses the other
+                      pairing anyway — an asset cannot hold accrued expenses. */}
+                  {a.account_type === "Asset"
+                    ? <option value="receivable">Unbilled — receivables</option>
+                    : <option value="payable">Unbilled — payables</option>}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }

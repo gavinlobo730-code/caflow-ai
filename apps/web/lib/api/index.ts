@@ -175,8 +175,20 @@ export type AgeingTable = {
   rows: AgeingRow[];
   column_totals: Record<string, number>;
   total_paise: number;
-  /** null, never 0 — nothing in this platform holds unbilled dues. */
+  /** Disclosed SEPARATELY, never aged — both notes end "Unbilled dues shall be
+   *  disclosed separately", and an unbilled due has no due date to age from.
+   *
+   *  null until somebody has reviewed the chart of accounts (see
+   *  `unbilled_reviewed_on`). Not zero: a zero asserts the client has no
+   *  unbilled dues, and until a human looks the truth is that nobody knows. */
   unbilled_dues_paise: number | null;
+  /** The marked accounts behind that figure, largest first. Empty while the
+   *  figure is null. A balance can be negative — an accrual account on the
+   *  wrong side is shown at its real figure and flagged, not hidden. */
+  unbilled_accounts: {
+    account_id: string; account_code: string; account_name: string;
+    balance_paise: number;
+  }[];
 };
 
 export type AgeingPayablesTable = AgeingTable & {
@@ -194,6 +206,10 @@ export type AgeingSchedule = {
   ageing_from: string;
   receivables: AgeingTable;
   payables: AgeingPayablesTable;
+  /** The date somebody recorded that they had been through this client's chart
+   *  of accounts and marked every account holding unbilled dues. null means
+   *  nobody has, which is what makes both `unbilled_dues_paise` null. IST. */
+  unbilled_reviewed_on: string | null;
   gaps: { code: string; message: string }[];
 };
 
@@ -310,12 +326,17 @@ export type MultiYearTrend = {
 
 export type AgeingClassifyBody = {
   client_id: string;
-  target: "invoice" | "bill" | "vendor";
+  target: "invoice" | "bill" | "vendor" | "account";
   target_id: string;
   is_disputed?: boolean;
   considered_doubtful?: boolean;
   msme_status?: "micro" | "small" | "medium" | "not_registered" | null;
   msme_registration_no?: string | null;
+  /** Marks a GL account as holding unbilled dues. 'receivable' is an ASSET
+   *  balance (accrued income); 'payable' is a LIABILITY balance (accrued
+   *  expenses). null un-marks it. The database CHECK also refuses a side that
+   *  does not match the account's own type. */
+  unbilled_dues_side?: "receivable" | "payable" | null;
 };
 
 export type ReportGSTSummary = {
@@ -646,6 +667,16 @@ export const api = {
       request<ApiResp<{ target: string; target_id: string; set: Record<string, unknown> }>>(
         "/api/accounting/schedule-iii/ageing/classify",
         { method: "POST", body: JSON.stringify(body) }),
+    /**
+     * Record — or withdraw — the review that lets the unbilled-dues disclosure
+     * be printed at all. Marking accounts says "these hold unbilled dues"; only
+     * this says "and there are no others", which is what the note claims and
+     * what makes a nil printable.
+     */
+    reviewUnbilledDues: (body: { client_id: string; reviewed: boolean; note?: string | null }) =>
+      request<ApiResp<{ reviewed: boolean; reviewed_on: string | null; note: string | null }>>(
+        "/api/accounting/schedule-iii/ageing/unbilled-review",
+        { method: "PUT", body: JSON.stringify(body) }),
     /**
      * The eleven Schedule III ratios (Division I clause (Q)). Both years are
      * computed server-side, so the 25% variance test the statute requires is a
