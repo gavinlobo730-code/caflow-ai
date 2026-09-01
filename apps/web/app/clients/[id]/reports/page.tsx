@@ -64,6 +64,9 @@ const GROUPS: ReportGroup[] = [
       { id: "ageing", title: "Ageing schedules",
         desc: "Trade receivables and trade payables ageing — the notes to the balance sheet, and the open documents behind them",
         href: "reports/ageing", statute: "Schedule III (2021 amendment)" },
+      { id: "trend", title: "Multi-year trend",
+        desc: "Three to ten years of Schedule III captions and the clause (Q) ratios side by side, with the movement between them — a management view, not the statements",
+        href: "reports/trend" },
       { id: "ratios", title: "Ratio analysis",
         desc: "The eleven prescribed ratios, both years, with the numerator and denominator disclosed and 25% movements flagged",
         href: "reports/ratios", statute: "Schedule III clause (Q)" },
@@ -135,8 +138,6 @@ const GROUPS: ReportGroup[] = [
  *  migration 303 added. Which is the lesson worth leaving here: check whether a
  *  report is missing a SCREEN before recording it as missing entirely. */
 const NOT_BUILT: { title: string; why: string }[] = [
-  { title: "Multi-year statements (three years or more)",
-    why: "The Schedule III statements now carry the preceding year's corresponding amounts, which General Instructions para 5 makes mandatory — they did not until this was built, and this list previously claimed they did. A standalone three-or-more-year trend report is still not built." },
   { title: "Unbilled dues",
     why: "Schedule III requires them disclosed separately under both ageing schedules. Nothing in this platform holds an unbilled revenue or accrued-liability document keyed to a party, so the ageing report says so rather than showing a zero." },
 ];

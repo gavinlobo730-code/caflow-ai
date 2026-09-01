@@ -1032,6 +1032,40 @@ def put_schedule_iii_ratio_inputs(
     return api_response(True, out)
 
 
+@router.get("/schedule-iii/trend")
+def get_schedule_iii_trend(
+    client_id: str = Query(..., description="Required — a trend is one client's history"),
+    years: int = Query(5, ge=2, le=10, description="How many financial years, ending with `to_fy`"),
+    to_fy: Optional[str] = Query(None, description="The most recent year, e.g. 2026-27; defaults to the current FY"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """
+    The Schedule III captions and the clause (Q) ratios across several financial
+    years, with the movement between them.
+
+    NOT A STATUTORY STATEMENT. Schedule III General Instructions para 5 requires
+    the corresponding amounts for the IMMEDIATELY PRECEDING period — one
+    comparative, which the balance sheet and statement of profit and loss carry.
+    Nothing prescribes the form of a five-year trend and this one is unaudited;
+    the payload says so on its face, so a reader cannot mistake it for the
+    statements.
+
+    Every figure is bucketed by the same functions the statements use, so a
+    movement here is a movement in the business rather than a difference in
+    method. A year with nothing recorded against it is left out rather than
+    shown as zeros, and the response names which years were dropped.
+
+    Amounts are integer paise; ratios are basis points, 10,000 bps = 1.00.
+    """
+    assert_client_access(current_user, client_id)
+    end_fy = to_fy or _current_fy_long()
+    ratio_analysis_service.fy_bounds(end_fy)        # validates, 422s if it does not
+    start_year = int(end_fy.split("-")[0]) - (years - 1)
+    fy_labels = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, start_year + years)]
+    return api_response(True, _reporting_service().multi_year_trend(
+        current_user["firm_id"], client_id, fy_labels))
+
+
 @router.get("/cash-flow")
 def get_cash_flow(
     start_date: Optional[str] = Query(None),

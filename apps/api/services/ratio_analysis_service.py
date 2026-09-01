@@ -28,29 +28,20 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from core.ist_clock import ist_fy_label
+from core.ist_clock import fy_bounds as _fy_bounds, ist_fy_label, preceding_fy
 from domain.reporting import ratios as ratio_rules
 
 _logger = logging.getLogger("caflow.ratios")
 
 
 def fy_bounds(fy_label: str) -> tuple[str, str]:
-    """('2026-04-01', '2027-03-31') for '2026-27'. The Indian financial year is
-    1 April to 31 March (CLAUDE.md), and the ratio note is annual because
-    clause (Q) compares with "the preceding year"."""
+    """('2026-04-01', '2027-03-31') for '2026-27', as a 422 rather than a
+    ValueError. core.ist_clock owns the arithmetic — the domain layer needs the
+    same bounds without knowing what HTTP is — and this is the API skin on it."""
     try:
-        start_year = int(str(fy_label).split("-")[0])
-        if not (1900 <= start_year <= 2999):
-            raise ValueError(start_year)
-    except (ValueError, IndexError, AttributeError):
-        raise HTTPException(status_code=422,
-                            detail=f"fy must look like '2026-27', got {fy_label!r}")
-    return f"{start_year}-04-01", f"{start_year + 1}-03-31"
-
-
-def preceding_fy(fy_label: str) -> str:
-    start_year = int(str(fy_label).split("-")[0]) - 1
-    return f"{start_year}-{str(start_year + 1)[2:]}"
+        return _fy_bounds(fy_label)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 def _components_for(reporting, firm_id: str, client_id: Optional[str],

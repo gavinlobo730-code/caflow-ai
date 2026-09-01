@@ -140,22 +140,38 @@ def ratio_bps(numerator_paise: int, denominator_paise: int) -> Optional[int]:
     return -q if negative else q
 
 
+def pct_change_bps(current: Optional[int], prior: Optional[int]) -> Optional[int]:
+    """The change from `prior` to `current` as a percentage, in basis points.
+
+    Measured against the MAGNITUDE of the prior figure, so the sign of the
+    result still means what it says: a return on equity going from -0.20 to
+    -0.30 has gone DOWN by 50%, and reports as -5000. Dividing by the signed
+    prior would give +5000 — a fall presented as a rise, which a reviewer
+    skimming a movement column reads as an improvement.
+
+    None where either side is missing, or where the prior figure is zero: any
+    move off zero is undefined as a percentage, and the callers say so in their
+    own way rather than inventing a number here.
+    """
+    if current is None or prior is None or prior == 0:
+        return None
+    return (current - prior) * BPS // abs(prior)
+
+
 def variance(current_bps: Optional[int], prior_bps: Optional[int]) -> tuple[Optional[int], bool]:
     """(signed change vs the preceding year in bps, whether clause (Q) needs an
     explanation for it).
 
-    Measured against the MAGNITUDE of the prior year, so a ratio that goes from
-    -0.2 to -0.3 is a 50% worsening rather than a -50% one. Where the prior year
-    is zero and this year is not, the change is undefined as a percentage and
-    every such move is material by definition — so it is flagged with no number
-    rather than divided by zero.
+    Where the prior year is zero and this year is not, the change is undefined
+    as a percentage and every such move is material by definition — so it is
+    flagged with no number rather than divided by zero.
     """
     if current_bps is None or prior_bps is None:
         return None, False
     if prior_bps == 0:
         return (None, True) if current_bps != 0 else (0, False)
-    change = (current_bps - prior_bps) * BPS // abs(prior_bps)
-    return change, abs(change) > VARIANCE_THRESHOLD_BPS
+    change = pct_change_bps(current_bps, prior_bps)
+    return change, change is not None and abs(change) > VARIANCE_THRESHOLD_BPS
 
 
 @dataclass
