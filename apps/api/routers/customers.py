@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
@@ -234,6 +235,14 @@ def create_customer(
         # can report it as "already exists / skipped".
         gstin = _norm(data.get("gstin"))
         pan = _norm(data.get("pan"))
+        # Shape AND check digit (CGST Act s.25). The shape alone accepts every
+        # transposition inside the PAN, and a customer's GSTIN is what puts the
+        # supply into THEIR GSTR-2B — get it wrong and the recipient never sees
+        # the credit, correctable only by an amendment inside the s.37(3)
+        # window. Caught here, it costs a keystroke.
+        problem = gstin_problem(gstin)
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
         client_id = data.get("client_id")
         firm_id = data.get("firm_id")
 

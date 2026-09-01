@@ -7,6 +7,7 @@ import {
   api, type ScheduleIiiRatioNote, type ScheduleIiiRatio,
 } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 /**
@@ -119,16 +120,20 @@ export default function ClientRatioNotePage() {
     setSaving("dscr");
     setError(null);
     try {
+      // Rupees in the box, integer paise on the wire. Through
+      // paiseFromRupeeInput, never Math.round(x * 100): that multiplication is
+      // the one arithmetic style CLAUDE.md forbids for money, and it is usually
+      // right, which is worse than wrong.
       const trimmed = raw.trim();
-      // Rupees in the box, paise on the wire — every amount crosses the API as
-      // integer paise (CLAUDE.md). Blank clears it back to the gap.
-      const rupees = trimmed === "" ? null : Number(trimmed);
-      if (rupees !== null && (!Number.isFinite(rupees) || rupees < 0)) {
-        throw new Error("Principal repaid must be a number of rupees, and cannot be negative");
+      const paise = trimmed === "" ? null : paiseFromRupeeInput(trimmed);
+      if (trimmed !== "" && paise === null) {
+        throw new Error("Principal repaid must be an amount in rupees, e.g. 200000 or 200000.50");
+      }
+      if (paise !== null && paise < 0) {
+        throw new Error("Principal repaid cannot be negative");
       }
       const r = await api.accounting.saveRatioInputs({
-        client_id: clientId, fy,
-        principal_repaid_paise: rupees === null ? null : Math.round(rupees * 100),
+        client_id: clientId, fy, principal_repaid_paise: paise,
       });
       if (!r.success) throw new Error(r.error ?? "Could not record the figure");
       await load();

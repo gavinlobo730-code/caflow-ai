@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -62,7 +63,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
     cin: "", company_name: "", incorporation_date: "", registered_address: "",
-    authorized_capital_paise: "", paid_up_capital_paise: "", company_type: "PVT",
+    authorized_capital_rupees: "", paid_up_capital_rupees: "", company_type: "PVT",
   });
 
   const load = useCallback(async () => {
@@ -92,14 +93,31 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       alert("Invalid CIN. Format: U74999MH2020PTC123456 (21 chars, starts with L or U). Companies Act 2013.");
       return;
     }
+    const authorised = paiseFromRupeeInput(form.authorized_capital_rupees);
+    const paidUp = paiseFromRupeeInput(form.paid_up_capital_rupees);
+    if (authorised === null || paidUp === null) {
+      alert("Authorised and paid-up capital must be amounts in rupees, e.g. 2500000.");
+      return;
+    }
+    if (paidUp > authorised) {
+      // Companies Act 2013 s.2(64)/s.2(84): paid-up capital is the portion of
+      // the issued capital actually paid, so it cannot exceed what is
+      // authorised. Catching it here is cheaper than an MCA rejection.
+      alert("Paid-up capital cannot exceed authorised capital.");
+      return;
+    }
     await apiFetch("/api/mca-workspace/companies", {
       method: "POST",
       body: JSON.stringify({
         ...form,
         cin: cinUp,
         client_id: clientId,
-        authorized_capital_paise: parseInt(form.authorized_capital_paise) || 0,
-        paid_up_capital_paise: parseInt(form.paid_up_capital_paise) || 0,
+        // Rupees typed, integer paise sent. paiseFromRupeeInput rather than
+        // parseInt or Math.round(x * 100): it is exact by construction and
+        // returns null for anything that is not an amount, so "25 lakh" is
+        // refused instead of becoming ₹25.
+        authorized_capital_paise: authorised,
+        paid_up_capital_paise: paidUp,
       }),
     });
     setShowNew(false);
@@ -124,8 +142,12 @@ function CompaniesTab({ clientId }: { clientId: string }) {
               { key: "cin", placeholder: "CIN (e.g. U74999MH2020PTC123456)", maxLength: 21 },
               { key: "company_name", placeholder: "Company Name" },
               { key: "incorporation_date", placeholder: "Incorporation Date (YYYY-MM-DD)" },
-              { key: "authorized_capital_paise", placeholder: "Authorised Capital (paise)" },
-              { key: "paid_up_capital_paise", placeholder: "Paid-up Capital (paise)" },
+              // In RUPEES, converted at the boundary below. These asked for
+              // paise, so a CA registering ₹25,00,000 of authorised capital had
+              // to type 250000000 — and one wrong zero files the company's
+              // capital out by a factor of ten.
+              { key: "authorized_capital_rupees", placeholder: "Authorised Capital (₹)" },
+              { key: "paid_up_capital_rupees", placeholder: "Paid-up Capital (₹)" },
             ] as { key: string; placeholder: string; maxLength?: number }[]).map(({ key, placeholder, maxLength }) => (
               <input key={key} placeholder={placeholder} maxLength={maxLength}
                 value={(form as Record<string, string>)[key]}

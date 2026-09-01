@@ -557,6 +557,37 @@ screen-scrape net banking**. Read that section before touching any of it.
 - So: convert at the point of reporting. When you show a raw query result or edit a cron line, say which zone that value is in, since the stored value stays UTC.
 - Worked example: the daily sweep is nominally 06:00 IST = 00:30 UTC. A run recorded as `2026-08-18 01:36+00` is reported as "07:06 IST" — and that hour of drift is GitHub cron lateness under load, which is what the catch-up in jobs/ exists to absorb.
 
+## Money in the browser — one parser, and a known backlog
+
+`apps/web/lib/money/rupeeInput.ts` turns a typed rupee amount into integer paise
+by concatenating the digits. Use it for every amount field. The form it replaces —
+`Math.round(parseFloat(x) * 100)` — is still present at roughly twenty call
+sites, and it is not merely imprecise:
+
+- `parseFloat("1,25,000")` is **1**. A CA typing an amount the way Indian
+  amounts are grouped records one rupee.
+- `parseFloat("12abc")` is 12 and `parseFloat("1e3")` is 1000 — neither is an
+  amount, both are accepted.
+- a blank field gives `NaN`, and `JSON.stringify` sends that as `null`.
+
+Converted so far: the journal editor, the customer form (GSTIN + opening
+balance), the MCA capital fields, the TDS challan and certificate amounts, and
+the Schedule III ratio inputs. **Still on `parseFloat`:** the sales invoice line
+rate and quantity, receipt allocation, the purchases screen, billing, loans,
+the MSME tracker and the payroll grid. Each needs a refuse-rather-than-coerce
+decision at its own call site, which is why they are being converted one screen
+at a time rather than by a sweep.
+
+## Identifiers
+
+- **GSTIN carries a check digit, and the shape regex does not test it.**
+  `apps/api/domain/gst/gstin.py` is the authority; `apps/web/lib/gst/gstin.ts`
+  mirrors it for keystroke feedback and the two are pinned by
+  `apps/api/tests/fixtures/gstin.json`, which both suites read. Enforced where a
+  human TYPES a GSTIN — onboarding, the customer and vendor create paths — and
+  deliberately NOT in `models.client.validate_gstin`, which guards a Pydantic
+  field that 512 invented fixture GSTINs across 95 files flow through.
+
 ## Bug fixing
 
 - When the user reports a bug, don't just patch the one instance. Identify the underlying pattern (wrong column name, missing null check, stale label, unapplied migration, etc.) and grep/search the rest of the codebase for the same pattern before calling the fix done. Report what else was found, even if you decide not to touch it.

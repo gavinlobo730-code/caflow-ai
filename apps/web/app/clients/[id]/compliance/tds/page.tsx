@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -197,7 +198,9 @@ function ChallansTab({ clientId }: { clientId: string }) {
   // Distinguishes "fetch failed" from "no challans yet".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_paise: "", financial_year: "", quarter: "Q1" });
+  // amount in RUPEES, converted at the boundary — a CA depositing ₹1,24,500 of
+  // TDS should type 124500, not 12450000.
+  const [form, setForm] = useState({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" });
 
   const load = useCallback(() => {
     setLoading(true);
@@ -213,12 +216,19 @@ function ChallansTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    // Rupees typed, integer paise sent, through the exact parser rather than
+    // parseInt (which would read "1,24,500" as 1) or Math.round(x * 100).
+    const amount = paiseFromRupeeInput(form.amount_rupees);
+    if (amount === null || amount < 0) {
+      alert("Amount must be a non-negative amount in rupees, e.g. 124500 or 124500.50.");
+      return;
+    }
     await apiFetch("/api/tds-workspace/challans", {
       method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId, amount_paise: parseInt(form.amount_paise) || 0 }),
+      body: JSON.stringify({ ...form, client_id: clientId, amount_paise: amount }),
     });
     setShowNew(false);
-    setForm({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_paise: "", financial_year: "", quarter: "Q1" });
+    setForm({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" });
     load();
   }
 
@@ -241,7 +251,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
               { key: "challan_date", placeholder: "Date (YYYY-MM-DD)" },
               { key: "bsr_code", placeholder: "BSR Code (7 digits)" },
               { key: "section", placeholder: "TDS Section (e.g. 194C)" },
-              { key: "amount_paise", placeholder: "Amount in paise (₹1 = 100)" },
+              { key: "amount_rupees", placeholder: "Amount (₹)" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
             ].map(({ key, placeholder }) => (
               <input key={key} placeholder={placeholder}
@@ -664,7 +674,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
   // Distinguishes "fetch failed" from "no certificates generated".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ deductee_pan: "", deductee_name: "", financial_year: "", certificate_type: "Form 16A", section: "", tds_amount_paise: "" });
+  const [form, setForm] = useState({ deductee_pan: "", deductee_name: "", financial_year: "", certificate_type: "Form 16A", section: "", tds_amount_rupees: "" });
 
   const load = useCallback(() => {
     setLoading(true);
@@ -680,9 +690,14 @@ function CertificatesTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    const tdsAmount = paiseFromRupeeInput(form.tds_amount_rupees);
+    if (tdsAmount === null || tdsAmount < 0) {
+      alert("TDS amount must be a non-negative amount in rupees, e.g. 12450 or 12450.50.");
+      return;
+    }
     await apiFetch("/api/tds-workspace/certificates", {
       method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId, tds_amount_paise: parseInt(form.tds_amount_paise) || 0 }),
+      body: JSON.stringify({ ...form, client_id: clientId, tds_amount_paise: tdsAmount }),
     });
     setShowNew(false);
     load();
@@ -710,7 +725,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
               { key: "deductee_name", placeholder: "Deductee Name" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
               { key: "section", placeholder: "Section (e.g. 194C)" },
-              { key: "tds_amount_paise", placeholder: "TDS Amount (paise)" },
+              { key: "tds_amount_rupees", placeholder: "TDS Amount (₹)" },
             ].map(({ key, placeholder }) => (
               <input key={key} placeholder={placeholder}
                 value={(form as Record<string, string>)[key]}

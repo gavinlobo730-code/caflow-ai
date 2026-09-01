@@ -113,12 +113,16 @@ def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
     return None
 
 
-def _line(label: str, paise: int, indent: bool = True) -> dict:
-    return {"label": label, "paise": paise, "indent": indent}
+def _line(label: str, paise: int, indent: bool = True,
+          prior_paise: int | None = None) -> dict:
+    return {"label": label, "paise": paise, "indent": indent,
+            "prior_paise": prior_paise}
 
 
-def _section(heading: str, lines: list[dict], total_paise: int, total_label: str) -> dict:
-    return {"heading": heading, "lines": lines, "total_paise": total_paise, "total_label": total_label}
+def _section(heading: str, lines: list[dict], total_paise: int, total_label: str,
+             prior_total_paise: int | None = None) -> dict:
+    return {"heading": heading, "lines": lines, "total_paise": total_paise,
+            "total_label": total_label, "prior_total_paise": prior_total_paise}
 
 
 # builders.profit_loss() keeps Cost of Goods Sold in its OWN "cost_of_sales"
@@ -157,15 +161,130 @@ def bucket_amounts(pl: dict, bs: dict) -> tuple[dict[str, int], dict[str, int]]:
     return bs_buckets, pl_buckets
 
 
-def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
+# ── Comparatives — Schedule III, Division I, General Instructions para 5 ─────
+#
+# "Except in the case of the first Financial Statements laid before the Company
+#  (after its incorporation) the corresponding amounts (comparatives) for the
+#  immediately preceding reporting period for all items shown in the Financial
+#  Statements including notes shall also be given."
+#
+# ALL ITEMS, INCLUDING NOTES. This is not presentation polish: a balance sheet
+# with one column is not a Schedule III balance sheet, and a CA cannot sign it.
+# The engine produced exactly one column until this was added, and the Reports
+# hub said out loud that "the statements carry a previous-year column" — which
+# was the second thing that page claimed and did not have.
+#
+# HOW THE SECOND COLUMN IS PRODUCED, AND WHY THAT WAY
+#     By running build_schedule_iii's own body over the preceding year's P&L and
+#     Balance Sheet and merging the result in, rather than by threading a second
+#     amount through twenty-four call sites. Two consequences, both wanted:
+#     the comparative CANNOT be computed by a different rule from the figure it
+#     sits beside, and a caption added to one column is added to both or the
+#     merge refuses.
+#
+#     The merge is positional and asserts the captions line up. They always do —
+#     both documents come from the same builder with the same fixed labels — so
+#     a mismatch means the two were not built by the same code, which is exactly
+#     the thing that must never be presented as a comparative.
+#
+# THE EXCEPTION IS THE STATUTE'S OWN. A company's first financial statements
+# after incorporation have no preceding period, and para 5 excepts them. The
+# same is true of a client's first year on this platform, so the document says
+# `comparatives.present: false` with the reason rather than inventing a column
+# of zeros — which would assert the business had nil everything last year.
+
+_COMPARATIVE_SECTIONS = (
+    ("balance_sheet", "equity_and_liabilities"),
+    ("balance_sheet", "assets"),
+    ("profit_and_loss", "revenue"),
+    ("profit_and_loss", "expenses"),
+)
+
+_COMPARATIVE_TOTALS = (
+    ("balance_sheet", "total_equity_liabilities_paise"),
+    ("balance_sheet", "total_assets_paise"),
+    ("profit_and_loss", "total_revenue_paise"),
+    ("profit_and_loss", "total_expenses_paise"),
+    ("profit_and_loss", "profit_before_tax_paise"),
+    ("profit_and_loss", "tax_expense_paise"),
+    ("profit_and_loss", "profit_after_tax_paise"),
+)
+
+NO_COMPARATIVES_REASON = (
+    "No preceding reporting period is on record for this client. Schedule III "
+    "General Instructions para 5 requires corresponding amounts for the "
+    "immediately preceding period for all items including notes, and excepts "
+    "only the first financial statements laid before a company after its "
+    "incorporation. A column of zeros is not the same disclosure — it would "
+    "assert the business had nil against every caption last year."
+)
+
+
+def _attach_comparatives(doc: dict, prior: dict) -> None:
+    """Merge the preceding year's document into this one as a second column.
+
+    Positional, with the captions asserted. Both documents are built by the same
+    function from the same fixed caption list, so a mismatch is not a data
+    condition — it means the two columns were not produced by the same code, and
+    presenting them side by side would be the exact defect comparatives exist to
+    avoid."""
+    for top, key in _COMPARATIVE_SECTIONS:
+        cur_sections, prior_sections = doc[top][key], prior[top][key]
+        if len(cur_sections) != len(prior_sections):
+            raise ValueError(
+                f"comparative mismatch in {top}.{key}: "
+                f"{len(cur_sections)} sections this year, {len(prior_sections)} last")
+        for cs, ps in zip(cur_sections, prior_sections):
+            if cs["heading"] != ps["heading"]:
+                raise ValueError(
+                    f"comparative mismatch: {cs['heading']!r} against {ps['heading']!r}")
+            cs["prior_total_paise"] = ps["total_paise"]
+            if len(cs["lines"]) != len(ps["lines"]):
+                raise ValueError(f"comparative line-count mismatch in {cs['heading']!r}")
+            for cl, plr in zip(cs["lines"], ps["lines"]):
+                if cl["label"] != plr["label"]:
+                    raise ValueError(
+                        f"comparative mismatch: {cl['label']!r} against {plr['label']!r}")
+                cl["prior_paise"] = plr["paise"]
+
+    for top, key in _COMPARATIVE_TOTALS:
+        doc[top][key.replace("_paise", "_prior_paise")] = prior[top][key]
+
+
+def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str,
+                       prior_pl: dict | None = None, prior_bs: dict | None = None,
+                       prior_fy_start: str | None = None,
+                       prior_fy_end: str | None = None) -> dict:
     """Group the authoritative P&L and Balance Sheet line amounts into the
-    Companies Act 2013 Schedule III format with section subtotals.
+    Companies Act 2013 Schedule III format with section subtotals, with the
+    preceding period's corresponding amounts beside them (General Instructions
+    para 5) where a preceding period exists.
 
     `pl` is a builders.profit_loss() dict (revenue/operating_expenses sections
     with `amount_paise` lines); `bs` is a builders.balance_sheet() dict
     (assets/liabilities/equity sections with `balance_paise` lines). Both carry
     `account_type`/`account_subtype` presentation hints on each line.
+    `prior_pl` / `prior_bs` are the same two things for the preceding period.
     """
+    doc = _build_one_year(pl, bs, fy_start, fy_end)
+    if prior_pl is not None and prior_bs is not None:
+        _attach_comparatives(doc, _build_one_year(
+            prior_pl, prior_bs, prior_fy_start or "", prior_fy_end or ""))
+        doc["comparatives"] = {
+            "present": True,
+            "period": {"fy_start": prior_fy_start, "fy_end": prior_fy_end},
+            "reason": None,
+        }
+    else:
+        doc["comparatives"] = {"present": False, "period": None,
+                               "reason": NO_COMPARATIVES_REASON}
+    return doc
+
+
+def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
+    """One column. Called twice by build_schedule_iii — once for the reporting
+    period and once for the preceding one — so neither can be computed by a rule
+    the other does not use."""
     bs_buckets, pl_buckets = bucket_amounts(pl, bs)
 
     def gb(k: str) -> int:

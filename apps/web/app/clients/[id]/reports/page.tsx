@@ -135,8 +135,8 @@ const GROUPS: ReportGroup[] = [
  *  migration 303 added. Which is the lesson worth leaving here: check whether a
  *  report is missing a SCREEN before recording it as missing entirely. */
 const NOT_BUILT: { title: string; why: string }[] = [
-  { title: "Comparative and multi-year statements",
-    why: "The statements carry a previous-year column; a standalone multi-year report is not built." },
+  { title: "Multi-year statements (three years or more)",
+    why: "The Schedule III statements now carry the preceding year's corresponding amounts, which General Instructions para 5 makes mandatory — they did not until this was built, and this list previously claimed they did. A standalone three-or-more-year trend report is still not built." },
   { title: "Unbilled dues",
     why: "Schedule III requires them disclosed separately under both ageing schedules. Nothing in this platform holds an unbilled revenue or accrued-liability document keyed to a party, so the ageing report says so rather than showing a zero." },
 ];

@@ -23,8 +23,8 @@ from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, accou
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
 
-GSTIN_A = "27AAAAA0000A1Z5"   # Maharashtra
-GSTIN_B = "29ABCDE1234F1Z5"   # Karnataka — different registration
+GSTIN_A = "27AAAAA0000A1Z2"   # Maharashtra
+GSTIN_B = "29ABCDE1234F1ZW"   # Karnataka — different registration
 
 _real_execute = eh._Query.execute
 

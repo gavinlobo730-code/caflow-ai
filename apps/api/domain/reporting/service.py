@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterator, Optional
 
 from core.ist_clock import ist_today
@@ -78,6 +78,41 @@ def _fy_start(today: date | None = None) -> str:
 def _day_before(iso: str) -> str:
     from datetime import timedelta
     return (date.fromisoformat(iso[:10]) - timedelta(days=1)).isoformat()
+
+
+def _preceding_period(start: str, end: str) -> tuple[str, str]:
+    """The immediately preceding reporting period — Schedule III General
+    Instructions para 5's "corresponding amounts".
+
+    A period of the same LENGTH ending the day before this one starts, rather
+    than "the same dates a year earlier". They are the same thing for a full
+    financial year, and they are not for a stub period: a company incorporated
+    in November has a first reporting period of five months, and its
+    comparative — once it has one — is the five months before, not twelve.
+    """
+    s = date.fromisoformat(start[:10])
+    e = date.fromisoformat(end[:10])
+    p_end = s - timedelta(days=1)
+    p_start = p_end - (e - s)
+    return p_start.isoformat(), p_end.isoformat()
+
+
+def _has_any_amount(pl: dict, bs: dict) -> bool:
+    """Whether a period has anything in it at all.
+
+    A client's first year on the platform has a preceding period of all zeros,
+    and presenting that as a comparative column asserts the business had nil
+    against every caption last year. Para 5 excepts the first financial
+    statements after incorporation, and this is the same case.
+    """
+    for group in ("revenue", "operating_expenses", "cost_of_sales"):
+        if any(ln.get("amount_paise") for ln in pl.get(group, {}).get("lines", [])):
+            return True
+    for key in ("assets", "liabilities", "equity"):
+        for section in bs.get(key, []):
+            if any(ln.get("balance_paise") for ln in section.get("lines", [])):
+                return True
+    return False
 
 
 @contextmanager
@@ -313,7 +348,31 @@ class ReportingService:
         end = fy_end or ist_today().isoformat()
         pl = self.profit_loss(firm_id, client_id, start, end, basis="accrual")
         bs = self.balance_sheet(firm_id, client_id, end, basis="accrual")
-        return schedule_iii_builder.build_schedule_iii(pl, bs, start, end)
+
+        # The comparative column, which Schedule III General Instructions para 5
+        # makes mandatory for all items including notes — the statements were
+        # produced with one column until this was added, and a one-column
+        # balance sheet is not a Schedule III balance sheet.
+        #
+        # It costs a second P&L and a second balance sheet, and both are served
+        # from account_period_balances (migrations 227/228) rather than from the
+        # ledger, so the second column costs what the first one does. Nothing
+        # here scales with transaction volume.
+        #
+        # An EMPTY preceding period is treated as no preceding period, which is
+        # what it is: a client's first year on the platform would otherwise be
+        # given a column of zeros asserting the business had nil against every
+        # caption last year. That is para 5's own exception for a company's
+        # first financial statements after incorporation.
+        p_start, p_end = _preceding_period(start, end)
+        prior_pl = self.profit_loss(firm_id, client_id, p_start, p_end, basis="accrual")
+        prior_bs = self.balance_sheet(firm_id, client_id, p_end, basis="accrual")
+        if not _has_any_amount(prior_pl, prior_bs):
+            prior_pl = prior_bs = None
+            p_start = p_end = None
+
+        return schedule_iii_builder.build_schedule_iii(
+            pl, bs, start, end, prior_pl, prior_bs, p_start, p_end)
 
     def cash_flow_statement(self, firm_id: str, client_id: Optional[str],
                             start_date: Optional[str], end_date: Optional[str],
