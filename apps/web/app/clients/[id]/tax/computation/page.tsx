@@ -1,5 +1,6 @@
 "use client";
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -187,9 +188,24 @@ export default function TaxComputationPage() {
   }, []);
 
   async function handleCompute() {
+    // Every figure read exactly BEFORE anything is computed. These five are the
+    // inputs to a tax computation: a gross salary read as ₹1 because it was
+    // typed "12,00,000" would produce a return that is internally consistent
+    // and completely wrong.
+    const fields: [string, string][] = [
+      ["Gross salary", salary], ["Business income", businessIncome],
+      ["Other income", otherIncome], ["TDS deducted", tds],
+      ["Advance tax paid", advanceTax],
+    ];
+    const bad = fields.find(([, v]) => paiseFromRupeeInput(v || "0") === null);
+    if (bad) {
+      setComputeError(`${bad[0]} must be an amount in rupees, e.g. 1200000 or `
+                      + "1200000.50 — without commas.");
+      return;
+    }
     setComputing(true);
     setComputeError(null);
-    const toP = (v: string) => Math.round(parseFloat(v || "0") * 100);
+    const toP = (v: string) => paiseFromRupeeInput(v || "0") as number;
     // Accepted disallowances are an ADD-BACK to business income, so they have
     // to reach the computation — not merely the snapshot. This total used to be
     // computed after the compute call and saved alongside a figure it had not
@@ -248,6 +264,14 @@ export default function TaxComputationPage() {
   }
 
   async function handleSaveDisallowance() {
+    // A disallowance is an ADD-BACK to business income, so a mis-read amount
+    // moves the tax directly.
+    const disallPaise = paiseFromRupeeInput(disallAmount);
+    if (disallPaise === null) {
+      setComputeError("The disallowance amount must be in rupees, e.g. 50000 or "
+                      + "50000.50 — without commas.");
+      return;
+    }
     setSavingDisall(true);
     try {
       const res = await apiFetch("/api/itr/disallowances", {
@@ -257,7 +281,7 @@ export default function TaxComputationPage() {
           financial_year: fy,
           section: disallSection,
           description: disallDesc,
-          amount_paise: Math.round(parseFloat(disallAmount) * 100),
+          amount_paise: disallPaise,
         }),
       });
       if (!res.success) throw new Error(res.error);

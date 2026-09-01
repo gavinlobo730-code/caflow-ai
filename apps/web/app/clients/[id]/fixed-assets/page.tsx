@@ -1,5 +1,6 @@
 "use client";
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -334,6 +335,15 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
   async function save() {
     if (!form.asset_name || !form.purchase_cost_paise) { setError("Asset name and cost are required."); return; }
+    // The field names still say _paise (they are the payload keys); what the CA
+    // types into them is rupees, and this is what reads it exactly.
+    const cost = paiseFromRupeeInput(form.purchase_cost_paise);
+    const salvage = paiseFromRupeeInput(form.salvage_value_paise || "0");
+    if (cost === null || salvage === null) {
+      setError("Cost and salvage value must be amounts in rupees, e.g. 125000 or "
+               + "125000.50 — without commas.");
+      return;
+    }
     setSaving(true); setError("");
     try {
       const body = {
@@ -343,8 +353,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         asset_code:            form.asset_code || undefined,
         location:              form.location || undefined,
         purchase_date:         form.purchase_date,
-        purchase_cost_paise:   Math.round(parseFloat(form.purchase_cost_paise) * 100),
-        salvage_value_paise:   Math.round(parseFloat(form.salvage_value_paise || "0") * 100),
+        // The cost is the depreciable base for the life of the asset: read it
+        // wrong once and every Schedule II charge after it is wrong too.
+        purchase_cost_paise:   cost,
+        salvage_value_paise:   salvage,
         depreciation_method:   form.depreciation_method,
         wdv_rate_percent:      form.depreciation_method === "WDV" ? parseFloat(form.wdv_rate_percent) : undefined,
         useful_life_years:     form.depreciation_method === "SL"  ? parseInt(form.useful_life_years) : undefined,
@@ -630,6 +642,9 @@ function DisposalTab({ clientId }: { clientId: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<Asset | null>(null);
   const [proceeds, setProceeds] = useState("");
+  // One parse, shared by the gain/loss shown on screen and the payload sent —
+  // so the figure the CA reads before confirming is the one that is posted.
+  const proceedsPaise = paiseFromRupeeInput(proceeds || "0");
   const [disposalDate, setDisposalDate] = useState(new Date().toISOString().slice(0, 10));
   const [disposing, setDisposing] = useState(false);
   const [error, setError] = useState("");
@@ -659,6 +674,11 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   async function dispose() {
     if (!selected) return;
+    if (proceedsPaise === null) {
+      setError("Sale proceeds must be an amount in rupees, e.g. 125000 or "
+               + "125000.50 — without commas.");
+      return;
+    }
     setDisposing(true); setError("");
     try {
       const res = await fetch(`${API}/api/fixed-assets/${selected.id}/dispose`, {
@@ -666,7 +686,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           disposal_date:         disposalDate,
-          sale_proceeds_paise:   Math.round(parseFloat(proceeds || "0") * 100),
+          sale_proceeds_paise:   proceedsPaise as number,
         }),
       });
       const j = await res.json();
@@ -752,14 +772,16 @@ function DisposalTab({ clientId }: { clientId: string }) {
           </div>
           <div className="bg-[#F8FAFC] rounded-lg px-4 py-3 text-xs space-y-1">
             <div className="flex justify-between"><span className="text-[#94A3B8]">WDV at disposal:</span><span className="font-mono text-[#1E293B]">{fmt(selected.purchase_cost_paise - selected.accumulated_depreciation_paise)}</span></div>
-            <div className="flex justify-between"><span className="text-[#94A3B8]">Sale proceeds:</span><span className="font-mono text-[#1E293B]">{fmt(Math.round(parseFloat(proceeds || "0") * 100))}</span></div>
+            <div className="flex justify-between"><span className="text-[#94A3B8]">Sale proceeds:</span><span className="font-mono text-[#1E293B]">{proceedsPaise === null ? "—" : fmt(proceedsPaise)}</span></div>
             <div className="flex justify-between border-t border-[#E2E8F0] pt-1 mt-1">
               <span className="font-medium text-[#1E293B]">P&L on disposal:</span>
               <span className={`font-mono font-semibold ${
-                Math.round(parseFloat(proceeds || "0") * 100) >= (selected.purchase_cost_paise - selected.accumulated_depreciation_paise)
+                (proceedsPaise ?? 0) >= (selected.purchase_cost_paise - selected.accumulated_depreciation_paise)
                   ? "text-green-700" : "text-red-700"
               }`}>
-                {fmt(Math.round(parseFloat(proceeds || "0") * 100) - (selected.purchase_cost_paise - selected.accumulated_depreciation_paise))}
+                {proceedsPaise === null
+                  ? "—"
+                  : fmt(proceedsPaise - (selected.purchase_cost_paise - selected.accumulated_depreciation_paise))}
               </span>
             </div>
           </div>

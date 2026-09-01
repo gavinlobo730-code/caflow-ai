@@ -1,5 +1,6 @@
 "use client";
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
@@ -290,6 +291,14 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
       return;
     }
     setAadhaarError(null);
+    // basic_paise is the payload key; the field holds RUPEES. Read wrong, it is
+    // the base for PF, HRA, gratuity and every month's withholding thereafter.
+    const basic = paiseFromRupeeInput(form.basic_paise);
+    if (basic === null) {
+      setSaveError("Basic salary must be an amount in rupees, e.g. 50000 or "
+                   + "50000.50 — without commas.");
+      return;
+    }
     setSaveError(null);
     setSaving(true);
     try {
@@ -300,7 +309,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
           firm_id: firmId,
           ...rest,
           aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
-          basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
+          basic_paise: basic,
           hra_percent: parseFloat(form.hra_percent),
         }),
       }) as { success?: boolean; error?: string | null } | null;
