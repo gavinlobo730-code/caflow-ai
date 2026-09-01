@@ -99,7 +99,7 @@ def test_create_vendor_does_not_leak_db_error(monkeypatch):
         return q
     monkeypatch.setattr(db, "table", boom)
 
-    resp = ve.create_vendor(VendorIn(client_id=CLI_B, name="X", gstin="27AAAAA0000A1Z5"), A)
+    resp = ve.create_vendor(VendorIn(client_id=CLI_B, name="X", gstin="27AAAAA0000A1Z2"), A)
     assert resp["success"] is False
     assert "SECRET" not in (resp["error"] or "")          # raw DB text not disclosed
     assert "constraint" not in (resp["error"] or "").lower() or "data constraint" in (resp["error"] or "").lower()

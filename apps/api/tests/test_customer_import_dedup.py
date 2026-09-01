@@ -20,8 +20,8 @@ from tests.e2e_harness import FakeDB, wire_e2e
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
 
-GSTIN_A = "27AAAAA0000A1Z5"   # Maharashtra
-GSTIN_B = "29ABCDE1234F1Z5"   # Karnataka — different registration
+GSTIN_A = "27AAAAA0000A1Z2"   # Maharashtra
+GSTIN_B = "29ABCDE1234F1ZW"   # Karnataka — different registration
 PAN_A = "AAAAA0000A"
 PAN_B = "ZZZZZ9999Z"
 
@@ -126,8 +126,8 @@ def test_deactivated_customer_does_not_block_recreation(monkeypatch):
 def test_reimport_same_file_does_not_grow_count(monkeypatch):
     db = _setup(monkeypatch)
     batch = [
-        dict(name="Alpha Ltd", gstin="27AAAAA0000A1Z5", state_code="27"),
-        dict(name="Bravo LLP", gstin="29ABCDE1234F1Z5", state_code="29"),
+        dict(name="Alpha Ltd", gstin="27AAAAA0000A1Z2", state_code="27"),
+        dict(name="Bravo LLP", gstin="29ABCDE1234F1ZW", state_code="29"),
         dict(name="Charlie & Co", pan="AAAAA0000A"),
     ]
     for row in batch:

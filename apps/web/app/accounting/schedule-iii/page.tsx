@@ -34,6 +34,11 @@ interface LineItem {
   label: string;
   paise: number;
   indent?: boolean;
+  /** The corresponding amount for the immediately preceding reporting period.
+   *  Schedule III General Instructions para 5 makes this mandatory for ALL
+   *  items including notes; it is null only where there is no preceding period,
+   *  which is para 5's own exception for a company's first statements. */
+  prior_paise?: number | null;
 }
 
 interface ScheduleSection {
@@ -41,6 +46,14 @@ interface ScheduleSection {
   lines: LineItem[];
   total_paise: number;
   totalLabel?: string;
+  prior_total_paise?: number | null;
+}
+
+/** Whether this document has a comparative column at all, and why not. */
+interface Comparatives {
+  present: boolean;
+  period: { fy_start: string | null; fy_end: string | null } | null;
+  reason: string | null;
 }
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
@@ -61,6 +74,8 @@ interface ScheduleData {
     totalEquityLiab: number;
     totalAssets: number;
     isBalanced: boolean;
+    totalEquityLiabPrior: number | null;
+    totalAssetsPrior: number | null;
   };
   profitAndLoss: {
     revenue: ScheduleSection[];
@@ -70,13 +85,22 @@ interface ScheduleData {
     profitBeforeTax: number;
     taxExpense: number;
     profitAfterTax: number;
+    totalRevenuePrior: number | null;
+    totalExpensesPrior: number | null;
+    profitBeforeTaxPrior: number | null;
+    taxExpensePrior: number | null;
+    profitAfterTaxPrior: number | null;
   };
+  comparatives: Comparatives;
 }
 
 // Backend Schedule III response (domain.reporting.schedule_iii). Amounts are
 // authoritative, accrual, and already grouped into the statutory captions
 // server-side (Companies Act 2013, Schedule III). The UI only renders.
-interface ApiSection { heading: string; lines: LineItem[]; total_paise: number; total_label?: string }
+interface ApiSection {
+  heading: string; lines: LineItem[]; total_paise: number; total_label?: string;
+  prior_total_paise?: number | null;
+}
 interface ScheduleApiData {
   balance_sheet: {
     equity_and_liabilities: ApiSection[];
@@ -84,6 +108,8 @@ interface ScheduleApiData {
     total_equity_liabilities_paise: number;
     total_assets_paise: number;
     is_balanced: boolean;
+    total_equity_liabilities_prior_paise?: number | null;
+    total_assets_prior_paise?: number | null;
   };
   profit_and_loss: {
     revenue: ApiSection[];
@@ -93,7 +119,13 @@ interface ScheduleApiData {
     profit_before_tax_paise: number;
     tax_expense_paise: number;
     profit_after_tax_paise: number;
+    total_revenue_prior_paise?: number | null;
+    total_expenses_prior_paise?: number | null;
+    profit_before_tax_prior_paise?: number | null;
+    tax_expense_prior_paise?: number | null;
+    profit_after_tax_prior_paise?: number | null;
   };
+  comparatives: Comparatives;
 }
 
 const toSection = (s: ApiSection): ScheduleSection => ({
@@ -101,6 +133,7 @@ const toSection = (s: ApiSection): ScheduleSection => ({
   lines: s.lines,
   total_paise: s.total_paise,
   totalLabel: s.total_label,
+  prior_total_paise: s.prior_total_paise ?? null,
 });
 
 async function fetchScheduleData(
@@ -125,6 +158,8 @@ async function fetchScheduleData(
       totalEquityLiab: d.balance_sheet.total_equity_liabilities_paise,
       totalAssets: d.balance_sheet.total_assets_paise,
       isBalanced: d.balance_sheet.is_balanced,
+      totalEquityLiabPrior: d.balance_sheet.total_equity_liabilities_prior_paise ?? null,
+      totalAssetsPrior: d.balance_sheet.total_assets_prior_paise ?? null,
     },
     profitAndLoss: {
       revenue: d.profit_and_loss.revenue.map(toSection),
@@ -134,32 +169,99 @@ async function fetchScheduleData(
       profitBeforeTax: d.profit_and_loss.profit_before_tax_paise,
       taxExpense: d.profit_and_loss.tax_expense_paise,
       profitAfterTax: d.profit_and_loss.profit_after_tax_paise,
+      totalRevenuePrior: d.profit_and_loss.total_revenue_prior_paise ?? null,
+      totalExpensesPrior: d.profit_and_loss.total_expenses_prior_paise ?? null,
+      profitBeforeTaxPrior: d.profit_and_loss.profit_before_tax_prior_paise ?? null,
+      taxExpensePrior: d.profit_and_loss.tax_expense_prior_paise ?? null,
+      profitAfterTaxPrior: d.profit_and_loss.profit_after_tax_prior_paise ?? null,
     },
+    comparatives: d.comparatives,
   };
 }
 
 // ─── UI components ────────────────────────────────────────────────────────────
 
-function SectionTable({ section }: { section: ScheduleSection }) {
+/** Schedule III presents amounts in brackets when negative, and an em dash for
+ *  nil. A missing COMPARATIVE is different from a nil one and renders blank —
+ *  see the comparatives banner for why. */
+function amount(paise: number | null | undefined): string {
+  if (paise === null || paise === undefined) return "";
+  if (paise === 0) return "—";
+  return paise < 0 ? `(${formatPaise(Math.abs(paise))})` : formatPaise(paise);
+}
+
+/**
+ * One statutory section, with the preceding period's corresponding amounts
+ * beside it.
+ *
+ * Schedule III General Instructions para 5: "the corresponding amounts
+ * (comparatives) for the immediately preceding reporting period for ALL items
+ * shown in the Financial Statements including notes shall also be given." A
+ * one-column balance sheet is not a Schedule III balance sheet, so the second
+ * column is not optional styling — it is the disclosure.
+ *
+ * `showPrior` comes from the document, not from whether a number happens to be
+ * present: with no preceding period there is no column at all, rather than a
+ * column of blanks a reader would take for nil.
+ */
+function SectionTable({ section, showPrior }: { section: ScheduleSection; showPrior: boolean }) {
   return (
     <div className="mb-4">
       <div className="bg-[#F8FAFC] px-4 py-2 border-b border-[#E2E8F0]">
         <p className="text-xs font-semibold text-[#334155] uppercase tracking-wide">{section.heading}</p>
       </div>
       {section.lines.map((line) => (
-        <div key={line.label} className="flex justify-between px-4 py-2 border-b border-[#F1F5F9] last:border-b-0">
-          <span className={`text-sm text-[#334155] ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
-          <span className="text-sm tabular-nums text-[#0F172A] font-medium">
-            {line.paise === 0 ? "—" : line.paise < 0
-              ? `(${formatPaise(Math.abs(line.paise))})`
-              : formatPaise(line.paise)}
+        <div key={line.label} className="flex items-baseline px-4 py-2 border-b border-[#F1F5F9] last:border-b-0">
+          <span className={`text-sm text-[#334155] flex-1 ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
+          <span className="text-sm tabular-nums text-[#0F172A] font-medium w-36 text-right">
+            {amount(line.paise)}
           </span>
+          {showPrior && (
+            <span className="text-sm tabular-nums text-[#64748B] w-36 text-right">
+              {amount(line.prior_paise)}
+            </span>
+          )}
         </div>
       ))}
-      <div className="flex justify-between px-4 py-2.5 bg-blue-50 font-semibold">
-        <span className="text-sm text-blue-900">{section.totalLabel ?? `Total`}</span>
-        <span className="text-sm tabular-nums text-blue-700">{formatPaise(section.total_paise)}</span>
+      <div className="flex items-baseline px-4 py-2.5 bg-blue-50 font-semibold">
+        <span className="text-sm text-blue-900 flex-1">{section.totalLabel ?? `Total`}</span>
+        <span className="text-sm tabular-nums text-blue-700 w-36 text-right">
+          {formatPaise(section.total_paise)}
+        </span>
+        {showPrior && (
+          <span className="text-sm tabular-nums text-blue-500 w-36 text-right">
+            {amount(section.prior_total_paise)}
+          </span>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** The column heads. Without them the second column is an unlabelled number. */
+function ColumnHeads({ current, prior }: { current: string; prior: string | null }) {
+  return (
+    <div className="flex items-baseline px-4 py-1.5 border-b border-[#E2E8F0] bg-white">
+      <span className="flex-1" />
+      <span className="text-[10px] uppercase tracking-wide text-[#64748B] w-36 text-right">{current}</span>
+      {prior && (
+        <span className="text-[10px] uppercase tracking-wide text-[#94A3B8] w-36 text-right">{prior}</span>
+      )}
+    </div>
+  );
+}
+
+/** A grand total row, in the same two-column grid as everything above it. */
+function GrandTotal({ label, paise, prior, showPrior }: {
+  label: string; paise: number; prior: number | null; showPrior: boolean;
+}) {
+  return (
+    <div className="flex items-baseline px-4 py-3 bg-blue-700 text-white font-bold">
+      <span className="text-sm flex-1">{label}</span>
+      <span className="text-sm tabular-nums w-36 text-right">{formatPaise(paise)}</span>
+      {showPrior && (
+        <span className="text-sm tabular-nums text-blue-200 w-36 text-right">{amount(prior)}</span>
+      )}
     </div>
   );
 }
@@ -221,6 +323,16 @@ export default function ScheduleIIIPage() {
   const pl = data?.profitAndLoss;
   const bs = data?.balanceSheet;
   const isBalanced = bs?.isBalanced ?? false;
+  // Whether there IS a preceding period, decided by the document rather than by
+  // whether a number happens to be present. Schedule III General Instructions
+  // para 5 requires comparatives for all items and excepts only a company's
+  // first financial statements after incorporation; where the exception
+  // applies, the column is absent rather than blank, because a blank column
+  // reads as nil.
+  const showPrior = data?.comparatives?.present ?? false;
+  const priorLabel = showPrior && data?.comparatives.period?.fy_end
+    ? `As at 31 Mar ${data.comparatives.period.fy_end.slice(0, 4)}`
+    : null;
 
   if (loading) return <LoadingSpinner />;
 
@@ -281,28 +393,50 @@ export default function ScheduleIIIPage() {
         <button
           onClick={() => {
             if (!data) return;
+            // The export carries the comparative column too. A workbook a CA
+            // hands to an auditor with one column is the same defect as a
+            // one-column statement on screen — Schedule III General
+            // Instructions para 5 applies to what is exported, not to what is
+            // displayed.
+            const priorHead = data.comparatives.present && data.comparatives.period?.fy_end
+              ? `Prior (FY ending ${data.comparatives.period.fy_end.slice(0, 4)})`
+              : null;
+            const rupees = (paise: number | null | undefined) =>
+              paise === null || paise === undefined ? "" : (paise / 100).toFixed(2);
+            const row = (section: string, item: string, paise?: number | null,
+                         prior?: number | null): Record<string, string> => {
+              const r: Record<string, string> = {
+                Section: section, Item: item,
+                Amount: paise === undefined ? "" : rupees(paise),
+              };
+              if (priorHead) r[priorHead] = prior === undefined ? "" : rupees(prior);
+              return r;
+            };
             const rows: Record<string, string>[] = [];
-            rows.push({ Section: "BALANCE SHEET", Item: "", Amount: "" });
+            rows.push(row("BALANCE SHEET", ""));
             for (const sec of data.balanceSheet.equityAndLiabilities) {
-              rows.push({ Section: sec.heading, Item: "", Amount: "" });
-              for (const l of sec.lines) rows.push({ Section: "", Item: l.label, Amount: (l.paise / 100).toFixed(2) });
-              rows.push({ Section: "", Item: sec.totalLabel ?? "Total", Amount: (sec.total_paise / 100).toFixed(2) });
+              rows.push(row(sec.heading, ""));
+              for (const l of sec.lines) rows.push(row("", l.label, l.paise, l.prior_paise));
+              rows.push(row("", sec.totalLabel ?? "Total", sec.total_paise, sec.prior_total_paise));
             }
-            rows.push({ Section: "ASSETS", Item: "", Amount: "" });
+            rows.push(row("ASSETS", ""));
             for (const sec of data.balanceSheet.assets) {
-              rows.push({ Section: sec.heading, Item: "", Amount: "" });
-              for (const l of sec.lines) rows.push({ Section: "", Item: l.label, Amount: (l.paise / 100).toFixed(2) });
-              rows.push({ Section: "", Item: sec.totalLabel ?? "Total", Amount: (sec.total_paise / 100).toFixed(2) });
+              rows.push(row(sec.heading, ""));
+              for (const l of sec.lines) rows.push(row("", l.label, l.paise, l.prior_paise));
+              rows.push(row("", sec.totalLabel ?? "Total", sec.total_paise, sec.prior_total_paise));
             }
-            rows.push({ Section: "PROFIT & LOSS", Item: "", Amount: "" });
+            rows.push(row("PROFIT & LOSS", ""));
             for (const sec of [...data.profitAndLoss.revenue, ...data.profitAndLoss.expenses]) {
-              rows.push({ Section: sec.heading, Item: "", Amount: "" });
-              for (const l of sec.lines) rows.push({ Section: "", Item: l.label, Amount: (l.paise / 100).toFixed(2) });
-              rows.push({ Section: "", Item: sec.totalLabel ?? "Total", Amount: (sec.total_paise / 100).toFixed(2) });
+              rows.push(row(sec.heading, ""));
+              for (const l of sec.lines) rows.push(row("", l.label, l.paise, l.prior_paise));
+              rows.push(row("", sec.totalLabel ?? "Total", sec.total_paise, sec.prior_total_paise));
             }
-            rows.push({ Section: "Summary", Item: "Profit Before Tax", Amount: (data.profitAndLoss.profitBeforeTax / 100).toFixed(2) });
-            rows.push({ Section: "Summary", Item: "Tax Expense", Amount: (data.profitAndLoss.taxExpense / 100).toFixed(2) });
-            rows.push({ Section: "Summary", Item: "Profit After Tax", Amount: (data.profitAndLoss.profitAfterTax / 100).toFixed(2) });
+            rows.push(row("Summary", "Profit Before Tax",
+                          data.profitAndLoss.profitBeforeTax, data.profitAndLoss.profitBeforeTaxPrior));
+            rows.push(row("Summary", "Tax Expense",
+                          data.profitAndLoss.taxExpense, data.profitAndLoss.taxExpensePrior));
+            rows.push(row("Summary", "Profit After Tax",
+                          data.profitAndLoss.profitAfterTax, data.profitAndLoss.profitAfterTaxPrior));
             const ws = XLSX.utils.json_to_sheet(rows);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Schedule III");
@@ -338,13 +472,15 @@ export default function ScheduleIIIPage() {
                   <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F1F5F9]">
                     <p className="text-xs font-bold text-[#1E293B] uppercase tracking-wider">EQUITY AND LIABILITIES</p>
                   </div>
+                  <ColumnHeads current={`As at 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
+                               prior={priorLabel} />
                   {bs?.equityAndLiabilities.map((sec) => (
-                    <SectionTable key={sec.heading} section={sec} />
+                    <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
                   ))}
-                  <div className="flex justify-between px-4 py-3 bg-blue-700 text-white font-bold">
-                    <span className="text-sm">TOTAL EQUITY AND LIABILITIES</span>
-                    <span className="text-sm tabular-nums">{formatPaise(bs?.totalEquityLiab ?? 0)}</span>
-                  </div>
+                  <GrandTotal label="TOTAL EQUITY AND LIABILITIES"
+                              paise={bs?.totalEquityLiab ?? 0}
+                              prior={bs?.totalEquityLiabPrior ?? null}
+                              showPrior={showPrior} />
                 </div>
 
                 {/* Assets */}
@@ -352,15 +488,29 @@ export default function ScheduleIIIPage() {
                   <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F1F5F9]">
                     <p className="text-xs font-bold text-[#1E293B] uppercase tracking-wider">ASSETS</p>
                   </div>
+                  <ColumnHeads current={`As at 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
+                               prior={priorLabel} />
                   {bs?.assets.map((sec) => (
-                    <SectionTable key={sec.heading} section={sec} />
+                    <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
                   ))}
-                  <div className="flex justify-between px-4 py-3 bg-blue-700 text-white font-bold">
-                    <span className="text-sm">TOTAL ASSETS</span>
-                    <span className="text-sm tabular-nums">{formatPaise(bs?.totalAssets ?? 0)}</span>
-                  </div>
+                  <GrandTotal label="TOTAL ASSETS"
+                              paise={bs?.totalAssets ?? 0}
+                              prior={bs?.totalAssetsPrior ?? null}
+                              showPrior={showPrior} />
                 </div>
               </div>
+
+              {/* Para 5's own exception, stated rather than left as an empty
+                  column a reader would take for nil. */}
+              {!showPrior && data?.comparatives?.reason && (
+                <div className="mx-4 mt-3 px-4 py-2.5 rounded-lg text-[11px] bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] flex items-start gap-2">
+                  <AlertTriangle size={13} className="text-[#94A3B8] flex-shrink-0 mt-0.5" />
+                  <span>
+                    <span className="font-medium text-[#334155]">No comparative column.</span>{" "}
+                    {data.comparatives.reason}
+                  </span>
+                </div>
+              )}
 
               {/* Balance check indicator */}
               {(bs?.totalAssets ?? 0) > 0 && (
@@ -382,38 +532,47 @@ export default function ScheduleIIIPage() {
               <p className="text-xs text-[#64748B]">(Companies Act 2013, Schedule III, Part II)</p>
             </CardHeader>
             <CardContent className="pb-4 p-0">
+              <ColumnHeads
+                current={`Year ended 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
+                prior={showPrior && data?.comparatives.period?.fy_end
+                  ? `Year ended 31 Mar ${data.comparatives.period.fy_end.slice(0, 4)}`
+                  : null} />
               {/* Revenue */}
               {pl?.revenue.map((sec) => (
-                <SectionTable key={sec.heading} section={sec} />
+                <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
               ))}
 
               {/* Expenses */}
               {pl?.expenses.map((sec) => (
-                <SectionTable key={sec.heading} section={sec} />
+                <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
               ))}
 
               {/* Profit summary */}
               <div className="mx-4 mb-4 mt-2 border border-[#E2E8F0] rounded-lg overflow-hidden">
-                <div className="flex justify-between px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                  <span className="text-sm font-semibold text-[#1E293B]">Profit Before Tax (I - II)</span>
-                  <span className={`text-sm tabular-nums font-bold ${(pl?.profitBeforeTax ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
-                    {(pl?.profitBeforeTax ?? 0) < 0
-                      ? `(${formatPaise(Math.abs(pl?.profitBeforeTax ?? 0))})`
-                      : formatPaise(pl?.profitBeforeTax ?? 0)}
+                <div className="flex items-baseline px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                  <span className="text-sm font-semibold text-[#1E293B] flex-1">Profit Before Tax (I - II)</span>
+                  <span className={`text-sm tabular-nums font-bold w-36 text-right ${(pl?.profitBeforeTax ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    {amount(pl?.profitBeforeTax ?? 0)}
                   </span>
+                  {showPrior && (
+                    <span className="text-sm tabular-nums text-[#64748B] w-36 text-right">
+                      {amount(pl?.profitBeforeTaxPrior)}
+                    </span>
+                  )}
                 </div>
-                <div className="flex justify-between px-4 py-2.5 border-b border-[#E2E8F0]">
-                  <span className="text-sm text-[#334155] pl-4">Tax Expense (Current + Deferred)</span>
-                  <span className="text-sm tabular-nums text-[#0F172A]">{formatPaise(pl?.taxExpense ?? 0)}</span>
+                <div className="flex items-baseline px-4 py-2.5 border-b border-[#E2E8F0]">
+                  <span className="text-sm text-[#334155] pl-4 flex-1">Tax Expense (Current + Deferred)</span>
+                  <span className="text-sm tabular-nums text-[#0F172A] w-36 text-right">{amount(pl?.taxExpense ?? 0)}</span>
+                  {showPrior && (
+                    <span className="text-sm tabular-nums text-[#64748B] w-36 text-right">
+                      {amount(pl?.taxExpensePrior)}
+                    </span>
+                  )}
                 </div>
-                <div className="flex justify-between px-4 py-3 bg-blue-700 text-white font-bold">
-                  <span className="text-sm">Profit After Tax (PAT)</span>
-                  <span className="text-sm tabular-nums">
-                    {(pl?.profitAfterTax ?? 0) < 0
-                      ? `(${formatPaise(Math.abs(pl?.profitAfterTax ?? 0))})`
-                      : formatPaise(pl?.profitAfterTax ?? 0)}
-                  </span>
-                </div>
+                <GrandTotal label="Profit After Tax (PAT)"
+                            paise={pl?.profitAfterTax ?? 0}
+                            prior={pl?.profitAfterTaxPrior ?? null}
+                            showPrior={showPrior} />
               </div>
             </CardContent>
           </Card>

@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
@@ -213,6 +214,13 @@ def create_vendor(
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
 
         gstin = _norm(payload.get("gstin"))
+        # Shape AND check digit (CGST Act s.25) — see routers/customers.py for
+        # why the shape alone is not enough. On the purchase side a wrong vendor
+        # GSTIN means the bill will never match anything in GSTR-2B, and the
+        # client's own input tax credit is what is at risk.
+        _gstin_problem = gstin_problem(gstin)
+        if _gstin_problem:
+            raise HTTPException(status_code=422, detail=_gstin_problem)
         pan = _norm(payload.get("pan"))
         client_id = payload.get("client_id")
         firm_id = payload["firm_id"]
@@ -789,6 +797,14 @@ def ap_aging(
     Derived entirely from posted bills, payments and debit notes (firm-scoped)."""
     assert_client_access(current_user, client_id)
     try:
+        if _USE_MOCK:
+            # The AR mirror has always had this branch and this one had not, so
+            # with no database the payables ageing returned a generic failure
+            # while the receivables ageing returned an empty schedule. Two
+            # endpoints that are each other's mirror answering differently is
+            # how a screen ends up showing an error beside a working panel.
+            return api_response(True, {"as_of": as_of, "buckets": {},
+                                       "total_outstanding_paise": 0, "bills": []})
         from core.supabase_client import get_supabase
         from services.vendor_statement_service import vendor_statement_service
         db = get_supabase()

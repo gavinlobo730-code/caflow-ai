@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "Shared GSTIN cases. Read by apps/api/tests/test_gstin_check_digit.py and by",
+    "apps/web/lib/gst/gstin.test.ts, so the Python authority and its browser",
+    "mirror are exercised on the SAME numbers. Adding a case here adds it to",
+    "both suites; changing one implementation without the other fails here."
+  ],
+  "valid": [
+    "27AAPFU0939F1ZV",
+    "29AAGCB7383J1Z4",
+    "24AAACC1206D1ZM",
+    "",
+    "  27aapfu0939f1zv  "
+  ],
+  "invalid": [
+    { "gstin": "27AAPFU0399F1ZV", "fragment": "check digit does not match" },
+    { "gstin": "27AAPFU0939F1ZW", "fragment": "check digit does not match" },
+    { "gstin": "27AAPFU0939F1Z",  "fragment": "15 characters" },
+    { "gstin": "27AAPFU0939F1ZVV", "fragment": "15 characters" },
+    { "gstin": "27AAPFU0939F1AV", "fragment": "Not a GSTIN pattern" },
+    { "gstin": "27AAPFU0939F0ZV", "fragment": "Not a GSTIN pattern" },
+    { "gstin": "51AAPFU0939F1Z4", "fragment": "not a GST state code",
+    "note": "carries its OWN correct check digit, so the state code is the only thing wrong" },
+    { "gstin": "00AAPFU0939F1ZB", "fragment": "not a GST state code" }
+  ]
+}

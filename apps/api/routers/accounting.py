@@ -19,7 +19,7 @@ from core.authz import assert_client_access, can_access_client, filter_by_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
-from services import ageing_schedule_service
+from services import ageing_schedule_service, ratio_analysis_service
 
 
 def _reporting_service() -> ReportingService:
@@ -941,6 +941,94 @@ def classify_for_ageing_schedule(
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
               new_data=out["set"], metadata={"client_id": data.client_id})
+    return api_response(True, out)
+
+
+class RatioExplanationIn(BaseModel):
+    """One clause (Q) explanation, or its removal. `explanation: null` deletes."""
+    client_id: str
+    fy: str
+    ratio_key: str
+    explanation: Optional[str] = None
+
+
+class RatioInputsIn(BaseModel):
+    """The figures clause (Q) needs that the ledger does not hold. `null` puts
+    the ratio back into its gap; 0 is a real answer and computes the ratio."""
+    client_id: str
+    fy: str
+    principal_repaid_paise: Optional[int] = None
+
+
+@router.get("/schedule-iii/ratios")
+def get_schedule_iii_ratios(
+    client_id: str = Query(..., description="Required — this is a note to ONE client's balance sheet"),
+    fy: Optional[str] = Query(None, description="Financial year label, e.g. 2026-27; defaults to the current FY"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """
+    The eleven Schedule III ratios — Division I, General Instructions,
+    Additional Regulatory Information clause (Q), as inserted by MCA
+    Notification G.S.R. 207(E) dated 24 March 2021.
+
+    Clause (Q) requires more than the numbers: the items included in the
+    numerator and denominator must be explained, and any change of MORE than
+    25% from the preceding year needs its own explanation. So every ratio
+    carries both amounts in paise and the words describing them, the preceding
+    year is computed rather than left to the CA, and the ratios needing an
+    explanation are flagged.
+
+    Two of the eleven are reported as gaps rather than guessed: Debt Service
+    Coverage until the principal repaid is recorded (the movement in the
+    borrowing balance is drawdowns LESS repayments, and using it overstates
+    cover), and Return on Investment where no income account is tagged as
+    investment income (a zero would claim the investments earned nothing).
+
+    Amounts are integer paise; ratios are basis points, 10,000 bps = 1.00.
+    """
+    assert_client_access(current_user, client_id)
+    return api_response(True, ratio_analysis_service.ratio_note(
+        _reporting_service(), _prod_db(), current_user["firm_id"], client_id, fy))
+
+
+@router.put("/schedule-iii/ratios/explanation")
+def put_schedule_iii_ratio_explanation(
+    data: RatioExplanationIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Record (or clear) why a ratio moved more than 25%. Manager+, because it
+    is part of the signed disclosure rather than a display preference."""
+    assert_client_access(current_user, data.client_id)
+    if data.explanation is None:
+        out = ratio_analysis_service.delete_explanation(
+            _prod_db(), current_user["firm_id"], data.client_id, data.fy, data.ratio_key)
+        action = "ratio_explanation_cleared"
+    else:
+        out = ratio_analysis_service.save_explanation(
+            _prod_db(), current_user["firm_id"], data.client_id, data.fy,
+            data.ratio_key, data.explanation, actor_id=current_user.get("id"))
+        action = "ratio_explanation_recorded"
+    log_event(current_user["firm_id"], "client", data.client_id, action,
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=out)
+    return api_response(True, out)
+
+
+@router.put("/schedule-iii/ratios/inputs")
+def put_schedule_iii_ratio_inputs(
+    data: RatioInputsIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Record the principal repaid on long-term borrowings during the year — the
+    denominator half of the Debt Service Coverage Ratio the books cannot
+    supply."""
+    assert_client_access(current_user, data.client_id)
+    out = ratio_analysis_service.save_principal_repaid(
+        _prod_db(), current_user["firm_id"], data.client_id, data.fy,
+        data.principal_repaid_paise, actor_id=current_user.get("id"))
+    log_event(current_user["firm_id"], "client", data.client_id,
+              "ratio_inputs_recorded", actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=out)
     return api_response(True, out)
 
 

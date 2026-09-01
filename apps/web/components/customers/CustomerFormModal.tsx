@@ -14,6 +14,8 @@
  * derives its own toast text from the returned record.
  */
 import { useState } from "react";
+import { gstinProblem } from "@/lib/gst/gstin";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { StateLookup } from "@/components/lookups/StateLookup";
@@ -26,9 +28,14 @@ import {
 } from "@/lib/sales/paymentTerms";
 
 /** Validate GSTIN format: 2-digit state + PAN(10) + entity# + Z + check (CGST Act §25) */
-export function isValidGstin(gstin: string): boolean {
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin);
-}
+// Re-exported from lib/gst/gstin so the shape test and the CHECK DIGIT travel
+// together. The bare pattern that used to live here accepts every transposition
+// inside the PAN — 27AAPFU0939F1ZV and 27AAPFU0399F1ZV both pass it, and only
+// one is a real registration. A customer's GSTIN is what puts the supply into
+// THEIR GSTR-2B, so the wrong one means the recipient never gets the input tax
+// credit. The backend refuses it too (routers/customers.py); this is so the CA
+// is told at the keystroke, and told which character to look at.
+export { isValidGstin } from "@/lib/gst/gstin";
 
 /** Validate PAN format: AAAAA9999A (IT Act §139A) */
 export function isValidPan(pan: string): boolean {
@@ -103,14 +110,24 @@ export function CustomerFormModal({
 
   async function handleSave() {
     if (!name.trim()) { fail("Name is required"); return; }
-    if (gstin && !isValidGstin(gstin)) { fail("Invalid GSTIN format (e.g. 27AABCU9603R1ZX)"); return; }
+    const gstinIssue = gstinProblem(gstin);
+    if (gstinIssue) { fail(gstinIssue); return; }
     if (pan && !isValidPan(pan)) { fail("Invalid PAN format (e.g. ABCDE1234F)"); return; }
     if (tan && !isValidTan(tan)) { fail("Invalid TAN format (e.g. MUMA12345B)"); return; }
 
     setSaving(true); setLocalError(null);
     try {
-      // All amounts in integer paise — user enters rupees, multiply by 100
-      const openingBalancePaise = Math.round(parseFloat(openingBalance || "0") * 100);
+      // Integer paise, through the exact parser. Math.round(parseFloat(x) * 100)
+      // was here, and parseFloat("1,25,000") is 1 — a CA typing an opening
+      // balance the way Indian amounts are grouped would have recorded ₹1. It
+      // also turns a blank field into NaN, which JSON.stringify sends as null.
+      const openingBalancePaise = paiseFromRupeeInput(openingBalance || "0");
+      if (openingBalancePaise === null) {
+        fail("Opening balance must be an amount in rupees, e.g. 125000 or 125000.50 "
+             + "— without commas.");
+        setSaving(false);
+        return;
+      }
       const token = await getAuthToken();
 
       const result = existing
@@ -169,9 +186,11 @@ export function CustomerFormModal({
           <input
             value={gstin} onChange={(e) => handleGstinChange(e.target.value)}
             placeholder="27AABCU9603R1ZX" maxLength={15}
-            className={`${inputCls} font-mono ${gstin && !isValidGstin(gstin) ? "border-red-300" : ""}`}
+            className={`${inputCls} font-mono ${gstinProblem(gstin) ? "border-red-300" : ""}`}
           />
-          {gstin && !isValidGstin(gstin) && <p className="text-[10px] text-red-500 mt-0.5">Invalid GSTIN</p>}
+          {gstinProblem(gstin) && (
+            <p className="text-[10px] text-red-500 mt-0.5">{gstinProblem(gstin)}</p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">State Code</label>

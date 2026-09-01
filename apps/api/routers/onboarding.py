@@ -7,6 +7,7 @@ GET  /api/onboarding/status     — onboarding completeness check (Partner/Manag
 import re
 import secrets
 import logging
+from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional
@@ -65,8 +66,12 @@ def create_firm(
 
     if body.gstin:
         gstin = body.gstin.upper()
-        if not _GSTIN_RE.match(gstin):
-            raise HTTPException(status_code=400, detail="Invalid GSTIN format")
+        # Shape AND check digit. A firm's own GSTIN goes on every invoice it
+        # raises, so a transposition here is not caught later by anything —
+        # it is simply wrong on every document from day one.
+        problem = gstin_problem(gstin)
+        if problem:
+            raise HTTPException(status_code=400, detail=problem)
     else:
         gstin = None
 

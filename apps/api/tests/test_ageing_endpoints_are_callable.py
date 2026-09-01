@@ -239,3 +239,18 @@ def test_a_half_answer_from_the_function_is_a_failure_not_a_report():
     out = svc.schedule(db, "f1", CLIENT, "2026-03-31")
     assert "payables" in out and "gaps" in out
     assert db.tables, "it rendered the half answer instead of falling back"
+
+
+def test_the_two_per_document_ageing_endpoints_answer_the_same_way_with_no_database():
+    """They are each other's mirror. ap-aging had no mock branch while ar-aging
+    did, so with no database one returned an empty schedule and the other a
+    generic failure — which is how the Payables tab of a report shows an error
+    beside a working Receivables tab."""
+    import routers.customers as cu
+    import routers.vendors as ve
+
+    ar = cu.ar_aging(client_id=CLIENT, as_of=None, current_user=USER)
+    ap = ve.ap_aging(client_id=CLIENT, as_of=None, current_user=USER)
+    assert ar["success"] is ap["success"] is True
+    assert ar["data"]["total_outstanding_paise"] == ap["data"]["total_outstanding_paise"] == 0
+    assert ar["data"]["invoices"] == [] and ap["data"]["bills"] == []
