@@ -58,6 +58,11 @@ pytestmark = pytest.mark.skipif(
 # read by apps/api on the user-JWT path or by the frontend's PostgREST calls.
 NOT_FOR_THE_API = {
     "schema_migrations",     # the migration runner's own bookkeeping
+    # Its sibling: which migrations failed, so a permanently-broken one is not
+    # retried forever and cannot re-apply its partial effects over a later fix.
+    # Same reason as schema_migrations — deploy machinery, never application
+    # data, and nothing in the API reads it.
+    "schema_migration_failures",
     "platform_admins",       # cross-firm operator accounts; RLS would not save us
     "platform_audit",        # what those operators did
 }

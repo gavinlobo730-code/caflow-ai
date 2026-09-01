@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.invoices import PurchasePaymentIn, PurchasePaymentAllocationsUpdateIn
 from models.accounting import JournalReversalIn
+from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
@@ -316,7 +317,8 @@ def list_purchase_payments(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_purchase_payments error: %s", e)
-        return api_response(False, None, "Unable to complete payment operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the payment"))
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +337,8 @@ def get_purchase_payment(
         raise
     except Exception as e:
         _logger.error("get_purchase_payment error: %s", e)
-        return api_response(False, None, "Unable to complete payment operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the payment"))
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +521,8 @@ def create_purchase_payment(
         raise
     except Exception as e:
         _logger.error("create_purchase_payment error: %s", e)
-        return api_response(False, None, "Unable to complete payment operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the payment"))
 
 
 @router.patch("/{payment_id}/allocate")
@@ -551,7 +555,8 @@ def update_purchase_payment_allocations(
         raise
     except Exception as e:
         _logger.error("update_purchase_payment_allocations: %s", e)
-        return api_response(False, None, "Unable to complete payment operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the payment"))
 
 
 def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor: dict) -> dict:
@@ -831,4 +836,5 @@ def reverse_purchase_payment(
         raise
     except Exception as e:
         _logger.error("reverse_purchase_payment: %s", e)
-        return api_response(False, None, "Unable to reverse payment. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="reverse the payment"))

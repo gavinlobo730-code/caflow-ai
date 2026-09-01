@@ -1269,15 +1269,6 @@ EXEMPT: dict[str, str] = {
         "static PERMISSIONS matrix in core/permissions.py. Reads no table at "
         "all, so there is no client row to scope.",
     # accounting.py — the two firm-level path groups.
-    "/api/accounting/accounts":
-        "AccountIn (models/accounting.py) has no client_id field at all — the "
-        "public API can only ever create a firm-level account; "
-        "chart_of_accounts.client_id IS nullable (migration 003, NULL = "
-        "firm-level template) but nothing here ever sets it. Covers GET "
-        "(list_accounts) and POST (create_account), which share this path. "
-        "A client-specific Chart of Accounts is a real schema capability "
-        "the API never exposes — recorded as a product gap in the audit "
-        "doc, not a client-scope one.",
     "/api/accounting/year-lock":
         "firms.locked_financial_years (migration 136) is a firm-level "
         "financial-year lock, no client_id — the whole firm's books lock "

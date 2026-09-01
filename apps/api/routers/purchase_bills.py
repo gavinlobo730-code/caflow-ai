@@ -16,6 +16,8 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
+from core.observability import capture_soft_failure
+from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
@@ -230,7 +232,9 @@ def create_purchase_bill(
         raise
     except Exception as e:
         _logger.error("create_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to create purchase bill. Please try again.")
+        capture_soft_failure(e, operation="create_purchase_bill")
+        return api_response(False, None,
+                            document_failure_detail(e, action="create the purchase bill"))
 
 
 def _compute_bill_lines_and_totals(
@@ -813,7 +817,8 @@ def bulk_create_purchase_bills(
             errors.append({"index": i, "bill_no": bill_no, "error": e.detail})
         except Exception as e:
             _logger.error("bulk_create_purchase_bills item %d failed: %s", i, e, exc_info=True)
-            errors.append({"index": i, "bill_no": bill_no, "error": "Unable to create this bill. Please try again."})
+            errors.append({"index": i, "bill_no": bill_no,
+                           "error": document_failure_detail(e, action="create this bill")})
 
     # One summary audit + timeline entry for the whole batch instead of one
     # per bill (skipped inside _create_purchase_bill_core for bulk_cache
@@ -1231,6 +1236,27 @@ def update_purchase_bill(
         return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
+def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
+    """Keep tds_deductions in step with one bill.
+
+    Deliberately never raises: a bill that received and posted its journal
+    correctly must not be rolled back because its register row could not be
+    written. tds_register_service logs loudly and the row is repaired on the
+    next transition of the same bill.
+    """
+    try:
+        from services.tds_register_service import sync_for_bill
+        vendor = {}
+        if bill.get("vendor_id"):
+            got = (db.table("vendors").select("id, name, pan")
+                   .eq("id", bill["vendor_id"]).limit(1).execute().data) or []
+            vendor = got[0] if got else {}
+        sync_for_bill(db, firm_id, bill.get("client_id", ""), bill, vendor)
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("TDS register sync failed for bill %s: %s", bill.get("id"), e)
+        capture_soft_failure(e, operation="tds_register_sync")
+
+
 @router.post("/{bill_id}/receive")
 def receive_purchase_bill(
     bill_id: str,
@@ -1310,11 +1336,21 @@ def receive_purchase_bill(
                                jerr.status_code, jerr.detail)
                 raise
             _logger.error("receive_purchase_bill: journal posting failed; receipt rolled back: %s", jerr)
-            return api_response(False, None, "Unable to receive purchase bill. Please try again.")
+            capture_soft_failure(jerr, operation="receive_purchase_bill")
+            return api_response(False, None,
+                                document_failure_detail(jerr, action="receive the purchase bill"))
 
         # Persist the journal link so cancellation can reverse it directly.
         db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
             "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+
+        # The TDS register follows the CREDIT, which is what receiving the bill
+        # is: s.194C(3) and its neighbours all say deduct at credit to the
+        # payee's account or at payment, whichever is EARLIER, and a draft
+        # credits nothing. Without this the deduction sat on the bill and never
+        # reached the register, so there was no challan to pay by the 7th and
+        # nothing to assemble 26Q from.
+        _sync_tds_register(db, current_user.get("firm_id", ""), updated_bill)
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -1457,6 +1493,13 @@ def cancel_purchase_bill(
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", bill_id).eq("firm_id", firm_id).execute()
         updated = upd.data[0] if upd.data else {}
+
+        # The credit is undone, so the deduction never happened. Leaving the
+        # register row would file 26Q on tax the books no longer say was
+        # withheld — and would leave a challan to pay for a bill that does not
+        # exist.
+        _sync_tds_register(db, firm_id or "", {**bill, "id": bill_id,
+                                               "status": "cancelled"})
 
         # Inventory: undo the stock-in + Inventory-reclass journal
         # apply_purchase_to_inventory posted at receive time, for any goods

@@ -330,7 +330,8 @@ def create_service(
         if payload.get("hsn_sac") and not _hsn_in_library(firm_id, payload["hsn_sac"]):
             return api_response(
                 False, None,
-                "That HSN/SAC code is not in your firm's library. Add it there first.",
+                "That HSN/SAC code is not in your firm's library. Add it under "
+                "Settings > Firm HSN/SAC Library, then create this product.",
             )
         payload["firm_id"] = firm_id
         payload["is_active"] = True
@@ -499,7 +500,8 @@ def bulk_create_services(
             if hsn and hsn not in active_hsn_codes:
                 errors.append({
                     "index": idx, "name": payload.get("name"),
-                    "error": "That HSN/SAC code is not in your firm's library. Add it there first.",
+                    "error": "That HSN/SAC code is not in your firm's library. Add it "
+                             "under Settings > Firm HSN/SAC Library, then import again.",
                 })
                 continue
             checked.append((idx, payload))
@@ -647,7 +649,8 @@ def update_service(
         if "hsn_sac" in patch and not _hsn_in_library(firm_id, patch["hsn_sac"]):
             return api_response(
                 False, None,
-                "That HSN/SAC code is not in your firm's library. Add it there first.",
+                "That HSN/SAC code is not in your firm's library. Add it under "
+                "Settings > Firm HSN/SAC Library, then create this product.",
             )
         patch["updated_at"] = datetime.now(timezone.utc).isoformat()
 

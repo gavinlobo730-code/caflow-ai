@@ -1,5 +1,12 @@
 # Can a CA actually run a client on this for a full financial year?
 
+> **Status, 1 September 2026 (same day):** every finding below has been fixed —
+> migrations 306 and 307, the migration runner's failure memory, the error
+> classifier, the orphan-journal sweep, the signposted onboarding chain, and a
+> tenant-scoped accounts endpoint. The findings are left as written, in the
+> present tense they were found in, because the reasoning is the record. Each
+> section now ends with a **Fixed** line naming the commit.
+
 **Date:** 1 September 2026
 **Method:** one client driven through FY 2025-26 over the real API, not a code read.
 **Verdict:** the accounting engine and the statutory reporting are sound. Three
@@ -106,6 +113,11 @@ worked through the API, though nobody having tried would look the same.
 `service_role`. **Systemic fix:** the schema drift check compares columns and
 types but not GRANTs, which is why this survived two encounters.
 
+**Fixed** — migration 306, plus a write-side invariant in
+`test_r269_service_role_grants_pg.py` ("if `authenticated` can INSERT it,
+`service_role` must be able to") so the next occurrence fails by shape rather
+than by name. Verified applied to production.
+
 ### 2. The migration set cannot rebuild production, and the rebuild breaks journal reversal
 
 Building a database from 001..305 does **not** reproduce production.
@@ -131,6 +143,12 @@ new region, a staging clone — and the **required** CI check `migration apply �
 real Postgres 16`. CI is green against a schema that differs from production in a
 way that breaks a core accounting feature.
 
+**Fixed** — the runner records failures in `schema_migration_failures` and does
+not retry a file that failed at the same checksum; editing it (the checksum
+changes) or `--retry-failed` are the two ways back. The test asserts the
+property rather than any guard's contract: a second run must not change any
+function body or trigger definition.
+
 ### 3. A new client cannot record a single document until three prerequisites are met, in order
 
 Creating the client, its customers, vendors and bank account all succeed. The
@@ -151,6 +169,11 @@ onboarding walks this chain or seeds a starter set, and the invoice error names
 what is missing but not where to create it. For a CA onboarding a client
 mid-year with a backlog to key in, this stops them at document one.
 
+**Fixed** (partly) — both errors now name the next step: the invoice points at
+the "+ Add Product/Service" control and says a new client's catalogue starts
+empty; the catalogue points at Settings > Firm HSN/SAC Library. The chain
+itself is unchanged — it is a deliberate decision — only its discoverability.
+
 ### 4. `GET /api/accounting/accounts` serves demo data to every firm and client
 
 `routers/accounting.py::list_accounts` returns the module-level `MOCK_ACCOUNTS`
@@ -162,6 +185,12 @@ Blast radius today is limited — it is defined in the frontend API client as
 `api.accounting.accounts()` but no page appears to call it; the screens read
 `chart_of_accounts` directly through PostgREST. It should read the tenant's
 accounts or stop existing.
+
+**Fixed** — all three verbs read and write the real table, firm-scoped, with
+`client_id = X OR client_id IS NULL` transcribed from
+`SupabaseLedgerSource._accounts` so the endpoint and the ledger cannot disagree
+about what a client's chart is. POST and PATCH were the same lie from the other
+direction: they wrote to the mock and reported success.
 
 ---
 
@@ -190,12 +219,27 @@ docstring says of the 26AS reconciliation that *"it does not reconcile against
 and 26Q cannot be assembled. The money is withheld from the vendor in the books
 and then invisible to the compliance side.
 
+**Fixed** — the phantom-entry shape is now an eighth check in the daily
+books-integrity reconciliation, reporting one finding with the total and the
+list. It cannot prevent the gap; it stops the books being quietly wrong until
+somebody reads a log.
+
+**TDS is withheld but never reaches the register — fixed.** Migration 307 links
+a deduction to its bill, and `tds_register_service` writes the row when the bill
+is *received* (the credit, per §194C(3)) and removes it when the bill is
+cancelled.
+
 **The failure reached the CA as "Unable to create purchase bill. Please try
 again."** A permission error is not transient and "try again" cannot work — the
 24th attempt failed exactly like the first. The cause (SQLSTATE 42501, named
 table) was logged and discarded before the response. The journal-entry path
 already does better: `capture_posting_failure` plus a non-2xx carrying the
 Postgres message.
+
+**Fixed** — `document_failure_detail` classifies before it speaks: a database
+business rule is surfaced verbatim, an infrastructure fault says it is a
+configuration fault and asks for a report, and only a genuinely unclassified
+failure still suggests a retry.
 
 **Documents post nothing until separately issued or received.** All 42 documents
 were created as drafts with `journal_entry_id` NULL; after a full year of keying

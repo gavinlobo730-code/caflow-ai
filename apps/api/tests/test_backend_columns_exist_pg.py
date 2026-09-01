@@ -128,7 +128,15 @@ UNFIXED: dict[str, str] = {}
 # checked against the real schema. Only the or_ interpolation is genuinely
 # unreadable, and it names client_id, which the same file's select lists
 # verify.
-MAX_UNREADABLE = 432
+# 432 -> 433: routers/accounting.list_accounts gained the SAME
+#   .or_(f"client_id.eq.{client_id},client_id.is.null")
+# a third time, and for the third time for the same reason — a chart seeded by
+# seed_firm_coa holds its accounts FIRM-WIDE with client_id NULL (migration
+# 057), so an endpoint serving a client's chart has to return those too or it
+# shows an empty chart for every client of a normally-seeded firm. Only the
+# interpolated client_id is unreadable; the same query's select list names
+# client_id literally, so the column itself is still checked.
+MAX_UNREADABLE = 433
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
