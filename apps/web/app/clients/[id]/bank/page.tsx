@@ -37,6 +37,7 @@ import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Download, Pencil, La
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { SplitAcrossLedgersModal } from "@/components/banking/SplitAcrossLedgersModal";
@@ -2988,8 +2989,15 @@ function BankAccountModal({ clientId, account, onClose, onSaved }: {
   async function save() {
     if (!bankName.trim()) { setError("Bank name is required."); return; }
     if (!editing && !accountNo.trim()) { setError("Account number is required."); return; }
+    // An opening balance read wrong is wrong for the life of the account: every
+    // reconciliation after it starts from this number.
+    const openingPaise = paiseFromRupeeInput(openingBal || "0");
+    if (openingPaise === null) {
+      setError("Opening balance must be an amount in rupees, e.g. 125000 or "
+               + "125000.50 — without commas.");
+      return;
+    }
     setSaving(true); setError(null);
-    const openingPaise = Math.round(parseFloat(openingBal || "0") * 100);
     try {
       const res = (editing
         ? await api.banking.updateBankAccount(account!.id, {
@@ -3266,7 +3274,21 @@ interface ReconReport {
   counts: { reconciled: number; unreconciled: number; exceptions: number };
 }
 
-const toPaise = (s: string) => Math.round(parseFloat(s || "0") * 100);
+/**
+ * A reconciliation figure as typed → integer paise, or null if it is not an
+ * amount. The callers below refuse rather than submit a null.
+ *
+ * This was `Math.round(parseFloat(s || "0") * 100)`, and a bank reconciliation
+ * is the one screen where a silently coerced number is guaranteed not to be
+ * noticed: the whole point is that the statement and the ledger agree, so an
+ * opening balance read as ₹1 instead of ₹1,25,000 presents as a difference to
+ * chase rather than as a typo to correct.
+ */
+const toPaise = (s: string): number | null => paiseFromRupeeInput(s || "0");
+
+/** The message shown when one of them is not an amount. One wording, because
+ *  all three fields are the same kind of mistake. */
+const NOT_AN_AMOUNT = "Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.";
 
 function BankReconciliation({ clientId }: { clientId: string }) {
   const [sessions, setSessions] = useState<ReconSession[]>([]);
@@ -3373,12 +3395,15 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   async function createSession() {
     setError(null);
     if (!form.bank_account_id || !form.start || !form.end) { setError("Bank account and statement dates are required."); return; }
+    const opening = toPaise(form.opening);
+    const closing = toPaise(form.closing);
+    if (opening === null || closing === null) { setError(NOT_AN_AMOUNT); return; }
     setBusy(true);
     try {
       const res = (await api.banking.reconciliations.create({
         client_id: clientId, bank_account_id: form.bank_account_id,
         statement_start_date: form.start, statement_end_date: form.end,
-        opening_balance_paise: toPaise(form.opening), closing_balance_paise: toPaise(form.closing),
+        opening_balance_paise: opening, closing_balance_paise: closing,
       })) as { success: boolean; data: ReconSession; error: string | null };
       if (res.success) { setShowNew(false); setForm({ bank_account_id: "", start: "", end: "", opening: "", closing: "" }); await loadSessions(); setSelectedId(res.data.id); }
       else setError(res.error ?? "Could not open reconciliation.");
@@ -3583,7 +3608,15 @@ function BankReconciliation({ clientId }: { clientId: string }) {
               <div className="flex items-center gap-2 pt-1">
                 <span className="text-[11px] text-[#64748B]">Adjustment (₹)</span>
                 <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                <button onClick={() => act(() => api.banking.reconciliations.update(selectedId, { adjustments_paise: toPaise(adj) }))} disabled={busy} className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">Apply</button>
+                <button
+                  onClick={() => {
+                    const paise = toPaise(adj);
+                    if (paise === null) { setError(NOT_AN_AMOUNT); return; }
+                    act(() => api.banking.reconciliations.update(selectedId, { adjustments_paise: paise }));
+                  }}
+                  disabled={busy}
+                  className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]"
+                >Apply</button>
               </div>
             )}
             <div className="flex items-center gap-2 pt-1 border-t border-[#F8FAFC]">

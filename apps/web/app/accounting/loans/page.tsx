@@ -11,6 +11,7 @@
  * (₹50,000 for senior citizens). TDS rate: 10% (20% if PAN not furnished).
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
@@ -258,11 +259,23 @@ export default function LoansAndFDPage() {
     setLoanError(null);
     if (!loanForm.client_id) { setLoanError("Select a client"); return; }
     if (!loanForm.lender_name.trim()) { setLoanError("Lender name is required"); return; }
-    const principal = Math.round(parseFloat(loanForm.principal) * 100);
-    const outstanding = Math.round(parseFloat(loanForm.outstanding) * 100);
+    if (loanForm.emi && paiseFromRupeeInput(loanForm.emi) === null) {
+      setLoanError("EMI must be an amount in rupees, e.g. 25000 or 25000.50 — without commas.");
+      return;
+    }
+    // isNaN(Math.round(parseFloat(x) * 100)) was the old test, and it is FALSE
+    // for "12,50,000" — parseFloat answers 12, so a 12.5 lakh loan was recorded
+    // as ₹12 and every EMI schedule built from it was fiction.
+    const principal = paiseFromRupeeInput(loanForm.principal);
+    const outstanding = paiseFromRupeeInput(loanForm.outstanding);
     const rate = parseFloat(loanForm.interest_rate);
-    if (isNaN(principal) || principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
-    if (isNaN(outstanding) || outstanding < 0) { setLoanError("Enter a valid outstanding amount"); return; }
+    if (principal === null || outstanding === null) {
+      setLoanError("Principal and outstanding must be amounts in rupees, e.g. 1250000 "
+                   + "or 1250000.50 — without commas.");
+      return;
+    }
+    if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
+    if (outstanding < 0) { setLoanError("Enter a valid outstanding amount"); return; }
     if (isNaN(rate) || rate <= 0) { setLoanError("Enter a valid interest rate"); return; }
     if (!loanForm.disbursement_date) { setLoanError("Disbursement date is required"); return; }
 
@@ -270,7 +283,9 @@ export default function LoansAndFDPage() {
     try {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
-      const emiPaise = loanForm.emi ? Math.round(parseFloat(loanForm.emi) * 100) : null;
+      // Already validated above alongside the principal, so this cannot be a
+      // silent coercion; a blank EMI is a legitimate null.
+      const emiPaise = loanForm.emi ? paiseFromRupeeInput(loanForm.emi) : null;
       const { error: insertErr } = await sb.from("loans").insert({
         firm_id: firmId,
         client_id: loanForm.client_id,
@@ -320,9 +335,14 @@ export default function LoansAndFDPage() {
     setFDError(null);
     if (!fdForm.client_id) { setFDError("Select a client"); return; }
     if (!fdForm.bank_name.trim()) { setFDError("Bank name is required"); return; }
-    const principal = Math.round(parseFloat(fdForm.principal) * 100);
+    const principal = paiseFromRupeeInput(fdForm.principal);
     const rate = parseFloat(fdForm.interest_rate);
-    if (isNaN(principal) || principal <= 0) { setFDError("Enter a valid principal amount"); return; }
+    if (principal === null) {
+      setFDError("Principal must be an amount in rupees, e.g. 500000 or 500000.50 "
+                 + "— without commas.");
+      return;
+    }
+    if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }
     if (isNaN(rate) || rate <= 0) { setFDError("Enter a valid interest rate"); return; }
     if (!fdForm.start_date) { setFDError("Start date is required"); return; }
     if (!fdForm.maturity_date) { setFDError("Maturity date is required"); return; }
@@ -380,10 +400,12 @@ export default function LoansAndFDPage() {
   // ─── EMI Calculator ────────────────────────────────────────────────────────
 
   function runEMICalc() {
-    const p = Math.round(parseFloat(calcPrincipal) * 100);
+    // The EMI calculator is read-only, so an unreadable principal simply
+    // computes nothing rather than an EMI on a coerced figure.
+    const p = paiseFromRupeeInput(calcPrincipal);
     const r = parseFloat(calcRate);
     const n = parseInt(calcTenure, 10);
-    if (!isNaN(p) && !isNaN(r) && !isNaN(n) && p > 0 && r > 0 && n > 0) {
+    if (p !== null && !isNaN(r) && !isNaN(n) && p > 0 && r > 0 && n > 0) {
       setCalcResult(calculateEMIPaise(p, r, n));
     }
   }
@@ -419,7 +441,7 @@ export default function LoansAndFDPage() {
   const fdPreviewMaturityPaise =
     fdForm.principal && fdForm.interest_rate && fdForm.start_date && fdForm.maturity_date
       ? calculateFDMaturityPaise(
-          Math.round(parseFloat(fdForm.principal) * 100),
+          paiseFromRupeeInput(fdForm.principal) ?? 0,
           parseFloat(fdForm.interest_rate),
           fdForm.start_date,
           fdForm.maturity_date

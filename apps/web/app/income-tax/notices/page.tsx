@@ -9,6 +9,7 @@
  * All amounts in integer paise arithmetic.
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from "react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
@@ -102,7 +103,12 @@ function AddModal({ clients, onClose, onAdded }: {
   async function handleSave() {
     if (!form.clientId || !form.dateReceived) { setError("Client and date received are required"); return; }
     // All money in integer paise — no floating point
-    const amountPaise = form.amountDemandedRs ? Math.round(parseFloat(form.amountDemandedRs) * 100) : 0;
+    const amountPaise = form.amountDemandedRs
+      ? paiseFromRupeeInput(form.amountDemandedRs) : 0;
+    if (amountPaise === null) {
+      setError("Amount demanded must be in rupees, e.g. 125000 — without commas.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {

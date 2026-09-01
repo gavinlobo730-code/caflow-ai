@@ -15,6 +15,7 @@
  * Section 203: Issuance of TDS certificates
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -160,8 +161,12 @@ function AddDeductionModal({ firmId, clientId, onClose, onAdded }: {
     if (s && s.rate > 0) setTdsRate(s.rate);
   }, [section]);
 
-  // All monetary calculations in integer paise — never float
-  const grossPaise = grossRupees ? Math.round(parseFloat(grossRupees) * 100) : 0;
+  // All monetary calculations in integer paise — and read as integer paise
+  // rather than multiplied into them. null means the box does not hold an
+  // amount, and the calculator shows nothing instead of a TDS figure computed
+  // on a coerced zero.
+  const grossPaiseOrNull = grossRupees ? paiseFromRupeeInput(grossRupees) : 0;
+  const grossPaise = grossPaiseOrNull ?? 0;
   // TDS = grossPaise * rate / 100, integer arithmetic
   const tdsPaise = Math.round((grossPaise * tdsRate) / 100);
 
@@ -288,10 +293,15 @@ function AddChallanModal({ onClose, onAdded }: {
   const [period, setPeriod] = useState("Q1 (Apr-Jun)");
   const [section, setSection] = useState("194J");
   const [fy, setFy] = useState("2025-26");
+  const [error, setError] = useState<string | null>(null);
 
   function handleAdd() {
     // Convert to paise — integer arithmetic, never float
-    const amtPaise = Math.round(parseFloat(amtRupees || "0") * 100);
+    const amtPaise = paiseFromRupeeInput(amtRupees || "0");
+    if (amtPaise === null) {
+      setError("Amount must be in rupees, e.g. 125000 or 125000.50 — without commas.");
+      return;
+    }
     onAdded({
       id: Date.now().toString(),
       bsr_code: bsrCode,
@@ -329,8 +339,12 @@ function AddChallanModal({ onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
-            <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => setAmtRupees(e.target.value)} />
+            <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
           </div>
+          {/* Without this the refusal above would be silent, which is worse
+              than the coercion it replaced: the CA would press Add and nothing
+              would happen. */}
+          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-[#334155] block mb-1">Period</label>
@@ -736,7 +750,15 @@ export default function TDSPage() {
             let imported = 0;
             const errors: string[] = [];
             for (const row of rows) {
-              const grossPaise = Math.round(parseFloat(row.gross_amount_rs ?? "0") * 100);
+              // A CSV row: skip and report rather than block the import, but
+              // never coerce — "1,25,000" in a spreadsheet column is exactly
+              // how an amount gets there, and parseFloat reads it as 1.
+              const grossPaise = paiseFromRupeeInput(row.gross_amount_rs ?? "0");
+              if (grossPaise === null) {
+                errors.push(`${row.deductee_name ?? "row"}: gross_amount_rs must be a `
+                            + "plain amount in rupees, without commas");
+                continue;
+              }
               const rate = parseFloat(row.tds_rate ?? "0");
               const tdsPaise = Math.round(grossPaise * rate / 100);
               const { error } = await sb.from("tds_deductions").insert({

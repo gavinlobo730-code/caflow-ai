@@ -21,6 +21,7 @@
  * 115BAC). CLAUDE.md: zero business logic in the frontend.
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useCallback, useEffect } from "react";
 import { Save, ChevronDown, ChevronUp } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -467,7 +468,15 @@ export default function DeductionsPage() {
                 placeholder="Fund/Trust name"
                 className="flex-1 border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
               <input type="number" min="0" value={d.amountPaise / 100}
-                onChange={e => { const ds = [...state.donations]; ds[i].amountPaise = Math.round(parseFloat(e.target.value || "0") * 100); upd({ donations: ds }); }}
+                onChange={e => {
+                  // A s.80G donation deducted at 100% or 50% of a mis-read
+                  // amount is a deduction claimed on a number nobody entered.
+                  // Keeping the previous value is right for a live field: the
+                  // CA is mid-keystroke, not submitting.
+                  const paise = paiseFromRupeeInput(e.target.value || "0");
+                  if (paise === null) return;
+                  const ds = [...state.donations]; ds[i].amountPaise = paise; upd({ donations: ds });
+                }}
                 placeholder="₹"
                 className="w-24 border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
               <select value={d.deductionPct}

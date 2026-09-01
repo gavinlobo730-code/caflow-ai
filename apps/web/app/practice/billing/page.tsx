@@ -1,5 +1,6 @@
 "use client";
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import { Receipt, RefreshCw, Plus, CheckCircle2 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
@@ -50,10 +51,14 @@ function Billing() {
     e.preventDefault();
     setMsg(null);
     if (!product) { setMsg("Select a Product/Service for this fee"); return; }
+    // A billing schedule bills this amount every cadence until somebody stops
+    // it, so an amount read wrong is wrong repeatedly.
+    const amountPaise = paiseFromRupeeInput(form.amount_rupees || "0");
+    if (amountPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
     try {
       await api.billing.createSchedule({
         client_id: form.client_id, arrangement: form.arrangement, cadence: form.cadence,
-        amount_paise: Math.round(parseFloat(form.amount_rupees || "0") * 100),  // ₹→paise for submission only
+        amount_paise: amountPaise,
         gst_rate: parseFloat(form.gst_rate || "18"),
         service_id: product.id,
       });

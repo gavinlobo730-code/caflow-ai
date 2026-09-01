@@ -7,6 +7,7 @@
  * All monetary amounts stored in paise (integer arithmetic).
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, Users, IndianRupee } from "lucide-react";
@@ -61,8 +62,9 @@ function fmtRs(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
 
-function rsToP(rs: string): number {
-  return Math.round(parseFloat(rs || "0") * 100);
+/** Rupees as typed → integer paise, or null if the text is not an amount. */
+function rsToP(rs: string): number | null {
+  return paiseFromRupeeInput(rs || "0");
 }
 
 const BLANK_FORM = {
@@ -96,7 +98,10 @@ export default function SuppliersPage() {
 
   // TDS calculator
   const [billRs, setBillRs] = useState("");
-  const billPaise = rsToP(billRs);
+  // null means "not an amount" — the TDS preview below simply shows nothing for
+  // it rather than computing on a coerced zero, which would tell the CA no TDS
+  // is deductible on a bill it could not read.
+  const billPaise = rsToP(billRs) ?? 0;
   const [tdsCalc, setTdsCalc] = useState<TDSAmountResult | null>(null);
   const [tdsCalcError, setTdsCalcError] = useState<string | null>(null);
 
@@ -193,6 +198,12 @@ export default function SuppliersPage() {
   async function handleSave() {
     if (!firmId || !selectedClientId) return;
     if (!form.supplier_name.trim()) { setError("Supplier name is required"); return; }
+    const creditLimit = rsToP(form.credit_limit_rs);
+    if (creditLimit === null) {
+      setError("Credit limit must be an amount in rupees, e.g. 500000 or 500000.50 "
+               + "— without commas.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const sb = getSupabaseClient();
@@ -204,7 +215,7 @@ export default function SuppliersPage() {
       pan: form.pan.trim() || null,
       tds_section: form.tds_section || null,
       tds_rate_percent: form.tds_rate_percent ? parseFloat(form.tds_rate_percent) : null,
-      credit_limit_paise: rsToP(form.credit_limit_rs),
+      credit_limit_paise: creditLimit,
       payment_terms_days: parseInt(form.payment_terms_days || "30"),
       is_active: form.is_active,
     };

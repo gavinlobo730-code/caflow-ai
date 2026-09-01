@@ -16,6 +16,7 @@
  * All monetary calculations use integer paise arithmetic (never floating point).
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock } from "lucide-react";
@@ -97,11 +98,25 @@ export default function AdvanceTaxPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const estimatedTaxPaise = Math.round(parseFloat(estimatedTaxRs || "0") * 100);
+  // Every figure on this screen drives s.234B and s.234C interest, which is
+  // charged per month on a shortfall — so an estimate read as ₹1 does not just
+  // understate the tax, it manufactures interest.
+  const estimatedTaxPaise = paiseFromRupeeInput(estimatedTaxRs || "0") ?? 0;
+  const paidPaiseOf = (n: number | string) => paiseFromRupeeInput(editPaidRs[n as never] || "0");
+  const badPaidInstalment = [1, 2, 3, 4].find((n) => paidPaiseOf(n) === null);
 
   // Server-side compute, debounced 400ms (matches the capital-gains
   // calculator's pattern) so every keystroke doesn't fire a request.
   useEffect(() => {
+    if (badPaidInstalment !== undefined) {
+      // An instalment that is not an amount stops the calculation and says so.
+      // Computing on a coerced zero would report a shortfall — and s.234C
+      // charges 1% a month on one — for tax the client has actually paid.
+      setResult(null);
+      setComputeError(`Instalment ${badPaidInstalment}: enter the amount paid in `
+                      + "rupees, e.g. 125000 — without commas.");
+      return;
+    }
     if (estimatedTaxPaise <= 0) {
       setResult(null);
       setComputeError(null);
@@ -110,7 +125,7 @@ export default function AdvanceTaxPage() {
     const timer = setTimeout(() => {
       const installments: AdvanceTaxInstallmentInput[] = [1, 2, 3, 4].map(n => ({
         installment_number: n as 1 | 2 | 3 | 4,
-        paid_amount_paise: Math.round(parseFloat(editPaidRs[n] || "0") * 100),
+        paid_amount_paise: paidPaiseOf(n) as number,
         paid_date: editPaidDate[n] || null,
         challan_number: editChallan[n] || null,
       }));
@@ -132,7 +147,7 @@ export default function AdvanceTaxPage() {
     try {
       const installments: AdvanceTaxInstallmentInput[] = [1, 2, 3, 4].map(n => ({
         installment_number: n as 1 | 2 | 3 | 4,
-        paid_amount_paise: Math.round(parseFloat(editPaidRs[n] || "0") * 100),
+        paid_amount_paise: paidPaiseOf(n) as number,
         paid_date: editPaidDate[n] || null,
         challan_number: editChallan[n] || null,
       }));
@@ -147,7 +162,7 @@ export default function AdvanceTaxPage() {
     }
   }
 
-  const totalPaid = Object.values(editPaidRs).reduce((s, v) => s + Math.round(parseFloat(v || "0") * 100), 0);
+  const totalPaid = [1, 2, 3, 4].reduce((s, n) => s + (paidPaiseOf(n) ?? 0), 0);
   const totalInterest = result?.total_interest_paise ?? 0;
 
   return (
@@ -240,7 +255,7 @@ export default function AdvanceTaxPage() {
                   const requiredPercent = inst?.cumulative_required_percent ?? [15, 45, 75, 100][n - 1];
                   const requiredPaise = inst?.required_cumulative_paise ?? 0;
                   const interest = inst?.interest_paise ?? 0;
-                  const paidPaise = Math.round(parseFloat(editPaidRs[n] || "0") * 100);
+                  const paidPaise = paidPaiseOf(n) ?? 0;
                   const status = dueDate ? rowStatus(dueDate, requiredPaise, paidPaise) : "upcoming";
 
                   const statusEl = status === "paid"

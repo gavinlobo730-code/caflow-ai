@@ -11,6 +11,7 @@
  * mirrored here since the backend purchase_bills schema has no
  * round_off_paise column).
  */
+import { parseLineAmounts } from "../money/lineInput.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
 
 export interface PurchaseBillLine {
@@ -28,11 +29,11 @@ export interface PurchaseBillLine {
  * Product/Service (mandatory on every line — migration 206). Description is
  * deliberately NOT required here — it's an optional field on the line. */
 export function isValidBillLine(l: PurchaseBillLine): boolean {
-  return (
-    (parseFloat(l.qty) || 0) > 0 &&
-    (parseFloat(l.rate) || 0) > 0 &&
-    !!l.service_catalogue_id
-  );
+  // parseLineAmounts REFUSES what parseFloat coerced. The old test was
+  // `(parseFloat(l.rate) || 0) > 0`, and parseFloat("1,25,000") is 1 — so a
+  // rate typed the way Indian amounts are grouped passed as a valid ONE RUPEE
+  // line, previewed at ₹1 and saved at ₹1 with nothing said.
+  return parseLineAmounts(l.qty, l.rate) !== null && !!l.service_catalogue_id;
 }
 
 export interface BillPreviewTotals {
@@ -47,9 +48,18 @@ export interface BillPreviewTotals {
 export function previewBillTotals(lines: PurchaseBillLine[], isInterstate: boolean): BillPreviewTotals {
   let taxable = 0, cgst = 0, sgst = 0, igst = 0;
   for (const l of lines) {
-    if (!isValidBillLine(l)) continue;
+    const parsed = parseLineAmounts(l.qty, l.rate);
+    if (!parsed || !l.service_catalogue_id) continue;
     const g = dnLineGst(
-      { quantity: parseFloat(l.qty) || 0, rate: parseFloat(l.rate) || 0, gst_rate_bps: Math.round(l.gst_rate * 100) },
+      // quantity comes from the strict parse. The RATE stays the string
+      // parseFloat'd, deliberately: dnLineGst takes rupees and delegates to
+      // gstLine.ratePaiseFromRupees, which shared/gst-parity-vectors.json pins
+      // to the Python backend on exactly these strings. Converting to paise and
+      // dividing back would put a float round-trip inside the one calculation
+      // that is pinned. What HAS changed is that parseLineAmounts above has
+      // already refused anything but a plain decimal, so parseFloat can no
+      // longer see "1,25,000" and answer 1.
+      { quantity: parsed.quantity, rate: parseFloat(l.rate), gst_rate_bps: Math.round(l.gst_rate * 100) },
       isInterstate,
     );
     taxable += g.taxable_paise; cgst += g.cgst_paise; sgst += g.sgst_paise; igst += g.igst_paise;

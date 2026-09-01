@@ -16,6 +16,7 @@
  * verification status of the CII table and the asset-type tax treatment.
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2 } from "lucide-react";
@@ -70,7 +71,7 @@ const BLANK_REG = {
 };
 
 function rsToP(rs: string): number {
-  return Math.round(parseFloat(rs || "0") * 100);
+  return paiseFromRupeeInput(rs || "0") ?? 0;
 }
 
 function fmtRs(paise: number): string {
@@ -98,9 +99,13 @@ export default function CapitalGainsPage() {
   const [saleRupees, setSaleRupees] = useState("");
   const [improvementRupees, setImprovementRupees] = useState("");
 
-  const purchasePaise = Math.round(parseFloat(purchaseRupees || "0") * 100);
-  const salePaise = Math.round(parseFloat(saleRupees || "0") * 100);
-  const improvementPaise = Math.round(parseFloat(improvementRupees || "0") * 100);
+  // A capital gain is sale less cost: read either as ₹1 and the gain is the
+  // other one in full, taxed at whatever rate the holding period implies.
+  const purchasePaise = paiseFromRupeeInput(purchaseRupees || "0");
+  const salePaise = paiseFromRupeeInput(saleRupees || "0");
+  const improvementPaise = paiseFromRupeeInput(improvementRupees || "0");
+  const amountsUnreadable =
+    purchasePaise === null || salePaise === null || improvementPaise === null;
   const purchaseFY = purchaseDate ? getFYFromDate(purchaseDate) : "";
   const saleFY = saleDate ? getFYFromDate(saleDate) : "";
 
@@ -111,6 +116,14 @@ export default function CapitalGainsPage() {
   // Server-side compute, debounced 400ms (matches the deductions page's
   // pattern) so every keystroke doesn't fire a request.
   useEffect(() => {
+    if (amountsUnreadable) {
+      // Not silently nothing: a field that is not an amount has to say so,
+      // or the result panel just stays blank and the CA re-types the dates.
+      setResult(null);
+      setComputeError("Purchase, sale and improvement costs must be amounts in "
+                      + "rupees, e.g. 2500000 — without commas.");
+      return;
+    }
     if (!purchaseDate || !saleDate || purchasePaise <= 0 || salePaise <= 0) {
       setResult(null);
       setComputeError(null);
@@ -122,16 +135,16 @@ export default function CapitalGainsPage() {
         asset_type: assetType,
         purchase_date: purchaseDate,
         sale_date: saleDate,
-        purchase_cost_paise: purchasePaise,
-        sale_value_paise: salePaise,
-        improvement_cost_paise: improvementPaise,
+        purchase_cost_paise: purchasePaise as number,
+        sale_value_paise: salePaise as number,
+        improvement_cost_paise: improvementPaise as number,
       })
         .then(r => { setResult(r); setComputeError(null); })
         .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); })
         .finally(() => setComputing(false));
     }, 400);
     return () => clearTimeout(timer);
-  }, [assetType, purchaseDate, saleDate, purchasePaise, salePaise, improvementPaise]);
+  }, [assetType, purchaseDate, saleDate, purchasePaise, salePaise, improvementPaise, amountsUnreadable]);
 
   const showIndexation = assetType === "property" && result?.is_long_term && result?.tax_with_indexation_percent != null;
   const showCII = assetType === "property";
@@ -373,16 +386,16 @@ export default function CapitalGainsPage() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-[#475569]">Sale Price</span>
-                        <span className="font-medium">₹{(salePaise / 100).toLocaleString("en-IN")}</span>
+                        <span className="font-medium">₹{((salePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-[#475569]">Cost of Acquisition</span>
-                        <span className="font-medium">₹{(purchasePaise / 100).toLocaleString("en-IN")}</span>
+                        <span className="font-medium">₹{((purchasePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                       </div>
-                      {improvementPaise > 0 && (
+                      {(improvementPaise ?? 0) > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-[#475569]">Improvement Cost</span>
-                          <span className="font-medium">₹{(improvementPaise / 100).toLocaleString("en-IN")}</span>
+                          <span className="font-medium">₹{((improvementPaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                         </div>
                       )}
                       <div className="border-t border-[#F1F5F9] pt-2 flex justify-between text-sm font-semibold">

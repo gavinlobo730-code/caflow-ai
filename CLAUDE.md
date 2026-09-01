@@ -557,26 +557,42 @@ screen-scrape net banking**. Read that section before touching any of it.
 - So: convert at the point of reporting. When you show a raw query result or edit a cron line, say which zone that value is in, since the stored value stays UTC.
 - Worked example: the daily sweep is nominally 06:00 IST = 00:30 UTC. A run recorded as `2026-08-18 01:36+00` is reported as "07:06 IST" — and that hour of drift is GitHub cron lateness under load, which is what the catch-up in jobs/ exists to absorb.
 
-## Money in the browser — one parser, and a known backlog
+## Money in the browser — one parser, and only one
 
 `apps/web/lib/money/rupeeInput.ts` turns a typed rupee amount into integer paise
-by concatenating the digits. Use it for every amount field. The form it replaces —
-`Math.round(parseFloat(x) * 100)` — is still present at roughly twenty call
-sites, and it is not merely imprecise:
+by concatenating the digits, and RETURNS NULL for anything that is not an
+amount. Use it for every amount field; there is no longer a second way.
+
+The form it replaced — `Math.round(parseFloat(x) * 100)` — was not merely
+imprecise:
 
 - `parseFloat("1,25,000")` is **1**. A CA typing an amount the way Indian
-  amounts are grouped records one rupee.
+  amounts are grouped recorded one rupee.
 - `parseFloat("12abc")` is 12 and `parseFloat("1e3")` is 1000 — neither is an
-  amount, both are accepted.
+  amount, both were accepted.
 - a blank field gives `NaN`, and `JSON.stringify` sends that as `null`.
 
-Converted so far: the journal editor, the customer form (GSTIN + opening
-balance), the MCA capital fields, the TDS challan and certificate amounts, and
-the Schedule III ratio inputs. **Still on `parseFloat`:** the sales invoice line
-rate and quantity, receipt allocation, the purchases screen, billing, loans,
-the MSME tracker and the payroll grid. Each needs a refuse-rather-than-coerce
-decision at its own call site, which is why they are being converted one screen
-at a time rather than by a sweep.
+All 61 call sites across 28 files are converted. The module also carries
+`bpsFromPercentInput` (a typed percentage → basis points) and `parseQuantity`
+(up to three decimals, matching `NUMERIC(10,3)` on the line tables), and
+`lib/money/lineInput.parseLineAmounts` reads a document line's quantity and rate
+together — used by the validator, the preview and the payload, so what a CA is
+shown adding up and what is saved are the same numbers.
+
+**Three deliberate exceptions, all in the same place.** `gstLine.ratePaiseFromRupees`
+and `computeLineGst` still take the rate STRING and still do
+`Math.round(rate * 100)`, and the three purchase-note previews still call them
+that way. `shared/gst-parity-vectors.json` pins those to the Python backend on
+exactly those strings — including `"1.005"`, which the backend truncates to 100
+paise and which the new parser refuses. Converting to paise and dividing back
+would put a float round-trip inside the one calculation that is pinned. What
+protects them instead is upstream: `parseLineAmounts` has already refused
+anything but a plain decimal by the time they see it.
+
+`parseQuantity` is deliberately NOT named `quantityFromInput` — `gstLine.ts`
+exports one of those, which COERCES to 0 and is the parity-pinned payload
+builder. Two functions with one name in one directory is how the wrong one gets
+called.
 
 ## Identifiers
 

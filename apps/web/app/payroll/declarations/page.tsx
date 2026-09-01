@@ -16,6 +16,7 @@
  * All monetary values are integer paise on the wire and formatted to ₹ here.
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { ArrowLeft, AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
@@ -40,15 +41,14 @@ function formatPaise(paise: number | null | undefined): string {
   return p > 0 ? `₹${formatted}.${String(p).padStart(2, "0")}` : `₹${formatted}`;
 }
 
-/** Rupees typed into a box -> integer paise. Parsed as a whole number of
- *  rupees plus at most two decimals, never via floating-point multiplication
- *  (0.1 * 100 is 10.000000000000002). */
-function rupeesToPaise(text: string): number {
-  const cleaned = text.replace(/[^\d.]/g, "");
-  if (!cleaned) return 0;
-  const [whole, frac = ""] = cleaned.split(".");
-  const paise = (frac + "00").slice(0, 2);
-  return Number(whole || "0") * 100 + Number(paise);
+/** Rupees typed into a box -> integer paise, or null if it is not an amount.
+ *
+ *  This was a local reimplementation that had the right IDEA — concatenate the
+ *  digits rather than multiply by 100 — and then stripped every non-digit
+ *  first, so "12abc" became 12 and "1.2.3" became ₹1.20. lib/money/rupeeInput
+ *  is the one implementation of this now, and it refuses instead of cleaning. */
+function rupeesToPaise(text: string): number | null {
+  return paiseFromRupeeInput(text);
 }
 
 /** Indian financial years, current first. April to March. */
@@ -352,18 +352,34 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
   const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
+    // A VERIFIED figure is the amount the employer will actually withhold
+    // against — the whole point of this screen is that it replaces what the
+    // employee declared. Read exactly, and refuse rather than coerce.
+    const verified = {
+      rent: rupeesToPaise(rent), lta: rupeesToPaise(lta),
+      interest: rupeesToPaise(interest),
+    };
+    const itemPaise = Object.fromEntries(
+      row.items.map((i) => [i.section, rupeesToPaise(items[i.section] ?? "0")]),
+    ) as Record<string, number | null>;
+    if (Object.values(verified).some((v) => v === null)
+        || Object.values(itemPaise).some((v) => v === null)) {
+      setError("Every verified amount must be in rupees, e.g. 150000 or 150000.50 "
+               + "— without commas.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       await api.payroll.verifyDeclaration(row.id, {
         client_id: clientId,
-        rent_paid_verified_paise: rupeesToPaise(rent),
-        lta_verified_paise: rupeesToPaise(lta),
-        home_loan_interest_verified_paise: rupeesToPaise(interest),
+        rent_paid_verified_paise: verified.rent as number,
+        lta_verified_paise: verified.lta as number,
+        home_loan_interest_verified_paise: verified.interest as number,
         items: row.items.map((i) => ({
           section: i.section,
-          amount_verified_paise: rupeesToPaise(items[i.section] ?? "0"),
-          status: rupeesToPaise(items[i.section] ?? "0") > 0 ? "verified" : "rejected",
+          amount_verified_paise: itemPaise[i.section] as number,
+          status: (itemPaise[i.section] as number) > 0 ? "verified" : "rejected",
         })),
         proofs_verified: markVerified,
       });
@@ -443,7 +459,8 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
 function ProofRow({ label, declared, value, onChange }: {
   label: string; declared: number; value: string; onChange: (v: string) => void;
 }) {
-  const over = rupeesToPaise(value) > declared;
+  // An unreadable amount is not "over" — it is unreadable, and save() says so.
+  const over = (rupeesToPaise(value) ?? 0) > declared;
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1">

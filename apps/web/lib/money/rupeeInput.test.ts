@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { paiseFromRupeeInput, rupeeInputFromPaise } from "./rupeeInput.ts";
+import {
+  bpsFromPercentInput, paiseFromRupeeInput, parseQuantity, rupeeInputFromPaise,
+} from "./rupeeInput.ts";
 
 test("whole rupees become paise", () => {
   assert.equal(paiseFromRupeeInput("0"), 0);
@@ -67,4 +69,38 @@ test("round trip is exact across the range a CA can type", () => {
       `${paise} did not survive the round trip`,
     );
   }
+});
+
+test("percentages become basis points exactly", () => {
+  assert.equal(bpsFromPercentInput("18"), 1800);
+  assert.equal(bpsFromPercentInput("0.75"), 75);
+  assert.equal(bpsFromPercentInput("10"), 1000);
+  assert.equal(bpsFromPercentInput(""), 0);
+  // The failures that matter: a grouped or partial number must be refused, not
+  // read as a tenth of what was meant.
+  assert.equal(bpsFromPercentInput("1,0"), null);
+  assert.equal(bpsFromPercentInput("10%"), null);
+  assert.equal(bpsFromPercentInput("abc"), null);
+});
+
+test("quantities are read exactly to three decimal places", () => {
+  assert.equal(parseQuantity("1"), 1);
+  assert.equal(parseQuantity("2.5"), 2.5);
+  assert.equal(parseQuantity("0.335"), 0.335);
+  assert.equal(parseQuantity("10.125"), 10.125);
+});
+
+test("a quantity that is not a quantity is refused, not coerced", () => {
+  // Each of these is what parseFloat(x) || 0 silently produced instead.
+  assert.equal(parseQuantity("1,000"), null);   // parseFloat -> 1
+  assert.equal(parseQuantity("12abc"), null);   // parseFloat -> 12
+  assert.equal(parseQuantity("1e3"), null);     // parseFloat -> 1000
+  assert.equal(parseQuantity("2.5001"), null);  // more than NUMERIC(10,3) holds
+  assert.equal(parseQuantity("."), null);
+});
+
+test("a blank quantity is a question, not a one", () => {
+  // The call sites defaulted a blank to 1, which invents a line nobody typed.
+  assert.equal(parseQuantity(""), null);
+  assert.equal(parseQuantity("   "), null);
 });

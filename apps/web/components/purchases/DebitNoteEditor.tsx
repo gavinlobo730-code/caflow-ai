@@ -14,6 +14,7 @@
  * §34 — correct it with a fresh note, not an edit); there is deliberately no
  * Cancel/reversal path, unlike Purchase Bills.
  */
+import { parseLineAmounts } from "@/lib/money/lineInput";
 import { useState, useRef, useEffect } from "react";
 import { Trash2, Plus, Loader2, AlertCircle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
@@ -297,9 +298,13 @@ export function DebitNoteEditor({
       const linePayload = lines.filter(isValidDebitNoteLine).map((l) => ({
         description: l.description,
         hsn_sac: l.hsn_sac || undefined,
-        quantity: parseFloat(l.qty) || 0,
+        quantity: parseLineAmounts(l.qty, l.rate)!.quantity,
         unit: l.unit || undefined,
-        rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
+        // Non-null by construction: the filter above is isValidDebitNoteLine,
+        // which is now parseLineAmounts itself. The old form here was
+        // Math.round((parseFloat(l.rate) || 0) * 100) — exact for a plain
+        // decimal and silently 100 paise for "1,25,000".
+        rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
         gst_rate_percent: l.gst_rate,
         service_catalogue_id: l.service_catalogue_id || undefined,
       }));

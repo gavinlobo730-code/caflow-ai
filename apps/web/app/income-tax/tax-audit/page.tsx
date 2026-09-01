@@ -9,6 +9,7 @@
  * All amounts in integer paise (never floating point).
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
@@ -108,6 +109,10 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
       turnoverRs: editAudit.turnover_paise > 0 ? (editAudit.turnover_paise / 100).toFixed(2) : "",
     };
   });
+
+  // The live threshold badge. null (not an amount) reads as nothing entered
+  // rather than as a turnover under the threshold — the save path says why.
+  const turnoverPreviewPaise = paiseFromRupeeInput(form.turnoverRs || "0") ?? 0;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +123,14 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
   async function handleSave() {
     if (!form.clientId) { setError("Select a client"); return; }
     // All money in integer paise — no floating point
-    const turnoverPaise = form.turnoverRs ? Math.round(parseFloat(form.turnoverRs) * 100) : 0;
+    // This turnover decides whether a s.44AB tax audit applies at all. Read as
+    // ₹1 because it was typed "1,20,00,000", it says no audit is required for a
+    // client 12 crore over the threshold.
+    const turnoverPaise = form.turnoverRs ? paiseFromRupeeInput(form.turnoverRs) : 0;
+    if (turnoverPaise === null) {
+      setError("Turnover must be an amount in rupees, e.g. 12000000 — without commas.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -193,9 +205,9 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
             <input type="number" min="0" step="0.01" value={form.turnoverRs} onChange={e => upd({ turnoverRs: e.target.value })} className={inputCls} placeholder="Enter turnover for threshold check" />
             {form.turnoverRs && (
               <p className="text-xs mt-1 text-[#64748B]">
-                {Math.round(parseFloat(form.turnoverRs || "0") * 100) >= THRESHOLD_BUSINESS
+                {turnoverPreviewPaise >= THRESHOLD_BUSINESS
                   ? "✓ Exceeds ₹1 crore — tax audit mandatory (business)"
-                  : Math.round(parseFloat(form.turnoverRs || "0") * 100) >= THRESHOLD_PROFESSION
+                  : turnoverPreviewPaise >= THRESHOLD_PROFESSION
                   ? "✓ Exceeds ₹50 lakh — tax audit mandatory (profession)"
                   : "Below threshold — verify if audit is required"}
               </p>
