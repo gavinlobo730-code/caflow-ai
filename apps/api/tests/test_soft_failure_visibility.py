@@ -152,7 +152,16 @@ def test_every_health_swallow_names_the_operation_it_lost():
 # is absurd recursion — and an earlier version of exactly this helper DID raise,
 # on an attribute whose getter threw. These three are the correct shape, and
 # they are the reason the budget moved rather than the check being ignored.
-MAX_SILENT_SWALLOWS_ELSEWHERE = 174
+#
+# 174 -> 175: core.exceptions._sqlstate, added beside postgres_message and for
+# exactly the same reason. It reads `code` off an exception object built by
+# code that was already failing — supabase-py has kept it on the instance and
+# in args[0] at different versions, so both are tried — while composing the
+# message that explains the original failure. tests/test_document_failures_
+# say_what_went_wrong.py::test_an_exception_whose_attributes_raise_is_still_
+# reported pins that it survives an object whose getters throw, which is the
+# thing the swallow exists for.
+MAX_SILENT_SWALLOWS_ELSEWHERE = 175
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 

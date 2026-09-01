@@ -16,6 +16,8 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
+from core.observability import capture_soft_failure
+from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
@@ -230,7 +232,9 @@ def create_purchase_bill(
         raise
     except Exception as e:
         _logger.error("create_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to create purchase bill. Please try again.")
+        capture_soft_failure(e, operation="create_purchase_bill")
+        return api_response(False, None,
+                            document_failure_detail(e, action="create the purchase bill"))
 
 
 def _compute_bill_lines_and_totals(
@@ -813,7 +817,8 @@ def bulk_create_purchase_bills(
             errors.append({"index": i, "bill_no": bill_no, "error": e.detail})
         except Exception as e:
             _logger.error("bulk_create_purchase_bills item %d failed: %s", i, e, exc_info=True)
-            errors.append({"index": i, "bill_no": bill_no, "error": "Unable to create this bill. Please try again."})
+            errors.append({"index": i, "bill_no": bill_no,
+                           "error": document_failure_detail(e, action="create this bill")})
 
     # One summary audit + timeline entry for the whole batch instead of one
     # per bill (skipped inside _create_purchase_bill_core for bulk_cache
@@ -1249,6 +1254,7 @@ def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
         sync_for_bill(db, firm_id, bill.get("client_id", ""), bill, vendor)
     except Exception as e:                                      # noqa: BLE001
         _logger.error("TDS register sync failed for bill %s: %s", bill.get("id"), e)
+        capture_soft_failure(e, operation="tds_register_sync")
 
 
 @router.post("/{bill_id}/receive")
@@ -1330,7 +1336,9 @@ def receive_purchase_bill(
                                jerr.status_code, jerr.detail)
                 raise
             _logger.error("receive_purchase_bill: journal posting failed; receipt rolled back: %s", jerr)
-            return api_response(False, None, "Unable to receive purchase bill. Please try again.")
+            capture_soft_failure(jerr, operation="receive_purchase_bill")
+            return api_response(False, None,
+                                document_failure_detail(jerr, action="receive the purchase bill"))
 
         # Persist the journal link so cancellation can reverse it directly.
         db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(

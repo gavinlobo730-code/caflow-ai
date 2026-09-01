@@ -92,10 +92,21 @@ class InvoiceLineIn(BaseModel):
     # service lines — must reference a catalogue item), covering Sales
     # Invoices, Credit Notes and Debit Notes at once since all three share
     # this model.
+    #
+    # THE MESSAGE NAMES WHERE TO GO, because this is the first wall a CA hits
+    # on a new client and it used to say only what was missing. Creating the
+    # client, its customers, its vendors and its bank account all succeed, and
+    # then the first invoice 422s — with no hint that a catalogue exists, let
+    # alone that it is empty. Walking a full year through the API found three
+    # such prerequisites stacked (catalogue, then the firm HSN library behind
+    # it), each discovered by failing the next.
     @model_validator(mode="after")
     def require_service_catalogue_id(self) -> "InvoiceLineIn":
         if not self.service_catalogue_id or not self.service_catalogue_id.strip():
-            raise ValueError("Product/Service is required on every line item.")
+            raise ValueError("Product/Service is required on every line item. Pick one with "
+                             "\"+ Add Product/Service\" on the line, or create it "
+                             "there — a new client has an empty catalogue until "
+                             "somebody adds to it.")
         return self
 
 
@@ -263,7 +274,10 @@ class PurchaseBillLineIn(BaseModel):
     @model_validator(mode="after")
     def require_service_catalogue_id(self) -> "PurchaseBillLineIn":
         if not self.service_catalogue_id or not self.service_catalogue_id.strip():
-            raise ValueError("Product/Service is required on every line item.")
+            raise ValueError("Product/Service is required on every line item. Pick one with "
+                             "\"+ Add Product/Service\" on the line, or create it "
+                             "there — a new client has an empty catalogue until "
+                             "somebody adds to it.")
         return self
 
     @model_validator(mode="after")

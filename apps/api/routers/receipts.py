@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.invoices import ReceiptIn, ReceiptAllocationsUpdateIn
 from models.accounting import JournalReversalIn
+from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
@@ -138,7 +139,8 @@ def list_receipts(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_receipts: %s", e)
-        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the receipt"))
 
 
 @router.post("/")
@@ -169,7 +171,8 @@ def create_receipt(
         raise
     except Exception as e:
         _logger.error("create_receipt: %s", e)
-        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the receipt"))
 
 
 @router.get("/{receipt_id}")
@@ -193,7 +196,8 @@ def get_receipt(
         raise
     except Exception as e:
         _logger.error("get_receipt: %s", e)
-        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the receipt"))
 
 
 @router.patch("/{receipt_id}/allocate")
@@ -329,7 +333,8 @@ def update_allocations(
         raise
     except Exception as e:
         _logger.error("update_allocations: %s", e)
-        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="complete the receipt"))
 
 
 @router.post("/{receipt_id}/reverse")
@@ -361,4 +366,5 @@ def reverse_receipt(
         raise
     except Exception as e:
         _logger.error("reverse_receipt: %s", e)
-        return api_response(False, None, "Unable to reverse receipt. Please try again.")
+        return api_response(False, None,
+                            document_failure_detail(e, action="reverse the receipt"))

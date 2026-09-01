@@ -73,3 +73,75 @@ def postgres_message(exc: Exception) -> str:
     except Exception:
         text = ""
     return text or exc.__class__.__name__
+
+
+# ── Why a document could not be written ──────────────────────────────────────
+
+def _sqlstate(exc: Exception) -> str:
+    """The five-character SQLSTATE, if the driver kept one. Every read guarded:
+    this runs while reporting a failure and must never become a second one."""
+    for source in (lambda: getattr(exc, "code", None),
+                   lambda: (getattr(exc, "args", ()) or [{}])[0]):
+        try:
+            got = source()
+            if isinstance(got, dict):
+                got = got.get("code")
+            if isinstance(got, str) and len(got.strip()) == 5:
+                return got.strip()
+        except Exception:
+            pass
+    return ""
+
+
+# SQLSTATEs a retry cannot fix. Saying "please try again" to any of these is
+# advice that has never once worked — the walkthrough's 24th purchase bill
+# failed exactly like its first, on 42501.
+_NOT_TRANSIENT = {
+    "42501": ("The server is not permitted to write this table. That is a "
+              "configuration fault on our side, not something retrying will "
+              "fix — please report it."),
+    "42P01": ("A table this operation needs does not exist. A migration has "
+              "not reached this database; please report it."),
+    "42703": ("A column this operation needs does not exist. A migration has "
+              "not reached this database; please report it."),
+}
+
+
+def document_failure_detail(exc: Exception, *, action: str) -> str:
+    """A sentence a CA can act on, for a document that would not save.
+
+    WHAT THIS REPLACES
+        "Unable to create purchase bill. Please try again." — returned for
+        every failure, transient or not, with the real cause logged and then
+        discarded. Driving a client through a full year hit it 24 times in a
+        row on SQLSTATE 42501, and there was no way to tell it apart from a
+        network blip and nothing to hand support.
+
+    THE THREE CASES, because they need different words
+      * A business rule the database enforces (RAISE EXCEPTION lands as P0001,
+        and check/foreign-key violations) — the message is already written for
+        a human, so it is surfaced. This is what routers/accounting.py already
+        does for the journal paths.
+      * An infrastructure fault (permission, missing table or column) — the CA
+        can do nothing, so it says so plainly and asks them to report it
+        rather than inviting a retry that cannot succeed.
+      * Anything else — the underlying message, and a retry suggestion, which
+        is only honest here because this branch really might be transient.
+    """
+    state = _sqlstate(exc)
+    if state in _NOT_TRANSIENT:
+        return f"Could not {action}. {_NOT_TRANSIENT[state]}"
+
+    message = postgres_message(exc)
+    # postgres_message falls back to the exception's CLASS NAME when there is no
+    # message, which is right for a log line and useless to a CA — "Could not
+    # save. APIError" reads as a glitch. Treat it as nothing to say.
+    if message == exc.__class__.__name__:
+        message = ""
+    if state == "23514":                       # check constraint
+        return (f"Could not {action}: one of the values sent is not allowed by "
+                f"the database. {message}")
+    if state in ("23503", "23505", "P0001", "23502"):
+        return f"Could not {action}: {message}"
+    return f"Could not {action}. {message}" if message else \
+           f"Could not {action}. Please try again."
