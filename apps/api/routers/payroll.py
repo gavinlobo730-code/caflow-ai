@@ -1992,6 +1992,26 @@ def form_24q_annexure_ii(
                  .eq("fy", financial_year).execute().data) or []):
         perquisites.setdefault(row.get("employee_id"), []).append(row)
 
+    # A leaver's settlement is salary of the year of receipt (§15) and belongs
+    # in this annexure like any other month's pay. Read as head-wise totals so
+    # the builder can put §17(1)(va) leave encashment and §17(3) gratuity on
+    # their own lines rather than lumping both into salary.
+    settlements: dict = {}
+    for row in ((db.table("payroll_settlements").select("*")
+                 .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+                 .eq("fy", financial_year).execute().data) or []):
+        parts = (db.table("payroll_settlement_components").select("*")
+                 .eq("settlement_id", row["id"]).execute().data) or []
+        earnings = [p for p in parts if p.get("kind") != "deduction"]
+        settlements[row.get("employee_id")] = {
+            "gross_17_1_paise": sum(int(p.get("gross_paise") or 0)
+                                    for p in earnings if p.get("tax_head") == "17(1)"),
+            "gross_17_3_paise": sum(int(p.get("gross_paise") or 0)
+                                    for p in earnings if p.get("tax_head") == "17(3)"),
+            "exempt_paise": int(row.get("exempt_paise") or 0),
+            "tds_paise": int(row.get("tds_paise") or 0),
+        }
+
     rates = rates_for(financial_year)
     ann = build_annexure_ii(
         slips=slips,
@@ -2000,6 +2020,7 @@ def form_24q_annexure_ii(
         months_expected=len(usable) or 12,
         declarations_by_employee=declarations,
         perquisites_by_employee=perquisites,
+        settlements_by_employee=settlements,
     )
     missing_months = sorted(set(months) - {r["month"] for r in usable})
     if missing_months:
@@ -2603,44 +2624,29 @@ class SettlementIn(BaseModel):
     average_last_ten_months_paise: Optional[int] = None
 
 
-@router.post("/employees/{employee_id}/settlement")
-def preview_settlement(
-    employee_id: str,
-    body: SettlementIn,
-    current_user: dict = Depends(rbac("payroll", "read"))
-):
-    """What a leaver is owed — computed, not written.
+def _parse_leaving_date(value: str) -> date:
+    """Validated BEFORE the database is reached, in both settlement endpoints.
 
-    A leaver's last payment is not a payslip with a different date on it. It is
-    a composition of separate entitlements, each with its own statute, its own
-    base and its own tax treatment, netted against what the employee owes back.
-    Each component is computed by the module that owns its statute
-    (domain/payroll/gratuity.py, leave_encashment.py, bonus.py) and composed by
-    settlement.py; nothing here re-derives any of them.
-
-    Read-only on purpose. Settling an employee ends their employment, releases
-    money and closes a PF account — it is not something a preview should do as a
-    side effect. The figures come back for a human to act on.
-
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Whether the input is well formed has nothing to do with whether there is a
+    database behind it, and a malformed date that returns an empty result
+    instead of a 422 tells the caller their request found nothing rather than
+    that they asked wrongly.
     """
-    assert_client_access(current_user, body.client_id)
-    db = _db()
-    if not db:
-        return api_response(True, {"employee_id": employee_id, "components": [],
-                                   "deductions": [], "totals": {}, "gaps": [],
-                                   "problems": []})
-
-    emp = (db.table("payroll_employees").select("*")
-           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
-           .maybe_single().execute().data)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
     try:
-        leaving = date.fromisoformat(body.leaving_date)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="leaving_date must be ISO (YYYY-MM-DD)")
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422,
+                            detail="leaving_date must be ISO (YYYY-MM-DD)")
+
+
+def _compose_settlement(emp: dict, body: "SettlementIn"):
+    """(settlement, gratuity result, leaving date) from an employee and the facts.
+
+    ONE computation path, shared by the preview and the recording. A second copy
+    would drift, and the drift would be invisible: a CA would approve one set of
+    figures on screen and a different set would reach the ledger.
+    """
+    leaving = _parse_leaving_date(body.leaving_date)
 
     basic = int(emp.get("basic_paise") or 0)
     da = _percent_of(basic, emp.get("da_percent", 0))
@@ -2661,11 +2667,6 @@ def preview_settlement(
     if body.leave_encashment_paise or body.leave_days_encashed:
         leave = leave_domain.compute(
             amount_received_paise=body.leave_encashment_paise,
-            # §10(10AA)'s average is the last TEN MONTHS' basic + DA. Where the
-            # caller has not supplied it, the current rate stands in — and
-            # leave_encashment.py is where that substitution would be flagged if
-            # it mattered; here the current rate IS the last ten months for
-            # anyone whose pay did not change.
             average_monthly_salary_paise=(body.average_last_ten_months_paise
                                           if body.average_last_ten_months_paise is not None
                                           else basic + da),
@@ -2694,7 +2695,7 @@ def preview_settlement(
             minimum_wage_monthly_paise=body.minimum_wage_monthly_paise,
         )
 
-    s = settlement_domain.build(
+    s_ = settlement_domain.build(
         salary_to_last_day_paise=body.salary_to_last_day_paise,
         gratuity=grat if (grat.eligible or grat.reasons) else None,
         leave=leave,
@@ -2703,19 +2704,25 @@ def preview_settlement(
         loans_outstanding_paise=body.loans_outstanding_paise,
         other_recoveries_paise=body.other_recoveries_paise,
     )
-    # A gratuity that is simply not due yet is an answer, not a gap — but it
-    # has to be visible, or a CA cannot tell "nil" from "not computed".
+    # A gratuity that is simply not due yet is an answer, not a gap — but it has
+    # to be visible, or a CA cannot tell "nil" from "not computed".
     if grat.reasons:
-        s.gaps.extend(grat.reasons)
+        s_.gaps.extend(grat.reasons)
+    return s_, grat, leaving
 
-    return api_response(True, {
+
+def _settlement_payload(employee_id: str, emp: dict, s, grat, body) -> dict:
+    """The response shape, shared so a preview and a recording describe the same
+    thing in the same words."""
+    return {
         "employee_id": employee_id,
         "employee_name": emp.get("name"),
         "leaving_date": body.leaving_date,
         "components": [
             {"label": c.label, "gross_paise": c.gross_paise,
              "exempt_paise": c.exempt_paise, "taxable_paise": c.taxable_paise,
-             "statute": c.statute}
+             "statute": c.statute, "tax_head": c.tax_head,
+             "exempt_section": c.exempt_section}
             for c in s.components
         ],
         "deductions": [
@@ -2725,12 +2732,15 @@ def preview_settlement(
         "totals": {
             "gross_paise": s.gross_paise,
             "exempt_paise": s.exempt_paise,
-            # What belongs in §17(1) for the year. Recoveries do not reduce it —
-            # taking notice pay back does not un-earn the salary.
+            # What belongs in the salary head for the year. Recoveries do not
+            # reduce it — taking notice pay back does not un-earn the salary.
             "taxable_paise": s.taxable_paise,
             "deductions_paise": s.deductions_paise,
             "net_payable_paise": s.net_payable_paise,
+            "gross_17_1_paise": s.gross_by_head(settlement_domain.HEAD_17_1),
+            "gross_17_3_paise": s.gross_by_head(settlement_domain.HEAD_17_3),
         },
+        "exempt_by_section": s.exempt_by_section(),
         "gratuity_detail": {
             "eligible": grat.eligible,
             "completed_years": grat.completed_years,
@@ -2740,9 +2750,263 @@ def preview_settlement(
         },
         "gaps": s.gaps,
         "problems": s.problems,
-        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here is "
-                      "written, paid or filed.",
+    }
+
+
+@router.post("/employees/{employee_id}/settlement")
+def preview_settlement(
+    employee_id: str,
+    body: SettlementIn,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """What a leaver is owed — computed, not written.
+
+    A leaver's last payment is not a payslip with a different date on it. It is
+    a composition of separate entitlements, each with its own statute, its own
+    base and its own tax treatment, netted against what the employee owes back.
+    Each component is computed by the module that owns its statute
+    (domain/payroll/gratuity.py, leave_encashment.py, bonus.py) and composed by
+    settlement.py; nothing here re-derives any of them.
+
+    Read-only on purpose. Recording it is a separate call, because settling an
+    employee ends their employment, releases money, posts to the general ledger
+    and fixes their §17(1) for the year — none of which should happen as a side
+    effect of a preview.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    _parse_leaving_date(body.leaving_date)
+
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "components": [],
+                                   "deductions": [], "totals": {}, "gaps": [],
+                                   "problems": []})
+
+    emp = (db.table("payroll_employees").select("*")
+           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+           .maybe_single().execute().data)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    s, grat, _ = _compose_settlement(emp, body)
+    payload = _settlement_payload(employee_id, emp, s, grat, body)
+    payload["disclaimer"] = ("CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing "
+                             "here is written, paid or filed.")
+    return api_response(True, payload)
+
+
+class SettlementRecordIn(SettlementIn):
+    """Recording adds the two facts a preview does not need."""
+    # Marks the employee. The Act does not distinguish, but the employer's own
+    # records do, and §9 of the Bonus Act turns on dismissal rather than exit.
+    new_status: str = "resigned"
+    # Set when the money actually left, so the ledger date is the payment date
+    # rather than the day someone happened to press the button.
+    payment_date: Optional[str] = None
+
+
+@router.post("/employees/{employee_id}/settlement/record")
+def record_settlement(
+    employee_id: str,
+    body: SettlementRecordIn,
+    current_user: dict = Depends(rbac("payroll", "finalize"))
+):
+    """Record a leaver's settlement: store it, withhold on it, post it, close them.
+
+    Until this existed the settlement was computed and NOTHING CONSUMED IT — no
+    ledger entry, no withholding, and no §17(1) for the year, so a CA read the
+    figures off a screen and re-entered the taxable part by hand before Q4.
+
+    What this does, in the order it matters:
+
+      1. COMPOSES the settlement through the same path the preview uses. One
+         computation, so the figures a CA approved are the figures recorded.
+
+      2. WITHHOLDS under §192. The taxable part is salary of the year of
+         RECEIPT (§15), so it is added to the year's projected income and the
+         tax already deducted is credited against it — §192(3)'s adjustment,
+         the same one every month's payroll makes. Floored at zero: §192
+         authorises deducting tax, not refunding it.
+
+      3. POSTS to the general ledger, through the one posting kernel.
+
+      4. MARKS the employee resigned or terminated with their leaving date, so
+         no later run pays them again.
+
+    Refused where the settlement has PROBLEMS — an employee owing more than the
+    settlement covers has nothing to pay and a debt to collect separately, and
+    posting a negative payment would be a fiction. Gaps do not block: a missing
+    minimum wage or an unknown prior exemption makes a figure uncertain, not
+    wrong, and blocking on them would stop a CA settling anybody.
+
+    Guarded at payroll:finalize — Partner — because this releases money and ends
+    an employment, which is the same weight as finalising a run.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+
+    if body.new_status not in ("resigned", "terminated"):
+        raise HTTPException(
+            status_code=422,
+            detail="new_status must be 'resigned' or 'terminated'.")
+    _parse_leaving_date(body.leaving_date)
+
+    db = _db()
+    if not db:
+        return api_response(True, {"employee_id": employee_id, "recorded": False})
+
+    emp = (db.table("payroll_employees").select("*")
+           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+           .maybe_single().execute().data)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    s, grat, leaving = _compose_settlement(emp, body)
+
+    if s.problems:
+        raise HTTPException(status_code=409, detail={"problems": s.problems})
+
+    already = (db.table("payroll_settlements").select("id")
+               .eq("firm_id", current_user["firm_id"])
+               .eq("employee_id", employee_id)
+               .eq("leaving_date", leaving.isoformat()).execute().data) or []
+    if already:
+        raise HTTPException(
+            status_code=409,
+            detail="This departure has already been settled. Settling it twice "
+                   "would double the gratuity, the ledger entry and the §17(1) "
+                   "figure — each of which looks correct on its own.")
+
+    fy = _fy_for_month(leaving.isoformat()[:7])
+
+    # ── §192 on the taxable part ─────────────────────────────────────────────
+    # Salary of the year of RECEIPT (§15). Added to what the year has already
+    # paid, with the tax already deducted credited against it — §192(3)'s
+    # adjustment, exactly as a monthly run makes it.
+    ytd = _tds_already_deducted_this_fy(
+        db, current_user["firm_id"], body.client_id, "9999-99", fy)
+    tds_paid, _months, gross_paid = ytd.get(employee_id, (0, 0, 0))
+    declarations = _declarations_for_run(
+        db, current_user["firm_id"], body.client_id, fy)
+
+    annual_tax = decl_domain.withholding_tax_paise(
+        decl=declarations.get(employee_id),
+        projected_annual_salary_paise=gross_paid + s.taxable_paise,
+        fy=fy,
+        # A settlement is the end of the employment, so nothing is coming that
+        # could still be proved. Only what was verified counts.
+        verified_only=True,
+    )
+    tds = max(0, annual_tax - max(0, tds_paid))
+    net_paid = max(0, s.net_payable_paise - tds)
+
+    # ── Store ────────────────────────────────────────────────────────────────
+    row = (db.table("payroll_settlements").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": body.client_id,
+        "employee_id": employee_id,
+        "fy": fy or "",
+        "leaving_date": leaving.isoformat(),
+        "gross_paise": s.gross_paise,
+        "exempt_paise": s.exempt_paise,
+        "taxable_paise": s.taxable_paise,
+        "deductions_paise": s.deductions_paise,
+        "tds_paise": tds,
+        "net_paid_paise": net_paid,
+        "created_by": current_user.get("id"),
+    }).execute().data or [{}])[0]
+    settlement_id = row.get("id")
+
+    for c in s.components:
+        db.table("payroll_settlement_components").insert({
+            "firm_id": current_user["firm_id"],
+            "settlement_id": settlement_id,
+            "kind": "earning",
+            "label": c.label,
+            "gross_paise": c.gross_paise,
+            "exempt_paise": c.exempt_paise,
+            "tax_head": c.tax_head,
+            "exempt_section": c.exempt_section,
+            "statute": c.statute,
+        }).execute()
+    for d in s.deductions:
+        db.table("payroll_settlement_components").insert({
+            "firm_id": current_user["firm_id"],
+            "settlement_id": settlement_id,
+            "kind": "deduction",
+            "label": d.label,
+            "gross_paise": d.gross_paise,
+            "exempt_paise": 0,
+            "tax_head": settlement_domain.HEAD_17_1,
+            "exempt_section": "",
+            "statute": d.statute,
+        }).execute()
+
+    # ── Post ─────────────────────────────────────────────────────────────────
+    journal_id = None
+    try:
+        from services.phase2_journal_service import Phase2JournalService
+        journal_id = Phase2JournalService().journal_for_settlement(
+            settlement={
+                "id": settlement_id,
+                "leaving_date": leaving.isoformat(),
+                "payment_date": body.payment_date or leaving.isoformat(),
+                "gross_paise": s.gross_paise,
+                "tds_paise": tds,
+                "net_paid_paise": net_paid,
+                "loan_recovery_paise": max(0, body.loans_outstanding_paise),
+                "cost_reductions_paise": (max(0, body.notice_pay_recovered_paise)
+                                          + max(0, body.other_recoveries_paise)),
+                "employee_name": emp.get("name") or "",
+            },
+            firm_id=current_user["firm_id"], client_id=body.client_id)
+        if journal_id:
+            db.table("payroll_settlements").update(
+                {"journal_entry_id": journal_id}).eq("id", settlement_id).execute()
+    except Exception:
+        # The settlement is already stored. Rolling it back because the ledger
+        # refused would lose the computation a Partner just approved, and the
+        # posting is retryable against a stored settlement; an unposted one is
+        # visible because journal_entry_id is null.
+        _logger.exception("could not post the settlement journal for %s", settlement_id)
+
+    # ── Close the employee ───────────────────────────────────────────────────
+    db.table("payroll_employees").update({
+        "status": body.new_status,
+        "is_active": False,
+    }).eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
+
+    timeline_service.log(
+        body.client_id, "work", "Settlement Recorded",
+        f"{emp.get('name') or 'Employee'} settled on {leaving.isoformat()} — "
+        f"net ₹{net_paid / 100:,.2f}", "info",
+        firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_settlement", entity_id=settlement_id,
+        actor_id=current_user.get("auth_user_id"))
+
+    payload = _settlement_payload(employee_id, emp, s, grat, body)
+    payload.update({
+        "settlement_id": settlement_id,
+        "financial_year": fy,
+        "tds_paise": tds,
+        "net_paid_paise": net_paid,
+        "journal_entry_id": journal_id,
+        "posted": bool(journal_id),
+        "employee_status": body.new_status,
+        "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Recorded and "
+                      "posted; nothing has been filed with any authority.",
     })
+    if not journal_id:
+        payload["problems"] = list(payload.get("problems") or []) + [
+            "The settlement is recorded but its ledger entry did not post. It is "
+            "retryable, and until it posts the salary cost is missing from the "
+            "books — see the server log for why."
+        ]
+    return api_response(True, payload)
 
 
 # ─── Arrears and §89(1) relief ───────────────────────────────────────────────

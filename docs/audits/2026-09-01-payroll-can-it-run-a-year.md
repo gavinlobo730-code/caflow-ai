@@ -11,13 +11,17 @@ Findings are ordered by what they cost, not by where they were found.
 
 ## Answer
 
-**Yes for the monthly cycle and the statutory returns. No for the leaver, and
-no for anything that has to reach the government by itself.**
+**Yes for the monthly cycle, the leaver and the statutory returns. No for
+anything that has to reach the government by itself.**
 
 A firm could run a client's payroll on this today: compute the month, withhold
-correctly, produce the ECR and ESIC files, file the four 24Qs and get a Form 16
-out of TRACES at the end. What they could not do is settle a leaver without
-re-keying the result somewhere else, or file anything through the software.
+correctly, settle a leaver, produce the ECR and ESIC files, file the four 24Qs
+and get a Form 16 out of TRACES at the end. What they could not do is file
+anything through the software.
+
+*Amended 1 September, later the same day.* When this was first written the
+answer was "no for the leaver" — the settlement computed correctly and nothing
+consumed it. That gap is now closed; see **The leaver, wired** below.
 
 ---
 
@@ -104,19 +108,46 @@ its due date is set by each state and there is no single rule.
 
 ---
 
+## The leaver, wired
+
+*Closed on 1 September, after this audit was first written.*
+
+`POST /employees/{id}/settlement` still computes and writes nothing — settling
+someone ends their employment and releases money, and that should not happen as
+a side effect of a preview. `POST .../settlement/record` is the act, guarded at
+`payroll:finalize` and going through the **same composition path**, so the
+figures a CA approved on screen are the figures recorded.
+
+It stores the settlement with its components, withholds under §192 (the taxable
+part added to the year's income, the tax already deducted credited against it —
+§192(3)'s adjustment, exactly as a monthly run makes it), posts through the one
+kernel, and marks the employee resigned or terminated so no later run pays them.
+
+**Each component lands on the line the statute puts it on**, rather than all
+being lumped into §17(1):
+
+| | line | exempt under |
+|---|---|---|
+| salary to last working day | §17(1) | — |
+| leave encashment | §17(1) — §17(1)(va) expressly makes a payment for leave not availed *salary* | §10(10AA) |
+| statutory bonus | §17(1) | — |
+| gratuity | §17(3) — a termination payment | §10(10) |
+
+Annexure II reads settlements alongside the year's slips, so the taxable part
+reaches Form 16 without anyone re-keying it, and its TDS reaches 24Q.
+
+**Two things the ledger does differently from the tax computation, on purpose.**
+A recovery reduces the employer's *cost* (it is netted off the salary debit) but
+never reduces §17(1) — taking notice pay back does not un-earn the salary. And a
+**loan** recovery is not a cost reduction at all: the employee owed the money,
+so collecting it extinguishes a receivable and gets its own credit.
+
+The journal refuses to post if the debit and the credits disagree, rather than
+defining one from the other. That is deliberate: defining the debit as the sum
+of the credits is exactly how the payroll accrual's own missing-credit-leg bug
+stayed hidden until this audit found it.
+
 ## What still stops a CA, and what it would take
-
-### The leaver is computed but goes nowhere
-
-`POST /employees/{id}/settlement` composes salary to date, gratuity, leave
-encashment, bonus, notice pay and recoveries, with the taxable and exempt split
-per component. It writes nothing — deliberately, because settling an employee
-ends their employment, releases money and closes a PF account.
-
-But nothing consumes it either. The settlement does not post to the general
-ledger, does not become a payslip, and does not reach §17(1) for the year, so a
-CA has to re-enter the taxable part by hand before Q4. **This is the largest
-remaining gap in the module** and it is a wiring job, not a statutory one.
 
 ### Nothing files anything
 
@@ -185,6 +216,7 @@ At the close: **8,484 mock-mode tests and 569 real-Postgres tests pass.**
 
 ## Files this touches
 
+| settlement recording, GL posting | `routers/payroll.py`, `services/phase2_journal_service.py` |
 | area | where |
 |---|---|
 | declarations, Form 12BB, regime intimation | `domain/payroll/declarations.py` |
@@ -200,4 +232,4 @@ At the close: **8,484 mock-mode tests and 569 real-Postgres tests pass.**
 | deposit due dates | `services/compliance_engine.py` |
 | the run itself | `routers/payroll.py` |
 
-Migrations 295–301.
+Migrations 295–302.

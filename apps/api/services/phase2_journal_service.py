@@ -970,6 +970,111 @@ class Phase2JournalService:
             _logger.error("journal_for_payroll error: %s", e, exc_info=True)
             raise
 
+    @staticmethod
+    def _build_settlement_lines(account_ids: dict, settlement: dict) -> list[dict]:
+        """A leaver's settlement, as a balanced journal.
+
+            Dr  Salaries Expense              gross, less what was recovered
+              Cr  TDS Payable - Salary        withheld under §192
+              Cr  Employee Loans & Advances   advance recovered
+              Cr  Net Salary Payable          what actually leaves the bank
+
+        WHY RECOVERIES REDUCE THE DEBIT RATHER THAN ADDING A CREDIT
+            Notice pay recovered and similar recoveries reduce the employer's
+            cost of the departure — they are not income and not a liability, and
+            crediting them somewhere else would need an account no chart is
+            guaranteed to have.
+
+            A LOAN recovery is different and gets its own credit: the employee
+            owed the employer money, and collecting it out of the settlement
+            extinguishes a receivable rather than reducing a cost.
+
+            Note this deliberately differs from the TAX treatment, where a
+            recovery never reduces §17(1) — taking notice pay back does not
+            un-earn the salary. Both are right: the ledger records what the
+            employer bore, the salary head records what the employee earned.
+        """
+        gross = int(settlement.get("gross_paise") or 0)
+        tds = int(settlement.get("tds_paise") or 0)
+        loans = int(settlement.get("loan_recovery_paise") or 0)
+        reductions = int(settlement.get("cost_reductions_paise") or 0)
+        net = int(settlement.get("net_paid_paise") or 0)
+        who = settlement.get("employee_name") or "employee"
+
+        cost = gross - reductions
+        credits: list[tuple[str, int, str]] = []
+        if tds > 0:
+            credits.append((account_ids["tds"], tds,
+                            "TDS on the settlement — IT Act §192"))
+        if loans > 0:
+            credits.append((account_ids["loans"], loans,
+                            "Advance recovered from the settlement"))
+        credits.append((account_ids["net"], net,
+                        f"Settlement payable to {who}"))
+
+        total_credits = sum(amount for _, amount, _ in credits)
+        if cost != total_credits:
+            # The debit is the employer's cost and the credits are where it
+            # went; if they disagree a component was mis-composed. Fail loudly
+            # rather than post a balanced-but-wrong entry by defining one from
+            # the other, which is how the payroll accrual's own bug hid for so
+            # long (see _build_payroll_lines).
+            raise ValueError(
+                f"Settlement journal does not balance: cost {cost} against "
+                f"credits {total_credits}. gross={gross} recoveries={reductions} "
+                f"tds={tds} loans={loans} net={net}."
+            )
+
+        lines: list[dict] = [{
+            "account_id": account_ids["salary_exp"],
+            "debit_paise": cost, "credit_paise": 0,
+            "narration": f"Full and final settlement — {who}",
+        }]
+        lines += [{"account_id": acc, "debit_paise": 0, "credit_paise": amount,
+                   "narration": narration} for acc, amount, narration in credits]
+        return lines
+
+    def journal_for_settlement(
+        self, settlement: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """Post a leaver's settlement to the general ledger.
+
+        Through the one posting kernel, like everything else. The reference is
+        distinct per settlement so the kernel's dedup on reference_no makes a
+        retry safe after a partial failure.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_settlement: %s", settlement.get("id"))
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            ids = {
+                "salary_exp": self._find_account(db, firm_id, client_id, "%Salaries%"),
+                "net": self._find_account(db, firm_id, client_id, "%Net Salary Payable%"),
+                "tds": self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%"),
+                # Looked up only when there IS a recovery — a firm whose chart
+                # predates migration 301 has no such account and must still be
+                # able to settle a leaver who owes nothing.
+                "loans": (self._find_account(db, firm_id, client_id, "%Employee Loans%")
+                          if int(settlement.get("loan_recovery_paise") or 0) > 0 else None),
+            }
+            lines = self._build_settlement_lines(ids, settlement)
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=str(settlement.get("payment_date")
+                               or settlement.get("leaving_date")),
+                reference_no=f"SETTLE-{settlement.get('id')}",
+                narration=f"Full and final settlement — {settlement.get('employee_name') or ''}".strip(" —"),
+                entry_type="Journal",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            _logger.error("journal_for_settlement error: %s", e, exc_info=True)
+            raise
+
     def journal_for_payroll_disbursement(
         self, run: dict, bank_gl_account_id: str, firm_id: str, client_id: str,
         payment_date: str,

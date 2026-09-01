@@ -41,12 +41,26 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+# Which line of the salary head a component belongs on. 24Q Annexure II — the
+# input TRACES turns into Form 16 Part B — breaks gross salary into §17(1),
+# §17(2) and §17(3), and then deducts allowances exempt under §10 with a
+# breakup by section. So a component has to know BOTH its gross line and, where
+# it has one, the §10 clause that exempts part of it.
+HEAD_17_1 = "17(1)"     # salary as defined
+HEAD_17_2 = "17(2)"     # perquisites
+HEAD_17_3 = "17(3)"     # profits in lieu of salary
+
+
 @dataclass
 class SettlementComponent:
     label: str
     gross_paise: int = 0
     exempt_paise: int = 0
     statute: str = ""
+    tax_head: str = HEAD_17_1
+    # The §10 clause the exempt part falls under, for the annexure's breakup.
+    # Empty where the component has no exemption.
+    exempt_section: str = ""
 
     @property
     def taxable_paise(self) -> int:
@@ -78,6 +92,18 @@ class Settlement:
     def deductions_paise(self) -> int:
         return sum(d.gross_paise for d in self.deductions)
 
+    def gross_by_head(self, head: str) -> int:
+        """Gross on one line of the salary head — what Annexure II reports."""
+        return sum(c.gross_paise for c in self.components if c.tax_head == head)
+
+    def exempt_by_section(self) -> dict:
+        """{§10 clause: amount}, for the annexure's exemption breakup."""
+        out: dict = {}
+        for c in self.components:
+            if c.exempt_paise and c.exempt_section:
+                out[c.exempt_section] = out.get(c.exempt_section, 0) + c.exempt_paise
+        return out
+
     @property
     def net_payable_paise(self) -> int:
         """What actually leaves the bank. May be negative — an employee who owes
@@ -108,25 +134,42 @@ def build(
     s.components.append(SettlementComponent(
         label="Salary to last working day",
         gross_paise=max(0, salary_to_last_day_paise),
-        statute="§17(1)"))
+        statute="§17(1)", tax_head=HEAD_17_1))
 
     if gratuity is not None:
+        # §17(3)(ii) makes a termination payment "profits in lieu of salary".
+        # The gross line is 17(3) and the exempt part is deducted under §10(10).
+        #
+        # §17(3)(ii) excludes "any payment referred to in clause (10) ... of
+        # section 10" from the definition, which read at its widest would keep
+        # the whole gratuity out of gross rather than only the exempt part. It
+        # cannot be read that way — the excess over the §10(10) limit would then
+        # escape tax entirely — so it is read as excluding the exempt portion,
+        # which is settled practice. Either reading gives the SAME income
+        # chargeable; only the presentation differs, and showing the gross with
+        # the exemption beside it is what makes the relief visible on a Form 16.
         s.components.append(SettlementComponent(
             label="Gratuity", gross_paise=gratuity.payable_paise,
             exempt_paise=gratuity.exempt_paise,
-            statute="Payment of Gratuity Act §4; IT Act §10(10)"))
+            statute="Payment of Gratuity Act §4; IT Act §10(10)",
+            tax_head=HEAD_17_3, exempt_section="10(10)"))
         s.gaps.extend(gratuity.gaps)
 
     if leave is not None:
+        # §17(1)(va) expressly makes "any payment received by an employee in
+        # respect of any period of leave not availed of by him" SALARY — so
+        # unlike gratuity this sits on the 17(1) line, not 17(3), and the
+        # statute settles it rather than practice.
         s.components.append(SettlementComponent(
             label="Leave encashment", gross_paise=leave.received_paise,
-            exempt_paise=leave.exempt_paise, statute="IT Act §10(10AA)"))
+            exempt_paise=leave.exempt_paise, statute="IT Act §17(1)(va), §10(10AA)",
+            tax_head=HEAD_17_1, exempt_section="10(10AA)"))
         s.gaps.extend(leave.gaps)
 
     if bonus is not None:
         s.components.append(SettlementComponent(
             label="Statutory bonus", gross_paise=bonus.payable_paise,
-            statute="Payment of Bonus Act §10/§11"))
+            statute="Payment of Bonus Act §10/§11", tax_head=HEAD_17_1))
         s.gaps.extend(bonus.gaps)
 
     if notice_pay_recovered_paise:
