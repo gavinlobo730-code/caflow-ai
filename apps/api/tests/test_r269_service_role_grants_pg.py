@@ -1,6 +1,16 @@
 """
-R269 — proves migration 269 on real PostgreSQL: the backend's own role can read
-every table the app has, and the five reporting tables stay read-only.
+R269 — proves on real PostgreSQL that the backend's own role can reach every
+table the app uses: read what it reads, and write what it writes.
+
+Migration 306 changed what this file asserts about five of them. It used to pin
+receipts, receipt_allocations, credit_notes, purchase_bills and
+purchase_payments as SELECT-only for service_role, following migration 096's
+"the reporting engine never writes to these tables". That is true of the
+reporting engine and false of the ROLE: the document-creation endpoints run as
+service_role as well, so the narrowing broke every purchase bill, receipt and
+vendor payment created through the API. The assertion is now the other way up,
+and a general write-side invariant sits beside it so the next occurrence is
+caught by shape rather than by name.
 
 WHY THIS IS A REAL-POSTGRES TEST AND NOT A MOCK ONE
     Grants do not exist in mock mode. The gap this closes was invisible to the
@@ -36,10 +46,14 @@ pytestmark = pytest.mark.skipif(
     reason="service_role grant proof requires HARNESS_PG + psql",
 )
 
-# Migration 096 grants these SELECT and deliberately nothing more — the
-# reporting engine reads them on every Trial Balance / P&L / Balance Sheet call
-# and never writes to them.
-REPORTING_READ_ONLY = (
+# The five documents the backend both reads AND writes. 096 granted them SELECT
+# because the reporting engine was raising 42501 on reads; 269 carried that
+# forward as a least-privilege decision and this file used to pin them
+# write-less. Migration 306 undoes that: routers/purchase_bills.py,
+# routers/receipts.py and routers/purchase_payments.py all write these through
+# get_supabase(), which is the service-role client whenever USE_USER_JWT is off
+# or no caller token is present. See 306's header for the whole argument.
+MONEY_DOCUMENTS = (
     "receipts",
     "receipt_allocations",
     "credit_notes",
@@ -133,10 +147,10 @@ def test_jobs_can_write_where_they_must(migrated_db):
         assert result.stdout.strip() == "t", f"service_role cannot UPDATE {table}"
 
 
-# ── The deliberate exception ──────────────────────────────────────────────────
+# ── The money documents (migration 306) ──────────────────────────────────────
 
 def test_reporting_tables_stay_readable(migrated_db):
-    for table in REPORTING_READ_ONLY:
+    for table in MONEY_DOCUMENTS:
         result = _psql(
             migrated_db,
             f"SELECT has_table_privilege('service_role', 'public.{table}', 'SELECT');",
@@ -146,20 +160,66 @@ def test_reporting_tables_stay_readable(migrated_db):
 
 
 @pytest.mark.parametrize("privilege", ["INSERT", "UPDATE", "DELETE"])
-def test_reporting_tables_stay_read_only_for_service_role(migrated_db, privilege):
-    """Migration 096 chose SELECT-only here on purpose. 269 grants the whole
-    schema and then narrows these five back; if that REVOKE is ever dropped,
-    the least-privilege decision is silently undone and this catches it."""
-    for table in REPORTING_READ_ONLY:
+def test_the_money_documents_are_writable_by_the_backend(migrated_db, privilege):
+    """The assertion this file used to make was the exact opposite, and it was
+    wrong — it pinned a least-privilege narrowing that broke the feature.
+
+    096 reasoned "the reporting engine never writes to these tables", which is
+    true of the reporting engine and not of the role. The document-creation
+    endpoints run as service_role too and write all five, so with USE_USER_JWT
+    off every purchase bill, receipt and vendor payment failed with 42501
+    before RLS was consulted. Found by driving a client through a full year:
+    24 of 24 bills failed, one GRANT and 24 of 24 posted.
+    """
+    for table in MONEY_DOCUMENTS:
         result = _psql(
             migrated_db,
             f"SELECT has_table_privilege('service_role', 'public.{table}', '{privilege}');",
         )
         assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == "f", (
-            f"service_role gained {privilege} on {table} — migration 096 grants "
-            "these SELECT only, because the reporting engine never writes to them"
+        assert result.stdout.strip() == "t", (
+            f"service_role cannot {privilege} {table} — the endpoint that creates "
+            "this document runs as service_role and will fail with SQLSTATE 42501"
         )
+
+
+def test_no_table_grants_authenticated_write_without_service_role(migrated_db):
+    """The invariant that makes the five names unnecessary.
+
+    Its SELECT twin above catches a table granted READ to `authenticated` only.
+    This is the write side, and it is the one that would have caught migration
+    050's original omission, 193's repeat on debit_notes, and the five this
+    file used to assert in the wrong direction. Asserting the SHAPE fails the
+    next occurrence; naming tables passes forever once they are fixed.
+
+    A header whose LINES are writable and itself is not is the specific
+    incoherence this stops: on production before migration 306,
+    purchase_bill_lines had INSERT and purchase_bills did not.
+    """
+    result = _psql(migrated_db, """
+        WITH w AS (
+          SELECT table_name, grantee
+          FROM information_schema.role_table_grants
+          WHERE table_schema = 'public' AND privilege_type = 'INSERT'
+            AND grantee IN ('service_role', 'authenticated')
+          GROUP BY table_name, grantee
+        )
+        SELECT t.table_name
+        FROM information_schema.tables t
+        WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+          AND EXISTS (SELECT 1 FROM w WHERE w.table_name = t.table_name
+                        AND w.grantee = 'authenticated')
+          AND NOT EXISTS (SELECT 1 FROM w WHERE w.table_name = t.table_name
+                            AND w.grantee = 'service_role')
+        ORDER BY t.table_name;
+    """)
+    assert result.returncode == 0, result.stderr
+    missing = _rows(result)
+    assert not missing, (
+        "these tables let `authenticated` INSERT but not service_role — every "
+        "backend write to them fails with SQLSTATE 42501 before RLS is even "
+        f"evaluated: {missing}"
+    )
 
 
 # ── The pattern guard ─────────────────────────────────────────────────────────
