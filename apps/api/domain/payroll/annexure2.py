@@ -194,6 +194,7 @@ def build_annexure_ii(
     months_expected: int = 12,
     declarations_by_employee: Optional[dict] = None,
     perquisites_by_employee: Optional[dict] = None,
+    settlements_by_employee: Optional[dict] = None,
 ) -> AnnexureII:
     """Aggregate a financial year's finalised payslips into Annexure II rows.
 
@@ -213,6 +214,7 @@ def build_annexure_ii(
 
     declarations_by_employee = declarations_by_employee or {}
     perquisites_by_employee = perquisites_by_employee or {}
+    settlements_by_employee = settlements_by_employee or {}
     perquisites_possible = False
     any_undeclared = False
     any_unvalued_perquisites = False
@@ -238,6 +240,22 @@ def build_annexure_ii(
         pt = sum(int(s.get("pt_paise") or 0) for s in emp_slips)
         tds = sum(int(s.get("tds_paise") or 0) for s in emp_slips)
 
+        # A leaver's settlement is salary of the year of RECEIPT (§15) and
+        # belongs in this annexure like any other month's pay — which, until it
+        # was wired in, it did not: the settlement was computed, shown, and
+        # never reached anyone's Form 16.
+        #
+        # Its components land on the line the statute puts them on rather than
+        # all being lumped into §17(1): §17(1)(va) expressly makes a payment for
+        # leave not availed SALARY, while gratuity is a termination payment and
+        # sits under §17(3). The §10 exemptions come off separately, which is
+        # what the annexure's own format asks for.
+        settled = settlements_by_employee.get(emp_id) or {}
+        salary += int(settled.get("gross_17_1_paise") or 0)
+        profits_in_lieu = int(settled.get("gross_17_3_paise") or 0)
+        exempt_10 = int(settled.get("exempt_paise") or 0)
+        tds += int(settled.get("tds_paise") or 0)
+
         perquisite_value = sum(int(p.get("value_paise") or 0)
                                for p in perquisites_by_employee.get(emp_id, []))
         if salary > 0 and not perquisites_by_employee.get(emp_id):
@@ -247,10 +265,11 @@ def build_annexure_ii(
         decl = declarations_by_employee.get(emp_id)
         if decl is None:
             any_undeclared = True
-            uses_new_regime, exempt_10, chapter_vi_a = True, 0, 0
+            uses_new_regime, chapter_vi_a = True, 0
         else:
             uses_new_regime = decl.uses_new_regime
-            exempt_10, chapter_vi_a = _verified_reliefs(decl, salary)
+            declared_exempt, chapter_vi_a = _verified_reliefs(decl, salary)
+            exempt_10 += declared_exempt
             if not decl.proofs_verified:
                 out.gaps.append(
                     f"{label}: a declaration exists but its proofs were never "
@@ -265,6 +284,7 @@ def build_annexure_ii(
             pan=pan,
             months_paid=len(emp_slips),
             salary_17_1_paise=salary,
+            profits_in_lieu_17_3_paise=profits_in_lieu,
             uses_new_regime=uses_new_regime,
             perquisites_17_2_paise=perquisite_value,
             exempt_under_10_paise=exempt_10,

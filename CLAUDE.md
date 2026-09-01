@@ -453,10 +453,15 @@ licence to extend any of it.
 **Payroll specifically** is walked end to end in
 `docs/audits/2026-09-01-payroll-can-it-run-a-year.md` — what works for a full
 year, what does not, and what each remaining gap would cost. The short version:
-the monthly cycle and the statutory returns work; the LEAVER'S SETTLEMENT is
-computed and nothing consumes it (no GL posting, no payslip, no §17(1) for the
-year), which is the largest remaining gap and a wiring job rather than a
-statutory one.
+the monthly cycle, the leaver and the statutory returns all work; what the
+software still cannot do is FILE anything, which is deliberate and needs
+commercial registrations rather than code.
+
+One rule the settlement makes concrete, because it is easy to get backwards: a
+recovery (notice pay, an advance) reduces what the employer PAYS and never
+reduces §17(1). Taking notice pay back does not un-earn the salary. The ledger
+records what the employer bore; the salary head records what the employee
+earned, and the two legitimately differ.
 
 ## Not built yet — known, deliberate, and not to be quietly started
 

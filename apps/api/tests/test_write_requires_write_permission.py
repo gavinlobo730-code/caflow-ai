@@ -87,6 +87,8 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # and closes a PF account; none of that is something a preview should do
         # as a side effect, so the handler reads and returns and writes nothing.
         "/api/payroll/employees/{employee_id}/settlement",
+        # NOTE: .../settlement/record is NOT here — it writes, posts to the
+        # ledger and closes an employment, and is guarded at payroll:finalize.
         # §89(1) relief is likewise computed and returned. Nothing is
         # written and, in particular, Form 10E is not filed — the proviso
         # to §89 requires it on the e-filing portal before the return, and
