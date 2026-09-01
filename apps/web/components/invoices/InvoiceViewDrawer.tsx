@@ -8,6 +8,7 @@
  * an activity timeline, and Record-Payment / Create-Credit-Note actions that reuse
  * the existing receipts and credit-notes endpoints.
  */
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckCircle, Download, Pencil, Send, Trash2, Copy, CreditCard, FilePlus2,
@@ -454,7 +455,11 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
   const [saving, setSaving] = useState(false);
 
   async function submit() {
-    const amountPaise = Math.round((parseFloat(amount) || 0) * 100);
+    const amountPaise = paiseFromRupeeInput(amount);
+    if (amountPaise === null) {
+      onError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.");
+      return;
+    }
     if (amountPaise <= 0) { onError("Enter a valid amount."); return; }
     if (amountPaise > outstanding) { onError("Amount exceeds the outstanding balance."); return; }
     setSaving(true);

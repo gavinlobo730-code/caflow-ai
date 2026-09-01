@@ -1,5 +1,6 @@
 "use client";
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Play, Square, Plus, Trash2, Clock, AlertCircle,
@@ -157,6 +158,14 @@ export default function TimeTrackingPage() {
 
   const handleManualEntry = async () => {
     if (!manualStarted || !manualEnded) return;
+    // An hourly rate is billed against every hour on the entry, so reading it
+    // as ₹1 instead of ₹2,500 under-bills the client by the whole engagement.
+    const hourlyRate = manualHourlyRate ? paiseFromRupeeInput(manualHourlyRate) : null;
+    if (manualHourlyRate && hourlyRate === null) {
+      setError("Hourly rate must be an amount in rupees, e.g. 2500 or 2500.50 "
+                     + "— without commas.");
+      return;
+    }
     setManualSaving(true);
     try {
       await createManualEntry({
@@ -165,7 +174,7 @@ export default function TimeTrackingPage() {
         started_at: manualStarted,
         ended_at: manualEnded,
         is_billable: manualBillable,
-        hourly_rate_paise: manualHourlyRate ? Math.round(parseFloat(manualHourlyRate) * 100) : undefined,
+        hourly_rate_paise: hourlyRate ?? undefined,
       });
       setShowManual(false);
       setManualClientId("");

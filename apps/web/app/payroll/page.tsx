@@ -5,6 +5,7 @@
  * All monetary values stored and computed in integer paise.
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -1736,6 +1737,17 @@ export default function PayrollPage() {
               const client = clients.find(c => c.client_name.toLowerCase() === row.client_name?.toLowerCase());
               if (!client) { errors.push(`Employee "${row.name}": client "${row.client_name}" not found`); continue; }
               const ptState = (row.pt_state ?? "").trim().toUpperCase();
+              // A CSV row is not a keystroke, so a bad amount SKIPS the row and
+              // is reported rather than blocking the whole import — but it is
+              // never coerced. "1,25,000" in a spreadsheet column is exactly how
+              // an amount gets there, and parseFloat reads it as 1.
+              const basic = paiseFromRupeeInput(row.basic_rs ?? "0");
+              const allowances = paiseFromRupeeInput(row.other_allowances_rs ?? "0");
+              if (basic === null || allowances === null) {
+                errors.push(`Employee "${row.name}": basic_rs and other_allowances_rs `
+                            + "must be plain amounts in rupees, without commas");
+                continue;
+              }
               try {
                 await api.payroll.createEmployee({
                   client_id: client.id,
@@ -1743,10 +1755,10 @@ export default function PayrollPage() {
                   pan: row.pan?.toUpperCase() || null,
                   gender: row.gender || null,
                   designation: row.designation || "",
-                  basic_paise: Math.round(parseFloat(row.basic_rs ?? "0") * 100),
+                  basic_paise: basic,
                   hra_percent: parseFloat(row.hra_percent ?? "40"),
                   da_percent: parseFloat(row.da_percent ?? "0"),
-                  other_allowances_paise: Math.round(parseFloat(row.other_allowances_rs ?? "0") * 100),
+                  other_allowances_paise: allowances,
                   pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
                   esi_applicable: row.esi_applicable?.toLowerCase() === "true",
                   pt_applicable: ptState !== "",
@@ -1763,7 +1775,15 @@ export default function PayrollPage() {
           validateRow={(row) => {
             const errs: string[] = [];
             if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(row.pan?.toUpperCase() ?? "")) errs.push("Invalid PAN format");
-            if (row.basic_rs && isNaN(parseFloat(row.basic_rs))) errs.push("basic_rs must be a number");
+            // isNaN(parseFloat(x)) was the old test, and it is FALSE for
+            // "1,25,000" — parseFloat answers 1, so the row imported silently
+            // at one rupee.
+            if (row.basic_rs && paiseFromRupeeInput(row.basic_rs) === null) {
+              errs.push("basic_rs must be a plain amount in rupees, without commas");
+            }
+            if (row.other_allowances_rs && paiseFromRupeeInput(row.other_allowances_rs) === null) {
+              errs.push("other_allowances_rs must be a plain amount in rupees, without commas");
+            }
             return errs;
           }}
         />

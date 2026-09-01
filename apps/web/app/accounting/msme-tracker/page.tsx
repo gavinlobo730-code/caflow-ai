@@ -10,6 +10,7 @@
  * All monetary amounts in paise (integer arithmetic — no floating point).
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, AlertTriangle, CheckCircle, Clock, Download } from "lucide-react";
@@ -139,9 +140,13 @@ function AddModal({ clients, onClose, onAdded }: {
       setError("Supplier name, invoice date and amount are required");
       return;
     }
-    // All money in integer paise — no floating point
-    const amountPaise = Math.round(parseFloat(form.amountRs) * 100);
-    if (isNaN(amountPaise) || amountPaise <= 0) { setError("Invalid amount"); return; }
+    // All money in integer paise — and read as integer paise, not multiplied
+    // into them. This tracks what is owed to micro and small enterprises under
+    // MSMED s.15, which s.43B(h) turns into a disallowance, so the figure is
+    // taxable income rather than a note.
+    const amountPaise = paiseFromRupeeInput(form.amountRs);
+    if (amountPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
+    if (amountPaise <= 0) { setError("Invalid amount"); return; }
 
     setSaving(true);
     setError(null);

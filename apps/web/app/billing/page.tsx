@@ -6,6 +6,7 @@
  * All monetary values stored and calculated in integer paise (1 INR = 100 paise)
  */
 
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -232,7 +233,8 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
-    const amtPaise = Math.round(parseFloat(amountRs || "0") * 100);
+    const amtPaise = paiseFromRupeeInput(amountRs || "0");
+    if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
     if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }
     setSaving(true);
     try {

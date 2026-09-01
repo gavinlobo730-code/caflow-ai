@@ -10,6 +10,7 @@
  * stays a header + action bar + line items + TDS/accounting + activity feed,
  * not a byte-for-byte port of the sales hub.
  */
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban, CreditCard, FilePlus2 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
@@ -450,7 +451,11 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
   const [saving, setSaving] = useState(false);
 
   async function submit() {
-    const amountPaise = Math.round((parseFloat(amount) || 0) * 100);
+    const amountPaise = paiseFromRupeeInput(amount);
+    if (amountPaise === null) {
+      onError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.");
+      return;
+    }
     if (amountPaise <= 0) { onError("Enter a valid amount."); return; }
     if (amountPaise > outstanding) { onError("Amount exceeds the outstanding balance."); return; }
     setSaving(true);
