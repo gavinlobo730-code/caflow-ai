@@ -325,7 +325,7 @@ class CustomerStatementService:
         invs = _paginate_all(lambda: db.table("client_sales_invoices")
                 .select("id, customer_id, invoice_no, invoice_date, due_date, total_paise, paid_paise, "
                         "credited_paise, debit_note_paise, outstanding_paise, status, txn_currency, "
-                        "exchange_rate, txn_total, paid_txn")
+                        "exchange_rate, txn_total, paid_txn, is_disputed, considered_doubtful")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null")
                 .not_.in_("status", list(_DEAD_INVOICE))
@@ -357,6 +357,12 @@ class CustomerStatementService:
                 "customer_id": inv.get("customer_id"), "customer_name": cnames.get(inv.get("customer_id")),
                 "invoice_date": _d(inv.get("invoice_date")), "outstanding_paise": outstanding,
                 "days_overdue": max(days, 0), "aging_bucket": bucket,
+                # The Schedule III marks (migration 303), carried so the ageing
+                # screen can show what is already marked rather than offer a
+                # one-way button. They change which ROW of the statutory note
+                # the amount lands in, never the amount itself.
+                "is_disputed": bool(inv.get("is_disputed")),
+                "considered_doubtful": bool(inv.get("considered_doubtful")),
             }
             cur = (inv.get("txn_currency") or "INR").upper()
             foreign_out = 0

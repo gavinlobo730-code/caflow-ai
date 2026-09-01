@@ -61,6 +61,9 @@ const GROUPS: ReportGroup[] = [
         href: "accounting?tab=trial" },
       { id: "cf", title: "Cash Flow", desc: "Indirect-method cash flow statement",
         href: "accounting?tab=cashflow", statute: "AS-3" },
+      { id: "ageing", title: "Ageing schedules",
+        desc: "Trade receivables and trade payables ageing — the notes to the balance sheet, and the open documents behind them",
+        href: "reports/ageing", statute: "Schedule III (2021 amendment)" },
       { id: "hub", title: "Export & share", desc: "Print, XLSX export, and reports already shared to the portal",
         href: "accounting?tab=reports" },
     ],
@@ -119,14 +122,22 @@ const GROUPS: ReportGroup[] = [
   },
 ];
 
-/** Named honestly. These do NOT link anywhere, because they do not exist. */
+/** Named honestly. These do NOT link anywhere, because they do not exist.
+ *
+ *  "Aged receivables & payables" used to be on this list and was wrong twice
+ *  over: customer_statement_service.ar_aging and its AP mirror have existed for
+ *  a long time and were made query-bounded by migration 278, and nothing in
+ *  this app had ever called them — the computation was built and unreachable.
+ *  They are now under Ageing schedules above, beside the statutory note that
+ *  migration 303 added. Which is the lesson worth leaving here: check whether a
+ *  report is missing a SCREEN before recording it as missing entirely. */
 const NOT_BUILT: { title: string; why: string }[] = [
-  { title: "Aged receivables & payables",
-    why: "Designed but not built. CLAUDE.md calls for it to be built the same way as cash flow — a server-side aggregate, never a row-by-row fetch." },
   { title: "Ratio analysis",
     why: "Not started." },
   { title: "Comparative and multi-year statements",
     why: "The statements carry a previous-year column; a standalone multi-year report is not built." },
+  { title: "Unbilled dues",
+    why: "Schedule III requires them disclosed separately under both ageing schedules. Nothing in this platform holds an unbilled revenue or accrued-liability document keyed to a party, so the ageing report says so rather than showing a zero." },
 ];
 
 export default function ClientReportsPage() {

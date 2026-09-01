@@ -19,6 +19,7 @@ from core.authz import assert_client_access, can_access_client, filter_by_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
+from services import ageing_schedule_service
 
 
 def _reporting_service() -> ReportingService:
@@ -872,6 +873,75 @@ def get_schedule_iii(
         current_user["firm_id"], client_id, fy_start, fy_end
     )
     return api_response(True, data)
+
+
+class AgeingClassifyIn(BaseModel):
+    """One classification. `target` names what is being classified, and the
+    service allows only the fields that belong to it."""
+    client_id: str
+    target: str                                   # invoice | bill | vendor
+    target_id: str
+    is_disputed: Optional[bool] = None
+    considered_doubtful: Optional[bool] = None
+    msme_status: Optional[str] = None             # micro | small | medium | not_registered
+    msme_registration_no: Optional[str] = None
+    # msme_status = None is a legitimate value (it puts a vendor back into the
+    # unclassified gap), so the presence of the key has to be distinguishable
+    # from its absence. Pydantic's exclude_unset does that for us in the handler.
+
+
+@router.get("/schedule-iii/ageing")
+def get_schedule_iii_ageing(
+    client_id: str = Query(..., description="Required — this is a note to ONE client's balance sheet"),
+    as_of: Optional[str] = Query(None, description="Reporting date (YYYY-MM-DD); defaults to today"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """
+    Trade Receivables and Trade Payables ageing schedules — the notes to the
+    balance sheet required by Schedule III to the Companies Act 2013 as amended
+    by MCA Notification G.S.R. 207(E) of 24 March 2021, Division I.
+
+    The two tables are NOT the same shape: receivables age in five prescribed
+    columns from six months, payables in four from one year, and the row sets
+    differ. Only micro and small enterprises are row (i) "MSME" — MSMED s.22 and
+    s.2(n) both stop at small — so a medium enterprise belongs in Others.
+
+    An unclassified vendor is reported as an unclassified total and named in
+    `payables.unclassified_vendors`, never folded into Others: IT Act s.43B(h)
+    disallows a deduction for sums payable to a micro or small enterprise beyond
+    the MSMED s.15 limit unless actually paid, so the classification changes the
+    client's taxable income rather than only the presentation.
+
+    Amounts are each document's balance outstanding today, aged against `as_of`.
+    Asking for an earlier date returns a gap saying what that excludes.
+    """
+    assert_client_access(current_user, client_id)
+    return api_response(True, ageing_schedule_service.schedule(
+        _prod_db(), current_user["firm_id"], client_id, as_of))
+
+
+@router.post("/schedule-iii/ageing/classify")
+def classify_for_ageing_schedule(
+    data: AgeingClassifyIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """
+    Record the disputed / doubtful / MSMED classification the ageing schedule
+    needs. Manager+ (accounting.write), because the MSMED one is a judgement
+    with a tax consequence under IT Act s.43B(h), not a display preference.
+    """
+    assert_client_access(current_user, data.client_id)
+    fields = {k: v for k, v in data.model_dump(exclude_unset=True).items()
+              if k not in ("client_id", "target", "target_id")}
+    out = ageing_schedule_service.classify(
+        _prod_db(), current_user["firm_id"], data.client_id,
+        data.target, data.target_id, fields)
+    log_event(current_user["firm_id"], data.target, data.target_id,
+              "ageing_classification",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              new_data=out["set"], metadata={"client_id": data.client_id})
+    return api_response(True, out)
 
 
 @router.get("/cash-flow")

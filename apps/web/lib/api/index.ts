@@ -155,6 +155,78 @@ export type ReportTransaction = {
   is_interstate: boolean; place_of_supply?: string | null; status: string;
 };
 
+// ── The Schedule III ageing schedules ────────────────────────────────────────
+// MCA Notification G.S.R. 207(E) of 24 March 2021, Division I. Every amount is
+// integer paise. The two tables have DIFFERENT columns — receivables age in five
+// prescribed buckets from six months, payables in four from one year — so a
+// renderer must read `buckets` rather than assume one shape.
+
+export type AgeingBucket = { key: string; label: string; prescribed: boolean };
+
+export type AgeingRow = {
+  key: string; label: string;
+  amounts: Record<string, number>;
+  total_paise: number;
+};
+
+export type AgeingTable = {
+  title: string;
+  buckets: AgeingBucket[];
+  rows: AgeingRow[];
+  column_totals: Record<string, number>;
+  total_paise: number;
+  /** null, never 0 — nothing in this platform holds unbilled dues. */
+  unbilled_dues_paise: number | null;
+};
+
+export type AgeingPayablesTable = AgeingTable & {
+  /** Balances owed to vendors nobody has classified under the MSMED Act. NOT
+   *  included in any row: IT Act s.43B(h) makes micro/small a taxable-income
+   *  question, so a guess would change the client's tax, not just the layout. */
+  unclassified_paise: number;
+  unclassified_vendors: { vendor_id: string | null; vendor_name: string; outstanding_paise: number }[];
+};
+
+export type AgeingSchedule = {
+  as_of: string;
+  division: string;
+  statute: string;
+  ageing_from: string;
+  receivables: AgeingTable;
+  payables: AgeingPayablesTable;
+  gaps: { code: string; message: string }[];
+};
+
+export type AgeingDocument = {
+  invoice_id?: string; invoice_no?: string | null; invoice_date?: string | null;
+  customer_id?: string | null; customer_name?: string | null;
+  bill_id?: string; bill_no?: string | null; bill_date?: string | null;
+  vendor_id?: string | null; vendor_name?: string | null;
+  outstanding_paise: number; days_overdue: number; aging_bucket: string;
+  /** The Schedule III marks (migration 303). `considered_doubtful` is absent on
+   *  bills — that row exists only on the receivables table; the payables table
+   *  splits on MSME/Others, which is a property of the VENDOR. */
+  is_disputed?: boolean;
+  considered_doubtful?: boolean;
+};
+
+/** The per-document ageing payload. `K` names which key carries the rows. */
+export type AgeingDetail<K extends "invoices" | "bills"> = {
+  as_of: string | null;
+  buckets: Record<string, number>;
+  total_outstanding_paise: number;
+} & { [P in K]: AgeingDocument[] };
+
+export type AgeingClassifyBody = {
+  client_id: string;
+  target: "invoice" | "bill" | "vendor";
+  target_id: string;
+  is_disputed?: boolean;
+  considered_doubtful?: boolean;
+  msme_status?: "micro" | "small" | "medium" | "not_registered" | null;
+  msme_registration_no?: string | null;
+};
+
 export type ReportGSTSummary = {
   period: string;
   gstr1: { taxable: number; cgst: number; sgst: number; igst: number;
@@ -460,6 +532,29 @@ export const api = {
     profitLoss: (params?: Record<string, string>) => request(`/api/accounting/profit-loss${params ? "?" + new URLSearchParams(params) : ""}`),
     balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
     scheduleIii: (params?: Record<string, string>) => request(`/api/accounting/schedule-iii${params ? "?" + new URLSearchParams(params) : ""}`),
+    /**
+     * The Schedule III ageing schedules — the notes to the balance sheet added
+     * by MCA Notification G.S.R. 207(E) of 24 March 2021. Twenty-four figures,
+     * computed by public.schedule_iii_ageing (migration 303) rather than by
+     * shipping every open document to the client. Division I row sets; the two
+     * tables have DIFFERENT columns, so read them off `buckets` rather than
+     * assuming one shape.
+     */
+    scheduleIiiAgeing: (clientId: string, asOf?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (asOf) q.set("as_of", asOf);
+      return request<ApiResp<AgeingSchedule>>(`/api/accounting/schedule-iii/ageing?${q}`);
+    },
+    /**
+     * Record the disputed / doubtful / MSMED classification the note needs.
+     * Manager+ server-side: the MSMED one is a judgement with a tax consequence
+     * under IT Act s.43B(h), not a display preference. Send msme_status: null to
+     * put a vendor back into the unclassified gap.
+     */
+    classifyForAgeing: (body: AgeingClassifyBody) =>
+      request<ApiResp<{ target: string; target_id: string; set: Record<string, unknown> }>>(
+        "/api/accounting/schedule-iii/ageing/classify",
+        { method: "POST", body: JSON.stringify(body) }),
     cashFlow: (params?: Record<string, string>) => request(`/api/accounting/cash-flow${params ? "?" + new URLSearchParams(params) : ""}`),
     statementAnalysis: (params: Record<string, string>) => request(`/api/accounting/statement-analysis?${new URLSearchParams(params)}`),
     // Phase 3.5 — journal approval queue (Draft → Approve → Post)
@@ -1449,6 +1544,31 @@ export const api = {
   // 139 dropped. Guarded by accounting:read server-side — the same permission
   // the sales-invoice and purchase-bill list endpoints use, so this is not a
   // looser route to the same rows.
+  /**
+   * Per-document ageing — the operational view behind the Schedule III note.
+   * These endpoints have existed since migration 278 made outstanding_paise a
+   * generated column (so the query returns what is OWED rather than everything
+   * ever billed) and until now nothing in this app called them. Guarded by
+   * accounting:read server-side, the same permission the invoice and bill list
+   * endpoints use.
+   *
+   * Their buckets are OPERATIONAL (not due / 0-30 / 31-60 / 61-90 / 90+ days),
+   * deliberately not the statutory ones — a collections view and a balance-sheet
+   * note answer different questions.
+   */
+  ageing: {
+    receivables: (clientId: string, asOf?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (asOf) q.set("as_of", asOf);
+      return request<ApiResp<AgeingDetail<"invoices">>>(`/api/customers/ar-aging?${q}`);
+    },
+    payables: (clientId: string, asOf?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (asOf) q.set("as_of", asOf);
+      return request<ApiResp<AgeingDetail<"bills">>>(`/api/vendors/ap-aging?${q}`);
+    },
+  },
+
   reports: {
     transactions: (clientId?: string, dateFrom?: string, dateTo?: string) => {
       const q = new URLSearchParams();
