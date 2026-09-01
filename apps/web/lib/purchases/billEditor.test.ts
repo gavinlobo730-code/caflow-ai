@@ -88,3 +88,39 @@ test("findBlockedCreditHits reports the correct line index in a multi-line bill"
   );
   assert.deepEqual(hits.map((h) => h.lineIndex), [1]);
 });
+
+// ── Reading the typed rate and quantity ──────────────────────────────────────
+// The validator used to be `(parseFloat(l.rate) || 0) > 0`, which is TRUE for
+// "1,25,000" because parseFloat reads it as 1. A bill line typed the way Indian
+// amounts are grouped was accepted as a valid one-rupee line, previewed at ₹1
+// and saved at ₹1, with nothing anywhere saying so.
+
+test("a rate typed with Indian digit grouping is refused, not read as one rupee", () => {
+  assert.equal(isValidBillLine(line({ rate: "1,25,000" })), false);
+  assert.equal(isValidBillLine(line({ qty: "1,000" })), false);
+});
+
+test("text parseFloat would read as a number is refused", () => {
+  assert.equal(isValidBillLine(line({ rate: "12abc" })), false);   // parseFloat -> 12
+  assert.equal(isValidBillLine(line({ rate: "1e3" })), false);     // parseFloat -> 1000
+  assert.equal(isValidBillLine(line({ qty: "2abc" })), false);
+});
+
+test("a rate finer than a paise is refused rather than silently truncated", () => {
+  assert.equal(isValidBillLine(line({ rate: "1.005" })), false);
+});
+
+test("ordinary rates and quantities still pass", () => {
+  assert.equal(isValidBillLine(line({ rate: "125000", qty: "2" })), true);
+  assert.equal(isValidBillLine(line({ rate: "105.55", qty: "0.335" })), true);
+});
+
+test("a refused line contributes nothing to the preview totals", () => {
+  // Not merely "is not valid": the number on screen must not include it either,
+  // or the CA is shown a total the invoice will not carry.
+  const good = previewBillTotals([line({ rate: "1000", qty: "1" })], false);
+  const withBad = previewBillTotals(
+    [line({ rate: "1000", qty: "1" }), line({ rate: "1,25,000", qty: "1" })], false);
+  assert.equal(withBad.taxable_paise, good.taxable_paise);
+  assert.equal(withBad.grand_total_paise, good.grand_total_paise);
+});

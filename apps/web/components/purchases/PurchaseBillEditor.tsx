@@ -9,6 +9,7 @@
  * matches the backend's own _compute_line_gst exactly); the backend remains
  * authoritative and recomputes everything on save.
  */
+import { parseLineAmounts } from "@/lib/money/lineInput";
 import { useState, useRef, useEffect } from "react";
 import { Trash2, Plus, Loader2, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
@@ -475,9 +476,13 @@ export function PurchaseBillEditor({
       const linePayload = lines.filter(isValidBillLine).map((l) => ({
         description: l.description,
         hsn_sac: l.hsn_sac || undefined,
-        quantity: parseFloat(l.qty) || 0,
+        quantity: parseLineAmounts(l.qty, l.rate)!.quantity,
         unit: l.unit || undefined,
-        rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
+        // Non-null by construction: the filter above is isValidBillLine,
+        // which is now parseLineAmounts itself. The old form here was
+        // Math.round((parseFloat(l.rate) || 0) * 100) — exact for a plain
+        // decimal and silently 100 paise for "1,25,000".
+        rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
         gst_rate_percent: l.gst_rate,
         expense_account_id: l.expense_account_id || undefined,
         service_catalogue_id: l.service_catalogue_id || undefined,

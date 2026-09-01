@@ -17,6 +17,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
@@ -1120,13 +1121,27 @@ function Vendors({ clientId }: { clientId: string }) {
   async function handleSave() {
     if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
     if (gstin && !GSTIN_RE.test(gstin.trim().toUpperCase())) { setMsg({ type: "err", text: "Invalid GSTIN format (15 chars: 2-digit state + PAN + entity + Z + check)" }); return; }
+    // Read exactly before anything is saved. The old form was
+    // Math.round(parseFloat(x) * 100), which reads "1,25,000" as 1 and a blank
+    // field as NaN — JSON.stringify sends that as null, so an opening balance
+    // could reach the API as no value at all.
+    const opening = paiseFromRupeeInput(openingBalance || "0");
+    if (opening === null) {
+      setMsg({ type: "err", text: "Opening balance must be an amount in rupees, "
+                                  + "e.g. 125000 or 125000.50 — without commas." });
+      return;
+    }
+    if (tdsApplicable && bpsFromPercentInput(tdsRate) === null) {
+      setMsg({ type: "err", text: "TDS rate must be a percentage, e.g. 10 or 7.5." });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
       const token = await getAuthToken();
       const cleanGstin = gstin.trim().toUpperCase() || undefined;
       const stateCode = cleanGstin ? cleanGstin.slice(0, 2) : undefined;
-      const rateBps = tdsApplicable ? Math.round(parseFloat(tdsRate) * 100) : 0;
+      const rateBps = tdsApplicable ? bpsFromPercentInput(tdsRate) : 0;
 
       const result = await apiCall(
         "/api/vendors/",
@@ -1142,7 +1157,7 @@ function Vendors({ clientId }: { clientId: string }) {
           tds_applicable: tdsApplicable,
           tds_section: tdsApplicable ? tdsSection : undefined,
           tds_rate_bps: rateBps,
-          opening_balance_paise: Math.round(parseFloat(openingBalance || "0") * 100),
+          opening_balance_paise: opening,
         },
         token
       );
@@ -1763,7 +1778,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
 
   async function handleSave() {
     if (!vendorId) { setMsg({ type: "err", text: "Select a vendor" }); return; }
-    const amtPaise = Math.round(parseFloat(amount || "0") * 100);
+    const amtPaise = paiseFromRupeeInput(amount || "0");
+    if (amtPaise === null) {
+      setMsg({ type: "err", text: "Amount must be a number of rupees, e.g. 125000 or "
+                                  + "125000.50 — without commas." });
+      return;
+    }
     if (amtPaise <= 0) { setMsg({ type: "err", text: "Amount must be positive" }); return; }
     if (isForeign && !billId) { setMsg({ type: "err", text: "Select the bill this foreign payment settles" }); return; }
     if (isForeign && (!exchangeRate.trim() || !(rateNum > 0))) {

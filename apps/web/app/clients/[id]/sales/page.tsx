@@ -12,6 +12,7 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
+import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
@@ -626,7 +627,19 @@ function RecurringEditor({
     });
   }
 
-  const baseTotal = lines.reduce((s, l) => s + Math.round((parseFloat(l.rate) || 0) * (parseFloat(l.quantity) || 0) * 100), 0);
+  // Rate and quantity read exactly, and a line that is not a number contributes
+  // nothing to the preview rather than a value nobody typed — submit() below
+  // refuses it outright. `parseFloat(l.rate) || 0` read "1,25,000" as 1, so the
+  // total shown here and the invoice raised from it were both a rupee.
+  const parsedLines = lines.map((l) => ({
+    rate: paiseFromRupeeInput(l.rate || "0"),
+    quantity: parseQuantity(l.quantity || ""),
+  }));
+  const baseTotal = parsedLines.reduce(
+    (s, l) => s + (l.rate !== null && l.quantity !== null
+      ? Math.round(l.rate * l.quantity) : 0),
+    0,
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -635,10 +648,21 @@ function RecurringEditor({
     if (lines.some((l) => l.description.trim() && !l.service_catalogue_id)) {
       setError("Select a Product/Service for every line item"); return;
     }
-    const payloadLines = lines.filter((l) => l.description.trim()).map((l) => ({
+    const filled = lines
+      .map((l, i) => ({ ...l, ...parsedLines[i] }))
+      .filter((l) => l.description.trim());
+    const bad = filled.find((l) => l.rate === null || l.quantity === null);
+    if (bad) {
+      // A blank quantity used to default to 1 and a bad rate to 0, so a
+      // mistyped line was raised silently at a figure nobody entered.
+      setError(`"${bad.description.trim()}": enter the rate and quantity as plain `
+               + "numbers, without commas — e.g. 125000 and 2.");
+      return;
+    }
+    const payloadLines = filled.map((l) => ({
       service_catalogue_id: l.service_catalogue_id,
       description: l.description.trim(), hsn_sac: l.hsn_sac.trim() || null,
-      quantity: parseFloat(l.quantity) || 1, rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
+      quantity: l.quantity as number, rate_paise: l.rate as number,
       gst_rate_percent: l.gst, is_service: l.is_service,
     }));
     if (payloadLines.length === 0) { setError("Add at least one line item"); return; }
@@ -983,8 +1007,12 @@ function Statements({ clientId }: { clientId: string }) {
 
   async function applyCredit() {
     if (!customerId || !applyInvoiceId) return;
-    const amountPaise = Math.round(parseFloat(applyAmount || "0") * 100);
-    if (!amountPaise || amountPaise <= 0) { setApplyError("Enter an amount to apply."); return; }
+    const amountPaise = paiseFromRupeeInput(applyAmount || "0");
+    if (amountPaise === null) {
+      setApplyError("Enter the amount in rupees, e.g. 12500 or 12500.50 — without commas.");
+      return;
+    }
+    if (amountPaise <= 0) { setApplyError("Enter an amount to apply."); return; }
     setApplying(true); setApplyError(null);
     try {
       const res = await partyCreditsApi.apply({
@@ -3373,14 +3401,31 @@ function ReceiptForm({
     return isForeign ? (inv.txn_total ?? 0) : inv.total_paise;
   }
 
-  const amountPaise = Math.round(parseFloat(amount || "0") * 100);
-  const totalAllocated = Object.values(allocations).reduce(
-    (s, v) => s + Math.round(parseFloat(v || "0") * 100),
-    0
-  );
+  // Integer paise through the exact parser, never Math.round(parseFloat(x)*100).
+  // A receipt is cash the client actually banked: parseFloat("1,25,000") is 1,
+  // so a CA recording a receipt the way Indian amounts are grouped would have
+  // allocated one rupee against a 1.25 lakh invoice and left it looking unpaid.
+  // null here means "not an amount", which the save path refuses below rather
+  // than treating as zero.
+  const amountPaise = paiseFromRupeeInput(amount || "0");
+  const allocationPaise = Object.fromEntries(
+    Object.entries(allocations).map(([id, v]) => [id, paiseFromRupeeInput(v || "0")]),
+  ) as Record<string, number | null>;
+  const badAllocation = Object.entries(allocationPaise).find(([, v]) => v === null)?.[0];
+  const totalAllocated = Object.values(allocationPaise)
+    .reduce<number>((s, v) => s + (v ?? 0), 0);
 
   async function handleSave() {
     if (!customerId) { setError("Select a customer"); return; }
+    if (amountPaise === null) {
+      setError("Amount must be a number of rupees, e.g. 125000 or 125000.50 — without commas.");
+      return;
+    }
+    if (badAllocation) {
+      setError("An allocation is not an amount in rupees — enter it as 125000 or "
+               + "125000.50, without commas.");
+      return;
+    }
     if (amountPaise <= 0) { setError("Amount must be greater than zero"); return; }
     if (!receiptDate) { setError("Receipt date required"); return; }
     if (isForeign && (!exchangeRate.trim() || !(rateNum > 0))) {
@@ -3393,11 +3438,13 @@ function ReceiptForm({
       const token = await getAuthToken();
 
       // Build allocations array for the API
-      const allocationsList = Object.entries(allocations)
-        .filter(([, v]) => parseFloat(v || "0") > 0)
+      // Built from the SAME parsed figures the screen totalled, so what is
+      // saved cannot differ from what the CA was shown adding up.
+      const allocationsList = Object.entries(allocationPaise)
+        .filter(([, v]) => (v ?? 0) > 0)
         .map(([invoiceId, v]) => ({
           sales_invoice_id: invoiceId,
-          allocated_paise: Math.round(parseFloat(v) * 100),
+          allocated_paise: v as number,
         }));
 
       const result = await apiCall(
@@ -3560,7 +3607,11 @@ function ReceiptForm({
           </div>
           {totalAllocated > 0 && (
             <p className="text-xs text-[#64748B]">
-              Allocated: {fmtAmt(totalAllocated)} / Unallocated: {fmtAmt(amountPaise - totalAllocated)}
+              Allocated: {fmtAmt(totalAllocated)}
+              {/* With no readable amount there is no unallocated figure to show.
+                  Printing one computed from a coerced zero would tell the CA
+                  the whole receipt is unallocated, which is not what is wrong. */}
+              {amountPaise !== null && ` / Unallocated: ${fmtAmt(amountPaise - totalAllocated)}`}
             </p>
           )}
         </div>

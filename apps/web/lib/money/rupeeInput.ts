@@ -62,3 +62,52 @@ export function rupeeInputFromPaise(paise: number): string {
   const abs = Math.abs(n);
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
+
+/**
+ * A percentage as typed → basis points, exactly. 18 → 1800, 0.75 → 75.
+ *
+ * The same digit concatenation as paiseFromRupeeInput and for the same reason:
+ * `Math.round(parseFloat(s) * 100)` reads "1,0" as 1 and produces 100 bps where
+ * the CA meant 1000, and reads a blank field as NaN. A rate is not money, but a
+ * TDS rate typed wrong is money by the time it reaches the challan.
+ *
+ * Deliberately NOT used for the GST rate on an invoice line: that comes from a
+ * fixed slab list rather than a text field, and gstLine.gstRateBpsFromPercent
+ * is pinned to the backend's own rounding by shared/gst-parity-vectors.json.
+ */
+export function bpsFromPercentInput(raw: string): number | null {
+  return paiseFromRupeeInput(raw);
+}
+
+/** Up to three decimal places, matching NUMERIC(10,3) on the line tables. */
+const QUANTITY = /^(-?)(\d*)(?:\.(\d{0,3}))?$/;
+
+/**
+ * A quantity as typed → the number an invoice line payload carries, or null if
+ * the text is not a quantity.
+ *
+ * Unlike an amount this stays a JS number, because that is what the payload and
+ * the NUMERIC(10,3) column take. What it adds over `parseFloat(x) || 0` is the
+ * REFUSAL: parseFloat("1,000") is 1, parseFloat("12abc") is 12, and a blank
+ * field is NaN — each of which silently becomes a line quantity nobody typed.
+ * Blank is null rather than 0 here: a line with no quantity is a question for
+ * the CA, and defaulting it to 1 is what the call sites used to do.
+ *
+ * NOT the same function as gstLine.quantityFromInput, and deliberately named
+ * differently so the two cannot be confused. That one COERCES to 0 and is
+ * pinned to the backend by shared/gst-parity-vectors.json; it is the payload
+ * builder. This one REFUSES, and belongs at the form, before a string the
+ * payload builder would silently coerce ever reaches it.
+ */
+export function parseQuantity(raw: string): number | null {
+  const s = raw.trim();
+  if (s === "") return null;
+
+  const m = QUANTITY.exec(s);
+  if (!m) return null;
+  const [, sign, whole, frac = ""] = m;
+  if (whole === "" && frac === "") return null;
+
+  const n = Number(`${sign}${whole || "0"}.${frac || "0"}`);
+  return Number.isFinite(n) ? n : null;
+}
