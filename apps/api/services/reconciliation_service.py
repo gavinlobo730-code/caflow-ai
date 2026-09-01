@@ -448,6 +448,73 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
     return findings
 
 
+def check_orphan_money_journals(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """Posted Payment / Receipt journal entries with no document behind them.
+
+    WHAT THIS CATCHES, AND WHY IT IS NOT HYPOTHETICAL
+        create_purchase_payment posts the journal FIRST and inserts the payment
+        row second, compensating with an append-only reversal if the insert
+        fails. routers/purchase_payments.py's own log line admits what happens
+        when the compensation ALSO fails: "manual reconciliation required, a
+        phantom GL entry may remain."
+
+        Driving a client through a full financial year produced eleven of them
+        — Rs 2,00,000 each, all posted — and the client's bank balance read
+        Rs 3,00,000 against a true Rs 25,00,000. The log said so eleven times
+        and nothing else did: no screen, no report, and no sweep looking for
+        the shape.
+
+        So this is the sweep. It cannot prevent the gap — the ledger is
+        written before the document, and closing that would mean one
+        transaction across two tables PostgREST cannot give — but it means the
+        books stop being quietly wrong until somebody reads a log.
+
+    A reversal is NOT an orphan. A compensated entry has a reversal against it
+    and nets to zero, which is the mechanism working; flagging those would bury
+    the real ones in noise.
+    """
+    orphans, total = [], 0
+    for entry in (entries or {}).values():
+        if getattr(entry, "entry_type", None) not in ("Payment", "Receipt"):
+            continue
+        eid = getattr(entry, "id", None)
+        if not eid:
+            continue
+        owned = (
+            (db.table("purchase_payments").select("id")
+             .eq("firm_id", firm_id).eq("journal_entry_id", eid).limit(1).execute().data)
+            or (db.table("receipts").select("id")
+                .eq("firm_id", firm_id).eq("journal_entry_id", eid).limit(1).execute().data)
+        )
+        if owned:
+            continue
+        reversed_by = (db.table("journal_entries").select("id")
+                       .eq("firm_id", firm_id).eq("reversal_of", eid)
+                       .limit(1).execute().data)
+        if reversed_by:
+            continue                      # compensated; nets to zero
+        amount = sum(int(getattr(l, "debit_paise", 0) or 0)
+                     for l in (getattr(entry, "lines", None) or []))
+        total += amount
+        orphans.append({"journal_entry_id": eid,
+                        "entry_date": getattr(entry, "entry_date", None),
+                        "reference_no": getattr(entry, "reference_no", None),
+                        "amount_paise": amount})
+
+    if not orphans:
+        return []
+    return [_finding(
+        "orphan_money_journals", "critical",
+        f"{len(orphans)} posted payment/receipt journal entr"
+        f"{'y' if len(orphans) == 1 else 'ies'} totalling {total} paise have no "
+        "payment or receipt document behind them, and no reversal. The money "
+        "moved in the ledger and nothing records why — most likely a document "
+        "insert that failed after its journal had posted, whose compensating "
+        "reversal also failed. Reverse them, or restore the missing documents.",
+        amount_paise=total, entries=orphans[:50], orphan_count=len(orphans),
+    )]
+
+
 _CHECKS = [
     check_trial_balance,
     check_missing_cogs_journals,
@@ -456,6 +523,7 @@ _CHECKS = [
     check_ar_subledger_vs_gl,
     check_ap_subledger_vs_gl,
     check_bank_reconciliation_discrepancies,
+    check_orphan_money_journals,
 ]
 
 
