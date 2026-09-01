@@ -1231,6 +1231,26 @@ def update_purchase_bill(
         return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
+def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
+    """Keep tds_deductions in step with one bill.
+
+    Deliberately never raises: a bill that received and posted its journal
+    correctly must not be rolled back because its register row could not be
+    written. tds_register_service logs loudly and the row is repaired on the
+    next transition of the same bill.
+    """
+    try:
+        from services.tds_register_service import sync_for_bill
+        vendor = {}
+        if bill.get("vendor_id"):
+            got = (db.table("vendors").select("id, name, pan")
+                   .eq("id", bill["vendor_id"]).limit(1).execute().data) or []
+            vendor = got[0] if got else {}
+        sync_for_bill(db, firm_id, bill.get("client_id", ""), bill, vendor)
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("TDS register sync failed for bill %s: %s", bill.get("id"), e)
+
+
 @router.post("/{bill_id}/receive")
 def receive_purchase_bill(
     bill_id: str,
@@ -1315,6 +1335,14 @@ def receive_purchase_bill(
         # Persist the journal link so cancellation can reverse it directly.
         db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
             "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+
+        # The TDS register follows the CREDIT, which is what receiving the bill
+        # is: s.194C(3) and its neighbours all say deduct at credit to the
+        # payee's account or at payment, whichever is EARLIER, and a draft
+        # credits nothing. Without this the deduction sat on the bill and never
+        # reached the register, so there was no challan to pay by the 7th and
+        # nothing to assemble 26Q from.
+        _sync_tds_register(db, current_user.get("firm_id", ""), updated_bill)
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -1457,6 +1485,13 @@ def cancel_purchase_bill(
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", bill_id).eq("firm_id", firm_id).execute()
         updated = upd.data[0] if upd.data else {}
+
+        # The credit is undone, so the deduction never happened. Leaving the
+        # register row would file 26Q on tax the books no longer say was
+        # withheld — and would leave a challan to pay for a bill that does not
+        # exist.
+        _sync_tds_register(db, firm_id or "", {**bill, "id": bill_id,
+                                               "status": "cancelled"})
 
         # Inventory: undo the stock-in + Inventory-reclass journal
         # apply_purchase_to_inventory posted at receive time, for any goods
