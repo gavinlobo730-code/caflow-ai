@@ -62,6 +62,8 @@
 /clients/:id/relationships.txt                       /clients/_placeholder/relationships/index.txt  200
 /clients/:id/reports                                 /clients/_placeholder/reports/  200
 /clients/:id/reports.txt                             /clients/_placeholder/reports/index.txt  200
+/clients/:id/reports/ageing                          /clients/_placeholder/reports/ageing/  200
+/clients/:id/reports/ageing.txt                      /clients/_placeholder/reports/ageing/index.txt  200
 /clients/:id/sales                                   /clients/_placeholder/sales/  200
 /clients/:id/sales.txt                               /clients/_placeholder/sales/index.txt  200
 /clients/:id/sales/credit-notes/:cnId/edit           /clients/_placeholder/sales/credit-notes/_placeholder/edit/  200

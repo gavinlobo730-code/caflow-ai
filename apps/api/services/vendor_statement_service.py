@@ -293,7 +293,7 @@ class VendorStatementService:
         bills = _paginate_all(lambda: db.table("purchase_bills")
                  .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, "
                          "debited_paise, credit_note_paise, outstanding_paise, status, txn_currency, "
-                         "exchange_rate, txn_net_payable, paid_txn")
+                         "exchange_rate, txn_net_payable, paid_txn, is_disputed")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .is_("deleted_at", "null")
                  .not_.in_("status", list(_DEAD_BILL))
@@ -324,6 +324,10 @@ class VendorStatementService:
                 "vendor_id": b.get("vendor_id"), "vendor_name": vnames.get(b.get("vendor_id")),
                 "bill_date": _d(b.get("bill_date")), "outstanding_paise": outstanding,
                 "days_overdue": max(days, 0), "aging_bucket": bucket,
+                # The Schedule III mark (migration 303). "Considered doubtful"
+                # has no counterpart here: the payables table splits on
+                # MSME/Others, which is a property of the VENDOR, not the bill.
+                "is_disputed": bool(b.get("is_disputed")),
             }
             # Multi-Currency Phase 5 — foreign outstanding on FOREIGN bills only, so an
             # INR-only aging keeps its exact shape. base outstanding stays authoritative.

@@ -119,6 +119,22 @@ change. The code is the authority; keep this file in step with it.
   §80CCH(2)/§80JJAA, neither a salary declaration). Since payroll withholds on
   the new regime by default, a deduction applied unconditionally is applied to
   everyone it is not available to.
+- **The two Schedule III ageing schedules are NOT the same shape.** MCA
+  Notification G.S.R. 207(E) of 24-03-2021 added both to the notes to the
+  balance sheet. Trade RECEIVABLES age in five columns from six months (`<6m |
+  6m–1y | 1–2y | 2–3y | >3y`), rows (i)–(iv) splitting undisputed/disputed ×
+  considered good/doubtful. Trade PAYABLES age in FOUR columns from one year
+  (`<1y | 1–2y | 2–3y | >3y`), rows (i) MSME, (ii) Others, (iii) Disputed
+  dues–MSME, (iv) Disputed dues–Others. Both age from the DUE DATE of payment,
+  or from the transaction date where none is specified. Giving the payables
+  table the receivables' columns is the easy mistake and it is a wrong
+  disclosure. Only MICRO and SMALL are row (i) — MSMED §22 and §2(n) both stop
+  at small, so a MEDIUM enterprise is registered under MSMED and still belongs
+  in Others. These are the **Division I** (AS) tables; Division II (Ind AS)
+  splits the doubtful receivables row into "significant increase in credit risk"
+  and "credit impaired". `domain/reporting/ageing.py` and
+  `public.schedule_iii_ageing` (migration 303) are the authority and are pinned
+  to each other by a parity test.
 - Never auto-submit anything to any government portal — always require explicit CA confirmation click
 
 `services/compliance_engine.py` is the single source for every due date above. If prose
@@ -250,6 +266,7 @@ the response. Adding any of them is a human step, like the ITR schemas.
 | ESIC reason codes | `domain/payroll/esic.py` | ESIC's own list |
 | an earlier year's total income for §89 | `domain/payroll/arrears.py` | comes off the employee's return; the employer never held it |
 | prior gratuity / leave exemption used | `gratuity.py`, `leave_encashment.py` | §10(10) and §10(10AA) are LIFETIME limits across employers |
+| a vendor's MSMED classification | `vendors.msme_status`, surfaced by `public.schedule_iii_ageing` | it is a fact about the SUPPLIER — their Udyam registration — that no ledger holds, and it is not presentational: §43B(h) (Finance Act 2023, AY 2024-25) disallows a deduction for sums payable to a micro or small enterprise beyond the MSMED §15 limit unless actually paid, so calling an unclassified vendor "Others" changes taxable income. The column has NO default; an unclassified balance is reported beside the payables table, never inside a row |
 
 **§89 also refuses a year the rate registry does not hold**, and that is worth
 knowing: `rates_for()` substitutes `LATEST_VERIFIED_FY` for a missing year, and
@@ -342,8 +359,17 @@ two are pinned by a parity test that runs every scenario through both and
 asserts they are identical — `tests/test_cash_flow_sql_parity_pg.py`. Adding the
 second implementation without the parity test is the thing not to do.
 
-Aged receivables and payables are the same shape and should be built this way
-from the start.
+Aged receivables and payables were next, and are now built BOTH ways, because
+they are two different answers. The **Schedule III ageing schedules** are
+twenty-four numbers, so they are a SQL function — `public.schedule_iii_ageing`
+(migration 303), with `domain/reporting/ageing.py` as its mock-mode twin and
+`tests/test_schedule_iii_ageing_parity_pg.py` holding the two identical. The
+**per-document AR/AP ageing** (`ar_aging`, `ap_aging`) lists one row per open
+document, so its answer genuinely is a row set; migration 278 made
+`outstanding_paise` a generated column precisely so the FILTER could move into
+the query, and what crosses the wire is what is OWED rather than everything ever
+billed. Both obey the rule. Which shape a report needs is decided by the size of
+its ANSWER, not by the table it reads.
 
 ## Bank data — the Account Aggregator is the only way in
 

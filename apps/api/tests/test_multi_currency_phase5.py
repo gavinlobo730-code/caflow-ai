@@ -291,9 +291,14 @@ def test_inr_only_ar_aging_has_no_currency_block():
     })
     ag = CS.ar_aging(db, FIRM, CLIENT, as_of="2025-07-01")
     assert "by_currency" not in ag and "base_currency" not in ag
+    # The exact key set, so a currency key cannot creep back in for an INR-only
+    # client. is_disputed / considered_doubtful are the Schedule III marks
+    # (migration 303) and are unconditional — they are properties of the
+    # document, not of its currency.
     assert ag["invoices"][0].keys() == {
         "invoice_id", "invoice_no", "customer_id", "customer_name",
-        "invoice_date", "outstanding_paise", "days_overdue", "aging_bucket"}
+        "invoice_date", "outstanding_paise", "days_overdue", "aging_bucket",
+        "is_disputed", "considered_doubtful"}
 
 
 def test_ap_aging_reports_foreign_and_base_outstanding():
