@@ -217,6 +217,47 @@ export type AgeingDetail<K extends "invoices" | "bills"> = {
   total_outstanding_paise: number;
 } & { [P in K]: AgeingDocument[] };
 
+// ── The Schedule III ratios ──────────────────────────────────────────────────
+// Division I, General Instructions, Additional Regulatory Information clause
+// (Q) — MCA G.S.R. 207(E) of 24-03-2021. Amounts are integer paise; a ratio is
+// basis points, 10,000 bps = 1.00, and `unit` says whether to read it as
+// "x times" or as a percentage.
+
+export type RatioComponent = { label: string; paise: number };
+
+export type ScheduleIiiRatio = {
+  key: string;
+  clause: string;                       // (a) … (k), as Schedule III lists them
+  label: string;
+  unit: "times" | "percent";
+  /** Both sides are disclosed with the ratio — clause (Q) requires explaining
+   *  what went into each, so the labels are part of the filing, not commentary.
+   *  Absent where the ratio could not be computed. */
+  numerator: RatioComponent | null;
+  denominator: RatioComponent | null;
+  value_bps: number | null;
+  prior_value_bps: number | null;
+  /** Signed change against the preceding year, in bps of the prior magnitude.
+   *  null where there is no prior year, or where the prior year was zero. */
+  variance_bps: number | null;
+  /** Clause (Q): a change of MORE than 25% needs its own explanation. */
+  needs_explanation: boolean;
+  unavailable_reason: string | null;
+  explanation: string | null;
+};
+
+export type ScheduleIiiRatioNote = {
+  fy: string;
+  preceding_fy: string | null;
+  period: { start: string; end: string };
+  statute: string;
+  variance_threshold_bps: number;
+  has_prior_year: boolean;
+  ratios: ScheduleIiiRatio[];
+  needs_explanation_count: number;
+  gaps: { code: string; message: string }[];
+};
+
 export type AgeingClassifyBody = {
   client_id: string;
   target: "invoice" | "bill" | "vendor";
@@ -555,6 +596,33 @@ export const api = {
       request<ApiResp<{ target: string; target_id: string; set: Record<string, unknown> }>>(
         "/api/accounting/schedule-iii/ageing/classify",
         { method: "POST", body: JSON.stringify(body) }),
+    /**
+     * The eleven Schedule III ratios (Division I clause (Q)). Both years are
+     * computed server-side, so the 25% variance test the statute requires is a
+     * fact rather than something the CA re-derives.
+     */
+    scheduleIiiRatios: (clientId: string, fy?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (fy) q.set("fy", fy);
+      return request<ApiResp<ScheduleIiiRatioNote>>(`/api/accounting/schedule-iii/ratios?${q}`);
+    },
+    /** Record why a ratio moved more than 25%. `explanation: null` clears it. */
+    saveRatioExplanation: (body: {
+      client_id: string; fy: string; ratio_key: string; explanation: string | null;
+    }) => request<ApiResp<{ fy: string; ratio_key: string; explanation: string | null }>>(
+      "/api/accounting/schedule-iii/ratios/explanation",
+      { method: "PUT", body: JSON.stringify(body) }),
+    /**
+     * The principal repaid on long-term borrowings during the year — the one
+     * figure Debt Service Coverage needs that the ledger cannot supply, because
+     * the movement in the borrowing balance is drawdowns less repayments.
+     * `null` puts the ratio back into its gap; 0 is a real answer.
+     */
+    saveRatioInputs: (body: {
+      client_id: string; fy: string; principal_repaid_paise: number | null;
+    }) => request<ApiResp<{ fy: string; principal_repaid_paise: number | null }>>(
+      "/api/accounting/schedule-iii/ratios/inputs",
+      { method: "PUT", body: JSON.stringify(body) }),
     cashFlow: (params?: Record<string, string>) => request(`/api/accounting/cash-flow${params ? "?" + new URLSearchParams(params) : ""}`),
     statementAnalysis: (params: Record<string, string>) => request(`/api/accounting/statement-analysis?${new URLSearchParams(params)}`),
     // Phase 3.5 — journal approval queue (Draft → Approve → Post)

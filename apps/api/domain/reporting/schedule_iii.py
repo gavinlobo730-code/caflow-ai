@@ -121,6 +121,42 @@ def _section(heading: str, lines: list[dict], total_paise: int, total_label: str
     return {"heading": heading, "lines": lines, "total_paise": total_paise, "total_label": total_label}
 
 
+# builders.profit_loss() keeps Cost of Goods Sold in its OWN "cost_of_sales"
+# section (separate from "operating_expenses", so gross profit can be computed)
+# — omitting it here silently dropped COGS from every Schedule III P&L entirely:
+# "Cost of Materials Consumed" showed only the (near-zero, once goods purchases
+# are reclassified into Inventory) "Purchases" balance, and "Total Expenses (II)"
+# / "Profit for the Period" no longer reconciled against the displayed Revenue
+# and Expense lines.
+_PL_GROUPS = ("revenue", "operating_expenses", "cost_of_sales")
+
+
+def bucket_amounts(pl: dict, bs: dict) -> tuple[dict[str, int], dict[str, int]]:
+    """The authoritative P&L and Balance Sheet amounts, summed under their
+    Schedule III captions. Returns (bs_buckets, pl_buckets).
+
+    Extracted from build_schedule_iii so the Schedule III ratios
+    (domain/reporting/ratios.py, Division I General Instructions clause (Q))
+    read the SAME numbers the statements present. A ratio computed from a second
+    bucketing of the same ledger would drift from the balance sheet it is a note
+    to — and the CA signs both.
+    """
+    bs_buckets: dict[str, int] = {}
+    for section in (*bs.get("assets", []), *bs.get("liabilities", []), *bs.get("equity", [])):
+        for ln in section.get("lines", []):
+            cap = bs_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
+            if cap:
+                bs_buckets[cap] = bs_buckets.get(cap, 0) + ln.get("balance_paise", 0)
+
+    pl_buckets: dict[str, int] = {}
+    for group in _PL_GROUPS:
+        for ln in pl.get(group, {}).get("lines", []):
+            cap = pl_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
+            if cap:
+                pl_buckets[cap] = pl_buckets.get(cap, 0) + ln.get("amount_paise", 0)
+    return bs_buckets, pl_buckets
+
+
 def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
     """Group the authoritative P&L and Balance Sheet line amounts into the
     Companies Act 2013 Schedule III format with section subtotals.
@@ -130,27 +166,7 @@ def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
     (assets/liabilities/equity sections with `balance_paise` lines). Both carry
     `account_type`/`account_subtype` presentation hints on each line.
     """
-    # ── Bucket the authoritative amounts under statutory captions ─────────────
-    bs_buckets: dict[str, int] = {}
-    for section in (*bs.get("assets", []), *bs.get("liabilities", []), *bs.get("equity", [])):
-        for ln in section.get("lines", []):
-            cap = bs_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
-            if cap:
-                bs_buckets[cap] = bs_buckets.get(cap, 0) + ln.get("balance_paise", 0)
-
-    pl_buckets: dict[str, int] = {}
-    # builders.profit_loss() keeps Cost of Goods Sold in its OWN "cost_of_sales"
-    # section (separate from "operating_expenses", so gross profit can be
-    # computed) — omitting it here silently dropped COGS from every Schedule III
-    # P&L entirely: "Cost of Materials Consumed" showed only the (near-zero, once
-    # goods purchases are reclassified into Inventory) "Purchases" balance, and
-    # "Total Expenses (II)" / "Profit for the Period" no longer reconciled
-    # against the displayed Revenue and Expense lines.
-    for group in ("revenue", "operating_expenses", "cost_of_sales"):
-        for ln in pl.get(group, {}).get("lines", []):
-            cap = pl_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
-            if cap:
-                pl_buckets[cap] = pl_buckets.get(cap, 0) + ln.get("amount_paise", 0)
+    bs_buckets, pl_buckets = bucket_amounts(pl, bs)
 
     def gb(k: str) -> int:
         return bs_buckets.get(k, 0)
