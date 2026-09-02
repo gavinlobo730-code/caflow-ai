@@ -466,3 +466,153 @@ def test_a_domestic_bill_is_asked_for_none_of_this():
     for code in (GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
                  GAP_195_RATES_UNVERIFIED):
         assert code not in gaps
+
+
+# ── The gaps have to reach somebody ─────────────────────────────────────────
+
+def test_every_gap_code_carries_a_sentence():
+    """A bare 'no_pe_declaration_undated' on a screen says something is wrong
+    without saying what to do, which is how a gap list stops being read. This
+    fails the moment a code is added without one."""
+    from domain.tds import residency as r
+    codes = {v for k, v in vars(r).items()
+             if k.startswith("GAP_") and isinstance(v, str)}
+    missing = sorted(codes - set(r.GAP_MESSAGES))
+    assert not missing, f"gap codes with no message: {missing}"
+    for code, msg in r.GAP_MESSAGES.items():
+        assert len(msg) > 40, f"{code}'s message is too short to act on"
+
+
+def test_describe_gaps_pairs_each_code_with_its_message():
+    from domain.tds.residency import GAP_FORM_15CA_NOT_RECORDED, describe_gaps
+    got = describe_gaps([GAP_FORM_15CA_NOT_RECORDED])
+    assert got[0]["code"] == GAP_FORM_15CA_NOT_RECORDED
+    assert "15CA" in got[0]["message"]
+
+
+def test_an_unknown_code_survives_rather_than_being_dropped():
+    """A gap the caller cannot phrase is still a gap. Dropping it would be the
+    failure this whole mechanism exists to prevent."""
+    from domain.tds.residency import describe_gaps
+    got = describe_gaps(["something_new"])
+    assert got == [{"code": "something_new", "message": ""}]
+
+
+def test_the_register_returns_the_codes_and_the_messages():
+    out = _sync195(bill_over={"form_15ca_ack_no": None})
+    assert out["statutory_gaps"], "premise: this bill has gaps"
+    assert [g["code"] for g in out["gap_details"]] == out["statutory_gaps"]
+
+
+def test_the_sync_result_is_returned_to_the_caller_not_discarded():
+    """_sync_tds_register was declared `-> None` and threw the gaps away, so
+    nothing in the backend read them. Found by walking a client with foreign
+    suppliers through a year."""
+    import inspect
+    from routers.purchase_bills import _sync_tds_register
+    sig = inspect.signature(_sync_tds_register)
+    assert sig.return_annotation is not None and sig.return_annotation != "None"
+    src = inspect.getsource(_sync_tds_register)
+    assert "return sync_for_bill(" in src
+
+
+def test_receiving_a_bill_reports_what_the_register_did():
+    """The receive response is the moment the deduction becomes real — the
+    credit under s.194C(3)/s.195 — and the last moment a CA can act on a
+    missing declaration without unwinding anything."""
+    import inspect
+    from routers import purchase_bills as m
+    src = inspect.getsource(m.receive_purchase_bill)
+    assert '"tds_register": _tds_sync' in src
+
+
+def test_a_failed_sync_is_reported_rather_than_silent():
+    """The register being out of step with the bill is exactly what a CA needs
+    told; swallowing the failure is what left the phantom entries unnoticed."""
+    import inspect
+    from routers.purchase_bills import _sync_tds_register
+    src = inspect.getsource(_sync_tds_register)
+    assert '"synced": False' in src
+
+
+# ── A nil foreign remittance is still a remittance ──────────────────────────
+
+def test_a_nil_section_195_remittance_gets_a_register_row():
+    """Business profits with no PE withholds nothing and is STILL a payment to
+    a non-resident that Form 27Q reports. Before this it left no row at all —
+    and the two most-scrutinised remittances are precisely the ones resting on
+    a claim that nothing is chargeable."""
+    from services.tds_register_service import sync_for_bill
+
+    class _Rec(_RegDB):
+        def __init__(self): self.rows = {}
+        def upsert(self, payload, on_conflict=None):
+            self.rows[payload["purchase_bill_id"]] = payload
+            return self
+
+    db = _Rec()
+    out = sync_for_bill(db, "f1", "c1", {
+        "id": "b1", "client_id": "c1", "status": "received",
+        "bill_date": "2025-05-08", "taxable_amount_paise": 2_00_000_00,
+        "tds_paise": 0, "tds_rate_bps": 0, "tds_section": "195",
+        "tds_nature_of_income": "business_profits_no_pe",
+        "tds_basis": "not_chargeable",
+        "_tds_citation": "GE India Technology Centre (P) Ltd v. CIT — not chargeable",
+    }, {"id": "v1", "name": "Gulf Hosting FZE", "residential_status": "non_resident",
+        "country_of_residence": "AE", "tax_identification_number": "TRN1",
+        "no_pe_declaration_on_file": True})
+    assert out["action"] == "recorded"
+    row = db.rows["b1"]
+    assert row["tds_paise"] == 0 and row["return_type"] == "27Q"
+    assert "GE India" in row["non_deduction_reason"]
+
+
+def test_a_resident_bill_below_its_threshold_still_gets_no_row():
+    """26Q reports DEDUCTIONS. A payment that never crossed s.194C's limit is
+    not one, so the asymmetry with s.195 is the statute's, not an oversight."""
+    from services.tds_register_service import sync_for_bill
+
+    class _Rec(_RegDB):
+        def __init__(self): self.rows = {}
+        def upsert(self, payload, on_conflict=None):
+            self.rows[payload["purchase_bill_id"]] = payload
+            return self
+
+    db = _Rec()
+    out = sync_for_bill(db, "f1", "c1", {
+        "id": "b1", "client_id": "c1", "status": "received",
+        "bill_date": "2025-05-08", "taxable_amount_paise": 20_000_00,
+        "tds_paise": 0, "tds_rate_bps": 0, "tds_section": "194C",
+    }, {"id": "v1", "name": "Pinnacle", "pan": "AAGCP7788R",
+        "residential_status": "resident"})
+    assert out["action"] == "removed" and not db.rows
+
+
+def test_the_gaps_now_reach_a_nil_remittance():
+    """The point of the change: the missing-15CA and undated-declaration checks
+    sat after the early return, so on a nil they could never fire."""
+    from domain.tds.residency import (
+        GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED)
+    out = _sync195(bill_over={"tds_paise": 0, "tds_rate_bps": 0,
+                              "form_15ca_ack_no": None,
+                              "tds_basis": "not_chargeable"},
+                   vendor_over={"no_pe_declaration_on_file": True})
+    assert GAP_FORM_15CA_NOT_RECORDED in out["statutory_gaps"]
+    assert GAP_NO_PE_DECLARATION_UNDATED in out["statutory_gaps"]
+
+
+def test_a_reason_is_recorded_only_where_nothing_was_withheld():
+    """A reason beside a real deduction would read as an explanation for
+    something that needs none."""
+    out = _sync195()          # a real Rs 2,08,000 withholding
+    assert out["action"] == "recorded"
+
+
+def test_a_cancelled_nil_remittance_still_loses_its_row():
+    """Cancelling is a credit undone, whatever was withheld."""
+    from services.tds_register_service import sync_for_bill
+    out = sync_for_bill(_RegDB(), "f1", "c1", {
+        "id": "b1", "client_id": "c1", "status": "cancelled",
+        "bill_date": "2025-05-08", "tds_paise": 0, "tds_section": "195",
+    }, {"id": "v1", "residential_status": "non_resident"})
+    assert out["action"] == "removed"
