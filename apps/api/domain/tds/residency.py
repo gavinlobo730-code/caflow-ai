@@ -55,20 +55,21 @@ WHAT §195 CHANGES, ALL OF WHICH MAKES A NAIVE BRANCH DANGEROUS
     * Rule 37BB requires Form 15CA, and 15CB from an accountant, BEFORE the
       remittance leaves.
 
-SO THE RATE IS REFUSED, NOT GUESSED
+WHERE THE RATE ITSELF LIVES
 
-    This module routes, classifies and refuses. It does not compute a s.195
-    rate, and nothing else in this codebase does either. Nature of income x
-    treaty country x surcharge band is exactly the shape of statutory data
-    CLAUDE.md says must not be written from memory — the same reasoning that
-    leaves minimum wage out of domain/payroll/bonus.py and the SBI rate out of
-    perquisites.py. A wrong s.195 deduction is not a cosmetic error: under-
-    deducting disallows the WHOLE expenditure under s.40(a)(i) and carries
-    s.201(1A) interest, and over-deducting takes money off a foreign supplier
-    that only a refund claim gets back.
+    This module routes and classifies. It does NOT compute the s.195 rate —
+    domain/tds/section_195.py does, on the registry in section_195_rates.py,
+    and those hold the Act side only. The treaty rate is recorded per vendor by
+    the CA who read the agreement, because nature of income x ninety-odd
+    treaties x surcharge band is exactly the shape of statutory data CLAUDE.md
+    says must not be written from memory.
 
-    Adding it is a human step: the Part II rates for the year, then the treaty
-    table, then a nature-of-income field on the bill.
+    This module's own refusal is narrower and is now a VENDOR-level check: a
+    vendor recorded as a non-resident may not also carry a resident-only TDS
+    section, because the two facts contradict each other. The bill routes by
+    RESIDENCY rather than by the section string, so a stale s.194C on a
+    non-resident vendor would otherwise be silently ignored rather than
+    reported — models/parties.py enforces it where a human types it.
 
 WHAT AN UNCLASSIFIED VENDOR MEANS, WHICH IS DIFFERENT FROM MSMED
 
@@ -168,33 +169,21 @@ def return_type_for(residential_status: Optional[str]) -> str:
 
 def section_refusal(section: Optional[str],
                     residential_status: Optional[str]) -> Optional[str]:
-    """Why this section cannot be applied to this payee, or None if it can.
+    """Why this section cannot be recorded against this payee, or None.
 
-    Returns a sentence for a CA, not a code — it goes straight into a 422. Two
-    refusals, and both are about the section being WRONG rather than the form:
+    One refusal: a RESIDENT-ONLY section on a payee recorded as a non-resident.
+    s.194C and its neighbours do not reach a non-resident at all; s.195 does.
 
-      * a resident-only section on a non-resident payee. s.194C and its
-        neighbours do not reach a non-resident at all; s.195 does.
-      * s.195 itself, which this codebase cannot rate. Refusing is the point:
-        deducting 0 on a foreign remittance risks the whole expenditure under
-        s.40(a)(i), and deducting a made-up rate is worse.
+    s.195 itself is NOT refused here any more. It was, while nothing could rate
+    it; domain/tds/section_195.py now does, and that module raises its own
+    refusals — no nature recorded, no no-PE declaration behind a nil, a TRC
+    with no treaty rate — which are about the payment rather than the section.
+
+    Returns a sentence for a CA, not a code: it goes into a 422 verbatim.
     """
     code = (section or "").upper().strip()
-    if not code:
+    if not code or code == SECTION_195:
         return None
-
-    if code == SECTION_195:
-        return (
-            "Section 195 (payments to a non-resident) is not computed by this "
-            "software. The rate in force depends on the NATURE of the income "
-            "(royalty, fees for technical services, interest, capital gains or "
-            "other sums) under Part II of the First Schedule, plus surcharge "
-            "and cess, and may be displaced by the DTAA under s.90(2) where "
-            "the payee has furnished a Tax Residency Certificate and Form 10F. "
-            "None of that is modelled here. Determine the rate, deduct it "
-            "outside this bill, and complete Form 15CA/15CB under Rule 37BB "
-            "before remitting."
-        )
 
     if not is_non_resident(residential_status):
         return None

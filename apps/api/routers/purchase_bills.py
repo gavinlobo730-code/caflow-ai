@@ -237,6 +237,129 @@ def create_purchase_bill(
                             document_failure_detail(e, action="create the purchase bill"))
 
 
+def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
+                               total_taxable: int, bill_date: str, firm_id: str,
+                               db, exclude_bill_id: Optional[str]) -> tuple[int, int]:
+    """TDS on a payment to a RESIDENT payee — the s.194 series, unchanged.
+
+    Lifted verbatim out of _compute_bill_lines_and_totals when s.195 gained a
+    branch of its own, so the two charging regimes sit side by side instead of
+    one being nested inside the other's `if`. No behaviour changed in the move;
+    tests/test_tds_bill_engine.py is the proof.
+
+    Returns (tds_paise, tds_rate_bps).
+    """
+    if not tds_section:
+        raise HTTPException(
+            status_code=422,
+            detail="Vendor is marked TDS-applicable but has no TDS section set.",
+        )
+    from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
+    # FY-aggregate of this vendor's prior taxable under the same section, so the
+    # §194C ₹1L aggregate threshold is honoured across multiple bills.
+    fy_prior = 0
+    if not _USE_MOCK and db is not None:
+        fy_start, fy_end = _fy_bounds(bill_date)
+        # deleted_at IS NULL — soft-deleted bills keep status "draft", so the
+        # .neq("status","cancelled") filter alone still counted them toward
+        # the §194C FY-aggregate threshold, wrongly triggering TDS deduction
+        # on later bills. Drafts themselves stay counted deliberately: the
+        # threshold is "credited or paid or LIKELY to be credited" (IT Act
+        # §194C(5)) and a live draft is expected to be received.
+        prior = (db.table("purchase_bills")
+                 .select("id, taxable_amount_paise")
+                 .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
+                 .eq("tds_section", tds_section).neq("status", "cancelled")
+                 .is_("deleted_at", "null")
+                 .gte("bill_date", fy_start).lte("bill_date", fy_end)
+                 .execute().data) or []
+        fy_prior = sum(
+            int(b.get("taxable_amount_paise") or 0)
+            for b in prior if b.get("id") != exclude_bill_id
+        )
+    # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
+    # a bill entered late for a prior FY must use that year's law.
+    try:
+        _bill_d = datetime.strptime(str(bill_date)[:10], "%Y-%m-%d").date()
+        _fy_start_year = _bill_d.year if _bill_d.month >= 4 else _bill_d.year - 1
+        bill_fy = f"{_fy_start_year}-{str(_fy_start_year + 1)[2:]}"
+    except (ValueError, KeyError):
+        bill_fy = None  # malformed/missing date → registry defaults to current FY
+    try:
+        _tds = TDSComputer().resolve_tds(
+            section=tds_section,
+            taxable_paise=total_taxable,
+            fy_prior_taxable_paise=fy_prior,
+            is_company=is_company_pan(vendor.get("pan")),
+            fy=bill_fy,
+            # IT Act §206AA: no real PAN on file floors the rate at
+            # 20% (R3.10) — previously computed with zero PAN
+            # awareness, silently under-deducting for no-PAN vendors.
+            has_pan=has_pan(vendor.get("pan")),
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
+    # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
+    return _tds.tds_paise, (_tds.rate_bps if _tds.applies else 0)
+
+
+def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str):
+    """Withholding on a payment to a NON-RESIDENT payee — IT Act s.195.
+
+    A different charging section from s.194C and its neighbours, not a
+    different rate for the same one: they charge sums paid "to a resident" and
+    do not reach a non-resident at all. So there is no threshold, no FY
+    aggregate, and the rate keys on the NATURE of the income rather than the
+    kind of work — plus surcharge and cess, which the resident series does not
+    carry. domain/tds/section_195.py holds the reasoning and the citations.
+
+    Refuses rather than guessing. A refusal stops the bill and makes a human
+    decide; a wrong number is withheld, paid to the Government, reported on 27Q
+    and discovered by the supplier.
+    """
+    from domain.tds.section_195 import resolve_section_195
+    from domain.tds.tds_computer import is_company_pan, has_pan
+
+    res = resolve_section_195(
+        amount_paise=total_taxable,
+        nature=vendor.get("section_195_nature_of_income"),
+        is_company=is_company_pan(vendor.get("pan")),
+        has_pan=has_pan(vendor.get("pan")),
+        trc_on_file=bool(vendor.get("trc_on_file")),
+        form_10f_on_file=bool(vendor.get("form_10f_on_file")),
+        no_pe_declaration_on_file=bool(vendor.get("no_pe_declaration_on_file")),
+        treaty_rate_bps=vendor.get("treaty_rate_bps"),
+        # Rule 37BC's six particulars. Name, address, email and phone are
+        # ordinary vendor fields; the TRC and the country TIN are the two that
+        # a domestic vendor never has, so they are what actually gate it.
+        rule_37bc_particulars_held=bool(
+            vendor.get("trc_on_file")
+            and (vendor.get("tax_identification_number") or "").strip()
+            and (vendor.get("country_of_residence") or "").strip()
+            and (vendor.get("email") or "").strip()
+            and (vendor.get("phone") or "").strip()
+            and (vendor.get("address") or "").strip()
+        ),
+        fy=_bill_fy_label(bill_date),
+    )
+    if not res.applies:
+        raise HTTPException(status_code=422, detail=res.refusal_detail)
+    return res
+
+
+def _bill_fy_label(bill_date: str) -> Optional[str]:
+    """The FY the BILL falls in, so a bill entered late for a prior year uses
+    that year's law. None on a malformed date — the registry then defaults to
+    the current FY, which is what the resident path already does."""
+    try:
+        d = datetime.strptime(str(bill_date)[:10], "%Y-%m-%d").date()
+        y = d.year if d.month >= 4 else d.year - 1
+        return f"{y}-{str(y + 1)[2:]}"
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def _compute_bill_lines_and_totals(
     lines_data: list[dict],
     is_interstate: bool,
@@ -348,80 +471,33 @@ def _compute_bill_lines_and_totals(
     # TDS base is the taxable amount, excluding GST — IT Act §194C/194I/194J.
     tds_paise = 0
     tds_rate_bps = 0
+    tds_surcharge_paise = 0
+    tds_cess_paise = 0
+    tds_nature = None
     tds_section = (vendor.get("tds_section") or "").upper().strip() or None
     if vendor.get("tds_applicable"):
-        if not tds_section:
-            raise HTTPException(
-                status_code=422,
-                detail="Vendor is marked TDS-applicable but has no TDS section set.",
-            )
+        from domain.tds.residency import is_non_resident
         # RESIDENCY DECIDES THE CHARGING SECTION, NOT JUST THE RETURN FORM.
         # s.194C, s.194J and their neighbours charge, in their own words, sums
-        # paid "to a resident"; a payment to a non-resident is deducted under
-        # s.195 at the rates in force, which this software does not compute.
-        # Refusing here is deliberate and is the safe direction: deducting 2%
-        # under s.194C on a foreign remittance is a wrong deduction AND a wrong
-        # return, and under-deduction disallows the whole expenditure under
-        # s.40(a)(i). domain/tds/residency.py carries the citations.
-        #
-        # Only reached when the vendor is marked TDS-applicable — an
-        # instruction the software cannot carry out correctly. A non-resident
-        # vendor with TDS off books normally, so this never blocks the bill
-        # itself, only a deduction that would be computed wrongly.
-        from domain.tds.residency import section_refusal
-        refusal = section_refusal(tds_section, vendor.get("residential_status"))
-        if refusal:
-            raise HTTPException(status_code=422, detail=refusal)
-        from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
-        # FY-aggregate of this vendor's prior taxable under the same section, so the
-        # §194C ₹1L aggregate threshold is honoured across multiple bills.
-        fy_prior = 0
-        if not _USE_MOCK and db is not None:
-            fy_start, fy_end = _fy_bounds(bill_date)
-            # deleted_at IS NULL — soft-deleted bills keep status "draft", so the
-            # .neq("status","cancelled") filter alone still counted them toward
-            # the §194C FY-aggregate threshold, wrongly triggering TDS deduction
-            # on later bills. Drafts themselves stay counted deliberately: the
-            # threshold is "credited or paid or LIKELY to be credited" (IT Act
-            # §194C(5)) and a live draft is expected to be received.
-            prior = (db.table("purchase_bills")
-                     .select("id, taxable_amount_paise")
-                     .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
-                     .eq("tds_section", tds_section).neq("status", "cancelled")
-                     .is_("deleted_at", "null")
-                     .gte("bill_date", fy_start).lte("bill_date", fy_end)
-                     .execute().data) or []
-            fy_prior = sum(
-                int(b.get("taxable_amount_paise") or 0)
-                for b in prior if b.get("id") != exclude_bill_id
-            )
-        # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
-        # a bill entered late for a prior FY must use that year's law.
-        try:
-            _bill_d = datetime.strptime(str(bill_date)[:10], "%Y-%m-%d").date()
-            _fy_start_year = _bill_d.year if _bill_d.month >= 4 else _bill_d.year - 1
-            bill_fy = f"{_fy_start_year}-{str(_fy_start_year + 1)[2:]}"
-        except (ValueError, KeyError):
-            bill_fy = None  # malformed/missing date → registry defaults to current FY
-        try:
-            _tds = TDSComputer().resolve_tds(
-                section=tds_section,
-                taxable_paise=total_taxable,
-                fy_prior_taxable_paise=fy_prior,
-                is_company=is_company_pan(vendor.get("pan")),
-                fy=bill_fy,
-                # IT Act §206AA: no real PAN on file floors the rate at
-                # 20% (R3.10) — previously computed with zero PAN
-                # awareness, silently under-deducting for no-PAN vendors.
-                has_pan=has_pan(vendor.get("pan")),
-            )
-        except ValueError as ve:
-            raise HTTPException(status_code=422, detail=str(ve))
-        tds_paise = _tds.tds_paise
-        # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
-        # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
-        tds_rate_bps = _tds.rate_bps if _tds.applies else 0
-
+        # paid "to a resident". A payment to a non-resident is deducted under
+        # s.195 at the rates in force, so it does not go through the resident
+        # engine at all — different section, different base, no threshold,
+        # plus surcharge and cess.
+        if is_non_resident(vendor.get("residential_status")):
+            _s195 = _resolve_bill_section_195(vendor, total_taxable, bill_date)
+            tds_paise = _s195.tds_paise
+            # The BASE rate, not the effective one: Form 27Q's deductee
+            # annexure asks for the rate at which tax was deducted and reports
+            # surcharge and cess in their own columns.
+            tds_rate_bps = _s195.rate_bps
+            tds_surcharge_paise = _s195.surcharge_paise
+            tds_cess_paise = _s195.cess_paise
+            tds_nature = _s195.nature
+            tds_section = "195"
+        else:
+            tds_paise, tds_rate_bps = _resolve_bill_resident_tds(
+                vendor, tds_section, total_taxable, bill_date, firm_id, db,
+                exclude_bill_id)
     net_payable_paise = total_paise - tds_paise
     total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
 
@@ -438,9 +514,18 @@ def _compute_bill_lines_and_totals(
         "ineligible_itc_cgst_paise": total_ineligible_cgst,
         "ineligible_itc_sgst_paise": total_ineligible_sgst,
         "ineligible_itc_igst_paise": total_ineligible_igst,
+        # On a s.195 bill tds_paise is the TOTAL withheld (base + surcharge +
+        # cess) while tds_rate_bps is the BASE rate, so the two no longer
+        # satisfy tds_paise = taxable * rate / 10000 the way every
+        # resident-section bill does. That is deliberate: Form 27Q's deductee
+        # annexure asks for the rate tax was deducted at and reports surcharge
+        # and cess in their own columns. Pinned by a test.
         "tds_paise":            tds_paise,
         "tds_rate_bps":         tds_rate_bps,
         "tds_section":          tds_section,
+        "tds_surcharge_paise":  tds_surcharge_paise,
+        "tds_cess_paise":       tds_cess_paise,
+        "tds_nature_of_income": tds_nature,
         "net_payable_paise":    net_payable_paise,
         # Currency columns (INR identity leaves them inert).
         "txn_taxable":          txn_taxable,
@@ -563,6 +648,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     tds_paise         = computed["tds_paise"]
     tds_rate_bps      = computed["tds_rate_bps"]
     tds_section       = computed["tds_section"]
+    tds_surcharge_paise = computed["tds_surcharge_paise"]
+    tds_cess_paise      = computed["tds_cess_paise"]
+    tds_nature_of_income = computed["tds_nature_of_income"]
     net_payable_paise = computed["net_payable_paise"]
 
     # Currency columns (INR identity leaves them inert). Foreign net payable is
@@ -614,6 +702,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "tds_paise":             tds_paise,
             "tds_rate_bps":          tds_rate_bps,
             "tds_section":           tds_section,
+            "tds_surcharge_paise":   tds_surcharge_paise,
+            "tds_cess_paise":        tds_cess_paise,
+            "tds_nature_of_income":  tds_nature_of_income,
             "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
@@ -652,6 +743,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "tds_paise":             tds_paise,
         "tds_rate_bps":          tds_rate_bps,
         "tds_section":           tds_section,
+        "tds_surcharge_paise":   tds_surcharge_paise,
+        "tds_cess_paise":        tds_cess_paise,
+        "tds_nature_of_income":  tds_nature_of_income,
         "is_reverse_charge":     is_reverse_charge,
         "net_payable_paise":     net_payable_paise,
         "status":                "draft",
@@ -1114,6 +1208,9 @@ def update_purchase_bill(
                             "tds_paise":             computed["tds_paise"],
                             "tds_rate_bps":          computed["tds_rate_bps"],
                             "tds_section":           computed["tds_section"],
+                            "tds_surcharge_paise":   computed["tds_surcharge_paise"],
+                            "tds_cess_paise":        computed["tds_cess_paise"],
+                            "tds_nature_of_income":  computed["tds_nature_of_income"],
                             "net_payable_paise":     computed["net_payable_paise"],
                             "txn_taxable":           computed["txn_taxable"],
                             "txn_total_gst":         computed["txn_total_gst"],
@@ -1230,6 +1327,9 @@ def update_purchase_bill(
                 "tds_paise":             computed["tds_paise"],
                 "tds_rate_bps":          computed["tds_rate_bps"],
                 "tds_section":           computed["tds_section"],
+                "tds_surcharge_paise":   computed["tds_surcharge_paise"],
+                "tds_cess_paise":        computed["tds_cess_paise"],
+                "tds_nature_of_income":  computed["tds_nature_of_income"],
                 "net_payable_paise":     computed["net_payable_paise"],
                 "txn_taxable":           computed["txn_taxable"],
                 "txn_total_gst":         computed["txn_total_gst"],

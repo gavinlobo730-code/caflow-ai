@@ -164,3 +164,79 @@ def test_the_27q_lookup_index_exists(db):
     got = _psql(db, "SELECT indexdef FROM pg_indexes "
                     "WHERE indexname = 'idx_tds_deductions_return_type';", tuples=True)
     assert "return_type" in got.stdout and "transaction_date" in got.stdout
+
+
+# ── Migration 309: what a s.195 withholding needs ───────────────────────────
+
+def test_every_nature_the_engine_prices_is_accepted_by_the_column(db):
+    """The CHECK is generated from domain/tds/section_195_rates.ALL_NATURES. A
+    nature the engine can price and the database refuses is a vendor that
+    cannot be saved; one the database allows and the engine cannot price is a
+    vendor that saves and a bill that never books."""
+    from domain.tds.section_195_rates import ALL_NATURES
+    for i, nature in enumerate(ALL_NATURES):
+        r = _insert_vendor(db, f"NR {i}", residential_status="non_resident",
+                           country_of_residence="CH",
+                           section_195_nature_of_income=nature)
+        assert r.returncode == 0, f"{nature} rejected by the CHECK: {r.stderr}"
+
+
+@pytest.mark.parametrize("value", ["consultancy", "ROYALTY", "fees for technical services",
+                                   "business_profits", ""])
+def test_a_nature_the_rate_table_does_not_price_is_refused(db, value):
+    r = _insert_vendor(db, f"Bad {value}", residential_status="non_resident",
+                       country_of_residence="CH", section_195_nature_of_income=value)
+    assert r.returncode != 0, f"the database accepted nature={value!r}"
+    assert "vendors_section_195_nature_check" in r.stderr
+
+
+@pytest.mark.parametrize("bps", [0, 500, 1000, 10000])
+def test_a_treaty_rate_within_range_is_accepted(db, bps):
+    """Zero is a real treaty rate, not an unset one — several agreements tax
+    nothing where there is no permanent establishment."""
+    r = _psql(db, f"""
+        INSERT INTO vendors (firm_id, client_id, name, residential_status,
+                             country_of_residence, treaty_rate_bps)
+        VALUES ('{FIRM}', '{CLIENT}', 'T {bps}', 'non_resident', 'CH', {bps});
+    """)
+    assert r.returncode == 0, r.stderr
+
+
+@pytest.mark.parametrize("bps", [-1, 10001, 100000])
+def test_a_treaty_rate_outside_zero_to_one_hundred_percent_is_refused(db, bps):
+    """A negative rate would refund tax out of a withholding; above 100% takes
+    more than the payment. Both are typos, and both reach the deduction."""
+    r = _psql(db, f"""
+        INSERT INTO vendors (firm_id, client_id, name, treaty_rate_bps)
+        VALUES ('{FIRM}', '{CLIENT}', 'Bad {bps}', {bps});
+    """)
+    assert r.returncode != 0, f"the database accepted treaty_rate_bps={bps}"
+    assert "vendors_treaty_rate_bps_check" in r.stderr
+
+
+def test_the_three_evidence_flags_default_to_false_not_null(db):
+    """A NULL 'do we hold a TRC' read as truthy anywhere would apply treaty
+    relief nobody established. They are NOT NULL DEFAULT false for that."""
+    assert _insert_vendor(db, "Plain").returncode == 0
+    got = _psql(db, "SELECT trc_on_file::text || form_10f_on_file::text || "
+                    "no_pe_declaration_on_file::text FROM vendors WHERE name = 'Plain';",
+                tuples=True)
+    assert got.stdout.strip() == "falsefalsefalse"
+
+
+def test_the_bill_and_the_deduction_carry_the_surcharge_and_cess_split(db):
+    """Form 27Q reports tax, surcharge and cess in separate columns of the
+    deductee annexure, so the split has to survive from the bill to the
+    register. Both default to 0, which is what a resident-section bill is."""
+    for table in ("purchase_bills", "tds_deductions"):
+        cols = _psql(db, f"""
+            SELECT column_name || ':' || column_default
+              FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='{table}'
+               AND column_name IN ('tds_surcharge_paise','tds_cess_paise',
+                                   'surcharge_paise','cess_paise')
+             ORDER BY 1;""", tuples=True)
+        lines = [l for l in cols.stdout.strip().split("\n") if l]
+        assert len(lines) == 2, f"{table}: {lines}"
+        for line in lines:
+            assert line.endswith(":0"), f"{table} {line} — must default to 0"

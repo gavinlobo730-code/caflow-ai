@@ -103,6 +103,19 @@ change. The code is the authority; keep this file in step with it.
   shuts the window early. `compliance_engine.correction_window_closes()` is the function
   to use — `november_30_cutoff()` is only the statutory outer limit and will tell a CA a
   correction is available when it is not.
+- **§195 asks CHARGEABILITY before it asks a rate, and the resident sections do
+  not reach a non-resident at all.** §194C, §194J and their neighbours charge, in
+  their own words, sums paid "to a **resident**"; §195 charges a payment to a
+  non-resident, "at the rates in force" under Part II of the First Schedule and
+  §115A — by the NATURE of the income, with no threshold, plus surcharge and 4%
+  cess, which the resident series does not carry. But §195 reaches only a sum
+  "**chargeable** under the provisions of this Act" (*GE India Technology Centre
+  (P) Ltd v. CIT* (2010) 327 ITR 456), so an ordinary import from a supplier with
+  no permanent establishment is business profits, not chargeable here, and the
+  right withholding is **nil** — not 20%. `domain/tds/section_195.py` asks the
+  questions in that order and refuses rather than guessing; §206AA's 20% no-PAN
+  floor has a non-resident carve-out (§206AA(7) with Rule 37BC) residents do not
+  get. Under-deducting disallows the WHOLE expenditure under §40(a)(i).
 - **§192 withholding rests on THREE separate things, and conflating any two gets
   it wrong.** (1) The employee's regime INTIMATION to the employer — CBDT
   Circular 04/2023 — governs withholding only, and the same circular says
@@ -183,6 +196,7 @@ a guess to a verified figure.**
 | `domain/income_tax/presumptive.py` | §44AD, §44ADA, §44AE turnover limits and deemed rates | Finance Act |
 | `domain/income_tax/minimum_tax.py` | MAT §115JB, AMT §115JC rates and thresholds | Finance Act |
 | `domain/tds/section_rates.py` | TDS rates AND per-section thresholds (`LATEST_VERIFIED_TDS_FY`) | Finance Act, and mid-year CBDT notifications |
+| `domain/tds/section_195_rates.py` | §195 rates on payments to non-residents, by NATURE of income (§115A), plus the two Part II surcharge ladders and cess | Finance Act. **Every year is currently `verified=False`** — reconciled, not confirmed line by line |
 | `domain/income_tax/capital_gains_engine.py` | `CII_BY_FY` + `LATEST_CII_FY` | one CBDT notification, usually around June |
 
 CII is the odd one out: it is notified *partway through* the year it applies to,
@@ -267,7 +281,7 @@ the response. Adding any of them is a human step, like the ITR schemas.
 | an earlier year's total income for §89 | `domain/payroll/arrears.py` | comes off the employee's return; the employer never held it |
 | prior gratuity / leave exemption used | `gratuity.py`, `leave_encashment.py` | §10(10) and §10(10AA) are LIFETIME limits across employers |
 | a vendor's MSMED classification | `vendors.msme_status`, surfaced by `public.schedule_iii_ageing` | it is a fact about the SUPPLIER — their Udyam registration — that no ledger holds, and it is not presentational: §43B(h) (Finance Act 2023, AY 2024-25) disallows a deduction for sums payable to a micro or small enterprise beyond the MSMED §15 limit unless actually paid, so calling an unclassified vendor "Others" changes taxable income. The column has NO default; an unclassified balance is reported beside the payables table, never inside a row |
-| the §195 rate for a payment to a non-resident | `domain/tds/residency.py`, refused on the purchase-bill path and named in the register's `statutory_gaps` | §194C, §194J and their neighbours charge, in their own words, sums paid "to a **resident**" — so for a non-resident payee they do not apply at all and §195 does, at rates in force under Part II of the First Schedule by NATURE of income, with surcharge and cess, displaced by the DTAA under §90(2) where a TRC and Form 10F are held. Nature of income × ninety-odd treaties × surcharge band cannot be written from memory, and §206AA's 20% floor has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents do not get. Under-deducting disallows the WHOLE expenditure under §40(a)(i). The vendor's `residential_status` (migration 308) is the human step that routes the deduction to 27Q under Rule 31A(4)(b) and keeps it out of 26Q; the RATE is a second human step that has not been taken |
+| the DTAA rate for a payment to a non-resident | `vendors.treaty_rate_bps` (migration 309), refused on the purchase-bill path when a TRC is held and no rate is recorded | §194C, §194J and their neighbours charge, in their own words, sums paid "to a **resident**" — so for a non-resident payee they do not apply at all and §195 does, at rates in force under Part II of the First Schedule by NATURE of income, with surcharge and cess, displaced by the DTAA under §90(2) where a TRC and Form 10F are held. Nature of income × ninety-odd treaties × surcharge band cannot be written from memory, and §206AA's 20% floor has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents do not get. Under-deducting disallows the WHOLE expenditure under §40(a)(i). The ACT side is now computed — `domain/tds/section_195_rates.py` holds §115A and Part II by nature of income, with surcharge and cess — but §90(2) gives the assessee whichever of the Act and the AGREEMENT is more beneficial, and the agreement cannot be: ninety-odd treaties, differing royalty/FTS/interest articles, MFN clauses needing their own §90(1) notification (*AO v. Nestle SA*, 2023), and several — the UAE and Singapore among them — with no FTS article at all. So a CA reads the treaty and records the rate on the vendor; the engine then applies §90(2) to the two numbers it has, and REFUSES where a TRC is on file and no treaty rate is, because falling back to the Act rate would over-deduct exactly where somebody has established a treaty applies |
 | which accounts hold unbilled dues | `chart_of_accounts.unbilled_dues_side` + `public.schedule_iii_unbilled_reviews` (migration 305) | both ageing notes end "Unbilled dues shall be disclosed separately", and an unbilled due has no document — having none is what makes it unbilled — so the figure is a BALANCE on accounts somebody marked. No account name decides it: "Accrued Interest" may be income receivable or an expense payable. And the review is a SECOND fact: the markings say which accounts hold them, only the review says there are no others, so an unreviewed client shows no figure rather than a zero that claims it has none |
 
 **§89 also refuses a year the rate registry does not hold**, and that is worth
