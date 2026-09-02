@@ -172,6 +172,64 @@ connected.
 5. Accept the query/body inconsistency (finding 5) or make the endpoint take
    a body.
 
+## What has been fixed since
+
+Worked through in the order above. Each fix carries negative controls — the
+count is how many of its new tests fail against the code as it was.
+
+**1 and 2 — the nil remittance and the discarded gaps** (`883968a3`).
+`tds_register_service` now writes a register row whenever a bill is on the
+books and either tax was deducted or §195 was the section in play, carrying
+`non_deduction_reason`. That is the field 27Q asks for anyway, and writing it
+also turns the missing-15CA and undated-declaration controls back on, since
+both are computed after the early return that used to skip a nil remittance.
+`_sync_tds_register` is now `-> dict` and the receive response carries
+`tds_register`, including `{"synced": False, "reason": ...}` when the sync
+itself failed — which is how the stale-schema-cache case surfaced while this
+was being verified, instead of vanishing. `describe_gaps` turns the five codes
+into sentences. Migration 312. Three negative controls.
+
+**3 — the duplicate bill** (this commit). Migration 313 adds a unique partial
+index on `(client_id, vendor_id, lower(btrim(bill_no)))`, excluding cancelled
+and soft-deleted bills and bills with no number, and all three insert paths
+check first so a CA gets a sentence rather than a constraint name. The bulk
+path's existing guard now ignores cancelled bills too — without that it
+refused the *correction* after a cancellation. Production was checked for
+existing duplicates before writing the index: there are none, so it cannot
+fail on merge. Four negative controls; 21 new tests.
+
+**4 — "Internal server error"** (this commit). Rather than adding
+`document_failure_detail` to ninety-odd routers one at a time, `main.py`'s two
+catch-alls now classify by SQLSTATE through `core.exceptions.unhandled_failure`:
+a CHECK, foreign-key, not-null or `RAISE EXCEPTION` refusal becomes a 400 (409
+for a duplicate) carrying the database's own sentence, a permission or
+missing-table fault stays a 500 but says which kind and does not invite a
+retry, and everything else — a `KeyError`, a timeout, a bug — still gets
+"Internal server error", which for those is the honest answer. The engagement
+case from finding 4 now reads
+`fee_engagements_billing_cycle_check` instead. Four negative controls.
+
+**5 — the ignored `financial_year`** (this commit). The endpoint now accepts
+both a query parameter and a JSON body, refuses rather than choosing when the
+two disagree, and validates the label: `normalise_fy_label` in
+`core/ist_clock.py` accepts `YYYY-YY` and `YYYY-YYYY`, canonicalises, and
+refuses a second half that does not follow the first. That last part is the
+one a shape regex cannot catch — `2026-28` passed `^\d{4}-\d{2}$` and
+generated FY 2026-27's due dates under a label naming no year at all. Four
+negative controls.
+
+**What the finding-5 sweep found and did not fix.** Twelve router parameters
+take a financial-year label off the wire; only this one is validated. Of the
+rest, `routers/accounting.py:1256` has a shape regex (which `2026-28` passes),
+and ten have nothing:
+`accounting.py:1129,1202`, `payroll.py:1832,1920,2278`,
+`gst_workspace.py:1023`, `lifecycle.py:1797`, `timeline.py:21`,
+`income_tax.py:534`, `year_end.py:172`. They are left alone deliberately:
+each has its own downstream tolerance, `core/ist_clock.fy_bounds` is
+lenient by design and is what several of them reach, and converting twelve
+endpoints on the strength of one walkthrough finding is a wider change than
+the evidence supports. Recorded so it is a known gap rather than folklore.
+
 ## What this walkthrough did not cover
 
 Paying the foreign supplier and the challan under Rule 30, the 27Q return

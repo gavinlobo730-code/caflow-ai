@@ -16,6 +16,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access, effective_client_ids
 from core.exceptions import ValidationError, NotFoundError
+from core.ist_clock import normalise_fy_label
 from services import compliance_obligation_service as obligations
 from domain.compliance_record_service import compliance_record_service
 
@@ -57,6 +58,35 @@ class MarkFiledBody(BaseModel):
     acknowledgement_no: Optional[str] = None
 
 
+class GenerateBody(BaseModel):
+    """The same two values /obligations/generate takes as query parameters.
+
+    They were query-only, so a caller that sent them in the JSON body — which
+    is the natural shape for a POST, and what the foreign-vendor walkthrough
+    sent — had them SILENTLY IGNORED and got the current financial year's
+    obligations for the whole firm instead of the year and client it asked
+    for. Nothing in the response said so; the response even names the FY it
+    used, which read as confirmation.
+    """
+    client_id: Optional[str] = None
+    financial_year: Optional[str] = None
+
+
+def _one_of(name: str, from_query: Optional[str], from_body: Optional[str]) -> Optional[str]:
+    """The value a caller gave, whether they put it in the query or the body.
+
+    Refuses rather than picking when both are present and differ: a caller who
+    sent two different financial years has a bug, and choosing one for them
+    hides it behind a plausible answer."""
+    if from_query is not None and from_body is not None and from_query != from_body:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"{name} was sent twice with different values "
+                    f"({from_query!r} in the query, {from_body!r} in the body). "
+                    f"Send it once."))
+    return from_query if from_query is not None else from_body
+
+
 @router.get("/obligations")
 def list_obligations(client_id: Optional[str] = Query(None),
                      status: Optional[str] = Query(None),
@@ -75,6 +105,7 @@ def list_obligations(client_id: Optional[str] = Query(None),
 @router.post("/obligations/generate")
 def generate_obligations(client_id: Optional[str] = Query(None),
                          financial_year: Optional[str] = Query(None),
+                         body: Optional[GenerateBody] = None,
                          current_user: dict = Depends(rbac("compliance", "write"))):
     """Generate obligations for active engagements (idempotent). Draft obligations
     only — never files. Runs the same logic the daily scheduler uses.
@@ -85,6 +116,22 @@ def generate_obligations(client_id: Optional[str] = Query(None),
     asserted directly; an omitted one is confined via allowed_client_ids —
     the same recurring_invoices.py "/run" shape, not a blanket 403, since a
     partial per-caller run is an honest answer here."""
+    # Query parameter or JSON body — either is honoured, and the two are only
+    # allowed to disagree by one of them being absent. Silently preferring one
+    # is how a caller ends up generating a year it did not ask for.
+    client_id = _one_of("client_id", client_id, body.client_id if body else None)
+    financial_year = _one_of("financial_year", financial_year,
+                             body.financial_year if body else None)
+    if financial_year is not None:
+        # An unvalidated label reached generate_due, which does `financial_year
+        # or _current_fy()` and then a prefix parse: '2026-28' generated FY
+        # 2026-27's due dates under a label nobody would recognise, and
+        # 'garbage' raised ValueError out of the domain layer as a 500.
+        try:
+            financial_year = normalise_fy_label(financial_year)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
     if client_id:
         assert_client_access(current_user, client_id)
     return api_response(True, obligations.generate_due(
