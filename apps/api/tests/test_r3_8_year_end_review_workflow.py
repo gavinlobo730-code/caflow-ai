@@ -128,7 +128,12 @@ class TestReviewState:
     def test_after_submit_the_prepared_step_is_completed_with_resolved_actor(self, yer_app):
         app, db = yer_app
         _seed_engagement(db)
-        db.seed("users", {"auth_user_id": "auth-manager", "full_name": "Manager One", "role": "Manager"})
+        # Seeded with the INTERNAL id, matching MANAGER["id"]: the transitions
+        # write public.users.id (it is what the FK points at) and the read
+        # resolves by it. Seeding only auth_user_id, as this used to, matched
+        # a lookup that was consistent with a write that could never succeed.
+        db.seed("users", {"id": MANAGER["id"], "auth_user_id": "auth-manager",
+                          "full_name": "Manager One", "role": "Manager"})
         _client_for(app, MANAGER).post("/year-end/engagements/ENG1/reviews/submit-for-review",
                                         json={"comment": "ready for review"})
 

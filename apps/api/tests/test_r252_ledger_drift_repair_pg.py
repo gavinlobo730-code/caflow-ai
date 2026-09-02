@@ -69,6 +69,10 @@ def migrated_db(pg_template):
     try:
         seed = _psql(dsn, f"""
             INSERT INTO firms (id, name, email) VALUES ('{FIRM}', 'F', 'f@t.in');
+            -- Migration 315 makes year_end_review_events.actor_id a real FK to
+            -- users(id), so the actor has to exist before an event can name it.
+            INSERT INTO users (id, firm_id, full_name, email, role)
+            VALUES ('{USER}', '{FIRM}', 'U', 'u@t.in', 'Partner');
             INSERT INTO clients (id, firm_id, client_name, entity_type)
             VALUES ('{CLIENT}', '{FIRM}', 'C', 'Private Limited');
             INSERT INTO year_end_engagements
