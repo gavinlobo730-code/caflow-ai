@@ -121,7 +121,7 @@ def submit_for_review(
             )
         return api_response(True, _update_mock_engagement(engagement_id, {
             "status":       "in_review",
-            "submitted_by": current_user.get("auth_user_id"),
+            "submitted_by": current_user.get("id"),
             "submitted_at": now,
             "updated_at":   now,
         }))
@@ -136,7 +136,7 @@ def submit_for_review(
 
     updates = {
         "status":       "in_review",
-        "submitted_by": current_user.get("auth_user_id"),
+        "submitted_by": current_user.get("id"),
         "submitted_at": now,
         "updated_at":   now,
     }
@@ -148,7 +148,7 @@ def submit_for_review(
         .data[0]
     )
     _record_review_event(db, engagement_id, firm_id, "submitted_for_review",
-                         current_user.get("auth_user_id"), data.comment)
+                         current_user.get("id"), data.comment)
     log_event(firm_id, "year_end_engagement", engagement_id, "submit_for_review",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
@@ -187,7 +187,7 @@ def approve_review(
             )
         return api_response(True, _update_mock_engagement(engagement_id, {
             "status":      "approved",
-            "approved_by": current_user.get("auth_user_id"),
+            "approved_by": current_user.get("id"),
             "approved_at": now,
             "updated_at":  now,
         }))
@@ -202,7 +202,7 @@ def approve_review(
 
     updates = {
         "status":      "approved",
-        "approved_by": current_user.get("auth_user_id"),
+        "approved_by": current_user.get("id"),
         "approved_at": now,
         "updated_at":  now,
     }
@@ -214,7 +214,7 @@ def approve_review(
         .data[0]
     )
     _record_review_event(db, engagement_id, firm_id, "approved",
-                         current_user.get("auth_user_id"), data.comment)
+                         current_user.get("id"), data.comment)
     log_event(firm_id, "year_end_engagement", engagement_id, "approve",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
@@ -253,7 +253,7 @@ def request_revision(
             )
         return api_response(True, _update_mock_engagement(engagement_id, {
             "status":              "draft",
-            "revision_requested_by": current_user.get("auth_user_id"),
+            "revision_requested_by": current_user.get("id"),
             "revision_comment":    data.comment,
             "updated_at":          now,
         }))
@@ -268,7 +268,7 @@ def request_revision(
 
     updates = {
         "status":                "draft",
-        "revision_requested_by": current_user.get("auth_user_id"),
+        "revision_requested_by": current_user.get("id"),
         "revision_comment":      data.comment,
         "updated_at":            now,
     }
@@ -280,7 +280,7 @@ def request_revision(
         .data[0]
     )
     _record_review_event(db, engagement_id, firm_id, "revision_requested",
-                         current_user.get("auth_user_id"), data.comment)
+                         current_user.get("id"), data.comment)
     log_event(firm_id, "year_end_engagement", engagement_id, "request_revision",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
@@ -320,7 +320,7 @@ def final_approve(
             )
         return api_response(True, _update_mock_engagement(engagement_id, {
             "status":           "locked",
-            "final_approved_by":current_user.get("auth_user_id"),
+            "final_approved_by": current_user.get("id"),
             "final_approved_at":now,
             "locked_at":        now,
             "updated_at":       now,
@@ -336,7 +336,7 @@ def final_approve(
 
     updates = {
         "status":            "locked",
-        "final_approved_by": current_user.get("auth_user_id"),
+        "final_approved_by": current_user.get("id"),
         "final_approved_at": now,
         "locked_at":         now,
         "updated_at":        now,
@@ -349,7 +349,7 @@ def final_approve(
         .data[0]
     )
     _record_review_event(db, engagement_id, firm_id, "final_approved_and_locked",
-                         current_user.get("auth_user_id"), data.comment)
+                         current_user.get("id"), data.comment)
     log_event(firm_id, "year_end_engagement", engagement_id, "final_approve",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
@@ -385,11 +385,11 @@ _EVENT_TRANSITIONS = {
 }
 
 
-def _build_steps(eng: dict, users_by_auth_id: dict) -> list[dict]:
+def _build_steps(eng: dict, users_by_id: dict) -> list[dict]:
     steps = []
     for step_key, actor_field, at_field in _STEP_FIELDS:
         actor_id = eng.get(actor_field)
-        user = users_by_auth_id.get(actor_id, {}) if actor_id else {}
+        user = users_by_id.get(actor_id, {}) if actor_id else {}
         steps.append({
             "step": step_key,
             "user_name": user.get("full_name"),
@@ -400,9 +400,9 @@ def _build_steps(eng: dict, users_by_auth_id: dict) -> list[dict]:
     return steps
 
 
-def _history_entry(row: dict, users_by_auth_id: dict) -> dict:
+def _history_entry(row: dict, users_by_id: dict) -> dict:
     actor_id = row.get("actor_id")
-    user = users_by_auth_id.get(actor_id, {}) if actor_id else {}
+    user = users_by_id.get(actor_id, {}) if actor_id else {}
     from_status, to_status = _EVENT_TRANSITIONS.get(row.get("event_type"), (None, None))
     return {
         "id": row["id"],
@@ -450,14 +450,19 @@ def get_review_state(
     )
     actor_ids |= {r.get("actor_id") for r in history_rows if r.get("actor_id")}
 
-    users_by_auth_id = {}
+    # Both sources hold public.users.id — the INTERNAL id. The four
+    # year_end_engagements actor columns FK it, and review-events actor_id now
+    # does too (migration 315). This used to look them up by auth_user_id,
+    # which was consistent with what the transitions WROTE — and every one of
+    # those writes failed the FK, so nothing was ever there to look up.
+    users_by_id = {}
     if actor_ids:
         rows = (
-            db.table("users").select("auth_user_id, full_name, role")
-            .in_("auth_user_id", list(actor_ids)).execute().data or []
+            db.table("users").select("id, full_name, role")
+            .in_("id", list(actor_ids)).execute().data or []
         )
-        users_by_auth_id = {r["auth_user_id"]: r for r in rows}
+        users_by_id = {r["id"]: r for r in rows}
 
-    steps = _build_steps(eng, users_by_auth_id)
-    history = [_history_entry(r, users_by_auth_id) for r in history_rows]
+    steps = _build_steps(eng, users_by_id)
+    history = [_history_entry(r, users_by_id) for r in history_rows]
     return api_response(True, {"steps": steps, "history": history})
