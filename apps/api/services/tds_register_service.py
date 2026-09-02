@@ -140,11 +140,20 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "deductee_name": (v.get("name") or "(vendor not found)"),
             "deductee_pan": (v.get("pan") or None),
             "section": (bill.get("tds_section") or ""),
+            # 27Q needs to say what the remittance was FOR. nature_of_payment
+            # has existed since migration 037 and nothing ever wrote it.
+            "nature_of_payment": (bill.get("tds_nature_of_income") or None),
             "transaction_date": when.isoformat(),
             # Excluding GST — CBDT Circular 23/2017.
             "payment_amount_paise": int(bill.get("taxable_amount_paise") or 0),
             "tds_rate_pct": rate_pct,
             "tds_paise": deducted,
+            # Form 27Q reports tax, surcharge and cess in separate columns of
+            # the deductee annexure, so the split has to survive from the bill
+            # to the register. Always 0 on a resident-section bill, which
+            # deducts at the bare section rate and carries neither.
+            "surcharge_paise": int(bill.get("tds_surcharge_paise") or 0),
+            "cess_paise": int(bill.get("tds_cess_paise") or 0),
             "quarter": fy_quarter(when),
             "return_type": return_type,
             "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,

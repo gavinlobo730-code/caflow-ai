@@ -11,7 +11,9 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from core.validators import (validate_gstin, validate_pan, validate_tan,
                              validate_phone, validate_email, validate_pincode)
-from domain.tds.residency import NON_RESIDENT, RESIDENTIAL_STATUSES
+from domain.tds.residency import NON_RESIDENT, RESIDENTIAL_STATUSES, section_refusal
+from domain.tds.section_195_rates import (
+    ALL_NATURES, NATURE_BUSINESS_PROFITS_NO_PE)
 
 
 def _normalise_residency(model) -> list[str]:
@@ -57,6 +59,43 @@ def _normalise_residency(model) -> list[str]:
         # says it is, and there are over ninety of them. Only whitespace is
         # normalised, so a trailing space cannot make two TINs look different.
         model.tax_identification_number = model.tax_identification_number.strip() or None
+
+    if model.section_195_nature_of_income is not None:
+        model.section_195_nature_of_income = (
+            model.section_195_nature_of_income.strip().lower())
+        if model.section_195_nature_of_income not in ALL_NATURES:
+            errors.append(
+                "section_195_nature_of_income must be one of: "
+                + ", ".join(ALL_NATURES)
+                + f" (got '{model.section_195_nature_of_income}'). The rate in "
+                  "force under s.195 keys on the nature of the income, so an "
+                  "unrecognised one has no rate.")
+
+    if model.treaty_rate_bps is not None and not (0 <= model.treaty_rate_bps <= 10000):
+        errors.append(
+            "treaty_rate_bps is a rate in basis points, 0 to 10000 (10% is "
+            f"1000). Got {model.treaty_rate_bps}.")
+
+    # A nature that withholds NIL needs its evidence at the point somebody
+    # chooses it, not only when a bill is booked — s.195 reaches a sum
+    # "chargeable under the Act", and business profits without a permanent
+    # establishment are not (GE India Technology Centre v. CIT).
+    if (model.section_195_nature_of_income == NATURE_BUSINESS_PROFITS_NO_PE
+            and model.no_pe_declaration_on_file is not True):
+        errors.append(
+            "Withholding nil on business profits rests on the payee having no "
+            "permanent establishment in India, so no_pe_declaration_on_file "
+            "must be set with this nature of income.")
+
+    # s.194C and its neighbours charge, in their own words, sums paid "to a
+    # resident", so the two facts contradict each other. This used to be caught
+    # when a BILL was booked; catching it on the vendor is better, because the
+    # bill now routes by residency and would silently ignore the stale section
+    # rather than telling anyone the vendor record is wrong.
+    if model.residential_status == NON_RESIDENT:
+        contradiction = section_refusal(model.tds_section, NON_RESIDENT)
+        if contradiction:
+            errors.append(contradiction)
 
     if model.residential_status == NON_RESIDENT and not model.country_of_residence:
         errors.append(
@@ -247,6 +286,15 @@ class VendorIn(BaseModel):
     residential_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
+    # s.195 withholding — see domain/tds/section_195.py. All optional: a
+    # non-resident vendor can be recorded before anyone has decided how it will
+    # be taxed, and the bill path refuses at deduction time rather than making
+    # the vendor master unsaveable.
+    section_195_nature_of_income: Optional[str] = None
+    trc_on_file: bool = False
+    form_10f_on_file: bool = False
+    no_pe_declaration_on_file: bool = False
+    treaty_rate_bps: Optional[int] = None
 
     @field_validator("name")
     @classmethod
@@ -314,6 +362,11 @@ class VendorUpdateIn(BaseModel):
     residential_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
+    section_195_nature_of_income: Optional[str] = None
+    trc_on_file: Optional[bool] = None
+    form_10f_on_file: Optional[bool] = None
+    no_pe_declaration_on_file: Optional[bool] = None
+    treaty_rate_bps: Optional[int] = None
     is_active: Optional[bool] = None
 
     @model_validator(mode="after")

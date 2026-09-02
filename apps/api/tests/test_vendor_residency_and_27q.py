@@ -106,18 +106,21 @@ def test_the_same_section_is_allowed_for_a_resident_and_for_the_unclassified(sec
     assert section_refusal(section, None) is None
 
 
-def test_section_195_is_refused_for_everyone_including_a_resident():
-    """Refused because the RATE is not modelled, which has nothing to do with
-    who the payee is — so a mis-set resident vendor is refused too."""
+def test_section_195_is_no_longer_refused_here():
+    """It was, while nothing could rate it. domain/tds/section_195.py now does,
+    and raises its OWN refusals — no nature recorded, no no-PE declaration
+    behind a nil, a TRC with no treaty rate — which are about the payment
+    rather than the section. Refusing here as well would stop a CA setting a
+    vendor up correctly."""
     for status in (NON_RESIDENT, RESIDENT, None):
-        refusal = section_refusal("195", status)
-        assert refusal and "not computed by this software" in refusal
+        assert section_refusal("195", status) is None
 
 
-def test_the_195_refusal_names_what_a_ca_has_to_do_next():
-    refusal = section_refusal("195", NON_RESIDENT)
-    for expected in ("First Schedule", "90(2)", "15CA"):
-        assert expected in refusal, f"the refusal never mentions {expected}"
+def test_the_resident_only_refusal_still_points_at_195():
+    """The one refusal left. It has to name the section that DOES apply, or a
+    CA is told what not to do and not what to do."""
+    refusal = section_refusal("194J", NON_RESIDENT)
+    assert refusal and "195" in refusal
 
 
 def test_no_section_at_all_is_not_a_refusal():
@@ -226,3 +229,80 @@ def test_an_unrelated_update_does_not_demand_a_country():
     cross-field rule about fields the caller never sent."""
     from models.parties import VendorUpdateIn
     assert VendorUpdateIn(name="New Name").residential_status is None
+
+
+# ── What the API accepts for a §195 withholding ──────────────────────────────
+
+def test_the_nature_of_income_is_canonicalised_and_checked():
+    v = _vendor(residential_status="non_resident", country_of_residence="CH",
+                section_195_nature_of_income=" Royalty ")
+    assert v.section_195_nature_of_income == "royalty"
+
+
+def test_a_nature_the_rate_table_cannot_price_is_refused():
+    """The DB CHECK is generated from the same list, so a value that got past
+    here would be rejected by Postgres with no explanation a CA could act on."""
+    with pytest.raises(ValueError, match="section_195_nature_of_income must be one of"):
+        _vendor(section_195_nature_of_income="consultancy")
+
+
+def test_a_nil_nature_needs_its_no_pe_declaration_at_the_point_it_is_chosen():
+    """Not only when a bill is booked. s.195 reaches a sum 'chargeable under
+    the Act', and business profits without a permanent establishment are not —
+    so nil is an assertion about the payee's Indian presence, and this is where
+    somebody makes it."""
+    with pytest.raises(ValueError, match="no permanent establishment"):
+        _vendor(residential_status="non_resident", country_of_residence="CH",
+                section_195_nature_of_income="business_profits_no_pe")
+    ok = _vendor(residential_status="non_resident", country_of_residence="CH",
+                 section_195_nature_of_income="business_profits_no_pe",
+                 no_pe_declaration_on_file=True)
+    assert ok.no_pe_declaration_on_file is True
+
+
+@pytest.mark.parametrize("bps", [-1, 10001])
+def test_a_treaty_rate_outside_zero_to_one_hundred_percent_is_refused(bps):
+    with pytest.raises(ValueError, match="basis points"):
+        _vendor(treaty_rate_bps=bps)
+
+
+@pytest.mark.parametrize("bps", [0, 1000, 10000])
+def test_a_treaty_rate_inside_the_range_is_accepted(bps):
+    """Zero is a real treaty rate — several agreements tax nothing without a
+    permanent establishment — so it must not be read as 'unset'."""
+    assert _vendor(treaty_rate_bps=bps).treaty_rate_bps == bps
+
+
+def test_a_non_resident_may_not_also_carry_a_resident_only_tds_section():
+    """The two facts contradict each other: s.194C charges sums paid 'to a
+    resident'. Caught on the VENDOR now rather than when a bill is booked,
+    because the bill routes by residency and would silently ignore the stale
+    section rather than telling anyone the record is wrong."""
+    with pytest.raises(ValueError, match="section 194C applies only to a resident"):
+        _vendor(residential_status="non_resident", country_of_residence="CH",
+                tds_applicable=True, tds_section="194C")
+
+
+def test_a_non_resident_carrying_section_195_is_fine():
+    v = _vendor(residential_status="non_resident", country_of_residence="CH",
+                tds_applicable=True, tds_section="195",
+                section_195_nature_of_income="royalty")
+    assert v.tds_section == "195"
+
+
+def test_a_resident_vendor_keeps_its_ordinary_section():
+    """The negative control for the rule above: nothing changed for the
+    domestic vendor this platform is built for."""
+    v = _vendor(residential_status="resident", tds_applicable=True, tds_section="194C")
+    assert v.tds_section == "194C"
+
+
+def test_the_update_model_validates_the_195_fields_identically():
+    from models.parties import VendorUpdateIn
+    with pytest.raises(ValueError, match="section_195_nature_of_income must be one of"):
+        VendorUpdateIn(section_195_nature_of_income="consultancy")
+    with pytest.raises(ValueError, match="basis points"):
+        VendorUpdateIn(treaty_rate_bps=99999)
+    with pytest.raises(ValueError, match="no permanent establishment"):
+        VendorUpdateIn(residential_status="non_resident", country_of_residence="CH",
+                       section_195_nature_of_income="business_profits_no_pe")

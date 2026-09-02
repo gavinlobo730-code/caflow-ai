@@ -277,29 +277,107 @@ def test_an_unclassified_vendor_still_deducts_under_194c():
     assert out["tds_paise"] == 10_000_00
 
 
-def test_194c_on_a_non_resident_is_refused_not_deducted():
-    """s.194C(1) charges sums paid 'to any resident'. Deducting 2% here would
-    be a wrong deduction AND a wrong return — and under-deduction under s.195
-    disallows the whole expenditure under s.40(a)(i)."""
+def test_a_non_resident_is_withheld_under_195_and_never_at_194c_s_rate():
+    """s.194C(1) charges sums paid 'to any resident'. Before the rate table
+    existed this refused the bill; it now routes to s.195, which is the point
+    of the table. What must never happen either way is 2% under 194C on a
+    foreign remittance — a wrong deduction AND a wrong return, and
+    under-deduction disallows the whole expenditure under s.40(a)(i)."""
+    out = _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
+                    "country_of_residence": "CH",
+                    "section_195_nature_of_income": "fees_for_technical_services"})
+    assert out["tds_section"] == "195", "the resident section must not survive"
+    # 20% base + 4% cess on Rs 5,00,000, not 194C's 2%.
+    assert out["tds_rate_bps"] == 2000
+    assert out["tds_paise"] == 1_04_000_00
+    assert out["tds_cess_paise"] == 4_000_00
+    assert out["tds_nature_of_income"] == "fees_for_technical_services"
+
+
+def test_the_bill_records_the_base_rate_and_the_total_separately():
+    """tds_paise is the TOTAL withheld and tds_rate_bps the BASE rate, so on a
+    s.195 bill they no longer satisfy taxable * rate / 10000 the way every
+    resident-section bill does. Form 27Q asks for the rate tax was deducted at
+    and reports surcharge and cess in their own columns."""
+    out = _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
+                    "country_of_residence": "CH",
+                    "section_195_nature_of_income": "royalty"})
+    base = 5_00_000_00 * out["tds_rate_bps"] // 10000
+    assert out["tds_paise"] > base, "surcharge and cess are on top of the base"
+    assert out["tds_paise"] == base + out["tds_surcharge_paise"] + out["tds_cess_paise"]
+
+
+def test_a_plain_import_from_a_supplier_with_no_pe_withholds_nothing():
+    """The expensive mistake in the other direction: 20% on an ordinary import
+    takes a fifth of the invoice for tax nobody owes. s.195 reaches only a sum
+    chargeable under the Act — GE India Technology Centre v. CIT."""
+    out = _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
+                    "country_of_residence": "CH",
+                    "section_195_nature_of_income": "business_profits_no_pe",
+                    "no_pe_declaration_on_file": True})
+    assert out["tds_paise"] == 0
+    assert out["tds_section"] == "195", "nil is an answer, not an absence of one"
+    assert out["net_payable_paise"] == out["total_paise"]
+
+
+def test_a_non_resident_with_no_nature_recorded_is_refused():
+    """The refusal moved from the section to the payment: there is no rate in
+    force without a nature of income."""
     from fastapi import HTTPException
     import pytest as _pytest
     with _pytest.raises(HTTPException) as e:
         _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
                   "country_of_residence": "CH"})
     assert e.value.status_code == 422
-    assert "195" in e.value.detail
-    assert "non-resident" in e.value.detail.lower()
+    assert "NATURE" in e.value.detail
 
 
-def test_section_195_on_the_vendor_is_refused_with_its_own_message():
-    """Before this it raised 'Unknown TDS section 195' — true, and useless."""
+def test_a_trc_without_a_recorded_treaty_rate_stops_the_bill():
+    """s.90(2) gives the assessee the more beneficial of Act and treaty. Using
+    the Act rate here would over-deduct on a payment somebody has already
+    established a treaty for."""
     from fastapi import HTTPException
     import pytest as _pytest
     with _pytest.raises(HTTPException) as e:
         _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
-                  "country_of_residence": "CH"}, section="195")
-    assert "Unknown TDS section" not in e.value.detail
-    assert "15CA" in e.value.detail
+                  "country_of_residence": "CH", "trc_on_file": True,
+                  "section_195_nature_of_income": "royalty"})
+    assert "treaty rate" in e.value.detail
+
+
+def test_a_recorded_treaty_rate_is_applied_when_it_is_lower():
+    out = _compute({"id": "v1", "pan": "AAGCP7788R",
+                    "residential_status": "non_resident",
+                    "country_of_residence": "CH", "trc_on_file": True,
+                    "form_10f_on_file": True, "treaty_rate_bps": 1000,
+                    "section_195_nature_of_income": "royalty"})
+    assert out["tds_rate_bps"] == 1000
+    assert out["tds_paise"] == 52_000_00      # 10% + 4% cess on Rs 5,00,000
+
+
+def test_no_pan_floors_a_treaty_rate_back_up_to_twenty_percent():
+    """s.206AA overrides the agreement, and this is the ordering that makes it
+    do so. Rule 37BC can lift the floor, but only on the payee's own
+    particulars — a TRC alone is not enough, and this vendor has no country TIN
+    or contact details on file."""
+    out = _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
+                    "country_of_residence": "CH", "trc_on_file": True,
+                    "form_10f_on_file": True, "treaty_rate_bps": 1000,
+                    "section_195_nature_of_income": "royalty"})
+    assert out["tds_rate_bps"] == 2000, "the treaty rate lost to the s.206AA floor"
+
+
+def test_rule_37bc_particulars_restore_the_treaty_rate_without_a_pan():
+    """s.206AA(7) with Rule 37BC: name, email, phone, address, TRC and the
+    country TIN. All six, and royalty is one of the natures it covers."""
+    out = _compute({"id": "v1", "pan": None, "residential_status": "non_resident",
+                    "country_of_residence": "CH", "trc_on_file": True,
+                    "form_10f_on_file": True, "treaty_rate_bps": 1000,
+                    "tax_identification_number": "CHE-113.456.789",
+                    "email": "ap@helvetica.ch", "phone": "+41 44 000 0000",
+                    "address": "Bahnhofstrasse 1, Zurich",
+                    "section_195_nature_of_income": "royalty"})
+    assert out["tds_rate_bps"] == 1000
 
 
 def test_a_non_resident_with_tds_switched_off_books_normally():

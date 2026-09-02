@@ -1059,6 +1059,14 @@ function Vendors({ clientId }: { clientId: string }) {
   const [residentialStatus, setResidentialStatus] = useState<"" | "resident" | "non_resident">("");
   const [countryOfResidence, setCountryOfResidence] = useState("");
   const [taxIdentificationNumber, setTaxIdentificationNumber] = useState("");
+  // s.195 withholding. The backend owns every rule here (CLAUDE.md: zero
+  // business logic in the frontend) — these are four facts a human records and
+  // one rate a human reads off a treaty.
+  const [natureOfIncome, setNatureOfIncome] = useState("");
+  const [trcOnFile, setTrcOnFile] = useState(false);
+  const [form10fOnFile, setForm10fOnFile] = useState(false);
+  const [noPeDeclaration, setNoPeDeclaration] = useState(false);
+  const [treatyRate, setTreatyRate] = useState("");
 
   // Deactivate/Delete parity with the Customers tab (sales/page.tsx) — see
   // its own comments for the full rationale (deactivate is unconditionally
@@ -1145,6 +1153,14 @@ function Vendors({ clientId }: { clientId: string }) {
       setMsg({ type: "err", text: "TDS rate must be a percentage, e.g. 10 or 7.5." });
       return;
     }
+    if (residentialStatus === "non_resident" && treatyRate.trim() && bpsFromPercentInput(treatyRate) === null) {
+      setMsg({ type: "err", text: "Treaty rate must be a percentage, e.g. 10 or 7.5." });
+      return;
+    }
+    if (residentialStatus === "non_resident" && natureOfIncome === "business_profits_no_pe" && !noPeDeclaration) {
+      setMsg({ type: "err", text: "Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income." });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
@@ -1172,6 +1188,18 @@ function Vendors({ clientId }: { clientId: string }) {
             residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
           tax_identification_number:
             residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
+          section_195_nature_of_income:
+            residentialStatus === "non_resident" ? natureOfIncome || undefined : undefined,
+          trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
+          form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
+          no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
+          // Read through the exact percentage parser, like every other rate on
+          // this form — "10" is 1000 bps and a blank field is genuinely unset,
+          // which is what makes the backend refuse rather than assume zero.
+          treaty_rate_bps:
+            residentialStatus === "non_resident" && treatyRate.trim()
+              ? bpsFromPercentInput(treatyRate) ?? undefined
+              : undefined,
           tds_rate_bps: rateBps,
           opening_balance_paise: opening,
         },
@@ -1183,6 +1211,8 @@ function Vendors({ clientId }: { clientId: string }) {
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
       setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
+      setNatureOfIncome(""); setTrcOnFile(false); setForm10fOnFile(false);
+      setNoPeDeclaration(false); setTreatyRate("");
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -1656,11 +1686,79 @@ function Vendors({ clientId }: { clientId: string }) {
               </p>
             )}
             {residentialStatus === "non_resident" && (
-              <p className="text-xs text-amber-700">
-                Payments to a non-resident are deducted under IT Act §195 at the rates in force,
-                which this software does not compute — determine the rate and complete
-                Form 15CA/15CB under Rule 37BB before remitting.
-              </p>
+              <div className="space-y-2 pt-1 border-t border-[#E2E8F0]">
+                <p className="text-xs font-medium text-[#475569]">
+                  §195 withholding — the rate in force keys on the nature of the income
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="nature-of-income" className="block text-xs font-medium text-[#475569] mb-1">Nature of income</label>
+                    <select
+                      id="nature-of-income"
+                      value={natureOfIncome}
+                      onChange={(e) => setNatureOfIncome(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Not established</option>
+                      <option value="business_profits_no_pe">Business profits — no permanent establishment (nil)</option>
+                      <option value="fees_for_technical_services">Fees for technical services</option>
+                      <option value="royalty">Royalty</option>
+                      <option value="interest">Interest</option>
+                      <option value="interest_194lc">Interest — §194LC concessional</option>
+                      <option value="dividend">Dividend</option>
+                      <option value="ltcg_112">Long-term capital gains — §112</option>
+                      <option value="ltcg_112a">Long-term capital gains — §112A</option>
+                      <option value="stcg_111a">Short-term capital gains — §111A</option>
+                      <option value="other_sums">Other sums chargeable</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="treaty-rate" className="block text-xs font-medium text-[#475569] mb-1">DTAA rate (%) — from the treaty</label>
+                    <input
+                      id="treaty-rate"
+                      value={treatyRate}
+                      onChange={(e) => setTreatyRate(e.target.value)}
+                      placeholder="e.g. 10"
+                      disabled={!trcOnFile}
+                      className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                    <input type="checkbox" checked={trcOnFile} onChange={(e) => setTrcOnFile(e.target.checked)} className="rounded" />
+                    Tax Residency Certificate on file (§90(4))
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                    <input type="checkbox" checked={form10fOnFile} onChange={(e) => setForm10fOnFile(e.target.checked)} className="rounded" />
+                    Form 10F on file (Rule 21AB)
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                    <input type="checkbox" checked={noPeDeclaration} onChange={(e) => setNoPeDeclaration(e.target.checked)} className="rounded" />
+                    No-PE declaration on file
+                  </label>
+                </div>
+                {natureOfIncome === "business_profits_no_pe" && (
+                  <p className="text-xs text-[#64748B]">
+                    Nothing is withheld: §195 reaches only a sum chargeable under the Act, and
+                    business profits of a payee with no permanent establishment in India are not
+                    (GE India Technology Centre v. CIT). The no-PE declaration is the evidence.
+                  </p>
+                )}
+                {trcOnFile && !treatyRate.trim() && (
+                  <p className="text-xs text-amber-700">
+                    §90(2) gives this vendor whichever of the Act and the DTAA is more beneficial,
+                    but the software holds no treaty rates. Read the relevant article and enter the
+                    rate, or bills for this vendor will be refused rather than deducted at the
+                    higher Act rate.
+                  </p>
+                )}
+                <p className="text-xs text-amber-700">
+                  Complete Form 15CA/15CB under Rule 37BB before remitting. Rates are the Act side
+                  only and have not been confirmed line by line against the Finance Act — check
+                  them for the year you are withholding in.
+                </p>
+              </div>
             )}
           </div>
 
