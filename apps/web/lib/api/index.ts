@@ -542,7 +542,39 @@ export interface BankRuleInput {
  *  domain/banking/charge_gst.ALLOWED_RATES_BPS and migration 254's CHECK. */
 export const BANK_CHARGE_GST_RATES_BPS = [0, 500, 1200, 1800, 2800] as const;
 
+export interface TreatyRateRow {
+  id: string;
+  country_code: string;
+  nature: string;
+  rate_bps: number | null;
+  /** The agreement has no article for this nature — several, including the UAE
+   *  and Singapore, have no fees-for-technical-services article. That makes the
+   *  income Article 7 business profits, not taxable in India without a PE, so
+   *  it is an ANSWER rather than a missing rate. */
+  no_article: boolean;
+  article_ref: string | null;
+  notes: string | null;
+  verified_on: string | null;
+}
+
 export const api = {
+  /** The firm's own reading of the DTAA rates it withholds under, per country
+   *  and nature of income. Ships empty and is never seeded: India has
+   *  agreements with over ninety countries, MFN clauses need their own §90(1)
+   *  notification, and a wrong rate too low disallows the whole expenditure
+   *  under IT Act §40(a)(i). */
+  treatyRates: {
+    list: () => request<ApiResp<{ rates: TreatyRateRow[]; natures: string[] }>>(
+      "/api/tds/treaty-rates"),
+    upsert: (body: {
+      country_code: string; nature: string; rate_bps?: number | null;
+      no_article?: boolean; article_ref?: string | null; notes?: string | null;
+    }) => request<ApiResp<TreatyRateRow>>("/api/tds/treaty-rates", {
+      method: "PUT", body: JSON.stringify(body),
+    }),
+    remove: (id: string) => request<ApiResp<{ deleted: string }>>(
+      `/api/tds/treaty-rates/${id}`, { method: "DELETE" }),
+  },
   clients: {
     list: () => request("/api/clients"),
     getWorkspace: (id: string) => request(`/api/clients/${id}`),

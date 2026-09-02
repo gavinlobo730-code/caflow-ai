@@ -316,6 +316,14 @@ class PurchaseBillIn(BaseModel):
     # response. Retained as ITC/audit evidence — CGST Rule 36(1) conditions
     # ITC on possession of the vendor's tax invoice.
     document_url: Optional[str] = None
+    # Rule 37BB with IT Act §195(6) — the remittance paperwork for a payment to
+    # a non-resident. RECORDED here, never filed from here: 15CA is a portal
+    # submission and CLAUDE.md forbids submitting to one from this software.
+    # 15CA is per REMITTANCE, which is why it sits on the bill and not the
+    # vendor — a vendor paid four times in a year needs four of them.
+    form_15ca_ack_no: Optional[str] = None
+    form_15ca_filed_on: Optional[str] = None
+    form_15cb_udin: Optional[str] = None
 
     @field_validator("lines")
     @classmethod

@@ -294,6 +294,11 @@ class VendorIn(BaseModel):
     trc_on_file: bool = False
     form_10f_on_file: bool = False
     no_pe_declaration_on_file: bool = False
+    # Who obtained the declaration and when — s.201(1)/(1A) put the consequence
+    # of a wrong nil on the DEDUCTOR, so an undated one is a claim with no
+    # evidence behind it and the register reports it (migration 311).
+    no_pe_declaration_on: Optional[str] = None
+    no_pe_declaration_ref: Optional[str] = None
     treaty_rate_bps: Optional[int] = None
 
     @field_validator("name")
@@ -366,6 +371,8 @@ class VendorUpdateIn(BaseModel):
     trc_on_file: Optional[bool] = None
     form_10f_on_file: Optional[bool] = None
     no_pe_declaration_on_file: Optional[bool] = None
+    no_pe_declaration_on: Optional[str] = None
+    no_pe_declaration_ref: Optional[str] = None
     treaty_rate_bps: Optional[int] = None
     is_active: Optional[bool] = None
 

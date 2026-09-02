@@ -57,9 +57,12 @@ from datetime import date
 from typing import Optional
 
 from domain.tds.residency import (
-    GAP_27Q_IDENTIFIERS_MISSING, GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
+    GAP_195_RATES_UNVERIFIED, GAP_27Q_IDENTIFIERS_MISSING,
+    GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
+    GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
     is_classified, missing_27q_identifiers, return_type_for,
 )
+from domain.tds.section_195_rates import rates_are_verified
 
 _logger = logging.getLogger("caflow.tds_register")
 
@@ -69,15 +72,20 @@ _logger = logging.getLogger("caflow.tds_register")
 IN_THE_BOOKS = frozenset({"received", "partially_paid", "paid", "overdue"})
 
 
+def fy_label(on: date) -> str:
+    """'2025-26' — the Indian financial year a date falls in, 1 Apr to 31 Mar."""
+    start = on.year if on.month >= 4 else on.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
+
+
 def fy_quarter(on: date) -> str:
     """'Q3 2025-26' — the Indian financial year and the quarter within it.
 
     Q1 Apr-Jun, Q2 Jul-Sep, Q3 Oct-Dec, Q4 Jan-Mar, because the FY runs 1 April
     to 31 March. The format matches the column's own comment in migration 014.
     """
-    fy_start = on.year if on.month >= 4 else on.year - 1
     quarter = ((on.month - 4) % 12) // 3 + 1
-    return f"Q{quarter} {fy_start}-{str(fy_start + 1)[2:]}"
+    return f"Q{quarter} {fy_label(on)}"
 
 
 def _as_date(v) -> Optional[date]:
@@ -130,6 +138,25 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             missing = missing_27q_identifiers(v)
             if missing:
                 gaps.append(GAP_27Q_IDENTIFIERS_MISSING)
+        # A s.195 withholding computed on a year nobody has confirmed against
+        # the Finance Act. Asked of the year the BILL falls in, not today's:
+        # a bill entered late for a prior year was withheld at that year's law.
+        is_195 = (bill.get("tds_section") or "").strip() == "195"
+        if is_195 and not rates_are_verified(fy_label(when)):
+            gaps.append(GAP_195_RATES_UNVERIFIED)
+        # A nil resting on a declaration nobody dated or attributed. Reported
+        # only where the nil was actually RELIED ON — a vendor that holds a
+        # declaration and is withheld at a rate anyway has not used it.
+        if (is_195 and v.get("no_pe_declaration_on_file")
+                and not (v.get("no_pe_declaration_on")
+                         and v.get("no_pe_declaration_by"))):
+            gaps.append(GAP_NO_PE_DECLARATION_UNDATED)
+        # Rule 37BB with s.195(6) wants Form 15CA before the remittance. This
+        # cannot block the bill — the form is filed on a portal, and CLAUDE.md
+        # forbids submitting to one from here — but the gap between money
+        # leaving and the form existing should not be invisible.
+        if is_195 and not (bill.get("form_15ca_ack_no") or "").strip():
+            gaps.append(GAP_FORM_15CA_NOT_RECORDED)
         # Payload written INLINE with literal keys — tests/test_backend_columns_
         # exist_pg.py can only read a query whose table name and payload keys
         # are both string constants.

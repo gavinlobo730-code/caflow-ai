@@ -1066,6 +1066,11 @@ function Vendors({ clientId }: { clientId: string }) {
   const [trcOnFile, setTrcOnFile] = useState(false);
   const [form10fOnFile, setForm10fOnFile] = useState(false);
   const [noPeDeclaration, setNoPeDeclaration] = useState(false);
+  // Who obtained the declaration and when. §201(1)/(1A) put the consequence of
+  // a wrong nil on the deductor, so a ticked box with no date behind it is a
+  // claim with no evidence — the register reports it as a gap.
+  const [noPeDeclarationOn, setNoPeDeclarationOn] = useState("");
+  const [noPeDeclarationRef, setNoPeDeclarationRef] = useState("");
   const [treatyRate, setTreatyRate] = useState("");
 
   // Deactivate/Delete parity with the Customers tab (sales/page.tsx) — see
@@ -1193,6 +1198,10 @@ function Vendors({ clientId }: { clientId: string }) {
           trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
           form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
           no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
+          no_pe_declaration_on:
+            residentialStatus === "non_resident" && noPeDeclaration ? noPeDeclarationOn || undefined : undefined,
+          no_pe_declaration_ref:
+            residentialStatus === "non_resident" && noPeDeclaration ? noPeDeclarationRef.trim() || undefined : undefined,
           // Read through the exact percentage parser, like every other rate on
           // this form — "10" is 1000 bps and a blank field is genuinely unset,
           // which is what makes the backend refuse rather than assume zero.
@@ -1213,6 +1222,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
       setNatureOfIncome(""); setTrcOnFile(false); setForm10fOnFile(false);
       setNoPeDeclaration(false); setTreatyRate("");
+      setNoPeDeclarationOn(""); setNoPeDeclarationRef("");
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -1738,6 +1748,30 @@ function Vendors({ clientId }: { clientId: string }) {
                     No-PE declaration on file
                   </label>
                 </div>
+                {noPeDeclaration && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="no-pe-on" className="block text-xs font-medium text-[#475569] mb-1">Declaration dated</label>
+                      <input
+                        id="no-pe-on"
+                        type="date"
+                        value={noPeDeclarationOn}
+                        onChange={(e) => setNoPeDeclarationOn(e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="no-pe-ref" className="block text-xs font-medium text-[#475569] mb-1">Where it is filed</label>
+                      <input
+                        id="no-pe-ref"
+                        value={noPeDeclarationRef}
+                        onChange={(e) => setNoPeDeclarationRef(e.target.value)}
+                        placeholder="Letter no. / document reference"
+                        className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
                 {natureOfIncome === "business_profits_no_pe" && (
                   <p className="text-xs text-[#64748B]">
                     Nothing is withheld: §195 reaches only a sum chargeable under the Act, and

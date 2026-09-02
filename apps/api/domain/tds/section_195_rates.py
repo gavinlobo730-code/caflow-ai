@@ -218,6 +218,34 @@ LATEST_VERIFIED_FY = "2025-26"
 ALL_NATURES = tuple(_FY_2025_26.natures)
 
 
+def rates_are_verified(fy: str | None = None) -> bool:
+    """Whether somebody has confirmed this year's figures against the Finance
+    Act. Currently False for every year — see the module docstring.
+
+    Exists so callers do not each reach into `.verified` and so a caller CANNOT
+    accidentally ask about the year it fell back to: rates_for() substitutes
+    LATEST_VERIFIED_FY for a missing year, and a fallback is by definition not
+    a confirmation of the year that was asked about.
+    """
+    key = fy or current_fy()
+    entry = RATES_BY_FY.get(key)
+    return bool(entry and entry.verified)
+
+
+def coverage() -> list[dict]:
+    """Which years the registry holds and whether each was confirmed.
+
+    For the annual maintenance sweep and for the API that shows a firm the same
+    thing without reading source. Sorted, so a missing year is visible as a gap
+    in the sequence rather than by counting.
+    """
+    return [
+        {"fy": fy, "verified": RATES_BY_FY[fy].verified,
+         "natures": len(RATES_BY_FY[fy].natures)}
+        for fy in sorted(RATES_BY_FY)
+    ]
+
+
 def rates_for(fy: str | None = None) -> FY195Rates:
     """The s.195 rates for one FY.
 
