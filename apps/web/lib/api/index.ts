@@ -834,6 +834,32 @@ export const api = {
       if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
       return res.json();
     },
+    /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */
+    postStatementForm: async (path: string, form: FormData) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BASE_URL}${path}`, {
+        method: "POST",
+        // No Content-Type — the browser sets the multipart boundary.
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      // A 422 here is a real answer (an unmappable file, a contradictory
+      // mapping) and its message is written for the CA, so surface the body
+      // rather than the status line.
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json();
+    },
+    /** Read a statement's header row + first rows so the CA can map the columns. */
+    inspectStatement: (form: FormData) =>
+      api.banking.postStatementForm("/api/banking/statements/inspect", form),
+    /** Parse with a mapping and show the result WITHOUT importing. */
+    previewStatement: (form: FormData) =>
+      api.banking.postStatementForm("/api/banking/statements/preview", form),
+    listColumnMappings: (params?: Record<string, string>) =>
+      request(`/api/banking/statements/column-mappings${params ? "?" + new URLSearchParams(params) : ""}`),
+    deleteColumnMapping: (id: string) =>
+      request(`/api/banking/statements/column-mappings/${id}`, { method: "DELETE" }),
     listTransactions: (params?: Record<string, string>) => request(`/api/banking/transactions${params ? "?" + new URLSearchParams(params) : ""}`),
     setTransactionAccount: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}`, { method: "PATCH", body: JSON.stringify(data) }),
     ignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/ignore`, { method: "POST" }),

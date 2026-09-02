@@ -288,8 +288,8 @@ found while doing the work:
 | # | Item | Size | Notes |
 |---|---|---|---|
 | 3.1 | **MT940 / SWIFT** parser | **M** | What most Indian corporate net-banking actually exports. Bigger real-world win than OFX. |
-| 3.2 | **Interactive column mapper** when no adapter matches — user maps columns once, mapping is saved per bank account | **M** | Removes the "unsupported bank" dead end and makes `_ADAPTERS` a fast path rather than a hard requirement. |
-| 3.3 | **More bank adapters** — Kotak, Yes, IndusInd, IDFC First, Bank of Baroda, PNB, Canara, Union | **S each** | Purely additive; the architecture already isolates this to one dict. |
+| ✅ 3.2 | ~~**Interactive column mapper** when no adapter matches~~ **Shipped 2026-09-02** | **M** | Migration 314. `_ADAPTERS` is now a fast path, not a hard requirement: an unrecognised layout opens a mapper, the CA says where the columns are once, and the mapping is saved per **(bank account, header fingerprint)**. The fingerprint is what makes reuse safe — when a bank changes its export the key changes, the stale mapping stops applying, and the CA is asked again rather than the new layout being read at the old positions. **An explicit mapping deliberately skips `_validate_adapter`'s column-label check** (unrecognised labels are the whole point), so something else has to catch a mapping that parses cleanly and is wrong: `balance_agreement()` checks the parse against the bank's OWN running balance, and a swapped Debit/Credit — which parses perfectly and inverts the client's entire cash position — fails it on the first row. Preview before import; the mapping is stored only after the import succeeded. |
+| ⛔ 3.3 | **More bank adapters** — Kotak, Yes, IndusInd, IDFC First, BoB, PNB, Canara, Union | **S each** | **Deliberately not done, and 3.2 is the reason.** An adapter is a guess about a layout nobody here has seen; writing eight from memory is how a Canara adapter ships reading the balance column as a credit — the exact silent corruption `_validate_adapter` exists to prevent, arrived at on purpose instead of by accident. The mapper needs no such guess, and it generalises to the banks nobody thought of, including every co-operative bank. Add a real adapter only from a real file. |
 | 3.4 | **PDF statement import** (OCR) | **L** | Gemini vision path already exists for invoices. |
 | 3.5 | **OFX / QFX** | **S** | Low priority in India; include for completeness. |
 
@@ -361,6 +361,21 @@ several are cheap because the data is already in the narration.
 8. ~~**Tier 1.5 — transfer auto-detection.**~~ ✅ Done 2026-08-03.
 9. ~~**Tier 1.7 + 1.8 — batch actions and attachments.**~~ ✅ Done 2026-08-03.
 10. ~~**Tier 1.6 — "find other matches" candidate picker.**~~ ✅ Done 2026-08-07.
+11. ~~**Tier 3.2 — the interactive column mapper.**~~ ✅ Done 2026-09-02. Chosen over
+    3.3 rather than alongside it — see the note on 3.3.
+
+    **Found while building it, and NOT fixed here** (`routers/year_end_reviews.py`):
+    the year-end review workflow writes `submitted_by`, `approved_by`,
+    `revision_requested_by` and `final_approved_by` from
+    `current_user["auth_user_id"]`, and all four columns FK `public.users(id)` —
+    the INTERNAL user id, as CLAUDE.md says. Verified on a real database that
+    `users.id` never equals `auth_user_id`, and the update is unguarded, so every
+    submit / approve / request-revision / final-approve raises SQLSTATE 23503.
+    `year_end_adjustments.py:185,354,417` has the same shape and needs the same
+    check. It is a separate bug in a separate module, so it is recorded rather
+    than folded into a bank PR. **The same mistake was made in this work and
+    caught only by driving the feature against a live database** — mock mode has
+    no foreign keys, so nothing in the ~9,000-test suite could see it.
    **Tier 1 is complete.** Tiers 0, 1 and 2 are now all done; what remains is Tier 3
    (import breadth — MT940/SWIFT, an interactive column mapper, eight more bank
    adapters, PDF/OCR, OFX/QFX), Tier 4 (Account Aggregator, receipts inbox, rule
