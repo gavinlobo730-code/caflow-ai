@@ -237,6 +237,49 @@ def create_purchase_bill(
                             document_failure_detail(e, action="create the purchase bill"))
 
 
+def _duplicate_bill_id(db, client_id: str, vendor_id: str,
+                       bill_no: Optional[str]) -> Optional[str]:
+    """The id of a live bill already carrying this vendor's invoice number.
+
+    Matched the way migration 313's unique index matches — case- and
+    whitespace-insensitively, ignoring cancelled and soft-deleted bills, and
+    ignoring a blank number. The index is the real guard and closes the direct
+    PostgREST path too; this exists so the API can say something a CA can act
+    on instead of surfacing a constraint name.
+
+    The two must agree. If this is ever loosened without loosening the index,
+    the CA gets a raw 23505; if the index is loosened without this, duplicates
+    return. tests/test_no_duplicate_purchase_bill.py holds them together.
+    """
+    key = (bill_no or "").strip().lower()
+    if db is None or not key or not client_id or not vendor_id:
+        return None
+    try:
+        rows = (db.table("purchase_bills")
+                .select("id, bill_no, status")
+                .eq("client_id", client_id).eq("vendor_id", vendor_id)
+                .neq("status", "cancelled").is_("deleted_at", "null")
+                .execute().data) or []
+    except Exception:                                           # noqa: BLE001
+        # A failed lookup must not block a legitimate bill — the index still
+        # refuses a real duplicate, and this only chooses the wording.
+        return None
+    for r in rows:
+        if (r.get("bill_no") or "").strip().lower() == key:
+            return r.get("id")
+    return None
+
+
+def _duplicate_bill_message(bill_no: str, existing_id: str) -> str:
+    return (
+        f"Bill {bill_no} is already recorded against this vendor "
+        f"(bill {existing_id}). Booking a supplier invoice twice double-counts "
+        f"the expenditure, claims the input GST credit twice under CGST s.16, "
+        f"and — where TDS was deducted — files the deductee twice. Open the "
+        f"existing bill, or cancel it first if this one replaces it."
+    )
+
+
 def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
                                total_taxable: int, bill_date: str, firm_id: str,
                                db, exclude_bill_id: Optional[str]) -> tuple[int, int]:
@@ -787,6 +830,19 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         **_ccy_cols,
     }
 
+    # One supplier invoice, one bill. The unique index of migration 313 is the
+    # real guard — it closes the bulk path and the direct PostgREST writes too
+    # — but a CA meeting a raw 23505 learns nothing, so the wording happens
+    # here. Walking a client with foreign suppliers through a year booked the
+    # same invoice twice and got two posted journals and two Form 27Q rows.
+    _dup = _duplicate_bill_id(db, bill_payload.get("client_id"),
+                              bill_payload.get("vendor_id"),
+                              bill_payload.get("bill_no"))
+    if _dup:
+        raise HTTPException(
+            status_code=409,
+            detail=_duplicate_bill_message(bill_payload.get("bill_no") or "", _dup))
+
     bill_resp = db.table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]
     bill      = bill_resp.data[0] if bill_resp.data else bill_payload
     bill_id   = bill.get("id", str(uuid.uuid4()))
@@ -900,8 +956,14 @@ def bulk_create_purchase_bills(
         CHUNK = 200
         for i in range(0, len(client_ids_for_dedup), CHUNK):
             chunk = client_ids_for_dedup[i:i + CHUNK]
+            # neq("status","cancelled") added to agree with migration 313's
+            # index: cancelling is a credit undone, so a CA who cancels INV-001
+            # because the amount was wrong and re-uploads it corrected is doing
+            # the right thing. Without this the corrected row was reported as a
+            # duplicate and silently SKIPPED — the guard refusing the fix.
             resp = (db.table("purchase_bills").select("client_id, vendor_id, bill_no")
-                    .eq("firm_id", firm_id).in_("client_id", chunk).is_("deleted_at", None).execute())
+                    .eq("firm_id", firm_id).in_("client_id", chunk)
+                    .neq("status", "cancelled").is_("deleted_at", None).execute())
             for r in (resp.data or []):
                 existing_keys.add((r.get("client_id"), r.get("vendor_id"), (r.get("bill_no") or "").strip().lower()))
 
@@ -1800,6 +1862,17 @@ def create_bill_from_document(
         if _USE_MOCK:
             MOCK_PURCHASE_BILLS.append(bill_draft)
             return api_response(True, {**bill_draft, "requires_review": True})
+
+        # The extracted invoice is a supplier document like any other — an
+        # upload retried after a timeout is exactly how the same one arrives
+        # twice.
+        _dup = _duplicate_bill_id(db, bill_draft.get("client_id"),
+                                  bill_draft.get("vendor_id"),
+                                  bill_draft.get("bill_no"))
+        if _dup:
+            raise HTTPException(
+                status_code=409,
+                detail=_duplicate_bill_message(bill_draft.get("bill_no") or "", _dup))
 
         pb_resp = db.table("purchase_bills").insert(bill_draft).execute()  # type: ignore[possibly-undefined]
         bill    = pb_resp.data[0] if pb_resp.data else bill_draft
