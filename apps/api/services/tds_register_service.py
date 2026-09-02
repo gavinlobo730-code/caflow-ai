@@ -28,22 +28,38 @@ WHAT THE AMOUNT IS
     itself computed the deduction on, so the register and the book agree by
     construction rather than by coincidence.
 
-WHAT IS NOT MODELLED, SAID PLAINLY
-    return_type is always '26Q'. 26Q is the correct quarterly statement for
-    non-salary payments to RESIDENTS; a payment to a non-resident belongs in
-    27Q under Rule 31A(4)(b). Nothing in this schema records a vendor's
-    residency — there is no such column on `vendors` — so residency cannot be
-    derived, and guessing it would put a foreign remittance in the wrong return.
-    Adding it is a human step, like the MSMED classification: a residency flag
-    on the vendor, then a branch here. Until then every deduction is reported
-    as 26Q, which is right for the domestic vendors this platform is built for
-    and wrong for a non-resident nobody has told it about.
+WHICH RETURN THE ROW BELONGS IN
+    26Q for a resident payee, 27Q for a non-resident — Rule 31A(4). The vendor
+    carries the fact (migration 308) and domain/tds/residency.py carries the
+    rules; nothing is inferred here.
+
+    A vendor NOBODY HAS CLASSIFIED is written as 26Q and REPORTED. That default
+    is right for the domestic vendors this platform serves, and refusing every
+    bill until every vendor is classified would be a worse failure than the one
+    it prevents. What is not acceptable is doing it silently, so sync_for_bill
+    returns the gap and a CA can see which deductions were filed on an
+    assumption rather than a fact.
+
+    A vendor who IS a non-resident cannot reach this function with a resident
+    section on it at all: routers/purchase_bills.py refuses the bill's TDS
+    computation first, because s.194C and its neighbours charge only payments
+    "to a resident" and s.195 — which this codebase does not rate — is what
+    applies instead. So a 27Q row here comes from a bill booked before the
+    vendor was reclassified, or from a section that genuinely reaches a
+    non-resident. Either way the row states what was true when the tax was
+    deducted, which is why the country and TIN are COPIED onto it rather than
+    joined at filing time.
 """
 from __future__ import annotations
 
 import logging
 from datetime import date
 from typing import Optional
+
+from domain.tds.residency import (
+    GAP_27Q_IDENTIFIERS_MISSING, GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
+    is_classified, missing_27q_identifiers, return_type_for,
+)
 
 _logger = logging.getLogger("caflow.tds_register")
 
@@ -99,6 +115,21 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         # bps -> percent for a NUMERIC(5,2) column: 2000 bps is 20.00%.
         rate_pct = round(int(bill.get("tds_rate_bps") or 0) / 100, 2)
         v = vendor or {}
+        status = v.get("residential_status")
+        return_type = return_type_for(status)          # Rule 31A(4)
+        # Country and TIN are reported on 27Q and are meaningless on 26Q, which
+        # has no field for either — so they go on the row only when the row is
+        # a 27Q one. Writing them on a 26Q row would put a value in a column the
+        # return never reads, which reads later as "somebody meant something by
+        # this".
+        is_27q = return_type == FORM_27Q
+        gaps: list[str] = []
+        if not is_classified(status):
+            gaps.append(GAP_RESIDENCY_NOT_CLASSIFIED)
+        elif is_27q:
+            missing = missing_27q_identifiers(v)
+            if missing:
+                gaps.append(GAP_27Q_IDENTIFIERS_MISSING)
         # Payload written INLINE with literal keys — tests/test_backend_columns_
         # exist_pg.py can only read a query whose table name and payload keys
         # are both string constants.
@@ -115,10 +146,20 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "tds_rate_pct": rate_pct,
             "tds_paise": deducted,
             "quarter": fy_quarter(when),
-            "return_type": "26Q",
+            "return_type": return_type,
+            "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,
+            "deductee_tin": (v.get("tax_identification_number") or None) if is_27q else None,
         }, on_conflict="purchase_bill_id").execute()
-        return {"synced": True, "action": "recorded", "tds_paise": deducted,
-                "quarter": fy_quarter(when)}
+        out = {"synced": True, "action": "recorded", "tds_paise": deducted,
+               "quarter": fy_quarter(when), "return_type": return_type}
+        if gaps:
+            # Named, machine-readable, and beside the vendor it is about — the
+            # same shape payroll's statutory_gaps uses. A gap that only exists
+            # in a log is the failure this whole module was written to fix.
+            out["statutory_gaps"] = gaps
+            out["vendor_id"] = v.get("id")
+            out["vendor_name"] = v.get("name")
+        return out
     except Exception as e:                                      # noqa: BLE001
         _logger.error(
             "TDS register out of step with bill %s (firm=%s client=%s, %s paise "

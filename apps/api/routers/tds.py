@@ -6,7 +6,7 @@ All monetary amounts in integer paise.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac
@@ -394,15 +394,37 @@ def get_tds_deductions(
     client_id: str,
     financial_year: Optional[str] = None,
     quarter: Optional[str] = None,
+    return_type: Optional[str] = Query(
+        None, description="Filter to one quarterly statement — '26Q' (payments "
+                          "to residents) or '27Q' (payments to non-residents), "
+                          "which Rule 31A(4) keeps apart. Omit for both."),
     user: dict = Depends(rbac("tds", "read")),
 ):
-    """Fetch TDS deductions for a client, optionally filtered by FY/quarter."""
+    """Fetch TDS deductions for a client, optionally filtered by FY/quarter.
+
+    The register holds 26Q and 27Q rows together, because they come from the
+    same purchase bills and the same deduction event. They are FILED apart, so
+    a caller assembling either one has to say which — Rule 31A(4)(a) and (b).
+    """
+    # An omitted parameter reaches a DIRECT call as FastAPI's Query default
+    # object, not None — truthy, and not a valid return_type, so the validation
+    # below would 422 every caller that never asked for a filter. Normalised the
+    # same way routers/gst_workspace.py's return_type filter already is; its
+    # comment records the same trap.
+    if not isinstance(return_type, str):
+        return_type = None
     assert_client_access(user, client_id)
     firm_id = user["firm_id"]
+    if return_type is not None and return_type not in ("24Q", "26Q", "27Q", "27EQ"):
+        raise HTTPException(
+            status_code=422,
+            detail="return_type must be one of 24Q, 26Q, 27Q or 27EQ "
+                   "(migration 014's CHECK on tds_deductions.return_type).")
     data = tds_repo.get_deductions(
         client_id=client_id,
         firm_id=firm_id,
         financial_year=financial_year,
         quarter=quarter,
+        return_type=return_type,
     )
     return {"success": True, "data": data, "error": None}

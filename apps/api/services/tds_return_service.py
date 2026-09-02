@@ -22,6 +22,14 @@ pattern): returns are NEVER computed from frontend payloads. The flow is:
                 run's journal (or wrongly catch an unrelated one dated the
                 same day).
 
+26Q IS RESIDENTS ONLY. Rule 31A(4)(a) gives Form 26Q the non-salary payments
+to residents and (b) gives Form 27Q the payments to non-residents, so a bill
+whose vendor is recorded as a non-resident (migration 308) is excluded from
+this return and REPORTED in `excluded_non_resident` rather than dropped. There
+is no 27Q counterpart to build it into: s.195 is the charging section for a
+non-resident and its rate — nature of income x treaty x surcharge — is not
+modelled anywhere in this codebase. See domain/tds/residency.py.
+
 Known simplification: purchase debit/credit notes never adjust tds_paise in
 this codebase (confirmed — routers/debit_notes.py and
 routers/purchase_credit_notes.py never touch it), so a purchase return after
@@ -35,6 +43,7 @@ from __future__ import annotations
 from domain.reporting.model import apportion
 from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord
 from domain.tds.section_rates import quarter_dates
+from domain.tds.residency import is_non_resident
 
 _computer = TDSComputer()
 
@@ -128,7 +137,9 @@ def _posted_vendor_tds_bills(db, firm_id: str, client_id: str, start: str, end: 
 def _vendors_by_id(db, firm_id: str, vendor_ids: set[str]) -> dict[str, dict]:
     if not vendor_ids:
         return {}
-    rows = (db.table("vendors").select("id, name, pan")
+    # residential_status decides whether a deduction belongs in 26Q at all —
+    # Rule 31A(4), migration 308.
+    rows = (db.table("vendors").select("id, name, pan, residential_status")
             .eq("firm_id", firm_id).in_("id", list(vendor_ids)).execute().data) or []
     return {v["id"]: v for v in rows}
 
@@ -149,6 +160,29 @@ def tds_26q_from_books(
 
     bills = _posted_vendor_tds_bills(db, firm_id, client_id, start, end)
     vendors = _vendors_by_id(db, firm_id, {b["vendor_id"] for b in bills if b.get("vendor_id")})
+
+    # A NON-RESIDENT PAYEE IS NOT A 26Q DEDUCTEE. Rule 31A(4)(a) gives 26Q the
+    # non-salary payments to residents; (b) gives 27Q the payments to
+    # non-residents. Before migration 308 nothing recorded the difference, so
+    # every deduction swept into 26Q — including a foreign remittance, which is
+    # a wrong return rather than a missing one.
+    #
+    # Excluded BEFORE the apportionment and the journal-id list, not filtered
+    # out of the deductees afterwards, so the challan apportionment, the books
+    # total and the GL movement are all computed over the same set of bills and
+    # the reconciliation still means what it says.
+    #
+    # Reported, never silent: a total that quietly drops between one quarter
+    # and the next is exactly the kind of thing nobody notices until a notice
+    # arrives.
+    excluded_non_resident = [
+        b for b in bills
+        if is_non_resident((vendors.get(b.get("vendor_id")) or {}).get("residential_status"))
+    ]
+    if excluded_non_resident:
+        excluded_ids = {b["id"] for b in excluded_non_resident}
+        bills = [b for b in bills if b["id"] not in excluded_ids]
+
     # Non-salary challans only — a firm's TDS Payable challan for section 192
     # (salary) belongs to 24Q, not 26Q; excluded by section, defensively, even
     # though no current UI path creates a 192 challan via this table's normal
@@ -228,6 +262,22 @@ def tds_26q_from_books(
             for d in payload.deductees
         ],
         "challans": payload.challans,
+        # What was deliberately left out of this return, and why. 27Q is where
+        # these belong; this codebase does not compute the s.195 rate they
+        # would need, so they are named here rather than silently dropped.
+        "excluded_non_resident": {
+            "bill_count": len(excluded_non_resident),
+            "tds_paise": sum(int(b.get("tds_paise") or 0) for b in excluded_non_resident),
+            "reason": "Payments to a non-resident are reported on Form 27Q "
+                      "under Rule 31A(4)(b), not on 26Q.",
+            "bills": [
+                {"id": b.get("id"), "bill_no": b.get("bill_no"),
+                 "vendor_name": (vendors.get(b.get("vendor_id")) or {}).get("name"),
+                 "section": b.get("tds_section"),
+                 "tds_paise": int(b.get("tds_paise") or 0)}
+                for b in excluded_non_resident
+            ],
+        },
         "validation_errors": payload.validation_errors,
         "warnings": payload.warnings,
         "reconciliation": {
