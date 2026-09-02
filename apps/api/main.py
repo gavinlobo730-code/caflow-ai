@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
-from core.exceptions import PermissionDeniedError
+from core.exceptions import PermissionDeniedError, unhandled_failure
 
 load_dotenv()
 
@@ -110,6 +110,44 @@ from routers import payments
 
 app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
+
+def _failure_response(request: Request, exc: Exception) -> JSONResponse:
+    """The body both catch-alls return.
+
+    WHY THIS IS NOT ALWAYS "Internal server error"
+        core.exceptions.document_failure_detail turns a database refusal into a
+        sentence a CA can act on, and FIVE routers call it. Everywhere else the
+        refusal fell through to here and became 500 "Internal server error",
+        with the sentence naming what was wrong written to a log the CA cannot
+        read. Walking a client with foreign suppliers through a year hit that
+        on an engagement: a CHECK constraint refused the row, and the CA was
+        told the server had a problem.
+
+        Nothing about a refused CHECK is internal, and 500 says "this might
+        work next time" about a request that never can.
+
+    unhandled_failure speaks only where the exception carries a SQLSTATE it
+    recognises and returns None otherwise — so a KeyError, a timeout or a bug
+    still gets "Internal server error", which for those is the honest answer.
+    The exception is logged either way: the CA gets a sentence, support still
+    gets the traceback.
+    """
+    _logger.exception("Unhandled exception for %s %s", request.method, request.url)
+    spoken = None
+    try:
+        spoken = unhandled_failure(exc)
+    except Exception:                                        # noqa: BLE001
+        # This runs while reporting a failure and must never become a second
+        # one. Losing the better wording is survivable; losing the response
+        # is not.
+        _logger.exception("unhandled_failure raised while classifying")
+    status, message = spoken if spoken else (500, "Internal server error")
+    return JSONResponse(
+        status_code=status,
+        content={"success": False, "data": None, "error": message},
+    )
+
+
 # Middleware ordering (Starlette applies the LAST-added as the OUTERMOST):
 #   _carry_user_token  ->  CORSMiddleware  ->  _errors_with_cors  ->  routes
 # _errors_with_cors is INNERMOST, so any unhandled exception it converts to a
@@ -122,12 +160,8 @@ app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 async def _errors_with_cors(request: Request, call_next):
     try:
         return await call_next(request)
-    except Exception:
-        _logger.exception("Unhandled exception for %s %s", request.method, request.url)
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "data": None, "error": "Internal server error"},
-        )
+    except Exception as exc:                                 # noqa: BLE001
+        return _failure_response(request, exc)
 
 
 app.add_middleware(
@@ -166,11 +200,7 @@ async def permission_denied_handler(request: Request, exc: PermissionDeniedError
 async def global_exception_handler(request: Request, exc: Exception):
     # Catch-all: ensures unhandled 500s are returned as JSONResponse so they
     # travel back through CORSMiddleware and carry the CORS header.
-    _logger.exception("Unhandled exception for %s %s", request.method, request.url)
-    return JSONResponse(
-        status_code=500,
-        content={"success": False, "data": None, "error": "Internal server error"},
-    )
+    return _failure_response(request, exc)
 
 # Amendment v1.1 Batch 2.1 — Guardrail G1 (by-id): client-scoped routers reject
 # non-Partner access to the internal practice client (client_id in path/query).
