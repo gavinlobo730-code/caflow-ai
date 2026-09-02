@@ -355,6 +355,23 @@ def _compute_bill_lines_and_totals(
                 status_code=422,
                 detail="Vendor is marked TDS-applicable but has no TDS section set.",
             )
+        # RESIDENCY DECIDES THE CHARGING SECTION, NOT JUST THE RETURN FORM.
+        # s.194C, s.194J and their neighbours charge, in their own words, sums
+        # paid "to a resident"; a payment to a non-resident is deducted under
+        # s.195 at the rates in force, which this software does not compute.
+        # Refusing here is deliberate and is the safe direction: deducting 2%
+        # under s.194C on a foreign remittance is a wrong deduction AND a wrong
+        # return, and under-deduction disallows the whole expenditure under
+        # s.40(a)(i). domain/tds/residency.py carries the citations.
+        #
+        # Only reached when the vendor is marked TDS-applicable — an
+        # instruction the software cannot carry out correctly. A non-resident
+        # vendor with TDS off books normally, so this never blocks the bill
+        # itself, only a deduction that would be computed wrongly.
+        from domain.tds.residency import section_refusal
+        refusal = section_refusal(tds_section, vendor.get("residential_status"))
+        if refusal:
+            raise HTTPException(status_code=422, detail=refusal)
         from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
         # FY-aggregate of this vendor's prior taxable under the same section, so the
         # §194C ₹1L aggregate threshold is honoured across multiple bills.
@@ -1248,8 +1265,16 @@ def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
         from services.tds_register_service import sync_for_bill
         vendor = {}
         if bill.get("vendor_id"):
-            got = (db.table("vendors").select("id, name, pan")
-                   .eq("id", bill["vendor_id"]).limit(1).execute().data) or []
+            # residential_status / country_of_residence / tax_identification
+            # _number decide whether this deduction belongs in 26Q or 27Q and
+            # what the 27Q deductee row must carry — migration 308.
+            # firm_id added here too: this read had only .eq("id", ...), which
+            # is the one query shape CLAUDE.md says never to write.
+            got = (db.table("vendors")
+                   .select("id, name, pan, residential_status, "
+                           "country_of_residence, tax_identification_number")
+                   .eq("id", bill["vendor_id"]).eq("firm_id", firm_id)
+                   .limit(1).execute().data) or []
             vendor = got[0] if got else {}
         sync_for_bill(db, firm_id, bill.get("client_id", ""), bill, vendor)
     except Exception as e:                                      # noqa: BLE001

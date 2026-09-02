@@ -1016,6 +1016,10 @@ interface VendorRow {
   tds_applicable: boolean;
   tds_section: string | null;
   tds_rate_bps: number;
+  // null is "nobody has established it" — see the form's own note. It is not
+  // a synonym for resident, even though deductions default to 26Q.
+  residential_status: "resident" | "non_resident" | null;
+  country_of_residence: string | null;
   opening_balance_paise: number;
   is_active: boolean;
 }
@@ -1049,6 +1053,12 @@ function Vendors({ clientId }: { clientId: string }) {
   const [tdsSection, setTdsSection] = useState("194C");
   const [tdsRate, setTdsRate] = useState("2");
   const [openingBalance, setOpeningBalance] = useState("");
+  // "" is a real third value — nobody has established this vendor's residence.
+  // It is not the same as "resident", and the backend reports it as a gap
+  // rather than pretending the question was answered.
+  const [residentialStatus, setResidentialStatus] = useState<"" | "resident" | "non_resident">("");
+  const [countryOfResidence, setCountryOfResidence] = useState("");
+  const [taxIdentificationNumber, setTaxIdentificationNumber] = useState("");
 
   // Deactivate/Delete parity with the Customers tab (sales/page.tsx) — see
   // its own comments for the full rationale (deactivate is unconditionally
@@ -1156,6 +1166,12 @@ function Vendors({ clientId }: { clientId: string }) {
           phone: phone.trim() || undefined,
           tds_applicable: tdsApplicable,
           tds_section: tdsApplicable ? tdsSection : undefined,
+          residential_status: residentialStatus || undefined,
+          // Only meaningful for a non-resident; 26Q has no field for either.
+          country_of_residence:
+            residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
+          tax_identification_number:
+            residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
           tds_rate_bps: rateBps,
           opening_balance_paise: opening,
         },
@@ -1166,6 +1182,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setShowForm(false);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
+      setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -1302,6 +1319,18 @@ function Vendors({ clientId }: { clientId: string }) {
       render: (v) => v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : <span className="text-[#94A3B8]">—</span> },
     { key: "tds_section", header: "Section", accessor: (v) => v.tds_section ?? "",
       render: (v) => <span className="text-[#64748B]">{v.tds_section ?? "—"}</span> },
+    // Shown because an unclassified vendor is filed on an ASSUMPTION — 26Q,
+    // because that is right for a domestic vendor — and a CA should be able to
+    // see which ones those are without opening each record.
+    { key: "residential_status", header: "Residence", accessor: (v) => v.residential_status ?? "",
+      render: (v) =>
+        v.residential_status === "non_resident"
+          ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+              Non-resident{v.country_of_residence ? ` · ${v.country_of_residence}` : ""}
+            </span>
+          : v.residential_status === "resident"
+            ? <span className="text-[#64748B]">Resident</span>
+            : <span className="text-[#94A3B8]" title="Not established — deductions are reported on 26Q as assumed resident">Not set</span> },
     { key: "tds_rate", header: "Rate", accessor: (v) => v.tds_rate_bps, sortable: true, align: "right",
       render: (v) => <span className="text-[#475569]">{v.tds_rate_bps > 0 ? `${(v.tds_rate_bps / 100).toFixed(1)}%` : "—"}</span> },
     { key: "opening_balance", header: "Opening Bal", accessor: (v) => v.opening_balance_paise, sortable: true, align: "right",
@@ -1320,6 +1349,12 @@ function Vendors({ clientId }: { clientId: string }) {
 
   const vendorFilters: FilterDef<VendorRow>[] = useMemo(() => [
     { key: "tds_applicable", label: "TDS", type: "boolean", accessor: (v) => v.tds_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
+    { key: "residential_status", label: "Residence", type: "select",
+      accessor: (v) => v.residential_status ?? "unset", options: [
+        { value: "resident", label: "Resident" },
+        { value: "non_resident", label: "Non-resident" },
+        { value: "unset", label: "Not established" },
+      ] },
     { key: "is_active", label: "Status", type: "select", accessor: (v) => (v.is_active ? "active" : "inactive"), options: [
       { value: "active", label: "Active" },
       { value: "inactive", label: "Inactive" },
@@ -1562,6 +1597,71 @@ function Vendors({ clientId }: { clientId: string }) {
               <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹ payable)</label>
               <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+          </div>
+
+          {/* Residential status — IT Act. Decides the charging section as well
+              as the quarterly statement: s.194C and its neighbours charge only
+              payments "to a resident", so a non-resident payee falls under
+              s.195 and is reported on Form 27Q (Rule 31A(4)(b)) rather than
+              26Q. The backend refuses to compute s.195, so setting this to
+              non-resident with TDS on will be rejected with an explanation —
+              that refusal is the point, not a gap in this form. */}
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="residential-status" className="block text-xs font-medium text-[#475569] mb-1">Residential status (IT Act)</label>
+                <select
+                  id="residential-status"
+                  value={residentialStatus}
+                  onChange={(e) => setResidentialStatus(e.target.value as "" | "resident" | "non_resident")}
+                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Not established</option>
+                  <option value="resident">Resident</option>
+                  <option value="non_resident">Non-resident</option>
+                </select>
+              </div>
+              {residentialStatus === "non_resident" && (
+                <div>
+                  <label htmlFor="country-of-residence" className="block text-xs font-medium text-[#475569] mb-1">Country (ISO code)</label>
+                  <input
+                    id="country-of-residence"
+                    value={countryOfResidence}
+                    onChange={(e) => setCountryOfResidence(e.target.value.toUpperCase())}
+                    maxLength={2}
+                    placeholder="AE"
+                    className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+            </div>
+            {residentialStatus === "non_resident" && (
+              <div>
+                <label htmlFor="foreign-tin" className="block text-xs font-medium text-[#475569] mb-1">
+                  Tax identification number {pan.trim() ? "(optional — PAN is on file)" : "(required on 27Q without a PAN)"}
+                </label>
+                <input
+                  id="foreign-tin"
+                  value={taxIdentificationNumber}
+                  onChange={(e) => setTaxIdentificationNumber(e.target.value)}
+                  placeholder="TIN in the country of residence"
+                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+            {residentialStatus === "" && (
+              <p className="text-xs text-[#64748B]">
+                Leave this unset if nobody has established it. Deductions are then reported on
+                26Q and flagged as assumed resident, rather than silently filed as certain.
+              </p>
+            )}
+            {residentialStatus === "non_resident" && (
+              <p className="text-xs text-amber-700">
+                Payments to a non-resident are deducted under IT Act §195 at the rates in force,
+                which this software does not compute — determine the rate and complete
+                Form 15CA/15CB under Rule 37BB before remitting.
+              </p>
+            )}
           </div>
 
           {/* TDS section */}

@@ -11,6 +11,60 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from core.validators import (validate_gstin, validate_pan, validate_tan,
                              validate_phone, validate_email, validate_pincode)
+from domain.tds.residency import NON_RESIDENT, RESIDENTIAL_STATUSES
+
+
+def _normalise_residency(model) -> list[str]:
+    """Validate and canonicalise a vendor's residency fields IN PLACE.
+
+    Shared by VendorIn and VendorUpdateIn, which validate the same three
+    columns and must not drift: a create path that accepts "NonResident" and an
+    update path that rejects it would let the value in by one door and make it
+    uneditable through the other. Returns the errors it found, so each model
+    keeps its own single "; ".join(errors) report.
+
+    Requires the COUNTRY when a vendor is marked non-resident, and does not
+    require the TIN. Both are on Form 27Q, but the country is knowable the
+    moment you decide someone is a non-resident, and a 27Q cannot be filed
+    without it; the TIN is only mandatory where the deductee has no PAN, and it
+    is the sort of thing a CA chases the supplier for. So the country is a
+    refusal here and the missing TIN is a gap reported later —
+    domain/tds/residency.missing_27q_identifiers is what reports it.
+    """
+    errors: list[str] = []
+
+    if model.residential_status is not None:
+        model.residential_status = model.residential_status.strip().lower()
+        if model.residential_status not in RESIDENTIAL_STATUSES:
+            errors.append(
+                "residential_status must be 'resident' or 'non_resident' "
+                f"(got '{model.residential_status}'). Leave it unset if nobody "
+                "has established which — that is a different fact from either.")
+
+    if model.country_of_residence is not None:
+        # ISO 3166-1 alpha-2, which is the code Form 27Q takes. Uppercased
+        # here for the same reason GSTIN and PAN are: what is stored has to
+        # match what was validated, and the DB CHECK is ^[A-Z]{2}$.
+        model.country_of_residence = model.country_of_residence.strip().upper()
+        if not (len(model.country_of_residence) == 2
+                and model.country_of_residence.isalpha()):
+            errors.append(
+                "country_of_residence must be a 2-letter ISO 3166-1 alpha-2 "
+                f"code such as AE, SG or US (got '{model.country_of_residence}').")
+
+    if model.tax_identification_number is not None:
+        # No format check: a TIN's shape is whatever the payee's own country
+        # says it is, and there are over ninety of them. Only whitespace is
+        # normalised, so a trailing space cannot make two TINs look different.
+        model.tax_identification_number = model.tax_identification_number.strip() or None
+
+    if model.residential_status == NON_RESIDENT and not model.country_of_residence:
+        errors.append(
+            "A non-resident vendor needs a country_of_residence — Form 27Q "
+            "reports it on every deductee row, and Rule 37BC's relief from the "
+            "s.206AA 20% floor is conditional on holding it.")
+
+    return errors
 
 
 class CustomerIn(BaseModel):
@@ -184,6 +238,15 @@ class VendorIn(BaseModel):
     tds_applicable: bool = False
     tds_section: Optional[str] = None
     tds_rate_bps: int = 0
+    # IT Act residential status of the PAYEE. NULL is a real third state —
+    # "nobody has said" — and is treated as resident for computation while
+    # being reported as a gap. It decides the charging section as well as the
+    # quarterly statement: s.194C and its neighbours charge only payments "to a
+    # resident", so a non-resident payee falls under s.195 instead.
+    # domain/tds/residency.py is the authority.
+    residential_status: Optional[str] = None
+    country_of_residence: Optional[str] = None
+    tax_identification_number: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -195,7 +258,7 @@ class VendorIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_identifiers(self) -> "VendorIn":
-        errors = []
+        errors = _normalise_residency(self)
         if self.gstin:
             # CGST Act §25: GSTIN is canonically uppercase — normalize what's
             # stored to what's validated, so a lowercase-typed GSTIN doesn't
@@ -248,11 +311,14 @@ class VendorUpdateIn(BaseModel):
     tds_applicable: Optional[bool] = None
     tds_section: Optional[str] = None
     tds_rate_bps: Optional[int] = None
+    residential_status: Optional[str] = None
+    country_of_residence: Optional[str] = None
+    tax_identification_number: Optional[str] = None
     is_active: Optional[bool] = None
 
     @model_validator(mode="after")
     def validate_identifiers(self) -> "VendorUpdateIn":
-        errors = []
+        errors = _normalise_residency(self)
         if self.gstin:
             # CGST Act §25: GSTIN is canonically uppercase — normalize what's
             # stored to what's validated, so a lowercase-typed GSTIN doesn't
