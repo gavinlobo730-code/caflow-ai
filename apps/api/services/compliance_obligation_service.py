@@ -145,7 +145,30 @@ def gst_profile_for(client_id: str, firm_id: Optional[str] = None) -> tuple[str,
     return freq, c.get("state_code")
 
 
-def _tds_obligations(financial_year: str) -> list[dict]:
+def _tds_obligations(financial_year: str,
+                     has_non_resident_vendors: bool = False) -> list[dict]:
+    """The TDS statements one client owes for one FY.
+
+    26Q ALWAYS, and 27Q ONLY IF THE CLIENT PAYS A NON-RESIDENT. Rule 31A(4)
+    splits the quarterly statement by the payee's residence: (a) 26Q for
+    non-salary payments to residents, (b) 27Q for payments to non-residents.
+    They are separate returns filed separately, on the same due dates —
+    Rule 31A(2) sets one date per quarter regardless of form.
+
+    Generating 27Q unconditionally would put four deadlines a year in the
+    calendar of every client that has never paid a foreign supplier, which is
+    most of them. That is the reasoning _gst_obligations already applies to
+    IFF: an obligation nobody owes, appearing every quarter, is how a
+    compliance calendar stops being read.
+
+    So it is conditional on a fact somebody recorded — a vendor marked
+    non-resident (migration 308) — not on a guess. And the condition is worth
+    having precisely BECAUSE the software cannot compute the return: s.195's
+    rate depends on nature of income, treaty and surcharge band, so a CA
+    deducting on a foreign remittance is doing it outside this system. A
+    reminder is the most this can offer for 27Q, and it is most valuable for
+    exactly the return it cannot prepare.
+    """
     fye = fy_end_year(financial_year)
     quarters = {
         "Q1": (date(fye - 1, 4, 1), date(fye - 1, 6, 30)),
@@ -155,9 +178,56 @@ def _tds_obligations(financial_year: str) -> list[dict]:
     }
     out = []
     for q, (ps, pe) in quarters.items():
+        due = ce.tds_return_due_date(q, fye)
         out.append(_spec("TDS26Q", "TDS", f"TDS 26Q {q} FY {financial_year}",
-                         ps, pe, ce.tds_return_due_date(q, fye)))
+                         ps, pe, due))
+        if has_non_resident_vendors:
+            out.append(_spec("TDS27Q", "TDS", f"TDS 27Q {q} FY {financial_year}",
+                             ps, pe, due))
     return out
+
+
+def has_non_resident_vendors(client_id: str, firm_id: Optional[str] = None) -> bool:
+    """Whether this client has any vendor recorded as a non-resident payee.
+
+    False on any failure, and logged — the same defensive shape as
+    gst_profile_for, but the safe direction is the OPPOSITE one and it is worth
+    saying why. There, an unknown filing frequency defaults to monthly because
+    monthly due dates fall earlier, so a wrongly-classified client is chased
+    early and s.47 charges nothing for early. Here the choice is between a
+    missing reminder and a phantom obligation on every client in the firm, and
+    a calendar full of deadlines nobody owes is the failure that makes the
+    real ones invisible.
+
+    NULL residential_status does NOT count. It means nobody has established the
+    vendor's residence, which the register already reports as a statutory gap;
+    treating it as non-resident here would generate 27Q for every client whose
+    vendor master predates migration 308, which is all of them.
+    """
+    try:
+        if _USE_MOCK:
+            from routers.vendors import MOCK_VENDORS
+            return any(
+                v.get("client_id") == client_id
+                and (firm_id is None or v.get("firm_id") == firm_id)
+                and v.get("residential_status") == "non_resident"
+                for v in MOCK_VENDORS
+            )
+        from core.supabase_client import get_supabase
+        q = (get_supabase().table("vendors").select("id")
+             .eq("client_id", client_id)
+             .eq("residential_status", "non_resident")
+             .limit(1))
+        if firm_id:
+            q = q.eq("firm_id", firm_id)
+        # limit(1): this is an existence question, and the calendar must not
+        # read a row per vendor to answer it.
+        return bool(q.execute().data)
+    except Exception:  # noqa: BLE001 - a vendor read must not stop generation
+        _logger.warning(
+            "has_non_resident_vendors: could not read vendors for client %s — "
+            "no 27Q obligation will be generated this run", client_id)
+        return False
 
 
 def _itr_obligation(financial_year: str, is_audit: bool = False) -> list[dict]:
@@ -203,16 +273,24 @@ def ce_date(v) -> date:
 def obligations_for_service(service_type: str, financial_year: str,
                             agm_date: Optional[str] = None,
                             gst_frequency: str = ce.MONTHLY,
-                            gst_state_code: Optional[str] = None) -> list[dict]:
+                            gst_state_code: Optional[str] = None,
+                            client_has_non_resident_vendors: bool = False) -> list[dict]:
     """Deterministic, pure: the statutory obligations a service engagement implies for
     one FY. Keyword-matched on service_type. Non-statutory services (accounting /
-    bookkeeping / payroll) imply no filing obligations and return []."""
+    bookkeeping / payroll) imply no filing obligations and return [].
+
+    client_has_non_resident_vendors is passed IN rather than looked up here, so
+    this stays pure and unit-testable — the same reason gst_frequency and
+    gst_state_code are parameters. has_non_resident_vendors() does the reading.
+    Defaults to False, so every existing caller keeps generating exactly the
+    obligations it generated before.
+    """
     s = (service_type or "").lower()
     specs: list[dict] = []
     if "gst" in s:
         specs += _gst_obligations(financial_year, gst_frequency, gst_state_code)
     if "tds" in s:
-        specs += _tds_obligations(financial_year)
+        specs += _tds_obligations(financial_year, client_has_non_resident_vendors)
     if "advance tax" in s:
         specs += _advance_tax_obligations(financial_year)
     elif "itr" in s or "income tax" in s:
@@ -316,8 +394,11 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     (obligation_type, period_start); re-running creates no duplicates."""
     client_id = engagement["client_id"]
     freq, state_code = gst_profile_for(client_id, firm_id)
+    # Read once per engagement, not once per obligation — Rule 31A(4)(b)'s 27Q
+    # is generated only for a client that actually pays a non-resident.
+    non_resident = has_non_resident_vendors(client_id, firm_id)
     specs = obligations_for_service(engagement.get("service_type", ""), financial_year,
-                                    agm_date, freq, state_code)
+                                    agm_date, freq, state_code, non_resident)
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}

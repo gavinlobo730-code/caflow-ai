@@ -59,7 +59,10 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   na:          "bg-[#F1F5F9] text-[#64748B]",
 };
 
-const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "ADVANCE_TAX", "MCA_AOC4", "MCA_MGT7"];
+// TDS27Q is here so a firm that HAS non-resident payees can filter to it. The
+// "TDS" group filter above already catches it by prefix, so a firm that has
+// none never sees the option and never sees an empty row for it either.
+const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "TDS27Q", "ADVANCE_TAX", "MCA_AOC4", "MCA_MGT7"];
 const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 
 function LoadingSpinner() {
