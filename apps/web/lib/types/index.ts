@@ -45,6 +45,9 @@ export type ComplianceType =
   | "ITR"
   | "TDS24Q"
   | "TDS26Q"
+  // Rule 31A(4)(b) — payments to non-residents. Generated only for a client
+  // with a vendor recorded as non-resident, so it is absent from most firms.
+  | "TDS27Q"
   | "ADVANCE_TAX"
   | "TCS_RETURN"
   | "OTHER";

@@ -107,6 +107,18 @@ interface MissingPanRisk {
   clientName: string;
 }
 
+// The quarterly TDS statements, which this page scores under IT Act §200A
+// rather than as ordinary overdue filings. ONE list, because it is read twice —
+// once to exclude these from the general overdue bucket and once to select them
+// into the TDS one — and two copies is how 27Q would have landed in the wrong
+// bucket instead of failing visibly.
+//
+// 27Q is the payments-to-non-residents statement (Rule 31A(4)(b)). §200A's
+// late-filing fee does not care which form it is, so it belongs here with the
+// other two. 27EQ is TCS under §206C and is deliberately absent: nothing in
+// this codebase generates it.
+const TDS_STATEMENT_TYPES = ["TDS24Q", "TDS26Q", "TDS27Q"];
+
 // CGST Act, Section 25 — GSTIN format: 2-digit state code + PAN + entity number + Z + check digit
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
@@ -231,7 +243,7 @@ export default function RisksPage() {
       // Overdue filing risk
       setOverdueRisks(
         compliance
-          .filter((e) => e.filing_status !== "filed" && !["TDS24Q", "TDS26Q"].includes(e.compliance_type))
+          .filter((e) => e.filing_status !== "filed" && !TDS_STATEMENT_TYPES.includes(e.compliance_type))
           .map((e) => {
             const days = daysBetween(e.due_date, today);
             return { clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: days, riskLevel: overdueRiskLevel(days) };
@@ -242,7 +254,7 @@ export default function RisksPage() {
       // TDS default risk — IT Act Section 200A
       setTdsRisks(
         compliance
-          .filter((e) => ["TDS24Q", "TDS26Q"].includes(e.compliance_type) && e.filing_status !== "filed")
+          .filter((e) => TDS_STATEMENT_TYPES.includes(e.compliance_type) && e.filing_status !== "filed")
           .map((e) => ({ clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: daysBetween(e.due_date, today), riskLevel: "high" as const }))
           .sort((a, b) => b.daysOverdue - a.daysOverdue)
       );
