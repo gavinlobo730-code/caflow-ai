@@ -3096,6 +3096,83 @@ function BankAccountModal({ clientId, account, onClose, onSaved }: {
   );
 }
 
+// ── Statement column mapping (audit Tier 3.2) ──────────────────────────────
+// The six auto-detected layouts cover HDFC, SBI, ICICI, Axis and two generic
+// shapes. Everything else used to stop dead at "Unsupported bank statement
+// format". These types are the shape of the way past it.
+
+type StatementMapping = Record<string, number | null>;
+
+interface StatementInspection {
+  headers: string[];
+  sample_rows: string[][];
+  total_rows: number;
+  detected_format: string;
+  detected_fits: boolean;
+  proposed_mapping: StatementMapping | null;
+  saved_mapping: StatementMapping | null;
+  header_fingerprint: string;
+}
+
+interface BalanceCheck {
+  checked: boolean;
+  agrees?: boolean;
+  order?: string;
+  note?: string;
+  reason?: string;
+  rows_checked?: number;
+  disagreeing_rows?: number;
+}
+
+interface StatementPreview {
+  headers: string[];
+  total_rows: number;
+  parsed_count: number;
+  skipped_count: number;
+  rows: {
+    transaction_date: string; description: string; reference_no: string | null;
+    debit_paise: number; credit_paise: number; balance_paise: number;
+  }[];
+  balance_check: BalanceCheck;
+}
+
+/** The fields a statement row can carry. Order is the order they are asked for. */
+const MAPPING_FIELDS: { key: string; label: string; hint: string; required?: boolean }[] = [
+  { key: "date",    label: "Date",        hint: "the transaction date", required: true },
+  { key: "desc",    label: "Description", hint: "narration / particulars", required: true },
+  { key: "ref",     label: "Reference",   hint: "cheque or UTR number" },
+  { key: "debit",   label: "Debit",       hint: "money out (withdrawals)" },
+  { key: "credit",  label: "Credit",      hint: "money in (deposits)" },
+  { key: "amount",  label: "Amount",      hint: "one column for both directions" },
+  { key: "drcr",    label: "Dr/Cr",       hint: "which way the Amount goes" },
+  { key: "balance", label: "Balance",     hint: "running balance after the row" },
+];
+
+const EMPTY_MAPPING: StatementMapping = {
+  date: null, desc: null, ref: null, debit: null,
+  credit: null, amount: null, drcr: null, balance: null,
+};
+
+/** Drop the unmapped fields — the server reads an absent key as "not present". */
+function cleanMapping(m: StatementMapping): StatementMapping {
+  return Object.fromEntries(Object.entries(m).filter(([, v]) => v !== null && v !== undefined));
+}
+
+/** Is this the dead end the mapper exists for, rather than a network fault?
+ *
+ *  The backend raises two different sentences for it — "Unsupported bank
+ *  statement format" when nothing matches, and "layout doesn't match the
+ *  detected 'x' format" when an adapter is picked and then fails to fit. Both
+ *  are the same problem to a CA, and both list the banks we do support, which
+ *  is the phrase they reliably share. */
+function looksLikeAFormatProblem(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("unsupported bank statement format")
+    || m.includes("layout doesn't match")
+    || m.includes("could not identify")
+    || m.includes("no transactions found");
+}
+
 // ── Bank Import Modal ──────────────────────────────────────────────────────
 
 function BankImportModal({ clientId, accounts, onClose, onImported, onManageAccounts }: {
@@ -3108,11 +3185,74 @@ function BankImportModal({ clientId, accounts, onClose, onImported, onManageAcco
   const [result, setResult] = useState<{ imported: number; duplicates_skipped: number; total_rows: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── Column mapping (audit Tier 3.2) ──────────────────────────────────────
+  // Six statement layouts are auto-detected. Every other bank — Kotak, IDFC
+  // First, PNB, Canara, and every co-operative bank — used to stop at
+  // "Unsupported bank statement format" with nothing the CA could do. Now that
+  // error opens this: say where the columns are, once, and it is remembered
+  // for the account.
+  const [mapping, setMapping] = useState<StatementMapping | null>(null);
+  const [inspected, setInspected] = useState<StatementInspection | null>(null);
+  const [preview, setPreview] = useState<StatementPreview | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [overrideBalance, setOverrideBalance] = useState(false);
+
   const account = accounts.find((a) => a.id === accountId);
+
+  function resetMapping() {
+    setMapping(null); setInspected(null); setPreview(null); setOverrideBalance(false);
+  }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) { setFile(f); setError(null); setResult(null); }
+    if (f) { setFile(f); setError(null); setResult(null); resetMapping(); }
+  }
+
+  function baseForm(): FormData {
+    const form = new FormData();
+    if (file) form.append("file", file);
+    form.append("client_id", clientId);
+    return form;
+  }
+
+  /** Open the mapper: read the file's header row and pre-fill what we can. */
+  async function startMapping() {
+    if (!file || !account) return;
+    setChecking(true); setError(null);
+    try {
+      const form = baseForm();
+      form.append("bank_account_id", account.id);
+      const res = (await api.banking.inspectStatement(form)) as { success: boolean; data: StatementInspection };
+      const info = res.data;
+      setInspected(info);
+      // A saved mapping for this exact layout wins; then the detected adapter,
+      // but ONLY when it actually fits — prefilling a layout the server has
+      // just rejected would hand the CA the error to confirm.
+      setMapping({ ...EMPTY_MAPPING, ...(info.saved_mapping ?? info.proposed_mapping ?? {}) });
+      setPreview(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not read the file.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  /** Parse with the mapping and show what it produces — nothing is imported. */
+  async function runPreview() {
+    if (!file || !mapping) return;
+    setChecking(true); setError(null); setOverrideBalance(false);
+    try {
+      const form = baseForm();
+      form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
+      const res = (await api.banking.previewStatement(form)) as { success: boolean; data: StatementPreview };
+      setPreview(res.data);
+    } catch (err) {
+      setPreview(null);
+      setError(err instanceof Error ? err.message : "Could not read the file with that mapping.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   async function handleImport() {
@@ -3128,13 +3268,21 @@ function BankImportModal({ clientId, accounts, onClose, onImported, onManageAcco
       form.append("bank_account_id", account.id);
       form.append("bank_name", account.bank_name);
       if (account.account_no) form.append("account_number", account.account_no);
+      if (mapping) {
+        form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
+        form.append("save_mapping", remember ? "true" : "false");
+      }
       const res = (await api.banking.uploadStatement(form)) as {
         success: boolean; data: { imported: number; duplicates_skipped: number; total_rows: number }; error?: string;
       };
       if (!res.success) { setError(res.error ?? "Import failed."); setImporting(false); return; }
       setResult(res.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      const message = err instanceof Error ? err.message : "Import failed";
+      setError(message);
+      // The format errors are the ones the mapper exists for, so go straight
+      // there rather than leaving the CA at a dead end with an explanation.
+      if (!mapping && looksLikeAFormatProblem(message)) void startMapping();
     } finally {
       setImporting(false);
     }
@@ -3144,9 +3292,11 @@ function BankImportModal({ clientId, accounts, onClose, onImported, onManageAcco
 
   return (
     <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className={`bg-white rounded-xl shadow-xl w-full p-6 space-y-4 ${inspected ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Import Bank Statement</h3>
+          <h3 className="text-sm font-semibold text-[#0F172A]">
+            {inspected ? "Map the statement columns" : "Import Bank Statement"}
+          </h3>
           <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
         </div>
 
@@ -3184,13 +3334,143 @@ function BankImportModal({ clientId, accounts, onClose, onImported, onManageAcco
                 <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-[#E2E8F0] rounded-lg py-4 text-sm text-[#64748B] hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>
-                <p className="text-[10px] text-[#94A3B8] mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis formats are auto-detected. Amounts stay exact.</p>
+                <p className="text-[10px] text-[#94A3B8] mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
               </div>
             </div>
+
+            {inspected && mapping && (
+              <div className="space-y-3 border-t border-[#E2E8F0] pt-3">
+                <p className="text-xs text-[#475569]">
+                  This bank&apos;s layout isn&apos;t one we recognise. Tell us which column holds
+                  what — once. {account ? <>We&apos;ll remember it for <span className="font-medium">{account.bank_name}</span> and use it next time.</> : null}
+                </p>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {MAPPING_FIELDS.map((f) => (
+                    <div key={f.key}>
+                      <label className="block text-[11px] font-medium text-[#475569]">
+                        {f.label}{f.required && <span className="text-red-500"> *</span>}
+                        <span className="font-normal text-[#94A3B8]"> — {f.hint}</span>
+                      </label>
+                      <select
+                        value={mapping[f.key] ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value === "" ? null : Number(e.target.value);
+                          setMapping({ ...mapping, [f.key]: v });
+                          setPreview(null);          // the mapping changed; the old check no longer describes it
+                          setOverrideBalance(false);
+                        }}
+                        className="w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">— not in this file —</option>
+                        {inspected.headers.map((h, i) => (
+                          <option key={i} value={i}>{i + 1}. {h || `(column ${i + 1})`}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[10px] text-[#94A3B8]">
+                  Use either <span className="font-medium">Debit + Credit</span>, or a single{" "}
+                  <span className="font-medium">Amount</span> with a <span className="font-medium">Dr/Cr</span> column — not both.
+                </p>
+
+                <div className="flex items-center gap-3">
+                  <button onClick={runPreview} disabled={checking}
+                          className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-40">
+                    {checking ? "Checking…" : "Check this mapping"}
+                  </button>
+                  <label className="flex items-center gap-1.5 text-[11px] text-[#475569]">
+                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                    Remember this layout for this account
+                  </label>
+                </div>
+
+                {preview && (
+                  <div className="space-y-2">
+                    {/* The bank's own running balance is what verifies the mapping.
+                        A swapped Debit/Credit parses perfectly and inverts the
+                        client's cash — no column-label check could catch it. */}
+                    {preview.balance_check.checked && preview.balance_check.agrees && (
+                      <p className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-3 py-2">
+                        ✓ Checked against the bank&apos;s own balance column across{" "}
+                        {preview.balance_check.rows_checked} row{preview.balance_check.rows_checked === 1 ? "" : "s"} — every
+                        movement agrees.{preview.balance_check.note ? ` ${preview.balance_check.note}` : ""}
+                      </p>
+                    )}
+                    {preview.balance_check.checked && preview.balance_check.agrees === false && (
+                      <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 space-y-1.5">
+                        <p className="font-medium">This mapping disagrees with the bank&apos;s own balances.</p>
+                        <p>{preview.balance_check.reason}</p>
+                        <label className="flex items-center gap-1.5">
+                          <input type="checkbox" checked={overrideBalance} onChange={(e) => setOverrideBalance(e.target.checked)} />
+                          Import anyway — I have checked the rows below and they are right
+                        </label>
+                      </div>
+                    )}
+                    {!preview.balance_check.checked && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                        This statement has no balance column, so the mapping could not be
+                        checked arithmetically. Read the rows below before importing.
+                      </p>
+                    )}
+
+                    <p className="text-[11px] text-[#475569]">
+                      {preview.parsed_count} of {preview.total_rows} rows read
+                      {preview.skipped_count > 0 && <span className="text-amber-700"> · {preview.skipped_count} skipped</span>}
+                    </p>
+                    <div className="overflow-x-auto border border-[#E2E8F0] rounded-lg">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-[#F8FAFC] text-[#64748B]">
+                          <tr>
+                            <th className="text-left px-2 py-1.5">Date</th>
+                            <th className="text-left px-2 py-1.5">Description</th>
+                            <th className="text-right px-2 py-1.5">Debit</th>
+                            <th className="text-right px-2 py-1.5">Credit</th>
+                            <th className="text-right px-2 py-1.5">Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.rows.map((r, i) => (
+                            <tr key={i} className="border-t border-[#F1F5F9]">
+                              <td className="px-2 py-1.5 whitespace-nowrap">{r.transaction_date}</td>
+                              <td className="px-2 py-1.5 max-w-[18rem] truncate" title={r.description}>{r.description}</td>
+                              <td className="px-2 py-1.5 text-right">{r.debit_paise ? formatPaise(r.debit_paise) : ""}</td>
+                              <td className="px-2 py-1.5 text-right">{r.credit_paise ? formatPaise(r.credit_paise) : ""}</td>
+                              <td className="px-2 py-1.5 text-right text-[#64748B]">{r.balance_paise ? formatPaise(r.balance_paise) : ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
             <div className="flex gap-3 justify-end">
               <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-              <button onClick={handleImport} disabled={importing || !file || accounts.length === 0} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+              {!inspected && file && (
+                <button onClick={startMapping} disabled={checking || !account}
+                        className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">
+                  {checking ? "Reading…" : "Map columns"}
+                </button>
+              )}
+              <button
+                onClick={handleImport}
+                disabled={
+                  importing || !file || accounts.length === 0
+                  // With the mapper open, importing is gated on a check having
+                  // been run: the preview IS the safety argument for skipping
+                  // the column-label validation, so importing without it would
+                  // give up the guard and gain nothing.
+                  || (!!inspected && !preview)
+                  || (!!preview && preview.balance_check.agrees === false && !overrideBalance)
+                }
+                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+              >
                 {importing ? "Importing…" : "Import"}
               </button>
             </div>

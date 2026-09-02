@@ -11,8 +11,10 @@ Columns use the canonical model (transaction_date, match_status).
 IMPORTANT: posting is explicit and human-initiated — never auto-post.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
+import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import (APIRouter, Depends, HTTPException, Path, Query, UploadFile,
+                     File, Form)
 from fastapi.responses import Response
 from typing import Optional
 
@@ -62,6 +64,10 @@ from services.bank_transfer_service import bank_transfer_service
 from services.bank_batch_service import bank_batch_service
 from services.bank_candidate_search_service import bank_candidate_search_service
 from domain.banking import parse_statement, file_hash, StatementParseError
+from domain.banking.normalizer import (
+    balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
+)
+from services import bank_column_mapping_service as column_mappings
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -623,6 +629,8 @@ async def upload_statement(
     bank_name: str = Form("Bank"),
     account_number: Optional[str] = Form(None),
     bank_account_id: Optional[str] = Form(None),
+    column_mapping: Optional[str] = Form(None),
+    save_mapping: bool = Form(False),
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Upload a CSV/XLSX bank statement. Parsing + normalization + dedup happen
@@ -634,16 +642,47 @@ async def upload_statement(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+    db = _db()
+
+    # A mapping the CA supplied for THIS upload wins; otherwise a mapping saved
+    # earlier for this account and this exact header layout; otherwise nothing,
+    # and parse_statement detects as it always has.
+    mapping: Optional[dict] = None
+    mapping_source = "detected"
+    if column_mapping:
+        try:
+            mapping = json.loads(column_mapping)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=422,
+                detail="column_mapping must be a JSON object of column positions.")
+        mapping_source = "supplied"
+    elif db and bank_account_id:
+        try:
+            headers = inspect_statement(file.filename or "", content)["headers"]
+            saved = column_mappings.find_mapping(
+                db, current_user["firm_id"], bank_account_id, header_fingerprint(headers))
+        except StatementParseError:
+            saved = None            # unreadable file — parse_statement will say so
+        if saved:
+            mapping = saved.get("mapping")
+            mapping_source = "saved"
+
     try:
-        txns = parse_statement(file.filename or "", content)
+        txns = parse_statement(file.filename or "", content, mapping)
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    db = _db()
     fmt = "xlsx" if (file.filename or "").lower().endswith(".xlsx") else "csv"
     if not db:
+        # Mock mode returns the same SHAPE as the real path. Omitting
+        # column_source/balance_check here would leave the frontend reading
+        # undefined in demo mode only — the kind of gap that is found by a
+        # customer rather than by a test.
         return api_response(True, {"statement_id": "mock-id", "imported": len(txns),
-                                   "duplicates_skipped": 0, "total_rows": len(txns)})
+                                   "duplicates_skipped": 0, "total_rows": len(txns),
+                                   "column_source": mapping_source,
+                                   "balance_check": balance_agreement(txns)})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
         "source_format": fmt, "file_hash": file_hash(content),
@@ -653,7 +692,175 @@ async def upload_statement(
         bank_account_id=bank_account_id, actor_id=current_user.get("auth_user_id"),
         file_meta=file_meta,
     )
+
+    # The mapping is saved only AFTER the import succeeded, and only when asked.
+    # Saving a mapping that then failed to import would teach the account a
+    # layout that does not work, and apply it silently to the next upload.
+    if save_mapping and mapping and bank_account_id:
+        try:
+            headers = inspect_statement(file.filename or "", content)["headers"]
+            column_mappings.save_mapping(
+                db, current_user["firm_id"], client_id, bank_account_id,
+                headers, mapping,
+                # public.users.id — the INTERNAL user id. current_user carries
+                # BOTH, and created_by FKs the internal one (CLAUDE.md). Passing
+                # auth_user_id here failed the FK on every save, and the failure
+                # was swallowed into mapping_saved=False: the statement imported,
+                # the layout was silently not learned, and the next month asked
+                # again.
+                actor_id=current_user.get("id"))
+            result["mapping_saved"] = True
+        except (StatementParseError, Exception) as e:            # noqa: BLE001
+            # The statement is already in. Failing the whole upload because the
+            # convenience could not be stored would be the wrong trade.
+            _logger.warning("column mapping not saved for account %s: %s",
+                            bank_account_id, e)
+            result["mapping_saved"] = False
+
+    # Say which way the columns were read. "detected" and "saved" look identical
+    # in the resulting data, and a CA who has just mapped a bank should be able
+    # to see that the mapping is what was used.
+    result["column_source"] = mapping_source
+    result["balance_check"] = balance_agreement(txns)
     return api_response(True, result)
+
+
+# ─── Statement column mapping (audit Tier 3.2) ───────────────────────────────
+
+@router.post("/statements/inspect")
+async def inspect_statement_file(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    bank_account_id: Optional[str] = Form(None),
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Show a statement's header row and first rows so a CA can map the columns.
+
+    This is the way past 'Unsupported bank statement format'. Nothing is stored
+    and nothing is parsed into transactions — the file is here precisely because
+    parsing it failed, so anything needing a working mapping comes after the CA
+    supplies one.
+
+    When the account already has a mapping for this exact header layout it is
+    returned as `saved_mapping`, so the CA sees what will be used rather than
+    being asked the same question twice.
+    """
+    assert_client_access(current_user, client_id)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+    try:
+        info = inspect_statement(file.filename or "", content)
+    except StatementParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    db = _db()
+    saved = (column_mappings.find_mapping(db, current_user["firm_id"], bank_account_id,
+                                          info["header_fingerprint"])
+             if db and bank_account_id else None)
+    info["saved_mapping"] = saved.get("mapping") if saved else None
+    info["saved_mapping_id"] = saved.get("id") if saved else None
+    return api_response(True, info)
+
+
+@router.post("/statements/preview")
+async def preview_statement_with_mapping(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    column_mapping: str = Form(...),
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Parse with the CA's mapping and show what it produces — WITHOUT importing.
+
+    This is the safety net that replaces the column-label check an explicit
+    mapping deliberately skips. Two things are returned and both matter: the
+    parsed rows, so a human can see that the dates are dates and the money is
+    the right way round; and `balance_check`, which tests the parse against the
+    bank's OWN running balance. A mapping with debit and credit swapped parses
+    perfectly and inverts the client's entire cash position — no label check
+    would catch that, and the balance arithmetic catches it on the first row.
+    """
+    assert_client_access(current_user, client_id)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+    try:
+        mapping = json.loads(column_mapping)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422,
+                            detail="column_mapping must be a JSON object of column positions.")
+    try:
+        info = inspect_statement(file.filename or "", content)
+        validate_mapping(mapping, len(info["headers"]))
+        txns = parse_statement(file.filename or "", content, mapping)
+    except StatementParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return api_response(True, {
+        "headers": info["headers"],
+        "total_rows": info["total_rows"],
+        "parsed_count": len(txns),
+        # A row the mapping cannot read is skipped by _rows_to_txns, quietly and
+        # for good reasons (totals lines, sub-headers). Reporting the gap turns
+        # "quietly" into a number a CA can judge: 3 of 200 is a footer, 180 of
+        # 200 is a wrong date column.
+        "skipped_count": max(0, info["total_rows"] - len(txns)),
+        "rows": [{
+            "transaction_date": t.transaction_date,
+            "description": t.description,
+            "reference_no": t.reference_no,
+            "debit_paise": t.debit_paise,
+            "credit_paise": t.credit_paise,
+            "balance_paise": t.balance_paise,
+        } for t in txns[:20]],
+        "balance_check": balance_agreement(txns),
+    })
+
+
+@router.get("/statements/column-mappings")
+def list_column_mappings(
+    client_id: Optional[str] = Query(None),
+    bank_account_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """Saved column mappings, so a CA can see and correct what a bank taught us."""
+    if client_id:
+        assert_client_access(current_user, client_id)
+    db = _db()
+    rows = column_mappings.list_mappings(db, current_user["firm_id"],
+                                         client_id=client_id,
+                                         bank_account_id=bank_account_id)
+    return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.delete("/statements/column-mappings/{mapping_id}")
+def delete_column_mapping(
+    mapping_id: str = Path(...),
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Forget a mapping. The next upload of that layout asks again.
+
+    Scoped like every other row-addressed banking endpoint: resolve the row
+    inside the firm, check the caller may reach its client, and 404 for both
+    'no such row' and 'not your client' so the status cannot be used to probe
+    which ids exist.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"deleted": True})
+    rows = (db.table(column_mappings.TABLE).select("id, client_id")
+            .eq("firm_id", current_user["firm_id"]).eq("id", mapping_id)
+            .limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Column mapping not found.")
+    assert_client_access(current_user, rows[0].get("client_id"))
+    ok = column_mappings.delete_mapping(db, current_user["firm_id"], mapping_id)
+    return api_response(True, {"deleted": ok})
+
 
 
 @router.get("/statements")
