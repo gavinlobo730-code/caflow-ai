@@ -11,6 +11,7 @@ from services.compliance_engine import (
 )
 from datetime import date
 from typing import Optional
+from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -44,7 +45,7 @@ def compliance_calendar(current_user: dict = Depends(rbac("compliance_record", "
 @router.post("/seed")
 def seed_compliance_calendar(
     client_id: str,
-    financial_year: str | None = None,
+    financial_year: OptionalFYLabel = None,
     current_user: dict = Depends(rbac("compliance_record", "write")),
 ):
     """

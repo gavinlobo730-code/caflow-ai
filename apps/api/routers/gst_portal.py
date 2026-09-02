@@ -14,6 +14,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
+from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/gst-portal", tags=["gst_portal"])
 _logger = logging.getLogger("caflow.gst_portal.router")
@@ -50,7 +51,7 @@ class ManualSnapshotRequest(BaseModel):
     gstin: str
     snapshot_type: str
     data: dict
-    financial_year: Optional[str] = None
+    financial_year: OptionalFYLabel = None
     period: Optional[str] = None
 
 

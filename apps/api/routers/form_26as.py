@@ -16,6 +16,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
+from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/form-26as", tags=["form_26as"])
 _logger = logging.getLogger("caflow.form26as.router")
@@ -42,7 +43,7 @@ def _assert_upload_scope(upload_id: str, current_user: dict) -> dict:
 
 class CreateUploadRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     document_id: Optional[str] = None
 
 
@@ -52,7 +53,7 @@ class ParseRequest(BaseModel):
 
 class RunReconRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
 
 
 @router.post("/uploads")
@@ -117,7 +118,7 @@ def parse_upload(
 @router.get("/uploads")
 def list_uploads(
     client_id: str,
-    financial_year: Optional[str] = None,
+    financial_year: OptionalFYLabel = None,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     from domain.income_tax.form26as_service import list_uploads as _list
@@ -194,7 +195,7 @@ def run_reconciliation(
 @router.get("/reconciliation")
 def get_reconciliation(
     client_id: str,
-    financial_year: str,
+    financial_year: FYLabel,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     from domain.income_tax.form26as_service import get_reconciliation as _get

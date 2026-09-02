@@ -13,6 +13,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
+from models.fy import FYLabel
 
 router = APIRouter(prefix="/api/xbrl", tags=["xbrl_engine"])
 _logger = logging.getLogger("caflow.xbrl.router")
@@ -20,7 +21,7 @@ _logger = logging.getLogger("caflow.xbrl.router")
 
 class CreatePackageRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     taxonomy_version: str = "MCA_2023"
     year_end_engagement_id: Optional[str] = None
 

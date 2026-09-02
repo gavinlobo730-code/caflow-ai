@@ -28,6 +28,7 @@ from core.validators import validate_cin, validate_din, validate_pan
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.compliance_engine import mca_due_date
+from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/mca-workspace", tags=["mca_workspace"])
 _logger = logging.getLogger("caflow.mca_workspace")
@@ -75,7 +76,7 @@ class CreateFilingRequest(BaseModel):
     client_id: str
     company_id: Optional[str] = None
     form_type: str = Field(..., description="AOC-4, MGT-7, ADT-1, DIR-12, INC-22, SH-7, CHG-1, CHG-4")
-    financial_year: Optional[str] = None  # e.g. 2025-26
+    financial_year: OptionalFYLabel = None  # e.g. 2025-26
     period: Optional[str] = None
     due_date: Optional[str] = None
     description: Optional[str] = None

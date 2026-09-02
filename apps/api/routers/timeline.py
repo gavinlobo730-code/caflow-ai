@@ -3,10 +3,11 @@ Timeline REST endpoint — exposes client_timeline_events for the UI audit trail
 """
 import os
 from fastapi import APIRouter, Depends, Query
-from typing import Optional
+from typing import Annotated, Optional
 
 from models.common import api_response
 from core.permissions import rbac
+from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/timeline", tags=["timeline"])
 
@@ -18,7 +19,7 @@ def list_timeline_events(
     client_id: str = Query(...),
     category: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
-    financial_year: Optional[str] = Query(None),
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
     limit: int = Query(50),
     offset: int = Query(0),
     current_user: dict = Depends(rbac("accounting", "read")),

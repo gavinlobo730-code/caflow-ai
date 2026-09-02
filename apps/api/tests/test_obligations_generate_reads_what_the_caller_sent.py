@@ -95,18 +95,38 @@ def test_no_year_at_all_still_means_the_current_one():
     assert res.json()["data"]["financial_year"] == ist_fy_label()
 
 
+def _refusal_names_the_field(res) -> bool:
+    """The label is now validated by its TYPE (models.fy.OptionalFYLabel), so
+    the refusal is FastAPI's own 422: a list of errors whose `loc` names the
+    field. That is better than the hand-rolled string this endpoint used to
+    raise — same shape everywhere, and it points at the parameter."""
+    detail = res.json()["detail"]
+    assert isinstance(detail, list), detail
+    return any("financial_year" in (e.get("loc") or []) for e in detail)
+
+
 @pytest.mark.parametrize("bad", ["2026-28", "2026", "garbage"])
 def test_a_bad_label_in_the_body_is_refused_not_guessed(bad):
     res = client.post(URL, headers=HEADERS, json={"financial_year": bad})
     assert res.status_code == 422, res.text
-    assert "financial_year" in res.json()["detail"]
+    assert _refusal_names_the_field(res)
 
 
 @pytest.mark.parametrize("bad", ["2026-28", "2026", "garbage"])
 def test_a_bad_label_in_the_query_is_refused_the_same_way(bad):
     res = client.post(f"{URL}?financial_year={bad}", headers=HEADERS)
     assert res.status_code == 422, res.text
-    assert "financial_year" in res.json()["detail"]
+    assert _refusal_names_the_field(res)
+
+
+def test_two_spellings_of_one_year_are_not_a_disagreement():
+    """Both sides are canonicalised before the endpoint body runs, so
+    '2025-2026' and '2025-26' arrive equal. Reporting them as conflicting
+    would be the endpoint failing on a request that is perfectly consistent."""
+    res = client.post(URL + "?financial_year=2025-2026", headers=HEADERS,
+                      json={"financial_year": "2025-26"})
+    assert res.status_code == 200, res.text
+    assert res.json()["data"]["financial_year"] == "2025-26"
 
 
 def test_sending_two_different_years_is_a_bug_and_says_so():

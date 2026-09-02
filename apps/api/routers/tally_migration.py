@@ -15,6 +15,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client
 from models.common import api_response
 from services.timeline_service import timeline_service
+from models.fy import FYLabel
 
 router = APIRouter(prefix="/api/tally-migration", tags=["tally_migration"])
 _logger = logging.getLogger("caflow.tally.router")
@@ -46,7 +47,7 @@ def _assert_job_scope(current_user: dict, job_id: str) -> dict:
 class CreateJobRequest(BaseModel):
     name: str
     source_file_name: str
-    target_financial_year: str
+    target_financial_year: FYLabel
     import_types: list[str] = Field(
         default=["ledgers", "journals"],
         description="ledgers|journals|customers|vendors|opening_balances|masters",

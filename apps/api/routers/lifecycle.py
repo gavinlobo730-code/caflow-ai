@@ -8,7 +8,7 @@ All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Annotated, Any, Optional
 from datetime import datetime, timezone, date, timedelta
 import logging
 import uuid
@@ -19,6 +19,7 @@ from core.permissions import rbac
 from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
+from models.fy import FYLabel, OptionalFYLabel
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -601,7 +602,7 @@ class ChecklistStartIn(BaseModel):
 
 class RenewalIn(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     service_type: Optional[str] = None  # kept in model for API compat, not stored in DB
     renewal_date: Optional[str] = None
     value_paise: int = 0               # mapped to fee_paise in DB
@@ -1794,7 +1795,7 @@ def complete_onboarding_checklist(
 @router.get("/renewals")
 def list_renewals(
     status: Optional[str] = Query(None),
-    financial_year: Optional[str] = Query(None),
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
     limit: int = Query(50),
     offset: int = Query(0),
     current_user: dict = Depends(rbac("client", "read")),

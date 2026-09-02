@@ -7,6 +7,7 @@ from core.authz import filter_by_client, assert_client_access, can_access_client
 from repositories.engagement_repository import engagement_repo
 from repositories.client_repository import client_repo
 from datetime import datetime, timezone
+from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -212,7 +213,7 @@ def transition_engagement(
 @router.post("/{engagement_id}/generate-obligations")
 def generate_engagement_obligations(
     engagement_id: str,
-    financial_year: Optional[str] = None,
+    financial_year: OptionalFYLabel = None,
     current_user: dict = Depends(rbac("compliance", "write")),
 ):
     """Generate the statutory compliance obligations this engagement implies for the

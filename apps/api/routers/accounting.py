@@ -5,7 +5,7 @@ import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import datetime, timezone
 from models.common import api_response
 from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalEntryUpdateIn, JournalReversalIn
@@ -21,6 +21,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from services import ageing_schedule_service, ratio_analysis_service
+from models.fy import FYLabel, OptionalFYLabel
 
 
 def _reporting_service() -> ReportingService:
@@ -422,7 +423,7 @@ def import_trial_balance_endpoint(
 
 
 class YearLockIn(BaseModel):
-    financial_year: str           # e.g. "2025-26"
+    financial_year: FYLabel           # e.g. "2025-26"
     lock: bool                    # True = lock, False = unlock
     pin: Optional[str] = None     # firm lock PIN (verified server-side)
 
@@ -1110,7 +1111,7 @@ def put_unbilled_review(
 class RatioExplanationIn(BaseModel):
     """One clause (Q) explanation, or its removal. `explanation: null` deletes."""
     client_id: str
-    fy: str
+    fy: FYLabel
     ratio_key: str
     explanation: Optional[str] = None
 
@@ -1119,14 +1120,14 @@ class RatioInputsIn(BaseModel):
     """The figures clause (Q) needs that the ledger does not hold. `null` puts
     the ratio back into its gap; 0 is a real answer and computes the ratio."""
     client_id: str
-    fy: str
+    fy: FYLabel
     principal_repaid_paise: Optional[int] = None
 
 
 @router.get("/schedule-iii/ratios")
 def get_schedule_iii_ratios(
     client_id: str = Query(..., description="Required — this is a note to ONE client's balance sheet"),
-    fy: Optional[str] = Query(None, description="Financial year label, e.g. 2026-27; defaults to the current FY"),
+    fy: Annotated[OptionalFYLabel, Query(description="Financial year label, e.g. 2026-27; defaults to the current FY")] = None,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """
@@ -1199,7 +1200,7 @@ def put_schedule_iii_ratio_inputs(
 def get_schedule_iii_trend(
     client_id: str = Query(..., description="Required — a trend is one client's history"),
     years: int = Query(5, ge=2, le=10, description="How many financial years, ending with `to_fy`"),
-    to_fy: Optional[str] = Query(None, description="The most recent year, e.g. 2026-27; defaults to the current FY"),
+    to_fy: Annotated[OptionalFYLabel, Query(description="The most recent year, e.g. 2026-27; defaults to the current FY")] = None,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """
@@ -1253,7 +1254,7 @@ def get_cash_flow(
 
 @router.get("/statement-analysis")
 async def get_statement_analysis(
-    financial_year: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    financial_year: Annotated[FYLabel, Query()] = ...,
     client_id: Optional[str] = Query(None),
     basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),

@@ -24,6 +24,7 @@ from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
+from models.fy import FYLabel
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -103,7 +104,7 @@ class CreateChallanRequest(BaseModel):
     amount_paise: int = Field(..., description="Integer paise only")
     challan_no: str
     section: str = Field(..., description="e.g. 194A, 192, 194Q")
-    financial_year: str = Field(..., description="e.g. 2025-26")
+    financial_year: FYLabel = Field(..., description="e.g. 2025-26")
     quarter: str = Field(..., description="Q1, Q2, Q3, Q4")
 
 
@@ -111,7 +112,7 @@ class CreateReturnRequest(BaseModel):
     client_id: str
     return_type: str = Field(..., description="24Q or 26Q")
     quarter: str
-    financial_year: str
+    financial_year: FYLabel
     deductee_details: list[dict] = Field(default_factory=list)
     # Populated when saving a "Compute from Books" result (services/
     # tds_return_service.py) — optional so the existing quick-create form
@@ -138,7 +139,7 @@ class CreateCertificateRequest(BaseModel):
     client_id: str
     deductee_pan: str
     deductee_name: str
-    financial_year: str
+    financial_year: FYLabel
     certificate_type: str = Field(..., description="Form 16 or Form 16A")
     tds_amount_paise: int = Field(default=0, description="Integer paise only")
     section: str
@@ -146,7 +147,7 @@ class CreateCertificateRequest(BaseModel):
 
 class Form26ASUploadRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     file_url: Optional[str] = None
     raw_data: dict = Field(default_factory=dict)
 
