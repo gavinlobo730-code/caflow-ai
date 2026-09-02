@@ -5,7 +5,7 @@ Status flow: draft → in_review → approved → locked
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, filter_by_client
+from models.fy import FYLabel, OptionalFYLabel
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -108,7 +109,7 @@ _TRANSITION_ROLE_GUARDS: dict[str, set[str]] = {
 
 class EngagementCreateIn(BaseModel):
     client_id: str
-    financial_year: str   # e.g. "2024-25"
+    financial_year: FYLabel   # e.g. "2024-25"
     engagement_name: Optional[str] = None
 
 
@@ -169,7 +170,7 @@ def create_engagement(
 @router.get("/engagements")
 def list_engagements(
     client_id: Optional[str] = Query(None),
-    financial_year: Optional[str] = Query(None),
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
     # M2 audit finding: client_id, when supplied, was never checked; when

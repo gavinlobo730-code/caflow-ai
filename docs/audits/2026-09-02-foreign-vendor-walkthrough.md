@@ -218,17 +218,39 @@ one a shape regex cannot catch — `2026-28` passed `^\d{4}-\d{2}$` and
 generated FY 2026-27's due dates under a label naming no year at all. Four
 negative controls.
 
-**What the finding-5 sweep found and did not fix.** Twelve router parameters
-take a financial-year label off the wire; only this one is validated. Of the
-rest, `routers/accounting.py:1256` has a shape regex (which `2026-28` passes),
-and ten have nothing:
-`accounting.py:1129,1202`, `payroll.py:1832,1920,2278`,
-`gst_workspace.py:1023`, `lifecycle.py:1797`, `timeline.py:21`,
-`income_tax.py:534`, `year_end.py:172`. They are left alone deliberately:
-each has its own downstream tolerance, `core/ist_clock.fy_bounds` is
-lenient by design and is what several of them reach, and converting twelve
-endpoints on the strength of one walkthrough finding is a wider change than
-the evidence supports. Recorded so it is a known gap rather than folklore.
+**What the finding-5 sweep found — and how much bigger it was.** The first
+pass grepped for `Query(` and reported eleven unvalidated financial-year
+parameters. That was an undercount by a factor of five: an AST scan of every
+route function and request model found **56** places a financial-year label
+enters the API, because labels arrive in request BODIES too, and only one was
+validated. Twelve of the 56 sat on statutory paths — Form 24Q's deductee rows,
+the §234C estimator, GSTR-9, the Schedule III ratios and trend, the year-end
+engagement — where a label that parses to the wrong year produces the wrong
+return rather than an empty list.
+
+The sweep was done rather than deferred, and not by editing 56 sites to the
+same rule by hand, which is how one gets missed. `models/fy.py` holds one
+validated type — `FYLabel` / `OptionalFYLabel` — every entry point is annotated
+with it, and `tests/test_fy_labels_are_validated.py` fails if a new
+financial-year parameter goes in as a bare `str`.
+
+Two things worth recording because neither was visible from reading the code:
+
+* **`fy: FYLabel = Query(...)` validates nothing.** FastAPI builds the field
+  from `Query()` when it sits in the default position and DISCARDS the
+  Annotated metadata carrying the validator. No error, no warning; the
+  endpoint reads as guarded and is not. Six parameters would have shipped that
+  way. It was caught by probing the behaviour before converting anything, and
+  the ratchet test would have passed either way — so it has its own test,
+  `test_query_never_sits_in_the_default_position`. The working form is
+  `Annotated[FYLabel, Query(...)]`. Pydantic's own `Field()` in the default
+  position does NOT have this problem, which is exactly what makes it easy to
+  assume `Query()` behaves the same.
+* **Every financial-year value on production is already canonical.** All 38
+  such columns across 38 tables were checked before the type was written to
+  canonicalise as well as validate — `2026-2027` in, `2026-27` stored. Had any
+  row held a non-canonical label, normalising on the read side would have
+  stopped matching it.
 
 ## What this walkthrough did not cover
 

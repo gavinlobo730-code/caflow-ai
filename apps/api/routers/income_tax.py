@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Annotated, Optional
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
@@ -22,6 +22,7 @@ from domain.income_tax.capital_gains_engine import (
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
 )
+from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
 
@@ -66,7 +67,7 @@ class ComputeITRRequest(BaseModel):
     # statutory_rates.py — the response's rates_verified flag tells the
     # caller whether this FY's numbers are confirmed against a Finance Act
     # or carried forward pending verification.
-    fy: Optional[str] = None
+    fy: OptionalFYLabel = None
 
     # Income heads (all paise)
     gross_salary_paise: int = 0
@@ -477,7 +478,7 @@ class AdvanceTaxInstallmentInput(BaseModel):
 
 
 class ComputeAdvanceTaxRequest(BaseModel):
-    fy: str
+    fy: FYLabel
     estimated_tax_paise: int = Field(ge=0)
     installments: list[AdvanceTaxInstallmentInput] = Field(default_factory=list)
 
@@ -531,7 +532,7 @@ def compute_advance_tax_interest(
 @router.get("/advance-tax")
 def list_advance_tax(
     client_id: str = Query(...),
-    fy: str = Query(...),
+    fy: Annotated[FYLabel, Query()] = ...,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     # Same gap as list_capital_gains above — client_id was filtered into the

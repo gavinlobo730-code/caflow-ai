@@ -8,7 +8,7 @@ Thin surface over services/compliance_obligation_service.py + the existing
 compliance_record_service. Distinct paths from routers/compliance.py (which owns
 /tasks, /calendar, /seed). Never files anything; escalations are internal only.
 """
-from typing import Optional
+from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel
 
@@ -16,9 +16,9 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access, effective_client_ids
 from core.exceptions import ValidationError, NotFoundError
-from core.ist_clock import normalise_fy_label
 from services import compliance_obligation_service as obligations
 from domain.compliance_record_service import compliance_record_service
+from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance_ops"])
 
@@ -69,7 +69,7 @@ class GenerateBody(BaseModel):
     used, which read as confirmation.
     """
     client_id: Optional[str] = None
-    financial_year: Optional[str] = None
+    financial_year: OptionalFYLabel = None
 
 
 def _one_of(name: str, from_query: Optional[str], from_body: Optional[str]) -> Optional[str]:
@@ -104,7 +104,7 @@ def list_obligations(client_id: Optional[str] = Query(None),
 
 @router.post("/obligations/generate")
 def generate_obligations(client_id: Optional[str] = Query(None),
-                         financial_year: Optional[str] = Query(None),
+                         financial_year: Annotated[OptionalFYLabel, Query()] = None,
                          body: Optional[GenerateBody] = None,
                          current_user: dict = Depends(rbac("compliance", "write"))):
     """Generate obligations for active engagements (idempotent). Draft obligations
@@ -120,17 +120,12 @@ def generate_obligations(client_id: Optional[str] = Query(None),
     # allowed to disagree by one of them being absent. Silently preferring one
     # is how a caller ends up generating a year it did not ask for.
     client_id = _one_of("client_id", client_id, body.client_id if body else None)
+    # Both are OptionalFYLabel, so FastAPI has already refused a label that is
+    # not a financial year and canonicalised the rest before this runs. That
+    # also means '2025-2026' in the query and '2025-26' in the body arrive
+    # equal, and are correctly NOT reported as a disagreement.
     financial_year = _one_of("financial_year", financial_year,
                              body.financial_year if body else None)
-    if financial_year is not None:
-        # An unvalidated label reached generate_due, which does `financial_year
-        # or _current_fy()` and then a prefix parse: '2026-28' generated FY
-        # 2026-27's due dates under a label nobody would recognise, and
-        # 'garbage' raised ValueError out of the domain layer as a 500.
-        try:
-            financial_year = normalise_fy_label(financial_year)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
 
     if client_id:
         assert_client_access(current_user, client_id)

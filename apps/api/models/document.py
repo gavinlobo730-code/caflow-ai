@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, Any
 from enum import Enum
+from models.fy import OptionalFYLabel
 
 
 class DocumentType(str, Enum):
@@ -27,7 +28,7 @@ class DocumentRecord(BaseModel):
     document_type: DocumentType
     file_name: str
     file_path: str
-    financial_year: Optional[str]
+    financial_year: OptionalFYLabel
     extracted_json: Optional[Any]
     confidence_score: Optional[float]
     review_status: ReviewStatus

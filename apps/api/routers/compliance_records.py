@@ -9,13 +9,14 @@ from typing import Optional, Any
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
 from core.exceptions import NotFoundError, ValidationError
+from models.fy import OptionalFYLabel
 
 
 class ComplianceRecordIn(BaseModel):
     """Typed wrapper — fields delegated to domain service for validation."""
     client_id: str
     compliance_type: str
-    financial_year: Optional[str] = None
+    financial_year: OptionalFYLabel = None
     period_label: Optional[str] = None
     period_start: Optional[str] = None
     period_end: Optional[str] = None

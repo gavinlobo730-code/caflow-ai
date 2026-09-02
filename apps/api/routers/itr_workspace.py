@@ -16,6 +16,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
+from models.fy import FYLabel
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
@@ -66,7 +67,7 @@ def _assert_bf_loss_scope(current_user: dict, loss_id: str) -> dict:
 
 class CreateFilingRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     assessment_year: str
     itr_form: str = Field(..., description="ITR-3, ITR-5, ITR-6, ITR-7")
     computation_snapshot_id: Optional[str] = None
@@ -89,7 +90,7 @@ class AcknowledgementRequest(BaseModel):
 
 class SnapshotRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     assessment_year: str
     regime: str = Field(..., description="new|old")
     income: dict = Field(default_factory=dict)
@@ -99,7 +100,7 @@ class SnapshotRequest(BaseModel):
 
 class DisallowanceRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     section: str = Field(..., description="40A(3)|43B_pf|43B_gst|43B_bonus|other")
     description: str
     amount_paise: int = Field(..., ge=0)
@@ -114,7 +115,7 @@ class DisallowanceStatusRequest(BaseModel):
 
 class DeductionClaimRequest(BaseModel):
     client_id: str
-    financial_year: str
+    financial_year: FYLabel
     section: str
     claimed_amount_paise: int = Field(..., ge=0)
     sub_head: Optional[str] = None
@@ -179,7 +180,7 @@ def create_snapshot(
 @router.get("/snapshots")
 def list_snapshots(
     client_id: str,
-    financial_year: str,
+    financial_year: FYLabel,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     # M2 audit finding: client_id was caller-supplied and never checked.
@@ -397,7 +398,7 @@ def create_disallowance(
 @router.get("/disallowances")
 def list_disallowances(
     client_id: str,
-    financial_year: str,
+    financial_year: FYLabel,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     # M2 audit finding: client_id was caller-supplied and never checked.
@@ -422,7 +423,7 @@ def update_disallowance_status(
 @router.post("/disallowances/auto-detect-40a3")
 def auto_detect_40a3(
     client_id: str,
-    financial_year: str,
+    financial_year: FYLabel,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """
@@ -464,7 +465,7 @@ def create_deduction(
 @router.get("/deductions")
 def list_deductions(
     client_id: str,
-    financial_year: str,
+    financial_year: FYLabel,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     # M2 audit finding: client_id was caller-supplied and never checked.

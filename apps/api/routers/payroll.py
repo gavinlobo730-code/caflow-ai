@@ -8,7 +8,7 @@ PT: State-specific professional tax slab, keyed on the employee's pt_state; an
     unset/unrecognised state withholds nothing (no silent single-state default).
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import datetime, timezone, date
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
@@ -68,6 +68,7 @@ from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
 )
+from models.fy import FYLabel
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -1829,7 +1830,7 @@ def run_esic(
 @router.get("/24q-source")
 def form_24q_from_payroll(
     client_id: str = Query(...),
-    financial_year: str = Query(..., description='e.g. "2026-27"'),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
     quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
@@ -1917,7 +1918,7 @@ def form_24q_from_payroll(
 @router.get("/24q-annexure-ii")
 def form_24q_annexure_ii(
     client_id: str = Query(...),
-    financial_year: str = Query(..., description='e.g. "2026-27"'),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """The annual salary detail that TRACES turns into Form 16 Part B.
@@ -2275,7 +2276,7 @@ def upsert_declaration(
 @router.get("/declarations")
 def list_declarations(
     client_id: str = Query(...),
-    fy: str = Query(...),
+    fy: Annotated[FYLabel, Query()] = ...,
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """Every declaration for a client and financial year, with what is wrong
@@ -3012,7 +3013,7 @@ def record_settlement(
 # ─── Arrears and §89(1) relief ───────────────────────────────────────────────
 
 class ArrearSliceIn(BaseModel):
-    fy: str
+    fy: FYLabel
     amount_paise: int
     # The employee's total income for that year AS ORIGINALLY ASSESSED. It comes
     # off their own return, not from payroll — the employer never held it.
@@ -3096,7 +3097,7 @@ class PerquisiteValuationIn(BaseModel):
     """Rule 3's inputs. Each block is optional — an employee with a car and no
     flat sends only the car."""
     client_id: str
-    fy: str
+    fy: FYLabel
     salary_for_rule_3_paise: int = 0
 
     # Rule 3(1) — accommodation
@@ -3217,7 +3218,7 @@ def value_perquisites(
 
 class PerquisiteRecordIn(BaseModel):
     client_id: str
-    fy: str
+    fy: FYLabel
     items: list[dict] = []
 
 

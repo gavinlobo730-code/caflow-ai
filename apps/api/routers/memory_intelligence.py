@@ -9,6 +9,7 @@ from core.authz import (
 )
 from core.permissions import rbac
 from models.common import api_response
+from models.fy import FYLabel
 
 router = APIRouter(prefix="/api/memory", tags=["AI Memory Phase 13"])
 
@@ -253,7 +254,7 @@ def list_year_end_reports(
 @router.get("/year-end-reports/{client_id}/{financial_year}")
 def get_year_end_report(
     client_id: str,
-    financial_year: str,
+    financial_year: FYLabel,
     current_user: dict = Depends(rbac("copilot", "read")),
 ):
     assert_client_access(current_user, client_id)

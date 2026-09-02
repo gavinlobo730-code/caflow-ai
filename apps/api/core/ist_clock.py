@@ -57,7 +57,7 @@ def fy_bounds(fy_label: str) -> tuple[str, str]:
 _FY_LABEL = re.compile(r"^\s*(\d{4})\s*[-/]\s*(\d{2}|\d{4})\s*$")
 
 
-def normalise_fy_label(fy_label) -> str:
+def normalise_fy_label(fy_label, *, field: str = "financial year") -> str:
     """'2026-27' from anything that unambiguously means that financial year.
 
     WHY THIS IS STRICTER THAN fy_bounds
@@ -78,18 +78,16 @@ def normalise_fy_label(fy_label) -> str:
     """
     match = _FY_LABEL.match(str(fy_label or ""))
     if not match:
-        raise ValueError(
-            f"financial_year must look like '2026-27', got {fy_label!r}")
+        raise ValueError(f"{field} must look like '2026-27', got {fy_label!r}")
     start = int(match.group(1))
     if not (1900 <= start <= 2999):
-        raise ValueError(
-            f"financial_year must look like '2026-27', got {fy_label!r}")
+        raise ValueError(f"{field} must look like '2026-27', got {fy_label!r}")
     tail = match.group(2)
     expected = str(start + 1) if len(tail) == 4 else str(start + 1)[2:]
     if tail != expected:
         raise ValueError(
-            f"financial_year {fy_label!r} is not a financial year: the Indian "
-            f"FY runs 1 April to 31 March, so {start} pairs with "
+            f"{field} {fy_label!r} is not a financial year: the Indian FY runs "
+            f"1 April to 31 March, so {start} pairs with "
             f"{str(start + 1)[2:]}, not {tail}.")
     return f"{start}-{str(start + 1)[2:]}"
 

@@ -9,6 +9,7 @@ from typing import Optional
 import re
 
 from core.validators import validate_pan
+from models.fy import FYLabel
 
 
 def _normalize_gender(v: Optional[str]) -> Optional[str]:
@@ -326,7 +327,7 @@ class DeclarationIn(BaseModel):
     """
     client_id: str
     employee_id: str
-    fy: str
+    fy: FYLabel
     regime: str = "new"
 
     rent_paid_declared_paise: int = 0

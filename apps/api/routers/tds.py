@@ -15,6 +15,7 @@ from domain.tds import TDSComputer, TDSDeducteeRecord
 from domain.tds.section_rates import tds_rates_for
 from domain.tds.tds_computer import is_company_pan, has_pan as pan_on_file
 from repositories.tds_repository import tds_repo
+from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/tds", tags=["tds"])
 computer = TDSComputer()
@@ -75,7 +76,7 @@ class Compute26QRequest(BaseModel):
     deductor_name: str
     deductor_pan: str
     deductor_address: str
-    financial_year: str
+    financial_year: FYLabel
     quarter: str
     deductees: list[DeducteeInput]
     challans: list[ChallanInput] = []
@@ -87,7 +88,7 @@ class Compute24QRequest(BaseModel):
     deductor_name: str
     deductor_pan: str
     deductor_address: str
-    financial_year: str
+    financial_year: FYLabel
     quarter: str
     deductees: list[DeducteeInput]
     challans: list[ChallanInput] = []
@@ -95,7 +96,7 @@ class Compute24QRequest(BaseModel):
 
 class FromBooksRequest(BaseModel):
     client_id: str
-    financial_year: str = Field(..., description="e.g. 2025-26")
+    financial_year: FYLabel = Field(..., description="e.g. 2025-26")
     quarter: str = Field(..., description="Q1, Q2, Q3, Q4")
     tan: str
     deductor_name: str
@@ -109,7 +110,7 @@ class TDSAmountRequest(BaseModel):
     is_company: bool = False
     # Financial year to resolve thresholds/rates for (e.g. "2025-26");
     # omit for the current FY. See domain/tds/section_rates.py.
-    fy: Optional[str] = None
+    fy: OptionalFYLabel = None
     # IT Act §206AA — set False to model a payee with no PAN on file (rate
     # floors at the registry's section_206aa_floor_rate_bps). Defaults to
     # True (has a PAN) so existing callers' behaviour is unchanged.
@@ -359,7 +360,7 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
 
 
 @router.get("/sections")
-def list_tds_sections(fy: Optional[str] = None, user: dict = Depends(rbac("tds", "read"))):
+def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds", "read"))):
     """List all TDS sections with thresholds and rates for the given FY
     (defaults to the current FY)."""
     rates = tds_rates_for(fy)
@@ -433,7 +434,7 @@ def get_tds_returns(client_id: str, user: dict = Depends(rbac("tds", "read"))):
 @router.get("/deductions/{client_id}")
 def get_tds_deductions(
     client_id: str,
-    financial_year: Optional[str] = None,
+    financial_year: OptionalFYLabel = None,
     quarter: Optional[str] = None,
     return_type: Optional[str] = Query(
         None, description="Filter to one quarterly statement — '26Q' (payments "

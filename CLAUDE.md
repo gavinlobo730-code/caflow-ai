@@ -620,6 +620,28 @@ called.
   deliberately NOT in `models.client.validate_gstin`, which guards a Pydantic
   field that 512 invented fixture GSTINs across 95 files flow through.
 
+- **A financial-year label is a TYPE, not a `str`.** Annotate every route
+  parameter and request-model field that takes one `FYLabel` (or
+  `OptionalFYLabel`) from `apps/api/models/fy.py`;
+  `core.ist_clock.normalise_fy_label` is the authority. It accepts `YYYY-YY`
+  and `YYYY-YYYY`, canonicalises to `YYYY-YY`, and refuses a second half that
+  does not follow the first — which a shape regex cannot: `2026-28` passes
+  `^\d{4}-\d{2}$` and then means 2026-27, because `fy_bounds` and the older
+  private parsers read the first four characters and ignore the rest. That is
+  a wrong return, not a rejected request.
+  `tests/test_fy_labels_are_validated.py` fails if a new one goes in bare.
+
+  **`fy: FYLabel = Query(...)` validates NOTHING.** FastAPI builds the field
+  from `Query()` in the default position and discards the Annotated metadata
+  carrying the validator — silently, so the endpoint reads as guarded. Write
+  `Annotated[FYLabel, Query(...)]` instead (add `= ...` where argument order
+  needs a default). Pydantic's `Field()` in the default position does NOT
+  behave this way, which is what makes the assumption easy.
+
+  `fy_bounds` stays deliberately lenient: it is a domain function whose caller
+  already knows the label is a label, and several callers depend on that.
+  Strictness belongs at the boundary.
+
 ## Bug fixing
 
 - When the user reports a bug, don't just patch the one instance. Identify the underlying pattern (wrong column name, missing null check, stale label, unapplied migration, etc.) and grep/search the rest of the codebase for the same pattern before calling the fix done. Report what else was found, even if you decide not to touch it.

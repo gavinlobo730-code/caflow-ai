@@ -13,7 +13,7 @@ import uuid
 import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -233,6 +233,7 @@ def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
 # the switch, and it remains the KILL SWITCH for any deployment that records
 # real filings.
 from services.filing_demo.common import filing_simulation_enabled  # noqa: E402,F401
+from models.fy import FYLabel
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -918,7 +919,7 @@ def upload_gstr2b(
 
 class GSTR9In(BaseModel):
     client_id: str
-    financial_year: str  # e.g. "2025-26"
+    financial_year: FYLabel  # e.g. "2025-26"
     gstin: str
     payload_json: dict = Field(default_factory=dict)
     summary_json: dict = Field(default_factory=dict)
@@ -1020,7 +1021,7 @@ def save_gstr9(
 @router.get("/gstr9")
 def get_gstr9(
     client_id: str = Query(...),
-    financial_year: str = Query(..., description="FY string e.g. '2025-26'"),
+    financial_year: Annotated[FYLabel, Query(description="FY string e.g. '2025-26'")] = ...,
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """
