@@ -852,7 +852,7 @@ def delete_column_mapping(
     db = _db()
     if not db:
         return api_response(True, {"deleted": True})
-    rows = (db.table(column_mappings.TABLE).select("id, client_id")
+    rows = (db.table("bank_statement_column_mappings").select("id, client_id")
             .eq("firm_id", current_user["firm_id"]).eq("id", mapping_id)
             .limit(1).execute().data) or []
     if not rows:
