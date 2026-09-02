@@ -328,6 +328,13 @@ PostgREST. That is why:
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.
+- **The migrations and production have drifted before, in both halves of the
+  schema.** `tests/test_schema_matches_production_pg.py` (columns) and
+  `tests/test_guards_match_production_pg.py` (RLS switches, policies,
+  constraints) compare a migration-built database against point-in-time
+  production snapshots in `tests/fixtures/`, and assert only the directions
+  that break something. `docs/schema-drift.md` explains both; the fixtures go
+  stale by design and their README says how to refresh them.
 
 ## Tenancy and access
 

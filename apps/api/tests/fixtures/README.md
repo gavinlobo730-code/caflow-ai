@@ -65,3 +65,53 @@ clients_external.is_test: clients_external is a VIEW on both sides whose two
 definitions select different columns. The assertion excludes views by asking the
 database which relations are views, never by naming them, so a table cannot fall
 through it.
+
+# production_guards_2026-09-03.json
+
+The same idea for the OTHER half of a schema: every table's RLS switch, every
+policy (kind, command, roles, and an md5 of its USING / WITH CHECK), and every
+constraint (type and an md5 of its definition), captured from production at
+02:15 IST on 3 September 2026 with `scripts/db/guard_snapshot.py`'s
+`GUARD_SQL`. 257 tables, 597 policies, 1,116 constraints.
+
+`test_guards_match_production_pg.py` compares a database built from the
+migrations against it and fails on the four directions that break something:
+RLS off in production, a RESTRICTIVE policy missing there, a table with declared
+policies and none there, and a CHECK constraint admitting different values
+there. The first run's findings, and what migration 316 did about them, are in
+`docs/audits/2026-09-03-guard-drift-first-run.md`.
+
+## It was assembled from six SQL-console slices, and proved equal to one capture
+
+This session had no libpq route to production, so the rows were pulled through
+the Supabase SQL console in six pieces (RLS; policies split at `m`; constraints
+split at `f` and `p`) and normalised with the same `normalise()` the script
+uses. That is a hand assembly, so it was proved rather than trusted: production
+was asked for
+
+    md5(string_agg(kind||'|'||tbl||'|'||name||'|'||detail||'|'||expr_md5,
+                   E'\n' ORDER BY kind, tbl, name))
+
+over `GUARD_SQL`'s rows, and the same string was built from this file. Both
+sides: `4815504f83ec550027c05bfd2b41cd2e` over 1,970 rows. The hash is recorded
+in the `.meta.json` as `guards_md5` so the next refresh can be checked the same
+way.
+
+## The hash folds one rewrite out
+
+Production carries `( SELECT auth.uid() AS uid)` in some policy expressions
+where the migrations carry `auth.uid()` — the Supabase linter's initplan
+rewrite, same predicate. `GUARD_SQL` folds it back before hashing, on both
+sides, so a refresh taken with an older `GUARD_SQL` would NOT compare cleanly.
+Always capture with the query the script exports today.
+
+## Refreshing
+
+Same rules as the schema fixture: re-run `GUARD_SQL` against production
+(`python3 scripts/db/guard_snapshot.py --dsn "$PRODUCTION_DSN"`, or the console
+route above with its checksum), replace both files in a commit of their own,
+and set `applied_through_migration` to production's `max(filename)` in
+`schema_migrations` at that moment. The PG test excuses guards named by
+migrations above that mark — and refuses to run if the repository is more than
+ten migrations ahead of it, so a stale fixture cannot quietly excuse a
+regression.
