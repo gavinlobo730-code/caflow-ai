@@ -145,3 +145,94 @@ def document_failure_detail(exc: Exception, *, action: str) -> str:
         return f"Could not {action}: {message}"
     return f"Could not {action}. {message}" if message else \
            f"Could not {action}. Please try again."
+
+
+# ── Why a request failed when no router said ─────────────────────────────────
+
+# What each SQLSTATE means for the CALLER, and therefore what status it is.
+# A database business rule or constraint violation is not a server fault: the
+# request asked for something the database refuses, which is a 4xx.
+_CALLER_FAULT = {
+    "P0001": (400, "rule"),      # RAISE EXCEPTION — written for a human already
+    "23514": (400, "check"),     # check constraint
+    "23503": (400, "fk"),        # foreign key
+    "23502": (400, "notnull"),   # not null
+    "23505": (409, "unique"),    # unique violation — a duplicate, not a fault
+}
+
+_SHAPE = {
+    "rule":    "{message}",
+    "check":   "One of the values sent is not allowed by the database. {message}",
+    "fk":      "This refers to a record that does not exist. {message}",
+    "notnull": "A required value was missing. {message}",
+    "unique":  "This record already exists. {message}",
+}
+
+
+def _sayable_message(exc: Exception) -> str:
+    """postgres_message, minus the two fallbacks that are not sentences.
+
+    postgres_message falls back to the exception's class name and then to
+    str(exc), which is right for a log line and wrong here. An APIError whose
+    message is empty renders as
+
+        {'code': '23514', 'message': ''}
+
+    and putting that after "One of the values sent is not allowed" hands a CA
+    a dict repr with Python's quoting showing through — the very thing
+    postgres_message's docstring was written about. Where there is nothing to
+    say, say nothing; the category sentence stands on its own.
+    """
+    message = postgres_message(exc)
+    try:
+        if message == exc.__class__.__name__:
+            return ""
+        args = getattr(exc, "args", ())
+        if len(args) == 1 and isinstance(args[0], dict) and message == str(exc):
+            return ""                      # the repr of a structured payload
+    except Exception:                                           # noqa: BLE001
+        return ""
+    return message
+
+
+def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
+    """A status and a sentence for a database failure NO ROUTER CAUGHT.
+
+    WHAT WAS WRONG
+        document_failure_detail is used by five routers. Everywhere else a
+        database refusal fell through to main.py's two catch-alls, which
+        return 500 "Internal server error" for everything and log the cause.
+
+        Walking a client with foreign suppliers through a year hit this on
+        routers/engagements: a CHECK constraint refused the row, the CA was
+        told "Internal server error", and the sentence naming which value was
+        wrong went to a log they cannot read. Nothing about that failure was
+        internal, and 500 told the browser to expect it might work next time.
+
+    WHY THIS IS NARROWER THAN document_failure_detail
+        That function is called at a site that KNOWS what it was doing, so it
+        can name the action and can afford a fallback sentence for an unknown
+        error. This one runs over every unhandled exception in the process —
+        a KeyError, a timeout, a bug — so it speaks ONLY where the exception
+        carries a SQLSTATE it recognises, and returns None otherwise. Silence
+        keeps "Internal server error", which for an actual internal error is
+        the honest answer.
+
+    Returns None when there is nothing it can honestly say.
+    """
+    state = _sqlstate(exc)
+    if not state:
+        return None
+
+    if state in _NOT_TRANSIENT:
+        # Still a 500 — the server really is misconfigured — but say which
+        # kind, and do not invite a retry that cannot succeed.
+        return 500, _NOT_TRANSIENT[state]
+
+    if state not in _CALLER_FAULT:
+        return None
+
+    status, shape = _CALLER_FAULT[state]
+    message = _sayable_message(exc)
+    text = _SHAPE[shape].format(message=message).strip()
+    return status, text or "The database refused this request."

@@ -15,6 +15,7 @@ calendar day, not the server's. Mirrors the IST-aware pattern already used
 correctly in jobs/scheduler.py (BackgroundScheduler(timezone="Asia/Kolkata"),
 _compute_next_run, _past_scheduled_hour).
 """
+import re
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -52,6 +53,45 @@ def fy_bounds(fy_label: str) -> tuple[str, str]:
         raise ValueError(f"fy must look like '2026-27', got {fy_label!r}")
     return f"{start_year}-04-01", f"{start_year + 1}-03-31"
 
+
+_FY_LABEL = re.compile(r"^\s*(\d{4})\s*[-/]\s*(\d{2}|\d{4})\s*$")
+
+
+def normalise_fy_label(fy_label) -> str:
+    """'2026-27' from anything that unambiguously means that financial year.
+
+    WHY THIS IS STRICTER THAN fy_bounds
+        fy_bounds reads the FIRST part and ignores the rest, because the
+        second half of the label carries no information the first does not.
+        That is right for a domain function whose caller already knows the
+        label is a label. It is wrong at an API boundary, where the string
+        came off the wire: '2026', '2026-2027', '2026-28' and '2026-99' all
+        parse to FY 2026-27 there, and the last two mean the caller and the
+        system disagree about which year is being generated. Obligations are
+        due dates a CA plans around; generating the wrong year's silently is
+        worse than refusing.
+
+    Accepts YYYY-YY and YYYY-YYYY (a CA writes both), canonicalises to
+    YYYY-YY, and REFUSES anything else — including a second half that does
+    not follow the first, which is the near-miss a bare prefix parse cannot
+    see. Raises ValueError; the API layer turns that into a 422.
+    """
+    match = _FY_LABEL.match(str(fy_label or ""))
+    if not match:
+        raise ValueError(
+            f"financial_year must look like '2026-27', got {fy_label!r}")
+    start = int(match.group(1))
+    if not (1900 <= start <= 2999):
+        raise ValueError(
+            f"financial_year must look like '2026-27', got {fy_label!r}")
+    tail = match.group(2)
+    expected = str(start + 1) if len(tail) == 4 else str(start + 1)[2:]
+    if tail != expected:
+        raise ValueError(
+            f"financial_year {fy_label!r} is not a financial year: the Indian "
+            f"FY runs 1 April to 31 March, so {start} pairs with "
+            f"{str(start + 1)[2:]}, not {tail}.")
+    return f"{start}-{str(start + 1)[2:]}"
 
 def preceding_fy(fy_label: str) -> str:
     """'2025-26' for '2026-27'."""

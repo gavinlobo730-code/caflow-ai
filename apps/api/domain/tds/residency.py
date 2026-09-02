@@ -137,7 +137,6 @@ SECTION_195 = "195"
 
 # The named gap, in the shape domain/payroll uses: a machine-readable code, and
 # a sentence written for the CA who has to act on it.
-GAP_SECTION_195_RATE_NOT_MODELLED = "section_195_rate_not_modelled"
 GAP_RESIDENCY_NOT_CLASSIFIED = "vendor_residency_not_classified"
 GAP_27Q_IDENTIFIERS_MISSING = "non_resident_identifiers_missing"
 # Raised on a s.195 deduction whose year's rates nobody has confirmed against
@@ -153,6 +152,47 @@ GAP_NO_PE_DECLARATION_UNDATED = "no_pe_declaration_undated"
 # Money left for a non-resident and no Form 15CA acknowledgement was recorded
 # against the bill. Rule 37BB with s.195(6) wants it BEFORE the remittance.
 GAP_FORM_15CA_NOT_RECORDED = "form_15ca_not_recorded"
+
+# What each code MEANS, for the CA who has to act on it. A bare
+# "no_pe_declaration_undated" on a screen is a code, not a prompt: it says
+# something is wrong without saying what to do, which is how a gap list stops
+# being read. Every code above must appear here — a test enforces it.
+GAP_MESSAGES: dict[str, str] = {
+    GAP_RESIDENCY_NOT_CLASSIFIED:
+        "Nobody has recorded whether this vendor is a resident. The deduction "
+        "was reported on Form 26Q, which is right for a domestic supplier — "
+        "set the residential status on the vendor to confirm it, or correct it "
+        "to non-resident so the deduction moves to 27Q.",
+    GAP_27Q_IDENTIFIERS_MISSING:
+        "This deduction belongs on Form 27Q, which reports the payee's country "
+        "and — where there is no PAN — its tax identification number. Add them "
+        "to the vendor before the quarter is filed.",
+    GAP_195_RATES_UNVERIFIED:
+        "The section 195 rates for this financial year were reconciled against "
+        "s.115A and Part II of the First Schedule but have NOT been confirmed "
+        "line by line against the Finance Act. Check the rate before paying the "
+        "challan.",
+    GAP_NO_PE_DECLARATION_UNDATED:
+        "Nil was withheld on the payee having no permanent establishment in "
+        "India, but the declaration has no date or nobody recorded who "
+        "obtained it. s.201(1) makes a deductor who fails to deduct an assessee "
+        "in default — record the date and the reference on the vendor.",
+    GAP_FORM_15CA_NOT_RECORDED:
+        "No Form 15CA acknowledgement is recorded against this remittance. "
+        "Rule 37BB with s.195(6) wants it before the money leaves, and Part D "
+        "covers a remittance that is not taxable. File it on the portal and "
+        "record the acknowledgement number on the bill.",
+}
+
+
+def describe_gaps(codes) -> list[dict]:
+    """Turn gap codes into something a CA can act on: {code, message} per gap.
+
+    Unknown codes survive with an empty message rather than being dropped — a
+    gap the caller cannot phrase is still a gap, and silently losing it would
+    be the failure this whole mechanism exists to prevent.
+    """
+    return [{"code": c, "message": GAP_MESSAGES.get(c, "")} for c in (codes or [])]
 
 
 def is_non_resident(residential_status: Optional[str]) -> bool:

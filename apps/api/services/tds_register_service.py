@@ -21,6 +21,12 @@ WHEN A ROW EXISTS, WHICH IS A STATUTORY QUESTION AND NOT A UI ONE
     in the books, and sync_for_bill() is called on every transition rather than
     only on create: an edited bill updates its row, a cancelled one loses it.
 
+    AND A NIL FOREIGN REMITTANCE GETS A ROW TOO. A s.195 bill that withheld
+    nothing is still a payment to a non-resident, and Form 27Q reports it with
+    a reason for non-deduction. A resident-section bill below its threshold
+    does NOT get one, because 26Q reports deductions and that was not one. The
+    asymmetry is the statute's.
+
 WHAT THE AMOUNT IS
     payment_amount_paise is the TAXABLE amount, not the gross. Where GST is
     shown separately on the invoice, TDS is deducted on the amount excluding
@@ -60,7 +66,7 @@ from domain.tds.residency import (
     GAP_195_RATES_UNVERIFIED, GAP_27Q_IDENTIFIERS_MISSING,
     GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
     GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
-    is_classified, missing_27q_identifiers, return_type_for,
+    describe_gaps, is_classified, missing_27q_identifiers, return_type_for,
 )
 from domain.tds.section_195_rates import rates_are_verified
 
@@ -110,7 +116,22 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
 
     deducted = int(bill.get("tds_paise") or 0)
     status = (bill.get("status") or "").lower()
-    live = status in IN_THE_BOOKS and deducted > 0 and not bill.get("deleted_at")
+    # A FOREIGN REMITTANCE THAT WITHHELD NOTHING IS STILL A REMITTANCE.
+    #
+    # This used to require deducted > 0, so a payment to a non-resident that
+    # withheld NIL — business profits with no permanent establishment, or a
+    # treaty with no article for the nature — left no row at all. Those are the
+    # two an assessing officer is most likely to ask about: both rest on a
+    # CLAIM, and the register 27Q is assembled from had no record the payment
+    # happened. It also put the missing-15CA and undated-declaration checks
+    # beyond reach, since they sit after this line.
+    #
+    # A resident-section bill below its threshold still gets NO row: 26Q
+    # reports deductions, and a payment that never crossed s.194C's limit is
+    # not one. The asymmetry is the statute's, not an inconsistency.
+    is_195 = (bill.get("tds_section") or "").strip() == "195"
+    on_books = status in IN_THE_BOOKS and not bill.get("deleted_at")
+    live = on_books and (deducted > 0 or is_195)
 
     try:
         if not live:
@@ -131,6 +152,16 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         # return never reads, which reads later as "somebody meant something by
         # this".
         is_27q = return_type == FORM_27Q
+        # Why nothing was withheld, where nothing was. The engine's own
+        # sentence, not an FVU remark code: those are a published list and
+        # guessing one would put a wrong code in a filed return, so mapping
+        # this to a code is a human step (migration 312).
+        non_deduction_reason = None
+        if deducted == 0 and is_195:
+            non_deduction_reason = (
+                bill.get("_tds_citation")
+                or f"Nil withheld under section 195 — basis "
+                   f"'{bill.get('tds_basis') or 'not recorded'}'.")
         gaps: list[str] = []
         if not is_classified(status):
             gaps.append(GAP_RESIDENCY_NOT_CLASSIFIED)
@@ -185,6 +216,7 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "return_type": return_type,
             "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,
             "deductee_tin": (v.get("tax_identification_number") or None) if is_27q else None,
+            "non_deduction_reason": non_deduction_reason,
         }, on_conflict="purchase_bill_id").execute()
         out = {"synced": True, "action": "recorded", "tds_paise": deducted,
                "quarter": fy_quarter(when), "return_type": return_type}
@@ -193,6 +225,10 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             # same shape payroll's statutory_gaps uses. A gap that only exists
             # in a log is the failure this whole module was written to fix.
             out["statutory_gaps"] = gaps
+            # The codes AND what they mean. A caller that only had codes would
+            # have to re-implement the wording, which is how two screens end up
+            # describing the same gap differently.
+            out["gap_details"] = describe_gaps(gaps)
             out["vendor_id"] = v.get("id")
             out["vendor_name"] = v.get("name")
         return out

@@ -237,6 +237,49 @@ def create_purchase_bill(
                             document_failure_detail(e, action="create the purchase bill"))
 
 
+def _duplicate_bill_id(db, client_id: str, vendor_id: str,
+                       bill_no: Optional[str]) -> Optional[str]:
+    """The id of a live bill already carrying this vendor's invoice number.
+
+    Matched the way migration 313's unique index matches — case- and
+    whitespace-insensitively, ignoring cancelled and soft-deleted bills, and
+    ignoring a blank number. The index is the real guard and closes the direct
+    PostgREST path too; this exists so the API can say something a CA can act
+    on instead of surfacing a constraint name.
+
+    The two must agree. If this is ever loosened without loosening the index,
+    the CA gets a raw 23505; if the index is loosened without this, duplicates
+    return. tests/test_no_duplicate_purchase_bill.py holds them together.
+    """
+    key = (bill_no or "").strip().lower()
+    if db is None or not key or not client_id or not vendor_id:
+        return None
+    try:
+        rows = (db.table("purchase_bills")
+                .select("id, bill_no, status")
+                .eq("client_id", client_id).eq("vendor_id", vendor_id)
+                .neq("status", "cancelled").is_("deleted_at", "null")
+                .execute().data) or []
+    except Exception:                                           # noqa: BLE001
+        # A failed lookup must not block a legitimate bill — the index still
+        # refuses a real duplicate, and this only chooses the wording.
+        return None
+    for r in rows:
+        if (r.get("bill_no") or "").strip().lower() == key:
+            return r.get("id")
+    return None
+
+
+def _duplicate_bill_message(bill_no: str, existing_id: str) -> str:
+    return (
+        f"Bill {bill_no} is already recorded against this vendor "
+        f"(bill {existing_id}). Booking a supplier invoice twice double-counts "
+        f"the expenditure, claims the input GST credit twice under CGST s.16, "
+        f"and — where TDS was deducted — files the deductee twice. Open the "
+        f"existing bill, or cancel it first if this one replaces it."
+    )
+
+
 def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
                                total_taxable: int, bill_date: str, firm_id: str,
                                db, exclude_bill_id: Optional[str]) -> tuple[int, int]:
@@ -482,6 +525,8 @@ def _compute_bill_lines_and_totals(
     tds_surcharge_paise = 0
     tds_cess_paise = 0
     tds_nature = None
+    tds_basis = None
+    tds_citation = ""
     tds_section = (vendor.get("tds_section") or "").upper().strip() or None
     if vendor.get("tds_applicable"):
         from domain.tds.residency import is_non_resident
@@ -502,6 +547,12 @@ def _compute_bill_lines_and_totals(
             tds_surcharge_paise = _s195.surcharge_paise
             tds_cess_paise = _s195.cess_paise
             tds_nature = _s195.nature
+            # How the number was arrived at — not_chargeable / treaty / act /
+            # 206aa_floor. Persisted so a NIL can be told apart from an absence
+            # months later, and so the register can say WHY nothing was
+            # withheld on a remittance that still belongs on 27Q.
+            tds_basis = _s195.basis
+            tds_citation = _s195.citation
             tds_section = "195"
         else:
             tds_paise, tds_rate_bps = _resolve_bill_resident_tds(
@@ -535,6 +586,10 @@ def _compute_bill_lines_and_totals(
         "tds_surcharge_paise":  tds_surcharge_paise,
         "tds_cess_paise":       tds_cess_paise,
         "tds_nature_of_income": tds_nature,
+        "tds_basis":            tds_basis,
+        # Not persisted — the sentence the engine resolved on, carried through
+        # the computed dict so the register can record it against a nil.
+        "_tds_citation":        tds_citation,
         "net_payable_paise":    net_payable_paise,
         # Currency columns (INR identity leaves them inert).
         "txn_taxable":          txn_taxable,
@@ -660,6 +715,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     tds_surcharge_paise = computed["tds_surcharge_paise"]
     tds_cess_paise      = computed["tds_cess_paise"]
     tds_nature_of_income = computed["tds_nature_of_income"]
+    tds_basis            = computed["tds_basis"]
     net_payable_paise = computed["net_payable_paise"]
 
     # Currency columns (INR identity leaves them inert). Foreign net payable is
@@ -714,6 +770,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "tds_surcharge_paise":   tds_surcharge_paise,
             "tds_cess_paise":        tds_cess_paise,
             "tds_nature_of_income":  tds_nature_of_income,
+            "tds_basis":             tds_basis,
             "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
@@ -759,6 +816,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "tds_surcharge_paise":   tds_surcharge_paise,
         "tds_cess_paise":        tds_cess_paise,
         "tds_nature_of_income":  tds_nature_of_income,
+        "tds_basis":             tds_basis,
         "is_reverse_charge":     is_reverse_charge,
         "net_payable_paise":     net_payable_paise,
         "status":                "draft",
@@ -771,6 +829,19 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "created_at":            datetime.now(timezone.utc).isoformat(),
         **_ccy_cols,
     }
+
+    # One supplier invoice, one bill. The unique index of migration 313 is the
+    # real guard — it closes the bulk path and the direct PostgREST writes too
+    # — but a CA meeting a raw 23505 learns nothing, so the wording happens
+    # here. Walking a client with foreign suppliers through a year booked the
+    # same invoice twice and got two posted journals and two Form 27Q rows.
+    _dup = _duplicate_bill_id(db, bill_payload.get("client_id"),
+                              bill_payload.get("vendor_id"),
+                              bill_payload.get("bill_no"))
+    if _dup:
+        raise HTTPException(
+            status_code=409,
+            detail=_duplicate_bill_message(bill_payload.get("bill_no") or "", _dup))
 
     bill_resp = db.table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]
     bill      = bill_resp.data[0] if bill_resp.data else bill_payload
@@ -885,8 +956,14 @@ def bulk_create_purchase_bills(
         CHUNK = 200
         for i in range(0, len(client_ids_for_dedup), CHUNK):
             chunk = client_ids_for_dedup[i:i + CHUNK]
+            # neq("status","cancelled") added to agree with migration 313's
+            # index: cancelling is a credit undone, so a CA who cancels INV-001
+            # because the amount was wrong and re-uploads it corrected is doing
+            # the right thing. Without this the corrected row was reported as a
+            # duplicate and silently SKIPPED — the guard refusing the fix.
             resp = (db.table("purchase_bills").select("client_id, vendor_id, bill_no")
-                    .eq("firm_id", firm_id).in_("client_id", chunk).is_("deleted_at", None).execute())
+                    .eq("firm_id", firm_id).in_("client_id", chunk)
+                    .neq("status", "cancelled").is_("deleted_at", None).execute())
             for r in (resp.data or []):
                 existing_keys.add((r.get("client_id"), r.get("vendor_id"), (r.get("bill_no") or "").strip().lower()))
 
@@ -1228,6 +1305,7 @@ def update_purchase_bill(
                             "tds_surcharge_paise":   computed["tds_surcharge_paise"],
                             "tds_cess_paise":        computed["tds_cess_paise"],
                             "tds_nature_of_income":  computed["tds_nature_of_income"],
+                            "tds_basis":             computed["tds_basis"],
                             "net_payable_paise":     computed["net_payable_paise"],
                             "txn_taxable":           computed["txn_taxable"],
                             "txn_total_gst":         computed["txn_total_gst"],
@@ -1347,6 +1425,7 @@ def update_purchase_bill(
                 "tds_surcharge_paise":   computed["tds_surcharge_paise"],
                 "tds_cess_paise":        computed["tds_cess_paise"],
                 "tds_nature_of_income":  computed["tds_nature_of_income"],
+                "tds_basis":             computed["tds_basis"],
                 "net_payable_paise":     computed["net_payable_paise"],
                 "txn_taxable":           computed["txn_taxable"],
                 "txn_total_gst":         computed["txn_total_gst"],
@@ -1370,13 +1449,21 @@ def update_purchase_bill(
         return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
-def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
-    """Keep tds_deductions in step with one bill.
+def _sync_tds_register(db, firm_id: str, bill: dict) -> dict:
+    """Keep tds_deductions in step with one bill, and RETURN what it found.
 
     Deliberately never raises: a bill that received and posted its journal
     correctly must not be rolled back because its register row could not be
     written. tds_register_service logs loudly and the row is repaired on the
     next transition of the same bill.
+
+    The return value was previously discarded — this function was declared
+    `-> None`, so the `statutory_gaps` sync_for_bill computes reached nothing
+    and nothing else in the backend read them. Found by driving a client with
+    foreign suppliers through a year: five gap codes were being computed and
+    thrown away on every bill. Payroll's equivalent has always reached its
+    caller (routers/payroll.py returns `{**run, "statutory_gaps": ...}`); this
+    is the same shape for the same reason.
     """
     try:
         from services.tds_register_service import sync_for_bill
@@ -1395,10 +1482,13 @@ def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
                    .eq("id", bill["vendor_id"]).eq("firm_id", firm_id)
                    .limit(1).execute().data) or []
             vendor = got[0] if got else {}
-        sync_for_bill(db, firm_id, bill.get("client_id", ""), bill, vendor)
+        return sync_for_bill(db, firm_id, bill.get("client_id", ""), bill, vendor) or {}
     except Exception as e:                                      # noqa: BLE001
         _logger.error("TDS register sync failed for bill %s: %s", bill.get("id"), e)
         capture_soft_failure(e, operation="tds_register_sync")
+    # A failed sync is reported as a synced=False result rather than silence:
+    # the caller shows the CA that the register is out of step with the bill.
+    return {"synced": False, "reason": "the TDS register could not be updated"}
 
 
 @router.post("/{bill_id}/receive")
@@ -1494,7 +1584,7 @@ def receive_purchase_bill(
         # credits nothing. Without this the deduction sat on the bill and never
         # reached the register, so there was no challan to pay by the 7th and
         # nothing to assemble 26Q from.
-        _sync_tds_register(db, current_user.get("firm_id", ""), updated_bill)
+        _tds_sync = _sync_tds_register(db, current_user.get("firm_id", ""), updated_bill)
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -1537,7 +1627,12 @@ def receive_purchase_bill(
             _logger.error("receive_purchase_bill: inventory posting failed for %s: %s", bill_id, e, exc_info=True)
 
         updated_bill["journal_entry_id"] = journal_id
-        return api_response(True, updated_bill)
+        # The register's own account of what it wrote, and what it could not
+        # establish. Carried on the receive response because THIS is the moment
+        # the deduction becomes real — the credit under s.194C(3)/s.195 — and
+        # the moment a CA can still act on a missing declaration or a missing
+        # Form 15CA without unwinding anything.
+        return api_response(True, {**updated_bill, "tds_register": _tds_sync})
     except HTTPException:
         raise
     except Exception as e:
@@ -1767,6 +1862,17 @@ def create_bill_from_document(
         if _USE_MOCK:
             MOCK_PURCHASE_BILLS.append(bill_draft)
             return api_response(True, {**bill_draft, "requires_review": True})
+
+        # The extracted invoice is a supplier document like any other — an
+        # upload retried after a timeout is exactly how the same one arrives
+        # twice.
+        _dup = _duplicate_bill_id(db, bill_draft.get("client_id"),
+                                  bill_draft.get("vendor_id"),
+                                  bill_draft.get("bill_no"))
+        if _dup:
+            raise HTTPException(
+                status_code=409,
+                detail=_duplicate_bill_message(bill_draft.get("bill_no") or "", _dup))
 
         pb_resp = db.table("purchase_bills").insert(bill_draft).execute()  # type: ignore[possibly-undefined]
         bill    = pb_resp.data[0] if pb_resp.data else bill_draft
