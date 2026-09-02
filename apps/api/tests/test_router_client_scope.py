@@ -1477,6 +1477,24 @@ EXEMPT: dict[str, str] = {
         "users has a firm_id and NO client_id column (migration 003) — "
         "addressed by a STAFF user_id, and already firm-membership checked. "
         "Same reasoning as every /api/identity route, all exempt above.",
+    # tds.py — the firm's own reading of the DTAA articles it withholds under.
+    "/api/tds/treaty-rates":
+        "dtaa_treaty_rates has firm_id and NO client_id (migration 310), and "
+        "that is the point of the table: a treaty rate is a fact about a "
+        "COUNTRY and an ARTICLE, not about a client or a supplier. Royalty to "
+        "Switzerland is the same rate for every client of the firm paying into "
+        "Switzerland, which is exactly why the rate moved off the vendor. A "
+        "client guard here would have to invent a client to check. Firm "
+        "isolation is the real control and is enforced twice: .eq(firm_id) in "
+        "the handler and a firm RLS policy on the table.",
+    "/api/tds/rate-coverage":
+        "reports which financial years the RATE REGISTRIES hold and whether "
+        "each was confirmed against the Finance Act. Statutory reference data "
+        "compiled into the application — no firm's or client's rows are read "
+        "at all, so there is nothing to scope.",
+    "/api/tds/treaty-rates/{rate_id}":
+        "same table, addressed by id — and the DELETE still filters on "
+        "firm_id so one firm cannot remove another's reading.",
 }
 
 # How many endpoints each audited router is expected to have, at least. Without

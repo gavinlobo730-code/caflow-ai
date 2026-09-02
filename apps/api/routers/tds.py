@@ -380,6 +380,47 @@ def list_tds_sections(fy: Optional[str] = None, user: dict = Depends(rbac("tds",
     }
 
 
+@router.get("/rate-coverage")
+def tds_rate_coverage(user: dict = Depends(rbac("tds", "read"))):
+    """Which financial years the rate registries hold, and whether each was
+    CONFIRMED against that year's Finance Act.
+
+    Exists because the alternative is reading a docstring in a Python module,
+    and the trap CLAUDE.md names is that a missing year is NOT an error — every
+    registry here falls back to the last held year and returns it confidently.
+    A firm withholding in a year marked unverified should be able to see that
+    without asking an engineer.
+
+    Section 195's registry is currently unverified for EVERY year: those
+    figures were reconciled, not checked line by line against Part II of the
+    First Schedule. Confirming a year is a pure data change.
+    """
+    from domain.tds.section_195_rates import coverage as s195_coverage
+    from domain.tds.section_rates import TDS_RATES_BY_FY, LATEST_VERIFIED_TDS_FY
+    resident = [
+        {"fy": fy, "verified": getattr(TDS_RATES_BY_FY[fy], "verified", False)}
+        for fy in sorted(TDS_RATES_BY_FY)
+    ]
+    s195 = s195_coverage()
+    return {
+        "success": True,
+        "data": {
+            "resident_sections": {
+                "years": resident,
+                "latest_verified_fy": LATEST_VERIFIED_TDS_FY,
+            },
+            "section_195": {
+                "years": s195,
+                "any_verified": any(y["verified"] for y in s195),
+                "note": "Reconciled against s.115A and Part II of the First "
+                        "Schedule, NOT confirmed line by line. Confirm the year "
+                        "you are withholding in before relying on it.",
+            },
+        },
+        "error": None,
+    }
+
+
 @router.get("/returns/{client_id}")
 def get_tds_returns(client_id: str, user: dict = Depends(rbac("tds", "read"))):
     """Fetch all TDS returns for a client."""
@@ -428,3 +469,125 @@ def get_tds_deductions(
         return_type=return_type,
     )
     return {"success": True, "data": data, "error": None}
+
+
+# ── The firm's DTAA readings (migration 310) ─────────────────────────────────
+# Firm-scoped, not client-scoped: a treaty rate is the firm's reading of an
+# agreement, and every client paying into that country withholds on it.
+
+class TreatyRateIn(BaseModel):
+    country_code: str = Field(..., description="ISO 3166-1 alpha-2, e.g. AE")
+    nature: str = Field(..., description="One of domain/tds/section_195_rates.ALL_NATURES")
+    rate_bps: Optional[int] = Field(
+        None, description="Rate in basis points; 10% is 1000. Omit when the "
+                          "agreement has no article for this nature.")
+    no_article: bool = Field(
+        False, description="The agreement has no article for this nature at all "
+                           "— several, including the UAE and Singapore, have no "
+                           "fees-for-technical-services article. That makes the "
+                           "income Article 7 business profits, not taxable in "
+                           "India without a permanent establishment.")
+    article_ref: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.get("/treaty-rates")
+def list_treaty_rates(user: dict = Depends(rbac("tds", "read"))):
+    """Every DTAA position this firm has recorded.
+
+    Ships EMPTY on a new firm and is never seeded — India has agreements with
+    over ninety countries, their articles differ, MFN clauses need their own
+    s.90(1) notification (AO v. Nestle SA, 2023), and a wrong rate too low
+    disallows the whole expenditure under s.40(a)(i).
+    """
+    from core.supabase_client import get_supabase
+    from domain.tds.section_195_rates import ALL_NATURES
+    try:
+        db = get_supabase()
+        rows = (db.table("dtaa_treaty_rates")
+                .select("id, country_code, nature, rate_bps, no_article, "
+                        "article_ref, notes, verified_on")
+                .eq("firm_id", user["firm_id"])
+                .order("country_code").order("nature").execute().data) or []
+    except Exception:                                           # noqa: BLE001
+        rows = []
+    return {"success": True,
+            "data": {"rates": rows, "natures": list(ALL_NATURES)},
+            "error": None}
+
+
+@router.put("/treaty-rates")
+def upsert_treaty_rate(body: TreatyRateIn,
+                       user: dict = Depends(rbac("tds", "write"))):
+    """Record or replace this firm's reading for one (country, nature).
+
+    A row must say ONE thing: a rate, or that the agreement has no article for
+    this nature. Neither is a half-finished thought the engine would have to
+    guess at, and both is a contradiction.
+    """
+    from core.supabase_client import get_supabase
+    from core.exceptions import document_failure_detail
+    from domain.tds.section_195_rates import ALL_NATURES
+
+    country = (body.country_code or "").strip().upper()
+    nature = (body.nature or "").strip().lower()
+    if not (len(country) == 2 and country.isalpha()):
+        raise HTTPException(
+            status_code=422,
+            detail="country_code must be a 2-letter ISO 3166-1 alpha-2 code, "
+                   f"e.g. AE, SG or CH (got '{body.country_code}').")
+    if nature not in ALL_NATURES:
+        raise HTTPException(
+            status_code=422,
+            detail="nature must be one of: " + ", ".join(ALL_NATURES))
+    if body.no_article and body.rate_bps is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="A row says one thing or the other: either the agreement "
+                   "has no article for this nature, or it has a rate.")
+    if not body.no_article:
+        if body.rate_bps is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Record the rate you read off the agreement, or tick "
+                       "'no article' if it has none for this nature. A row with "
+                       "neither cannot be withheld on.")
+        if not (0 <= body.rate_bps <= 10000):
+            raise HTTPException(
+                status_code=422,
+                detail="rate_bps is a rate in basis points, 0 to 10000 "
+                       f"(10% is 1000). Got {body.rate_bps}.")
+    try:
+        db = get_supabase()
+        # Payload inline with literal keys so tests/test_backend_columns_
+        # exist_pg.py can check every column against the real schema.
+        got = (db.table("dtaa_treaty_rates").upsert({
+            "firm_id": user["firm_id"],
+            "country_code": country,
+            "nature": nature,
+            "rate_bps": (None if body.no_article else body.rate_bps),
+            "no_article": bool(body.no_article),
+            "article_ref": (body.article_ref or None),
+            "notes": (body.notes or None),
+            "verified_by": user.get("id"),
+        }, on_conflict="firm_id,country_code,nature").execute().data) or []
+    except Exception as e:                                      # noqa: BLE001
+        raise HTTPException(status_code=400, detail=document_failure_detail(
+            e, action="save this treaty rate"))
+    return {"success": True, "data": (got[0] if got else None), "error": None}
+
+
+@router.delete("/treaty-rates/{rate_id}")
+def delete_treaty_rate(rate_id: str, user: dict = Depends(rbac("tds", "write"))):
+    """Remove one reading. Bills already booked keep what they withheld — the
+    deduction row records what was true at the time, not what the table says
+    today."""
+    from core.supabase_client import get_supabase
+    from core.exceptions import document_failure_detail
+    try:
+        get_supabase().table("dtaa_treaty_rates").delete().eq(
+            "id", rate_id).eq("firm_id", user["firm_id"]).execute()
+    except Exception as e:                                      # noqa: BLE001
+        raise HTTPException(status_code=400, detail=document_failure_detail(
+            e, action="delete this treaty rate"))
+    return {"success": True, "data": {"deleted": rate_id}, "error": None}

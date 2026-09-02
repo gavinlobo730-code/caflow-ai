@@ -304,7 +304,8 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
     return _tds.tds_paise, (_tds.rate_bps if _tds.applies else 0)
 
 
-def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str):
+def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str,
+                              firm_id: str = "", db=None):
     """Withholding on a payment to a NON-RESIDENT payee — IT Act s.195.
 
     A different charging section from s.194C and its neighbours, not a
@@ -320,16 +321,23 @@ def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str):
     """
     from domain.tds.section_195 import resolve_section_195
     from domain.tds.tds_computer import is_company_pan, has_pan
+    from services.treaty_rate_service import treaty_position
+
+    nature = vendor.get("section_195_nature_of_income")
+    # The treaty position comes from the firm's own reading, keyed by (country,
+    # nature) — migration 310. A per-vendor treaty_rate_bps still overrides it.
+    pos = treaty_position(db, firm_id, vendor, nature)
 
     res = resolve_section_195(
         amount_paise=total_taxable,
-        nature=vendor.get("section_195_nature_of_income"),
+        nature=nature,
         is_company=is_company_pan(vendor.get("pan")),
         has_pan=has_pan(vendor.get("pan")),
         trc_on_file=bool(vendor.get("trc_on_file")),
         form_10f_on_file=bool(vendor.get("form_10f_on_file")),
         no_pe_declaration_on_file=bool(vendor.get("no_pe_declaration_on_file")),
-        treaty_rate_bps=vendor.get("treaty_rate_bps"),
+        treaty_rate_bps=(pos.rate_bps if pos.found else None),
+        treaty_has_no_article=(pos.found and pos.no_article),
         # Rule 37BC's six particulars. Name, address, email and phone are
         # ordinary vendor fields; the TRC and the country TIN are the two that
         # a domestic vendor never has, so they are what actually gate it.
@@ -484,7 +492,8 @@ def _compute_bill_lines_and_totals(
         # engine at all — different section, different base, no threshold,
         # plus surcharge and cess.
         if is_non_resident(vendor.get("residential_status")):
-            _s195 = _resolve_bill_section_195(vendor, total_taxable, bill_date)
+            _s195 = _resolve_bill_section_195(vendor, total_taxable, bill_date,
+                                              firm_id, db)
             tds_paise = _s195.tds_paise
             # The BASE rate, not the effective one: Form 27Q's deductee
             # annexure asks for the rate at which tax was deducted and reports
@@ -710,6 +719,10 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "status":                "draft",
             "notes":                 data.get("notes", ""),
             "document_url":          data.get("document_url"),
+            # Rule 37BB paperwork, recorded not filed — see PurchaseBillIn.
+            "form_15ca_ack_no":      data.get("form_15ca_ack_no"),
+            "form_15ca_filed_on":    data.get("form_15ca_filed_on"),
+            "form_15cb_udin":        data.get("form_15cb_udin"),
             "created_at":            datetime.now(timezone.utc).isoformat(),
             **_ccy_cols,
             "lines":                 computed_lines,
@@ -751,6 +764,10 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "status":                "draft",
         "notes":                 data.get("notes", ""),
         "document_url":          data.get("document_url"),
+        # Rule 37BB paperwork, recorded not filed — see PurchaseBillIn.
+        "form_15ca_ack_no":      data.get("form_15ca_ack_no"),
+        "form_15ca_filed_on":    data.get("form_15ca_filed_on"),
+        "form_15cb_udin":        data.get("form_15cb_udin"),
         "created_at":            datetime.now(timezone.utc).isoformat(),
         **_ccy_cols,
     }
@@ -1372,7 +1389,9 @@ def _sync_tds_register(db, firm_id: str, bill: dict) -> None:
             # is the one query shape CLAUDE.md says never to write.
             got = (db.table("vendors")
                    .select("id, name, pan, residential_status, "
-                           "country_of_residence, tax_identification_number")
+                           "country_of_residence, tax_identification_number, "
+                           "no_pe_declaration_on_file, no_pe_declaration_on, "
+                           "no_pe_declaration_by")
                    .eq("id", bill["vendor_id"]).eq("firm_id", firm_id)
                    .limit(1).execute().data) or []
             vendor = got[0] if got else {}

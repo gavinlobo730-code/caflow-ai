@@ -20,8 +20,14 @@ THE ORDER OF THE QUESTIONS IS THE WHOLE THING
     3. IS THERE A TREATY, AND IS IT BETTER? s.90(2) gives the assessee the more
        beneficial of the Act and the agreement, conditional on a Tax Residency
        Certificate under s.90(4) and, in practice, Form 10F and a no-PE
-       declaration. The treaty RATE is read off the agreement by the CA and
-       recorded on the vendor; this module only compares two numbers.
+       declaration. The treaty position is read off the agreement by the CA and
+       recorded per (country, nature) in dtaa_treaty_rates (migration 310);
+       this module only compares two numbers.
+
+       A treaty with NO ARTICLE for the nature — the UAE and Singapore have no
+       fees-for-technical-services article — is an answer, not a missing rate:
+       the income is Article 7 business profits and not taxable here without a
+       PE. It therefore lands back on question 1 and needs the same evidence.
 
     4. IS THERE A PAN? s.206AA floors the rate at 20% without one — but
        s.206AA(7) with Rule 37BC lifts that floor for a non-resident's
@@ -125,6 +131,7 @@ def resolve_section_195(
     form_10f_on_file: bool = False,
     no_pe_declaration_on_file: bool = False,
     treaty_rate_bps: Optional[int] = None,
+    treaty_has_no_article: bool = False,
     rule_37bc_particulars_held: bool = False,
     fy: Optional[str] = None,
 ) -> Section195Resolution:
@@ -176,6 +183,29 @@ def resolve_section_195(
     citation = rule.citation
     rate_bps = act_bps
     if trc_on_file:
+        # THE AGREEMENT HAS NO ARTICLE FOR THIS NATURE, WHICH IS AN ANSWER.
+        # Several — the UAE and Singapore among them — have no fees for
+        # technical services article at all, so what the Act would tax as FTS
+        # is business profits under Article 7 and not taxable in India without
+        # a permanent establishment. That is the SAME question chargeability
+        # asked above, arriving by a different route, so it needs the same
+        # evidence rather than being waved through as a zero rate.
+        if treaty_has_no_article:
+            if not no_pe_declaration_on_file:
+                return Section195Resolution(
+                    applies=False, refusal=REFUSED_NO_PE_DECLARATION,
+                    nature=key, **meta,
+                    refusal_detail=(
+                        "The treaty has no article for this nature of income, "
+                        "so it is business profits under Article 7 and not "
+                        "taxable in India without a permanent establishment — "
+                        "but that is a claim about the payee's Indian presence. "
+                        "Record a no-PE declaration against the vendor."))
+            return Section195Resolution(
+                applies=True, tds_paise=0, nature=key, basis="not_chargeable",
+                citation=("s.90(2) — the agreement has no article for this "
+                          "nature, so Article 7 business profits apply and "
+                          "there is no permanent establishment"), **meta)
         if treaty_rate_bps is None:
             return Section195Resolution(
                 applies=False, refusal=REFUSED_TREATY_RATE_UNKNOWN, nature=key, **meta,

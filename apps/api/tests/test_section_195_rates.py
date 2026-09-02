@@ -292,3 +292,177 @@ def test_every_nature_carries_the_provision_it_comes_from():
 def test_the_resolution_reports_which_year_it_priced_on():
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", fy="2025-26")
     assert r.fy == "2025-26" and r.rates_verified is False
+
+
+# ── Saying so where the money moves ─────────────────────────────────────────
+
+def test_rates_are_verified_answers_about_the_year_that_was_asked_for(monkeypatch):
+    """rates_for() falls back to the last held year, and a fallback is by
+    definition not a confirmation of the year asked about. Reaching into
+    rates_for(fy).verified would report the FALLBACK year's status.
+
+    A year has to be marked verified for this to be detectable at all — while
+    every entry is False, both readings agree by accident. So one is flipped
+    here, which is also what makes this test survive the day a real year is
+    confirmed.
+    """
+    import dataclasses
+    from domain.tds import section_195_rates as m
+
+    verified_2025 = dataclasses.replace(m.RATES_BY_FY["2025-26"], verified=True)
+    monkeypatch.setitem(m.RATES_BY_FY, "2025-26", verified_2025)
+
+    assert m.rates_are_verified("2025-26") is True
+    # 2031-32 is not held, so rates_for() hands back the (now verified) 2025-26
+    # entry. Asking about 2031-32 must still answer about 2031-32.
+    assert m.rates_for("2031-32").verified is True
+    assert m.rates_are_verified("2031-32") is False
+
+
+def test_coverage_lists_every_year_and_its_status():
+    from domain.tds.section_195_rates import coverage
+    got = coverage()
+    assert [y["fy"] for y in got] == sorted(RATES_BY_FY)
+    assert all(y["verified"] is False for y in got)
+    assert all(y["natures"] == len(ALL_NATURES) for y in got)
+
+
+def test_a_195_deduction_reports_that_its_rates_were_never_confirmed():
+    """A CA about to pay a challan should be told the rate was reconciled and
+    not verified. Not a refusal — refusing every foreign payment until somebody
+    reads Part II would stop the work rather than inform it."""
+    from datetime import date
+    from domain.tds.residency import GAP_195_RATES_UNVERIFIED
+    from services.tds_register_service import sync_for_bill
+
+    class _DB:
+        def table(self, n): return self
+        def upsert(self, *a, **k): return self
+        def delete(self): return self
+        def eq(self, *a): return self
+        def execute(self): return type("R", (), {"data": []})()
+
+    out = sync_for_bill(_DB(), "f1", "c1", {
+        "id": "b1", "client_id": "c1", "status": "received",
+        "bill_date": "2025-10-25", "taxable_amount_paise": 10_00_000_00,
+        "tds_paise": 2_08_000_00, "tds_rate_bps": 2000, "tds_section": "195",
+    }, {"id": "v1", "name": "Helvetica AG", "residential_status": "non_resident",
+        "country_of_residence": "CH", "tax_identification_number": "T1"})
+    assert GAP_195_RATES_UNVERIFIED in out["statutory_gaps"]
+
+
+def test_a_resident_section_deduction_does_not_report_it():
+    """The negative control: 194C's rates carry their own verification status
+    and this gap is about s.195's registry only."""
+    from domain.tds.residency import GAP_195_RATES_UNVERIFIED
+    from services.tds_register_service import sync_for_bill
+
+    class _DB:
+        def table(self, n): return self
+        def upsert(self, *a, **k): return self
+        def delete(self): return self
+        def eq(self, *a): return self
+        def execute(self): return type("R", (), {"data": []})()
+
+    out = sync_for_bill(_DB(), "f1", "c1", {
+        "id": "b1", "client_id": "c1", "status": "received",
+        "bill_date": "2025-10-25", "taxable_amount_paise": 18_000_00,
+        "tds_paise": 360_00, "tds_rate_bps": 200, "tds_section": "194C",
+    }, {"id": "v1", "name": "Pinnacle", "pan": "AAGCP7788R",
+        "residential_status": "resident"})
+    assert GAP_195_RATES_UNVERIFIED not in out.get("statutory_gaps", [])
+
+
+def test_the_coverage_endpoint_reports_both_registries():
+    """So a firm can see it without reading a Python docstring."""
+    from routers.tds import tds_rate_coverage
+    data = tds_rate_coverage(user={"firm_id": "f1"})["data"]
+    assert data["section_195"]["any_verified"] is False
+    assert data["section_195"]["years"]
+    assert data["resident_sections"]["years"]
+
+
+# ── The nil, and Rule 37BB, become auditable ────────────────────────────────
+
+class _RegDB:
+    def table(self, n): return self
+    def upsert(self, *a, **k): return self
+    def delete(self): return self
+    def eq(self, *a): return self
+    def execute(self): return type("R", (), {"data": []})()
+
+
+def _sync195(bill_over=None, vendor_over=None):
+    from services.tds_register_service import sync_for_bill
+    bill = {"id": "b1", "client_id": "c1", "status": "received",
+            "bill_date": "2025-10-25", "taxable_amount_paise": 10_00_000_00,
+            "tds_paise": 2_08_000_00, "tds_rate_bps": 2000, "tds_section": "195",
+            "form_15ca_ack_no": "ACK123"}
+    vendor = {"id": "v1", "name": "Helvetica AG", "residential_status": "non_resident",
+              "country_of_residence": "CH", "tax_identification_number": "T1"}
+    bill.update(bill_over or {})
+    vendor.update(vendor_over or {})
+    return sync_for_bill(_RegDB(), "f1", "c1", bill, vendor)
+
+
+def test_a_nil_on_an_undated_declaration_is_reported():
+    """s.201(1) makes a deductor who fails to deduct an assessee in default and
+    s.201(1A) charges interest, so the consequence of a wrong nil sits with the
+    DEDUCTOR — and a ticked box answers neither who nor when."""
+    from domain.tds.residency import GAP_NO_PE_DECLARATION_UNDATED
+    out = _sync195(vendor_over={"no_pe_declaration_on_file": True})
+    assert GAP_NO_PE_DECLARATION_UNDATED in out["statutory_gaps"]
+
+
+def test_a_dated_and_attributed_declaration_is_not_reported():
+    from domain.tds.residency import GAP_NO_PE_DECLARATION_UNDATED
+    out = _sync195(vendor_over={"no_pe_declaration_on_file": True,
+                                "no_pe_declaration_on": "2025-04-10",
+                                "no_pe_declaration_by": "u1"})
+    assert GAP_NO_PE_DECLARATION_UNDATED not in out.get("statutory_gaps", [])
+
+
+def test_a_date_without_a_declarer_is_still_incomplete():
+    """Both halves, or neither answers the question that gets asked."""
+    from domain.tds.residency import GAP_NO_PE_DECLARATION_UNDATED
+    out = _sync195(vendor_over={"no_pe_declaration_on_file": True,
+                                "no_pe_declaration_on": "2025-04-10"})
+    assert GAP_NO_PE_DECLARATION_UNDATED in out["statutory_gaps"]
+
+
+def test_a_vendor_holding_no_declaration_at_all_is_not_reported_for_it():
+    """Only where the nil was actually RELIED ON. A vendor withheld at a rate
+    has not used a declaration, so asking it to date one is noise."""
+    from domain.tds.residency import GAP_NO_PE_DECLARATION_UNDATED
+    assert GAP_NO_PE_DECLARATION_UNDATED not in _sync195().get("statutory_gaps", [])
+
+
+def test_a_foreign_remittance_with_no_15ca_recorded_is_reported():
+    """Rule 37BB with s.195(6) wants it BEFORE the money leaves. Nothing blocks
+    the bill — 15CA is a portal submission and CLAUDE.md forbids submitting to
+    one from here — but the gap must not be invisible."""
+    from domain.tds.residency import GAP_FORM_15CA_NOT_RECORDED
+    out = _sync195(bill_over={"form_15ca_ack_no": None})
+    assert GAP_FORM_15CA_NOT_RECORDED in out["statutory_gaps"]
+
+
+def test_a_recorded_15ca_clears_it():
+    from domain.tds.residency import GAP_FORM_15CA_NOT_RECORDED
+    assert GAP_FORM_15CA_NOT_RECORDED not in _sync195().get("statutory_gaps", [])
+
+
+def test_a_domestic_bill_is_asked_for_none_of_this():
+    """Rule 37BB is about remittances to non-residents. A 194C bill carrying
+    these gaps would bury the real ones."""
+    from domain.tds.residency import (
+        GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
+        GAP_195_RATES_UNVERIFIED)
+    out = _sync195(
+        bill_over={"tds_section": "194C", "tds_rate_bps": 200,
+                   "tds_paise": 360_00, "form_15ca_ack_no": None},
+        vendor_over={"residential_status": "resident", "pan": "AAGCP7788R",
+                     "no_pe_declaration_on_file": True})
+    gaps = out.get("statutory_gaps", [])
+    for code in (GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
+                 GAP_195_RATES_UNVERIFIED):
+        assert code not in gaps

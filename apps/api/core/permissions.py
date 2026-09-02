@@ -193,6 +193,13 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     "tds": {
         "read":    _ALL_STAFF,
         "compute": _AT_LEAST_EXECUTIVE,
+        # Recording the firm's reading of a DTAA article (migration 310) is a
+        # professional position the firm withholds tax on and defends to an
+        # assessing officer, not a preference. MANAGER, deliberately the same
+        # tier as dtaa_treaty_rates' RESTRICTIVE RLS policies — the app-layer
+        # check is the primary control and RLS is defence in depth (CLAUDE.md),
+        # so the two disagreeing would mean one of them is decorative.
+        "write":   _AT_LEAST_MANAGER,
         "approve": _AT_LEAST_MANAGER,
     },
     # ── Income Tax ───────────────────────────────────────────────────────────

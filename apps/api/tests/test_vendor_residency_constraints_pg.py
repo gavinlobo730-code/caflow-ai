@@ -240,3 +240,129 @@ def test_the_bill_and_the_deduction_carry_the_surcharge_and_cess_split(db):
         assert len(lines) == 2, f"{table}: {lines}"
         for line in lines:
             assert line.endswith(":0"), f"{table} {line} — must default to 0"
+
+
+# ── Migration 310: the firm's treaty readings ───────────────────────────────
+
+def _treaty(dsn, country="CH", nature="royalty", rate="1000", no_article="false"):
+    return _psql(dsn, f"""
+        INSERT INTO dtaa_treaty_rates (firm_id, country_code, nature, rate_bps, no_article)
+        VALUES ('{FIRM}', '{country}', '{nature}', {rate}, {no_article});
+    """)
+
+
+def test_a_reading_with_a_rate_is_accepted(db):
+    assert _treaty(db).returncode == 0
+
+
+def test_a_reading_that_says_the_treaty_has_no_article_is_accepted(db):
+    """Several agreements — the UAE and Singapore among them — have no
+    fees-for-technical-services article. That is an ANSWER, so the row must be
+    saveable with no rate at all."""
+    r = _treaty(db, country="AE", nature="fees_for_technical_services",
+                rate="NULL", no_article="true")
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_row_that_says_neither_is_refused(db):
+    """Neither a rate nor 'no article' is a half-finished thought, and the
+    engine would have to guess which the CA meant."""
+    r = _treaty(db, rate="NULL", no_article="false")
+    assert r.returncode != 0 and "dtaa_treaty_rates_answer_check" in r.stderr
+
+
+def test_a_row_that_says_both_is_refused(db):
+    """A rate AND no-article is a contradiction."""
+    r = _treaty(db, rate="1000", no_article="true")
+    assert r.returncode != 0 and "dtaa_treaty_rates_answer_check" in r.stderr
+
+
+@pytest.mark.parametrize("rate", ["-1", "10001"])
+def test_a_rate_outside_zero_to_one_hundred_percent_is_refused(db, rate):
+    r = _treaty(db, rate=rate)
+    assert r.returncode != 0 and "dtaa_treaty_rates_answer_check" in r.stderr
+
+
+@pytest.mark.parametrize("country", ["Switzerland", "ch", "CHE", "C"])
+def test_a_country_that_is_not_an_iso_code_is_refused(db, country):
+    """It has to join against vendors.country_of_residence, which is the same
+    shape — a name here would silently match nothing."""
+    r = _treaty(db, country=country)
+    assert r.returncode != 0 and "dtaa_treaty_rates_country_check" in r.stderr
+
+
+def test_a_nature_the_engine_cannot_price_is_refused(db):
+    r = _treaty(db, nature="consultancy")
+    assert r.returncode != 0 and "dtaa_treaty_rates_nature_check" in r.stderr
+
+
+def test_one_reading_per_country_and_nature(db):
+    """The uniqueness that makes it a lookup rather than a list. Two rows for
+    (CH, royalty) would make the withheld rate depend on row order."""
+    assert _treaty(db).returncode == 0
+    second = _treaty(db, rate="1500")
+    assert second.returncode != 0
+    assert "dtaa_treaty_rates_firm_id_country_code_nature_key" in second.stderr
+
+
+def test_the_same_country_may_hold_a_row_per_nature(db):
+    """The whole reason it moved off the vendor: one agreement commonly gives
+    royalty, FTS and interest three different rates."""
+    for nature, rate in (("royalty", "1000"), ("interest", "1500"),
+                         ("fees_for_technical_services", "1000")):
+        assert _treaty(db, nature=nature, rate=rate).returncode == 0
+
+
+def test_the_table_is_firm_scoped_and_row_level_secured(db):
+    got = _psql(db, "SELECT count(*) FROM pg_policies "
+                    "WHERE tablename = 'dtaa_treaty_rates';", tuples=True)
+    assert int(got.stdout.strip()) >= 4, (
+        "expected the firm policy plus three RESTRICTIVE role guards")
+    rls = _psql(db, "SELECT relrowsecurity FROM pg_class "
+                    "WHERE oid = 'public.dtaa_treaty_rates'::regclass;", tuples=True)
+    assert rls.stdout.strip() == "t"
+
+
+# ── Migration 311: the nil and Rule 37BB become auditable ───────────────────
+
+def test_the_declaration_columns_are_nullable(db):
+    """Every vendor predating this has no declaration date and no declarer.
+    Backfilling either would be inventing evidence, so an unattributed
+    declaration is REPORTED as a gap rather than repaired."""
+    assert _insert_vendor(db, "Pre-311", residential_status="non_resident",
+                          country_of_residence="CH").returncode == 0
+    got = _psql(db, "SELECT coalesce(no_pe_declaration_on::text,'-') || '|' || "
+                    "coalesce(no_pe_declaration_by::text,'-') FROM vendors "
+                    "WHERE name = 'Pre-311';", tuples=True)
+    assert got.stdout.strip() == "-|-"
+
+
+def test_the_declarer_must_be_a_real_user(db):
+    """An audit trail pointing at a user id nobody holds is not a trail."""
+    r = _psql(db, f"""
+        INSERT INTO vendors (firm_id, client_id, name, no_pe_declaration_by)
+        VALUES ('{FIRM}', '{CLIENT}', 'Ghost',
+                '00000000-0000-0000-0000-000000000009');
+    """)
+    assert r.returncode != 0 and "no_pe_declaration_by_fkey" in r.stderr
+
+
+def test_the_foreign_remittance_index_is_partial_on_section_195(db):
+    """A firm's foreign remittances are a handful of rows among every bill it
+    has ever booked. A full index would be paid for by every domestic bill."""
+    got = _psql(db, "SELECT indexdef FROM pg_indexes "
+                    "WHERE indexname = 'idx_purchase_bills_foreign_remittance';",
+                tuples=True)
+    assert "WHERE" in got.stdout and "195" in got.stdout
+
+
+def test_the_15ca_columns_live_on_the_bill_not_the_vendor(db):
+    """Form 15CA is per REMITTANCE — a vendor paid four times in a year needs
+    four of them, which a column on the vendor could hold only one of."""
+    on_bill = _psql(db, "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name='purchase_bills' "
+                        "AND column_name LIKE 'form_15c%';", tuples=True)
+    on_vendor = _psql(db, "SELECT count(*) FROM information_schema.columns "
+                          "WHERE table_schema='public' AND table_name='vendors' "
+                          "AND column_name LIKE 'form_15c%';", tuples=True)
+    assert on_bill.stdout.strip() == "3" and on_vendor.stdout.strip() == "0"

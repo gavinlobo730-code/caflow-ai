@@ -140,6 +140,19 @@ SECTION_195 = "195"
 GAP_SECTION_195_RATE_NOT_MODELLED = "section_195_rate_not_modelled"
 GAP_RESIDENCY_NOT_CLASSIFIED = "vendor_residency_not_classified"
 GAP_27Q_IDENTIFIERS_MISSING = "non_resident_identifiers_missing"
+# Raised on a s.195 deduction whose year's rates nobody has confirmed against
+# the Finance Act. Not a refusal — refusing every foreign payment until a human
+# reads Part II would stop the work rather than inform it — but a CA about to
+# pay a challan should be told the rate was reconciled and not verified.
+GAP_195_RATES_UNVERIFIED = "section_195_rates_not_verified"
+# Nil was withheld on a no-PE declaration nobody dated or attributed. s.201(1)
+# makes a deductor who fails to deduct an assessee in default and s.201(1A)
+# charges interest, so the consequence of a wrong nil sits with the DEDUCTOR —
+# and "a box was ticked" answers neither who nor when.
+GAP_NO_PE_DECLARATION_UNDATED = "no_pe_declaration_undated"
+# Money left for a non-resident and no Form 15CA acknowledgement was recorded
+# against the bill. Rule 37BB with s.195(6) wants it BEFORE the remittance.
+GAP_FORM_15CA_NOT_RECORDED = "form_15ca_not_recorded"
 
 
 def is_non_resident(residential_status: Optional[str]) -> bool:
