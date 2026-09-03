@@ -189,3 +189,23 @@ test("three filters — To do · Passed · Set aside — and the working states 
   assert.deepEqual(idsOf(s, "WORKING"), ["ready", "proposed", "needs_you"],
     "the working line lists the three open states in the order they are cleared");
 });
+
+test("settle runs on open, not on every filter/search/page change", () => {
+  // settle() proposes for every undrafted line and then passes what trusted
+  // rules drafted — a real sweep with its own network round trips, meant to
+  // run once when the screen opens (and again after an import). If the
+  // effect that fires it depends on the `settle` closure itself, it refires
+  // on every bankAccountId/state/page/search change too, because settle
+  // closes over loadCounts and reload, which close over those filters. That
+  // produced a real burst of concurrent requests on the account-filter
+  // dropdown — a transient 500 in production, traced to exactly this.
+  const s = tab();
+  const at = s.indexOf("const settle = useCallback(");
+  assert.ok(at > 0, "settle is not declared");
+  assert.match(s.slice(at), /useEffect\(\(\) => \{[\s\S]{0,200}settleRef\.current\(\);[\s\S]{0,40}\}, \[clientId\]\);/,
+    "the effect that runs settle on open must depend on [clientId] alone, via a ref, " +
+    "never on [settle] — settle's identity carries every filter it closes over.");
+  assert.doesNotMatch(s.slice(at), /useEffect\(\(\) => \{ settle\(\); \}, \[settle\]\);/,
+    "settle is wired straight to its own identity again — that re-runs the whole " +
+    "propose-and-pass sweep on every filter change, not just a refetch");
+});
