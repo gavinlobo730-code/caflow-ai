@@ -1,10 +1,11 @@
 "use client";
-// Bank Book tab — the register: the bank ledger with a running balance
+// Bank Book — the register: the bank ledger with a running balance
 //
 // Moved verbatim out of app/clients/[id]/bank/page.tsx on 2026-09-03, when
-// the bank module was rebuilt around ENTRIES (docs/architecture/09-bank-entries.md).
-// The 4,964-line page was the reason small changes went unreviewed; each tab
-// is its own file now. Behaviour here is unchanged by the move.
+// the bank module was rebuilt around ENTRIES (docs/architecture/09-bank-entries.md),
+// and the same day out of the Bank module's tabs altogether: it is a report,
+// and it is rendered by app/clients/[id]/reports/bank-book/page.tsx. The Bank
+// screen links to it. Behaviour here is unchanged by either move.
 
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Download, Landmark } from "lucide-react";
@@ -202,8 +203,8 @@ export function BankRegister({ clientId }: { clientId: string }) {
         <Landmark size={24} className="mx-auto text-[#CBD5E1]" />
         <p className="text-sm text-[#94A3B8] mt-2">No bank account yet.</p>
         <p className="text-[11px] text-[#94A3B8] mt-1">
-          Add one under <strong>Accounts</strong>, then import a statement — the register
-          builds itself from what the bank sent.
+          Add one from <strong>Bank › Entries › Accounts</strong>, then import a statement —
+          the register builds itself from what the bank sent.
         </p>
       </div>
     );
@@ -279,7 +280,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
           </p>
           <p className="text-[11px] text-amber-700 mt-1">
             Usually a missing, duplicated or misdated line, or an opening balance that needs
-            correcting under Accounts. Only the first mismatch is shown — every balance after
+            correcting under Bank › Entries › Accounts. Only the first mismatch is shown — every balance after
             it inherits the same difference.
           </p>
         </div>
@@ -325,7 +326,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             {filtersActive ? "Nothing matches these filters." : "No transactions on this account yet."}
           </p>
           {!filtersActive && (
-            <p className="text-[11px] text-[#94A3B8] mt-1">Import a statement under <strong>Accounts</strong>.</p>
+            <p className="text-[11px] text-[#94A3B8] mt-1">Import a statement from <strong>Bank › Entries</strong>.</p>
           )}
         </div>
       ) : (

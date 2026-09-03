@@ -146,6 +146,13 @@ class BankEntryService:
             q = self._base(db, firm_id, client_id, bank_account_id, count=count)
             if state == "to_do":
                 q = q.in_("entry_state", list(E.OPEN_STATES))
+            elif state == E.PASSED:
+                # "Passed" is what is IN THE BOOKS. A covered line — the
+                # receiving side of a passed contra — carries no journal of
+                # its own, but it is done, and a CA opening Passed is asking
+                # what is done. Listing it here is what let the screen drop
+                # the Covered chip; state="covered" still lists them alone.
+                q = q.in_("entry_state", [E.PASSED, E.COVERED])
             elif state != "all":
                 q = q.eq("entry_state", state)
             return bank_matching_service._search_filter(q, q_text)

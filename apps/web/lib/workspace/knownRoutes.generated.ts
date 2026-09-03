@@ -55,6 +55,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["clients",":id","relationships"],
   ["clients",":id","reports"],
   ["clients",":id","reports","ageing"],
+  ["clients",":id","reports","bank-book"],
   ["clients",":id","reports","ratios"],
   ["clients",":id","reports","trend"],
   ["clients",":id","sales"],

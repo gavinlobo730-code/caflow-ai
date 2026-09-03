@@ -15,6 +15,13 @@
 //     state is a stored column, and the verb is Pass. The properties below are
 //     the same ones the old queue test held, re-pointed at the new files.
 //
+//     Later the same day the module was collapsed from five tabs to THREE —
+//     Entries · Reconcile · Rules. Accounts was setup wearing a tab (it is a
+//     panel and an Import button on Entries now), Bank Book was a report (it
+//     is under Reports now), and the six state chips were the CA classifying
+//     their own queue (three filters and one line of text now). Tests 8-11
+//     hold that shape, because "just add a tab for it" is the drift.
+//
 // WHAT IS ASSERTED
 //     1. The list renders the shared DataTable with the six columns, in order —
 //        Spent and Received SEPARATE, and an Entry column that says what the
@@ -38,8 +45,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TAB = path.join(__dirname, "..", "components", "banking", "EntriesTab.tsx");
-const MODAL = path.join(__dirname, "..", "components", "banking", "EntryDetailModal.tsx");
+const BANKING = path.join(__dirname, "..", "components", "banking");
+const TAB = path.join(BANKING, "EntriesTab.tsx");
+const MODAL = path.join(BANKING, "EntryDetailModal.tsx");
+const SHELL = path.join(__dirname, "..", "app", "clients", "[id]", "bank", "page.tsx");
+const REPORTS_INDEX = path.join(__dirname, "..", "app", "clients", "[id]", "reports", "page.tsx");
+const BANK_BOOK_REPORT = path.join(__dirname, "..", "app", "clients", "[id]", "reports", "bank-book", "page.tsx");
 
 const tab = () => fs.readFileSync(TAB, "utf8");
 const modal = () => fs.readFileSync(MODAL, "utf8");
@@ -133,4 +144,48 @@ test("the state is read, never decided, in the browser", () => {
       "a browser-side confidence rule is back");
   }
   assert.match(tab(), /t\.entry_state/, "the row must read the stored state");
+});
+
+/** The ids of an `id: "…"` array literal declared as `const NAME`. */
+function idsOf(src: string, name: string): string[] {
+  const at = src.indexOf(`const ${name}`);
+  assert.ok(at >= 0, `${name} is not declared`);
+  const decl = src.slice(at);
+  const body = decl.slice(0, decl.indexOf("\n];"));
+  assert.ok(body.length > 50, `the ${name} declaration came back empty`);
+  return [...body.matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]);
+}
+
+test("the module is three tabs — Entries · Reconcile · Rules — and nothing else", () => {
+  const s = fs.readFileSync(SHELL, "utf8");
+  assert.deepEqual(idsOf(s, "TABS"), ["entries", "reconcile", "rules"],
+    "a tab came or went. Accounts is setup and lives behind Entries; Bank Book " +
+    "is a report and lives under Reports. A new tab needs a reason a CA would " +
+    "give, not a place to put something.");
+});
+
+test("accounts and statement import are reached from Entries, not from a tab", () => {
+  const s = tab();
+  assert.match(s, /from "@\/components\/banking\/AccountsPanel"/, "Entries must import the Accounts panel");
+  assert.match(s, /<BankImportModal\b/, "Import statement must open the import modal directly");
+  assert.match(s, /<BankAccounts\b/, "the Accounts panel must be rendered from Entries");
+  assert.ok(buttonLabels(s).includes("Import statement"), "the toolbar must offer Import statement");
+  assert.ok(!fs.existsSync(path.join(BANKING, "AccountsTab.tsx")), "AccountsTab.tsx is back — it is AccountsPanel.tsx");
+});
+
+test("Bank Book is a report under Reports, linked from Entries", () => {
+  assert.match(fs.readFileSync(BANK_BOOK_REPORT, "utf8"), /<BankRegister\b/, "the report page must render the register");
+  assert.match(fs.readFileSync(REPORTS_INDEX, "utf8"), /href:\s*"reports\/bank-book"/, "the Reports directory must list it");
+  assert.match(tab(), /reports\/bank-book/, "Entries must link to it — a CA looking for the old tab needs a way there");
+  assert.ok(!fs.existsSync(path.join(BANKING, "BankBookTab.tsx")), "BankBookTab.tsx is back — it is BankBook.tsx, rendered by the report page");
+});
+
+test("three filters — To do · Passed · Set aside — and the working states are a line of text", () => {
+  const s = tab();
+  assert.deepEqual(idsOf(s, "CHIPS"), ["to_do", "passed", "set_aside"],
+    "the chips changed. The working states (ready / proposed / needs you) are " +
+    "the WORKING line under To do, not chips — six chips made the CA classify " +
+    "their own queue before they could work it.");
+  assert.deepEqual(idsOf(s, "WORKING"), ["ready", "proposed", "needs_you"],
+    "the working line lists the three open states in the order they are cleared");
 });

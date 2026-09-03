@@ -11,9 +11,18 @@
  * every verb is one endpoint.
  *
  * WHAT REPLACED WHAT
- *   For review / Categorized / Excluded  ->  one list, filtered by state, with
- *                                            counts: To do · Needs me ·
- *                                            Proposed · Ready · Passed · Set aside
+ *   For review / Categorized / Excluded  ->  one list with three filters —
+ *                                            To do · Passed · Set aside — and,
+ *                                            under To do, one line of text:
+ *                                            "173 to do — 128 ready · 12
+ *                                            proposed · 33 need you", each part
+ *                                            clickable to narrow the list
+ *   Accounts tab, Bank Book tab          ->  Import statement and Accounts on
+ *                                            this toolbar (setup, not a step);
+ *                                            Bank Book under Reports (a report,
+ *                                            not a step). Three tabs, one
+ *                                            working screen — 2026-09-03, after
+ *                                            first use of the five-tab version
  *   Apply suggestions                    ->  gone. Every line is always drafted;
  *                                            the draft is visible on the row.
  *   Set ledger / Record / Match / Add    ->  Pass (one verb), Book under… (the
@@ -26,7 +35,8 @@
  *   a status — the loop IS the status.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle, Loader2, RotateCcw, Sparkles, Undo2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { BookOpen, CheckCircle, Landmark, Loader2, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { api, type EntryListState, type EntryState } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column } from "@/lib/table/types";
@@ -35,6 +45,7 @@ import { commonNarrationPattern, MIN_PATTERN_LENGTH } from "@/lib/banking/narrat
 import { useToast } from "@/components/ui/use-toast";
 import { type Account, type BankAccount, fmt } from "@/components/banking/shared";
 import { EntryDetailModal } from "@/components/banking/EntryDetailModal";
+import { BankAccounts, BankImportModal } from "@/components/banking/AccountsPanel";
 
 // ── the row, as the server sends it ─────────────────────────────────────────
 
@@ -73,17 +84,26 @@ interface Counts {
 const ZERO: Counts = { needs_you: 0, proposed: 0, ready: 0, covered: 0, passed: 0,
                        set_aside: 0, to_do: 0, undrafted: 0, trusted_pending: 0 };
 
-/** The chips, in the order a month is worked. Covered lines (the receiving
- *  side of a passed transfer) show only when there are any — they are nobody's
- *  work, and an always-present zero chip reads as a broken feature. */
-const CHIPS: { id: EntryListState; label: string; key: keyof Counts; always: boolean }[] = [
-  { id: "to_do",     label: "To do",     key: "to_do",     always: true },
-  { id: "needs_you", label: "Needs me",  key: "needs_you", always: true },
-  { id: "proposed",  label: "Proposed",  key: "proposed",  always: true },
-  { id: "ready",     label: "Ready",     key: "ready",     always: true },
-  { id: "passed",    label: "Passed",    key: "passed",    always: true },
-  { id: "covered",   label: "Covered",   key: "covered",   always: false },
-  { id: "set_aside", label: "Set aside", key: "set_aside", always: true },
+/** The three filters: still to do, done, set aside — the three states a
+ *  statement line is in as far as the person clearing it is concerned. Passed
+ *  counts the covered side of a transfer with it (the server lists them
+ *  together): it has no journal of its own, but it is done. The working
+ *  states under To do are NOT chips — see WORKING. Six chips made the CA
+ *  classify their own queue before they could work it. */
+const CHIPS: { id: EntryListState; label: string; count: (c: Counts) => number }[] = [
+  { id: "to_do",     label: "To do",     count: (c) => c.to_do },
+  { id: "passed",    label: "Passed",    count: (c) => c.passed + c.covered },
+  { id: "set_aside", label: "Set aside", count: (c) => c.set_aside },
+];
+
+/** The working states, as one line of text under To do — "128 ready · 12
+ *  proposed · 33 need you" — in the order a CA clears them: what passes in
+ *  one click, then what needs a look, then what needs an answer. Each part
+ *  narrows the list to that state; the row already carries the colour. */
+const WORKING: { id: EntryState; key: keyof Counts; word: (n: number) => string }[] = [
+  { id: "ready",     key: "ready",     word: (n) => `${n} ready` },
+  { id: "proposed",  key: "proposed",  word: (n) => `${n} proposed` },
+  { id: "needs_you", key: "needs_you", word: (n) => `${n} need${n === 1 ? "s" : ""} you` },
 ];
 
 const KIND_LABEL = { receipt: "Receipt", payment: "Payment", contra: "Contra" } as const;
@@ -109,7 +129,10 @@ type Progress = { label: string; done: number; total: number | null } | null;
 
 export function EntriesTab({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [state, setState] = useState<EntryListState>("to_do");
+  const [showImport, setShowImport] = useState(false);
+  const [showAccounts, setShowAccounts] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [bankAccountId, setBankAccountId] = useState("");
   const [counts, setCounts] = useState<Counts>(ZERO);
@@ -178,12 +201,19 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
 
   const reload = useCallback(async () => { await Promise.all([loadCounts(), loadRows()]); }, [loadCounts, loadRows]);
 
-  useEffect(() => {
+  /** The active bank accounts — the account filter, and what a statement can
+   *  be imported against. Reloaded after anything the Accounts panel does. */
+  const loadBankAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
-    (api.banking.listBankAccounts({ client_id: clientId }) as Promise<{ success: boolean; data: BankAccount[] }>)
-      .then((r) => setBankAccounts(r.success ? (r.data ?? []) : []))
-      .catch(() => setBankAccounts([]));
+    try {
+      const r = (await api.banking.listBankAccounts({ client_id: clientId })) as { success: boolean; data: BankAccount[] };
+      setBankAccounts(r.success ? (r.data ?? []).filter((a) => a.is_active) : []);
+    } catch {
+      setBankAccounts([]);
+    }
   }, [clientId]);
+
+  useEffect(() => { loadBankAccounts(); }, [loadBankAccounts]);
 
   useEffect(() => { if (clientId && clientId !== "_placeholder") loadRows(); }, [loadRows, clientId]);
 
@@ -223,6 +253,14 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
   }, [clientId, loadCounts, reload]);
 
   useEffect(() => { settle(); }, [settle]);
+
+  /** An import finished, or an account was added, edited or deactivated:
+   *  the account list may differ, and new lines want proposing for at once —
+   *  the CA should not have to close the panel and press Propose. */
+  const afterSetupChange = useCallback(async () => {
+    await loadBankAccounts();
+    await settle();
+  }, [loadBankAccounts, settle]);
 
   async function passLoop(opts: { only_trusted?: boolean; transaction_ids?: string[]; label: string; total: number | null }) {
     let passed = 0, failed = 0, skipped = 0;
@@ -486,18 +524,19 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
 
   // ── render ───────────────────────────────────────────────────────────────
 
-  const chips = CHIPS.filter((c) => c.always || counts[c.key] > 0);
+  /** Which chip is lit: a working state narrows To do, so To do stays lit. */
+  const filter: EntryListState = WORKING.some((w) => w.id === state) ? "to_do" : state;
 
   return (
     <div className="space-y-3">
-      {/* The count strip and the one primary action. */}
+      {/* The three filters, setup on the right, and the one primary action. */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 bg-[#F8FAFC] rounded-lg p-1" role="tablist" aria-label="Entry state">
-          {chips.map((c) => (
-            <button key={c.id} role="tab" aria-selected={state === c.id}
+          {CHIPS.map((c) => (
+            <button key={c.id} role="tab" aria-selected={filter === c.id}
               onClick={() => { setState(c.id); setPage(0); }}
-              className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap ${state === c.id ? "bg-white text-[#0F172A] shadow-sm font-medium" : "text-[#64748B] hover:text-[#334155]"}`}>
-              {c.label} <span className={`ml-1 tabular-nums ${state === c.id ? "text-[#334155]" : "text-[#94A3B8]"}`}>{counts[c.key]}</span>
+              className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap ${filter === c.id ? "bg-white text-[#0F172A] shadow-sm font-medium" : "text-[#64748B] hover:text-[#334155]"}`}>
+              {c.label} <span className={`ml-1 tabular-nums ${filter === c.id ? "text-[#334155]" : "text-[#94A3B8]"}`}>{c.count(counts)}</span>
             </button>
           ))}
         </div>
@@ -509,6 +548,21 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
           </select>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setShowAccounts(true)} title="Bank accounts and imported statements"
+            className="text-xs px-2 py-1.5 text-[#64748B] hover:text-[#334155] inline-flex items-center gap-1.5">
+            <Landmark size={12} /> Accounts
+          </button>
+          <button onClick={() => router.push(`/clients/${clientId}/reports/bank-book`)}
+            title="The bank ledger with a running balance — under Reports"
+            className="text-xs px-2 py-1.5 text-[#64748B] hover:text-[#334155] inline-flex items-center gap-1.5">
+            <BookOpen size={12} /> Bank Book
+          </button>
+          <button onClick={() => (bankAccounts.length === 0 ? setShowAccounts(true) : setShowImport(true))}
+            disabled={!!progress}
+            title={bankAccounts.length === 0 ? "Add a bank account first" : "Import a statement (.csv or .xlsx) for one of the bank accounts"}
+            className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40 inline-flex items-center gap-1.5">
+            <Upload size={12} /> Import statement
+          </button>
           <button onClick={settle} disabled={!!progress} title="Propose again for every line nobody has proposed for yet"
             className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40 inline-flex items-center gap-1.5">
             <Sparkles size={12} /> Propose
@@ -520,6 +574,26 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
           </button>
         </div>
       </div>
+
+      {/* Under To do, the working states as one line — each part narrows the
+          list to that state; the lit one is bold, and clicking it again widens. */}
+      {filter === "to_do" && counts.to_do > 0 && (
+        <p className="text-xs text-[#475569]" role="group" aria-label="Working states">
+          <span className="font-medium text-[#0F172A] tabular-nums">{counts.to_do} to do</span>
+          <span className="text-[#94A3B8]"> — </span>
+          {WORKING.filter((w) => counts[w.key] > 0).map((w, i) => (
+            <span key={w.id}>
+              {i > 0 && <span className="text-[#94A3B8]"> · </span>}
+              <button onClick={() => { setState(state === w.id ? "to_do" : w.id); setPage(0); }}
+                aria-pressed={state === w.id}
+                className={`tabular-nums underline decoration-dotted underline-offset-2 hover:text-[#0F172A] ${state === w.id ? "font-semibold text-[#0F172A]" : ""}`}>
+                {w.word(counts[w.key])}
+              </button>
+            </span>
+          ))}
+          {state !== "to_do" && <span className="text-[#94A3B8]"> · showing only these</span>}
+        </p>
+      )}
 
       {progress && (
         <div className="bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 flex items-center gap-3" role="status">
@@ -585,6 +659,33 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
               <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
               <button onClick={applyBookUnder} disabled={bookBusy || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showImport && (
+        <BankImportModal
+          clientId={clientId}
+          accounts={bankAccounts}
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); afterSetupChange(); }}
+          onManageAccounts={() => { setShowImport(false); setShowAccounts(true); }}
+        />
+      )}
+
+      {/* The Accounts panel: setup, not a step. z-40 so the panel's own
+          modals (add account, import) float above it at z-50. */}
+      {showAccounts && (
+        <div className="fixed inset-0 bg-[#0F172A]/60 z-40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setShowAccounts(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl my-6 p-5 space-y-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Bank accounts and statements">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-[#0F172A]">Bank accounts and statements</h3>
+                <p className="text-[11px] text-[#94A3B8] mt-0.5">Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.</p>
+              </div>
+              <button onClick={() => setShowAccounts(false)} className="text-[#94A3B8] hover:text-[#475569]" aria-label="Close"><X size={16} /></button>
+            </div>
+            <BankAccounts clientId={clientId} onChanged={afterSetupChange} />
           </div>
         </div>
       )}
