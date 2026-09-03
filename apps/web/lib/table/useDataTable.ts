@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useMemo, useState, useEffect } from "react";
+import { pruneSelection } from "@/lib/table/pruneSelection";
 import { processRows } from "./process";
 import { useTablePreferences } from "./useTablePreferences";
 import type { Column, FilterDef, FilterValue, SortState, TableState } from "./types";
@@ -175,14 +176,7 @@ export function useDataTable<T>({
   // the page changes, which is the documented behaviour (no cross-page
   // selection is offered where it could not act).
   useEffect(() => {
-    setSelected((s) => {
-      if (s.size === 0) return s;
-      const held = new Set(data.map(getRowId));
-      let changed = false;
-      const next = new Set<string>();
-      s.forEach((id) => { if (held.has(id)) next.add(id); else changed = true; });
-      return changed ? next : s;
-    });
+    setSelected((s) => pruneSelection(s, data.map(getRowId)));
   }, [data, getRowId]);
 
   const selectedRows = useMemo(

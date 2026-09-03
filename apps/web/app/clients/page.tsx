@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { pruneSelection } from "@/lib/table/pruneSelection";
 import Link from "next/link";
 import {
   ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload, Download,
@@ -97,6 +98,9 @@ export default function ClientsPage() {
   // (app/clients/[id]/accounting/page.tsx): Set<id>, toggle/select-all/clear,
   // bulk action bar shown only when something is selected.
   const [selected, setSelected]   = useState<Set<string>>(new Set());
+
+  // A selection may only name rows still on screen (see lib/table/pruneSelection).
+  useEffect(() => { setSelected((s) => pruneSelection(s, clients.map((c) => c.id))); }, [clients]);
   const [bulkBusy, setBulkBusy]   = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);

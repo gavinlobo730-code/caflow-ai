@@ -145,11 +145,14 @@ test("a selection never outlives the rows it named", () => {
   // table. The ids stayed in the set while the rows left `data`. The hook
   // prunes the set whenever data changes, and the bar counts rows, not ids.
   const hook = fs.readFileSync(path.join(__dirname, "..", "lib", "table", "useDataTable.ts"), "utf8");
-  const at = hook.indexOf("useEffect(() => {\n    setSelected((s) => {");
-  assert.ok(at > 0, "useDataTable no longer prunes the selection when data changes");
-  const effect = hook.slice(at, hook.indexOf("}, [data, getRowId]);", at));
-  assert.ok(effect.length > 100 && effect.length < 1200, "the pruning effect came back the wrong size");
-  assert.match(effect, /held\.has\(id\)/, "the effect must keep only ids the table is holding");
+  assert.match(hook, /setSelected\(\(s\) => pruneSelection\(s, data\.map\(getRowId\)\)\);\n  \}, \[data, getRowId\]\);/,
+    "useDataTable no longer prunes the selection when data changes");
+  // The three screens that keep their own selection prune the same way, with
+  // the same helper — one implementation, four callers.
+  for (const rel of ["app/clients/[id]/sales/page.tsx", "app/clients/[id]/compliance/page.tsx", "app/clients/page.tsx"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+    assert.match(src, /setSelected\(\(s\) => pruneSelection\(s, /, `${rel} keeps a selection without pruning it`);
+  }
 
   const bar = bulkBarSource();
   assert.doesNotMatch(bar, /t\.selected\.size/,
