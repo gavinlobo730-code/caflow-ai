@@ -88,6 +88,9 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   const [enrich, setEnrich] = useState<"loading" | "ready" | "failed">("loading");
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const openedWithRow = useRef(!!initial);
+  /** Which in-flight write is the current one — a second pick before the
+   *  first answers must not be overwritten by the first's reply. */
+  const writeSeq = useRef(0);
   const [busy, setBusy] = useState(false);
   const [gstRate, setGstRate] = useState<string>("");
   const [interstate, setInterstate] = useState(false);
@@ -117,7 +120,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       if (!documentId) throw new Error("The file uploaded but came back without an id.");
       await api.banking.attachments.add(txnId, { name: file.name, document_id: documentId });
       await load();
-      await onChanged();
+      void Promise.resolve(onChanged()).catch(() => { /* the list re-reads on its own next */ });
       toast({ title: `${file.name} attached` });
     } catch (e) {
       toast({ title: "Couldn't attach that file",
@@ -174,20 +177,60 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
   useEffect(() => { load(); }, [load]);
 
-  /** Every write: do it, reload this line, tell the list. Errors become a
-   *  toast and the modal stays open so the CA can try something else. */
+  /** A write that genuinely changes what this line COULD be — a document
+   *  linked or unlinked, a split, a transfer paired — so the candidates and
+   *  the history behind it are re-read.
+   *
+   *  The list behind the modal is told, but NOT waited for: its counts and
+   *  rows are two more round trips to Mumbai, and nothing the CA does next
+   *  depends on them having landed.
+   */
   async function act(label: string, fn: () => Promise<unknown>) {
     setBusy(true);
     try {
       await fn();
       await load();
-      await onChanged();
+      void Promise.resolve(onChanged()).catch(() => { /* the list re-reads on its own next */ });
       return true;
     } catch (e) {
       toast({ title: label, description: e instanceof Error ? e.message : String(e), variant: "destructive" });
       return false;
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** A write whose RESPONSE already says what changed, so nothing is re-read.
+   *
+   *  Picking a ledger cost FOUR sequential round trips to Mumbai — the write,
+   *  a full re-read of this line, then the list's counts and its rows — with
+   *  every control disabled until the last one landed. Only the write is
+   *  needed. banking_service.set_account returns account_id, category and
+   *  gst_allowed for exactly this purpose, and says so at the return: "so the
+   *  screen can patch that one line instead of refetching the page". None of
+   *  what the re-read is expensive for — the ranked document candidates, the
+   *  payee history, the transfer scan — can change because somebody chose a
+   *  ledger.
+   *
+   *  So the line changes on the click, the server's answer confirms or
+   *  corrects it, and a refusal puts back exactly what was there before.
+   */
+  async function patch(label: string, optimistic: Partial<EntryDetail>,
+                       fn: () => Promise<unknown>) {
+    const before = t;
+    const seq = ++writeSeq.current;
+    setT((cur) => (cur ? { ...cur, ...optimistic } : cur));
+    try {
+      const res = (await fn()) as { data?: Partial<EntryDetail> } | undefined;
+      // A later pick has already replaced this one: its answer is the truth.
+      if (seq !== writeSeq.current) return true;
+      if (res?.data) setT((cur) => (cur ? { ...cur, ...res.data } : cur));
+      void Promise.resolve(onChanged()).catch(() => { /* as above */ });
+      return true;
+    } catch (e) {
+      if (seq === writeSeq.current) setT(before);
+      toast({ title: label, description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      return false;
     }
   }
 
@@ -319,7 +362,8 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             <label className="block text-[11px] font-medium text-[#475569] mb-1">Book under</label>
             <AccountLookup accounts={accounts} value={t.account_id ?? ""} disabled={busy} ariaLabel="Ledger"
               placeholder={t.draft_account_id ? `Proposed: ${accountName(t.draft_account_id)}` : "Choose a ledger…"}
-              onChange={(id) => id && act("Couldn't book under that ledger",
+              onChange={(id) => id && patch("Couldn't book under that ledger",
+                { account_id: id, match_status: "matched" },
                 () => api.banking.setTransactionAccount(t.id, { account_id: id, derive_category: true }))} />
           </div>
           <div>
@@ -525,12 +569,12 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <SplitAcrossLedgersModal txnId={t.id} description={t.description} amountPaise={amount} isCredit={t.credit_paise > 0}
           accounts={accounts} modeSwitch={splitModeSwitch}
           onClose={() => { setSplitMode(null); setPrefill(null); }}
-          onDone={async () => { setSplitMode(null); setPrefill(null); await load(); await onChanged(); }} />
+          onDone={async () => { setSplitMode(null); setPrefill(null); await load(); void Promise.resolve(onChanged()).catch(() => {}); }} />
       )}
       {splitMode === "documents" && (
         <MultiInvoiceMatchModal txn={asQueueTxn(t)} clientId={clientId} prefill={prefill} modeSwitch={splitModeSwitch}
           onClose={() => { setSplitMode(null); setPrefill(null); }}
-          onDone={async () => { setSplitMode(null); setPrefill(null); await load(); await onChanged(); onClose(); }} />
+          onDone={async () => { setSplitMode(null); setPrefill(null); await load(); void Promise.resolve(onChanged()).catch(() => {}); onClose(); }} />
       )}
       {finding && (
         <FindMatchModal txn={asQueueTxn(t)} onClose={() => setFinding(false)}
