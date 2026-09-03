@@ -102,3 +102,32 @@ test("the server's refusal reaches the CA instead of a broken file", () => {
   assert.match(s, /disabled=\{esiCount === 0 \|\| !isFiled\(run\)/,
     "the ESIC button must be gated on the run being finalised");
 });
+
+test("a government upload never gets a byte the server did not write", () => {
+  // downloadFile prepends a BOM so Excel reads OUR csv exports properly. Both
+  // of these files go to a PORTAL, not to Excel — and the ECR is a fixed-format
+  // text upload where an extra byte breaks parsing.
+  //
+  // The rule used to be INFERRED from the mime type: csv got a BOM, text did
+  // not. That was right only while every CSV on this page was ours. The moment
+  // the server-built ESIC return was routed through the same helper it would
+  // have been handed a byte apps/api never wrote, into a statutory filing.
+  const s = payroll();
+  assert.match(s, /\{ bom: false \}/,
+    "the statutory download must opt out of the BOM explicitly");
+  assert.match(s, /opts\?\.bom \?\? mimeType\.startsWith\("text\/csv"\)/,
+    "the caller decides, because the caller is the one who knows where the file is going");
+});
+
+test("the two unfilable cases are told apart", () => {
+  // is_filable is `bool(members) and not problems` on BOTH builders
+  // (domain/payroll/ecr.py:111, esic.py:71). So a filable return NEVER carries
+  // problems — a "downloaded, but N members had problems" path is unreachable —
+  // and filable:false with an EMPTY problems list is its own real state,
+  // meaning no member carried a contribution at all.
+  const s = payroll();
+  assert.match(s, /title: problems\.length \? `\$\{label\} blocked` : `Nothing to file`/,
+    "no members and blocked members are different answers and need different words");
+  assert.doesNotMatch(s, /Downloaded, with \$\{problems\.length\}/,
+    "a filable return cannot carry problems; that branch was unreachable");
+});

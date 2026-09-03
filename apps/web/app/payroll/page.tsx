@@ -317,10 +317,18 @@ function generateTds24QData(slips: PayrollSlip[], quarter: string): string {
   return [header, csvHeader, ...rows, footer].join("\n");
 }
 
-function downloadFile(content: string, filename: string, mimeType: string) {
-  // BOM only for CSV: PF ECR is a fixed-format government text upload where
-  // extra bytes would break parsing, so it must stay BOM-free.
-  const body = mimeType.startsWith("text/csv") ? "\uFEFF" + content : content;
+function downloadFile(content: string, filename: string, mimeType: string,
+                     opts?: { bom?: boolean }) {
+  // A BOM helps Excel read a CSV of ours. It must NEVER reach a government
+  // upload: the EPFO ECR is a fixed-format text file where extra bytes break
+  // parsing, and the ESIC CSV is uploaded to a portal, not opened in Excel.
+  //
+  // This used to be INFERRED from the mime type — csv got a BOM, text did not
+  // — which was right only while every CSV on this page was ours. The moment
+  // the server-built ESIC return came through here it would have been handed a
+  // byte the server did not write. The caller says so now, because the caller
+  // is the one who knows where the file is going.
+  const body = (opts?.bom ?? mimeType.startsWith("text/csv")) ? "\uFEFF" + content : content;
   const blob = new Blob([body], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -746,12 +754,16 @@ function StatutoryReturnsTab({
       const content = what === "ecr" ? d.lines : d.csv;
       const problems = d.problems ?? [];
 
+      const label = what === "ecr" ? "ECR" : "ESIC return";
+      // `is_filable` is `bool(members) and not problems` on both builders, so
+      // the two false cases mean different things and a CA needs to be told
+      // WHICH. There is no third case: a filable return never carries problems.
       if (!d.filable) {
         toast({
-          title: `${what === "ecr" ? "ECR" : "ESIC return"} not ready to file`,
+          title: problems.length ? `${label} blocked` : `Nothing to file`,
           description: problems.length
             ? problems.join(" · ")
-            : "The server could not build a filable return for this run.",
+            : `No member of this run carries a ${what === "ecr" ? "PF" : "ESI"} contribution, so there is no ${label} to build.`,
           variant: "destructive",
         });
         return;
@@ -762,15 +774,9 @@ function StatutoryReturnsTab({
         content,
         d.filename ?? `${what.toUpperCase()}_${run.month}.${what === "ecr" ? "txt" : "csv"}`,
         what === "ecr" ? "text/plain" : "text/csv",
+        // Both go to a government portal. Neither gets a BOM.
+        { bom: false },
       );
-      // Filable and still worth saying: a problem here is a member LEFT OUT of
-      // a file the CA is about to upload, which is not visible in the file.
-      if (problems.length) {
-        toast({
-          title: `Downloaded, with ${problems.length} member${problems.length === 1 ? "" : "s"} to fix`,
-          description: problems.join(" · "),
-        });
-      }
     } catch (e) {
       toast({
         title: `Couldn't build the ${what === "ecr" ? "ECR" : "ESIC return"}`,
