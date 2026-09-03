@@ -12,6 +12,14 @@ Reads two snapshots from guard_snapshot.py and reports, most dangerous first:
 
   * a table with RLS switched OFF in the live database — every policy on it
     is decoration and the direct PostgREST path sees every firm's rows
+  * a table with RLS switched OFF in the MIGRATIONS and on in the live
+    database — the same hole, pointed the other way. It does not touch the
+    live database, so it is easy to wave through; it lands on the CI template
+    and on every NEW environment, which is where a security posture is
+    supposed to come from. Migration 062 enabled RLS on 28 tables behind an
+    IF EXISTS guard, twenty of them created by later migrations, so the guard
+    silently skipped them; migrations 095 and 287 then granted `authenticated`
+    full DML on several. Grant plus no RLS is no enforcement at all
   * a RESTRICTIVE policy the migrations declare that the live database lacks —
     a restrictive policy is a check every row must pass, so its absence widens
     what a caller can reach
@@ -71,6 +79,7 @@ def diff_guards(declared: dict, live: dict) -> dict:
     """
     out: dict[str, list] = {
         "rls_off_in_live": [],
+        "rls_off_in_the_migrations": [],
         "restrictive_policies_missing_from_live": [],
         "tables_left_without_a_policy_in_live": [],
         "check_constraints_differ": [],
@@ -100,6 +109,11 @@ def diff_guards(declared: dict, live: dict) -> dict:
             both.add(table)
             if l_rls[table]["detail"] != "on":
                 out["rls_off_in_live"].append(table)
+            elif d_rls[table]["detail"] != "on":
+                # RLS off HERE and on there. Harmless to the live database and
+                # therefore easy to miss, but the migrations are what a new
+                # environment is built from.
+                out["rls_off_in_the_migrations"].append(table)
 
     # ── Policies.
     d_by_table: dict[str, int] = {}
@@ -156,6 +170,10 @@ HEADINGS = {
     "rls_off_in_live":
         "Row-level security is OFF in the live database — every policy on the "
         "table is decoration and the direct PostgREST path sees every firm",
+    "rls_off_in_the_migrations":
+        "Row-level security is OFF in the MIGRATIONS and on in the live "
+        "database — the live database is safe, every NEW environment built "
+        "from these migrations is not",
     "restrictive_policies_missing_from_live":
         "RESTRICTIVE policies the migrations declare that the live database lacks "
         "— a check every row must pass is not being applied",

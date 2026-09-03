@@ -60,6 +60,31 @@ def test_rls_switched_off_in_live_is_the_headline():
     assert diff_guards(declared, live)["rls_off_in_live"] == ["clients"]
 
 
+def test_rls_switched_off_in_the_migrations_is_reported_too():
+    """The mirror direction, and the one that is easy to wave through.
+
+    The live database is fine, so nothing is broken today — but the migrations
+    are what the CI template and every new environment are built from. This is
+    the shape migration 317 fixed: eight tables with RLS off here, on in
+    production, and `authenticated` granted full DML by migrations 095/287.
+    """
+    declared = snap(rls("task_tags", off=("task_tags",)))
+    live = snap(rls("task_tags"))
+    report = diff_guards(declared, live)
+    assert report["rls_off_in_the_migrations"] == ["task_tags"]
+    assert report["rls_off_in_live"] == []
+
+
+def test_rls_off_on_both_sides_is_reported_as_the_live_one_only():
+    """Off in both is still off in live, which is the more urgent statement.
+    Reporting it twice would double-count one table."""
+    declared = snap(rls("t", off=("t",)))
+    live = snap(rls("t", off=("t",)))
+    report = diff_guards(declared, live)
+    assert report["rls_off_in_live"] == ["t"]
+    assert report["rls_off_in_the_migrations"] == []
+
+
 def test_a_restrictive_policy_missing_from_live_is_reported_twice():
     """Once under the headline, once in the full list — the headline is a
     subset, exactly as schema_drift's live_requires_but_migrations_do_not is."""
