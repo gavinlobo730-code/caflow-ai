@@ -612,3 +612,61 @@ def test_an_account_with_no_statements_reads_empty_rather_than_refusing():
     assert (c["to_do"], c["ready"], c["undrafted"]) == (0, 0, 0)
     out = svc.pass_ready(db, firm, client, bank_account_id=added_only)
     assert (out["passed"], out["remaining"]) == (0, 0)
+
+
+# ── the matched document's number ────────────────────────────────────────────
+
+def test_a_matched_line_carries_the_document_number_a_ca_knows_it_by():
+    """"against an invoice" is the same sentence for every matched line on the
+    page. The document's own number is what distinguishes them, and what lets
+    a CA check a match without opening it."""
+    db = _db()
+    db.store["client_sales_invoices"] = [
+        {"id": "inv-1", "firm_id": FIRM, "client_id": CLIENT, "invoice_no": "APEX/25-26/0042"},
+        {"id": "inv-2", "firm_id": FIRM, "client_id": CLIENT, "invoice_no": "APEX/25-26/0043"},
+    ]
+    db.store["purchase_bills"] = [
+        {"id": "bill-1", "firm_id": FIRM, "client_id": CLIENT, "bill_no": "OM/2026/117"},
+    ]
+    _line(db, "a", "NEFT CR SILVER OAK", debit=0, credit=142543,
+          match_status="matched", matched_entity_type="sales_invoice", matched_entity_id="inv-1")
+    _line(db, "b", "NEFT CR URBAN EDGE", debit=0, credit=52363,
+          match_status="matched", matched_entity_type="sales_invoice", matched_entity_id="inv-2")
+    _line(db, "c", "NEFT DR OM STATIONERS",
+          match_status="matched", matched_entity_type="purchase_bill", matched_entity_id="bill-1")
+    _line(db, "d", "NEFT CHARGES")                       # nothing matched
+    _line(db, "e", "ADJUSTMENT", match_status="matched",  # a match with no document
+          matched_entity_type="manual", matched_entity_id="whatever")
+
+    rows, _ = svc.list_entries(db, FIRM, CLIENT, state="all")
+    got = {r["id"]: r["matched_document_no"] for r in rows}
+    assert got == {"a": "APEX/25-26/0042", "b": "APEX/25-26/0043", "c": "OM/2026/117",
+                   "d": None, "e": None}
+
+
+def test_the_document_numbers_are_one_query_per_type_not_one_per_row():
+    """Fifty matched lines on a page must not be fifty round trips to read
+    fifty short strings — the same bargain _attach_splits makes."""
+    db = _db()
+    db.store["client_sales_invoices"] = [
+        {"id": f"inv-{i}", "firm_id": FIRM, "client_id": CLIENT, "invoice_no": f"INV-{i}"}
+        for i in range(8)
+    ]
+    for i in range(8):
+        _line(db, f"t{i}", f"RECEIPT {i}", debit=0, credit=1000 + i, match_status="matched",
+              matched_entity_type="sales_invoice", matched_entity_id=f"inv-{i}")
+
+    reads: list[str] = []
+    original = db.table
+
+    def counting(name):
+        reads.append(name)
+        return original(name)
+
+    db.table = counting
+    rows, _ = svc.list_entries(db, FIRM, CLIENT, state="all")
+    db.table = original
+
+    assert [r["matched_document_no"] for r in rows] == [f"INV-{i}" for i in range(8)]
+    assert reads.count("client_sales_invoices") == 1, \
+        f"read the invoice table {reads.count('client_sales_invoices')} times for 8 rows"

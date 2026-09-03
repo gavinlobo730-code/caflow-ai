@@ -154,15 +154,21 @@ class BankBatchIn(BaseModel):
 class BankAttachmentIn(BaseModel):
     """A supporting document on a bank transaction (Tier 1.8).
 
-    The link's scheme is validated in domain/banking/attachments — a stored
-    javascript:/data: URL rendered as a link is stored XSS, so the vocabulary is
-    closed to http/https rather than sanitised."""
+    EITHER a pasted link OR a file already in the firm's document store, named
+    by its document id. Not both: the store's own link is signed and expires
+    within the hour, so storing it would leave a dead link exactly when someone
+    audits the coding. domain/banking/attachments holds the rule and the
+    reasoning; a link's scheme is validated there too, because a stored
+    javascript:/data: URL rendered as a link is stored XSS."""
     name: str
-    url: str
+    url: Optional[str] = None
+    document_id: Optional[str] = None
 
 
 class BankAttachmentRemoveIn(BaseModel):
-    url: str
+    """Whichever identifies it: a link by its url, a document by its id."""
+    url: Optional[str] = None
+    document_id: Optional[str] = None
 
 
 class BankTransferPairIn(BaseModel):

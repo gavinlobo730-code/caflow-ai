@@ -36,7 +36,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, CheckCircle, Landmark, Loader2, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { BookOpen, CheckCircle, Landmark, Loader2, Paperclip, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { api, type EntryListState, type EntryState } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column } from "@/lib/table/types";
@@ -54,10 +54,18 @@ export interface Entry {
   debit_paise: number; credit_paise: number; match_status: string;
   category: string | null; account_id: string | null;
   matched_entity_type: string | null; matched_entity_id: string | null;
+  /** The number the matched document is known by — INV-042, not its uuid.
+   *  Resolved server-side, one query per document type on the page. Null when
+   *  nothing is matched, or for a "manual" match, which has no document. */
+  matched_document_no: string | null;
   posted_journal_id: string | null;
   transfer_pair_id: string | null; transfer_is_primary: boolean | null;
   payee_name: string | null; payee_type: string | null; payee_id: string | null;
   has_splits: boolean; is_split?: boolean; split_count?: number;
+  /** Supporting documents kept against this line. A stored document has a
+   *  document_id and NO url — the store's link expires, so one is minted when
+   *  it is opened. A pasted link has a url and no id. */
+  attachments?: { name: string; url?: string | null; document_id?: string | null }[];
   splits?: { account_id: string; amount_paise: number; narration: string | null }[];
   /** Receipt / Payment / Contra — decided by the line, never chosen. */
   kind: "receipt" | "payment" | "contra";
@@ -365,9 +373,16 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
     }
     if (t.transfer_pair_id) return { main: `Contra · ${t.transfer_is_primary ? "to" : "from"} own account`, sub: null, tone: "solid" };
     if (t.matched_entity_id) {
-      const doc = t.matched_entity_type === "sales_invoice" ? "against an invoice"
-        : t.matched_entity_type === "purchase_bill" ? "against a bill"
-        : `against a ${(t.matched_entity_type ?? "document").replace("_", " ")}`;
+      // The NUMBER first: "against an invoice" is the same sentence for every
+      // matched line on the page, and tells a CA nothing about which one.
+      const noun = t.matched_entity_type === "sales_invoice" ? "invoice"
+        : t.matched_entity_type === "purchase_bill" ? "bill"
+        : (t.matched_entity_type ?? "document").replace("_", " ");
+      const doc = t.matched_document_no
+        ? `against ${noun} ${t.matched_document_no}`
+        : t.matched_entity_type === "sales_invoice" ? "against an invoice"
+          : t.matched_entity_type === "purchase_bill" ? "against a bill"
+          : `against a ${noun}`;
       return { main: `${kind} · ${t.draft_label && t.draft_source === "document" ? t.draft_label : doc}`, sub: null, tone: "solid" };
     }
     if (t.account_id) return { main: `${kind} · ${accountName(t.account_id)}`, sub: t.category && t.category !== "Other" ? t.category : null, tone: "solid" };
@@ -398,6 +413,10 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
           </span>
           {t.parsed?.channel && (
             <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">{t.parsed.channel}</span>
+          )}
+          {(t.attachments?.length ?? 0) > 0 && (
+            <Paperclip size={11} className="shrink-0 text-[#94A3B8]"
+              aria-label={`${t.attachments!.length} supporting document${t.attachments!.length === 1 ? "" : "s"}`} />
           )}
         </div>
       ),

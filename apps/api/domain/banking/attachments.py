@@ -16,6 +16,23 @@ WHY THE URL IS VALIDATED AT ALL
     losing game (`java\\tscript:`, `JaVaScRiPt:`, percent-encoding); accepting
     only http/https is a rule with no edge cases.
 
+TWO KINDS OF ATTACHMENT, AND WHY A STORED SIGNED URL WOULD ROT
+    A LINK attachment is a name and an http(s) URL somebody pasted — a file in
+    the client's own Drive, a portal page. It is stored as given.
+
+    An UPLOADED attachment is a file that went into the firm's document store
+    (routers/documents.py -> Supabase Storage). That store hands back a SIGNED
+    url which expires in an hour, so writing it here would produce an
+    attachment that is a dead link by the time anyone audits the coding — the
+    exact moment it is needed. So an uploaded attachment stores the DOCUMENT's
+    id and no url at all, and a fresh signed url is minted when someone asks
+    to open it (GET /api/documents/{id}/download-url). One durable reference,
+    resolved late.
+
+    A document-backed attachment carrying a url is REFUSED rather than having
+    the url dropped: the two are different meanings, and silently keeping an
+    expiring one is the failure this rule exists to prevent.
+
 WHY NAMES ARE BOUNDED AND STRIPPED OF PATH SEPARATORS
     The name is display text, but it is also what a download would be called.
     A name containing `../` or a leading `/` is asking to be interpreted as a
@@ -28,6 +45,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional
 from urllib.parse import urlparse
+from uuid import UUID
 
 # Matches the CHECK in migration 259. More than a handful of documents on one
 # bank line means the line is doing too much work, not that the limit is wrong.
@@ -46,11 +64,24 @@ class AttachmentError(ValueError):
 
 @dataclass(frozen=True)
 class Attachment:
+    """A name, and EITHER a pasted link OR a document in the firm's store."""
     name: str
-    url: str
+    url: Optional[str] = None
+    document_id: Optional[str] = None
+
+    @property
+    def key(self) -> str:
+        """What identifies this attachment — for de-duplication, and for
+        removing it. A document is identified by its id; a link by its url."""
+        return f"document:{self.document_id}" if self.document_id else (self.url or "")
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "url": self.url}
+        out: dict = {"name": self.name}
+        if self.document_id:
+            out["document_id"] = self.document_id
+        if self.url:
+            out["url"] = self.url
+        return out
 
 
 def _validate_url(url: str) -> str:
@@ -74,6 +105,19 @@ def _validate_url(url: str) -> str:
     return text
 
 
+def _validate_document_id(document_id: str) -> str:
+    """A document in the firm's store, by id. Shape only — that the document
+    exists and belongs to this firm is the service's question, not a pure
+    module's."""
+    text = (document_id or "").strip()
+    if not text:
+        raise AttachmentError("An attachment needs a document.")
+    try:
+        return str(UUID(text))
+    except (ValueError, AttributeError, TypeError):
+        raise AttachmentError("That document reference is not a document id.")
+
+
 def _validate_name(name: str) -> str:
     text = (name or "").strip()
     if not text:
@@ -91,8 +135,16 @@ def _validate_name(name: str) -> str:
 def parse_attachment(raw: dict) -> Attachment:
     if not isinstance(raw, dict):
         raise AttachmentError("Each attachment must be a name and a link.")
-    return Attachment(name=_validate_name(raw.get("name")),
-                      url=_validate_url(raw.get("url")))
+    name = _validate_name(raw.get("name"))
+    document_id, url = raw.get("document_id"), raw.get("url")
+    if document_id:
+        if url:
+            # See the module docstring: the store's url is signed and expires.
+            raise AttachmentError(
+                "An uploaded document is attached by its id, not by a link — "
+                "the store's link expires within the hour.")
+        return Attachment(name=name, document_id=_validate_document_id(document_id))
+    return Attachment(name=name, url=_validate_url(url))
 
 
 def parse_attachments(raw: Optional[Iterable]) -> list[Attachment]:
@@ -114,7 +166,8 @@ def parse_attachments(raw: Optional[Iterable]) -> list[Attachment]:
     return out
 
 
-def add(existing: Optional[Iterable], name: str, url: str) -> list[dict]:
+def add(existing: Optional[Iterable], name: str, url: Optional[str] = None,
+        document_id: Optional[str] = None) -> list[dict]:
     """Append one attachment to a stored list, validating the WHOLE result.
 
     Re-validating what is already there is deliberate: a row could have been
@@ -123,19 +176,26 @@ def add(existing: Optional[Iterable], name: str, url: str) -> list[dict]:
     tightening.
     """
     current = parse_attachments(existing)
-    fresh = parse_attachment({"name": name, "url": url})
+    fresh = parse_attachment({"name": name, "url": url, "document_id": document_id})
     if len(current) + 1 > MAX_ATTACHMENTS:
         raise AttachmentError(
             f"A transaction can carry at most {MAX_ATTACHMENTS} attachments.")
-    # The same URL twice is almost always a double-click, not two documents.
-    if any(a.url == fresh.url for a in current):
+    # The same document twice is almost always a double-click, not two of them.
+    if any(a.key == fresh.key for a in current):
         raise AttachmentError("That document is already attached.")
     return [a.to_dict() for a in current] + [fresh.to_dict()]
 
 
-def remove(existing: Optional[Iterable], url: str) -> list[dict]:
-    """Drop one attachment by URL. Absent is not an error — removing something
-    already gone leaves the list in the state the caller asked for."""
+def remove(existing: Optional[Iterable], url: Optional[str] = None,
+           document_id: Optional[str] = None) -> list[dict]:
+    """Drop one attachment, by its url or by the document it points at.
+
+    Absent is not an error — removing something already gone leaves the list in
+    the state the caller asked for. Naming neither leaves it untouched: a
+    remove with nothing to remove must not empty the list.
+    """
     current = parse_attachments(existing)
-    target = (url or "").strip()
-    return [a.to_dict() for a in current if a.url != target]
+    target = f"document:{str(document_id).strip()}" if document_id else (url or "").strip()
+    if not target:
+        return [a.to_dict() for a in current]
+    return [a.to_dict() for a in current if a.key != target]

@@ -99,20 +99,24 @@ class BankBatchService:
         return self._summarise(results)
 
     # ── 1.8 attachments ─────────────────────────────────────────────────────
-    def add_attachment(self, db, firm_id: str, txn_id: str, name: str, url: str,
+    def add_attachment(self, db, firm_id: str, txn_id: str, name: str,
+                       url: Optional[str] = None, document_id: Optional[str] = None,
                        actor_id: Optional[str] = None) -> dict:
         txn = self._one(db, firm_id, txn_id)
+        if document_id:
+            self._assert_document_in_firm(db, firm_id, document_id)
         try:
-            updated = att.add(txn.get("attachments"), name, url)
+            updated = att.add(txn.get("attachments"), name, url, document_id)
         except att.AttachmentError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return self._save_attachments(db, firm_id, txn_id, updated, actor_id)
 
-    def remove_attachment(self, db, firm_id: str, txn_id: str, url: str,
+    def remove_attachment(self, db, firm_id: str, txn_id: str, url: Optional[str] = None,
+                          document_id: Optional[str] = None,
                           actor_id: Optional[str] = None) -> dict:
         txn = self._one(db, firm_id, txn_id)
         try:
-            updated = att.remove(txn.get("attachments"), url)
+            updated = att.remove(txn.get("attachments"), url, document_id)
         except att.AttachmentError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return self._save_attachments(db, firm_id, txn_id, updated, actor_id)
@@ -127,6 +131,21 @@ class BankBatchService:
         except att.AttachmentError as e:
             items, invalid = [], str(e)
         return {"transaction_id": txn_id, "attachments": items, "invalid": invalid}
+
+    @staticmethod
+    def _assert_document_in_firm(db, firm_id: str, document_id: str) -> None:
+        """The document must belong to THIS firm.
+
+        A document id arrives from the browser, and the attachment is later
+        opened by minting a signed url for whatever id is stored. Without this
+        check, attaching another firm's document id would be enough to read
+        their file — the tenant filter is the control (CLAUDE.md), and it has
+        to be applied where the id enters, not where it is used.
+        """
+        rows = (db.table("documents").select("id")
+                .eq("id", document_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        if not rows:
+            raise HTTPException(status_code=404, detail="Document not found for this firm.")
 
     def _one(self, db, firm_id: str, txn_id: str) -> dict:
         rows = (db.table("bank_transactions").select("*")
