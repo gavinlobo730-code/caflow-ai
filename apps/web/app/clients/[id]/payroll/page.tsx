@@ -457,6 +457,10 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [slipsFailed, setSlipsFailed] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  /** Sentences the server composed about what this run could NOT establish —
+   *  attendance nobody entered, a state PT slab we do not model. Rendered
+   *  verbatim; see createRun. */
+  const [runGaps, setRunGaps] = useState<string[]>([]);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
   // The generic filing walk-throughs (services/filing_demo/pf_ecr and .../esi).
@@ -496,8 +500,12 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   async function createRun() {
     setCreating(true);
     setCreateError(null);
+    setRunGaps([]);
     const res = await apiFetch("/api/payroll/runs", { method: "POST", body: JSON.stringify({ client_id: clientId, firm_id: firmId, month }) })
-      .catch(() => null) as { success?: boolean; error?: string | null } | null;
+      .catch(() => null) as {
+        success?: boolean; error?: string | null;
+        data?: { statutory_gaps?: string[]; attendance_gaps?: string[] };
+      } | null;
     setCreating(false);
     // task #229: previously discarded — a duplicate-run 409 or RBAC/guardrail
     // rejection produced silent no-op with zero explanation of why nothing
@@ -506,6 +514,14 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
       setCreateError(res?.error ?? "Could not create the payroll run — the request failed.");
       return;
     }
+    // The run has ALWAYS come back with statutory_gaps and this page has always
+    // thrown them away: `res.data` was never read, so a deduction the engine
+    // refused to guess at reached nobody. A named gap that only exists in a
+    // response body is an omitted statutory deduction with extra steps.
+    //
+    // Both lists are sentences composed by apps/api. The page prints them and
+    // decides nothing about them.
+    setRunGaps([...(res.data?.attendance_gaps ?? []), ...(res.data?.statutory_gaps ?? [])]);
     await load();
   }
 
@@ -577,6 +593,22 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
           </button>
         </div>
         {createError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mt-3">{createError}</p>}
+        {runGaps.length > 0 && (
+          <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-xs font-medium text-amber-900">
+              This run computed, but {runGaps.length} thing{runGaps.length === 1 ? "" : "s"} could not be established:
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {runGaps.map((g, i) => (
+                <li key={i} className="text-[11px] text-amber-800">· {g}</li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-amber-700 mt-1.5">
+              The run is a draft — nothing is posted or paid. Fix these and create it again,
+              or finalise it if the figures are right.
+            </p>
+          </div>
+        )}
       </div>
 
       {finalizeError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{finalizeError}</p>}

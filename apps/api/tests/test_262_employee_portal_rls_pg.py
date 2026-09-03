@@ -107,6 +107,11 @@ def seeded(pg_template):
     visible to an employee because it produced one of THEIR slips, and both
     employees legitimately see the same run row — what neither may see is the
     other's slip hanging off it.
+
+    FINALIZED on purpose, since migration 323. The column defaults to 'draft',
+    and this fixture used to take the default — so every assertion below was
+    silently testing a run the employee should never have seen at all. 323 is
+    what makes release part of the question; test_323_*.py owns the draft case.
     """
     admin = _ADMIN.strip()
     dbname = f"m262_{uuid.uuid4().hex[:12]}"
@@ -129,8 +134,8 @@ def seeded(pg_template):
             INSERT INTO payroll_employees (id, firm_id, client_id, name, auth_user_id, portal_enabled)
               VALUES ('{EMP_A}','{FIRM}','{CLIENT}','Employee A','{AUTH_A}',true),
                      ('{EMP_B}','{FIRM}','{CLIENT}','Employee B','{AUTH_B}',true);
-            INSERT INTO payroll_runs (id, firm_id, client_id, month)
-              VALUES ('{RUN}','{FIRM}','{CLIENT}','2026-06');
+            INSERT INTO payroll_runs (id, firm_id, client_id, month, status)
+              VALUES ('{RUN}','{FIRM}','{CLIENT}','2026-06','finalized');
             INSERT INTO payroll_slips (id, run_id, employee_id, gross_paise, net_paise) VALUES
               ('{SLIP_A}','{RUN}','{EMP_A}',{GROSS_A},4500000),
               ('eeeeeeee-0000-0000-0000-00000000000b','{RUN}','{EMP_B}',{GROSS_B},8100000);
