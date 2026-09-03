@@ -217,6 +217,17 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
 
   useEffect(() => { if (clientId && clientId !== "_placeholder") loadRows(); }, [loadRows, clientId]);
 
+  /** The counts follow the ACCOUNT, and nothing else: they are per-state
+   *  totals for the whole account, so paging, searching or switching chip
+   *  cannot change them. loadCounts is memoised on exactly (clientId,
+   *  bankAccountId), so this fires once per account change — one small
+   *  request, not the settle sweep. Without it the chips kept whichever
+   *  account's numbers were loaded last, and a filtered screen read "13 to do"
+   *  over another account's empty list. */
+  useEffect(() => {
+    if (clientId && clientId !== "_placeholder") loadCounts().catch(() => { /* the chips keep their last honest value */ });
+  }, [loadCounts, clientId]);
+
   /** Propose for every undrafted line, then pass what the trusted rules
    *  drafted — both in chunks with progress. Runs on open and after an
    *  import, and never twice at once — see settleRef below for why the
@@ -545,6 +556,13 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
   /** Which chip is lit: a working state narrows To do, so To do stays lit. */
   const filter: EntryListState = WORKING.some((w) => w.id === state) ? "to_do" : state;
 
+  /** Nothing in ANY state — so there are no lines here at all, rather than
+   *  lines that have all been dealt with. The two want different words: an
+   *  account that has been added but never imported from is the first case,
+   *  and telling that CA every line is "passed or set aside" is a false
+   *  statement about books they have not started. */
+  const noLinesAtAll = counts.to_do + counts.passed + counts.covered + counts.set_aside === 0;
+
   return (
     <div className="space-y-3">
       {/* The three filters, setup on the right, and the one primary action. */}
@@ -651,8 +669,13 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
         onRetry={reload}
         searchPlaceholder="Search narration, reference or payee…"
         persistKey="bank.entries.v1"
-        emptyTitle={state === "to_do" ? "Nothing to do" : "Nothing here"}
-        emptyDescription={state === "to_do" ? "Every line on this account is passed or set aside. Import a statement to continue." : "No entries in this state."}
+        emptyTitle={noLinesAtAll ? "No statements imported yet" : state === "to_do" ? "Nothing to do" : "Nothing here"}
+        emptyDescription={
+          noLinesAtAll
+            ? `${bankAccountId ? "This account has" : "This client has"} no bank lines yet — import a statement and they arrive here, proposed for.`
+            : state === "to_do"
+              ? "Every line on this account is passed or set aside. Import a statement to continue."
+              : "No entries in this state."}
         rowClassName={(t) => t.entry_state === "ready" ? "bg-[#F0FDF4] hover:bg-[#DCFCE7]" : t.entry_state === "needs_you" && t.draft_error ? "bg-red-50/40" : ""}
         onRowClick={(t) => setDetailId(t.id)}
         rowActions={actionCell}
