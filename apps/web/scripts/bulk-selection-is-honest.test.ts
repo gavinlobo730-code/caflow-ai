@@ -34,7 +34,7 @@ const TABLE = path.join(__dirname, "..", "components", "ui", "data-table.tsx");
  *  comments explaining the bug while the bug itself was back. */
 function bulkBarSource(): string {
   const s = fs.readFileSync(TABLE, "utf8");
-  const start = s.indexOf("{hasBulk && t.selected.size > 0 && (");
+  const start = s.indexOf("{hasBulk && t.selectedRows.length > 0 && (");
   assert.ok(start > 0, "the bulk action bar was not found — has it moved?");
   // Ends where the action buttons begin. Matched on "{bulkActions!" alone, not
   // on "{bulkActions!.map(" — an appliesTo filter was later chained in front of
@@ -53,10 +53,10 @@ test("the count is only called \"matching\" when the table holds every match", (
 
   // The claim has to be conditional on the server's total, not on
   // allFilteredSelected alone — which is what made it false.
-  assert.match(bar, /serverPaged && serverPaged\.total > t\.selected\.size/,
+  assert.match(bar, /serverPaged && serverPaged\.total > t\.selectedRows\.length/,
     "the label must compare the SERVER's total against what is selected; " +
     "allFilteredSelected only ever describes the rows this table is holding");
-  assert.match(bar, /All \$\{t\.selected\.size\} on this page selected/,
+  assert.match(bar, /All \$\{t\.selectedRows\.length\} on this page selected/,
     "when more rows match than are held, the bar must say \"on this page\"");
 
   // And the honest wording must not be reachable only through dead code: the
@@ -137,4 +137,22 @@ test("the search box takes the toolbar's free space", () => {
   assert.ok(!cls.includes("ml-auto"),
     `the right-hand group still claims the free space (class "${cls}") now ` +
     "that the search takes it");
+});
+
+test("a selection never outlives the rows it named", () => {
+  // Reported on the Bank Entries screen: press "Pass 13 ready", the thirteen
+  // lines leave the list, and the bar still reads "13 selected" over an empty
+  // table. The ids stayed in the set while the rows left `data`. The hook
+  // prunes the set whenever data changes, and the bar counts rows, not ids.
+  const hook = fs.readFileSync(path.join(__dirname, "..", "lib", "table", "useDataTable.ts"), "utf8");
+  const at = hook.indexOf("useEffect(() => {\n    setSelected((s) => {");
+  assert.ok(at > 0, "useDataTable no longer prunes the selection when data changes");
+  const effect = hook.slice(at, hook.indexOf("}, [data, getRowId]);", at));
+  assert.ok(effect.length > 100 && effect.length < 1200, "the pruning effect came back the wrong size");
+  assert.match(effect, /held\.has\(id\)/, "the effect must keep only ids the table is holding");
+
+  const bar = bulkBarSource();
+  assert.doesNotMatch(bar, /t\.selected\.size/,
+    "the bar is counting the id set again — count t.selectedRows, which is what the actions receive");
+  assert.match(bar, /t\.selectedRows\.length/, "the bar must count the rows it holds");
 });

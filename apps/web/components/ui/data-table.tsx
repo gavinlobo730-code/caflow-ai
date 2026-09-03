@@ -325,20 +325,20 @@ export function DataTable<T>({
       </div>
 
       {/* ── Bulk action bar ─────────────────────────────────────────────── */}
-      {hasBulk && t.selected.size > 0 && (
+      {hasBulk && t.selectedRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
           <span className="font-semibold text-[#3730A3]">
             {!t.allFilteredSelected
-              ? `${t.selected.size} selected`
+              ? `${t.selectedRows.length} selected`
               // "All N matching rows" is only TRUE when the table holds every
               // matching row. Under serverPaged it holds ONE PAGE — pageSize 0
               // makes processRows report that page as the whole result, so
               // allFilteredSelected goes true at fifty of three hundred and the
               // bar claimed to have selected all three hundred. A bulk Record
               // or Exclude then ran on a sixth of what the sentence promised.
-              : serverPaged && serverPaged.total > t.selected.size
-                ? `All ${t.selected.size} on this page selected`
-                : `All ${t.selected.size} matching rows selected`}
+              : serverPaged && serverPaged.total > t.selectedRows.length
+                ? `All ${t.selectedRows.length} on this page selected`
+                : `All ${t.selectedRows.length} matching rows selected`}
           </span>
           {/* The rest of the matches are on other pages, and a bulk action can
               only act on rows the table is holding — selectedRows filters
@@ -347,7 +347,7 @@ export function DataTable<T>({
               onto ONE page, and the reader ticks select-all again knowing what
               they have. Capped at the largest page size offered, because that
               is the largest page one fetch corresponds to. */}
-          {serverPaged && t.allFilteredSelected && serverPaged.total > t.selected.size && (
+          {serverPaged && t.allFilteredSelected && serverPaged.total > t.selectedRows.length && (
             <button
               disabled={serverPaged.busy}
               onClick={() => serverPaged.onChange({
