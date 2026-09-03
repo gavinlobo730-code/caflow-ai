@@ -17,6 +17,7 @@ from fastapi import HTTPException
 # Multi-Currency Phase 2 — currency metadata + the authoritative in-kernel gate.
 # Light imports only (policy + rate-type vocabulary); the ExchangeRateService and
 # providers are imported lazily in exchange_rate_service() to keep the hot path light.
+from core.ist_clock import month_end_date
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 
@@ -956,7 +957,21 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=str(datetime.now(timezone.utc).date()),
+                # The payroll MONTH, not the button press. This was
+                # datetime.now(timezone.utc).date(): finalising August on
+                # 3 September put August's whole salary cost in September, in
+                # books this firm produces, and a March run finalised at
+                # 00:20 IST on 1 April landed in the wrong FINANCIAL YEAR
+                # because the UTC date was still 31 March... no: it was
+                # already 1 April in UTC while IST was still March. Either
+                # way the clock decided an accounting date that the period
+                # owns.
+                #
+                # It also fixes the dedup: _create_journal keys on
+                # (client, reference_no, entry_date), and with `today` in it a
+                # re-finalisation on a LATER DAY produced a second accrual for
+                # the same month. Both parts are now the period's.
+                entry_date=month_end_date(run["month"]),
                 reference_no=f"PAY-{run['month']}",
                 narration=f"Payroll accrual for {run['month']}",
                 entry_type="Journal",
@@ -1189,10 +1204,8 @@ class Phase2JournalService:
             # month posting happened to occur in, not the month it belongs
             # to. period is always "YYYY-MM" (routers/fixed_assets.py
             # validates the shape before calling this); dated to that
-            # period's last calendar day.
-            import calendar
-            period_year, period_month = int(period[:4]), int(period[5:7])
-            entry_date = f"{period}-{calendar.monthrange(period_year, period_month)[1]:02d}"
+            # period's last calendar day, through the one helper.
+            entry_date = month_end_date(period)
 
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,

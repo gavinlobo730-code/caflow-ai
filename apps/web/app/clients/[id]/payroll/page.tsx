@@ -1,6 +1,6 @@
 "use client";
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
@@ -299,6 +299,14 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
                    + "50000.50 — without commas.");
       return;
     }
+    // The percentage beside it was still parseFloat. HRA is a salary head:
+    // it feeds the s.192 projection, s.10(13A) and Annexure II, so a comma
+    // that reads as 1% where the CA meant 10% is money.
+    const hraBps = bpsFromPercentInput(form.hra_percent);
+    if (hraBps === null) {
+      setSaveError("HRA % must be a plain percentage, e.g. 40 or 40.5 — without commas.");
+      return;
+    }
     setSaveError(null);
     setSaving(true);
     try {
@@ -310,7 +318,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
           ...rest,
           aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
           basic_paise: basic,
-          hra_percent: parseFloat(form.hra_percent),
+          hra_percent: hraBps / 100,
         }),
       }) as { success?: boolean; error?: string | null } | null;
       // task #229: this previously discarded the response and unconditionally
@@ -872,12 +880,21 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   useEffect(() => { load(); }, [load]);
 
   async function addStructure() {
+    // A structure's percentages are applied to every employee it is put on, so
+    // one that parsed wrong is wrong for a whole client's roster, every month.
+    const basicBps = bpsFromPercentInput(form.basic_percent);
+    const hraBps = bpsFromPercentInput(form.hra_percent);
+    if (basicBps === null || hraBps === null) {
+      setSaveError("Basic % and HRA % must be plain percentages, e.g. 50 or 40.5 — without commas.");
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
       const res = await apiFetch("/api/payroll/salary-structures", {
         method: "POST",
-        body: JSON.stringify({ client_id: clientId, firm_id: firmId, ...form, basic_percent: parseFloat(form.basic_percent), hra_percent: parseFloat(form.hra_percent) }),
+        body: JSON.stringify({ client_id: clientId, firm_id: firmId, ...form,
+                               basic_percent: basicBps / 100, hra_percent: hraBps / 100 }),
       }) as { success?: boolean; error?: string | null } | null;
       // task #229: previously discarded — a rejected structure looked identical
       // to a saved one, and the modal closed as if it had worked.

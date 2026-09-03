@@ -149,11 +149,17 @@ def test_24q_from_books_reconciles_to_tds_payable_salary(monkeypatch):
 
 
 def test_24q_late_finalized_run_still_reconciles(monkeypatch):
-    """The payroll accrual journal is dated the day it's FINALIZED, not the
-    payroll period (services/phase2_journal_service.py::journal_for_payroll)
-    — reconciliation must key off the run's own journal_entry_id, not a
-    calendar date-range scan, or a run finalized after quarter-end would show
-    a false mismatch even though the books are correct."""
+    """Reconciliation keys off the run's own journal_entry_id, never a calendar
+    date-range scan.
+
+    This test was written when journal_for_payroll dated the accrual to the day
+    it was FINALIZED rather than to the payroll period, which made a late
+    finalisation the ordinary case. That is fixed — the accrual is now dated to
+    the payroll month's end (core.ist_clock.month_end_date) — but the property
+    still has to hold and the test is still worth its keep, because the entry
+    date can legitimately move: a correction reverses and reposts, and a CA can
+    re-date a manual journal. The forced 2025-09-15 below is now a deliberately
+    hostile date rather than a simulation of normal behaviour."""
     db = _setup(monkeypatch)
     run_id, slip, emp = _finalize_payroll(db, month="2025-06")  # Q1 payroll month
     # Simulate the journal having actually been dated well after Q1 closed —

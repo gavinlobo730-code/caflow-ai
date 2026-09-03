@@ -7,6 +7,7 @@ Depreciation methods:
 
 Companies Act 2013 Schedule II specifies WDV rates for various asset categories.
 """
+from core.ist_clock import month_end_date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone, date
@@ -136,10 +137,12 @@ def _annual_depreciation_for_period(asset: dict, period: str) -> tuple[int, str,
 def _period_end_date(period: str) -> str:
     """Last calendar day of a 'YYYY-MM' period, as an ISO date string — the
     canonical posting date for a monthly depreciation entry (period-lock
-    validation and the journal's entry_date both key off this)."""
-    year, month = int(period[:4]), int(period[5:7])
-    last_day = calendar.monthrange(year, month)[1]
-    return f"{period}-{last_day:02d}"
+    validation and the journal's entry_date both key off this).
+
+    A thin wrapper over core.ist_clock.month_end_date, which is the one
+    implementation. There were three of these; the payroll accrual would have
+    been a fourth."""
+    return month_end_date(period)
 
 
 def _prorate_purchase_month(monthly_paise: int, purchase_date: str) -> int:

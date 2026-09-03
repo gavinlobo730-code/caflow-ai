@@ -5,7 +5,7 @@
  * All monetary values stored and computed in integer paise.
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -19,6 +19,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef, BulkAction } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";
 import { toLocalISO } from "@/lib/dateMath";
+import { useToast } from "@/components/ui/use-toast";
 
 const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
@@ -97,6 +98,18 @@ type PayrollSlip = {
   pt_paise: number;
   tds_paise: number;
   net_paise: number;
+  // The EMPLOYER side, stored on the slip by the run (migration 295 and its
+  // neighbours) rather than recomputed anywhere. The EPS share is capped on its
+  // OWN ceiling and EPF absorbs the rest, EDLI and the admin charge are the
+  // employer's other two EPF costs, and all of it is what posted to the ledger.
+  // A screen that recalculated any of it would be a second implementation of a
+  // statutory split — which is exactly what this page used to be.
+  pf_employer_paise?: number;
+  pf_employer_eps_paise?: number;
+  pf_employer_epf_paise?: number;
+  edli_paise?: number;
+  pf_admin_paise?: number;
+  esi_employer_paise?: number;
   employee?: Employee;
   run?: PayrollRun;
 };
@@ -109,9 +122,12 @@ function fmtRs(paise: number): string {
   return `₹${rupees.toLocaleString("en-IN")}.${p.toString().padStart(2, "0")}`;
 }
 
-function rsToP(rs: number): number {
-  return Math.round(rs * 100);
-}
+/* rsToP — `Math.round(rs * 100)` — was deleted on 2026-09-04 along with its
+ * last caller. It is the second half of the forbidden form: parseFloat turns
+ * "1,25,000" into 1, and this turned the 1 into 100 paise without complaint.
+ * paiseFromRupeeInput builds the paise digit string instead and never
+ * multiplies, so there is nothing here to bring back.
+ */
 
 /** Pull a readable message out of a thrown API error. `request()` throws
  *  `API error 409: {"detail":"…"}` on non-2xx; surface the detail, not the noise. */
@@ -270,59 +286,18 @@ function getDueDateStatus(
   return "upcoming";
 }
 
-/**
- * Generate PF ECR text in EPFO-specified tab/tilde-separated format.
- * Format: MEMBER_ID~MEMBER_NAME~GROSS_WAGES~EPF_WAGES~EPS_WAGES~EDLI_WAGES~
- *         EPF_CONTRI_REMITTED~EPS_CONTRI_REMITTED~EPF_EPS_DIFF_REMITTED~NCP_DAYS~REFUND_OF_ADVANCES
- * EPF Act: employee + employer 12% of basic each; EPS 8.33% of basic (capped Rs 1,250/month)
+/* The EPFO ECR and the ESIC return were BUILT HERE, in the browser, until
+ * 2026-09-04. Both are now server-built — api.payroll.runEcr / runEsic, backed
+ * by domain/payroll/{ecr,esic}.py.
+ *
+ * They are not coming back. The browser versions hardcoded NCP_DAYS to 0, put
+ * PAN (or a fabricated "EMP0001") in the MEMBER_ID field that wants a UAN,
+ * computed EPF wages on basic alone where EPF Act s.6 says basic + DA, and
+ * decided ESI eligibility from the current month's gross instead of the Rule 50
+ * contribution period — every one of them a rule the backend had already fixed.
+ * CLAUDE.md's "zero business logic in the frontend" exists for exactly this: a
+ * statutory remittance file is the last place a second implementation belongs.
  */
-function generatePfEcr(slips: PayrollSlip[]): string {
-  const header = "MEMBER_ID~MEMBER_NAME~GROSS_WAGES~EPF_WAGES~EPS_WAGES~EDLI_WAGES~EPF_CONTRI_REMITTED~EPS_CONTRI_REMITTED~EPF_EPS_DIFF_REMITTED~NCP_DAYS~REFUND_OF_ADVANCES";
-  const rows = slips
-    .filter(s => s.employee?.pf_applicable)
-    .map((s, idx) => {
-      const emp = s.employee!;
-      // All amounts in whole rupees (EPFO expects rupees, not paise)
-      const grossRs = Math.floor(s.gross_paise / 100);
-      const basicRs = Math.floor(emp.basic_paise / 100);
-      // EPF wages = basic (EPF Act)
-      const epfWages = basicRs;
-      // EPS wages = basic capped at Rs 15,000 (EPF Act Schedule)
-      const epsWages = Math.min(basicRs, 15000);
-      // EDLI wages same as EPF wages capped at Rs 15,000
-      const edliWages = Math.min(basicRs, 15000);
-      // Employee EPF contribution = 12% of basic
-      const epfContri = Math.floor(basicRs * 12 / 100);
-      // EPS employer contribution = 8.33% of basic capped Rs 1,250
-      const epsContri = Math.min(Math.floor(epsWages * 833 / 10000), 1250);
-      // EPF-EPS diff = employee epf - eps contri (remaining goes to EPF)
-      const epfEpsDiff = epfContri - epsContri;
-      // Member ID: use PAN if available, else generate a placeholder
-      const memberId = emp.pan || `EMP${String(idx + 1).padStart(4, "0")}`;
-      return `${memberId}~${emp.name}~${grossRs}~${epfWages}~${epsWages}~${edliWages}~${epfContri}~${epsContri}~${epfEpsDiff}~0~0`;
-    });
-  return [header, ...rows].join("\n");
-}
-
-/**
- * Generate ESI Statement CSV.
- * ESI Act: employee 0.75%, employer 3.25% of gross for employees earning <= Rs 21,000/month.
- */
-function generateEsiStatement(slips: PayrollSlip[], month: string): string {
-  const header = "Employee Name,PAN,Gross Wages (Rs),ESI Wages (Rs),Employee Contribution (0.75%),Employer Contribution (3.25%),Total Contribution";
-  const rows = slips
-    .filter(s => s.employee?.esi_applicable && s.gross_paise <= 2100000)
-    .map(s => {
-      const emp = s.employee!;
-      const grossRs = Math.floor(s.gross_paise / 100);
-      const empContri = Math.floor(s.gross_paise * 75 / 10000) / 100; // 0.75% in rupees
-      const emplrContri = Math.floor(s.gross_paise * 325 / 10000) / 100; // 3.25% in rupees
-      const total = (empContri + emplrContri).toFixed(2);
-      return `"${emp.name}","${emp.pan || ""}",${grossRs},${grossRs},${empContri.toFixed(2)},${emplrContri.toFixed(2)},${total}`;
-    });
-  const footer = `\n"# ESI Return — Period: ${month}"\n"# Filed with ESIC Portal"\n"# ESI Act: Employee 0.75% + Employer 3.25% of gross wages"`;
-  return [header, ...rows, footer].join("\n");
-}
 
 /**
  * Generate TDS 24Q summary CSV.
@@ -345,10 +320,18 @@ function generateTds24QData(slips: PayrollSlip[], quarter: string): string {
   return [header, csvHeader, ...rows, footer].join("\n");
 }
 
-function downloadFile(content: string, filename: string, mimeType: string) {
-  // BOM only for CSV: PF ECR is a fixed-format government text upload where
-  // extra bytes would break parsing, so it must stay BOM-free.
-  const body = mimeType.startsWith("text/csv") ? "\uFEFF" + content : content;
+function downloadFile(content: string, filename: string, mimeType: string,
+                     opts?: { bom?: boolean }) {
+  // A BOM helps Excel read a CSV of ours. It must NEVER reach a government
+  // upload: the EPFO ECR is a fixed-format text file where extra bytes break
+  // parsing, and the ESIC CSV is uploaded to a portal, not opened in Excel.
+  //
+  // This used to be INFERRED from the mime type — csv got a BOM, text did not
+  // — which was right only while every CSV on this page was ours. The moment
+  // the server-built ESIC return came through here it would have been handed a
+  // byte the server did not write. The caller says so now, because the caller
+  // is the one who knows where the file is going.
+  const body = (opts?.bom ?? mimeType.startsWith("text/csv")) ? "\uFEFF" + content : content;
   const blob = new Blob([body], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -520,6 +503,37 @@ function AddEmployeeModal({
 
   async function save() {
     if (!form.name || !form.basic_rs) { setErr("Name and Basic Salary are required."); return; }
+
+    // The exact parsers, and they REFUSE rather than coerce.
+    //
+    // These four fields used to be `parseFloat(x) || 0`, which CLAUDE.md
+    // records as removed from all 61 money call sites — this form was missed.
+    // parseFloat("1,25,000") is 1, so a CA typing an amount the way Indian
+    // amounts are grouped set a basic salary of ONE RUPEE, and everything
+    // downstream — HRA, DA, the PF wage, the s.192 projection, the payslip —
+    // followed it without complaint. parseFloat("") is NaN, which
+    // JSON.stringify sends as null. The CSV importer eleven hundred lines
+    // below already carries the comment explaining this; the form beside it
+    // did not.
+    //
+    // A percentage goes through the same parser and comes back in basis
+    // points; the API takes a percent, and _percent_of reads it with
+    // Decimal(str(...)), so 4050 bps -> 40.5 is exact on both sides.
+    const basicPaise = paiseFromRupeeInput(form.basic_rs);
+    const otherPaise = paiseFromRupeeInput(form.other_rs);
+    const hraBps = bpsFromPercentInput(form.hra_percent);
+    const daBps = bpsFromPercentInput(form.da_percent);
+    const rejected = [
+      basicPaise === null ? "Basic Salary" : null,
+      otherPaise === null ? "Other Allowances" : null,
+      hraBps === null ? "HRA %" : null,
+      daBps === null ? "DA %" : null,
+    ].filter((f): f is string => f !== null);
+    if (basicPaise === null || otherPaise === null || hraBps === null || daBps === null) {
+      setErr(`${rejected.join(", ")} ${rejected.length === 1 ? "is not a number" : "are not numbers"} — type digits only, without commas.`);
+      return;
+    }
+
     setSaving(true);
     setErr("");
     try {
@@ -528,10 +542,10 @@ function AddEmployeeModal({
         pan: form.pan.toUpperCase() || null,
         gender: form.gender || null,
         designation: form.designation || null,
-        basic_paise: rsToP(parseFloat(form.basic_rs) || 0),
-        hra_percent: parseFloat(form.hra_percent) || 0,
-        da_percent: parseFloat(form.da_percent) || 0,
-        other_allowances_paise: rsToP(parseFloat(form.other_rs) || 0),
+        basic_paise: basicPaise,
+        hra_percent: hraBps / 100,
+        da_percent: daBps / 100,
+        other_allowances_paise: otherPaise,
         pf_applicable: form.pf_applicable,
         esi_applicable: form.esi_applicable,
         // Professional Tax — state-specific slab, computed server-side (R2.10).
@@ -740,6 +754,8 @@ function StatutoryReturnsTab({
 
   // Group runs by client for the "Generate" section
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? "");
+  const [statutoryBusy, setStatutoryBusy] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const clientRuns = runs.filter(r => r.client_id === selectedClientId);
 
@@ -747,17 +763,75 @@ function StatutoryReturnsTab({
     return slips.filter(s => s.run_id === runId);
   }
 
-  function handleGeneratePfEcr(run: PayrollRun) {
-    const runSlips = slipsForRun(run.id);
-    const content = generatePfEcr(runSlips);
-    downloadFile(content, `PF_ECR_${run.month}.txt`, "text/plain");
+  /** Ask the SERVER for the statutory file, and let its refusal reach the CA.
+   *
+   *  The endpoint returns the text alongside `problems` and `filable` rather
+   *  than a download, because a member the file cannot carry — no UAN, a
+   *  ceiling breached, a zero-wage ESIC member with no reason code — has to be
+   *  fixed before the upload, not after the portal rejects the batch. A run
+   *  that is not finalised is refused outright with its own 409: the ECR
+   *  reports contributions actually made, and a draft run's figures can still
+   *  change. The browser version happily built one from a draft. */
+  async function downloadStatutoryFile(
+    run: PayrollRun,
+    what: "ecr" | "esic",
+    fetcher: () => Promise<unknown>,
+  ) {
+    setStatutoryBusy(`${run.id}:${what}`);
+    try {
+      const res = (await fetcher()) as {
+        data?: { filename?: string; lines?: string; csv?: string;
+                 problems?: string[]; filable?: boolean };
+      };
+      const d = res?.data;
+      if (!d) throw new Error("The server returned no file.");
+      const content = what === "ecr" ? d.lines : d.csv;
+      const problems = d.problems ?? [];
+
+      const label = what === "ecr" ? "ECR" : "ESIC return";
+      // `is_filable` is `bool(members) and not problems` on both builders, so
+      // the two false cases mean different things and a CA needs to be told
+      // WHICH. There is no third case: a filable return never carries problems.
+      if (!d.filable) {
+        toast({
+          title: problems.length ? `${label} blocked` : `Nothing to file`,
+          description: problems.length
+            ? problems.join(" · ")
+            : `No member of this run carries a ${what === "ecr" ? "PF" : "ESI"} contribution, so there is no ${label} to build.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!content) throw new Error("The server returned an empty file.");
+
+      downloadFile(
+        content,
+        d.filename ?? `${what.toUpperCase()}_${run.month}.${what === "ecr" ? "txt" : "csv"}`,
+        what === "ecr" ? "text/plain" : "text/csv",
+        // Both go to a government portal. Neither gets a BOM.
+        { bom: false },
+      );
+    } catch (e) {
+      toast({
+        title: `Couldn't build the ${what === "ecr" ? "ECR" : "ESIC return"}`,
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setStatutoryBusy(null);
+    }
   }
 
-  function handleGenerateEsiStatement(run: PayrollRun) {
-    const runSlips = slipsForRun(run.id);
-    const content = generateEsiStatement(runSlips, run.month);
-    downloadFile(content, `ESI_Statement_${run.month}.csv`, "text/csv");
-  }
+  /** The server refuses the ECR and the ESIC return for a run that is not
+   *  finalised, because both report contributions actually made. Say that on
+   *  the button rather than spending a round trip to be told. */
+  const isFiled = (run: PayrollRun) => run.status === "finalized" || run.status === "paid";
+
+  const handleGeneratePfEcr = (run: PayrollRun) =>
+    downloadStatutoryFile(run, "ecr", () => api.payroll.runEcr(run.id));
+
+  const handleGenerateEsiStatement = (run: PayrollRun) =>
+    downloadStatutoryFile(run, "esic", () => api.payroll.runEsic(run.id));
 
   function handleGenerate24Q(run: PayrollRun) {
     // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -869,9 +943,15 @@ function StatutoryReturnsTab({
                       const runSlips = slipsForRun(run.id);
                       const totalGross = runSlips.reduce((sum, s) => sum + s.gross_paise, 0);
                       const totalTds = runSlips.reduce((sum, s) => sum + s.tds_paise, 0);
-                      const pfCount = runSlips.filter(s => s.employee?.pf_applicable).length;
+                      // Whether a slip actually CARRIED the contribution, not
+                      // whether a re-derived ceiling test says it should have.
+                      // The old ESI test was `gross <= 2100000` for the month,
+                      // which drops a member Rule 50 keeps in past the ceiling
+                      // until the contribution period ends — so the button read
+                      // "no ESI-applicable employees" for people we deducted from.
+                      const pfCount = runSlips.filter(s => (s.pf_employee_paise || 0) > 0).length;
                       const esiCount = runSlips.filter(
-                        s => s.employee?.esi_applicable && s.gross_paise <= 2100000,
+                        s => (s.esi_employee_paise || 0) > 0 || (s.esi_employer_paise || 0) > 0,
                       ).length;
                       return (
                         <tr key={run.id} className="border-b hover:bg-[#F8FAFC]">
@@ -886,22 +966,26 @@ function StatutoryReturnsTab({
                                 variant="outline"
                                 className="flex items-center gap-1 text-xs"
                                 onClick={() => handleGeneratePfEcr(run)}
-                                disabled={pfCount === 0}
-                                title={pfCount === 0 ? "No PF-applicable employees this month" : `Generate PF ECR for ${pfCount} employees`}
+                                disabled={pfCount === 0 || !isFiled(run) || statutoryBusy === `${run.id}:ecr`}
+                                title={pfCount === 0 ? "No PF-applicable employees this month"
+                                  : !isFiled(run) ? "Finalise the run first — the ECR reports contributions actually made"
+                                  : `Generate PF ECR for ${pfCount} employees`}
                               >
                                 <Download size={12} />
-                                PF ECR
+                                {statutoryBusy === `${run.id}:ecr` ? "…" : "PF ECR"}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="flex items-center gap-1 text-xs"
                                 onClick={() => handleGenerateEsiStatement(run)}
-                                disabled={esiCount === 0}
-                                title={esiCount === 0 ? "No ESI-applicable employees this month" : `Generate ESI statement for ${esiCount} employees`}
+                                disabled={esiCount === 0 || !isFiled(run) || statutoryBusy === `${run.id}:esic`}
+                                title={esiCount === 0 ? "No ESI-applicable employees this month"
+                                  : !isFiled(run) ? "Finalise the run first — the return reports contributions actually made"
+                                  : `Generate ESI statement for ${esiCount} employees`}
                               >
                                 <Download size={12} />
-                                ESI
+                                {statutoryBusy === `${run.id}:esic` ? "…" : "ESI"}
                               </Button>
                               <Button
                                 size="sm"
@@ -1677,19 +1761,26 @@ export default function PayrollPage() {
             {statSlips.length === 0 ? (
               <Card><CardContent className="py-12 text-center text-[#94A3B8]">No payroll runs for selected month/client.</CardContent></Card>
             ) : (() => {
-              const emps = statSlips.map(s => s.employee).filter(Boolean) as Employee[];
-              let totalPfEmp = 0, totalPfEmployer = 0, totalEsiEmp = 0, totalEsiEmployer = 0, totalPt = 0, totalTds = 0;
-              statSlips.forEach((s, i) => {
-                const emp = emps[i];
-                totalPfEmp += s.pf_employee_paise;
-                totalPfEmployer += emp ? Math.min(Math.round(emp.basic_paise * 12 / 100), 180000) : 0;
-                totalEsiEmp += s.esi_employee_paise;
-                totalEsiEmployer += (emp && emp.esi_applicable && s.gross_paise <= 2100000)
-                  ? Math.round(s.gross_paise * 325 / 10000) : 0;
-                totalPt += s.pt_paise;
-                totalTds += s.tds_paise;
-              });
-              const edli = Math.round(totalPfEmployer * 5 / 1000);
+              // SUM what the run stored. Nothing here re-derives a rate, a
+              // ceiling or a formula.
+              //
+              // It used to. The employer PF was Math.min(basic * 12%, 180000) —
+              // basic ALONE where EPF Act s.6 says basic + DA, and a hardcoded
+              // Rs 1,800 that is only right while the ceiling is Rs 15,000. ESI
+              // was gross * 3.25% behind the same monthly-ceiling test Rule 50
+              // contradicts. EDLI was 0.5% OF THAT WRONG NUMBER. Every one of
+              // those figures is already on the slip, computed once by
+              // apps/api and posted to the ledger in the same paise, so a
+              // screen that recomputed them could only ever disagree with the
+              // books it sits beside.
+              const sum = (f: (s: PayrollSlip) => number) => statSlips.reduce((t, s) => t + (f(s) || 0), 0);
+              const totalPfEmp      = sum(s => s.pf_employee_paise);
+              const totalPfEmployer = sum(s => s.pf_employer_paise ?? 0);
+              const totalEsiEmp     = sum(s => s.esi_employee_paise);
+              const totalEsiEmployer = sum(s => s.esi_employer_paise ?? 0);
+              const totalPt         = sum(s => s.pt_paise);
+              const totalTds        = sum(s => s.tds_paise);
+              const edli            = sum(s => s.edli_paise ?? 0);
               return (
                 <Card>
                   <CardHeader><CardTitle>Statutory Contributions — {statMonth}</CardTitle></CardHeader>
@@ -1748,6 +1839,17 @@ export default function PayrollPage() {
                             + "must be plain amounts in rupees, without commas");
                 continue;
               }
+              // The PERCENTAGES get the same treatment. They did not until
+              // 2026-09-04: they were parseFloat, so "1,0" imported as 1% where
+              // the CA meant 10%, and HRA is a salary head that flows into the
+              // s.192 projection and Annexure II.
+              const hraBps = bpsFromPercentInput(row.hra_percent ?? "40");
+              const daBps = bpsFromPercentInput(row.da_percent ?? "0");
+              if (hraBps === null || daBps === null) {
+                errors.push(`Employee "${row.name}": hra_percent and da_percent `
+                            + "must be plain percentages, without commas");
+                continue;
+              }
               try {
                 await api.payroll.createEmployee({
                   client_id: client.id,
@@ -1756,8 +1858,13 @@ export default function PayrollPage() {
                   gender: row.gender || null,
                   designation: row.designation || "",
                   basic_paise: basic,
-                  hra_percent: parseFloat(row.hra_percent ?? "40"),
-                  da_percent: parseFloat(row.da_percent ?? "0"),
+                  // The AMOUNTS on this row go through paiseFromRupeeInput
+                  // above; these two did not, and a percentage typed with a
+                  // comma or a stray character reads the same way an amount
+                  // does. A refusal here becomes a rejected ROW, which is the
+                  // importer's existing convention.
+                  hra_percent: hraBps / 100,
+                  da_percent: daBps / 100,
                   other_allowances_paise: allowances,
                   pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
                   esi_applicable: row.esi_applicable?.toLowerCase() === "true",
@@ -1783,6 +1890,12 @@ export default function PayrollPage() {
             }
             if (row.other_allowances_rs && paiseFromRupeeInput(row.other_allowances_rs) === null) {
               errs.push("other_allowances_rs must be a plain amount in rupees, without commas");
+            }
+            if (row.hra_percent && bpsFromPercentInput(row.hra_percent) === null) {
+              errs.push("hra_percent must be a plain percentage, without commas");
+            }
+            if (row.da_percent && bpsFromPercentInput(row.da_percent) === null) {
+              errs.push("da_percent must be a plain percentage, without commas");
             }
             return errs;
           }}

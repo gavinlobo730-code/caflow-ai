@@ -40,6 +40,7 @@ Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
 
+from core.ist_clock import month_end_date
 from domain.reporting.model import apportion
 from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord
 from domain.tds.section_rates import quarter_dates
@@ -343,9 +344,7 @@ def tds_24q_from_books(
         # only (the FY/quarter driving the return is the caller's own input).
         month_end = f"{month}-28" if not month else month
         try:
-            import calendar as _cal
-            y, m = int(month[:4]), int(month[5:7])
-            month_end = f"{y:04d}-{m:02d}-{_cal.monthrange(y, m)[1]:02d}"
+            month_end = month_end_date(month)
         except (ValueError, IndexError):
             pass
         gross = int(s.get("gross_paise") or 0)
