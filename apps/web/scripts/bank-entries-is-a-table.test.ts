@@ -295,3 +295,21 @@ test("picking a ledger changes the line at once, on the write's own answer", () 
   assert.doesNotMatch(m, /await onChanged\(\)/,
     "the list's counts and rows are two more round trips; nothing the CA does next waits on them");
 });
+
+test("a write refreshes the list without blanking it", () => {
+  // The shared table swaps its whole body for a skeleton whenever `loading`
+  // is true. That is right for a first load and wrong for a re-read after a
+  // write: the rows are already on screen and one of them just changed, so
+  // blanking all of them into grey bars for the round trip reads as the page
+  // breaking. A filter, page or search change still skeletons — there the
+  // content genuinely is not there yet.
+  const s = tab();
+  assert.match(s, /const loadRows = useCallback\(async \(opts\?: \{ quiet\?: boolean \}\)/,
+    "loadRows must be able to re-read quietly");
+  assert.match(s, /if \(!opts\?\.quiet\) setLoading\(true\)/,
+    "and only raise the skeleton when it is not a quiet re-read");
+  assert.match(s, /loadRows\(\{ quiet: true \}\)/,
+    "reload() is only ever called after a write, so it must be the quiet one");
+  assert.match(s, /useEffect\(\(\) => \{ if \(clientId && clientId !== "_placeholder"\) loadRows\(\); \}/,
+    "the first load and every filter change must still show the skeleton");
+});

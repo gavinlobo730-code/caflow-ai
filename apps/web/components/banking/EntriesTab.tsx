@@ -186,8 +186,18 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, bankAccountId]);
 
-  const loadRows = useCallback(async () => {
-    setLoading(true);
+  /** `quiet` keeps the rows on screen while they are re-read.
+   *
+   *  The shared table swaps its whole body for a skeleton whenever `loading`
+   *  is true (AsyncBoundary in components/ui/data-table.tsx), which is right
+   *  when there is nothing to show yet and wrong when there is: after a write
+   *  the rows ARE on screen — one of them just changed — so blanking all
+   *  thirteen into grey bars for the round trip reads as the page breaking
+   *  rather than as one line updating. A first load, and a change of filter,
+   *  page or search, still shows the skeleton: there the content genuinely is
+   *  not there yet. */
+  const loadRows = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setLoading(true);
     try {
       const res = (await api.banking.entries.list({
         client_id: clientId, state, limit: String(pageSize), offset: String(page * pageSize),
@@ -207,7 +217,11 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, state, page, pageSize, search, bankAccountId]);
 
-  const reload = useCallback(async () => { await Promise.all([loadCounts(), loadRows()]); }, [loadCounts, loadRows]);
+  /** Every caller of this is "something was written, catch up" — never a
+   *  first load — so the rows stay put while they are re-read. */
+  const reload = useCallback(async () => {
+    await Promise.all([loadCounts(), loadRows({ quiet: true })]);
+  }, [loadCounts, loadRows]);
 
   /** The active bank accounts — the account filter, and what a statement can
    *  be imported against. Reloaded after anything the Accounts panel does. */
