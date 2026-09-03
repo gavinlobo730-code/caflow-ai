@@ -5,7 +5,7 @@
  * All monetary values stored and computed in integer paise.
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -122,9 +122,12 @@ function fmtRs(paise: number): string {
   return `₹${rupees.toLocaleString("en-IN")}.${p.toString().padStart(2, "0")}`;
 }
 
-function rsToP(rs: number): number {
-  return Math.round(rs * 100);
-}
+/* rsToP — `Math.round(rs * 100)` — was deleted on 2026-09-04 along with its
+ * last caller. It is the second half of the forbidden form: parseFloat turns
+ * "1,25,000" into 1, and this turned the 1 into 100 paise without complaint.
+ * paiseFromRupeeInput builds the paise digit string instead and never
+ * multiplies, so there is nothing here to bring back.
+ */
 
 /** Pull a readable message out of a thrown API error. `request()` throws
  *  `API error 409: {"detail":"…"}` on non-2xx; surface the detail, not the noise. */
@@ -500,6 +503,37 @@ function AddEmployeeModal({
 
   async function save() {
     if (!form.name || !form.basic_rs) { setErr("Name and Basic Salary are required."); return; }
+
+    // The exact parsers, and they REFUSE rather than coerce.
+    //
+    // These four fields used to be `parseFloat(x) || 0`, which CLAUDE.md
+    // records as removed from all 61 money call sites — this form was missed.
+    // parseFloat("1,25,000") is 1, so a CA typing an amount the way Indian
+    // amounts are grouped set a basic salary of ONE RUPEE, and everything
+    // downstream — HRA, DA, the PF wage, the s.192 projection, the payslip —
+    // followed it without complaint. parseFloat("") is NaN, which
+    // JSON.stringify sends as null. The CSV importer eleven hundred lines
+    // below already carries the comment explaining this; the form beside it
+    // did not.
+    //
+    // A percentage goes through the same parser and comes back in basis
+    // points; the API takes a percent, and _percent_of reads it with
+    // Decimal(str(...)), so 4050 bps -> 40.5 is exact on both sides.
+    const basicPaise = paiseFromRupeeInput(form.basic_rs);
+    const otherPaise = paiseFromRupeeInput(form.other_rs);
+    const hraBps = bpsFromPercentInput(form.hra_percent);
+    const daBps = bpsFromPercentInput(form.da_percent);
+    const rejected = [
+      basicPaise === null ? "Basic Salary" : null,
+      otherPaise === null ? "Other Allowances" : null,
+      hraBps === null ? "HRA %" : null,
+      daBps === null ? "DA %" : null,
+    ].filter((f): f is string => f !== null);
+    if (basicPaise === null || otherPaise === null || hraBps === null || daBps === null) {
+      setErr(`${rejected.join(", ")} ${rejected.length === 1 ? "is not a number" : "are not numbers"} — type digits only, without commas.`);
+      return;
+    }
+
     setSaving(true);
     setErr("");
     try {
@@ -508,10 +542,10 @@ function AddEmployeeModal({
         pan: form.pan.toUpperCase() || null,
         gender: form.gender || null,
         designation: form.designation || null,
-        basic_paise: rsToP(parseFloat(form.basic_rs) || 0),
-        hra_percent: parseFloat(form.hra_percent) || 0,
-        da_percent: parseFloat(form.da_percent) || 0,
-        other_allowances_paise: rsToP(parseFloat(form.other_rs) || 0),
+        basic_paise: basicPaise,
+        hra_percent: hraBps / 100,
+        da_percent: daBps / 100,
+        other_allowances_paise: otherPaise,
         pf_applicable: form.pf_applicable,
         esi_applicable: form.esi_applicable,
         // Professional Tax — state-specific slab, computed server-side (R2.10).
@@ -1805,6 +1839,17 @@ export default function PayrollPage() {
                             + "must be plain amounts in rupees, without commas");
                 continue;
               }
+              // The PERCENTAGES get the same treatment. They did not until
+              // 2026-09-04: they were parseFloat, so "1,0" imported as 1% where
+              // the CA meant 10%, and HRA is a salary head that flows into the
+              // s.192 projection and Annexure II.
+              const hraBps = bpsFromPercentInput(row.hra_percent ?? "40");
+              const daBps = bpsFromPercentInput(row.da_percent ?? "0");
+              if (hraBps === null || daBps === null) {
+                errors.push(`Employee "${row.name}": hra_percent and da_percent `
+                            + "must be plain percentages, without commas");
+                continue;
+              }
               try {
                 await api.payroll.createEmployee({
                   client_id: client.id,
@@ -1813,8 +1858,13 @@ export default function PayrollPage() {
                   gender: row.gender || null,
                   designation: row.designation || "",
                   basic_paise: basic,
-                  hra_percent: parseFloat(row.hra_percent ?? "40"),
-                  da_percent: parseFloat(row.da_percent ?? "0"),
+                  // The AMOUNTS on this row go through paiseFromRupeeInput
+                  // above; these two did not, and a percentage typed with a
+                  // comma or a stray character reads the same way an amount
+                  // does. A refusal here becomes a rejected ROW, which is the
+                  // importer's existing convention.
+                  hra_percent: hraBps / 100,
+                  da_percent: daBps / 100,
                   other_allowances_paise: allowances,
                   pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
                   esi_applicable: row.esi_applicable?.toLowerCase() === "true",
@@ -1840,6 +1890,12 @@ export default function PayrollPage() {
             }
             if (row.other_allowances_rs && paiseFromRupeeInput(row.other_allowances_rs) === null) {
               errs.push("other_allowances_rs must be a plain amount in rupees, without commas");
+            }
+            if (row.hra_percent && bpsFromPercentInput(row.hra_percent) === null) {
+              errs.push("hra_percent must be a plain percentage, without commas");
+            }
+            if (row.da_percent && bpsFromPercentInput(row.da_percent) === null) {
+              errs.push("da_percent must be a plain percentage, without commas");
             }
             return errs;
           }}
