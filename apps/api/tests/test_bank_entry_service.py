@@ -69,6 +69,25 @@ class TriggeredDB(FakeDB):
         return _TQ(self.store, name)
 
 
+# ── a fake that refuses what postgrest refuses ───────────────────────────────
+# supabase-py's builder has .select() on the TABLE only; once a select has been
+# made, the query object has no .select at all. The lenient fake above accepts
+# a second .select(), which is how a `.select("id", count="exact")` on a built
+# query passed 9,000 tests and 500'd on the first production request after
+# #395. This fake raises the same AttributeError postgrest does.
+class _StrictQ(_TQ):
+    def select(self, *a, **k):
+        if getattr(self, "_selected", False):
+            raise AttributeError("'SyncSelectRequestBuilder' object has no attribute 'select'")
+        self._selected = True
+        return super().select(*a, **k)
+
+
+class StrictDB(TriggeredDB):
+    def table(self, name):
+        return _StrictQ(self.store, name)
+
+
 @pytest.fixture(autouse=True)
 def _quiet(monkeypatch):
     monkeypatch.setattr(bms.timeline_service, "log", lambda *a, **k: None)
@@ -103,8 +122,8 @@ def poster(monkeypatch):
     return p
 
 
-def _db():
-    db = TriggeredDB()
+def _db(strict: bool = False):
+    db = StrictDB() if strict else TriggeredDB()
     db.store["chart_of_accounts"] = [
         {"id": CHARGES, "firm_id": FIRM, "client_id": CLIENT, "account_name": "Bank Charges",
          "account_type": "Expense", "account_code": "5001", "is_active": True},
@@ -475,3 +494,24 @@ def test_a_click_pass_of_a_trusted_rules_line_is_the_clicker_not_the_rule(poster
     svc.pass_ready(db, FIRM, CLIENT, actor_id="exec-1")
     assert poster.calls[0]["actor_id"] == "exec-1"
     assert _row(db, "chg").get("posted_by_rule_id") is None
+
+
+# ── every read the screen makes, against the postgrest-faithful fake ─────────
+
+def test_counts_list_redraft_and_pass_ready_never_select_twice(poster):
+    """The regression behind the first production 500 after #395. Each of
+    these went through _count(), which called .select() on a built query.
+    Against the strict fake the old code raises AttributeError here."""
+    db = _db(strict=True); _rule(db)
+    _line(db, "t1", "NEFT CHARGES"); _line(db, "t2", "NOBODY KNOWS")
+    out = svc.redraft(db, FIRM, CLIENT)
+    assert out["drafted"] == 2 and out["remaining"] == 0
+    c = svc.counts(db, FIRM, CLIENT)
+    assert c["ready"] == 1 and c["needs_you"] == 1 and c["undrafted"] == 0
+    rows, total = svc.list_entries(db, FIRM, CLIENT, state="to_do")
+    assert total == 2 and len(rows) == 2
+    rows, total = svc.list_entries(db, FIRM, CLIENT, state="ready", bank_account_id="ba-1")
+    assert total == 1
+    p = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1")
+    assert p["passed"] == 1 and p["remaining"] == 0
+    assert svc.redraft(db, FIRM, CLIENT, stale_before="2000-01-01T00:00:00+00:00")["remaining"] == 0

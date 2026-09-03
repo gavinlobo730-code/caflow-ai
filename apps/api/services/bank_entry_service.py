@@ -86,18 +86,28 @@ class BankEntryService:
                 .eq("bank_account_id", bank_account_id).execute().data or [])
         return [r["id"] for r in rows]
 
-    def _base(self, db, firm_id: str, client_id: str, bank_account_id: Optional[str] = None):
-        q = (db.table("bank_transactions").select("*")
-             .eq("firm_id", firm_id).eq("client_id", client_id))
+    def _base(self, db, firm_id: str, client_id: str, bank_account_id: Optional[str] = None,
+              *, count: bool = False):
+        """The client's lines. `count=True` starts a COUNT query instead of a
+        row query — decided HERE, at the table, because supabase-py's builder
+        has no .select() once a select has been made: calling one on a built
+        query is an AttributeError, and the first production request after
+        #395 was exactly that (a 500 on every Entries read). The fake the tests
+        use accepted it, which is why tests/test_bank_entry_service.py now also
+        runs against a fake that refuses it the way postgrest does."""
+        q = (db.table("bank_transactions").select("id", count="exact") if count
+             else db.table("bank_transactions").select("*"))
+        q = q.eq("firm_id", firm_id).eq("client_id", client_id)
         if bank_account_id:
             ids = self._statement_ids(db, firm_id, client_id, bank_account_id)
             q = q.in_("statement_id", ids or ["-"])
         return q
 
     def _count(self, make_query) -> int:
-        """A count with no rows behind it. PostgREST answers from the header;
-        the FakeDB from len()."""
-        res = make_query().select("id", count="exact").range(0, 0).execute()
+        """A count with no rows behind it. `make_query(count=True)` must build
+        the query from the table with the count already requested. PostgREST
+        answers from the header; the FakeDB from len()."""
+        res = make_query(count=True).range(0, 0).execute()
         n = getattr(res, "count", None)
         return int(n) if n is not None else len(res.data or [])
 
@@ -107,17 +117,17 @@ class BankEntryService:
         (open lines nobody has proposed for yet — the screen redrafts while it
         is non-zero) and `trusted_pending` (ready drafts a trusted rule wrote,
         which the screen passes with a progress bar)."""
-        base = lambda: self._base(db, firm_id, client_id, bank_account_id)  # noqa: E731
+        base = lambda count=False: self._base(db, firm_id, client_id, bank_account_id, count=count)  # noqa: E731
         out: dict = {}
         for state in E.STATES:
-            out[state] = self._count(lambda s=state: base().eq("entry_state", s))
+            out[state] = self._count(lambda count=False, s=state: base(count).eq("entry_state", s))
         out["to_do"] = sum(out[s] for s in E.OPEN_STATES)
         out["undrafted"] = self._count(
-            lambda: base().in_("entry_state", list(E.OPEN_STATES)).is_("drafted_at", "null"))
+            lambda count=False: base(count).in_("entry_state", list(E.OPEN_STATES)).is_("drafted_at", "null"))
         trusted = self._trusted_rules(db, firm_id, client_id)
         out["trusted_pending"] = (
-            self._count(lambda: base().eq("entry_state", E.READY).is_("draft_error", "null")
-                        .in_("draft_rule_id", list(trusted)))
+            self._count(lambda count=False: base(count).eq("entry_state", E.READY)
+                        .is_("draft_error", "null").in_("draft_rule_id", list(trusted)))
             if trusted else 0)
         return out
 
@@ -132,8 +142,8 @@ class BankEntryService:
         if state not in self._LIST_STATES:
             raise HTTPException(status_code=422, detail="Invalid entry state.")
 
-        def make():
-            q = self._base(db, firm_id, client_id, bank_account_id)
+        def make(count: bool = False):
+            q = self._base(db, firm_id, client_id, bank_account_id, count=count)
             if state == "to_do":
                 q = q.in_("entry_state", list(E.OPEN_STATES))
             elif state != "all":
@@ -216,10 +226,11 @@ class BankEntryService:
         return rows
 
     def _remaining_for_redraft(self, db, firm_id, client_id, stale_before) -> int:
-        base = lambda: self._base(db, firm_id, client_id).in_("entry_state", list(E.OPEN_STATES))  # noqa: E731
-        n = self._count(lambda: base().is_("drafted_at", "null"))
+        base = lambda count=False: (self._base(db, firm_id, client_id, count=count)  # noqa: E731
+                                    .in_("entry_state", list(E.OPEN_STATES)))
+        n = self._count(lambda count=False: base(count).is_("drafted_at", "null"))
         if stale_before:
-            n += self._count(lambda: base().lte("drafted_at", stale_before))
+            n += self._count(lambda count=False: base(count).lte("drafted_at", stale_before))
         return n
 
     def redraft(self, db, firm_id: str, client_id: str, *, limit: int = REDRAFT_CHUNK,
@@ -492,8 +503,8 @@ class BankEntryService:
         if only_trusted and not trusted:
             return {"passed": 0, "failed": 0, "skipped": 0, "remaining": 0, "results": []}
 
-        def make():
-            q = (self._base(db, firm_id, client_id, bank_account_id)
+        def make(count: bool = False):
+            q = (self._base(db, firm_id, client_id, bank_account_id, count=count)
                  .eq("entry_state", E.READY).is_("draft_error", "null"))
             if txn_ids:
                 q = q.in_("id", list(txn_ids))
