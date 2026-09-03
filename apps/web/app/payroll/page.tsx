@@ -34,6 +34,17 @@ const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "pf_applicable",           label: "PF Applicable",       required: false, hint: "true | false" },
   { key: "esi_applicable",          label: "ESI Applicable",      required: false, hint: "true | false" },
   { key: "pt_state",                label: "PT State",            required: false, hint: "MH | KA | WB | TN | blank" },
+  // The statutory identifiers. A migration is where a roster arrives, so the
+  // import is where these are most likely to be supplied — and an import that
+  // could not carry them would produce four hundred employees nobody can file
+  // for.
+  { key: "uan",                     label: "UAN",                 required: false, hint: "12 digits — needed for the EPFO ECR" },
+  { key: "esi_number",              label: "ESIC IP number",      required: false, hint: "needed for the ESIC return" },
+  { key: "joining_date",            label: "Joining Date",        required: false, hint: "YYYY-MM-DD — a mid-year joiner is over-deducted without it" },
+  { key: "department",              label: "Department",          required: false, hint: "e.g. Operations" },
+  { key: "bank_account_no",         label: "Bank A/c No.",        required: false, hint: "for the salary payment file" },
+  { key: "bank_ifsc",               label: "IFSC",                required: false, hint: "e.g. HDFC0001234" },
+  { key: "bank_name",               label: "Bank Name",           required: false, hint: "e.g. HDFC Bank" },
 ];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,6 +83,16 @@ type Employee = {
   // 'active' | 'resigned' | 'terminated' (payroll_employees.status). Absent on
   // rows created before the roster started returning it — treat as active.
   status?: string;
+  // The statutory identifiers. All have existed on payroll_employees and in
+  // EmployeeIn for some time; nothing collected them, so three finished
+  // statutory builders had no way to be fed.
+  uan?: string | null;
+  esi_number?: string | null;
+  joining_date?: string | null;
+  department?: string | null;
+  bank_account_no?: string | null;
+  bank_ifsc?: string | null;
+  bank_name?: string | null;
 };
 
 type PayrollRun = {
@@ -497,6 +518,20 @@ function AddEmployeeModal({
     pf_applicable: employee?.pf_applicable ?? false,
     esi_applicable: employee?.esi_applicable ?? false,
     pt_state: employee?.pt_applicable ? (employee.pt_state ?? "NONE") : "NONE",
+    // The identifiers three FINISHED statutory outputs need and no screen
+    // collected. domain/payroll/ecr.py refuses a member whose UAN is absent or
+    // not 12 digits; esic.py needs the IP number; the s.192 projection needs
+    // the joining date or it annualises a mid-year joiner's pay and
+    // over-deducts (the 2026-09-01 audit measured Rs 1,46,250 on one
+    // employee). The API has always accepted all of them — models/payroll.py
+    // EmployeeIn — so this is the form catching up with the engine.
+    uan: employee?.uan ?? "",
+    esi_number: employee?.esi_number ?? "",
+    joining_date: employee?.joining_date ?? "",
+    department: employee?.department ?? "",
+    bank_account_no: employee?.bank_account_no ?? "",
+    bank_ifsc: employee?.bank_ifsc ?? "",
+    bank_name: employee?.bank_name ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -551,6 +586,13 @@ function AddEmployeeModal({
         // Professional Tax — state-specific slab, computed server-side (R2.10).
         pt_applicable: form.pt_state !== "NONE",
         pt_state: form.pt_state === "NONE" ? null : form.pt_state,
+        uan: form.uan.trim() || null,
+        esi_number: form.esi_number.trim() || null,
+        joining_date: form.joining_date || null,
+        department: form.department.trim() || null,
+        bank_account_no: form.bank_account_no.trim() || null,
+        bank_ifsc: form.bank_ifsc.trim().toUpperCase() || null,
+        bank_name: form.bank_name.trim() || null,
       };
       if (isEdit && employee) {
         // client_id can't change on edit (EmployeeUpdateIn has no client_id).
@@ -644,6 +686,58 @@ function AddEmployeeModal({
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.pt_state} onChange={e => setForm(f => ({ ...f, pt_state: e.target.value }))}>
               {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
             </select>
+          </div>
+
+          {/* Statutory identifiers. Each hint says what is NOT POSSIBLE without
+              the field, rather than "optional" — the ECR, the ESIC return and
+              the s.192 projection are all finished and all refuse without
+              these, and a blank whose consequence is unstated gets left blank. */}
+          <div className="col-span-2 border-t pt-3 mt-1">
+            <p className="text-xs font-medium text-[#0F172A]">Statutory identifiers</p>
+            <p className="text-[11px] text-[#64748B]">
+              Blank is allowed. Each one names what cannot be produced without it.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">UAN</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.uan}
+                   onChange={e => setForm(f => ({ ...f, uan: e.target.value }))} maxLength={12} inputMode="numeric" />
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">ESIC IP number</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.esi_number}
+                   onChange={e => setForm(f => ({ ...f, esi_number: e.target.value }))} />
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">Without it this member cannot go in the ESIC return.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Joining date</label>
+            <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.joining_date}
+                   onChange={e => setForm(f => ({ ...f, joining_date: e.target.value }))} />
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">
+              Without it a mid-year joiner&apos;s tax is estimated over twelve months, not the months they actually work — which over-deducts.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Department</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department}
+                   onChange={e => setForm(f => ({ ...f, department: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Bank account number</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_account_no}
+                   onChange={e => setForm(f => ({ ...f, bank_account_no: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1">IFSC</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.bank_ifsc}
+                   onChange={e => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} maxLength={11} />
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-[#334155] mb-1">Bank name</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_name}
+                   onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} />
           </div>
         </div>
         <div className="flex gap-2 justify-end mt-5">
@@ -1865,6 +1959,13 @@ export default function PayrollPage() {
                   // importer's existing convention.
                   hra_percent: hraBps / 100,
                   da_percent: daBps / 100,
+                  uan: row.uan?.trim() || null,
+                  esi_number: row.esi_number?.trim() || null,
+                  joining_date: row.joining_date?.trim() || null,
+                  department: row.department?.trim() || null,
+                  bank_account_no: row.bank_account_no?.trim() || null,
+                  bank_ifsc: row.bank_ifsc?.trim().toUpperCase() || null,
+                  bank_name: row.bank_name?.trim() || null,
                   other_allowances_paise: allowances,
                   pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
                   esi_applicable: row.esi_applicable?.toLowerCase() === "true",
