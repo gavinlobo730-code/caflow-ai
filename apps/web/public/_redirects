@@ -64,6 +64,8 @@
 /clients/:id/reports.txt                             /clients/_placeholder/reports/index.txt  200
 /clients/:id/reports/ageing                          /clients/_placeholder/reports/ageing/  200
 /clients/:id/reports/ageing.txt                      /clients/_placeholder/reports/ageing/index.txt  200
+/clients/:id/reports/bank-book                       /clients/_placeholder/reports/bank-book/  200
+/clients/:id/reports/bank-book.txt                   /clients/_placeholder/reports/bank-book/index.txt  200
 /clients/:id/reports/ratios                          /clients/_placeholder/reports/ratios/  200
 /clients/:id/reports/ratios.txt                      /clients/_placeholder/reports/ratios/index.txt  200
 /clients/:id/reports/trend                           /clients/_placeholder/reports/trend/  200

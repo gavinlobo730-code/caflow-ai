@@ -1,10 +1,14 @@
 "use client";
-// Accounts tab: bank accounts, statement import, the column mapper
+// Accounts panel: bank accounts, statement import, the column mapper
 //
 // Moved verbatim out of app/clients/[id]/bank/page.tsx on 2026-09-03, when
 // the bank module was rebuilt around ENTRIES (docs/architecture/09-bank-entries.md).
-// The 4,964-line page was the reason small changes went unreviewed; each tab
-// is its own file now. Behaviour here is unchanged by the move.
+// It was a tab for a few hours and is now a panel the Entries screen opens:
+// adding an account and importing a statement are SETUP, done once and then
+// occasionally, and a tab put them in the month's working sequence. The
+// Entries toolbar's "Import statement" opens BankImportModal directly; the
+// "Accounts" link opens this. `onChanged` tells the caller an import or an
+// account change happened, so it can propose for the new lines at once.
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Pencil, Landmark } from "lucide-react";
@@ -18,7 +22,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
 import { fmt, BankAccount } from "@/components/banking/shared";
 
-export function BankAccounts({ clientId }: { clientId: string }) {
+export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   // {id: {deletable, blocked_by}} — decides whether Delete is offered at all,
@@ -69,7 +73,7 @@ export function BankAccounts({ clientId }: { clientId: string }) {
       const res = await api.banking.updateBankAccount(a.id, { is_active: false }) as { success: boolean; error: string | null };
       if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not deactivate the account." }); return; }
       setMsg({ type: "ok", text: "Bank account deactivated." });
-      loadStatements();
+      loadStatements(); onChanged?.();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not deactivate the account." }); }
   }
 
@@ -78,7 +82,7 @@ export function BankAccounts({ clientId }: { clientId: string }) {
       const res = await api.banking.updateBankAccount(a.id, { is_active: true }) as { success: boolean; error: string | null };
       if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not reactivate the account." }); return; }
       setMsg({ type: "ok", text: `${a.bank_name} reactivated.` });
-      loadStatements();
+      loadStatements(); onChanged?.();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not reactivate the account." }); }
   }
 
@@ -91,7 +95,7 @@ export function BankAccounts({ clientId }: { clientId: string }) {
       const res = await api.banking.deleteBankAccount(a.id) as { success: boolean; error: string | null };
       if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not delete the account." }); return; }
       setMsg({ type: "ok", text: `${a.bank_name} deleted.` });
-      loadStatements();
+      loadStatements(); onChanged?.();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not delete the account." }); }
   }
 
@@ -269,7 +273,7 @@ export function BankAccounts({ clientId }: { clientId: string }) {
           clientId={clientId}
           accounts={activeAccounts}
           onClose={() => setShowImport(false)}
-          onImported={() => { setShowImport(false); loadStatements(); }}
+          onImported={() => { setShowImport(false); loadStatements(); onChanged?.(); }}
           onManageAccounts={() => { setShowImport(false); setAccountModal("new"); }}
         />
       )}
@@ -278,7 +282,7 @@ export function BankAccounts({ clientId }: { clientId: string }) {
           clientId={clientId}
           account={accountModal === "new" ? null : accountModal}
           onClose={() => setAccountModal(null)}
-          onSaved={() => { setAccountModal(null); setMsg({ type: "ok", text: "Bank account saved." }); loadStatements(); }}
+          onSaved={() => { setAccountModal(null); setMsg({ type: "ok", text: "Bank account saved." }); loadStatements(); onChanged?.(); }}
         />
       )}
     </div>

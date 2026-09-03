@@ -311,6 +311,22 @@ def test_list_filters_by_state_and_annotates_kind_and_narration():
         svc.list_entries(db, FIRM, CLIENT, state="everything")
 
 
+def test_passed_lists_the_covered_side_of_a_contra_beside_its_paying_side():
+    # The screen has three filters — To do · Passed · Set aside — so the
+    # receiving side of a passed transfer must appear SOMEWHERE, and "done" is
+    # where it is. Covered alone is still reachable by its own state.
+    db = _db()
+    _line(db, "a", "IMPS OWN ACCOUNT", debit=10000, credit=0, entry_state="passed", match_status="posted")
+    _line(db, "b", "IMPS OWN ACCOUNT", debit=0, credit=10000, entry_state="covered")
+    _line(db, "c", "NEFT CHARGES", entry_state="ready")
+    rows, total = svc.list_entries(db, FIRM, CLIENT, state="passed")
+    assert total == 2 and {r["id"] for r in rows} == {"a", "b"}
+    rows, total = svc.list_entries(db, FIRM, CLIENT, state="covered")
+    assert total == 1 and rows[0]["id"] == "b"
+    rows, total = svc.list_entries(db, FIRM, CLIENT, state="to_do")
+    assert total == 1 and rows[0]["id"] == "c"
+
+
 # ── 4-5. pass_entry ──────────────────────────────────────────────────────────
 
 def test_passing_a_rule_draft_codes_the_line_then_posts_with_the_rules_gst(poster):

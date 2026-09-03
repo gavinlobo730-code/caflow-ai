@@ -1,18 +1,20 @@
 "use client";
 /**
- * Bank — the statement-to-books pipeline, one tab per step.
+ * Bank — three tabs, one working screen.
  *
- *   Accounts   the client's bank accounts and their statements; import lands here
- *   Entries    the working list: each statement line becomes a Receipt, Payment
- *              or Contra, is proposed for by the machine, and is PASSED by the CA
- *   Bank Book  the bank ledger with a running balance and cleared status
+ *   Entries    the work. Every statement line becomes a Receipt, Payment or
+ *              Contra, is proposed for by the machine, and is PASSED by the
+ *              CA. Importing a statement and managing the bank accounts are
+ *              reached from here too — they are setup, not a step.
  *   Reconcile  the BRS — statement against books, signed off per period
  *   Rules      what the machine proposes, and what it may pass on its own
  *
- * Rebuilt 2026-09-03 around ENTRIES — docs/architecture/09-bank-entries.md.
- * This file is the shell only; each tab is its own file under
- * components/banking/. The chart of accounts is loaded once here because three
- * tabs read it.
+ * Rebuilt 2026-09-03 around ENTRIES — docs/architecture/09-bank-entries.md —
+ * as five tabs, and collapsed to three the same day after first use: Accounts
+ * was setup wearing a tab, and Bank Book was a report (it now lives under
+ * Reports › Bank Book). This file is the shell only; each tab is its own file
+ * under components/banking/. The chart of accounts is loaded once here because
+ * Entries and Rules both read it.
  */
 import { useCallback, useEffect, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -20,18 +22,14 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import type { Account } from "@/components/banking/shared";
-import { BankAccounts } from "@/components/banking/AccountsTab";
 import { EntriesTab } from "@/components/banking/EntriesTab";
-import { BankRegister } from "@/components/banking/BankBookTab";
 import { BankReconciliation } from "@/components/banking/ReconcileTab";
 import { RulesTab } from "@/components/banking/RulesTab";
 
-type BankTab = "accounts" | "entries" | "book" | "reconcile" | "rules";
+type BankTab = "entries" | "reconcile" | "rules";
 
 const TABS: { id: BankTab; label: string; title: string }[] = [
-  { id: "accounts",  label: "Accounts",  title: "Bank accounts and statements" },
   { id: "entries",   label: "Entries",   title: "Turn statement lines into entries and pass them" },
-  { id: "book",      label: "Bank Book", title: "The bank ledger — running balance and cleared status" },
   { id: "reconcile", label: "Reconcile", title: "Bank Reconciliation Statement" },
   { id: "rules",     label: "Rules",     title: "What the machine proposes, and what it may pass on its own" },
 ];
@@ -82,9 +80,7 @@ export default function BankPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
-        {tab === "accounts"  && <BankAccounts clientId={clientId} />}
         {tab === "entries"   && <EntriesTab clientId={clientId} accounts={accounts} />}
-        {tab === "book"      && <BankRegister clientId={clientId} />}
         {tab === "reconcile" && <BankReconciliation clientId={clientId} />}
         {tab === "rules"     && <RulesTab clientId={clientId} accounts={accounts} />}
       </div>

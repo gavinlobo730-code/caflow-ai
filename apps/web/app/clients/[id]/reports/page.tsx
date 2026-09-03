@@ -116,6 +116,9 @@ const GROUPS: ReportGroup[] = [
     desc: "Banking, payroll, inventory and fixed assets",
     icon: Landmark,
     reports: [
+      { id: "bank-book", title: "Bank Book",
+        desc: "The bank ledger — running balance, cleared status (C/R), and the check against the statement's own balance column",
+        href: "reports/bank-book" },
       { id: "bank", title: "Bank reconciliation", desc: "Reconciliation status per bank account",
         href: "bank" },
       { id: "payroll", title: "Salary register & statutory summary", desc: "Per-run salary register, PF/ESI/PT/TDS summary",

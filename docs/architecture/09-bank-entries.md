@@ -159,33 +159,58 @@ can undo any of it.
 
 ## The screens
 
-Five tabs, in the order a month is worked: **Accounts · Entries · Bank Book
-· Reconcile · Rules**.
+Three tabs: **Entries · Reconcile · Rules**. The module shipped on
+2026-09-03 with five — Accounts · Entries · Bank Book · Reconcile · Rules —
+and was collapsed to three the same day after first use. The reasoning, so it
+is not rebuilt: *Accounts* is setup, done once and then occasionally, and a
+tab put it in the month's working sequence; *Bank Book* is a report — something
+a CA opens to look a figure up, not a step — and the workspace has a Reports
+section for exactly that; and the six state chips on Entries (*To do · Needs
+me · Proposed · Ready · Passed · Set aside*) made the CA classify their own
+queue before working it, when the row already carries the colour.
 
-- **Entries** — the working list. Count chips *To do · Ready · Needs me ·
-  Proposed · Passed · Set aside*, a bank-account filter, search. One primary
-  action: **Pass N ready**. Columns: Date · Bank narration (counterparty,
-  channel chip, UTR on hover) · **Entry** — the voucher line as it will be
-  passed: `Receipt · Silver Oak Industries · INV-042`, `Payment · Bank
-  Charges · 18% GST`, `Contra · Cosmos Bank`, or the question in amber —
-  · Spent · Received · Status · Action (*Pass* / *Answer* / *Undo* /
-  *Restore*). Clicking a line opens the detail modal, which keeps every
-  capability the old one had: ledger, party with open documents, TDS-short
-  settlement, GST rate and place of supply, split across ledgers or
-  documents, transfer pairing, attachments, the parsed narration, and the
-  history evidence sentence.
-- **Bank Book** — the register, renamed to what it is: the bank ledger with
-  a running balance, cleared status (C/R), and the self-check against the
-  bank's own balance column. Read-only, as before.
+- **Entries** — the working list, and the whole day-to-day loop on one
+  screen. Three filters: *To do · Passed · Set aside* (Passed lists the
+  covered side of a transfer with its paying side — the server's `passed`
+  state includes `covered`, since it is done even though it has no journal
+  of its own). Under *To do*, one line of text — `173 to do — 128 ready · 12
+  proposed · 33 need you` — each part clickable to narrow the list to that
+  state. A bank-account filter, search. Toolbar, right: **Accounts** (opens
+  the accounts-and-statements panel), **Bank Book** (goes to the report),
+  **Import statement** (opens the import modal directly; with no account
+  yet, opens the panel), **Propose**, and the one primary action, **Pass N
+  ready**. An import proposes for the new lines the moment it finishes.
+  Columns: Date · Bank narration (counterparty, channel chip, UTR on hover)
+  · **Entry** — the voucher line as it will be passed: `Receipt · Silver Oak
+  Industries · INV-042`, `Payment · Bank Charges · 18% GST`, `Contra · Cosmos
+  Bank`, or the question in amber — · Spent · Received · Status · Action
+  (*Pass* / *Answer* / *Undo* / *Restore*). Clicking a line opens the detail
+  modal, which keeps every capability the old one had: ledger, party with
+  open documents, TDS-short settlement, GST rate and place of supply, split
+  across ledgers or documents, transfer pairing, attachments, the parsed
+  narration, and the history evidence sentence.
 - **Reconcile** — labelled BRS. Unchanged in substance; it was already to
   accountant standard.
 - **Rules** — each rule shows what it matches now (*N open lines*), what it
   has passed, and the Trusted switch with who trusted it.
-- **Accounts** — unchanged in substance.
+
+Reached from Entries rather than tabs:
+
+- **Accounts panel** (`components/banking/AccountsPanel.tsx`) — the bank
+  accounts and imported statements, add/edit/deactivate, the import modal
+  and the column mapper. Unchanged in substance from the old tab.
+- **Bank Book** (`app/clients/[id]/reports/bank-book/page.tsx`, rendering
+  `components/banking/BankBook.tsx`) — the register, renamed to what it is:
+  the bank ledger with a running balance, cleared status (C/R), and the
+  self-check against the bank's own balance column. Read-only, as before.
+  Listed in the Reports directory under Operational.
 
 `app/clients/[id]/bank/page.tsx` is the shell only; each tab is its own file
 under `components/banking/`. The 4,964-line page was the reason "make the
 row a bit more flexible" changes went unreviewed.
+`scripts/bank-entries-is-a-table.test.ts` holds the three-tab shape, the
+three filters and the working line, because "just add a tab for it" is the
+drift.
 
 ## What this deliberately does not do
 
@@ -207,3 +232,6 @@ row a bit more flexible" changes went unreviewed.
 2. The five tabs rebuilt on the new endpoints.
 3. The old queue/batch endpoints deleted with the old screen — two queues
    of one statement drift — and their tests ported.
+4. Collapsed from five tabs to three after first use: Accounts became a
+   panel and an Import button on Entries, Bank Book moved under Reports,
+   and the six chips became three filters and a line of text.
