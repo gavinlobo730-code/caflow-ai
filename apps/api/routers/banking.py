@@ -1220,16 +1220,19 @@ def add_transaction_attachment(
 ):
     """Attach a receipt, invoice or cheque image to a bank line (Tier 1.8).
 
-    The link must be http or https. A javascript: or data: URL stored here and
-    rendered as a link is stored XSS, so the scheme vocabulary is closed rather
-    than sanitised.
+    Either a pasted link, which must be http or https — a javascript: or data:
+    URL stored here and rendered as a link is stored XSS, so the scheme
+    vocabulary is closed rather than sanitised — or a file already uploaded to
+    the firm's document store, by its document id. An uploaded document is
+    NEVER stored as a url: the store's link is signed and expires within the
+    hour, so a fresh one is minted when someone opens it.
     """
     db = _db()
     if not db:
         return api_response(True, {"transaction_id": txn_id, "attachments": []})
     _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_batch_service.add_attachment(
-        db, current_user["firm_id"], txn_id, data.name, data.url,
+        db, current_user["firm_id"], txn_id, data.name, data.url, data.document_id,
         actor_id=current_user.get("auth_user_id")))
 
 
@@ -1249,7 +1252,7 @@ def remove_transaction_attachment(
         return api_response(True, {"transaction_id": txn_id, "attachments": []})
     _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_batch_service.remove_attachment(
-        db, current_user["firm_id"], txn_id, data.url,
+        db, current_user["firm_id"], txn_id, data.url, data.document_id,
         actor_id=current_user.get("auth_user_id")))
 @router.post("/transactions/{txn_id}/transfer-pair")
 def pair_transfer(

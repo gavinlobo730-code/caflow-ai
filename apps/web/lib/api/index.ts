@@ -604,6 +604,25 @@ export const api = {
   },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
+    /** Put a file in the firm's store. Multipart, so the browser sets the
+     *  boundary and Content-Type is not ours to send. */
+    upload: async (form: FormData) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BASE_URL}/api/documents/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json();
+    },
+    /** A signed link to a stored document, minted NOW.
+     *
+     *  The store's links expire within the hour, which is why nothing keeps
+     *  one: an attachment holds the document's id and asks for a link at the
+     *  moment somebody opens it. */
+    downloadUrl: (docId: string) => request(`/api/documents/${docId}/download-url`),
     parse: (formData: FormData) =>
       fetch(`${BASE_URL}/api/documents/parse`, { method: "POST", body: formData }).then((r) => r.json()),
   },
@@ -961,13 +980,16 @@ export const api = {
      *  server refuses anything that could run code. */
     attachments: {
       list: (txnId: string) => request(`/api/banking/transactions/${txnId}/attachments`),
-      add: (txnId: string, name: string, url: string) =>
+      /** EITHER a pasted link OR a document already in the firm's store, by
+       *  id — never both. The store's own link expires within the hour, so a
+       *  document is held by reference and resolved when it is opened. */
+      add: (txnId: string, body: { name: string; url?: string; document_id?: string }) =>
         request(`/api/banking/transactions/${txnId}/attachments`, {
-          method: "POST", body: JSON.stringify({ name, url }),
+          method: "POST", body: JSON.stringify(body),
         }),
-      remove: (txnId: string, url: string) =>
+      remove: (txnId: string, body: { url?: string; document_id?: string }) =>
         request(`/api/banking/transactions/${txnId}/attachments/remove`, {
-          method: "POST", body: JSON.stringify({ url }),
+          method: "POST", body: JSON.stringify(body),
         }),
     },
     /** Confirm a transfer. `txnId` is the PRIMARY (outflow) side — the one that

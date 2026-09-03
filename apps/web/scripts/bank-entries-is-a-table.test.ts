@@ -244,3 +244,25 @@ test("a matched line names the document it settles, not just 'an invoice'", () =
   assert.match(modal(), /t\.matched_document_no/,
     "the modal must name it too — it is the same question asked at the line");
 });
+
+test("a line can carry its receipt, and a stored document is never held by an expiring link", () => {
+  // The backend has had attachments on a bank line since Tier 1.8, but the
+  // module rebuilt in #395 dropped the UI while the design doc claimed it
+  // kept it — so the receipt behind a coding had nowhere to live again.
+  //
+  // The trap this pins: the document store hands back a SIGNED url that dies
+  // within the hour. Storing it would make the attachment a dead link exactly
+  // when someone audits the coding, so what is stored is the document's id
+  // and the link is minted at the moment it is opened.
+  const m = modal();
+  assert.match(m, /api\.documents\.upload\(form\)/, "the modal must upload into the firm's document store");
+  assert.match(m, /attachments\.add\(txnId, \{ name: file\.name, document_id: documentId \}\)/,
+    "and attach it BY ID — never by the signed url the upload returned");
+  assert.doesNotMatch(m, /attachments\.add\([^)]*download_url/,
+    "a signed, expiring url must never be what gets stored");
+  assert.match(m, /api\.documents\.downloadUrl\(a\.document_id\)/,
+    "opening a stored document must mint a fresh link");
+  assert.match(m, /Supporting documents/, "the section must be on the line");
+
+  assert.match(tab(), /<Paperclip\b/, "and the list must show which lines carry one");
+});

@@ -13,7 +13,7 @@ import pytest
 from fastapi import HTTPException
 
 from domain.banking.attachments import (
-    Attachment, AttachmentError, parse_attachments, add, remove,
+    Attachment, AttachmentError, parse_attachment, parse_attachments, add, remove,
     ALLOWED_SCHEMES, MAX_ATTACHMENTS, MAX_NAME_LENGTH,
 )
 from models.banking import BankBatchIn
@@ -378,3 +378,66 @@ def test_the_attachment_endpoints_round_trip(monkeypatch):
     br.remove_transaction_attachment(
         "t1", BankAttachmentRemoveIn(url="https://e.com/r.pdf"), current_user=PARTNER)
     assert br.list_transaction_attachments("t1", current_user=PARTNER)["data"]["attachments"] == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# An UPLOADED document — attached by id, never by the store's expiring link
+# ══════════════════════════════════════════════════════════════════════════════
+
+DOC = "8f14e45f-ce0a-4c4b-8a1b-2b0d0f8e1a77"
+
+
+def test_an_uploaded_document_is_attached_by_its_id_and_stores_no_url():
+    """The document store hands back a SIGNED url that expires within the
+    hour. Storing it would make the attachment a dead link by the time anyone
+    audits the coding, so what is kept is the durable reference."""
+    items = add([], "bill.pdf", document_id=DOC)
+    assert items == [{"name": "bill.pdf", "document_id": DOC}]
+    assert "url" not in items[0]
+
+
+def test_a_document_attachment_carrying_a_link_is_refused_not_quietly_stripped():
+    with pytest.raises(AttachmentError) as e:
+        parse_attachment({"name": "bill.pdf", "document_id": DOC,
+                          "url": "https://store.example/signed?token=expires-in-an-hour"})
+    assert "expires" in str(e.value)
+
+
+def test_a_document_reference_that_is_not_a_document_id_is_refused():
+    for bad in ("../../etc/passwd", "not-a-uuid", "1 OR 1=1", " "):
+        with pytest.raises(AttachmentError):
+            parse_attachment({"name": "bill.pdf", "document_id": bad})
+
+
+def test_the_same_document_twice_is_refused_the_way_the_same_link_is():
+    one = add([], "bill.pdf", document_id=DOC)
+    with pytest.raises(AttachmentError):
+        add(one, "bill-again.pdf", document_id=DOC)
+
+
+def test_links_and_documents_live_side_by_side_and_remove_by_their_own_key():
+    both = add(add([], "portal.html", "https://e.com/a"), "bill.pdf", document_id=DOC)
+    assert [x["name"] for x in both] == ["portal.html", "bill.pdf"]
+    assert [x["name"] for x in remove(both, document_id=DOC)] == ["portal.html"]
+    assert [x["name"] for x in remove(both, "https://e.com/a")] == ["bill.pdf"]
+
+
+def test_a_remove_that_names_nothing_leaves_the_list_alone():
+    """Removing with neither key must not empty the list."""
+    one = add([], "bill.pdf", document_id=DOC)
+    assert remove(one) == one
+
+
+def test_attaching_another_firms_document_is_a_404():
+    """The id comes from the browser and is later resolved to a signed url for
+    whatever is stored, so the tenant check belongs where the id ENTERS."""
+    db = _db()
+    _txn(db, "t1")
+    db.store["documents"] = [{"id": DOC, "firm_id": "another-firm"}]
+    with pytest.raises(HTTPException) as e:
+        bank_batch_service.add_attachment(db, FIRM, "t1", "bill.pdf", document_id=DOC)
+    assert e.value.status_code == 404
+
+    db.store["documents"] = [{"id": DOC, "firm_id": FIRM}]
+    out = bank_batch_service.add_attachment(db, FIRM, "t1", "bill.pdf", document_id=DOC)
+    assert out["attachments"] == [{"name": "bill.pdf", "document_id": DOC}]

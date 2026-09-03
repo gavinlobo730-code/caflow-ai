@@ -28,7 +28,7 @@
  * able to hide the thing it enriches.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Search, Split, X } from "lucide-react";
+import { ExternalLink, Paperclip, Search, Split, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { SplitAcrossLedgersModal } from "@/components/banking/SplitAcrossLedgersModal";
@@ -94,6 +94,55 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   const [splitMode, setSplitMode] = useState<"ledgers" | "documents" | null>(null);
   const [prefill, setPrefill] = useState<SettlePrefill | null>(null);
   const [finding, setFinding] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const attachments = t?.attachments ?? [];
+
+  /** Put the file in the firm's document store, then attach it to this line
+   *  BY ITS ID. The store's own link is signed and expires within the hour,
+   *  so it is never what gets stored — see domain/banking/attachments.py. */
+  async function attachFile(file: File) {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("client_id", clientId);
+      // The vocabulary the documents table allows; a receipt or a vendor bill
+      // kept against a bank line is not one of the statutory kinds.
+      form.append("document_type", "OTHER");
+      const up = (await api.documents.upload(form)) as
+        { success: boolean; data: { document: { id: string } } };
+      const documentId = up?.data?.document?.id;
+      if (!documentId) throw new Error("The file uploaded but came back without an id.");
+      await api.banking.attachments.add(txnId, { name: file.name, document_id: documentId });
+      await load();
+      await onChanged();
+      toast({ title: `${file.name} attached` });
+    } catch (e) {
+      toast({ title: "Couldn't attach that file",
+              description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";   // the same file again must re-fire change
+    }
+  }
+
+  /** A stored document has no link until it is asked for — mint one now. */
+  async function openAttachment(a: { url?: string | null; document_id?: string | null }) {
+    if (a.url) { window.open(a.url, "_blank", "noopener,noreferrer"); return; }
+    if (!a.document_id) return;
+    try {
+      const res = (await api.documents.downloadUrl(a.document_id)) as
+        { success: boolean; data: { download_url: string | null } };
+      const url = res?.data?.download_url;
+      if (!url) throw new Error("That document has no stored file to open.");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast({ title: "Couldn't open that document",
+              description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    }
+  }
 
   const accountName = (id: string | null | undefined) => {
     if (!id) return "";
@@ -409,6 +458,57 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           )}
         </section>
       )}
+
+      {/* ── supporting documents ──
+          The receipt or vendor bill that justifies the coding. A line that
+          already settles an invoice or a bill does NOT need one: that document
+          is in the books with its own copy, and a second one here is a
+          duplicate nobody will keep in step. The case this exists for is an
+          expense with no bill on file — bank charges, petty cash, anything
+          booked straight to a ledger. */}
+      <section className="space-y-1.5">
+        <p className="text-[11px] font-medium text-[#475569]">Supporting documents</p>
+
+        {attachments.length > 0 && (
+          <ul className="divide-y divide-[#F1F5F9] border border-[#E2E8F0] rounded-lg overflow-hidden">
+            {attachments.map((a) => (
+              <li key={a.document_id ?? a.url} className="flex items-center gap-2 px-3 py-1.5">
+                <Paperclip size={12} className="text-[#94A3B8] shrink-0" />
+                <button onClick={() => openAttachment(a)}
+                  className="text-xs text-[#334155] truncate min-w-0 flex-1 text-left hover:text-[#4338CA] hover:underline inline-flex items-center gap-1">
+                  <span className="truncate">{a.name}</span>
+                  <ExternalLink size={10} className="shrink-0 text-[#94A3B8]" />
+                </button>
+                {editable && (
+                  <button onClick={() => act("Couldn't remove that document",
+                      () => api.banking.attachments.remove(t.id,
+                        a.document_id ? { document_id: a.document_id } : { url: a.url ?? "" }))}
+                    disabled={busy}
+                    className="text-[10px] text-[#94A3B8] hover:text-red-600 hover:underline shrink-0">Remove</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {editable && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input ref={fileRef} type="file" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) attachFile(f); }} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy || uploading}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50">
+              <Paperclip size={13} /> {uploading ? "Attaching…" : "Attach a file"}
+            </button>
+            {t.matched_entity_id ? (
+              <span className="text-[10px] text-[#94A3B8]">
+                This line settles {t.matched_document_no ?? "a document"}, which is already on file with its own copy.
+              </span>
+            ) : attachments.length === 0 ? (
+              <span className="text-[10px] text-[#94A3B8]">The receipt or bill behind this line, if there is no document for it in the books.</span>
+            ) : null}
+          </div>
+        )}
+      </section>
 
       {/* ── what the bank sent ── */}
       <section>

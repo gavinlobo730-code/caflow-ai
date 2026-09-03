@@ -36,7 +36,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, CheckCircle, Landmark, Loader2, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { BookOpen, CheckCircle, Landmark, Loader2, Paperclip, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { api, type EntryListState, type EntryState } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column } from "@/lib/table/types";
@@ -62,6 +62,10 @@ export interface Entry {
   transfer_pair_id: string | null; transfer_is_primary: boolean | null;
   payee_name: string | null; payee_type: string | null; payee_id: string | null;
   has_splits: boolean; is_split?: boolean; split_count?: number;
+  /** Supporting documents kept against this line. A stored document has a
+   *  document_id and NO url — the store's link expires, so one is minted when
+   *  it is opened. A pasted link has a url and no id. */
+  attachments?: { name: string; url?: string | null; document_id?: string | null }[];
   splits?: { account_id: string; amount_paise: number; narration: string | null }[];
   /** Receipt / Payment / Contra — decided by the line, never chosen. */
   kind: "receipt" | "payment" | "contra";
@@ -409,6 +413,10 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
           </span>
           {t.parsed?.channel && (
             <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">{t.parsed.channel}</span>
+          )}
+          {(t.attachments?.length ?? 0) > 0 && (
+            <Paperclip size={11} className="shrink-0 text-[#94A3B8]"
+              aria-label={`${t.attachments!.length} supporting document${t.attachments!.length === 1 ? "" : "s"}`} />
           )}
         </div>
       ),
