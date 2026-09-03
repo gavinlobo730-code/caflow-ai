@@ -74,6 +74,17 @@ def test_the_screen_flow_redraft_counts_list_pass_ready(db, poster):
     assert poster.calls[0]["txn_id"] == "t1" and poster.calls[0]["actor_id"] == "executive-1"
 
 
+def test_the_largest_row_per_page_choice_the_screen_offers_is_accepted():
+    """DataTable's shared "rows per page" control (components/ui/data-table.tsx
+    PAGE_SIZES) offers up to 1000. Picking it here once sent limit=1000 into a
+    422 that rendered as the same "Something went wrong" card a real 500
+    does, because the endpoint's own cap was 200 — lower than the control
+    that drives it, and nobody had noticed until a CA clicked it."""
+    res = client.get("/api/banking/entries", params={"client_id": CLIENT, "limit": 1000},
+                      headers=_h("Executive"))
+    assert res.status_code == 200
+
+
 def test_an_invalid_state_is_a_422(db):
     r = client.get("/api/banking/entries", headers=_h("executive"),
                    params={"client_id": CLIENT, "state": "everything"})
