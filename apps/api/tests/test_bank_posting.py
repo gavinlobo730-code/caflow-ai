@@ -559,3 +559,24 @@ def test_paise_precision_preserved():
     lines = _lines_for(db, res["posted_journal_id"])
     assert all(isinstance(l["debit_paise"], int) and isinstance(l["credit_paise"], int) for l in lines)
     assert sum(l["debit_paise"] for l in lines) == 12345
+
+
+def test_coding_a_line_to_its_own_bank_ledger_is_refused_with_a_reason():
+    """The ledger picker offers the WHOLE chart — "orders, never filters" —
+    including the bank ledger the statement being coded posts to.
+
+    Picking it derives Transfer (domain/banking/account_category), which makes
+    the line READY and puts it inside "Pass N ready". Then build_transfer_lines
+    refuses it, because money cannot move from an account to itself — as a bare
+    ValueError, which no handler converted. Through the API that was a 500
+    "Internal server error"; on the bulk path it escaped pass_entry and killed
+    the whole chunk. Ready has to mean passable, and where it cannot, the
+    refusal has to say what to do instead.
+    """
+    db = _db_with_accounts()
+    _seed_txn(db, debit=60000, category="Transfer", account_id="acc-bank")
+    with pytest.raises(HTTPException) as e:
+        bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    assert e.value.status_code == 422
+    assert "own accounts" in str(e.value.detail) and "OTHER" in str(e.value.detail)
+

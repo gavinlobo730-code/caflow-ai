@@ -670,3 +670,50 @@ def test_the_document_numbers_are_one_query_per_type_not_one_per_row():
     assert [r["matched_document_no"] for r in rows] == [f"INV-{i}" for i in range(8)]
     assert reads.count("client_sales_invoices") == 1, \
         f"read the invoice table {reads.count('client_sales_invoices')} times for 8 rows"
+
+
+# ── 9. a line that cannot pass is a FAILED line, never a dead chunk ──────────
+
+class _ExplodingPoster(_Poster):
+    """A posting path that raises something OTHER than a refusal.
+
+    This is what a domain rule looked like before it was converted: every
+    builder in domain/banking/posting_map states its rules as ValueError, and
+    only the GST ones were turned into an HTTPException on the way out.
+    """
+    def __init__(self, blow_up_on: str):
+        super().__init__()
+        self.blow_up_on = blow_up_on
+
+    def __call__(self, db, firm_id, txn_id, **kw):
+        if txn_id == self.blow_up_on:
+            raise ValueError("Transfer accounts must differ.")
+        return super().__call__(db, firm_id, txn_id, **kw)
+
+
+def test_one_line_that_cannot_pass_does_not_take_the_chunk_with_it(monkeypatch):
+    """pass_ready's own promise: "forty-nine good lines must not roll back for
+    the fiftieth".
+
+    It held only for refusals stated as an HTTPException. Anything else escaped
+    pass_entry, killed the loop mid-chunk, left the lines already posted posted
+    with no summary naming them, and reached the CA as a bare 500 that named no
+    line at all. A line that cannot be passed is a FAILED line — a state this
+    already has, with the reason on the row so the next chunk skips it.
+    """
+    db = _db()
+    for tid in ("t1", "t2", "t3"):
+        _line(db, tid, f"LINE {tid}", account_id=CHARGES)
+    monkeypatch.setattr(bes.bank_posting_service, "post", _ExplodingPoster("t2"))
+
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u1")
+
+    assert out["passed"] == 2 and out["failed"] == 1
+    assert {r["transaction_id"] for r in out["results"] if r["status"] == "passed"} == {"t1", "t3"}
+    assert _row(db, "t1")["posted_journal_id"] and _row(db, "t3")["posted_journal_id"]
+    assert _row(db, "t2")["posted_journal_id"] is None
+    assert _row(db, "t2")["draft_error"], "the row must carry why, or the next chunk dies on it again"
+
+    # And the next chunk leaves it alone rather than failing on it forever.
+    again = svc.pass_ready(db, FIRM, CLIENT, actor_id="u1")
+    assert again["passed"] == 0 and again["failed"] == 0
