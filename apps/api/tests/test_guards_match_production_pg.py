@@ -25,6 +25,8 @@ The four directions that break something, each at zero after migration 316:
   rls_off_in_live                          a policy on a table with RLS off is
                                            decoration, and the direct PostgREST
                                            path sees every firm's rows
+  rls_off_in_the_migrations                the same, pointed at every NEW
+                                           environment instead of at production
   restrictive_policies_missing_from_live   a check every row must pass is absent
   tables_left_without_a_policy_in_live     RLS on and no policy is fail-closed,
                                            so the frontend's direct reads of
@@ -157,6 +159,26 @@ def test_no_table_has_row_level_security_switched_off_in_production(report):
         "RLS is OFF in production on these tables. Every policy on them is "
         "decoration, and the frontend's direct PostgREST reads see every firm's "
         "rows.\n  " + "\n  ".join(report["rls_off_in_live"]))
+
+
+@_NEEDS_PG
+def test_no_table_has_row_level_security_switched_off_in_the_migrations(report, in_flight):
+    """The mirror of the test above, and the one that actually bit.
+
+    Production had RLS on for all eight tables migration 317 fixes, so nothing
+    was exposed there and no assertion pointed at the live database could see
+    it. The migrations had RLS OFF on them, and migrations 095 and 287 had
+    granted `authenticated` full DML — so the CI template, and any new
+    environment, enforced nothing at all on those tables.
+    """
+    offenders = _not_in_flight(report["rls_off_in_the_migrations"], in_flight)
+    assert not offenders, (
+        "Row-level security is OFF in the migrations on these tables and ON in "
+        "production. Production is safe; every NEW environment built from these "
+        "migrations is not, and neither is the CI template that every other test "
+        "in this suite runs against.\n"
+        "Enable it and declare the policy production already has (migration 317 "
+        "is the pattern).\n  " + "\n  ".join(offenders))
 
 
 @_NEEDS_PG

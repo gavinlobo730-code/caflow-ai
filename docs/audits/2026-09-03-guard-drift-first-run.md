@@ -155,13 +155,24 @@ asserted — so isolation holds; but a migration that later `DROP POLICY IF
 EXISTS` by the declared name would silently miss. The 77 the other way include
 the RESTRICTIVE `*_assignment_scope` policies of migrations 260/261 on the
 Studio tables, which production has and the migrations do not: **on a fresh
-deployment those tables would have no assignment scoping.** Nine tables the
-migrations leave with RLS on and no policy at all (`credit_note_allocations`,
-`invoice_sequences`, `purchase_bill_lines`, `scheduler_runs`,
-`task_dependencies`, `task_tags`, `task_templates`, `task_timeline_events`,
-`user_capacity`, …) have policies only in production, so a fresh deployment
-would find them fail-closed to the direct path. Declaring what production has,
-by its production name, is again the 292 pattern.
+deployment those tables would have no assignment scoping.** Declaring what
+production has, by its production name, is again the 292 pattern.
+
+> **Correction, later the same day.** This paragraph originally said nine
+> tables were left "with RLS on and no policy at all ... fail-closed to the
+> direct path". Both halves were wrong, and in the unsafe direction. Eight of
+> them — `credit_note_allocations`, `invoice_sequences`, `scheduler_runs`,
+> `task_dependencies`, `task_tags`, `task_templates`, `task_timeline_events`,
+> `user_capacity` — have RLS switched **OFF** in the migrations, not on, and
+> `authenticated` holds table grants on every one (full DML on five). That is
+> fail-**open**: no isolation whatsoever on the direct PostgREST path. Only
+> `purchase_bill_lines` is genuinely RLS-on-no-policy, which is fail-closed and
+> deliberate. Production is unaffected — it has RLS on for all eight — so no
+> assertion pointed at the live database could see it. Migration 317 fixes it,
+> `guard_drift.py` gained the mirror category `rls_off_in_the_migrations`, and
+> `tests/test_rls_covers_every_granted_table_pg.py` now asserts the underlying
+> invariant. The full account is in
+> `docs/audits/2026-09-03-rls-off-on-eight-granted-tables.md`.
 
 ### 30 policies whose roles differ: `PUBLIC` here, `authenticated` there
 
