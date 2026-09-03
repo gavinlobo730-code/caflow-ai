@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
-  Building2, CreditCard,
+  Building2, CreditCard, Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -37,7 +37,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
   return res.json();
 }
 
-type Tab = "dashboard" | "employees" | "structures" | "runs" | "statutory" | "reports";
+type Tab = "dashboard" | "employees" | "structures" | "runs" | "statutory" | "setup" | "reports";
 
 function fmt(paise: number) {
   return "₹" + Math.floor(paise / 100).toLocaleString("en-IN");
@@ -787,6 +787,259 @@ function StatutoryTab({ clientId }: { clientId: string }) {
   );
 }
 
+// ─── Setup Tab — the client's own statutory registrations ─────────────────────
+//
+// Migration 325. Three finished returns — the ECR, the ESIC contribution file
+// and Form 24Q — are returns BY AN ESTABLISHMENT, and until this screen existed
+// there was nowhere to record the number that identifies it. A CA retyped the
+// 24Q deductor block by hand every quarter, for every client.
+//
+// The field LIST comes from the API, not from here. If the form held its own
+// copy the two would drift, and a registration added to the table would be
+// invisible until somebody remembered this file.
+
+type IdentityField = { name: string; label: string; used_for: string };
+type IdentityValues = Record<string, string | null>;
+type PTRegistration = { state: string; ptrc_number?: string | null; ptec_number?: string | null };
+
+function StatutoryIdentityTab({ clientId }: { clientId: string }) {
+  const [fields, setFields] = useState<IdentityField[]>([]);
+  const [values, setValues] = useState<IdentityValues>({});
+  const [pt, setPt] = useState<PTRegistration[]>([]);
+  const [loading, setLoading] = useState(true);
+  // A failed load must not render as "this client has no registrations" — that
+  // is the same mistake the 26/26 attendance default made, in the UI.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [ptForm, setPtForm] = useState({ state: "", ptrc_number: "", ptec_number: "" });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      const res = await apiFetch<{ identity: IdentityValues; pt_registrations: PTRegistration[]; fields: IdentityField[] }>(
+        `/api/payroll/statutory-identity?client_id=${clientId}`);
+      if (!res?.data) { setLoadFailed(true); return; }
+      setFields(res.data.fields ?? []);
+      setValues(res.data.identity ?? {});
+      setPt(res.data.pt_registrations ?? []);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  /** One field at a time, and only the field that changed.
+   *
+   *  The endpoint is PATCH-shaped on purpose: sending the whole object back
+   *  would clear anything this form has not loaded, and a form that clears a
+   *  TAN because somebody edited the LIN is the silent-write failure the whole
+   *  table exists to end. */
+  async function saveField(name: string, raw: string) {
+    setSaving(name); setSaveError(null); setSaved(null);
+    try {
+      const res = await apiFetch<{ identity: IdentityValues }>("/api/payroll/statutory-identity", {
+        method: "PUT",
+        body: JSON.stringify({ client_id: clientId, [name]: raw }),
+      });
+      const body = res as unknown as { success?: boolean; error?: string; detail?: string };
+      if (body?.success === false || !res?.data) {
+        // The server's own sentence, which names WHY a TAN was refused. A
+        // generic "couldn't save" would hide the only useful part.
+        setSaveError(body?.error || body?.detail || "Couldn't save — the request failed.");
+        return;
+      }
+      setValues(res.data.identity ?? {});
+      setSaved(name);
+    } catch {
+      setSaveError("Couldn't save — the request failed or timed out.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function savePt() {
+    const state = ptForm.state.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(state)) {
+      setSaveError('State must be the two-letter code, e.g. "MH" or "KA".');
+      return;
+    }
+    if (!ptForm.ptrc_number.trim() && !ptForm.ptec_number.trim()) {
+      setSaveError("Enter a PTRC or a PTEC number.");
+      return;
+    }
+    setSaving("pt"); setSaveError(null);
+    try {
+      const res = await apiFetch<PTRegistration>("/api/payroll/statutory-identity/pt", {
+        method: "PUT",
+        body: JSON.stringify({
+          client_id: clientId, state,
+          ptrc_number: ptForm.ptrc_number.trim(),
+          ptec_number: ptForm.ptec_number.trim(),
+        }),
+      });
+      const body = res as unknown as { success?: boolean; error?: string; detail?: string };
+      if (body?.success === false) {
+        setSaveError(body?.error || body?.detail || "Couldn't save the registration.");
+        return;
+      }
+      setPtForm({ state: "", ptrc_number: "", ptec_number: "" });
+      await load();
+    } catch {
+      setSaveError("Couldn't save — the request failed or timed out.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function removePt(state: string) {
+    setSaving("pt"); setSaveError(null);
+    try {
+      await apiFetch(`/api/payroll/statutory-identity/pt?client_id=${clientId}&state=${state}`,
+                     { method: "DELETE" });
+      await load();
+    } catch {
+      setSaveError("Couldn't remove the registration.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (loading) return <div className="p-5"><CardGridSkeleton count={4} /></div>;
+
+  if (loadFailed) {
+    return (
+      <div className="p-5">
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">
+            Couldn&apos;t load this client&apos;s registrations — the request failed.
+          </p>
+          <p className="text-xs text-[#64748B] mb-3">
+            This is not the same as having none recorded, so nothing is shown either way.
+          </p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+        <h2 className="text-[13px] font-semibold text-[#0F172A]">Statutory registrations</h2>
+        <p className="text-[11px] text-[#64748B] mt-0.5">
+          The numbers this client&apos;s own returns are filed under. Form 24Q carries the TAN;
+          the EPFO and ESIC portals take the establishment from the login, so those two are
+          shown beside the file rather than in it.
+        </p>
+      </div>
+
+      {saveError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[12px] text-red-700">{saveError}</div>
+      )}
+
+      <div className="bg-white rounded-xl border border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+        {fields.map(f => (
+          <IdentityRow
+            key={f.name}
+            field={f}
+            value={values[f.name] ?? ""}
+            saving={saving === f.name}
+            justSaved={saved === f.name}
+            onSave={v => saveField(f.name, v)}
+          />
+        ))}
+      </div>
+
+      {/* ── Professional tax, one registration per state ─────────────────── */}
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+        <div>
+          <h2 className="text-[13px] font-semibold text-[#0F172A]">Professional tax registrations</h2>
+          <p className="text-[11px] text-[#64748B] mt-0.5">
+            One per state — PT is a state levy under Article 276(2). The PTRC is the
+            employer&apos;s authority to <em>deduct</em> from employees and deposit; the PTEC is the
+            entity&apos;s own enrolment. A payroll run reports any state it deducts in with no PTRC here.
+          </p>
+        </div>
+
+        {pt.length > 0 && (
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-[10px] text-[#94A3B8] border-b border-[#F1F5F9]">
+                <th className="py-1.5">State</th><th>PTRC</th><th>PTEC</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pt.map(r => (
+                <tr key={r.state} className="border-b border-[#F8FAFC]">
+                  <td className="py-1.5 font-medium text-[#1E293B]">{r.state}</td>
+                  <td className="text-[#334155]">{r.ptrc_number || <span className="text-[#94A3B8]">—</span>}</td>
+                  <td className="text-[#334155]">{r.ptec_number || <span className="text-[#94A3B8]">—</span>}</td>
+                  <td className="text-right">
+                    <button onClick={() => removePt(r.state)} disabled={saving === "pt"}
+                      className="text-[11px] text-red-600 hover:underline disabled:opacity-50">Remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="grid grid-cols-4 gap-2 items-end">
+          <Field label="State code" value={ptForm.state} placeholder="MH"
+            onChange={v => setPtForm({ ...ptForm, state: v.toUpperCase().slice(0, 2) })} />
+          <Field label="PTRC number" value={ptForm.ptrc_number} placeholder="27123456789P"
+            onChange={v => setPtForm({ ...ptForm, ptrc_number: v })} />
+          <Field label="PTEC number" value={ptForm.ptec_number} placeholder="optional"
+            onChange={v => setPtForm({ ...ptForm, ptec_number: v })} />
+          <button onClick={savePt} disabled={saving === "pt"}
+            className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving === "pt" ? "Saving…" : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One registration, edited and saved on its own.
+ *
+ *  Deliberately not part of a single Save-all button: the endpoint writes only
+ *  the field it is sent, and a form that posted every field would clear the
+ *  ones this screen happened not to load. */
+function IdentityRow({ field, value, saving, justSaved, onSave }: {
+  field: IdentityField; value: string; saving: boolean; justSaved: boolean;
+  onSave: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
+  const dirty = draft !== value;
+
+  return (
+    <div className="p-3 flex items-end gap-3">
+      <div className="flex-1">
+        <label className="block text-[11px] font-medium text-[#334155]">{field.label}</label>
+        <p className="text-[10px] text-[#94A3B8] mb-1">{field.used_for}</p>
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          placeholder="Not recorded"
+          className="w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] text-[#1E293B] outline-none focus:border-blue-400"
+        />
+      </div>
+      <button onClick={() => onSave(draft)} disabled={saving || !dirty}
+        className="px-3 py-1.5 text-[12px] rounded-lg border border-[#E2E8F0] text-[#334155] hover:bg-[#F8FAFC] disabled:opacity-40 shrink-0">
+        {saving ? "Saving…" : justSaved && !dirty ? "Saved" : "Save"}
+      </button>
+    </div>
+  );
+}
+
 // ─── Shared Components ────────────────────────────────────────────────────────
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
@@ -842,6 +1095,7 @@ export default function PayrollPage() {
     { id: "structures", label: "Salary Structures", icon: Building2 },
     { id: "runs",       label: "Payroll Runs",     icon: Play },
     { id: "statutory",  label: "Statutory",        icon: FileText },
+    { id: "setup",      label: "Setup",            icon: Settings },
     { id: "reports",    label: "Reports",          icon: Download },
   ];
 
@@ -877,6 +1131,7 @@ export default function PayrollPage() {
         {tab === "structures" && <SalaryStructuresTab clientId={clientId} firmId={firmId} />}
         {tab === "runs"       && <RunsTab clientId={clientId} firmId={firmId} />}
         {tab === "statutory"  && <StatutoryTab clientId={clientId} />}
+        {tab === "setup"      && <StatutoryIdentityTab clientId={clientId} />}
         {tab === "reports"    && <ReportsTab clientId={clientId} />}
       </div>
     </div>

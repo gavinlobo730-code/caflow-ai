@@ -374,3 +374,51 @@ class DeclarationVerifyIn(BaseModel):
     # Set once every proof has been through. Until then the declared figures
     # keep working for the first three quarters and stop working in the fourth.
     proofs_verified: bool = False
+
+
+class StatutoryIdentityIn(BaseModel):
+    """The client's own establishment registrations (migration 325).
+
+    Every field is Optional and PATCH-shaped: only what is sent is written, and
+    an explicit empty string CLEARS the field. That distinction matters here —
+    "leave the TAN alone" and "this client has no TAN" are different edits, and
+    a form that always posts every field would silently do the second whenever
+    a CA opened the screen to change something else.
+
+    Validation is deliberately asymmetric and domain/payroll/identity.py says
+    why: TAN has a settled format and is checked; the EPF, ESIC and LIN numbers
+    vary by region and issuing office, so a pattern invented here would refuse
+    valid registrations rather than catch typos.
+    """
+    client_id: str
+    tan: Optional[str] = None
+    epf_establishment_code: Optional[str] = None
+    esic_employer_code: Optional[str] = None
+    lin: Optional[str] = None
+    note: Optional[str] = None
+
+
+class PTRegistrationIn(BaseModel):
+    """One state's professional-tax registration (migration 325).
+
+    PTRC and PTEC are separate certificates and both are recorded, because
+    they authorise different things: the Registration Certificate is the
+    employer's authority to DEDUCT professional tax from employees and deposit
+    it, and the Enrolment Certificate is the entity's own levy on itself. Only
+    the PTRC covers what a payslip has already deducted.
+    """
+    client_id: str
+    state: str
+    ptrc_number: Optional[str] = None
+    ptec_number: Optional[str] = None
+    note: Optional[str] = None
+
+    @field_validator("state")
+    @classmethod
+    def _state_code(cls, v):
+        s = str(v or "").strip().upper()
+        if not re.match(r"^[A-Z]{2}$", s):
+            raise ValueError(
+                "State must be the two-letter code payroll_employees.pt_state "
+                'carries — "MH", "KA", "TN".')
+        return s

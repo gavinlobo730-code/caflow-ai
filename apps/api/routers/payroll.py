@@ -19,7 +19,8 @@ import logging
 
 from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
-                           RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn)
+                           RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
+                           StatutoryIdentityIn, PTRegistrationIn)
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.timeline_service import timeline_service
@@ -32,6 +33,7 @@ from domain.payroll.esic import build_esic_return
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
+from domain.payroll import identity as identity_domain
 from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
@@ -1380,6 +1382,21 @@ def create_run(
         entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"),
     )
+    # States this run deducts professional tax in with no PTRC on file. Added
+    # to statutory_gaps rather than a list of its own: it is the same kind of
+    # fact — a deduction the employer cannot settle — and a screen with three
+    # ideas of "incomplete" teaches nobody to read any of them.
+    #
+    # Reported once per STATE, not once per employee: the registration is a
+    # fact about the employer there, and naming it forty times because forty
+    # people work in Karnataka would bury every other gap. See
+    # domain/payroll/identity.py::pt_registration_gaps.
+    _, pt_registrations = _read_statutory_identity(db, current_user["firm_id"], client_id)
+    statutory_gaps.extend(identity_domain.pt_registration_gaps(
+        {(e.get("pt_state") or "").strip().upper() for e in emps
+         if e.get("pt_applicable") and (e.get("pt_state") or "").strip()},
+        pt_registrations))
+
     # Returned WITH the run rather than logged: an omitted statutory deduction
     # that only appears in a log is an omitted statutory deduction.
     return api_response(True, {**run, "statutory_gaps": statutory_gaps,
@@ -1731,6 +1748,210 @@ def salary_register(
     return api_response(True, {"month": month, "run": run.data[0], "slips": slips.data or []})
 
 
+# ── The client's own statutory registrations ─────────────────────────────────
+# Migration 325. Three finished returns below — the ECR, the ESIC contribution
+# file and Form 24Q — are returns BY AN ESTABLISHMENT, and until now nothing
+# here held the number that identifies it. routers/tds.py still shows the hole:
+# Compute24QRequest takes tan, deductor_name, deductor_pan and deductor_address
+# in the request BODY, because there was nowhere to read them from.
+#
+# See domain/payroll/identity.py for why only the TAN is format-checked, and
+# why a missing EPF or ESIC code is reported BESIDE a file rather than folded
+# into its problems list.
+
+#: Mock-mode store, keyed (firm_id, client_id) and (firm_id, client_id, state).
+#: Same device as _MOCK_FINALIZED_RUNS above and for the same reason: the
+#: ~7,000-test mock suite runs with SUPABASE_URL unset, and an endpoint that
+#: echoed its input back without storing it could not exercise the gap logic
+#: that is the whole point of the table.
+_MOCK_IDENTITY: dict[tuple, dict] = {}
+_MOCK_PT_REGISTRATIONS: dict[tuple, dict] = {}
+
+_IDENTITY_COLUMNS = ("tan", "epf_establishment_code", "esic_employer_code", "lin", "note")
+
+
+def _read_statutory_identity(db, firm_id: str, client_id: str) -> tuple[dict, list[dict]]:
+    """The client's entity registrations and its per-state PT registrations.
+
+    Returns ({}, []) rather than None when nothing is recorded: an absent row
+    and a row with every field blank mean the same thing here, and callers all
+    ask "is this identifier present", never "does a row exist".
+    """
+    if not db:
+        ident = _MOCK_IDENTITY.get((firm_id, client_id), {})
+        pt = [v for k, v in sorted(_MOCK_PT_REGISTRATIONS.items())
+              if k[0] == firm_id and k[1] == client_id]
+        return (dict(ident), [dict(r) for r in pt])
+    try:
+        # Columns named rather than "*" so tests/test_backend_columns_exist_pg.py
+        # checks them against the real schema — a select list is the only place
+        # in this file that names the five identifier columns literally.
+        ident = (db.table("client_statutory_identity")
+                 .select("tan, epf_establishment_code, esic_employer_code, lin, note")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .maybe_single().execute().data) or {}
+        pt = (db.table("client_pt_registrations")
+              .select("state, ptrc_number, ptec_number, note")
+              .eq("firm_id", firm_id).eq("client_id", client_id)
+              .order("state").execute().data) or []
+    except Exception:
+        # Degrades to "nothing recorded", which reports gaps rather than
+        # emitting a return with a blank TAN. The other direction — treating a
+        # failed read as "the identifier is fine" — is the one that files.
+        _logger.exception("statutory identity read failed for client=%s", client_id)
+        return ({}, [])
+    return (ident, pt)
+
+
+@router.get("/statutory-identity")
+def get_statutory_identity(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """What this client files its statutory returns under, and what is missing.
+
+    The `fields` block is the Setup screen's own description of itself — name,
+    label and what each identifier is for — so the form and the API cannot
+    drift into disagreeing about which registrations exist.
+    """
+    assert_client_access(current_user, client_id)
+    ident, pt = _read_statutory_identity(_db(), current_user["firm_id"], client_id)
+    return api_response(True, {
+        "client_id": client_id,
+        "identity": {k: ident.get(k) for k in _IDENTITY_COLUMNS},
+        "pt_registrations": pt,
+        "fields": [{"name": n, "label": lab, "used_for": use}
+                   for n, lab, use in identity_domain.ENTITY_FIELDS],
+    })
+
+
+@router.put("/statutory-identity")
+def put_statutory_identity(
+    body: StatutoryIdentityIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record or amend the entity's registrations.
+
+    PATCH-shaped: only the fields present in the request body are written, so
+    a form that edits the EPF code cannot silently clear a TAN it never showed.
+    An explicit empty string clears — that is a CA saying this client has none,
+    which is a real answer and different from not saying.
+    """
+    assert_client_access(current_user, body.client_id)
+    sent = body.model_dump(exclude_unset=True)
+
+    update: dict = {}
+    if "tan" in sent:
+        try:
+            update["tan"] = identity_domain.normalise_tan(sent["tan"])
+        except identity_domain.IdentityError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    for col in ("epf_establishment_code", "esic_employer_code", "lin"):
+        if col in sent:
+            update[col] = identity_domain.normalise_code(sent[col])
+    if "note" in sent:
+        update["note"] = (sent["note"] or "").strip() or None
+
+    if not update:
+        raise HTTPException(status_code=422,
+                            detail="Nothing to record. Send at least one registration number.")
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        row = {**_MOCK_IDENTITY.get((firm_id, body.client_id), {}), **update}
+        _MOCK_IDENTITY[(firm_id, body.client_id)] = row
+        return api_response(True, {"client_id": body.client_id,
+                                   "identity": {k: row.get(k) for k in _IDENTITY_COLUMNS}})
+
+    # UNIQUE (firm_id, client_id) — migration 325 — is what makes this one row
+    # per client rather than a new row every time somebody corrects a digit.
+    #
+    # Written INLINE rather than as a `payload` variable so that
+    # tests/test_backend_columns_exist_pg.py can read the three fixed column
+    # names and check them against the real schema; a dict built in a variable
+    # is invisible to it. The `**update` spread stays unreadable to that
+    # scanner by construction — its keys are chosen at runtime from what the
+    # request sent, which is the whole point of the PATCH shape — and the GET
+    # above names all four of them literally.
+    row = (db.table("client_statutory_identity")
+           .upsert({"firm_id": firm_id, "client_id": body.client_id,
+                    "updated_by": current_user.get("id"), **update},
+                   on_conflict="firm_id,client_id").execute().data or [{}])[0]
+    timeline_service.log(
+        body.client_id, "work", "Statutory Identity Updated",
+        "Recorded " + ", ".join(sorted(update)) + " for statutory returns",
+        "info", firm_id=firm_id, entity_type="client", entity_id=body.client_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {"client_id": body.client_id,
+                               "identity": {k: row.get(k) for k in _IDENTITY_COLUMNS}})
+
+
+@router.put("/statutory-identity/pt")
+def put_pt_registration(
+    body: PTRegistrationIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record one state's professional-tax registration.
+
+    One row per (client, state): PT is a state levy under Article 276(2) and an
+    employer with staff in two states holds two independent registrations.
+    """
+    assert_client_access(current_user, body.client_id)
+    sent = body.model_dump(exclude_unset=True)
+    update: dict = {}
+    for col in ("ptrc_number", "ptec_number"):
+        if col in sent:
+            update[col] = identity_domain.normalise_code(sent[col])
+    if "note" in sent:
+        update["note"] = (sent["note"] or "").strip() or None
+    if not update:
+        raise HTTPException(status_code=422,
+                            detail="Nothing to record. Send a PTRC or PTEC number.")
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    key = (firm_id, body.client_id, body.state)
+    if not db:
+        row = {**_MOCK_PT_REGISTRATIONS.get(key, {}),
+               "client_id": body.client_id, "state": body.state, **update}
+        _MOCK_PT_REGISTRATIONS[key] = row
+        return api_response(True, dict(row))
+
+    # Inline for the same reason as the identity upsert above.
+    row = (db.table("client_pt_registrations")
+           .upsert({"firm_id": firm_id, "client_id": body.client_id,
+                    "state": body.state, "updated_by": current_user.get("id"),
+                    **update},
+                   on_conflict="firm_id,client_id,state").execute().data or [{}])[0]
+    return api_response(True, row)
+
+
+@router.delete("/statutory-identity/pt")
+def delete_pt_registration(
+    client_id: str = Query(...),
+    state: str = Query(..., description='Two-letter state code, e.g. "MH"'),
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Remove a state's PT registration — the client no longer employs there.
+
+    Deleting puts the state back into the run's statutory_gaps if anybody is
+    still marked pt_applicable in it, which is the correct outcome: an employer
+    deducting in a state it is not registered in is exactly what the gap says.
+    """
+    state = (state or "").strip().upper()
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        _MOCK_PT_REGISTRATIONS.pop((firm_id, client_id, state), None)
+        return api_response(True, {"client_id": client_id, "state": state, "deleted": True})
+    (db.table("client_pt_registrations").delete()
+     .eq("firm_id", firm_id).eq("client_id", client_id).eq("state", state).execute())
+    return api_response(True, {"client_id": client_id, "state": state, "deleted": True})
+
+
 @router.get("/runs/{run_id}/ecr")
 def run_ecr(
     run_id: str,
@@ -1795,6 +2016,14 @@ def run_ecr(
     ecr = build_ecr(slips=slips, employees_by_id=by_id,
                     days_in_month=days_in_month, wage_ceiling_paise=ceiling)
 
+    # BESIDE the file, never inside ecr.problems. The establishment code is not
+    # a field on an ECR — EPFO takes the establishment from the portal login —
+    # so folding a missing one into problems would flip is_filable and withhold
+    # a correct return over a piece of reference data. See
+    # domain/payroll/identity.py.
+    ident, _pt = _read_statutory_identity(db, current_user["firm_id"], run.get("client_id"))
+    estab_gaps = identity_domain.ecr_gaps(ident)
+
     return api_response(True, {
         "run_id": run_id,
         "month": month,
@@ -1804,6 +2033,8 @@ def run_ecr(
         "problems": ecr.problems,
         "totals": ecr.totals(),
         "filable": ecr.is_filable,
+        "establishment_code": ident.get("epf_establishment_code"),
+        "identity_gaps": [g.note for g in estab_gaps],
         "disclaimer": "CA REVIEW REQUIRED — upload this to the EPFO portal yourself. "
                       "Nothing has been transmitted.",
     })
@@ -1859,6 +2090,8 @@ def run_esic(
         raise HTTPException(status_code=422,
                             detail=f"Run month {month!r} is not YYYY-MM; cannot count days.")
 
+    _esic_identity, _ = _read_statutory_identity(
+        db, current_user["firm_id"], run.get("client_id"))
     ret = build_esic_return(slips=slips, employees_by_id=by_id,
                             days_in_month=days_in_month)
     return api_response(True, {
@@ -1870,6 +2103,11 @@ def run_esic(
         "problems": ret.problems,
         "totals": ret.totals(),
         "filable": ret.is_filable,
+        # Beside the file, for the same reason the ECR's establishment code is:
+        # esic.gov.in takes the employer from the portal login, so a missing
+        # code does not make the return wrong.
+        "employer_code": _esic_identity.get("esic_employer_code"),
+        "identity_gaps": [g.note for g in identity_domain.esic_gaps(_esic_identity)],
         "disclaimer": "CA REVIEW REQUIRED — upload this to the ESIC portal yourself. "
                       "Nothing has been transmitted.",
     })
@@ -1903,7 +2141,7 @@ def form_24q_from_payroll(
     if not db:
         return api_response(True, {"financial_year": financial_year, "quarter": quarter,
                                    "deductees": [], "problems": [], "totals": {},
-                                   "ready": False})
+                                   "deductor": {}, "ready": False})
 
     months = months_in_quarter(financial_year, quarter)
     runs = (db.table("payroll_runs")
@@ -1947,7 +2185,25 @@ def form_24q_from_payroll(
             "not in this return. Finalise those runs first, or the quarter will be "
             "short.")
 
+    # The deductor header — the four fields routers/tds.py's Compute24QRequest
+    # has always taken from the request BODY, because until migration 325 there
+    # was nowhere to read them from. A CA re-keyed the TAN every quarter, for
+    # every client, and one wrong character files the quarter against somebody
+    # else's account.
+    #
+    # UNLIKE the ECR and ESIC identifiers, a missing TAN is a PROBLEM and
+    # therefore clears `ready`: the TAN is IN the return (IT Act s.203A).
+    client_row = (db.table("clients")
+                  .select("client_name, legal_name, pan, address_line1, address_line2, "
+                          "city, state, pincode")
+                  .eq("id", client_id).eq("firm_id", current_user["firm_id"])
+                  .maybe_single().execute().data) or {}
+    identity, _pt = _read_statutory_identity(db, current_user["firm_id"], client_id)
+    deductor, deductor_problems = identity_domain.deductor_block(identity, client_row)
+    src.problems.extend(deductor_problems)
+
     return api_response(True, {
+        "deductor": deductor,
         "client_id": client_id,
         "financial_year": financial_year,
         "quarter": quarter,
