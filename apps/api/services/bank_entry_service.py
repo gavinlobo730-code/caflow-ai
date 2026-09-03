@@ -69,17 +69,13 @@ def _outcome(txn_id: str, status: str, reason: str, **extra) -> dict:
 #: Matches no statement. A uuid, because the column is one — see _base.
 _NO_SUCH_STATEMENT = "00000000-0000-0000-0000-000000000000"
 
-#: Where the NUMBER of a matched document lives, per matchable type — the
-#: table bank_matching_service._MATCH_ENTITY_TABLES verifies against, and the
-#: column a CA knows the document by. "manual" is absent on purpose: it is a
-#: match with no backing document, so there is no number to show.
-_MATCHED_DOC_SOURCES: dict[str, tuple[str, str]] = {
-    "sales_invoice":    ("client_sales_invoices", "invoice_no"),
-    "purchase_bill":    ("purchase_bills", "bill_no"),
-    "receipt":          ("receipts", "receipt_no"),
-    "purchase_payment": ("purchase_payments", "payment_no"),
-    "journal_entry":    ("journal_entries", "reference_no"),
-}
+#: The matchable types whose document carries a number a CA knows it by.
+#: Where each one lives is written out in _document_numbers, literally — see
+#: the reason there. "manual" is absent on purpose: it is a match with no
+#: backing document, so there is no number to show.
+_NUMBERED_DOC_TYPES = frozenset({
+    "sales_invoice", "purchase_bill", "receipt", "purchase_payment", "journal_entry",
+})
 
 
 class BankEntryService:
@@ -251,31 +247,62 @@ class BankEntryService:
         wanted: dict[str, set[str]] = {}
         for t in rows:
             entity_type, entity_id = t.get("matched_entity_type"), t.get("matched_entity_id")
-            if entity_id and entity_type in _MATCHED_DOC_SOURCES:
+            if entity_id and entity_type in _NUMBERED_DOC_TYPES:
                 wanted.setdefault(entity_type, set()).add(str(entity_id))
 
         numbers: dict[tuple[str, str], str] = {}
         for entity_type, ids in wanted.items():
-            table, column = _MATCHED_DOC_SOURCES[entity_type]
             ordered = sorted(ids)
             for i in range(0, len(ordered), 200):
                 chunk = ordered[i:i + 200]
                 try:
-                    found = (db.table(table).select(f"id, {column}")
-                             .eq("firm_id", firm_id).in_("id", chunk).execute().data) or []
+                    found = BankEntryService._document_numbers(db, firm_id, entity_type, chunk)
                 except Exception as e:  # pragma: no cover - best effort, reported
                     from core.observability import capture_soft_failure
                     capture_soft_failure(e, operation="bank_entries.matched_document_number",
                                          entity_type=entity_type)
-                    found = []
-                for r in found:
-                    if r.get(column):
-                        numbers[(entity_type, str(r["id"]))] = str(r[column])
+                    found = {}
+                for doc_id, number in found.items():
+                    numbers[(entity_type, doc_id)] = number
 
         for t in rows:
             entity_id = t.get("matched_entity_id")
             t["matched_document_no"] = (
                 numbers.get((t.get("matched_entity_type"), str(entity_id))) if entity_id else None)
+
+    @staticmethod
+    def _document_numbers(db, firm_id: str, entity_type: str, ids: list[str]) -> dict[str, str]:
+        """{document id: the number it is known by} for ONE type.
+
+        Every table and column is written out at its own call rather than
+        looked up from a mapping, and the branches are the price of that.
+        tests/test_backend_columns_exist_pg.py reads these references as TEXT
+        and checks each against the real schema; a `.select(f"id, {column}")`
+        is invisible to it, so a column that was renamed or dropped would be
+        discovered in production rather than in CI. The same reason the
+        redraft path spells its update keys out.
+        """
+        if entity_type == "sales_invoice":
+            rows = (db.table("client_sales_invoices").select("id, invoice_no")
+                    .eq("firm_id", firm_id).in_("id", ids).execute().data) or []
+            return {str(r["id"]): str(r["invoice_no"]) for r in rows if r.get("invoice_no")}
+        if entity_type == "purchase_bill":
+            rows = (db.table("purchase_bills").select("id, bill_no")
+                    .eq("firm_id", firm_id).in_("id", ids).execute().data) or []
+            return {str(r["id"]): str(r["bill_no"]) for r in rows if r.get("bill_no")}
+        if entity_type == "receipt":
+            rows = (db.table("receipts").select("id, receipt_no")
+                    .eq("firm_id", firm_id).in_("id", ids).execute().data) or []
+            return {str(r["id"]): str(r["receipt_no"]) for r in rows if r.get("receipt_no")}
+        if entity_type == "purchase_payment":
+            rows = (db.table("purchase_payments").select("id, payment_no")
+                    .eq("firm_id", firm_id).in_("id", ids).execute().data) or []
+            return {str(r["id"]): str(r["payment_no"]) for r in rows if r.get("payment_no")}
+        if entity_type == "journal_entry":
+            rows = (db.table("journal_entries").select("id, reference_no")
+                    .eq("firm_id", firm_id).in_("id", ids).execute().data) or []
+            return {str(r["id"]): str(r["reference_no"]) for r in rows if r.get("reference_no")}
+        return {}
 
     # ── redraft ──────────────────────────────────────────────────────────────
 
