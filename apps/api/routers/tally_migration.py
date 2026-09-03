@@ -185,7 +185,7 @@ def execute_import(
     The real import is handed to a background task and this returns immediately
     with `status: "importing"`. Poll GET /jobs/{job_id} for progress:
     `imported_items` / `failed_items` / `total_items` advance as it runs, and
-    `status` settles on `completed` or `failed`.
+    `status` settles on `completed` or `error`.
 
     Inline, it could not survive real data. gunicorn runs `--timeout 120` and the
     import costs two round trips per item, so the worker was killed somewhere

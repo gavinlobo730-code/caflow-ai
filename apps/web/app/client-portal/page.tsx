@@ -364,11 +364,17 @@ export default function ClientPortalPage() {
         .upload(storagePath, file, { contentType: file.type || "application/octet-stream" });
       if (uploadErr) throw new Error(uploadErr.message);
 
-      const { data: userSession } = await sb.auth.getSession();
+      // uploaded_by is deliberately NOT set. It is a foreign key to
+      // public.users(id) — the internal id of a FIRM user — and the value
+      // available here is the Supabase AUTH id, which is never equal to it
+      // (production: 0 of 2 users have id = auth_user_id). Writing it made
+      // every portal upload fail the foreign key. A portal uploader is the
+      // CLIENT, who has no public.users row at all, so there is no correct
+      // value to put here; client_id already carries the attribution, and the
+      // CA-side upload page omits the column for the same reason.
       await sb.from("client_documents").insert({
         firm_id: firmId,
         client_id: selectedClientId,
-        uploaded_by: userSession?.session?.user?.id ?? null,
         file_name: file.name,
         description: label,
         file_path: storagePath,
