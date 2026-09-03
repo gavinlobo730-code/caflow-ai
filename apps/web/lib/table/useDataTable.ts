@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
+import { pruneSelection } from "@/lib/table/pruneSelection";
 import { processRows } from "./process";
 import { useTablePreferences } from "./useTablePreferences";
 import type { Column, FilterDef, FilterValue, SortState, TableState } from "./types";
@@ -162,6 +163,21 @@ export function useDataTable<T>({
   }, [pageRows, getRowId]);
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  // A selection may only name rows the table is HOLDING. Rows leave `data`
+  // without going through a bulk action all the time — a "Pass N ready"
+  // button above the table, a server-paged reload after a row action, a
+  // filter the caller applies — and the ids stayed in the set, so the bar
+  // read "13 selected" over an empty list. selectedRows was already honest
+  // (it filters data), which is exactly why nothing crashed: the actions saw
+  // zero rows while the sentence above them claimed thirteen. Pruning here
+  // keeps the set and the rows in step for every DataTable on the platform.
+  // On a server-paged table this also drops the previous page's ticks when
+  // the page changes, which is the documented behaviour (no cross-page
+  // selection is offered where it could not act).
+  useEffect(() => {
+    setSelected((s) => pruneSelection(s, data.map(getRowId)));
+  }, [data, getRowId]);
 
   const selectedRows = useMemo(
     () => data.filter((r) => selected.has(getRowId(r))),

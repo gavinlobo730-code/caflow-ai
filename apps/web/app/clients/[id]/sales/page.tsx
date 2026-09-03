@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
 import {
   Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock,
@@ -323,6 +324,9 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   const [editor, setEditor] = useState<RecurringTemplate | "new" | null>(null);
   const [historyFor, setHistoryFor] = useState<RecurringTemplate | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // A selection may only name rows still on screen (see lib/table/pruneSelection).
+  useEffect(() => { setSelected((s) => pruneSelection(s, templates.map((t) => t.id))); }, [templates]);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const showToast = (msg: string, type: "success" | "error") => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { pruneSelection } from "@/lib/table/pruneSelection";
 import { CheckCircle, Download, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -206,6 +207,9 @@ export default function CompliancePage() {
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // A selection may only name rows still on screen (see lib/table/pruneSelection).
+  useEffect(() => { setSelected((s) => pruneSelection(s, compliance.map((c) => c.id))); }, [compliance]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
