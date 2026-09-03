@@ -50,7 +50,7 @@ from models.banking import (
     CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn, BankPayeeIn,
     BankTransferPairIn, BankBatchIn, BankAttachmentIn, BankAttachmentRemoveIn,
     ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
-    ReconciliationReopenIn,
+    ReconciliationReopenIn, EntriesRedraftIn, EntriesPassReadyIn, PassEntryIn,
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
@@ -63,6 +63,7 @@ from services.bank_payee_service import bank_payee_service
 from services.bank_transfer_service import bank_transfer_service
 from services.bank_batch_service import bank_batch_service
 from services.bank_candidate_search_service import bank_candidate_search_service
+from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from domain.banking import parse_statement, file_hash, StatementParseError
 from domain.banking.normalizer import (
     balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
@@ -722,7 +723,19 @@ async def upload_statement(
     # to see that the mapping is what was used.
     result["column_source"] = mapping_source
     result["balance_check"] = balance_agreement(txns)
+    # Propose for what just landed — one chunk, so the upload stays fast; the
+    # screen keeps redrafting while counts.undrafted is non-zero, then passes
+    # the trusted-rule drafts with a progress bar (09-bank-entries.md).
+    try:
+        result["entries"] = bank_entry_service.redraft(
+            db, current_user["firm_id"], client_id, limit=REDRAFT_CHUNK)
+    except Exception as e:                                        # noqa: BLE001
+        # The statement is in. A failed proposal costs the screen one extra
+        # redraft call, not the import.
+        _logger.warning("post-import redraft failed for client %s: %s", client_id, e)
+        result["entries"] = {"drafted": 0, "changed": 0, "remaining": None}
     return api_response(True, result)
+
 
 
 # ─── Statement column mapping (audit Tier 3.2) ───────────────────────────────
@@ -1552,6 +1565,140 @@ def post_transaction(
     ))
 
 
+# ─── Bank entries (migration 322, docs/architecture/09-bank-entries.md) ──────
+# A statement line becomes a voucher; the draft is on the row; the CA passes
+# ready drafts in bulk and answers the rest. These read stored columns — the
+# pools are read by redraft, in chunks, and by the detail of ONE line.
+
+_ENTRY_STATES = "^(to_do|needs_you|proposed|ready|covered|passed|set_aside|all)$"
+
+
+@router.get("/entries")
+def list_entries(
+    client_id: str = Query(...),
+    state: str = Query("to_do", pattern=_ENTRY_STATES),
+    bank_account_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    q: Optional[str] = Query(None, max_length=200),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """One page of entries in a state, with the total. `to_do` is everything
+    still needing anyone (needs_you + proposed + ready)."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"rows": [], "total": 0, "limit": limit, "offset": offset,
+                                   "ledger_order": []})
+    rows, total = bank_entry_service.list_entries(
+        db, current_user["firm_id"], client_id, state=state, limit=limit, offset=offset,
+        q_text=q, bank_account_id=bank_account_id)
+    return api_response(True, {
+        "rows": rows, "total": total, "limit": limit, "offset": offset,
+        "ledger_order": bank_matching_service.ledger_order(db, current_user["firm_id"], client_id),
+    })
+
+
+@router.get("/entries/counts")
+def entry_counts(
+    client_id: str = Query(...),
+    bank_account_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """One number per state, plus undrafted (the screen redrafts while it is
+    non-zero) and trusted_pending (the screen passes these with a progress
+    bar). SQL counts, never a scan."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {s: 0 for s in
+                                   ("needs_you", "proposed", "ready", "covered", "passed",
+                                    "set_aside", "to_do", "undrafted", "trusted_pending")})
+    return api_response(True, bank_entry_service.counts(
+        db, current_user["firm_id"], client_id, bank_account_id=bank_account_id))
+
+
+@router.get("/entries/{txn_id}")
+def get_entry(
+    txn_id: str,
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """The one line the CA opened: the row, live document candidates, the
+    payee's history with its evidence, and any transfer counterpart."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, "suggestions": [], "history": None})
+    _assert_txn_scope(db, current_user, txn_id)
+    return api_response(True, bank_entry_service.get_entry(db, current_user["firm_id"], txn_id))
+
+
+@router.post("/entries/redraft")
+def redraft_entries(
+    data: EntriesRedraftIn,
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Propose for one chunk of open lines and say how many remain. Writes
+    proposals only — nothing posts, nothing is matched, nothing is paired."""
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"drafted": 0, "changed": 0, "remaining": 0,
+                                   "stale_before": data.stale_before})
+    return api_response(True, bank_entry_service.redraft(
+        db, current_user["firm_id"], data.client_id, limit=data.limit,
+        stale_before=data.stale_before, txn_ids=data.transaction_ids))
+
+
+@router.post("/entries/pass-ready")
+def pass_ready_entries(
+    data: EntriesPassReadyIn,
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """One chunk of "Pass N ready". Every line comes back with its outcome; a
+    refused line carries the refusal on the row and is not retried by the
+    next chunk. With only_trusted, each line passes as the person who trusted
+    its rule, not as the caller.
+    CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"passed": 0, "failed": 0, "skipped": 0, "remaining": 0,
+                                   "results": []})
+    return api_response(True, bank_entry_service.pass_ready(
+        db, current_user["firm_id"], data.client_id, limit=data.limit,
+        only_trusted=data.only_trusted, bank_account_id=data.bank_account_id,
+        txn_ids=data.transaction_ids,
+        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id")))
+
+
+@router.post("/transactions/{txn_id}/pass")
+def pass_entry(
+    txn_id: str,
+    data: Optional[PassEntryIn] = None,
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Pass ONE line: apply its draft (or the CA's own coding) and post it
+    through the one posting path. A PROPOSED draft may be passed here — the
+    click is the CA accepting it — but never in bulk.
+    CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "status": "passed",
+                                   "reason": "mock", "posted_journal_id": "mock-je"})
+    _assert_txn_scope(db, current_user, txn_id)
+    out = bank_entry_service.pass_entry(
+        db, current_user["firm_id"], txn_id,
+        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id"),
+        gst_rate_bps=data.gst_rate_bps if data else None,
+        is_interstate=bool(data.is_interstate) if data else False)
+    if out["status"] == "failed":
+        # One line, one click: the refusal is the response, not a row in a list.
+        raise HTTPException(status_code=422, detail=out["reason"])
+    return api_response(True, out)
+
+
 # ─── Reconciliation Engine (B.4) ──────────────────────────────────────────────
 
 @router.post("/reconciliations")
@@ -1869,6 +2016,9 @@ def create_rule(
     row = db.table("bank_matching_rules").insert(
         {"firm_id": current_user["firm_id"], **data.model_dump()}
     ).execute()
+    # A new rule may cover lines already drafted from history or nothing.
+    # Mark them for re-proposal; the screen redrafts in chunks on its next load.
+    bank_entry_service.mark_stale(db, current_user["firm_id"], data.client_id)
     return api_response(True, (row.data or [{}])[0])
 
 
@@ -1887,6 +2037,28 @@ def update_rule(
     rule = _rule_or_404(db, current_user["firm_id"], rule_id)
     assert_client_access(current_user, rule["client_id"])
     fields = data.model_dump(exclude_none=True)
+    # TRUSTED is the one place the product acts without a click (migration
+    # 322, 09-bank-entries.md). Promoting needs banking.approve — a Manager or
+    # Partner — and records WHO, because that person is the journal's
+    # created_by for everything the rule passes. An Executive may write a
+    # rule; only someone answerable for the books may let it post. Demoting
+    # needs no more than editing the rule, and clears the record.
+    if "is_trusted" in fields:
+        if fields["is_trusted"]:
+            from core.permissions import can
+            if not can(current_user.get("role") or "", "banking", "approve"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only a Manager or Partner can let a rule pass entries by itself.")
+            if not (rule.get("suggested_account_id") or fields.get("suggested_account_id")):
+                raise HTTPException(
+                    status_code=422,
+                    detail="A trusted rule must name a ledger — it cannot pass an entry without one.")
+            fields["trusted_by"] = current_user.get("id")
+            fields["trusted_at"] = _now_iso()
+        else:
+            fields["trusted_by"] = None
+            fields["trusted_at"] = None
     # exclude_none means a null normally reads as "field omitted", so no field on
     # this endpoint can be cleared. For the GST rate that is not survivable: a
     # rule stamped 18% by mistake would keep proposing an input credit forever,
@@ -1908,7 +2080,18 @@ def update_rule(
                     "the split books the ex-tax amount there."))
     row = (db.table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
+    # What the rule proposes may have changed; what it is trusted to do has not
+    # changed which lines it covers, so only a payload edit re-proposes.
+    if any(k in fields for k in ("description_pattern", "amount_min_paise", "amount_max_paise",
+                                 "txn_type", "suggested_account_id", "suggested_category",
+                                 "suggested_gst_rate_bps", "suggested_is_interstate", "is_active")):
+        bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 @router.delete("/rules/{rule_id}")

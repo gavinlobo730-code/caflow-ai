@@ -299,7 +299,7 @@ found while doing the work:
 |---|---|---|---|
 | 4.1 | **Account Aggregator (RBI/Sahamati) bank feed** | **XL** | See Part 6. The real answer to "QBO has bank feeds". Needs an AA/FIU partner, consent flow, and a compliance review — a project, not a ticket. |
 | 4.2 | **Receipts inbox** — forward-to-email + photo upload, OCR, auto-match to a bank line | **L** | Reuses `document_intelligence_v1.py`. |
-| 4.3 | **Rule auto-add** — a high-confidence rule creates the **draft** journal without review | **M** | Hard constraint: auto-add may reach *draft* only. It must never post to the ledger without the existing approval click. Anything else breaks our posting model. |
+| ✅ 4.3 | ~~**Rule auto-add** — a high-confidence rule creates the **draft** journal without review~~ **Shipped 2026-09-03 as TRUSTED rules**, and the constraint here was REVERSED by the owner the same day — see `docs/architecture/09-bank-entries.md`. | **M** | The original note said auto-add may reach *draft* only. What shipped: a rule a **Manager+** promotes to *trusted* passes its lines with no click, on import and in the daily sweep, as `created_by = trusted_by`; un-trusting stops it at once; every line it passed is visible and reversible. The reasoning for reversing: a bank journal is reversible and is not a filing; the never-auto-submit rule is about filings and is untouched. |
 | 4.4 | **Cash-flow forecast** from bank balance + open AR/AP | **L** | |
 
 ---

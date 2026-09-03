@@ -422,6 +422,10 @@ class MatchingRuleUpdateIn(BaseModel):
     suggested_gst_rate_bps: Optional[int] = None
     suggested_is_interstate: Optional[bool] = None
     is_active: Optional[bool] = None
+    # Migration 322 — promote to TRUSTED (posts with no click) or demote. The
+    # router gates promotion on banking.approve and records who did it; the
+    # model only carries the intent.
+    is_trusted: Optional[bool] = None
 
     @field_validator("rule_name")
     @classmethod
@@ -525,3 +529,38 @@ def _validate_rule_shape(rule) -> object:
             "A GST rate needs a ledger to code the amount to — "
             "the split books the ex-tax amount there.")
     return rule
+
+
+# ── Bank entries (migration 322, docs/architecture/09-bank-entries.md) ──────
+
+class EntriesRedraftIn(BaseModel):
+    """One chunk of proposing. `stale_before` is returned by the first chunk of
+    a forced refresh and passed back on every later one so the walk ends;
+    omit it to draft only the lines nobody has proposed for yet."""
+    client_id: str
+    limit: int = 100
+    stale_before: Optional[str] = None
+    transaction_ids: Optional[list[str]] = None
+
+
+class EntriesPassReadyIn(BaseModel):
+    """One chunk of "Pass N ready". only_trusted passes only the lines a
+    TRUSTED rule drafted, each on that rule's authority — what the screen
+    runs after an import, and what the daily sweep runs."""
+    client_id: str
+    limit: int = 50
+    only_trusted: bool = False
+    bank_account_id: Optional[str] = None
+    transaction_ids: Optional[list[str]] = None
+
+
+class PassEntryIn(BaseModel):
+    """Pass ONE line. Optional GST treatment for a line the CA coded
+    themselves — a draft carries its own. Same vocabulary as PostBankTxnIn."""
+    gst_rate_bps: Optional[int] = None
+    is_interstate: bool = False
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def known_gst_rate(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_gst_rate_bps(v)

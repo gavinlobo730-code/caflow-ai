@@ -536,7 +536,16 @@ export interface BankRuleInput {
    *  than CGST + SGST). Never inferred — an IFSC does not encode a state. */
   suggested_is_interstate?: boolean;
   is_active?: boolean;
+  /** Migration 322 — a TRUSTED rule passes its lines with no click, as the
+   *  person who trusted it. Promotion needs a Manager or Partner; the server
+   *  refuses anyone else and refuses a rule that names no ledger. */
+  is_trusted?: boolean;
 }
+
+/** One state of a bank line — docs/architecture/09-bank-entries.md. Maintained
+ *  by a database trigger; the browser never decides it. */
+export type EntryState = "needs_you" | "proposed" | "ready" | "covered" | "passed" | "set_aside";
+export type EntryListState = EntryState | "to_do" | "all";
 
 /** GST rates a bank charge can carry, in basis points. Mirrors the backend's
  *  domain/banking/charge_gst.ALLOWED_RATES_BPS and migration 254's CHECK. */
@@ -866,6 +875,32 @@ export const api = {
     /** Undo an ignore — the transaction returns to the work queue. */
     unignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/unignore`, { method: "POST" }),
     postTransaction: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}/post`, { method: "POST", body: JSON.stringify(data) }),
+    // Bank ENTRIES (migration 322, docs/architecture/09-bank-entries.md): the
+    // draft is on the row, the state is a stored column, and the verb is Pass.
+    entries: {
+      /** One page of lines in a state, with the total. */
+      list: (params: { client_id: string; state?: EntryListState; bank_account_id?: string;
+                       limit?: string; offset?: string; q?: string }) =>
+        request(`/api/banking/entries?${new URLSearchParams(params as Record<string, string>)}`),
+      /** One number per state, plus undrafted (redraft while non-zero) and
+       *  trusted_pending (pass these with a progress bar). SQL counts. */
+      counts: (params: { client_id: string; bank_account_id?: string }) =>
+        request(`/api/banking/entries/counts?${new URLSearchParams(params as Record<string, string>)}`),
+      /** The one line the CA opened: live candidates, history, transfer counterpart. */
+      get: (txnId: string) => request(`/api/banking/entries/${txnId}`),
+      /** Propose for one chunk of open lines; returns `remaining`. Pass the
+       *  returned stale_before back on every chunk of a forced refresh. */
+      redraft: (data: { client_id: string; limit?: number; stale_before?: string | null;
+                        transaction_ids?: string[] }) =>
+        request("/api/banking/entries/redraft", { method: "POST", body: JSON.stringify(data) }),
+      /** One chunk of "Pass N ready". Every line comes back with its outcome. */
+      passReady: (data: { client_id: string; limit?: number; only_trusted?: boolean;
+                          bank_account_id?: string; transaction_ids?: string[] }) =>
+        request("/api/banking/entries/pass-ready", { method: "POST", body: JSON.stringify(data) }),
+      /** Pass ONE line — the click is the CA accepting its draft. A refusal is a 422. */
+      pass: (txnId: string, data?: { gst_rate_bps?: number | null; is_interstate?: boolean }) =>
+        request(`/api/banking/transactions/${txnId}/pass`, { method: "POST", body: JSON.stringify(data ?? {}) }),
+    },
     // B.2 — matching & categorization (suggestions only; no posting)
     queue: (params?: Record<string, string>) => request(`/api/banking/queue${params ? "?" + new URLSearchParams(params) : ""}`),
     suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),

@@ -483,9 +483,22 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
 
 ## Where the design is written down
 
-`docs/architecture/01-08` is the authoritative design set — accounting engine, posting
+`docs/architecture/01-09` is the authoritative design set — accounting engine, posting
 kernel, financial years, opening balances, manual journals, multi-currency, GST engine,
-reporting engine. Read the relevant one before changing a subsystem. `docs/audits/` and
+reporting engine, bank entries. Read the relevant one before changing a subsystem.
+
+**Bank entries (09) in one paragraph, because it is easy to rebuild the old
+thing by accident:** a statement line becomes a voucher — Receipt, Payment or
+Contra, decided by direction and never chosen. The machine writes its best
+proposal ONTO the row (`draft_*` columns, migration 322), graded `ready` or
+`proposed` with a reason sentence, never a percentage. `entry_state` is a
+trigger-maintained column (Python twin `domain/banking/entry.py`, pinned by a
+parity test) — application code never writes it. The verb is **Pass**; "Pass N
+ready" is chunked and resumable; a `proposed` draft is never passed in bulk. A
+rule a Manager+ marks **trusted** passes its lines with no click, as
+`created_by = trusted_by` — the one place the product acts unprompted, an owner
+decision of 2026-09-03 that reversed the earlier "draft only" rule. The
+posting path is still only `bank_posting_service.post`. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
 
 ## Scope
