@@ -133,3 +133,45 @@ key integrity and index efficiency).
 None can reject an insert. Fixing them is worthwhile and is a separate
 judgement per difference; making 156 schema changes off one run is how the next
 production failure gets written.
+
+## The other half: RLS, policies and constraints (3 September 2026)
+
+Everything above compares columns, and the docstring of `schema_drift.py` says
+so: "deliberately not indexes, policies, functions or triggers". Migration 293
+then found two things that diff could not see — a foreign key production
+lacked, and two RESTRICTIVE policies drifted from their declared form — and the
+first run of the guard diff found a CHECK constraint that had been rejecting a
+real feature (`clients_status_check` without `'archived'`: archiving a client
+failed in production while every test passed here).
+
+So the column diff has a twin:
+
+```bash
+cd apps/api
+python3 scripts/db/guard_snapshot.py --dsn "$SCRATCH_DSN"     > declared_guards.json
+python3 scripts/db/guard_snapshot.py --dsn "$PRODUCTION_DSN"  > live_guards.json
+python3 scripts/db/guard_drift.py declared_guards.json live_guards.json
+```
+
+`GUARD_SQL` is exported for the console route, exactly as `INTROSPECT_SQL` is.
+Expressions are compared as an md5 — 597 policies and 1,116 constraints carry
+about 150 KB of SQL, and a fixture nobody can read in a diff is a fixture
+nobody checks — after folding the linter's `( SELECT auth.uid() AS uid)`
+rewrite back to `auth.uid()`, which is the same predicate.
+
+The report leads with the four directions that break something:
+
+| Category | Why it matters |
+|---|---|
+| `rls_off_in_live` | every policy on the table is decoration; the frontend's direct PostgREST reads see every firm |
+| `restrictive_policies_missing_from_live` | a check every row must pass is not being applied |
+| `tables_left_without_a_policy_in_live` | RLS on and no policy is fail-closed: direct reads return nothing, silently |
+| `check_constraints_differ` | production may REJECT a value the migrations accept — the `'archived'` failure |
+
+`tests/test_guards_match_production_pg.py` holds all four at zero against
+`tests/fixtures/production_guards_2026-09-03.json`. The first run found 276
+differences in all; migration 316 closed the two live bugs and the 34
+constraints production provably lacked (zero orphans, zero violators, checked
+first), and `docs/audits/2026-09-03-guard-drift-first-run.md` carries the
+rest — including the one UNIQUE that is NOT added, because the data is right
+and the declaration is wrong.

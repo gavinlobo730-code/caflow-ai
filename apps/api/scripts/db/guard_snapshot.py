@@ -70,14 +70,24 @@ FROM (
   -- Policies. `detail` carries what decides access: permissive vs restrictive,
   -- the command, and the roles. Roles are sorted so two databases that granted
   -- them in a different order do not read as drifted.
+  --
+  -- The expressions are hashed after folding `( SELECT auth.uid() AS uid)`
+  -- back to `auth.uid()`. The two are the same predicate: the subselect form
+  -- is Supabase's linter rewrite (it lets the planner evaluate the call once
+  -- per statement rather than once per row), and migration 008 applied it to
+  -- some policies while production has it on others. The first run of this
+  -- snapshot reported five policies as drifted whose only difference was that
+  -- rewrite. A real change to WHO a policy admits still changes the hash.
   SELECT 'policy', c.relname::text, p.polname::text,
          CASE WHEN p.polpermissive THEN 'permissive' ELSE 'RESTRICTIVE' END
            || ' cmd=' || p.polcmd::text
            || ' roles=' || COALESCE((
                 SELECT string_agg(r.rolname::text, ',' ORDER BY r.rolname)
                 FROM pg_roles r WHERE r.oid = ANY(p.polroles)), 'PUBLIC'),
-         md5(COALESCE(pg_get_expr(p.polqual, p.polrelid), '')
-             || '|' || COALESCE(pg_get_expr(p.polwithcheck, p.polrelid), ''))
+         md5(regexp_replace(
+               COALESCE(pg_get_expr(p.polqual, p.polrelid), '')
+               || '|' || COALESCE(pg_get_expr(p.polwithcheck, p.polrelid), ''),
+               '\\( SELECT (auth\\.[a-z_]+\\(\\)) AS [a-z_]+\\)', '\\1', 'g'))
   FROM pg_policy p
   JOIN pg_class c ON c.oid = p.polrelid
   JOIN pg_namespace n ON n.oid = c.relnamespace
