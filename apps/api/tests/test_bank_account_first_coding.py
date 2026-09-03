@@ -57,7 +57,9 @@ from fastapi import HTTPException
 
 from domain.banking.account_category import category_for_account, DerivedCategory
 from domain.banking.categories import CATEGORY_SET
-from domain.banking.posting_map import AUTO_COUNTER, EXPLICIT_COUNTER, TRANSFER
+from domain.banking.entry import kind_for
+from domain.banking.posting_map import (
+    AUTO_COUNTER, EXPLICIT_COUNTER, TRANSFER, gst_split_allowed, settles_document)
 from services.banking_service import banking_service
 from services.bank_posting_service import bank_posting_service
 
@@ -447,3 +449,59 @@ def test_the_response_reports_the_category_it_stored():
     res = banking_service.set_account(db, FIRM, "t1", chart["rent"]["id"],
                                       derive_category=True)
     assert res["category"] == db.store["bank_transactions"][0]["category"]
+
+
+def test_the_response_reports_the_kind_the_new_category_implies():
+    """Receipt / Payment / Contra follows the category, so a write that changes
+    the category has to say so.
+
+    The screen patches the line in place from this response — it does not
+    re-read (that cost four round trips to Mumbai for one pick). The kind is
+    entry.kind_for's decision and the frontend holds no business logic, so a
+    response without it leaves the previous pick's kind on the row beside the
+    new account. Picking the bank ledger and then an ordinary expense produced
+    exactly that on a live client: "Contra · Prepaid Expenses".
+    """
+    db = FakeDB()
+    chart = _real_chart(db)
+    _txn(db, credit_paise=0, debit_paise=10000)
+
+    moved = banking_service.set_account(db, FIRM, "t1", chart["bank"]["id"], derive_category=True)
+    assert moved["category"] == TRANSFER
+    assert moved["kind"] == "contra"
+
+    spent = banking_service.set_account(db, FIRM, "t1", chart["rent"]["id"], derive_category=True)
+    assert spent["category"] == "Expense"
+    assert spent["kind"] == "payment", "money out of an expense ledger is a Payment, not the Contra before it"
+
+
+def test_a_receipt_stays_a_receipt():
+    db = FakeDB()
+    chart = _real_chart(db)
+    _txn(db, credit_paise=118000, debit_paise=0)
+    res = banking_service.set_account(db, FIRM, "t1", chart["sales"]["id"], derive_category=True)
+    assert res["kind"] == "receipt"
+
+
+def test_every_derived_field_agrees_with_a_fresh_read_of_the_row():
+    """The invariant behind both of the above: what this response says about
+    the line is what reading the line back would say.
+
+    Three fields on it are derived rather than stored — the category, the kind
+    and whether GST may be split — and the screen trusts all three without
+    re-reading. Any one of them going stale shows the CA a line that is not the
+    line in the books.
+    """
+    db = FakeDB()
+    chart = _real_chart(db)
+    _txn(db, credit_paise=0, debit_paise=10000)
+    for name, account in chart.items():
+        res = banking_service.set_account(db, FIRM, "t1", account["id"], derive_category=True)
+        row = db.store["bank_transactions"][0]
+        assert res["category"] == row["category"], name
+        assert res["kind"] == kind_for(row), name
+        assert res["gst_allowed"] == gst_split_allowed(
+            row["category"],
+            settles_document=settles_document(
+                row["category"], row.get("matched_entity_type"), row.get("matched_entity_id")),
+            is_split=False), name

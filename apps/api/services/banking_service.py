@@ -33,6 +33,7 @@ from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from domain.banking.dedup import transaction_hash
 from domain.banking.account_category import category_for_account
+from domain.banking.entry import kind_for
 from domain.banking.posting_map import AUTO_COUNTER
 from domain.banking import posting_map as pmap
 
@@ -337,8 +338,19 @@ class BankingService:
         # that updated in place without it would leave the cell contradicting
         # the row beside it — and the reason the queue reloaded after every
         # pick was that there was nothing else to keep the two in step.
+        row_after = {**txn, "category": category}
         return {"id": txn_id, "match_status": "matched", "account_id": account_id,
                 "category": category,
+                # Receipt / Payment / Contra is DERIVED from the category this
+                # write may just have changed — picking a bank or cash ledger
+                # derives Transfer, which makes the line a Contra. A caller
+                # patching the row in place from this response cannot compute
+                # that for itself (the rule is entry.kind_for, and the frontend
+                # holds no business logic), so a response that omitted it left
+                # the screen showing the PREVIOUS pick's kind beside the new
+                # account: "Contra · Prepaid Expenses". Everything this write
+                # changes comes back with it.
+                "kind": kind_for(row_after),
                 "gst_allowed": pmap.gst_split_allowed(
                     category,
                     settles_document=pmap.settles_document(

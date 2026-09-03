@@ -313,3 +313,25 @@ test("a write refreshes the list without blanking it", () => {
   assert.match(s, /useEffect\(\(\) => \{ if \(clientId && clientId !== "_placeholder"\) loadRows\(\); \}/,
     "the first load and every filter change must still show the skeleton");
 });
+
+test("the kind comes from the server, and the label drops the word that says nothing", () => {
+  // Receipt / Payment / Contra follows the CATEGORY, which follows the ledger
+  // — picking a bank or cash account derives Transfer and makes the line a
+  // Contra. That rule is domain/banking/entry.kind_for and it stays on the
+  // server, so the modal may not compute a kind of its own while a pick is in
+  // flight: it prints what the row says and lets the write's answer correct
+  // it. Optimistically claiming one produced "Contra · Prepaid Expenses" on a
+  // live client — the previous pick's kind beside the new account.
+  const m = modal();
+  const optimistic = m.match(/patch\("Couldn't book under that ledger",[\s\S]{0,200}?\)\)\} \/>/);
+  assert.ok(optimistic, "the ledger picker must still patch in place");
+  assert.doesNotMatch(optimistic[0], /\bkind:/,
+    "the browser cannot derive the kind; only the server's answer may set it");
+  assert.match(m, /const kind = KIND_LABEL\[t\.kind\]/,
+    "the kind shown is the row's, which the write's response refreshes");
+
+  // "Other" is what the derivation calls an ordinary ledger. It is not a fact
+  // about the line, and the list already refuses to print it.
+  assert.match(m, /sub: t\.category && t\.category !== "Other" \? t\.category : null/,
+    "the modal must suppress the empty category word, as the list does");
+});
