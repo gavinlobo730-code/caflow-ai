@@ -597,7 +597,14 @@ def run_import_detached(firm_id: str, job_id: str, actor_id: str) -> None:
         _logger.exception("Detached import failed (job %s)", job_id)
         try:
             _supabase().table("tally_migration_jobs").update({
-                "status": "failed",
+                # 'error', not 'failed'. Production's status CHECK admits ten
+                # values and 'failed' is not among them, so this UPDATE was
+                # refused there and the refusal swallowed by the except below —
+                # leaving a crashed import stuck at 'importing' for ever, which
+                # is the one thing this handler exists to prevent. The frontend
+                # (apps/web/app/migration/page.tsx) has no 'failed' branch
+                # either; 'error' is the value both it and production speak.
+                "status": "error",
                 "import_audit_log": {"error": str(e)},
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", job_id).eq("firm_id", firm_id).execute()
