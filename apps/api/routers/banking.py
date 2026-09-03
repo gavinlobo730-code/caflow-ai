@@ -1416,7 +1416,17 @@ def list_entries(
     client_id: str = Query(...),
     state: str = Query("to_do", pattern=_ENTRY_STATES),
     bank_account_id: Optional[str] = Query(None),
-    limit: int = Query(50, ge=1, le=200),
+    # 1000, not 200: DataTable's shared "rows per page" control
+    # (components/ui/data-table.tsx PAGE_SIZES) offers up to 1000, and this
+    # was the one screen capped below that. Picking 1000 in the Entries
+    # toolbar sent limit=1000 straight into a 422 "Input should be less than
+    # or equal to 200" — a plain validation error, but the screen has no
+    # request-level error copy, so it rendered as the same "Something went
+    # wrong" card a real 500 does. The other server-paged screen
+    # (GET /accounting/ledger) already allows 1000; this endpoint's per-row
+    # work (kind_for, narration parsing, one chunked splits query, GST
+    # eligibility) is no heavier, so there is no reason for a lower ceiling.
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     q: Optional[str] = Query(None, max_length=200),
     current_user: dict = Depends(rbac("banking", "read")),
