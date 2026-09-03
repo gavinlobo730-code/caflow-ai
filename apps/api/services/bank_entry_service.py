@@ -66,6 +66,10 @@ def _outcome(txn_id: str, status: str, reason: str, **extra) -> dict:
     return {"transaction_id": txn_id, "status": status, "reason": reason, **extra}
 
 
+#: Matches no statement. A uuid, because the column is one — see _base.
+_NO_SUCH_STATEMENT = "00000000-0000-0000-0000-000000000000"
+
+
 class BankEntryService:
 
     # ── reads ────────────────────────────────────────────────────────────────
@@ -100,7 +104,18 @@ class BankEntryService:
         q = q.eq("firm_id", firm_id).eq("client_id", client_id)
         if bank_account_id:
             ids = self._statement_ids(db, firm_id, client_id, bank_account_id)
-            q = q.in_("statement_id", ids or ["-"])
+            # An account with no statements yet — a bank added but not imported
+            # from — must read as NO LINES, and the filter that says so has to
+            # be a value the column can hold. statement_id is a uuid, and
+            # PostgREST hands the filter value straight to Postgres, which
+            # answers 22P02 `invalid input syntax for type uuid` for anything
+            # that is not one. The sentinel here was the string "-": every
+            # mock-mode test accepted it (the fake compares strings) and
+            # production returned 500 on every read the moment a CA picked such
+            # an account from the Entries account filter. The nil uuid is a
+            # real uuid, is never generated, and so matches nothing without
+            # being a value the column refuses.
+            q = q.in_("statement_id", ids or [_NO_SUCH_STATEMENT])
         return q
 
     def _count(self, make_query) -> int:

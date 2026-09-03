@@ -30,6 +30,8 @@ the Python twin, exactly as the service does in mock mode.
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi import HTTPException
 
@@ -86,6 +88,31 @@ class _StrictQ(_TQ):
 class StrictDB(TriggeredDB):
     def table(self, name):
         return _StrictQ(self.store, name)
+
+
+# ── a fake that refuses what POSTGRES refuses ────────────────────────────────
+# The one above models the client library's shape. This one models the column's
+# TYPE: PostgREST hands a filter value straight to Postgres, which answers
+# 22P02 `invalid input syntax for type uuid` for anything that is not a uuid.
+# The shared fake compares strings, so it accepted the sentinel "-" that _base
+# fell back to for an account with no statements — and production answered 500
+# on every Entries read the moment a CA picked such an account.
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+class _TypedQ(_TQ):
+    def in_(self, k, vals):
+        vals = list(vals)
+        if k == "statement_id":
+            for v in vals:
+                if not _UUID.match(str(v)):
+                    raise RuntimeError(f'invalid input syntax for type uuid: "{v}"')
+        return super().in_(k, vals)
+
+
+class TypedDB(TriggeredDB):
+    def table(self, name):
+        return _TypedQ(self.store, name)
 
 
 @pytest.fixture(autouse=True)
@@ -531,3 +558,57 @@ def test_counts_list_redraft_and_pass_ready_never_select_twice(poster):
     p = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1")
     assert p["passed"] == 1 and p["remaining"] == 0
     assert svc.redraft(db, FIRM, CLIENT, stale_before="2000-01-01T00:00:00+00:00")["remaining"] == 0
+
+
+# ── the account filter, against a database that enforces the column's type ───
+
+def test_an_account_with_no_statements_reads_empty_rather_than_refusing():
+    """The Entries account filter, for a bank account nothing has been imported
+    against yet.
+
+    A bank line knows its statement, not its account, so an account filter is a
+    statement filter — and an account with no statements yields no statement
+    ids. What goes into that filter then still has to be a value a uuid column
+    can hold: production answered 500 on every read (list, counts and
+    pass-ready alike) for a client whose second bank account had been added but
+    never imported from, because the fallback was the string "-".
+    """
+    firm = "11111111-1111-4111-8111-111111111111"
+    client = "22222222-2222-4222-8222-222222222222"
+    imported = "33333333-3333-4333-8333-333333333333"      # the account with a statement
+    added_only = "44444444-4444-4444-8444-444444444444"    # the account with none
+    stmt = "55555555-5555-4555-8555-555555555555"
+    line = "66666666-6666-4666-8666-666666666666"
+
+    db = TypedDB()
+    db.store["chart_of_accounts"] = []
+    db.store["bank_matching_rules"] = []
+    db.store["bank_accounts"] = [
+        {"id": imported, "firm_id": firm, "client_id": client, "bank_name": "HDFC Bank",
+         "account_no": "50100234567890"},
+        {"id": added_only, "firm_id": firm, "client_id": client, "bank_name": "Cosmos Bank",
+         "account_no": "1234567899"},
+    ]
+    db.store["bank_statements"] = [
+        {"id": stmt, "firm_id": firm, "client_id": client, "bank_account_id": imported},
+    ]
+    row = {"id": line, "firm_id": firm, "client_id": client, "statement_id": stmt,
+           "description": "NEFT CHARGES", "transaction_date": "2026-04-15",
+           "debit_paise": 59000, "credit_paise": 0, "match_status": "pending",
+           "account_id": None, "category": None, "matched_entity_id": None,
+           "matched_entity_type": None, "posted_journal_id": None, "posted_at": None,
+           "draft_source": "rule", "draft_grade": "ready", "draft_account_id": CHARGES,
+           "draft_label": "Bank Charges", "draft_error": None, "drafted_at": "2026-04-15T00:00:00Z"}
+    row["entry_state"] = E.entry_state(row)
+    db.store["bank_transactions"] = [row]
+
+    # The account that HAS a statement reads its line, so the filter works.
+    rows, total = svc.list_entries(db, firm, client, state="to_do", bank_account_id=imported)
+    assert total == 1 and rows[0]["id"] == line
+
+    # The one with none reads EMPTY — and builds no filter the database refuses.
+    assert svc.list_entries(db, firm, client, state="to_do", bank_account_id=added_only) == ([], 0)
+    c = svc.counts(db, firm, client, bank_account_id=added_only)
+    assert (c["to_do"], c["ready"], c["undrafted"]) == (0, 0, 0)
+    out = svc.pass_ready(db, firm, client, bank_account_id=added_only)
+    assert (out["passed"], out["remaining"]) == (0, 0)
