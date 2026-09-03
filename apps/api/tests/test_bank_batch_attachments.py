@@ -254,91 +254,12 @@ def _silence(monkeypatch):
     yield
 
 
-# ── 1.7 accept ───────────────────────────────────────────────────────────────
-
-def test_accept_applies_a_matching_rule():
-    db = _db(); _rule(db); _txn(db, "t1")
-    out = bank_batch_service.accept(db, FIRM, ["t1"])
-    assert out["applied"] == 1 and out["total"] == 1
-    row = db.store["bank_transactions"][0]
-    assert row["category"] == "Expense" and row["account_id"] == "acc-rent"
-
-
-def test_accept_falls_back_to_learned_history():
-    db = _db()
-    _txn(db, "old", posted=True, category="Expense", account_id="acc-rent")
-    _txn(db, "new")
-    out = bank_batch_service.accept(db, FIRM, ["new"])
-    assert out["applied"] == 1
-    assert "coded before" in out["results"][0]["reason"]
-
-
-def test_a_rule_wins_over_history():
-    """A human WROTE the rule; history is what a human happened to do."""
-    db = _db()
-    _rule(db, suggested_account_id="acc-from-rule")
-    _txn(db, "old", posted=True, category="Expense", account_id="acc-from-history")
-    _txn(db, "new")
-    bank_batch_service.accept(db, FIRM, ["new"])
-    row = next(r for r in db.store["bank_transactions"] if r["id"] == "new")
-    assert row["account_id"] == "acc-from-rule"
-
-
-def test_a_row_with_nothing_to_accept_is_skipped_not_guessed():
-    """The module's whole contract is that no GL account is ever invented."""
-    db = _db(); _txn(db, "t1", description="NOTHING MATCHES THIS")
-    out = bank_batch_service.accept(db, FIRM, ["t1"])
-    assert out["applied"] == 0 and out["skipped"] == 1
-    assert "Nothing to accept" in out["results"][0]["reason"]
-
-
-# ── per-row outcomes: the point of 1.7 ───────────────────────────────────────
-
-def test_every_row_gets_its_own_outcome_and_a_reason():
-    """THE contract. A partial success reported as a success is how a
-    transaction quietly stays uncoded until year end."""
-    db = _db(); _rule(db)
-    _txn(db, "good")
-    _txn(db, "posted", posted=True)
-    _txn(db, "excluded", ignored=True)
-    out = bank_batch_service.accept(db, FIRM, ["good", "posted", "excluded", "ghost"])
-    by_id = {r["transaction_id"]: r for r in out["results"]}
-    assert by_id["good"]["status"] == "applied"
-    assert by_id["posted"]["status"] == "skipped" and "Already posted" in by_id["posted"]["reason"]
-    assert by_id["excluded"]["status"] == "skipped"
-    assert by_id["ghost"]["status"] == "failed" and "Not found" in by_id["ghost"]["reason"]
-    assert (out["applied"], out["skipped"], out["failed"], out["total"]) == (1, 2, 1, 4)
-
-
-def test_one_bad_row_does_not_roll_back_the_good_ones():
-    """Not atomic across rows, deliberately: eight good rows should not be lost
-    because the ninth was already posted."""
-    db = _db(); _rule(db)
-    _txn(db, "good"); _txn(db, "posted", posted=True)
-    bank_batch_service.accept(db, FIRM, ["good", "posted"])
-    assert next(r for r in db.store["bank_transactions"] if r["id"] == "good")["category"] == "Expense"
-
-
-def test_an_already_coded_row_is_not_overwritten():
-    db = _db(); _rule(db); _txn(db, "t1", category="Other", account_id="acc-mine")
-    out = bank_batch_service.accept(db, FIRM, ["t1"])
-    assert out["skipped"] == 1
-    row = db.store["bank_transactions"][0]
-    assert row["category"] == "Other" and row["account_id"] == "acc-mine"
-
-
-def test_duplicate_ids_in_one_batch_are_collapsed():
-    """Two outcomes for one row would make the counts disagree with reality."""
-    db = _db(); _rule(db); _txn(db, "t1")
-    out = bank_batch_service.accept(db, FIRM, ["t1", "t1", "t1"])
-    assert out["total"] == 1 and out["applied"] == 1
-
-
-def test_another_firms_transaction_is_reported_as_not_found():
-    db = _db(); _rule(db); _txn(db, "t1", firm_id="other-firm")
-    out = bank_batch_service.accept(db, FIRM, ["t1"])
-    assert out["failed"] == 1 and "Not found" in out["results"][0]["reason"]
-
+# ── 1.7 accept — retired 2026-09-03 ─────────────────────────────────────────
+# "Accept" (code a row from its rule or history, in bulk) was replaced by the
+# entries model: every line is always drafted, and "Pass N ready" posts the
+# drafts. Its properties — a rule outranks history, nothing is guessed, per-row
+# outcomes, one bad row never rolls back the rest — are held by
+# tests/test_bank_entry_service.py against bank_entry_service.pass_ready.
 
 # ── 1.7 exclude / include ────────────────────────────────────────────────────
 
@@ -370,14 +291,14 @@ def test_a_posted_transaction_cannot_be_excluded():
 def test_an_empty_batch_is_refused():
     db = _db()
     with pytest.raises(HTTPException) as ei:
-        bank_batch_service.accept(db, FIRM, [])
+        bank_batch_service.set_excluded(db, FIRM, [], True)
     assert ei.value.status_code == 422
 
 
 def test_an_oversized_batch_is_refused():
     db = _db()
     with pytest.raises(HTTPException) as ei:
-        bank_batch_service.accept(db, FIRM, [f"t{i}" for i in range(MAX_BATCH + 1)])
+        bank_batch_service.set_excluded(db, FIRM, [f"t{i}" for i in range(MAX_BATCH + 1)], True)
     assert ei.value.status_code == 422
 
 
@@ -435,10 +356,10 @@ PARTNER = {"firm_id": FIRM, "role": "Partner", "auth_user_id": "p1", "id": "u1"}
 def test_the_batch_endpoint_returns_the_standard_envelope(monkeypatch):
     import core.authz as authz
     import routers.banking as br
-    db = _db(); _rule(db); _txn(db, "t1")
+    db = _db(); _txn(db, "t1")
     monkeypatch.setattr(br, "_db", lambda: db)
     monkeypatch.setattr(authz, "_USE_MOCK", True)
-    res = br.batch_accept(BankBatchIn(transaction_ids=["t1"]), current_user=PARTNER)
+    res = br.batch_exclude(BankBatchIn(transaction_ids=["t1"]), current_user=PARTNER)
     assert res["success"] is True and res["error"] is None
     assert res["data"]["applied"] == 1
 

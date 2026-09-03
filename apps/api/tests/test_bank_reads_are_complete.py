@@ -371,31 +371,9 @@ def test_the_queue_is_still_in_date_order_after_paging():
     assert dates == sorted(dates), "paging lost the date ordering"
 
 
-@pytest.mark.parametrize("queue,over,expect", [
-    ("ready_to_post", {"category": "Bank Charges"}, 2500),
-    ("pending",       {"posted_journal_id": "j1"},  2500),
-    ("posted",        {"posted_at": "2026-04-01T00:00:00Z"}, 2500),
-])
-def test_the_posting_queues_list_every_eligible_line(queue, over, expect):
-    from services.bank_posting_service import bank_posting_service as svc
-
-    db = _DB({"bank_transactions": _txns(2500, **over), "bank_matching_rules": []})
-    got = getattr(svc, queue)(db, FIRM, CLIENT)
-
-    assert len(got) == expect, f"{queue} listed {len(got)} of {expect}"
-
-
-def test_posted_is_still_newest_first():
-    """It was `.order(transaction_date, desc=True)`; keyset paging is ascending,
-    so the reversal has to be reinstated or the newest work drops off the end of
-    whatever the UI shows first."""
-    from services.bank_posting_service import bank_posting_service as svc
-
-    db = _DB({"bank_transactions": _txns(2500, posted_at="2026-04-01T00:00:00Z"),
-              "bank_matching_rules": []})
-    dates = [t["transaction_date"] for t in svc.posted(db, FIRM, CLIENT)]
-
-    assert dates == sorted(dates, reverse=True), "posted is no longer newest-first"
+# The three posting-queue reads (ready_to_post / pending / posted) were retired
+# with the Categorize screen on 2026-09-03; Entries reads stored state through
+# bank_entry_service.list_entries, whose paging carries a server total.
 
 
 # ── Reconciliation ───────────────────────────────────────────────────────────

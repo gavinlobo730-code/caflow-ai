@@ -33,7 +33,6 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.banking import attachments as att
-from domain.banking.categories import is_valid_category
 
 _logger = logging.getLogger("caflow.bank_batch")
 
@@ -67,121 +66,6 @@ class BankBatchService:
         return list(dict.fromkeys(ids))
 
     # ── 1.7 accept ──────────────────────────────────────────────────────────
-    def accept(self, db, firm_id: str, txn_ids: list[str],
-               actor_id: Optional[str] = None, preview: bool = False) -> dict:
-        """Apply each row's own strongest suggestion. Per-row outcomes.
-
-        PREVIEW IS THIS SAME FUNCTION, not a second one. With preview=True it
-        walks every row exactly as it would to apply — the same rules, the same
-        payee history, the same "already coded" and "already posted" refusals —
-        and returns what it WOULD write instead of writing it. Rows that would
-        change come back as "would_apply" carrying the account and the source;
-        nothing is written and nothing is logged.
-
-        WHY IT HAS TO BE THE SAME LOOP. The screen shows the CA a list of lines
-        and the ledger each is about to get, and they press Apply on the
-        strength of it. A preview computed anywhere else — a second copy of the
-        rule matching, or the browser guessing from suggested_account_id — is a
-        list that can disagree with what lands. The CA would have approved one
-        thing and the books would carry another, and nothing would report it.
-        """
-        ids = self._check_batch(txn_ids)
-        found = self._fetch(db, firm_id, ids)
-
-        # Both suggestion sources, built once for the whole batch rather than
-        # once per row — same reasoning as the queue.
-        from services.bank_payee_service import bank_payee_service
-        from domain.banking.rules import match_rule
-        client_ids = {r.get("client_id") for r in found.values() if r.get("client_id")}
-        history: dict = {}
-        rules_by_client: dict = {}
-        for cid in client_ids:
-            history[cid] = bank_payee_service.history_index(db, firm_id, cid)
-        rules = (db.table("bank_matching_rules").select("*")
-                 .eq("firm_id", firm_id).eq("is_active", True)
-                 .order("created_at").execute().data) or []
-        for r in rules:
-            rules_by_client.setdefault(r.get("client_id"), []).append(r)
-
-        results = []
-        for txn_id in ids:
-            txn = found.get(txn_id)
-            if not txn:
-                results.append(self._outcome(txn_id, "failed", "Not found for this firm."))
-                continue
-            if txn.get("posted_journal_id") or txn.get("match_status") == "posted":
-                results.append(self._outcome(
-                    txn_id, "skipped", "Already posted — its coding is decided."))
-                continue
-            if txn.get("match_status") == "ignored":
-                results.append(self._outcome(
-                    txn_id, "skipped", "Excluded. Include it again first."))
-                continue
-
-            category, account_id, source = self._suggestion_for(
-                txn, rules_by_client, history, bank_payee_service, match_rule)
-            if not (category or account_id):
-                results.append(self._outcome(
-                    txn_id, "skipped",
-                    "Nothing to accept — no rule matches and it has no history."))
-                continue
-
-            update: dict = {"updated_at": _now()}
-            if category and not txn.get("category"):
-                if not is_valid_category(category):
-                    results.append(self._outcome(
-                        txn_id, "failed", f"Suggested category '{category}' is not valid."))
-                    continue
-                update["category"] = category
-            if account_id and not txn.get("account_id"):
-                update["account_id"] = account_id
-            if len(update) == 1:                      # only updated_at
-                results.append(self._outcome(
-                    txn_id, "skipped", "Already coded — nothing was changed."))
-                continue
-
-            if preview:
-                # Everything above ran; only the write is skipped. `source` and
-                # `description` ride along so the screen can say WHICH line is
-                # getting WHICH ledger and on whose authority — a rule the CA
-                # wrote, or how they coded that payee before.
-                results.append(self._outcome(
-                    txn_id, "would_apply", f"Would be coded from {source}.",
-                    category=update.get("category"), account_id=update.get("account_id"),
-                    source=source, description=txn.get("description")))
-                continue
-
-            (db.table("bank_transactions").update(update)
-             .eq("id", txn_id).eq("firm_id", firm_id).execute())
-            results.append(self._outcome(
-                txn_id, "applied", f"Coded from {source}.",
-                category=update.get("category"), account_id=update.get("account_id"),
-                source=source, description=txn.get("description")))
-
-        # A preview is a read. It leaves no audit trail because it changed
-        # nothing — logging one would put "accepted a batch" in the record for a
-        # CA who then pressed Cancel.
-        if not preview:
-            self._log_batch(firm_id, "accept", results, actor_id)
-        return self._summarise(results)
-
-    @staticmethod
-    def _suggestion_for(txn, rules_by_client, history, payee_service, match_rule):
-        """A rule first (a human wrote it), then learned history (a human did it
-        before). Neither is invented."""
-        debit = int(txn.get("debit_paise") or 0)
-        credit = int(txn.get("credit_paise") or 0)
-        amount, is_debit = max(debit, credit), credit == 0
-        hit = match_rule(txn.get("description"), amount, is_debit,
-                         rules_by_client.get(txn.get("client_id"), []))
-        if hit and (hit.category or hit.account_id):
-            return hit.category, hit.account_id, f"rule “{hit.rule_name}”"
-        learned = payee_service.suggest_for(txn, history.get(txn.get("client_id"), {}))
-        if learned and (learned.category or learned.account_id):
-            return learned.category, learned.account_id, "how this payee was coded before"
-        return None, None, ""
-
-    # ── 1.7 exclude / include ───────────────────────────────────────────────
     def set_excluded(self, db, firm_id: str, txn_ids: list[str], excluded: bool,
                      actor_id: Optional[str] = None) -> dict:
         ids = self._check_batch(txn_ids)

@@ -602,8 +602,8 @@ def test_the_queue_offers_the_rate_on_a_debit():
     assert row["suggested_is_interstate"] is False
 
 
-def test_the_queue_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
-    """Through routers.banking.matching_queue, not through the service.
+def test_the_entries_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
+    """Through routers.banking.list_entries, not through the service.
 
     THE BUG THIS EXISTS FOR
         The route begins `db = _db(); if not db: return ...`. In mock mode that
@@ -614,7 +614,8 @@ def test_the_queue_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
         production while CI was green.
 
         Patching _db to a fake gets past the early return, which is the only way
-        a mock-mode suite can see anything on the far side of it.
+        a mock-mode suite can see anything on the far side of it. The route is
+        /entries now (the queue was retired 2026-09-03); the property is the same.
     """
     import core.authz as authz
     import routers.banking as banking_router
@@ -623,8 +624,8 @@ def test_the_queue_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
     monkeypatch.setattr(banking_router, "_db", lambda: db)
     monkeypatch.setattr(authz, "_USE_MOCK", True)
 
-    res = banking_router.matching_queue(
-        client_id=CLIENT, status="unmatched", limit=50, offset=0, q=None,
+    res = banking_router.list_entries(
+        client_id=CLIENT, state="all", bank_account_id=None, limit=50, offset=0, q=None,
         current_user={"firm_id": FIRM, "role": "Partner", "auth_user_id": "p1", "id": "u1"})
     assert res["success"] is True
     data = res["data"]

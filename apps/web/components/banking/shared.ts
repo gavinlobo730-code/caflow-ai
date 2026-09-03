@@ -105,34 +105,6 @@ export interface QueueTxn {
     alternatives: { account_id: string | null; category: string | null; times: number }[];
   } | null;
 }
-/** Tier 1.7 — what happened to ONE row of a batch. Every row comes back with
- *  an outcome; a partial success shown as a success hides uncoded lines. */
-export interface BatchResult {
-  transaction_id: string;
-  /** "would_apply" is the dry run's verdict — this row WOULD be coded. It is a
-   *  distinct value on purpose: a preview that reported "applied" would count
-   *  writes that never happened. */
-  status: "applied" | "skipped" | "failed" | "would_apply";
-  reason: string;
-  /** Present on accept outcomes and on every dry-run row, so the screen can say
-   *  which line is getting which ledger, and on whose authority. */
-  account_id?: string | null;
-  category?: string | null;
-  source?: string;
-  description?: string;
-}
-export interface BatchOutcome {
-  results: BatchResult[]; applied: number; skipped: number; failed: number; total: number;
-}
-/** Tier 1.5 — two bank lines that look like one movement between the client's
- *  own accounts. `primary_id` is the outflow: the side that will carry the
- *  journal. Confirming does NOT post anything. */
-export interface TransferSuggestion {
-  primary_id: string; counterpart_id: string; amount_paise: number;
-  primary_date: string | null; counterpart_date: string | null;
-  day_gap: number; confidence: "high" | "medium" | "low";
-  is_unambiguous: boolean; summary: string;
-}
 export interface MatchSuggestion {
   matched_entity_type: string; matched_entity_id: string; label: string;
   amount_paise: number; confidence: number; confidence_label: string; reasons: string[];

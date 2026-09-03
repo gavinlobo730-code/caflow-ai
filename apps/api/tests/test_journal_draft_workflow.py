@@ -274,15 +274,15 @@ def test_bank_post_is_idempotent_one_draft(db):
     assert e.value.status_code == 409
 
 
-def test_a_posted_transaction_goes_straight_from_ready_to_posted(db):
-    """There is no longer a queue in between. `pending` stays on the service for
-    drafts created before this change; nothing new ever lands in it."""
+def test_a_posted_transaction_goes_straight_from_ready_to_passed(db):
+    """There is no queue in between: a matched line is READY and a post makes
+    it PASSED, with no draft state on the way (09-bank-entries.md)."""
+    from domain.banking import entry as E
     _bank_txn(db)
-    assert [t["id"] for t in BP.ready_to_post(db, FIRM, CLIENT)] == ["txn1"]
+    row = db.store["bank_transactions"][0]
+    assert E.entry_state(row) == E.READY
     BP.post(db, FIRM, "txn1", actor_id="maker")
-    assert BP.ready_to_post(db, FIRM, CLIENT) == []
-    assert BP.pending(db, FIRM, CLIENT) == []
-    assert [t["id"] for t in BP.posted(db, FIRM, CLIENT)] == ["txn1"]
+    assert E.entry_state(row) == E.PASSED
 
 
 # ── Reporting excludes drafts (Objective 7) ───────────────────────────────────

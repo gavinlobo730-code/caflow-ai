@@ -15,14 +15,12 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from core.db_paging import fetch_all
 
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from domain.banking import posting_map as pmap
 from domain.banking.charge_gst import split_inclusive_charge, build_inclusive_lines
-from domain.banking.rules import match_rule
 from domain.banking.splits import build_split_lines, SplitError
 from services.bank_split_service import bank_split_service
 from services.bank_transfer_service import bank_transfer_service
@@ -1059,79 +1057,4 @@ class BankPostingService:
         }
 
     # ── B.3.1 queues ──────────────────────────────────────────────────────────
-    def _all_txns(self, db, firm_id, client_id: Optional[str], *, label: str) -> list[dict]:
-        """Every transaction for the scope, PAGED, sorted by date here.
-
-        The three queues below each read the whole set and filter in Python, so
-        an unpaged read did not make them slow — it made them WRONG. Past
-        PostgREST's ~1000-row cap the rows simply were not there to filter, so
-        "Ready to Post" quietly stopped listing work that was ready, and nothing
-        distinguished that from having none.
-        """
-        def _page():
-            q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
-            return q.eq("client_id", client_id) if client_id else q
-        rows = fetch_all(_page, label=label)
-        rows.sort(key=lambda t: (str(t.get("transaction_date") or ""), str(t.get("id"))))
-        return rows
-
-    def ready_to_post(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
-        rows = self._all_txns(db, firm_id, client_id, label="posting.ready_to_post")
-        out = [t for t in rows
-               if t.get("category") and not t.get("posted_journal_id")
-               and t.get("match_status") not in ("posted", "ignored")
-               # Tier 1.5: the receiving side of a paired transfer is the same
-               # cash as the paying side and never posts on its own. Offering it
-               # here would invite exactly the double-count the pairing prevents.
-               and t.get("transfer_is_primary") is not False]
-        self._annotate_rule_suggestions(db, firm_id, out)
-        return out
-
-    def _annotate_rule_suggestions(self, db, firm_id, txns: list[dict]) -> None:
-        """Prefill hints for the posting drawer, from the client's own rules.
-
-        The categorize queue has read rules since B.2.3, but this queue — the one
-        that actually feeds the posting drawer — never did, so a rule that knew
-        "HDFC charges go to Bank Charges at 18%" still made the CA re-enter both
-        on every single charge. Suggestions only: the drawer prefills them and
-        the person clicking Post is the one asserting them.
-        """
-        if not txns:
-            return
-        try:
-            rules = (db.table("bank_matching_rules").select("*")
-                     .eq("firm_id", firm_id).eq("is_active", True)
-                     .order("created_at").execute().data or [])
-        except Exception:  # pragma: no cover - a hint must never break the queue
-            return
-        by_client: dict = {}
-        for r in rules:
-            by_client.setdefault(r.get("client_id"), []).append(r)
-        for t in txns:
-            # Only the transaction's OWN client's rules — same scoping as
-            # bank_matching_service.queue, for the same reason.
-            client_rules = by_client.get(t.get("client_id"), [])
-            amount, is_credit = _amount(t)
-            hit = match_rule(t.get("description"), amount, not is_credit, client_rules)
-            t["suggested_account_id"] = (hit.account_id if hit else None) if not t.get("account_id") else None
-            # Offered in BOTH directions. Out is input credit (CGST Act s.16),
-            # in is output tax (s.9) — the posting engine picks the accounts
-            # from the direction, so the rule only has to state the rate.
-            t["suggested_gst_rate_bps"] = (hit.gst_rate_bps if hit else None)
-            t["suggested_is_interstate"] = bool(hit.is_interstate) if hit else False
-
-    def pending(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
-        """Draft journal created, awaiting approval (linked journal but not yet posted)."""
-        rows = self._all_txns(db, firm_id, client_id, label="posting.pending")
-        return [t for t in rows
-                if t.get("posted_journal_id") and not t.get("posted_at")
-                and t.get("match_status") != "posted"]
-
-    def posted(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
-        """Truly posted — the draft was approved (posted_at set)."""
-        rows = self._all_txns(db, firm_id, client_id, label="posting.posted")
-        rows.reverse()  # newest first, as before
-        return [t for t in rows if t.get("posted_at")]
-
-
 bank_posting_service = BankPostingService()
