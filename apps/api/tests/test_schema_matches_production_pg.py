@@ -71,7 +71,7 @@ complaint that somebody turns off.
 
 THE FIXTURE IS A SNAPSHOT
 
-tests/fixtures/production_schema_2026-08-31.json is what production looked like
+tests/fixtures/production_schema_2026-09-03.json is what production looked like
 on one day, so this can run in CI without production credentials. It goes stale
 by design; see that directory's README for how to refresh it.
 """
@@ -89,7 +89,7 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
-_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "production_schema_2026-08-31.json"
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "production_schema_2026-09-03.json"
 
 _spec = importlib.util.spec_from_file_location(
     "schema_drift", _ROOT / "scripts" / "db" / "schema_drift.py")

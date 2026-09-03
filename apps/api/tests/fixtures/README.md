@@ -1,4 +1,4 @@
-# production_schema_2026-08-31.json
+# production_schema_2026-09-03.json
 
 A point-in-time capture of the live database's `public` schema — every column,
 its type, nullability and default — taken on 31 August 2026 with the query
@@ -115,3 +115,53 @@ and set `applied_through_migration` to production's `max(filename)` in
 migrations above that mark — and refuses to run if the repository is more than
 ten migrations ahead of it, so a stale fixture cannot quietly excuse a
 regression.
+
+
+# Refreshed 3 September 2026, after migrations 316-321
+
+Both fixtures were re-captured together once 321 had applied to production, and
+both were renamed to the capture date. `test_schema_matches_production_pg.py`
+now reads `production_schema_2026-09-03.json`; the 31 August pair is deleted
+rather than kept, because two snapshots of the same database invite reading the
+wrong one.
+
+The route was the SQL console again, so both were PROVED equal to a real
+capture rather than trusted — production computed the checksum over its own
+rows and the same string was rebuilt from each file:
+
+| Fixture | Rows | md5 |
+|---|---|---|
+| schema | 3,831 columns in 262 tables | `631a40fb659ae2bfef9681997dfa0a99` |
+| guards | 2,005 (257 rls, 597 policies, 1,151 constraints) | `be61568f04f874451f52245b7cb5c3dd` |
+
+`applied_through_migration` is 321 in both metas, which is also the repository's
+highest migration — so the in-flight exclusion currently excuses nothing, which
+is the state it should be refreshed back to.
+
+## What the refresh showed
+
+Most of what the checks had been reporting was staleness, and saying so with
+numbers is the point of recording this:
+
+| Category | Against the stale fixture | Against the fresh one |
+|---|---|---|
+| `constraints_missing_from_live` | 35 | **0** |
+| `check_constraints_differ` | 3 | **0** |
+| `unique_constraints_missing_from_live` | 2 | **0** |
+| `columns_missing_from_live` | 39 | **1** |
+| `tables_missing_from_live` (schema) | 20 | **7** |
+| `policies_only_in_live` | 23 | 16 |
+| `policies_missing_from_live` | 19 | 12 |
+
+What survives is all known and documented:
+
+* the single column is `clients_external.is_test`, on a VIEW, which the test
+  excludes by asking the database which relations are views;
+* the seven tables are migration 067's never-applied set, repointed away from
+  by 252 and queried by no router;
+* the 16 policies only production has are exactly the deliberate exclusions
+  from migration 319 — seven duplicate `ai_*`, eight legacy `firm_iso_wf_*`
+  keyed on a setting nothing sets, and `audit_log_own_firm`;
+* the 12 the migrations declare and production lacks are the rename set the
+  first-run audit describes — production guards those tables under different
+  policy names, and no table is left without a policy (asserted).

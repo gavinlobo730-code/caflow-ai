@@ -1,5 +1,9 @@
 {
  "constraint": {
+  "account_group_mappings.account_group_mappings_firm_id_account_id_key": {
+   "detail": "u",
+   "expr_md5": "15c2a83888c5a849088b9c366abbc107"
+  },
   "account_group_mappings.account_group_mappings_normal_balance_check": {
    "detail": "c",
    "expr_md5": "7edf1559805f7244690fba7a39255479"
@@ -7,6 +11,10 @@
   "account_group_mappings.account_group_mappings_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "account_group_mappings.account_group_mappings_statement_type_check": {
+   "detail": "c",
+   "expr_md5": "5787433e22ba548fa0c471eb59bd78b2"
   },
   "account_period_balances.account_period_balances_account_id_fkey": {
    "detail": "f",
@@ -231,6 +239,10 @@
   "auto_journal_suggestions.auto_journal_suggestions_status_check": {
    "detail": "c",
    "expr_md5": "c2012d625b8b9b28566f8d672c3297db"
+  },
+  "automation_executions.automation_executions_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "01ca1f5964137c673767ee9fc7184374"
   },
   "automation_executions.automation_executions_pkey": {
    "detail": "p",
@@ -828,6 +840,10 @@
    "detail": "f",
    "expr_md5": "5bd6b73e49e4403c3d42ae7a652e0be8"
   },
+  "client_timeline_events.client_timeline_events_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
   "client_timeline_events.client_timeline_events_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
@@ -910,7 +926,7 @@
   },
   "clients.clients_status_check": {
    "detail": "c",
-   "expr_md5": "bd7c021ccf811acd62ceaaea0a6dadb7"
+   "expr_md5": "1274959a1c4377b5ff6423f393df0228"
   },
   "compliance_calendar.compliance_calendar_client_id_compliance_type_period_start_key": {
    "detail": "u",
@@ -1155,6 +1171,14 @@
   "customers.customers_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "customers.customers_gstin_format": {
+   "detail": "c",
+   "expr_md5": "bb868dbe54bf036272dd4c82923b3948"
+  },
+  "customers.customers_pan_format": {
+   "detail": "c",
+   "expr_md5": "bc9997b16bd5c44e24978898f8cbd126"
   },
   "customers.customers_pkey": {
    "detail": "p",
@@ -1508,6 +1532,10 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "escalation_rules.escalation_rules_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
   "escalation_rules.escalation_rules_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -1588,6 +1616,10 @@
    "detail": "u",
    "expr_md5": "7885e9072eb84bb56169259bfffca935"
   },
+  "fee_invoices.fee_invoices_invoice_no_length": {
+   "detail": "c",
+   "expr_md5": "510fdbc4bd6f12c293c0b53dfe4b5178"
+  },
   "fee_invoices.fee_invoices_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -1623,6 +1655,10 @@
   "filings.filings_filed_by_fkey": {
    "detail": "f",
    "expr_md5": "eabdbebb1107b222843502d9984a5c4a"
+  },
+  "filings.filings_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "01ca1f5964137c673767ee9fc7184374"
   },
   "filings.filings_pkey": {
    "detail": "p",
@@ -1712,9 +1748,21 @@
    "detail": "c",
    "expr_md5": "3153e15d97dd274f11888940aa572d38"
   },
+  "firms.firms_gstin_format": {
+   "detail": "c",
+   "expr_md5": "bb868dbe54bf036272dd4c82923b3948"
+  },
   "firms.firms_internal_client_id_fkey": {
    "detail": "f",
    "expr_md5": "12dfa908b1b0ef4939a72553db8528b1"
+  },
+  "firms.firms_pan_format": {
+   "detail": "c",
+   "expr_md5": "bc9997b16bd5c44e24978898f8cbd126"
+  },
+  "firms.firms_pincode_format": {
+   "detail": "c",
+   "expr_md5": "dd7ac842ef845a15c2b19600c87a8c06"
   },
   "firms.firms_pkey": {
    "detail": "p",
@@ -1826,7 +1874,7 @@
   },
   "form_26as_uploads.form_26as_uploads_parse_status_check": {
    "detail": "c",
-   "expr_md5": "69a8bb3c4574839edcec645119821f03"
+   "expr_md5": "faa6abb2de15c4351a8788a94d49616f"
   },
   "form_26as_uploads.form_26as_uploads_pkey": {
    "detail": "p",
@@ -1920,6 +1968,10 @@
    "detail": "c",
    "expr_md5": "e1f4e806e8a4fb6c462efa52db4bc2c7"
   },
+  "gst_portal_snapshots.gst_portal_snapshots_sync_job_id_fkey": {
+   "detail": "f",
+   "expr_md5": "b252b5f3d84dc5db22591397d7496556"
+  },
   "gst_sync_jobs.gst_sync_jobs_client_id_fkey": {
    "detail": "f",
    "expr_md5": "fb3cdac681833e50995da29fa2fe96e1"
@@ -1934,7 +1986,7 @@
   },
   "gst_sync_jobs.gst_sync_jobs_status_check": {
    "detail": "c",
-   "expr_md5": "c709e14a4d75e8e47f792ae9fd642f41"
+   "expr_md5": "8c510ffa25a357b98459ffa6e0acb6d5"
   },
   "gst_sync_jobs.gst_sync_jobs_sync_type_check": {
    "detail": "c",
@@ -1959,6 +2011,10 @@
   "gstr1_returns.gstr1_returns_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "gstr1_returns.gstr1_returns_gstin_format": {
+   "detail": "c",
+   "expr_md5": "bb868dbe54bf036272dd4c82923b3948"
   },
   "gstr1_returns.gstr1_returns_pkey": {
    "detail": "p",
@@ -2159,6 +2215,10 @@
   "invoice_deliveries.invoice_deliveries_status_check": {
    "detail": "c",
    "expr_md5": "5067556677edcfd7c8cd33ff3329e025"
+  },
+  "invoice_sequences.invoice_sequences_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
   },
   "invoice_sequences.invoice_sequences_pkey": {
    "detail": "p",
@@ -2800,6 +2860,10 @@
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
   },
+  "payroll_employees.payroll_employees_pan_format": {
+   "detail": "c",
+   "expr_md5": "bc9997b16bd5c44e24978898f8cbd126"
+  },
   "payroll_employees.payroll_employees_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -3020,6 +3084,10 @@
    "detail": "f",
    "expr_md5": "85910ec940f7be46a3cc09f9a65c49d4"
   },
+  "pending_invites.pending_invites_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
   "pending_invites.pending_invites_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -3027,6 +3095,10 @@
   "pending_invites.pending_invites_token_key": {
    "detail": "u",
    "expr_md5": "fa62bcb1c4fbdd8cb0e433bffb56c693"
+  },
+  "permission_grants.permission_grants_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "01ca1f5964137c673767ee9fc7184374"
   },
   "permission_grants.permission_grants_granted_by_fkey": {
    "detail": "f",
@@ -3796,6 +3868,10 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "task_escalations.task_escalations_task_id_fkey": {
+   "detail": "f",
+   "expr_md5": "09133d2126299afe87e55aa89cc87918"
+  },
   "task_recurring_configs.task_recurring_configs_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -3855,6 +3931,10 @@
   "tasks.tasks_workflow_id_fkey": {
    "detail": "f",
    "expr_md5": "12bfd973e045872b4548fd07827bd3a0"
+  },
+  "tasks.tasks_workflow_step_id_fkey": {
+   "detail": "f",
+   "expr_md5": "5697b7866ad66c80d3fbbc3d317e9c0b"
   },
   "tax_audit_checklists.tax_audit_checklists_client_id_fkey": {
    "detail": "f",
@@ -4044,6 +4124,10 @@
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
   },
+  "tds_certificates.tds_certificates_pan_format": {
+   "detail": "c",
+   "expr_md5": "982b9a6cbf3aefd8a648025fa7e51c3b"
+  },
   "tds_certificates.tds_certificates_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -4055,6 +4139,10 @@
   "tds_certificates.tds_certificates_tds_return_id_fkey": {
    "detail": "f",
    "expr_md5": "754d98d1d81fffe36c24e95ea37f151b"
+  },
+  "tds_challans.tds_challans_bsr_code_format": {
+   "detail": "c",
+   "expr_md5": "a6826122436ee8cab147205201cb1d42"
   },
   "tds_challans.tds_challans_client_id_fkey": {
    "detail": "f",
@@ -4232,6 +4320,10 @@
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
   },
+  "vendors.vendors_gstin_format": {
+   "detail": "c",
+   "expr_md5": "bb868dbe54bf036272dd4c82923b3948"
+  },
   "vendors.vendors_msme_status_check": {
    "detail": "c",
    "expr_md5": "0f2c4cb5d8a59130770d9b47013546d8"
@@ -4239,6 +4331,10 @@
   "vendors.vendors_no_pe_declaration_by_fkey": {
    "detail": "f",
    "expr_md5": "5c4e935089c8eb8f066cd56cfbffbe34"
+  },
+  "vendors.vendors_pan_format": {
+   "detail": "c",
+   "expr_md5": "bc9997b16bd5c44e24978898f8cbd126"
   },
   "vendors.vendors_pkey": {
    "detail": "p",
@@ -4312,6 +4408,10 @@
    "detail": "f",
    "expr_md5": "2f75d7a22e25b1faf1de5f768c2573c8"
   },
+  "workflow_steps.workflow_steps_default_assignee_role_check": {
+   "detail": "c",
+   "expr_md5": "ea69781032f766eb80d7c63f111e706e"
+  },
   "workflow_steps.workflow_steps_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -4319,6 +4419,14 @@
   "workflow_steps.workflow_steps_template_id_fkey": {
    "detail": "f",
    "expr_md5": "2f75d7a22e25b1faf1de5f768c2573c8"
+  },
+  "workflow_steps.workflow_steps_workflow_id_fkey": {
+   "detail": "f",
+   "expr_md5": "12bfd973e045872b4548fd07827bd3a0"
+  },
+  "workflow_steps.workflow_steps_workflow_id_step_order_key": {
+   "detail": "u",
+   "expr_md5": "1f1868a1cb3f2744050e448220e8f6da"
   },
   "workflow_templates.workflow_templates_pkey": {
    "detail": "p",
@@ -4412,6 +4520,14 @@
    "detail": "c",
    "expr_md5": "e215468a30d6cc894474dda3c8e7b995"
   },
+  "year_end_engagements.year_end_engagements_approved_by_fkey": {
+   "detail": "f",
+   "expr_md5": "a2cf9e4482d67aa995b72f851928b00b"
+  },
+  "year_end_engagements.year_end_engagements_final_approved_by_fkey": {
+   "detail": "f",
+   "expr_md5": "58c3475e87e728ac37a004c4a62d94f8"
+  },
   "year_end_engagements.year_end_engagements_firm_id_client_id_financial_year_key": {
    "detail": "u",
    "expr_md5": "ffabc47b94142d3531d5b3f031eb9a15"
@@ -4420,9 +4536,25 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "year_end_engagements.year_end_engagements_prepared_by_fkey": {
+   "detail": "f",
+   "expr_md5": "e85039f8f6288f9f7abe3e8cc67687c0"
+  },
+  "year_end_engagements.year_end_engagements_reviewed_by_fkey": {
+   "detail": "f",
+   "expr_md5": "7e20ed90d769f4164974d84991969c4f"
+  },
+  "year_end_engagements.year_end_engagements_revision_requested_by_fkey": {
+   "detail": "f",
+   "expr_md5": "ccb50053c5595514f77d10e57a713ee0"
+  },
   "year_end_engagements.year_end_engagements_status_check": {
    "detail": "c",
    "expr_md5": "66278df53e6dedb7635450603a4a4eeb"
+  },
+  "year_end_engagements.year_end_engagements_submitted_by_fkey": {
+   "detail": "f",
+   "expr_md5": "956c9a3ac614bf1e86282b5087b8dcc7"
   },
   "year_end_engagements.year_end_engagements_udin_recorded_by_fkey": {
    "detail": "f",
@@ -4440,6 +4572,10 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "year_end_exports.year_end_exports_version_id_fkey": {
+   "detail": "f",
+   "expr_md5": "7a911280450acb856822fd86e8fed85b"
+  },
   "year_end_notes.year_end_notes_engagement_id_fkey": {
    "detail": "f",
    "expr_md5": "0384efd142f0380b3ee963c9f58b085a"
@@ -4451,6 +4587,10 @@
   "year_end_reports.year_end_reports_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "year_end_review_events.year_end_review_events_actor_id_fkey": {
+   "detail": "f",
+   "expr_md5": "adc51e6b0d48be4a7246a29046675b50"
   },
   "year_end_review_events.year_end_review_events_engagement_id_fkey": {
    "detail": "f",
@@ -4882,9 +5022,9 @@
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
-  "client_sales_invoice_lines.firm_client_sales_invoice_lines": {
+  "client_sales_invoice_lines.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "96a0875d7c8f2275539ff9b1f238c0d2"
+   "expr_md5": "a0667d410fceea32e3d8db04bd484ce0"
   },
   "client_sales_invoices.client_sales_invoices_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -4898,9 +5038,9 @@
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
-  "client_sales_invoices.firm_client_sales_invoices": {
+  "client_sales_invoices.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
+   "expr_md5": "6608c3a621fc6249cf3daad5b24419bb"
   },
   "client_timeline_events.client_timeline_events_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -5002,9 +5142,9 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
-  "credit_note_lines.firm_credit_note_lines": {
+  "credit_note_lines.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "e75ccb1d90ee3f09dca6c00b63e0f5a0"
+   "expr_md5": "eef14840995a9d5d7dac943089a4bc68"
   },
   "credit_notes.credit_notes_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -5014,9 +5154,9 @@
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
   },
-  "credit_notes.firm_credit_notes": {
+  "credit_notes.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
+   "expr_md5": "6608c3a621fc6249cf3daad5b24419bb"
   },
   "cross_client_matches.cross_client_matches_firm_isolation": {
    "detail": "permissive cmd=* roles=PUBLIC",
@@ -6142,9 +6282,9 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "bc50e5c7131d4ea3e2ce4d2e8d9c7e16"
   },
-  "purchase_bills.firm_purchase_bills": {
+  "purchase_bills.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
+   "expr_md5": "6608c3a621fc6249cf3daad5b24419bb"
   },
   "purchase_bills.purchase_bills_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -6182,13 +6322,13 @@
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
   },
-  "receipt_allocations.firm_receipt_allocations": {
+  "receipt_allocations.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "63dd1e0d933d87d9bc47dba918e92c30"
+   "expr_md5": "11f23a093db1f78bc517a3732c1eb0ce"
   },
-  "receipts.firm_receipts": {
+  "receipts.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
-   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
+   "expr_md5": "6608c3a621fc6249cf3daad5b24419bb"
   },
   "receipts.receipts_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
