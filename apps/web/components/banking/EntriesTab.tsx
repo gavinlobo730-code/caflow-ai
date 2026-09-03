@@ -219,7 +219,8 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
 
   /** Propose for every undrafted line, then pass what the trusted rules
    *  drafted — both in chunks with progress. Runs on open and after an
-   *  import, and never twice at once. */
+   *  import, and never twice at once — see settleRef below for why the
+   *  trigger is pinned to clientId rather than to this function's identity. */
   const settle = useCallback(async () => {
     if (busyRef.current || !clientId || clientId === "_placeholder") return;
     busyRef.current = true;
@@ -252,7 +253,24 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, loadCounts, reload]);
 
-  useEffect(() => { settle(); }, [settle]);
+  /** settle's own identity is rebuilt on every filter change — it closes
+   *  over loadCounts and reload, which close over bankAccountId, state, page,
+   *  search. If the effect below depended on `settle` directly, switching the
+   *  bank-account filter (or paging, or searching) would re-run the WHOLE
+   *  propose-and-pass-trusted pipeline, not just re-fetch the rows: two
+   *  loadCounts calls and a redraft/pass sweep on every click of the account
+   *  dropdown, layered on top of the fetch loadRows already does for the same
+   *  filter change. That is exactly the burst that produced a transient 500 in
+   *  production — several requests landing on the API and the database pool
+   *  at once for one user action. `settle` belongs on open only, so the
+   *  effect below is pinned to clientId; settleRef keeps it calling the
+   *  current closure (current bankAccountId etc.) without RE-RUNNING on every
+   *  closure it captures. */
+  const settleRef = useRef(settle);
+  useEffect(() => { settleRef.current = settle; }, [settle]);
+  useEffect(() => {
+    if (clientId && clientId !== "_placeholder") settleRef.current();
+  }, [clientId]);
 
   /** An import finished, or an account was added, edited or deactivated:
    *  the account list may differ, and new lines want proposing for at once —
