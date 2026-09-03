@@ -266,3 +266,32 @@ test("a line can carry its receipt, and a stored document is never held by an ex
 
   assert.match(tab(), /<Paperclip\b/, "and the list must show which lines carry one");
 });
+
+test("picking a ledger changes the line at once, on the write's own answer", () => {
+  // It used to cost four sequential round trips to Mumbai — the write, a full
+  // re-read of the line, then the list's counts and its rows — with every
+  // control disabled until the last landed. Only the write is needed:
+  // banking_service.set_account returns account_id, category and gst_allowed
+  // "so the screen can patch that one line instead of refetching the page",
+  // and a ledger choice cannot change the candidates, the payee history or
+  // the transfer scan that make the re-read expensive.
+  const m = modal();
+  const at = m.indexOf("<AccountLookup");
+  assert.ok(at > 0, "the ledger picker is gone");
+  const picker = m.slice(at, at + 600);
+  assert.match(picker, /patch\("Couldn't book under that ledger"/,
+    "the ledger picker must patch in place, not re-read the whole line");
+  assert.doesNotMatch(picker, /act\("Couldn't book under that ledger"/,
+    "act() re-reads the line and is for writes that change what it could be");
+
+  const patchFn = m.slice(m.indexOf("async function patch("));
+  assert.match(patchFn.slice(0, 900), /setT\(\(cur\) => \(cur \? \{ \.\.\.cur, \.\.\.optimistic \} : cur\)\)/,
+    "the line must change on the click, before the server answers");
+  assert.match(patchFn.slice(0, 900), /if \(seq !== writeSeq\.current\) return true/,
+    "a superseded write's reply must not overwrite a later pick");
+  assert.match(patchFn.slice(0, 1200), /setT\(before\)/, "and a refusal must put back what was there");
+
+  // Nothing in the modal may block on the list behind it.
+  assert.doesNotMatch(m, /await onChanged\(\)/,
+    "the list's counts and rows are two more round trips; nothing the CA does next waits on them");
+});
