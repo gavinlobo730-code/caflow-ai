@@ -209,3 +209,23 @@ test("settle runs on open, not on every filter/search/page change", () => {
     "settle is wired straight to its own identity again — that re-runs the whole " +
     "propose-and-pass sweep on every filter change, not just a refetch");
 });
+
+test("the detail modal renders the row it was given; the fetch only enriches it", () => {
+  // The modal used to render the single word "Loading…" until GET
+  // /entries/{id} came back, with no error path and no retry — so a slow or
+  // failed response left the CA staring at an empty box while the line's own
+  // answer sat in the list behind it. The list already holds the whole row.
+  const m = modal();
+  assert.match(m, /initial\?: Entry \| null/, "the modal must accept the row the list already holds");
+  assert.match(m, /useState<EntryDetail \| null>\(\(\) => \(initial \? fromRow\(initial\) : null\)\)/,
+    "it must open FROM that row, not from null");
+  assert.match(m, /enrich === "failed"/,
+    "a failed enrichment must be a visible state, not silence");
+  assert.match(m, /onClick=\{load\}/, "and it must offer a way to try again");
+  assert.match(m, /enrich === "loading" && t\.suggestions\.length === 0/,
+    "while the candidates are still coming, an empty list must not read as 'none found'");
+
+  const tab = fs.readFileSync(TAB, "utf8");
+  assert.match(tab, /initial=\{rows\.find\(\(r\) => r\.id === detailId\)\}/,
+    "the list must hand the modal the row it already has");
+});

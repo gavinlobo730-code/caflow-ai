@@ -735,6 +735,10 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
         <EntryDetailModal
           clientId={clientId}
           txnId={detailId}
+          // The row this page already holds. The modal renders from it at once
+          // and treats GET /entries/{id} as an enrichment, so a slow or failed
+          // detail fetch can never leave the CA looking at an empty box.
+          initial={rows.find((r) => r.id === detailId)}
           accounts={orderedAccounts}
           onClose={() => setDetailId(null)}
           onChanged={reload}

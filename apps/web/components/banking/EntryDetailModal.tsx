@@ -12,8 +12,22 @@
  * second way to do anything. The live candidates, history and transfer
  * counterpart come from GET /entries/{id} — fetched for the ONE line that is
  * open, not for every row on the page.
+ *
+ * THAT FETCH IS AN ENRICHMENT, NEVER A GATE. The list already holds the whole
+ * row, and it is passed in as `initial`: what the line IS, what it will become,
+ * the ledger picker, the GST control, Split, Set aside, Undo and Pass all read
+ * fields the row carries, so they render the instant the modal opens. Only
+ * four things need the server — ranked document candidates, the payee's
+ * history, a suggested payee, and a transfer counterpart — and each says for
+ * itself whether it is still coming.
+ *
+ * This modal used to render nothing but the word "Loading…" until that one
+ * request came back, and offered no retry and no error when it did not: a slow
+ * or failed response left the CA looking at an empty box with the line's own
+ * answer sitting unused in the list behind it. An enrichment must never be
+ * able to hide the thing it enriches.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Search, Split, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
@@ -55,13 +69,25 @@ function asQueueTxn(t: EntryDetail): QueueTxn {
   } as unknown as QueueTxn;
 }
 
-export function EntryDetailModal({ clientId, txnId, accounts, onClose, onChanged }: {
-  clientId: string; txnId: string; accounts: Account[];
+/** The row the list already holds, as a detail with the four server-only
+ *  parts left empty. They are absent, not "none found" — see `enrich`. */
+function fromRow(row: Entry): EntryDetail {
+  return { ...row, suggestions: [], history: null, suggested_payee: null, transfer_candidate: null };
+}
+
+export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, onChanged }: {
+  clientId: string; txnId: string; initial?: Entry | null; accounts: Account[];
   onClose: () => void; onChanged: () => Promise<void> | void;
 }) {
   const { toast } = useToast();
-  const [t, setT] = useState<EntryDetail | null>(null);
+  const [t, setT] = useState<EntryDetail | null>(() => (initial ? fromRow(initial) : null));
   const [error, setError] = useState<string | null>(null);
+  /** Where the server-only parts are up to. `initial` is read ONCE, at mount,
+   *  through a ref: the list re-renders on every reload and a prop in the
+   *  dependency list would restart the fetch each time. */
+  const [enrich, setEnrich] = useState<"loading" | "ready" | "failed">("loading");
+  const [enrichError, setEnrichError] = useState<string | null>(null);
+  const openedWithRow = useRef(!!initial);
   const [busy, setBusy] = useState(false);
   const [gstRate, setGstRate] = useState<string>("");
   const [interstate, setInterstate] = useState(false);
@@ -76,15 +102,24 @@ export function EntryDetailModal({ clientId, txnId, accounts, onClose, onChanged
   };
 
   const load = useCallback(async () => {
+    setEnrich("loading");
+    setEnrichError(null);
     try {
       const res = (await api.banking.entries.get(txnId)) as { success: boolean; data: EntryDetail };
-      if (!res.success) throw new Error("Couldn't load this entry.");
+      if (!res.success || !res.data) throw new Error("Couldn't load this entry.");
       setT(res.data);
       setError(null);
       setGstRate(res.data.draft_gst_rate_bps != null ? String(res.data.draft_gst_rate_bps) : "");
       setInterstate(!!res.data.draft_is_interstate);
+      setEnrich("ready");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load this entry.");
+      const message = e instanceof Error ? e.message : "Couldn't load this entry.";
+      setEnrichError(message);
+      setEnrich("failed");
+      // Only a modal with NOTHING to show becomes an error page. Opened from
+      // the list, the row is already on screen and every control that does not
+      // need the server still works — so the failure is a banner, not a wall.
+      if (!openedWithRow.current) setError(message);
     }
   }, [txnId]);
 
@@ -115,6 +150,7 @@ export function EntryDetailModal({ clientId, txnId, accounts, onClose, onChanged
     );
   }
   if (!t) {
+    // Reached only when the modal was opened without the row (no `initial`).
     return <Shell onClose={onClose} title="Entry"><p className="text-xs text-[#94A3B8]">Loading…</p></Shell>;
   }
 
@@ -196,6 +232,22 @@ export function EntryDetailModal({ clientId, txnId, accounts, onClose, onChanged
         </>
       }>
 
+      {/* The four server-only parts could not be fetched. Everything the row
+          carries is still here and still works, so this is a banner with a way
+          to try again — never the whole body replaced by an error. */}
+      {enrich === "failed" && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-start gap-2">
+          <p className="text-[11px] text-amber-800 flex-1 min-w-0">
+            Couldn&apos;t load this line&apos;s suggested documents, payee and history
+            {enrichError ? `: ${enrichError}` : "."} Everything else on this line is
+            here — the ledger, GST, split and Pass all work.
+          </p>
+          <button onClick={load} className="text-[11px] px-2.5 py-1 border border-amber-300 bg-white text-amber-900 rounded-lg hover:bg-amber-100 shrink-0">
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* ── what it becomes ── */}
       <section className={`rounded-lg px-3 py-2.5 border ${t.draft_error ? "border-red-200 bg-red-50/50" : coded ? "border-emerald-200 bg-emerald-50/50" : t.draft_source ? "border-[#E2E8F0] bg-[#F8FAFC]" : "border-amber-200 bg-amber-50/50"}`}>
         <p className="text-[10px] uppercase tracking-wide text-[#94A3B8] mb-0.5">
@@ -254,6 +306,9 @@ export function EntryDetailModal({ clientId, txnId, accounts, onClose, onChanged
             </div>
           ) : (
             <>
+              {enrich === "loading" && t.suggestions.length === 0 && (
+                <p className="text-[11px] text-[#94A3B8]">Looking for {t.credit_paise > 0 ? "invoices" : "bills"} that match this amount…</p>
+              )}
               {t.suggestions.length > 0 && (
                 <ul className="divide-y divide-[#F1F5F9] border border-[#E2E8F0] rounded-lg overflow-hidden">
                   {t.suggestions.slice(0, 5).map((sg) => (
