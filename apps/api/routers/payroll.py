@@ -287,6 +287,33 @@ def _compute_pt(gross_paise: int, state: Optional[str] = None,
     return _slab_lookup(_PT_SLABS_BY_STATE.get(code, ()), gross_paise)
 
 
+def _attendance_gap(emp: dict, attendance_entered: bool) -> list[str]:
+    """The gap when NOBODY entered attendance for this employee this month.
+
+    _compute_slip defaults working_days and days_present to 26 and lop_days to
+    0, and public.attendance's own columns default the same way (migration
+    027). So a client who has sent nothing produces a run that pays every
+    employee a full month — and the slip, and the payslip PDF that prints
+    "Working Days 26 / Days Present 26", assert as fact something nobody
+    established.
+
+    The same shape as _statutory_gaps and for the same reason: a zero LOP
+    because a human confirmed full attendance and a zero LOP because nobody
+    said anything are the same number meaning opposite things.
+
+    WARNS RATHER THAN BLOCKS, matching statutory_gaps exactly. A run is a DRAFT
+    — nothing is posted, nothing is paid, no journal exists until Finalize —
+    so refusing to compute it would stop a CA seeing the very figures that tell
+    them what is missing. Inventing a second convention for a second kind of
+    gap is how a screen ends up with two ideas of what "incomplete" means.
+    """
+    if attendance_entered:
+        return []
+    who = emp.get("name") or emp.get("id") or "employee"
+    return [f"{who}: no attendance entered for this month — paid a full month "
+            f"on the 26-day default. Enter it, or confirm the default is right."]
+
+
 def _statutory_gaps(emp: dict) -> list[str]:
     """Statutory deductions this employee's state levies that we did not compute.
 
@@ -1262,10 +1289,28 @@ def create_run(
     # for Delhi and a zero PT for Gujarat are the same number meaning opposite
     # things, and only one of them is a liability nobody has settled.
     statutory_gaps: list[str] = []
+    # Employees for whom NOBODY entered attendance this month. Reported with
+    # the run, never silently defaulted — see _attendance_gap.
+    attendance_gaps: list[str] = []
+
+    # ONE query for the whole roster, not one per employee. This read used to
+    # sit inside the loop, so a 200-employee run made 200 sequential round
+    # trips to Mumbai for rows totalling a few kilobytes. Chunked because
+    # PostgREST puts the id list in the URL.
+    attendance_by_emp: dict[str, dict] = {}
+    _emp_ids = [e["id"] for e in emps]
+    for _i in range(0, len(_emp_ids), 200):
+        _chunk = _emp_ids[_i:_i + 200]
+        _rows = (db.table("attendance").select("*")
+                 .in_("employee_id", _chunk).eq("month", m).eq("year", y)
+                 .execute().data) or []
+        for _r in _rows:
+            attendance_by_emp[str(_r.get("employee_id"))] = _r
 
     for emp in emps:
-        att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
-        attendance = (att_res.data or [None])[0]
+        # None means NOT ENTERED, and that is now recorded on the slip rather
+        # than being indistinguishable from a confirmed full month.
+        attendance = attendance_by_emp.get(str(emp["id"]))
 
         # A revision in force REPLACES the master's components for this month.
         # Merged over the employee row rather than substituted for it, so
@@ -1288,8 +1333,10 @@ def create_run(
                                  emp.get("joining_date"), fy),
                              loan_instalment_paise=loan_due.get(emp["id"], 0))
         statutory_gaps.extend(_statutory_gaps(emp))
+        attendance_gaps.extend(_attendance_gap(emp, attendance is not None))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
+        slip["attendance_entered"] = attendance is not None
 
         slips.append(slip)
         totals["gross"] += slip["gross_paise"]
@@ -1335,7 +1382,8 @@ def create_run(
     )
     # Returned WITH the run rather than logged: an omitted statutory deduction
     # that only appears in a log is an omitted statutory deduction.
-    return api_response(True, {**run, "statutory_gaps": statutory_gaps})
+    return api_response(True, {**run, "statutory_gaps": statutory_gaps,
+                               "attendance_gaps": attendance_gaps})
 
 
 @router.get("/runs/{run_id}/slips")
