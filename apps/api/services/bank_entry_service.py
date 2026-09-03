@@ -513,6 +513,25 @@ class BankEntryService:
             (db.table("bank_transactions").update({"draft_error": detail, "updated_at": _now()})
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
             return _outcome(txn_id, "failed", detail)
+        except Exception as e:
+            # Anything the posting path did NOT state as a refusal. This used to
+            # escape, and pass_ready's promise — "forty-nine good lines must not
+            # roll back for the fiftieth" — went with it: the loop died mid-chunk,
+            # the lines already posted stayed posted, and the CA got a bare 500
+            # naming no line. A line that cannot be passed is a FAILED line, which
+            # is a state this already has.
+            #
+            # It is not swallowed. The real error is reported, and the row keeps
+            # the failure so the next chunk skips it instead of dying again.
+            from core.observability import capture_soft_failure
+            capture_soft_failure(e, operation="bank_entries.pass_entry",
+                                 firm_id=firm_id, transaction_id=txn_id)
+            detail = "Could not pass this line; the error has been recorded for investigation."
+            if applied:
+                self._unapply(db, firm_id, txn, before)
+            (db.table("bank_transactions").update({"draft_error": detail, "updated_at": _now()})
+             .eq("id", txn_id).eq("firm_id", firm_id).execute())
+            return _outcome(txn_id, "failed", detail)
 
         if by_rule:
             (db.table("bank_transactions")

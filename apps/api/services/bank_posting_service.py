@@ -369,7 +369,23 @@ class BankPostingService:
             if not to_bank_account_id:
                 raise HTTPException(status_code=422, detail="Transfer requires a destination bank/cash account.")
             to_id = self._validate_account(db, firm_id, to_bank_account_id)
-            lines = pmap.build_transfer_lines(amount, is_credit, bank_id, to_id)
+            if to_id == bank_id:
+                # The ledger picker offers the whole chart, including the bank
+                # ledger this very statement posts to. Picking it derives
+                # Transfer (account_category), which makes the line READY —
+                # and then build_transfer_lines refuses it, because money
+                # cannot move from an account to itself. Said here, in the
+                # branch that knows what happened, rather than left to the
+                # builder's terse rule.
+                raise HTTPException(
+                    status_code=422,
+                    detail=("A contra moves money between two of the client's own accounts, "
+                            "and this ledger is the account the statement itself belongs to. "
+                            "Pick the OTHER bank or cash ledger the money went to."))
+            try:
+                lines = pmap.build_transfer_lines(amount, is_credit, bank_id, to_id)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
         else:
             counter_id = self._resolve_counter(db, firm_id, txn, account_id)
             # A GST split works in BOTH directions — out is input credit, in is
@@ -397,7 +413,13 @@ class BankPostingService:
                 lines = self._charge_lines(db, firm_id, txn, amount, bank_id, counter_id,
                                            gst_rate_bps, is_interstate, is_credit=is_credit)
             else:
-                lines = pmap.build_lines(amount, is_credit, bank_id, counter_id)
+                # Same bargain as the GST builders above: the domain module
+                # states its rules as ValueError, and everything that reaches a
+                # CA has to be a refusal with a reason, never a 500.
+                try:
+                    lines = pmap.build_lines(amount, is_credit, bank_id, counter_id)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
         return pmap.entry_type_for(cat, is_credit), lines, bank_id
 
     # ── B.3 review preview (no writes) ───────────────────────────────────────
