@@ -266,7 +266,10 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       return { text: `${kind} · against ${noun}${t.matched_document_no ? ` ${t.matched_document_no}` : ""}`,
                sub: t.draft_source === "document" ? t.draft_label : null };
     }
-    if (t.account_id) return { text: `${kind} · ${accountName(t.account_id)}`, sub: t.category };
+    // "Other" is the derivation's word for "an ordinary ledger", not a fact
+    // about this line — the list suppresses it and so does this.
+    if (t.account_id) return { text: `${kind} · ${accountName(t.account_id)}`,
+                               sub: t.category && t.category !== "Other" ? t.category : null };
     if (t.category && ["Customer Payment", "Vendor Payment", "GST Payment"].includes(t.category)) return { text: `${kind} · ${t.category} (on account)`, sub: null };
     if (t.draft_source) return { text: `${kind} · ${t.draft_label ?? ""}`, sub: t.draft_reason };
     return { text: t.kind === "receipt" ? "From whom, or which ledger?" : t.kind === "payment" ? "To whom, or which ledger?" : "Which other account?", sub: null };
