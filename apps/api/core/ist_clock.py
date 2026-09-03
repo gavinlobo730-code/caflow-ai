@@ -15,6 +15,7 @@ calendar day, not the server's. Mirrors the IST-aware pattern already used
 correctly in jobs/scheduler.py (BackgroundScheduler(timezone="Asia/Kolkata"),
 _compute_next_run, _past_scheduled_hour).
 """
+import calendar
 import re
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -106,3 +107,30 @@ def ist_fy_label(d: date | None = None) -> str:
     d = d or ist_today()
     start = d.year if d.month >= 4 else d.year - 1
     return f"{start}-{str(start + 1)[2:]}"
+
+
+def month_end_date(period: str) -> str:
+    """The last calendar day of a 'YYYY-MM' period, as an ISO date string.
+
+    THE ACCOUNTING DATE OF A MONTHLY POSTING IS A PROPERTY OF THE PERIOD, NOT
+    OF THE CLOCK. A payroll accrual for August belongs in August whether it is
+    finalised on the 31st or a fortnight later, and `datetime.now(...).date()`
+    puts it wherever the button was pressed — which for a UTC server between
+    00:00 and 05:30 IST is the day before, and on 1 April is the wrong
+    FINANCIAL YEAR.
+
+    Lives here rather than in each caller because there were THREE hand-rolled
+    copies of these two lines (fixed assets' depreciation date, the same
+    service's own depreciation branch, and the 24Q's representative payment
+    date) and payroll would have been a fourth. CLAUDE.md's rule is move it,
+    do not copy it.
+
+    Raises ValueError on anything that is not YYYY-MM. A caller that cannot
+    name its period has no business choosing an accounting date for it, and
+    the alternative — falling back to today — is the bug this replaces.
+    """
+    m = re.fullmatch(r"(\d{4})-(0[1-9]|1[0-2])", (period or "").strip())
+    if not m:
+        raise ValueError(f"period must look like '2026-08', got {period!r}")
+    year, month = int(m.group(1)), int(m.group(2))
+    return f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
