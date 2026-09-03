@@ -328,10 +328,14 @@ def test_exactly_one_journal_exists_for_the_whole_transfer():
 def test_the_counterpart_is_not_offered_in_the_ready_queue():
     """Refusing at post time is the backstop. Not offering it is the fix — a
     button that always errors is a defect of its own."""
+    from domain.banking import entry as E
     db = _db()
     bank_transfer_service.pair(db, FIRM, "out", "in")
-    ids = [t["id"] for t in bank_posting_service.ready_to_post(db, FIRM, CLIENT)]
-    assert "out" in ids and "in" not in ids
+    rows = {t["id"]: t for t in db.store["bank_transactions"]}
+    # The paying side is ready; the receiving side is COVERED by it and never
+    # offered — the state the Entries screen filters on (09-bank-entries.md).
+    assert E.entry_state(rows["out"]) == E.READY
+    assert E.entry_state(rows["in"]) == E.COVERED
 
 
 def test_an_unpaired_transfer_still_needs_a_destination():

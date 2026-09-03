@@ -901,8 +901,6 @@ export const api = {
       pass: (txnId: string, data?: { gst_rate_bps?: number | null; is_interstate?: boolean }) =>
         request(`/api/banking/transactions/${txnId}/pass`, { method: "POST", body: JSON.stringify(data ?? {}) }),
     },
-    // B.2 — matching & categorization (suggestions only; no posting)
-    queue: (params?: Record<string, string>) => request(`/api/banking/queue${params ? "?" + new URLSearchParams(params) : ""}`),
     suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),
     // B.1.6 — "Find other matches". suggestions() ranks the best five WITHIN an
     // amount band; this searches everything the direction permits, so a CA who
@@ -951,22 +949,6 @@ export const api = {
       q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
       desc?: string; limit?: string; offset?: string;
     }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),
-    /** Tier 1.7 — one action over many rows. Returns an outcome for EVERY row:
-     *  rows legitimately fail (already posted, already excluded, nothing to
-     *  accept) and a partial success shown as a success hides uncoded lines. */
-    batchAccept: (transactionIds: string[]) =>
-      request("/api/banking/transactions/batch-accept", {
-        method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
-      }),
-    /** What batchAccept WOULD do, without doing it. Same server function with
-     *  preview=True — the same rules, the same payee history, the same
-     *  refusals — so the list a CA approves is produced by the code that will
-     *  act on it. Rows that would change come back as `would_apply` carrying
-     *  the account and the source; nothing is written. */
-    batchAcceptPreview: (transactionIds: string[]) =>
-      request("/api/banking/transactions/batch-accept/preview", {
-        method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
-      }),
     batchExclude: (transactionIds: string[]) =>
       request("/api/banking/transactions/batch-exclude", {
         method: "POST", body: JSON.stringify({ transaction_ids: transactionIds }),
@@ -988,10 +970,6 @@ export const api = {
           method: "POST", body: JSON.stringify({ url }),
         }),
     },
-    /** Tier 1.5 — bank lines that look like the two halves of ONE movement
-     *  between the client's own accounts. Read-only; pairing needs a click. */
-    transferSuggestions: (params: { client_id: string; window_days?: string }) =>
-      request(`/api/banking/transfer-suggestions?${new URLSearchParams(params as Record<string, string>)}`),
     /** Confirm a transfer. `txnId` is the PRIMARY (outflow) side — the one that
      *  will carry the journal. The counterpart never posts one of its own. */
     pairTransfer: (txnId: string, counterpartId: string) =>
@@ -1014,10 +992,6 @@ export const api = {
           method: "PUT", body: JSON.stringify({ splits }),
         }),
     },
-    // B.3 — posting engine (explicit, human-initiated; never auto-posts)
-    readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
-    pending: (params?: Record<string, string>) => request(`/api/banking/pending${params ? "?" + new URLSearchParams(params) : ""}`),
-    posted: (params?: Record<string, string>) => request(`/api/banking/posted${params ? "?" + new URLSearchParams(params) : ""}`),
     postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string; gst_rate_bps?: number; is_interstate?: boolean }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
     // B.4 — reconciliation engine (sessions, manual reconcile, tie-out, report)
     reconciliations: {

@@ -962,54 +962,6 @@ def bank_register(
 
 
 # ─── Matching & Categorization (B.2) ──────────────────────────────────────────
-
-@router.get("/queue")
-def matching_queue(
-    client_id: Optional[str] = Query(None),
-    status: str = Query("for_review",
-                        pattern="^(for_review|done|unmatched|categorized|matched|needs_review|ignored|all)$"),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    q: Optional[str] = Query(None, max_length=200),
-    current_user: dict = Depends(rbac("banking", "read")),
-):
-    """One page of the work queue (B.2.4), with rule-based suggested categories
-    inline.
-
-    The screen uses three views: for_review (still to do), done (posted),
-    ignored (set aside). The finer-grained unmatched/categorized/matched/
-    needs_review views remain for callers that ask for them.
-
-    PAGED, and it returns `total` alongside the page. A queue that renders
-    every line of every statement is a read proportional to transaction
-    volume — the shape CLAUDE.md rules out — and it also gave the CA an
-    endless scroll with no sense of how much work was left. The total is the
-    half that keeps paging honest: nothing is hidden if the screen can say
-    how many there are."""
-    db = _db()
-    if not db:
-        return api_response(True, {"rows": [], "total": 0, "limit": limit, "offset": offset})
-    # with_suggestions: the page's match candidates come back WITH the rows.
-    # The screen used to fetch them one request per row afterwards, which is
-    # why the matched rows lit up a few at a time over several seconds.
-    # `q` is applied in SQL, so it searches the whole view rather than the page
-    # on screen — see _search_filter. total counts the SAME filtered view, or
-    # the pager would offer pages the search has emptied.
-    rows = bank_matching_service.queue(db, current_user["firm_id"], client_id, status,
-                                       limit=limit, offset=offset, with_suggestions=True,
-                                       q_text=q)
-    total = bank_matching_service.queue_total(db, current_user["firm_id"], client_id,
-                                              status, q_text=q)
-    return api_response(True, {
-        "rows": _scope_rows(current_user, client_id, rows),
-        "total": total, "limit": limit, "offset": offset,
-        # Orders the screen's ledger picker. Describes the client, so it belongs
-        # in the envelope rather than on every row.
-        "ledger_order": bank_matching_service.ledger_order(
-            db, current_user["firm_id"], client_id),
-    })
-
-
 @router.get("/transactions/{txn_id}/suggestions")
 def transaction_suggestions(
     txn_id: str,
@@ -1212,96 +1164,6 @@ def unignore_transaction(
 
 
 # ─── Posting Engine (B.3) ─────────────────────────────────────────────────────
-
-@router.get("/ready-to-post")
-def ready_to_post_queue(
-    client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("banking", "read")),
-):
-    """Categorized/matched transactions awaiting an explicit post (B.3.1)."""
-    db = _db()
-    if not db:
-        return api_response(True, [])
-    rows = bank_posting_service.ready_to_post(db, current_user["firm_id"], client_id)
-    return api_response(True, _scope_rows(current_user, client_id, rows))
-
-
-@router.get("/pending")
-def pending_queue(
-    client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("banking", "read")),
-):
-    """Phase 3.5: draft journal created from the transaction, awaiting approval in
-    the journal review queue (not yet posted / settled / reconciled)."""
-    db = _db()
-    if not db:
-        return api_response(True, [])
-    rows = bank_posting_service.pending(db, current_user["firm_id"], client_id)
-    return api_response(True, _scope_rows(current_user, client_id, rows))
-
-
-@router.get("/posted")
-def posted_queue(
-    client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("banking", "read")),
-):
-    """Transactions already posted to the ledger (draft approved; journal id + who/when)."""
-    db = _db()
-    if not db:
-        return api_response(True, [])
-    rows = bank_posting_service.posted(db, current_user["firm_id"], client_id)
-    return api_response(True, _scope_rows(current_user, client_id, rows))
-
-
-@router.post("/transactions/batch-accept")
-def batch_accept(
-    data: BankBatchIn,
-    preview: bool = False,
-    current_user: dict = Depends(rbac("banking", "write")),
-):
-    """Apply each selected row's own strongest suggestion — a matching rule
-    first, then how the payee was coded before (Tier 1.7).
-
-    Returns an outcome for EVERY row. Rows legitimately fail (already posted,
-    already excluded, nothing to accept) and a partial success reported as a
-    success is how a transaction quietly stays uncoded until year end. Nothing
-    is invented: a row with no rule and no history is skipped, not guessed at.
-    """
-    db = _db()
-    if not db:
-        return api_response(True, {"results": [], "applied": 0, "skipped": 0,
-                                   "failed": 0, "would_apply": 0, "total": 0})
-    _assert_txn_batch_scope(db, current_user, data.transaction_ids)
-    return api_response(True, bank_batch_service.accept(
-        db, current_user["firm_id"], data.transaction_ids,
-        actor_id=current_user.get("auth_user_id"), preview=bool(preview)))
-
-
-@router.post("/transactions/batch-accept/preview")
-def batch_accept_preview(
-    data: BankBatchIn,
-    current_user: dict = Depends(rbac("banking", "write")),
-):
-    """What batch-accept WOULD do, without doing it.
-
-    Runs the same function with preview=True, so the list the CA approves is
-    produced by the code that will act on it. Rows that would change come back
-    as "would_apply" with the account and the source; nothing is written.
-
-    Behind the same rbac("banking", "write") as the action itself. It reads a
-    proposal about writes, and anyone who may not make the writes has no
-    business being shown the plan for them either.
-    """
-    db = _db()
-    if not db:
-        return api_response(True, {"results": [], "applied": 0, "skipped": 0,
-                                   "failed": 0, "would_apply": 0, "total": 0})
-    _assert_txn_batch_scope(db, current_user, data.transaction_ids)
-    return api_response(True, bank_batch_service.accept(
-        db, current_user["firm_id"], data.transaction_ids,
-        actor_id=current_user.get("auth_user_id"), preview=True))
-
-
 @router.post("/transactions/batch-exclude")
 def batch_exclude(
     data: BankBatchIn,
@@ -1389,30 +1251,6 @@ def remove_transaction_attachment(
     return api_response(True, bank_batch_service.remove_attachment(
         db, current_user["firm_id"], txn_id, data.url,
         actor_id=current_user.get("auth_user_id")))
-
-
-@router.get("/transfer-suggestions")
-def transfer_suggestions(
-    client_id: str = Query(...),
-    window_days: int = Query(4, ge=0, le=30),
-    current_user: dict = Depends(rbac("banking", "read")),
-):
-    """Bank lines that look like the two halves of ONE movement between the
-    client's own accounts (Tier 1.5).
-
-    Read-only. Pairing happens only when a human confirms — and once paired,
-    exactly one side produces a journal, because build_transfer_lines already
-    writes both legs and posting both sides would count the same cash twice.
-    """
-    assert_client_access(current_user, client_id)
-    db = _db()
-    if not db:
-        return api_response(True, [])
-    pairs = bank_transfer_service.detect_pairs(
-        db, current_user["firm_id"], client_id, window_days=window_days)
-    return api_response(True, [bank_transfer_service.as_dict(p) for p in pairs])
-
-
 @router.post("/transactions/{txn_id}/transfer-pair")
 def pair_transfer(
     txn_id: str,
