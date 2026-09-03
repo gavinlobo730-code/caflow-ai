@@ -175,7 +175,14 @@ class MemoryRepository(BaseRepository):
                     "computed_at": now,
                 }).execute()
 
-        record = {
+        # Written inline rather than as `.insert(record)`. Every one of these
+        # names is a column, and tests/test_backend_columns_exist_pg.py reads
+        # them as TEXT out of the call — a payload built in a variable hides all
+        # eighteen from it. That blind spot is why nobody noticed that the
+        # migrations' client_profiles had NINE columns while production had
+        # twenty-nine, so this table's writes could not have run on any
+        # database built from the repository (migration 320).
+        result = db.table("client_profiles").insert({
             "id": _uid(),
             "firm_id": firm_id,
             "client_id": client_id,
@@ -194,8 +201,7 @@ class MemoryRepository(BaseRepository):
             "created_at": now,
             "updated_at": now,
             **profile_data,
-        }
-        result = db.table("client_profiles").insert(record).execute()
+        }).execute()
         return result.data[0]
 
     def list_profiles(self, firm_id: str, limit: int = 50) -> list[dict]:
