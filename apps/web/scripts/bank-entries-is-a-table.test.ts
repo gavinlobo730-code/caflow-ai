@@ -229,3 +229,18 @@ test("the detail modal renders the row it was given; the fetch only enriches it"
   assert.match(tab, /initial=\{rows\.find\(\(r\) => r\.id === detailId\)\}/,
     "the list must hand the modal the row it already has");
 });
+
+test("a matched line names the document it settles, not just 'an invoice'", () => {
+  // Every matched line on the page used to read "Receipt · against an
+  // invoice" — one sentence for thirteen different documents, so nothing on
+  // the row let a CA tell them apart or check a match without opening it.
+  // The number is resolved server-side (one query per document type) and the
+  // row prints it.
+  const s = tab();
+  assert.match(s, /matched_document_no: string \| null/,
+    "the row type must carry the matched document's number");
+  assert.match(s, /against \$\{noun\} \$\{t\.matched_document_no\}/,
+    "and the Entry column must print it when it is there");
+  assert.match(modal(), /t\.matched_document_no/,
+    "the modal must name it too — it is the same question asked at the line");
+});

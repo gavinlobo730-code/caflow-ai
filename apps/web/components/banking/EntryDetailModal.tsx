@@ -169,7 +169,11 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
     if (isSplit) return { text: `${kind} · split across ${t.split_count ?? t.splits?.length ?? "several"} ledgers`,
                           sub: (t.splits ?? []).map((s) => `${accountName(s.account_id)} ${fmt(s.amount_paise)}`).join(" · ") };
     if (t.transfer_pair_id) return { text: `Contra · ${t.transfer_is_primary ? "paying side — this one carries the journal" : "receiving side — passes with the paying side"}`, sub: null };
-    if (t.matched_entity_id) return { text: `${kind} · against ${t.matched_entity_type?.replace("_", " ") ?? "a document"}`, sub: t.draft_source === "document" ? t.draft_label : null };
+    if (t.matched_entity_id) {
+      const noun = t.matched_entity_type?.replace("_", " ") ?? "a document";
+      return { text: `${kind} · against ${noun}${t.matched_document_no ? ` ${t.matched_document_no}` : ""}`,
+               sub: t.draft_source === "document" ? t.draft_label : null };
+    }
     if (t.account_id) return { text: `${kind} · ${accountName(t.account_id)}`, sub: t.category };
     if (t.category && ["Customer Payment", "Vendor Payment", "GST Payment"].includes(t.category)) return { text: `${kind} · ${t.category} (on account)`, sub: null };
     if (t.draft_source) return { text: `${kind} · ${t.draft_label ?? ""}`, sub: t.draft_reason };
@@ -300,7 +304,10 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           <p className="text-[11px] font-medium text-[#475569]">{t.credit_paise > 0 ? "Invoice" : "Bill"} this settles</p>
           {t.matched_entity_id ? (
             <div className="flex items-center gap-2">
-              <p className="text-xs text-[#334155]">Linked to {t.matched_entity_type?.replace("_", " ")}.</p>
+              <p className="text-xs text-[#334155]">
+                Linked to {t.matched_entity_type?.replace("_", " ")}
+                {t.matched_document_no ? <span className="font-medium"> {t.matched_document_no}</span> : null}.
+              </p>
               <button onClick={() => act("Couldn't unlink", () => api.banking.unmatch(t.id))} disabled={busy}
                 className="text-[11px] px-2.5 py-1 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Unlink</button>
             </div>
