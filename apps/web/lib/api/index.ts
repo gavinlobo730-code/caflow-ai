@@ -1157,6 +1157,23 @@ export const api = {
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
 
+    /** The EPFO ECR and the ESIC return, BUILT BY THE SERVER.
+     *
+     *  Both used to be generated in the browser, and the browser's rules were
+     *  the ones the backend had already fixed: NCP_DAYS hardcoded to 0, PAN in
+     *  the MEMBER_ID field that wants a UAN, EPF wages on basic alone rather
+     *  than basic + DA (EPF Act s.6), and ESI eligibility from the current
+     *  month's gross instead of the Rule 50 contribution period. A statutory
+     *  remittance file is the last place a second implementation belongs.
+     *
+     *  Neither returns a file. Both return the text WITH `problems` and
+     *  `filable`, because a CA needs to see which members the file cannot
+     *  carry BEFORE the portal rejects the batch — and a run that is not
+     *  finalised is refused outright (409), since the ECR reports
+     *  contributions actually made. */
+    runEcr: (runId: string) => request(`/api/payroll/runs/${runId}/ecr`),
+    runEsic: (runId: string) => request(`/api/payroll/runs/${runId}/esic`),
+
     // ── Employee portal provisioning ──────────────────────────────────────
     // The activation link is returned ONCE, here. Only its sha256 is stored,
     // so it cannot be fetched again — a caller that needs to re-send must
