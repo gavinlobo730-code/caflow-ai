@@ -51,6 +51,10 @@ pytestmark = pytest.mark.skipif(
 
 FIRM = str(uuid.uuid4())
 CLIENT = str(uuid.uuid4())
+# form_26as_uploads.uploaded_by foreign-keys public.users(id) in production, and
+# migration 319 declares it. The inserts below used the FIRM uuid, which is not
+# a user and never was — it passed only while the constraint was undeclared.
+UPLOADER = str(uuid.uuid4())
 
 
 def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProcess:
@@ -89,6 +93,13 @@ def migrated_db(pg_template):
             f"VALUES ('{CLIENT}', '{FIRM}', 'Test Client', 'Private Limited', 'AAAAA9999A');",
         )
         assert client_ins.returncode == 0, client_ins.stderr
+        user_ins = _psql(
+            dsn,
+            f"INSERT INTO public.users (id, firm_id, full_name, email, role) "
+            f"VALUES ('{UPLOADER}', '{FIRM}', 'Test Uploader', "
+            f"'uploader@test.com', 'Manager');",
+        )
+        assert user_ins.returncode == 0, user_ins.stderr
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')
@@ -225,7 +236,7 @@ def test_form26as_create_upload_insert_succeeds(migrated_db):
          created_by, uploaded_by)
     VALUES
         ('{upload_id}', '{FIRM}', '{CLIENT}', '2025-26', NULL,
-         '{FIRM}', '{FIRM}');
+         '{FIRM}', '{UPLOADER}');
     """
     r = _psql(migrated_db, insert_sql)
     assert r.returncode == 0, r.stderr
@@ -262,7 +273,7 @@ def test_tds_workspace_upload_form26as_insert_succeeds(migrated_db):
          reconciliation_result, status, created_by, uploaded_by, uploaded_at)
     VALUES
         ('{upload_id}', '{FIRM}', '{CLIENT}', '2025-26', NULL, '{{}}'::jsonb,
-         '{{}}'::jsonb, 'reconciled', '{FIRM}', '{FIRM}', NOW());
+         '{{}}'::jsonb, 'reconciled', '{FIRM}', '{UPLOADER}', NOW());
     """
     r = _psql(migrated_db, insert_sql)
     assert r.returncode == 0, r.stderr

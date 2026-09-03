@@ -98,7 +98,14 @@ means. That is a design decision for whoever owns the memory pipeline, and it
 should also ask whether a profile that is recomputed every day by the sweep
 ought to keep every daily version forever.
 
-### 62 constraints production has and no migration declares
+### 62 constraints production has and no migration declares — CLOSED by 319
+
+*Migration 319 declares 59 of them, and the other three were taken by 318
+(the two Tally vocabularies and the widened `gst_sync_jobs` one). Every
+declared object was verified to hash IDENTICALLY to production's — the
+constraint set is now at zero. The paragraph below is the original finding.*
+
+### The original finding
 
 Mostly on the tables the intelligence and tax layers got from a Studio
 migration the repository never had (the same story migration 252 tells):
