@@ -45,6 +45,7 @@ KNOWN_JOBS = [
     "compliance_escalations",
     "balance_cache_audit",
     "reconciliation_audit",
+    "bank_trusted_rules",
     "memory_pipeline",
 ]
 
@@ -333,6 +334,29 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 _log_run("reconciliation_audit", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
+
+        # 10b. Bank trusted-rule sweep (migration 322, 09-bank-entries.md) —
+        #     pass every ready draft a TRUSTED rule wrote and nobody clicked
+        #     for: a statement uploaded and the tab closed, a rule promoted
+        #     after the import. Each line posts as the person who trusted the
+        #     rule. Before the memory pipeline, so the profile sees the books
+        #     as the rules have left them. Bounded per client; the run log
+        #     records what was carried over.
+        if force or not _already_ran_today("bank_trusted_rules", fid):
+            t0 = _now_iso()
+            try:
+                from jobs.bank_trusted_rules_job import run_trusted_rules_for_firm
+                outcome = run_trusted_rules_for_firm(fid)
+                firm_result["bank_trusted_rules"] = outcome
+                _log_run("bank_trusted_rules", fid,
+                         "success",
+                         outcome, started_at=t0)
+            except Exception as e:
+                logger.error(f"Bank trusted-rule sweep failed for firm {fid}: {e}", exc_info=True)
+                firm_result["bank_trusted_rules"] = {"error": str(e)}
+                _log_run("bank_trusted_rules", fid, "failed", {"error": str(e)}, started_at=t0)
+        else:
+            firm_result["bank_trusted_rules"] = {"skipped": "already ran today"}
 
         # 10. Memory pipeline (Phase 13, task #158) — refresh every client's
         #     profile, detect pattern anomalies, raise memory triggers. This used
