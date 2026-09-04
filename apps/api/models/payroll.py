@@ -549,3 +549,16 @@ class PTSlabSetIn(BaseModel):
         except ValueError:
             raise ValueError(f"{s!r} is not a real date.")
         return s
+
+
+class ReleaseIn(BaseModel):
+    """A Partner's reason for releasing a run with gaps outstanding (migration 328).
+
+    Optional, because a clean release needs no reason and demanding one would
+    teach people to type "ok". Required by the endpoint, and by a CHECK on
+    payroll_run_transitions, the moment anything is outstanding — with a
+    twenty-character floor that is not a quality bar but a floor under ".",
+    which is what a required free-text field collects when nothing asks for
+    more.
+    """
+    override_reason: Optional[str] = None

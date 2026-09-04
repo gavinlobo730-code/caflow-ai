@@ -21,7 +21,8 @@ from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
-                           AttendanceIn, PayrollSettingsIn, PTSlabSetIn)
+                           AttendanceIn, PayrollSettingsIn, PTSlabSetIn,
+                           ReleaseIn)
 from core.authz import assert_client_access, filter_by_client
 from core.ist_clock import ist_today, month_end_date
 from core.permissions import rbac
@@ -1515,6 +1516,134 @@ def download_salary_slip_pdf(
     )
 
 
+# ── The defensible release ───────────────────────────────────────────────────
+# Migration 328. create_run returns two lists of things it could not establish —
+# statutory_gaps and attendance_gaps — and both were advice. Nothing stopped a
+# run being FINALISED with them outstanding, and finalising posts a real,
+# immutable general-ledger journal: the warnings stopped being advice at exactly
+# the moment nothing was enforcing them.
+
+#: Matches the CHECK in migration 328. A floor under "ok", "-" and ".", which is
+#: what a required free-text field collects when nothing asks for more.
+_OVERRIDE_REASON_MIN = 20
+
+
+def _release_gaps(db, firm_id: str, run: dict) -> list[str]:
+    """What this run still cannot establish, RECOMPUTED now.
+
+    Not read from the draft. A CA who records the missing state slabs
+    (migration 327) or enters the missing attendance (326) between drafting and
+    finalising has genuinely closed the gap, and a stored list would still be
+    refusing — which teaches people that the block is noise.
+
+    Reads the same things create_run does, once each for the whole run: the
+    roster, the firm's PT slabs, the client's PT registrations and the slips.
+    """
+    if not db:
+        return []
+    client_id = run.get("client_id")
+    month = str(run.get("month") or "")
+
+    emps = (db.table("payroll_employees")
+            .select("id, name, pt_applicable, pt_state")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "active").execute().data) or []
+
+    firm_pt_slabs = _read_firm_pt_slabs(db, firm_id)
+    try:
+        on = date.fromisoformat(month_end_date(month))
+    except (ValueError, AttributeError):
+        # An unparseable month cannot be dated, so no firm slab can be judged in
+        # force. Falling back to today reports MORE gaps, not fewer, which is
+        # the safe direction: the other one releases silently.
+        on = ist_today()
+    covered = _states_the_firm_covers(firm_pt_slabs, on)
+
+    gaps: list[str] = []
+    gaps.extend(firm_rates.slabs_recorded_against_a_modelled_state(
+        firm_pt_slabs, _PT_MODELLED_STATES))
+    gaps.extend(identity_domain.pt_registration_gaps(
+        {(e.get("pt_state") or "").strip().upper() for e in emps
+         if e.get("pt_applicable") and (e.get("pt_state") or "").strip()},
+        _read_statutory_identity(db, firm_id, client_id)[1]))
+    for emp in emps:
+        gaps.extend(_statutory_gaps(emp, covered))
+
+    # Attendance is read off the SLIPS, not off public.attendance: the slip
+    # records what was true when it was computed (migration 324), and an
+    # attendance row added afterwards did not go into the figures being
+    # released. NULL predates migration 324 and is genuinely unknown, so it is
+    # reported rather than assumed in either direction.
+    slips = (db.table("payroll_slips").select("employee_id, attendance_entered")
+             .eq("run_id", run.get("id")).execute().data) or []
+    by_id = {str(e["id"]): e for e in emps}
+    for slip in slips:
+        entered = slip.get("attendance_entered")
+        emp = by_id.get(str(slip.get("employee_id")))
+        who = (emp or {}).get("name") or slip.get("employee_id") or "employee"
+        if entered is False:
+            gaps.extend(_attendance_gap(emp or {"name": who}, False))
+        elif entered is None:
+            gaps.append(
+                f"{who}: this slip predates the attendance record-keeping, so "
+                f"whether anybody entered attendance for it cannot be "
+                f"established. Regenerate the run to find out.")
+    return gaps
+
+
+def _log_transition(db, firm_id: str, run: dict, to_status: str,
+                    actor_id: Optional[str], gaps: Optional[list] = None,
+                    override_reason: Optional[str] = None) -> None:
+    """Append one row to the transition log, and never let that break the move.
+
+    Written AFTER the transition it records, and swallowed rather than raised:
+    a run that finalised and posted its journal HAS finalised, and reporting a
+    500 at that point would invite a re-finalisation — the one thing the
+    immutability guards exist to prevent.
+    """
+    if not db:
+        return
+    try:
+        db.table("payroll_run_transitions").insert({
+            "firm_id": firm_id,
+            "run_id": run.get("id"),
+            "from_status": run.get("status"),
+            "to_status": to_status,
+            "gaps": gaps or [],
+            "override_reason": (override_reason or "").strip() or None,
+            "actor_id": actor_id,
+        }).execute()
+    except Exception:
+        _logger.exception("payroll transition log failed for run=%s -> %s",
+                          run.get("id"), to_status)
+
+
+def _reason_for_releasing_with(gaps: list, override_reason: Optional[str]) -> str:
+    """Return the reason to record, or raise the refusal that blocks the release.
+
+    The gaps are NAMED in the refusal. A count would send the CA back to the
+    draft screen to work out which; the sentences are the whole point of having
+    collected them.
+    """
+    reason = (override_reason or "").strip()
+    if not gaps:
+        return reason
+    if not reason:
+        raise HTTPException(status_code=409, detail={
+            "message": (
+                f"This run has {len(gaps)} thing(s) it could not establish, and "
+                f"finalising posts a journal that cannot be changed afterwards. "
+                f"Resolve them, or record why you are releasing anyway."),
+            "gaps": gaps,
+        })
+    if len(reason) < _OVERRIDE_REASON_MIN:
+        raise HTTPException(status_code=422, detail=(
+            f"Say why in at least {_OVERRIDE_REASON_MIN} characters. This reason "
+            f"goes on the release log beside the {len(gaps)} outstanding item(s) "
+            f"and is what a reviewer reads months later."))
+    return reason
+
+
 @router.patch("/runs/{run_id}/status")
 def update_run_status(
     run_id: str,
@@ -1539,18 +1668,40 @@ def update_run_status(
         if run_id in _MOCK_FINALIZED_RUNS:
             raise HTTPException(status_code=409, detail="Run already finalized — cannot change status")
         return api_response(True, {"id": run_id, "status": new_status})
+    # Read before the update so the log can record what it moved FROM. The
+    # update's own .not_.in_ guard still decides whether the move happens, so
+    # this read is for the log and not a check-then-act.
+    before = (db.table("payroll_runs").select("id, status, client_id, month")
+              .eq("id", run_id).eq("firm_id", current_user["firm_id"])
+              .maybe_single().execute().data) or {"id": run_id}
+
     row = (db.table("payroll_runs").update({"status": new_status}).eq("id", run_id)
            .eq("firm_id", current_user["firm_id"])
            .not_.in_("status", ["finalized", "paid"]).execute())
     if not row.data:
         raise HTTPException(status_code=404, detail="Run not found or already finalized/paid")
+
+    # No gap check: draft <-> review posts no journal and pays nobody, so gaps
+    # there are information. Requiring a reason to move a run to review would
+    # only teach people to type "n/a" before the moment it matters. The
+    # transition is still logged, because the log is a record of what happened
+    # rather than a record of what was refused.
+    _log_transition(db, current_user["firm_id"], before, new_status,
+                    current_user.get("id"))
     return api_response(True, row.data[0])
 
 
 @router.post("/runs/{run_id}/finalize")
 def finalize_run(
     run_id: str,
-    current_user: dict = Depends(rbac("payroll", "finalize"))
+    current_user: dict = Depends(rbac("payroll", "finalize")),
+    # APPENDED, not inserted. Every caller of this function passes run_id and
+    # current_user positionally, so putting the new parameter second silently
+    # bound the caller into `data` and left current_user as its Depends
+    # sentinel — which surfaced as "'Depends' object is not subscriptable" from
+    # inside the scope guard. FastAPI does not care about the order; Python's
+    # callers do.
+    data: Optional[ReleaseIn] = None,
 ):
     """
     Finalize payroll run — Partner only. Immutable after this point.
@@ -1566,6 +1717,14 @@ def finalize_run(
     IT Act §192 TDS recorded for 24Q return. The run is marked finalized ONLY if
     the journal actually posts, so a posting failure leaves the run re-runnable
     rather than immutably finalized with no GL entry.
+
+    BLOCKED BY AN UNRESOLVED GAP (migration 328). Statutory and attendance gaps
+    were shown on the draft and enforced nowhere, so they stopped being advice
+    at exactly the moment the figures became immutable. They are RECOMPUTED
+    here — a CA who has since recorded the state slabs or entered the
+    attendance has genuinely closed the gap — and a release with any
+    outstanding needs a Partner's typed reason, which goes on the transition
+    log beside them.
     """
     _assert_run_scope(_db(), current_user, run_id)
     db = _db()
@@ -1602,6 +1761,11 @@ def finalize_run(
     if int(run.get("total_gross_paise") or 0) <= 0:
         raise HTTPException(status_code=400, detail="Cannot finalize an empty payroll run (no computed salary).")
 
+    # BEFORE the journal, because a refusal after posting would be a run that is
+    # not finalized carrying an entry that says it is.
+    gaps = _release_gaps(db, firm_id, run)
+    reason = _reason_for_releasing_with(gaps, (data.override_reason if data else None))
+
     # Post the payroll journal FIRST; only mark the run finalized if it posted.
     from services.phase2_journal_service import Phase2JournalService
     svc = Phase2JournalService()
@@ -1625,10 +1789,17 @@ def finalize_run(
         "journal_entry_id": journal_id,
     }).eq("id", run_id).execute()
 
-    timeline_service.log(client_id, "work", "Payroll Finalized",
-        f"Payroll for {run['month']} finalized — {run.get('headcount', 0)} employees", "success")
+    _log_transition(db, firm_id, run, "finalized", current_user.get("id"),
+                    gaps=gaps, override_reason=reason)
 
-    return api_response(True, {"id": run_id, "status": "finalized", "journal_entry_id": journal_id})
+    timeline_service.log(client_id, "work", "Payroll Finalized",
+        f"Payroll for {run['month']} finalized — {run.get('headcount', 0)} employees"
+        + (f" with {len(gaps)} item(s) overridden" if gaps else ""),
+        "warning" if gaps else "success")
+
+    return api_response(True, {"id": run_id, "status": "finalized",
+                               "journal_entry_id": journal_id,
+                               "overridden_gaps": gaps})
 
 
 @router.post("/runs/{run_id}/disburse")
@@ -1702,6 +1873,12 @@ def disburse_run(
         f"(₹{_net // 100:,}.{_net % 100:02d} net)", "success",
         firm_id=run["firm_id"], entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"))
+
+    # Logged, not gap-checked. Disbursement pays out figures that were already
+    # released at finalize, where the check belongs — re-refusing here would
+    # strand money that has left the bank in a run the software will not admit
+    # was paid.
+    _log_transition(db, run["firm_id"], run, "paid", current_user.get("id"))
 
     return api_response(True, {"id": run_id, "status": "paid",
                               "disbursement_journal_entry_id": journal_id})
