@@ -25,7 +25,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            OneTimeEarningsIn, PayrollEnablementIn,
                            ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
-from core.ist_clock import ist_today, month_end_date
+from core.ist_clock import ist_today, month_end_date, ist_fy_label
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services import employee_portal_service
@@ -81,7 +81,7 @@ from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
 )
-from models.fy import FYLabel
+from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -3314,6 +3314,110 @@ def payroll_client_states(
         })
     return api_response(True, {"month": month,
                                "clients": filter_by_client(current_user, out)})
+
+
+@router.get("/employee-exceptions")
+def payroll_employee_exceptions(
+    financial_year: Annotated[OptionalFYLabel, Query(
+        description='e.g. "2026-27". Defaults to the current IST financial year.')] = None,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Which employees will make a statutory output fail, before it is built.
+
+    THE EXCEPTION INDEX (docs/architecture/10-payroll.md, the People screen).
+
+    Every statutory file payroll produces already refuses the rows it cannot
+    honestly carry — the ECR a member with no UAN, the ESIC return an employee
+    with no IP number, Form 24Q a deductee with no valid PAN (§206AA). Each
+    refusal is correct and each happens AT FILE-BUILD TIME: on the 7th, when
+    the CA is trying to file, having already finalised the run and posted the
+    journal. The information was on the employee master all along.
+
+    This asks the same questions of the roster instead, for the whole firm, at
+    any time. It computes nothing and writes nothing.
+
+    THE FIRM GRAIN, and therefore filter_by_client. Like /client-states this is
+    one of the few payroll reads that answers for many clients at once, so firm
+    scoping alone would be a leak: an Executive assigned to four clients would
+    otherwise read the roster of all forty.
+
+    FOUR QUERIES FOR THE WHOLE FIRM, not four per employee. What crosses the
+    wire is bounded by headcount, not by transaction volume.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    fy = financial_year or ist_fy_label()
+
+    if not db:
+        return api_response(True, {"financial_year": fy, "exceptions": [],
+                                   "summary": {}, "employees_checked": 0})
+
+    from domain.payroll import exceptions as exceptions_domain
+
+    # Only clients payroll is actually switched on for. A client the firm does
+    # not run payroll for has no statutory output to block, and listing their
+    # staff would bury the employees somebody has to chase.
+    enabled = {str(r.get("client_id")) for r in
+               ((db.table("client_payroll_settings")
+                 .select("client_id, payroll_enabled")
+                 .eq("firm_id", firm_id).execute().data) or [])
+               if r.get("payroll_enabled")}
+    if not enabled:
+        return api_response(True, {"financial_year": fy, "exceptions": [],
+                                   "summary": {}, "employees_checked": 0})
+
+    employees = (db.table("payroll_employees")
+                 .select("id, client_id, name, pan, uan, esi_number, date_of_birth, "
+                         "bank_account_no, bank_ifsc, pf_applicable, esi_applicable, "
+                         "pt_applicable, pt_state, status")
+                 .eq("firm_id", firm_id).execute().data) or []
+    # A leaver is not an exception. They are off the roster, their history stays
+    # readable, and chasing a resigned employee for a UAN is noise.
+    employees = [e for e in employees
+                 if str(e.get("client_id")) in enabled
+                 and (e.get("status") or "active") == "active"]
+
+    names = {}
+    for row in ((db.table("clients").select("id, client_name")
+                 .eq("firm_id", firm_id).execute().data) or []):
+        names[str(row.get("id"))] = row.get("client_name")
+
+    # WHICH EMPLOYEES ARE ON THE OLD REGIME, because a missing date of birth
+    # blocks nothing for anybody else — §115BAC(1A) has one ladder for every
+    # individual regardless of age. One query for the firm's declarations rather
+    # than one per client.
+    old_regime: set = set()
+    try:
+        for row in ((db.table("payroll_it_declarations")
+                     .select("employee_id, regime, fy")
+                     .eq("firm_id", firm_id).eq("fy", fy).execute().data) or []):
+            if str(row.get("regime") or "").lower() == "old":
+                old_regime.add(str(row.get("employee_id")))
+    except Exception:                                        # noqa: BLE001
+        # No declarations table reachable means nobody has intimated the old
+        # regime, which is the §115BAC(1A) default and the safe reading: it
+        # reports FEWER date-of-birth gaps, never invented ones.
+        logger.exception("could not read declarations for the exception index")
+
+    out = []
+    for emp in employees:
+        for gap in exceptions_domain.for_employee(
+                emp, fy=fy, old_regime=str(emp.get("id")) in old_regime):
+            gap["client_id"] = str(emp.get("client_id"))
+            gap["client_name"] = names.get(str(emp.get("client_id"))) or ""
+            out.append(gap)
+
+    out = filter_by_client(current_user, out)
+    return api_response(True, {
+        "financial_year": fy,
+        "exceptions": out,
+        "summary": exceptions_domain.summarise(out),
+        # The denominator. "14 employees need a UAN" means something different
+        # out of 20 than out of 400, and a list with no total invites the first
+        # reading.
+        "employees_checked": len(filter_by_client(
+            current_user, [{"client_id": str(e.get("client_id"))} for e in employees])),
+    })
 
 
 @router.put("/enablement")
