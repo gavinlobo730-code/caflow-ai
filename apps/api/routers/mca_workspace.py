@@ -8,6 +8,18 @@ Companies Act 2013:
   §165 — DIR-12 director changes
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA21 or any government portal.
+#
+# TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+#   There is no MCA filing API, no developer portal and no partner programme.
+#   Claims otherwise in vendor blogs describe MCA's INBOUND integrations
+#   (SPICe+ calling PAN/TAN, GSTN, EPFO at incorporation) — MCA calling them,
+#   not the other way round. The ceiling is prepare-and-hand-over.
+#
+#   Two operational notes for anything built here: MCA21 V3 has a documented
+#   record of instability during filing season (session timeouts, lost drafts,
+#   a data-centre fire in June 2026), so never infer a filing outcome from a
+#   failed interaction; and the DSC belongs to the CLIENT's director, not the
+#   CA, so the UX is handoff and evidence-of-handoff, never automation.
 """
 from __future__ import annotations
 

@@ -1,4 +1,21 @@
 """
+TODO(compliance): docs/compliance/03-income-tax-and-tds.md
+    THE KEYS IN THIS FILE ARE 1961-ACT SECTION NUMBERS AND ARE OBSOLETE FOR
+    PERIODS FROM 01-04-2026. THE RATES ARE NOT. Verified 2026-09-04.
+
+    The Income-tax Act 2025 consolidated ss. 192-196D and the whole 194-series
+    into a table-driven architecture under ss. 392-402: salary is s. 392, the
+    194-series collapsed into s. 393(1), and s. 195 became s. 393(2). TCS is
+    s. 394. Returns and challans now carry numeric payment codes 1001-1067.
+
+    Substantive rates and thresholds are UNCHANGED, so every number below is
+    still right — it is the LABEL a payment is reported under that moved, and
+    citing an old section code on a return draws a processing error and a
+    correction statement.
+
+    Do NOT rekey this file. Periods up to 31-03-2026 still report under these
+    section numbers, indefinitely, including belated and revised returns. What
+    is needed is a period-aware mapping alongside, not a replacement.
 FY-versioned TDS-on-payments section rates — single source of truth.
 
 IT Act 1961, Chapter XVII-B: Sections 193/194/194A/194B/194C/194D/194G/194H/

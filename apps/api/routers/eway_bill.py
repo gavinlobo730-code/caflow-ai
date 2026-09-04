@@ -1,6 +1,13 @@
 """
 E-Way Bill Integration — CGST Act Section 68, Rule 138.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to NIC portal
+#
+# TODO(compliance): docs/compliance/02-gst.md
+#   These routes RECORD an e-way bill a human generated. The EWB system is run
+#   by NIC, not GSTN, with its own developer portal and its own credentials —
+#   though the same GSP typically serves returns, e-invoice and EWB under one
+#   contract. API enablement is self-service on the EWB portal above the
+#   turnover threshold.
 """
 from __future__ import annotations
 import logging

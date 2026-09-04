@@ -3,6 +3,16 @@ E-Invoice Integration — IRN generation, cancellation, status.
 CGST Act Section 31B, Rule 48(4) — E-Invoice mandate.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to IRP
+#
+# TODO(compliance): docs/compliance/02-gst.md
+#   These routes RECORD an IRN a human obtained from an IRP; they do not
+#   generate one. e-invoicing is the ONE place where the GSP gate does not
+#   apply: NIC's sandbox at einv-apisandbox.nic.in is self-service with any
+#   GSTIN, so rails could be built and tested before any commercial
+#   conversation. Direct production API access is for turnover above Rs 500
+#   crore; Rs 100-500 crore is GSP-only. Note the 30-day reporting limit for
+#   AATO >= Rs 10 crore (from 01-04-2025) — it is an IRP VALIDATION, not
+#   advice, and it applies to credit and debit notes too.
 """
 from __future__ import annotations
 import logging

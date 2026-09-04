@@ -38,6 +38,17 @@ employee's service, filed, and hard to unpick afterwards.
 and the question does not arise.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here transmits.
+#
+# TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+#   Independent research in Sept 2026 made four targeted attempts at the
+#   authoritative numeric reason-code mapping and failed the same way this
+#   module records: published guides disagree, and ESIC surfaces the list
+#   inside the portal at filing time rather than as a stable document. The
+#   refusal above is CONFIRMED correct, not merely cautious.
+#
+#   And the stakes went up: ESIC issued a circular in October 2025 flagging
+#   misuse of monthly filings showing zero-day workers, so zero-day rows are
+#   now under active scrutiny. Do not soften this into a guess.
 """
 from __future__ import annotations
 

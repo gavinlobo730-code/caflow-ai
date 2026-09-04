@@ -1,4 +1,30 @@
 """
+TODO(compliance): docs/compliance/03-income-tax-and-tds.md
+    THIS MODULE'S FORM NUMBER AND ITS SECTION CODE ARE BOTH OBSOLETE FOR
+    PERIODS FROM 01-04-2026. VERIFIED 2026-09-04, not speculation.
+
+    The Income-tax Act 2025 and Income-tax Rules 2026 took effect 01-04-2026
+    (CBDT Notification 22/2026 dated 20-03-2026, G.S.R. 198(E), plus a later
+    corrigendum). 24Q -> Form 138 (Rule 219, ss. 392 and 393(1)); 26Q -> 140;
+    27Q -> 144; 27EQ -> 143. Form 16 -> 130, and it now has THREE parts.
+
+    AND THE SECTION CODE MOVED, WHICH THIS MODULE EMITS. Line ~176 writes
+    section="192". Under the 2025 Act salary TDS is s. 392, the whole 194-series
+    collapsed into s. 393(1) with a table, and s. 195 became s. 393(2) — not
+    s. 400, whatever one secondary source says. Returns now carry numeric
+    payment codes 1001-1067. Rates and thresholds are UNCHANGED, so
+    section_rates.py holds the right numbers under the wrong keys.
+
+    TRANSITION IS BY EVENT, NOT BY FILING DATE: credit or payment, whichever is
+    earlier. On or before 31-03-2026 -> 1961 Act and these forms, INDEFINITELY,
+    including belated and revised returns. On or after 01-04-2026 -> the new
+    ones. So both vocabularies are needed forever; this is not a migration.
+
+    Everything this module does for FY 2025-26 and earlier remains correct.
+    What is missing is the other half. Q1 TY 2026-27 was due 31-07-2026, old
+    form numbers are REJECTED at validation, and an old section code needs a
+    correction statement. Due dates are unchanged (31 Jul / 31 Oct / 31 Jan /
+    31 May).
 Form 24Q, built from payroll instead of typed in again.
 
 WHAT WAS WRONG

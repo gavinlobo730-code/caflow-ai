@@ -1,4 +1,23 @@
 """
+TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+    (1) The Rs 500 A/c-2 minimum was set when the admin charge was 0.65%.
+        Neither this module nor the Sept 2026 research has a primary source
+        confirming it survived the cut to 0.50% on 01-06-2018. Both assert
+        Rs 500 — that is agreement, not verification.
+
+    (2) THE PF WAGE BASE MOVED ON 21-11-2025, AND IS NOW HANDLED. The Code on
+        Social Security subsumed the EPF Act and adopts the Code on Wages
+        s.2(y) definition: exclusions capped at half of total remuneration,
+        excess deemed wages. domain/payroll/wage_base.py implements it,
+        migration 334 stores the working on the slip, and the rates below are
+        unaffected — the CEILING is unchanged and the RATES are unchanged; it
+        was only the BASE they apply to that moved.
+
+        ESI may err the OTHER way — _compute_esi uses gross, and the Code's
+        definition is narrower — but that is UNCONFIRMED and deliberately NOT
+        changed. Gratuity is computed on "wages" too and is likewise untouched.
+        Both are pinned by tests so a later change is a deliberate act.
+
 Payroll statutory rates and ceilings, versioned by financial year.
 
 WHY THIS MODULE EXISTS

@@ -1,4 +1,37 @@
 """
+TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+    EPFO has no employer API; the ceiling is generate-the-file, human uploads.
+    THE FILE THIS BUILDS IS STILL CORRECT — verified 2026-09-04 that the
+    revamped ECR did NOT change the format: same .txt, same 11 fields, same
+    #~# schema. What changed is everything around it, and none of it is
+    modelled here.
+
+    Two circulars: launch 26-09-2025, FAQs 08-10-2025. From wage month
+    September 2025:
+
+      * RETURN AND PAYMENT ARE SEPARATE AND ORDERED. Submit and approve the
+        return FIRST, then generate the challan. Two states per month.
+      * SEQUENTIAL MONTH-WISE FILING IS ENFORCED BY BLOCKING. You cannot file
+        October while September is pending. There was a four-month relaxation
+        at launch; it expired around January 2026 and enforcement is live.
+        Pending pre-September-2025 months must also go through the new system.
+      * THREE RETURN TYPES: Regular (all active members for the month),
+        Supplementary (employees registered AFTER that month's Regular was
+        approved), Revised (correcting wages/contributions already submitted).
+      * s.7Q interest and s.14B damages are AUTO-COMPUTED BY EPFO and shown in
+        the Due Deposit Balance Summary. s.7Q is payable with the principal;
+        s.14B may be paid forthwith or later.
+
+    This builder emits per run: no return type, no month sequence. So a CA can
+    be handed a valid file for a month the portal will refuse because an
+    earlier one is outstanding. "Which months are outstanding, in order" needs
+    to become a first-class concept, and a late joiner is a SUPPLEMENTARY
+    return rather than a re-filed Regular one.
+
+    And never compute s.7Q or s.14B here. EPFO computes them; a second
+    implementation of a statutory interest calculation drifts, and the CA would
+    have two numbers with no way to tell which the portal will accept.
+
 The EPFO Electronic Challan cum Return (ECR) file.
 
 WHAT THIS PRODUCES

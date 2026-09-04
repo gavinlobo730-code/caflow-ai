@@ -83,7 +83,8 @@ change. The code is the authority; keep this file in step with it.
 - GSTR-1 due date: 11th of the following month
 - GSTR-3B due date: 20th of the following month
 - GSTR-9 (annual): 31st December
-- TDS return (24Q salary / 26Q residents / 27Q non-residents — Rule 31A(2) sets one due date per quarter regardless of form): Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May. Q4 is the exception — it is NOT the end of the month following quarter end (that would be 30 Apr). services/compliance_engine.py::tds_return_due_date is the authority; keep any prose in step with it.
+- TDS return (24Q salary / 26Q residents / 27Q non-residents — Rule 31A(2) sets one due date per quarter regardless of form): Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May. Q4 is the exception — it is NOT the end of the month following quarter end (that would be 30 Apr). services/compliance_engine.py::tds_return_due_date is the authority; keep any prose in step with it. **The DUE DATES above survive the 2025 Act unchanged. The FORM AND SECTION NUMBERS do not — see the next bullet.**
+- **From 01-04-2026 the whole TDS vocabulary changed, and the code has not caught up.** The Income-tax Act 2025 with the Income-tax Rules 2026 (CBDT Notification 22/2026, 20-03-2026, G.S.R. 198(E), plus a corrigendum) renumbered the statements — **24Q→138, 26Q→140, 27Q→144, 27EQ→143** — and the certificates — **Form 16→130** (three parts now), **16A→131** (quarterly now), **26AS→168**, **15G/15H→121**. It also collapsed the sections: **192→392**, the whole **194-series→393(1)**, **195→393(2)** (NOT 400 — one widely-copied source has that wrong), TCS→394, and returns now carry numeric payment codes 1001–1067. **Rates and thresholds are unchanged**, so `domain/tds/section_rates.py` holds right numbers under obsolete keys. The transition is **by EVENT — credit or payment, whichever is earlier** — so periods up to 31-03-2026 keep the old forms and sections indefinitely, including belated and revised returns: this needs BOTH vocabularies forever, not a migration. Old form numbers are **rejected at validation** for current periods; an old section code needs a correction statement. ITR-1..7 are NOT renumbered — AY 2026-27 is still the 1961 Act. Verified 2026-09-04; see `docs/compliance/03-income-tax-and-tds.md`.
 - Advance tax due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
 - ITR (IT Act §139): 31 July, or 31 October where audit applies
 - MCA/ROC offsets from the AGM date: ADT-1 +15d (§139), AOC-4 +30d (§137), MGT-7 +60d (§92)
@@ -248,6 +249,23 @@ from domain.payroll.statutory import RATES_BY_FY, LATEST_VERIFIED_FY
 print('payroll     latest', max(RATES_BY_FY), '| verified', LATEST_VERIFIED_FY)"
 ```
 
+**The PF wage BASE changed on 21-11-2025 and is now handled.** The Code on
+Social Security subsumed the EPF Act and adopts the Code on Wages `s.2(y)`
+definition: the listed EXCLUSIONS are capped at **50% of total remuneration**
+and the excess is **deemed wages**. `domain/payroll/wage_base.py` implements it,
+period-aware — any month ending before commencement reproduces the old
+`basic + DA` exactly — and migration 334 stores the working on the slip. Of the
+components modelled, only **HRA** (clause f) and **LTA** (clause d, "the value
+of any travelling concession") are excluded; everything else stays on the wage
+side, because that is the direction that cannot under-deduct and because a cash
+medical allowance is not clause (b) and a special allowance is not clause (e)
+(*RPFC v. Vivekananda Vidyamandir*, 2019). Rates and both ceilings are
+unchanged — it was only the base they apply to that moved. **ESI is deliberately
+NOT changed**: `_compute_esi` uses gross, the Code's definition is narrower, so
+ESI may err the other way — unconfirmed, and pinned by a test so a later change
+is deliberate. Gratuity likewise. Verified 2026-09-04; see
+`docs/compliance/04-mca-epfo-esic.md`.
+
 **Partly a gap: professional tax and the Labour Welfare Fund.** PT slabs are
 still bare literals in `routers/payroll.py`, covering **Maharashtra, Tamil Nadu,
 Karnataka and West Bengal** — four of the twenty-two states that levy it. LWF
@@ -405,6 +423,24 @@ nothing else.
   AA — Finvu, OneMoney, CAMS Finserv, NADL, Anumati — brokers consent between
   them under RBI regulation, on ReBIT schemas. Go via a TSP (Setu, Perfios,
   Finbox, Digio) rather than building FIU plumbing directly.
+  **⚠️ THIS STEP IS NOT ACHIEVABLE AS WRITTEN — verified 2026-09-04, including
+  searches that specifically looked for a way in and did not find one.** The RBI
+  NBFC-AA Directions 2025 (which supersede the 2016 Master Direction) define an
+  FIU as *"an entity registered with and regulated by any financial sector
+  regulator"*, and that means RBI, SEBI, IRDAI, PFRDA or the Department of
+  Revenue. **There is no FIU licence to apply for and no unregulated tier**;
+  eligibility is derivative of a registration you already hold, and a TSP cannot
+  confer it because a TSP is itself unregulated. The framework is built so raw
+  financial data never reaches an unregulated party. The Department of Revenue's
+  presence in that list does NOT help — it is there because DoR regulates GSTN
+  *for the specific purpose* of GSTN being an **FIP**. A CA firm does not
+  qualify either: ICAI is not a financial sector regulator. So the options are
+  to **partner with a regulated FIU** (watch the shell-FIU pattern — FIPs have
+  barred AAs over non-compliant downstream journeys), **acquire a registration**
+  (SEBI RIA is most plausible; an NBFC brings a reciprocity duty to join as an
+  FIP too), or **not consume via AA at all**. Rewrite the six AA tasks around
+  those three before actioning any of them. See
+  `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
   it is time-bound, purpose-bound and revocable. So the flow is "CA requests →
   client approves → CA sees data", with a re-consent path when it lapses. That is
@@ -480,6 +516,26 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
   sleeps, so `.github/workflows/wake-before-scheduler.yml` pings `/health` across the
   window to keep it alive; the sweep also catches up on jobs whose trigger was slept
   through.
+
+## Compliance, integrations and filing
+
+`docs/compliance/` is the single place that says, for every statutory output:
+what the product computes today, what the last mile actually is, and **what gates
+closing it** — which is almost never code. Read it before estimating any filing
+or integration work, and read `docs/compliance/00-how-to-read-this.md` first for
+how much to trust the rest.
+
+Places in the code where a registration, empanelment or licence gates the work
+carry a scoped marker naming its section:
+
+```
+grep -rn 'TODO(compliance)' apps/api apps/web
+```
+
+That convention is deliberate and narrow — the codebase otherwise has **no**
+`TODO`/`FIXME` markers at all and prefers prose comments beside the code.
+`tests/test_compliance_markers_point_somewhere_real.py` fails a marker with no
+doc path or one pointing at a file that does not exist.
 
 ## Where the design is written down
 
