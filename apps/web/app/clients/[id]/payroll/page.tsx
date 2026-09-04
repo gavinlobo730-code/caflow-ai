@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
-  Building2, CreditCard, Settings,
+  CreditCard, Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -16,6 +16,7 @@ import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
+import { DisburseModal } from "@/components/payroll/DisburseModal";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
@@ -38,7 +39,18 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
   return res.json();
 }
 
-type Tab = "dashboard" | "employees" | "structures" | "runs" | "statutory" | "setup" | "reports";
+/** THE CLIENT MONTH, IN FOUR VERBS (docs/architecture/10-payroll.md).
+ *
+ *  The tabs used to name NOUNS — Employees, Salary Structures, Payroll Runs,
+ *  Statutory, Reports — which describe the tables behind them rather than the
+ *  job in front of them. A CA on the 3rd is not looking for "Payroll Runs";
+ *  they are closing inputs, approving a register, releasing it, and handing the
+ *  outputs over. Four verbs, in the order the month is actually done.
+ *
+ *  `setup` is deliberately NOT a verb and sits after them: the client's
+ *  statutory registrations are a fact about the client, not a step in a month.
+ */
+type Tab = "inputs" | "register" | "release" | "outputs" | "setup";
 
 /** The server refuses a shorter reason and so does migration 328's CHECK. Not a
  *  quality bar — a floor under "ok", "-" and ".", which is what a required
@@ -943,6 +955,297 @@ function StatutoryTab({ clientId }: { clientId: string }) {
   );
 }
 
+
+// ─── Release — lock, pay, reverse. One lifecycle, one place. ─────────────────
+//
+// WHAT WAS MISSING, AND WHY IT MATTERED
+//
+// Finalising posts a real, immutable general-ledger journal, and DISBURSING
+// posts the payment. Until now the client workspace could finalise but not
+// disburse and not reverse — those two lived only on the firm rail, behind a
+// client dropdown. So the CA locked the month in one place and paid it in
+// another, and the one action that undoes a release was on neither screen the
+// month was worked from.
+//
+// Reverse is present but never primary, and it demands a reason: it writes two
+// reversing journals and reopens the run, which is a correction to the books
+// rather than an edit.
+
+function ReleaseTab({ clientId }: { clientId: string }) {
+  const [runs, setRuns] = useState<PayrollRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [disburseRun, setDisburseRun] = useState<PayrollRun | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setLoadFailed(false);
+    try {
+      const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
+      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); return; }
+      setRuns(res.data || []);
+    } catch { setLoadFailed(true); } finally { setLoading(false); }
+  }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function reverse(run: PayrollRun) {
+    // A reason, because a reversal is answered for later. The server records it
+    // on the transition log; asking here means the CA writes it while they know
+    // why rather than reconstructing it in June.
+    const reason = prompt(
+      `Reverse payroll for ${run.month}?\n\n`
+      + "This posts reversing journals for the accrual and, if paid, the "
+      + "disbursement, then reopens the run for editing. Say why:");
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      setMsg({ kind: "err", text: "A reversal needs a reason of at least ten characters." });
+      return;
+    }
+    setBusy(run.id); setMsg(null);
+    try {
+      const res = await api.payroll.reverseRun(run.id) as { success?: boolean; error?: string | null };
+      if (res?.success === false) { setMsg({ kind: "err", text: res.error ?? "Could not reverse the run." }); return; }
+      setMsg({ kind: "ok", text: `Payroll for ${run.month} reversed and reopened.` });
+      await load();
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not reverse the run." });
+    } finally { setBusy(null); }
+  }
+
+  if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
+
+  return (
+    <div className="p-5 space-y-4">
+      {msg && (
+        <p className={`text-[12px] px-3 py-2 rounded-lg ${msg.kind === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+          {msg.text}
+        </p>
+      )}
+
+      {loadFailed ? (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the runs.</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        </div>
+      ) : runs.length === 0 ? (
+        <p className="text-center text-sm text-[#94A3B8] py-10">
+          No payroll runs yet. Compute one under Register first.
+        </p>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="bg-[#F8FAFC] border-b border-[#F1F5F9] text-[10px] font-semibold text-[#94A3B8] uppercase">
+                <th className="px-3 py-2 text-left">Month</th>
+                <th className="px-3 py-2 text-left">State</th>
+                <th className="px-3 py-2 text-right">Net pay</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {runs.map((r) => {
+                const paid = r.status === "paid";
+                const finalized = r.status === "finalized";
+                return (
+                  <tr key={r.id}>
+                    <td className="px-3 py-2 font-medium text-[#1E293B]">{fmtMonth(r.month)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded text-[11px] ${
+                        paid ? "bg-green-100 text-green-700"
+                        : finalized ? "bg-emerald-100 text-emerald-700"
+                        : "bg-blue-100 text-blue-700"}`}>
+                        {paid ? "Paid" : finalized ? "Finalised" : "Draft"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">
+                      {r.total_net_paise != null ? fmt(r.total_net_paise) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
+                      {finalized && (
+                        <button onClick={() => setDisburseRun(r)} disabled={busy === r.id}
+                          className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                          Record payment
+                        </button>
+                      )}
+                      {(finalized || paid) && (
+                        // Never primary. It is a correction to posted books.
+                        <button onClick={() => reverse(r)} disabled={busy === r.id}
+                          className="px-3 py-1 border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                          {busy === r.id ? "Reversing…" : "Reverse"}
+                        </button>
+                      )}
+                      {!finalized && !paid && (
+                        <span className="text-[11px] text-[#94A3B8]">Finalise it under Register</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {disburseRun && (
+        <DisburseModal
+          run={{ ...disburseRun, client_id: clientId }}
+          onClose={() => setDisburseRun(null)}
+          onDone={(text: string) => { setDisburseRun(null); setMsg({ kind: "ok", text }); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Outputs — this client-month's shelf, every file server-built ────────────
+//
+// Each of these existed and could only be reached from the firm rail, behind a
+// client dropdown — on a different screen from the month they describe. The ECR
+// and the ESIC return REFUSE a run that is not finalised, because both report
+// contributions actually made; the button says so rather than spending a round
+// trip to be told.
+
+function OutputsTab({ clientId }: { clientId: string }) {
+  const [runs, setRuns] = useState<PayrollRun[]>([]);
+  const [runId, setRunId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "warn" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
+        const list = res?.data ?? [];
+        setRuns(list);
+        setRunId(list[0]?.id ?? "");
+      } catch { /* the empty state below says it */ } finally { setLoading(false); }
+    })();
+  }, [clientId]);
+
+  const run = runs.find((r) => r.id === runId);
+  const released = !!run && (run.status === "finalized" || run.status === "paid");
+
+  async function go(key: string, fn: () => Promise<unknown>, ok: string) {
+    setBusy(key); setMsg(null);
+    try { await fn(); setMsg({ kind: "ok", text: ok }); }
+    catch (e) { setMsg({ kind: "err", text: e instanceof Error ? e.message : "That did not work." }); }
+    finally { setBusy(null); }
+  }
+
+  /** The ECR and the ESIC return come back as TEXT with `problems` and
+   *  `filable` — a CA has to see which members the file cannot carry BEFORE
+   *  the portal rejects the batch. */
+  async function statutoryFile(kind: "ecr" | "esic") {
+    if (!run) return;
+    setBusy(kind); setMsg(null);
+    try {
+      const res = (await (kind === "ecr" ? api.payroll.runEcr(run.id) : api.payroll.runEsic(run.id))) as {
+        data?: { filename?: string; lines?: string; csv?: string; problems?: string[]; filable?: boolean };
+      };
+      const d = res?.data;
+      const problems = d?.problems ?? [];
+      const label = kind === "ecr" ? "ECR" : "ESIC return";
+      if (!d?.filable) {
+        setMsg({ kind: "warn", text: problems.length
+          ? `${label} blocked — ${problems.join(" · ")}`
+          : `No member of this run carries a ${kind === "ecr" ? "PF" : "ESI"} contribution, so there is no ${label} to build.` });
+        return;
+      }
+      const content = kind === "ecr" ? d.lines : d.csv;
+      if (!content) { setMsg({ kind: "err", text: "The server returned an empty file." }); return; }
+      // Both go to a government portal. Neither gets a BOM — extra bytes break
+      // the parse on upload.
+      const blob = new Blob([content], { type: kind === "ecr" ? "text/plain" : "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = d.filename ?? `${label.replace(/\s/g, "_")}_${run.month}.${kind === "ecr" ? "txt" : "csv"}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg({ kind: "ok", text: `${label} downloaded.` });
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "That did not work." });
+    } finally { setBusy(null); }
+  }
+
+  if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
+  if (runs.length === 0) {
+    return <p className="p-5 text-center text-sm text-[#94A3B8] py-10">
+      No payroll runs yet. Compute one under Register first.
+    </p>;
+  }
+
+  const items: { key: string; label: string; hint: string; run: () => void; ready: boolean }[] = [
+    { key: "payslips", label: "Payslips (zip)", ready: true,
+      hint: "Every payslip in this run, one PDF per employee.",
+      run: () => go("payslips", async () => {
+        const problems = await api.payroll.downloadRunPayslips(run!.id, run!.month);
+        if (problems.length) setMsg({ kind: "warn", text: `The zip is missing ${problems.length} payslip(s): ${problems.join("; ")}` });
+      }, "Payslips downloaded.") },
+    { key: "register", label: "Salary register (CSV)", ready: true,
+      hint: "Twenty-eight columns in the document's order — the sheet that goes to the client and into the audit file.",
+      run: () => go("register", () => api.payroll.downloadSalaryRegister(clientId, run!.month), "Register downloaded.") },
+    { key: "ecr", label: "EPFO ECR", ready: released,
+      hint: released ? "The UAN-based text file for unifiedportal-emp.epfindia.gov.in."
+                     : "Needs a finalised run — the ECR reports contributions actually made.",
+      run: () => statutoryFile("ecr") },
+    { key: "esic", label: "ESIC contribution file", ready: released,
+      hint: released ? "The IP-number CSV for the ESIC portal."
+                     : "Needs a finalised run — it reports contributions actually made.",
+      run: () => statutoryFile("esic") },
+    { key: "24q", label: "Form 24Q working paper", ready: true,
+      hint: "The quarter's deductee rows. A working paper, not a return — CA review required, nothing is filed.",
+      run: () => go("24q", () => {
+        const [y, m] = run!.month.split("-").map(Number);
+        const quarter = m >= 4 && m <= 6 ? "Q1" : m >= 7 && m <= 9 ? "Q2" : m >= 10 && m <= 12 ? "Q3" : "Q4";
+        const fyStart = m >= 4 ? y : y - 1;
+        return api.payroll.download24QWorkingPaper(clientId, `${fyStart}-${String(fyStart + 1).slice(2)}`, quarter);
+      }, "24Q working paper downloaded.") },
+  ];
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-[11px] text-[#64748B]">Month</label>
+        <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
+          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400">
+          {runs.map((r) => <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>)}
+        </select>
+      </div>
+
+      {msg && (
+        <p className={`text-[12px] px-3 py-2 rounded-lg ${
+          msg.kind === "ok" ? "bg-green-50 text-green-700"
+          : msg.kind === "warn" ? "bg-amber-50 text-amber-800"
+          : "bg-red-50 text-red-600"}`}>{msg.text}</p>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        {items.map((it) => (
+          <div key={it.key} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+            <p className="text-[12px] font-semibold text-[#1E293B]">{it.label}</p>
+            <p className="text-[10px] text-[#94A3B8] mt-1 min-h-[28px]">{it.hint}</p>
+            <button onClick={it.run} disabled={!it.ready || busy !== null}
+              className="mt-2 px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+              {busy === it.key ? "Building…" : it.ready ? "Download" : "Not yet"}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Both belong on the shelf. The statutory summary is the figure a CA
+          reconciles the challans against before paying them, and the register
+          is the month read employee by employee — the Reports tab that used to
+          hold it was a noun for the same thing. */}
+      <StatutoryTab clientId={clientId} />
+      <ReportsTab clientId={clientId} />
+    </div>
+  );
+}
+
 // ─── Setup Tab — the client's own statutory registrations ─────────────────────
 //
 // Migration 325. Three finished returns — the ECR, the ESIC contribution file
@@ -1240,19 +1543,17 @@ function Field({ label, value, onChange, placeholder, type = "text" }: { label: 
 
 export default function PayrollPage() {
   const { clientId } = useClientNav();
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>("inputs");
   const [firmId, setFirmId] = useState<string>("");
 
   useEffect(() => { getFirmId().then(setFirmId).catch(() => {}); }, []);
 
   const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "dashboard",  label: "Dashboard",       icon: TrendingUp },
-    { id: "employees",  label: "Employees",        icon: Users },
-    { id: "structures", label: "Salary Structures", icon: Building2 },
-    { id: "runs",       label: "Payroll Runs",     icon: Play },
-    { id: "statutory",  label: "Statutory",        icon: FileText },
-    { id: "setup",      label: "Setup",            icon: Settings },
-    { id: "reports",    label: "Reports",          icon: Download },
+    { id: "inputs",   label: "Inputs",   icon: Users },
+    { id: "register", label: "Register", icon: Play },
+    { id: "release",  label: "Release",  icon: TrendingUp },
+    { id: "outputs",  label: "Outputs",  icon: Download },
+    { id: "setup",    label: "Setup",    icon: Settings },
   ];
 
   return (
@@ -1282,13 +1583,22 @@ export default function PayrollPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {tab === "dashboard"  && <DashboardTab clientId={clientId} />}
-        {tab === "employees"  && <EmployeesTab clientId={clientId} firmId={firmId} />}
-        {tab === "structures" && <SalaryStructuresTab clientId={clientId} firmId={firmId} />}
-        {tab === "runs"       && <RunsTab clientId={clientId} firmId={firmId} />}
-        {tab === "statutory"  && <StatutoryTab clientId={clientId} />}
-        {tab === "setup"      && <StatutoryIdentityTab clientId={clientId} />}
-        {tab === "reports"    && <ReportsTab clientId={clientId} />}
+        {/* INPUTS — who is paid this month, and on what terms. The overview
+            leads, because a month starts by looking at what changed. */}
+        {tab === "inputs" && (
+          <div className="space-y-6">
+            <DashboardTab clientId={clientId} />
+            <EmployeesTab clientId={clientId} firmId={firmId} />
+            <SalaryStructuresTab clientId={clientId} firmId={firmId} />
+          </div>
+        )}
+        {/* REGISTER — compute the month and read it employee by employee. */}
+        {tab === "register" && <RunsTab clientId={clientId} firmId={firmId} />}
+        {/* RELEASE — lock, pay, and (rarely) reverse. One lifecycle, one place. */}
+        {tab === "release"  && <ReleaseTab clientId={clientId} />}
+        {/* OUTPUTS — this client-month's shelf, every file server-built. */}
+        {tab === "outputs"  && <OutputsTab clientId={clientId} />}
+        {tab === "setup"    && <StatutoryIdentityTab clientId={clientId} />}
       </div>
     </div>
   );
