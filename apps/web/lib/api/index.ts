@@ -1251,6 +1251,16 @@ export const api = {
      *  clients rather than merely their firm, so an Executive assigned to four
      *  does not read the headcount and net pay of forty.
      */
+    /** THE EXCEPTION INDEX — which employees will make a statutory output fail.
+     *
+     *  Every statutory file payroll builds already refuses the rows it cannot
+     *  honestly carry (the ECR a member with no UAN, Form 24Q a deductee with
+     *  no valid PAN under §206AA). Each refusal is correct and each lands at
+     *  FILE-BUILD time — on the 7th, with the run finalised and the journal
+     *  posted. The information was on the employee master all along.
+     */
+    payrollEmployeeExceptions: (financialYear?: string) =>
+      request(`/api/payroll/employee-exceptions${financialYear ? `?financial_year=${encodeURIComponent(financialYear)}` : ""}`),
     payrollClientStates: (month?: string) =>
       request(`/api/payroll/client-states${month ? `?month=${encodeURIComponent(month)}` : ""}`),
     /** Switch payroll on or off for one client. PARTNER ONLY (migration 332).

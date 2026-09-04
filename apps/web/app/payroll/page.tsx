@@ -11,7 +11,7 @@ import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2, Upload,
-  Pencil, Ban, Trash2, RotateCcw, Receipt, CalendarDays, ArrowRight,
+  Pencil, Ban, Trash2, RotateCcw, Receipt, CalendarDays, ArrowRight, ShieldAlert,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -574,6 +574,149 @@ function MonthQueueTab({ month, onMonthChange }: {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+/** THE EXCEPTION INDEX — the roster's statutory gaps, before a file is built.
+ *
+ *  Every statutory file payroll produces already refuses the rows it cannot
+ *  honestly carry: the ECR a member with no UAN, the ESIC return one with no IP
+ *  number, Form 24Q a deductee with no valid PAN. Each refusal is correct — and
+ *  each lands at FILE-BUILD time, on the 7th, with the run already finalised and
+ *  the journal already posted. The information was on the employee master the
+ *  whole time and nothing asked.
+ *
+ *  This asks. It computes nothing and writes nothing; the server re-states what
+ *  the file builders will say, early enough to do something about.
+ */
+type PayrollException = {
+  kind: string;
+  employee_id: string | null;
+  employee: string;
+  client_id: string;
+  client_name: string;
+  blocks: string;
+  note: string;
+};
+
+const EXCEPTION_LABEL: Record<string, string> = {
+  uan: "UAN missing or malformed",
+  esic_ip: "ESIC IP number missing",
+  pan: "PAN missing or invalid",
+  date_of_birth: "Date of birth missing (old regime)",
+  bank: "Bank details missing or invalid",
+  pt_state: "Professional tax state not modelled",
+};
+
+function ExceptionIndexTab() {
+  const [rows, setRows] = useState<PayrollException[]>([]);
+  const [summary, setSummary] = useState<Record<string, number>>({});
+  const [checked, setChecked] = useState(0);
+  const [loading, setLoading] = useState(true);
+  // A failed read must not render as "nothing to fix" — that is the M17
+  // mistake, and here it would read as a clean roster.
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.payroll.payrollEmployeeExceptions() as ApiResp<{
+        exceptions: PayrollException[];
+        summary: Record<string, number>;
+        employees_checked: number;
+      }>;
+      if (!res?.data) { setError("Could not read the roster."); return; }
+      setRows(res.data.exceptions ?? []);
+      setSummary(res.data.summary ?? {});
+      setChecked(res.data.employees_checked ?? 0);
+    } catch (e) {
+      setError(apiErr(e, "Could not read the roster."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-row items-start justify-between flex-wrap gap-3">
+          <div>
+            <CardTitle className="text-base">Exceptions</CardTitle>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              What is missing from the employee master that a statutory output
+              will refuse. Nothing here stops a run — these people are still
+              paid; what they are missing is the means to be reported.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+            {loading ? "Checking…" : "Re-check"}
+          </Button>
+        </div>
+        {!loading && !error && (
+          <p className="text-xs text-[#475569] mt-3">
+            {/* The denominator: "14 need a UAN" means something different out of
+                20 than out of 400. */}
+            {rows.length === 0
+              ? `Nothing outstanding across ${checked} active employee(s).`
+              : `${rows.length} gap(s) across ${checked} active employee(s).`}
+          </p>
+        )}
+        {Object.keys(summary).length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {Object.entries(summary).map(([kind, n]) => (
+              <span key={kind} className="text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-800">
+                {EXCEPTION_LABEL[kind] ?? kind}: {n}
+              </span>
+            ))}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <p className="text-center text-[#94A3B8] py-12 text-sm">Checking the roster…</p>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
+            <Button size="sm" variant="outline" onClick={load}>Retry</Button>
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-center text-[#94A3B8] py-12 text-sm">
+            Every active employee has what the statutory outputs need.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide bg-[#F8FAFC]">
+                  <th className="text-left py-3 px-4">Employee</th>
+                  <th className="text-left py-3 px-4">Client</th>
+                  <th className="text-left py-3 px-4">Blocks</th>
+                  <th className="text-left py-3 px-4">What is missing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={`${r.employee_id ?? r.employee}-${r.kind}-${i}`} className="border-b hover:bg-[#F8FAFC] align-top">
+                    <td className="py-3 px-4 font-medium text-[#0F172A]">{r.employee}</td>
+                    <td className="py-3 px-4 text-[#475569]">{r.client_name || "—"}</td>
+                    <td className="py-3 px-4">
+                      <span className="inline-block px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800">
+                        {r.blocks}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-xs text-[#475569] max-w-xl">{r.note}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -1870,6 +2013,7 @@ export default function PayrollPage() {
                 firm-grain work that genuinely belongs here. */}
             <TabsTrigger value="month" className="flex items-center gap-1.5"><CalendarDays size={14} />Month</TabsTrigger>
             <TabsTrigger value="employees" className="flex items-center gap-1.5"><Users size={14} />Employees</TabsTrigger>
+            <TabsTrigger value="exceptions" className="flex items-center gap-1.5"><ShieldAlert size={14} />Exceptions</TabsTrigger>
             <TabsTrigger value="monthly" className="flex items-center gap-1.5"><Play size={14} />Monthly Run</TabsTrigger>
             <TabsTrigger value="payslips" className="flex items-center gap-1.5"><FileText size={14} />Payslips</TabsTrigger>
             <TabsTrigger value="statutory" className="flex items-center gap-1.5"><Shield size={14} />Statutory</TabsTrigger>
@@ -1879,6 +2023,11 @@ export default function PayrollPage() {
           {/* MONTH TAB — the queue, and the way into the client workspace. */}
           <TabsContent value="month">
             <MonthQueueTab month={queueMonth} onMonthChange={setQueueMonth} />
+          </TabsContent>
+
+          {/* EXCEPTIONS TAB — the roster's statutory gaps, before a file is built. */}
+          <TabsContent value="exceptions">
+            <ExceptionIndexTab />
           </TabsContent>
 
           {/* EMPLOYEES TAB */}
