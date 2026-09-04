@@ -1788,6 +1788,47 @@ def download_salary_slip_pdf(
     )
 
 
+@router.get("/runs/{run_id}/payslips.zip")
+def download_run_payslips(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Every payslip in one run, as a zip. The month-end pack, in one action.
+
+    The single-slip endpoint above is unchanged and still right for one
+    employee asking for theirs. This is for the CA who has thirty and was
+    clicking thirty times — and getting thirty files called
+    `payslip-2026-08.pdf`, because that endpoint's filename carries the month
+    and not the person.
+
+    A SLIP THAT WILL NOT RENDER IS NAMED, NOT SKIPPED. The zip still contains
+    the ones that worked — twenty-nine payslips are worth having — but the
+    names of the ones that did not come back on a header rather than vanishing,
+    because a zip quietly one file short is a trap nobody counts their way out
+    of.
+    """
+    _assert_run_scope(_db(), current_user, run_id)
+    from fastapi.responses import Response
+    from services.payslip_pdf_service import build_run_payslip_zip
+
+    if not _db():
+        raise HTTPException(status_code=503, detail="Payslip PDFs unavailable in mock mode")
+
+    try:
+        blob, filename, problems = build_run_payslip_zip(run_id, current_user.get("firm_id"))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if problems:
+        # A header, because the body is a zip and cannot carry a message. The
+        # frontend reads it and says which employees are missing from the file.
+        headers["X-Payslip-Problems"] = "; ".join(problems)[:900]
+    return Response(content=blob, media_type="application/zip", headers=headers)
+
+
 # ── The defensible release ───────────────────────────────────────────────────
 # Migration 328. create_run returns two lists of things it could not establish —
 # statutory_gaps and attendance_gaps — and both were advice. Nothing stopped a
@@ -2271,6 +2312,52 @@ def salary_register(
     run_id = run.data[0]["id"]
     slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department, bank_account_no, bank_ifsc)").eq("run_id", run_id).execute()
     return api_response(True, {"month": month, "run": run.data[0], "slips": slips.data or []})
+
+
+@router.get("/reports/salary-register.csv")
+def salary_register_csv(
+    client_id: str = Query(...),
+    month: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """The salary register as a file.
+
+    The JSON endpoint above has always existed and a register has always been a
+    DOCUMENT — it goes to the client, into the audit file, and beside the bank
+    advice. There was no way to get one out of this software except by reading a
+    screen and retyping it.
+
+    Column order and the rupee conversion live in domain/payroll/register.py, so
+    the file a CA gets in August has the same columns in the same places as the
+    one they got in April. A register whose columns move between months cannot
+    be diffed, and diffing two months is most of what a register is for.
+    """
+    assert_client_access(current_user, client_id)
+    from fastapi.responses import Response
+    from domain.payroll import register as register_domain
+
+    db = _db()
+    if not db:
+        return Response(content=register_domain.to_csv([]), media_type="text/csv")
+
+    run = (db.table("payroll_runs").select("id")
+           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+           .eq("month", month).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404,
+                            detail=f"No payroll run for {month}.")
+
+    slips = (db.table("payroll_slips")
+             .select("*, payroll_employees(name, pan, designation, department, "
+                     "bank_account_no, bank_ifsc)")
+             .eq("run_id", run["id"]).execute().data) or []
+
+    return Response(
+        content=register_domain.to_csv(slips),
+        media_type="text/csv",
+        headers={"Content-Disposition":
+                 f'attachment; filename="salary-register-{month}.csv"'},
+    )
 
 
 # ── The firm's own reading of the state PT slabs ─────────────────────────────
@@ -3759,15 +3846,46 @@ def statutory_summary(
     if not run.data:
         return api_response(True, None)
     r = run.data[0]
+
+    # WHAT GOES ON THE EPFO CHALLAN IS NOT total_pf_paise.
+    #
+    # That column is the 12% either side — employee and employer — and there
+    # are two more amounts remitted on the SAME challan, which migration 329
+    # added and this summary never learned about:
+    #
+    #   EDLI          0.5% of PF wages, EDLI 1976
+    #   admin charge  0.5%, floored at Rs 500 per ESTABLISHMENT per month
+    #
+    # So a CA reconciling this screen against the challan they are about to pay
+    # was short by roughly 1% of PF wages every month — about Rs 150 a member at
+    # the Rs 15,000 ceiling — and had no line to explain the difference. The
+    # LEDGER was fixed for exactly this in migration 329; this screen was not.
+    #
+    # Both are reported separately AND totalled, because the separation is what
+    # the ECR needs and the total is what gets paid.
+    pf_contributions = int(r.get("total_pf_paise") or 0)
+    edli = int(r.get("total_edli_paise") or 0)
+    pf_admin = int(r.get("total_pf_admin_paise") or 0)
+
     return api_response(True, {
         "month":          month,
-        "pf_total_paise": r.get("total_pf_paise", 0),
+        "pf_total_paise": pf_contributions,
+        "edli_paise":     edli,
+        "pf_admin_paise": pf_admin,
+        # The figure to pay EPFO. Named for the challan rather than for the
+        # columns it is made of, because that is the number a CA is reconciling.
+        "pf_challan_total_paise": pf_contributions + edli + pf_admin,
         "esi_total_paise": r.get("total_esi_paise", 0),
         "pt_total_paise": r.get("total_pt_paise", 0),
         "tds_24q_paise":  r.get("total_tds_paise", 0),
         "gross_paise":    r.get("total_gross_paise", 0),
+        # How much of the gross was NOT the recurring salary bill (migration
+        # 331). Reported here because a month whose gross jumped is the first
+        # thing a CA looks at on this screen, and a bonus is the usual reason.
+        "one_time_paise": int(r.get("total_one_time_paise") or 0),
         "net_paise":      r.get("total_net_paise", 0),
         "headcount":      r.get("headcount", 0),
+        "status":         r.get("status"),
     })
 
 
