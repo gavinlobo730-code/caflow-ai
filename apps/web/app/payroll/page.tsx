@@ -5,17 +5,14 @@
  * All monetary values stored and computed in integer paise.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  Play, FileText, Shield, X, AlertCircle, Users,
+  X, AlertCircle, Users,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2,
   Receipt, CalendarDays, ArrowRight,
 } from "lucide-react";
-import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import type { Column, FilterDef } from "@/lib/table/types";
-import { formatPaise } from "@/lib/services/formatting";
 import { toLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -26,9 +23,8 @@ import { api, type ApiResp } from "@/lib/api";
 // Moved into a shared module when the roster became its own screen (People).
 // One definition, two pages — copying them is how the salary register and the
 // ECR each ended up implemented twice, with only one of them right.
-import { DisburseModal } from "@/components/payroll/DisburseModal";
 import {
-  apiErr, fmtRs, employeeGrossPaise,
+  apiErr, fmtRs,
   type Client, type Employee, type PayrollRun, type PayrollSlip,
 } from "@/components/payroll/shared";
 
@@ -826,7 +822,6 @@ function StatutoryReturnsTab({
 export default function PayrollPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [slips, setSlips] = useState<PayrollSlip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -836,74 +831,7 @@ export default function PayrollPage() {
   // control is right there to move it.
   const [queueMonth, setQueueMonth] = useState(() => toLocalISO(new Date()).slice(0, 7));
 
-  const [runClientId, setRunClientId] = useState("");
-  const [runMonth, setRunMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [runEmployees, setRunEmployees] = useState<Employee[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-
-  const [statMonth, setStatMonth] = useState(() => toLocalISO(new Date()).slice(0, 7));
-  const [statClientId, setStatClientId] = useState("");
-  const [statSlips, setStatSlips] = useState<PayrollSlip[]>([]);
-  /** The runs behind those slips. EDLI and the admin charge come from HERE, not
-   *  from summing slips — see PayrollRun.total_pf_admin_paise. */
-  const [statRuns, setStatRuns] = useState<PayrollRun[]>([]);
-
   const [viewSlip, setViewSlip] = useState<PayrollSlip | null>(null);
-
-  // Payroll-run lifecycle actions (finalize → mark paid).
-  const [disburseTarget, setDisburseTarget] = useState<PayrollRun | null>(null);
-  const [runActionBusy, setRunActionBusy] = useState<string | null>(null);
-  const [runActionMsg, setRunActionMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-
-  async function finalizeRunAction(run: PayrollRun) {
-    if (!confirm(`Finalize payroll for ${run.month}? This posts the salary accrual journal (Dr Salaries Expense / Cr Net Salary Payable + statutory payables) and locks the run.`)) return;
-    setRunActionBusy(run.id); setRunActionMsg(null);
-    try {
-      const res = await api.payroll.finalizeRun(run.id) as ApiResp<unknown>;
-      if (!res.success) { setRunActionMsg({ type: "err", text: res.error ?? "Could not finalize the run." }); }
-      else { setRunActionMsg({ type: "ok", text: `Payroll for ${run.month} finalized.` }); await load(); }
-    } catch (e) { setRunActionMsg({ type: "err", text: e instanceof Error ? e.message : "Could not finalize the run." }); }
-    finally { setRunActionBusy(null); }
-  }
-
-  /** Reverse a finalized or paid run. PARTNER ONLY, enforced by the endpoint's
-   *  rbac("payroll", "finalize") — this is a control, not the guard.
-   *
-   *  The confirmation names what is UNDONE rather than asking "are you sure":
-   *  a reversal posts two more journals (the disbursement's, then the
-   *  accrual's), it does not delete the originals, and the run comes back at
-   *  'review' rather than 'draft'. A CA who thinks Reverse erases the month
-   *  will not understand why the ledger still shows four entries.
-   */
-  async function reverseRunAction(run: PayrollRun) {
-    const undone = run.status === "paid"
-      ? "the disbursement journal and then the salary accrual"
-      : "the salary accrual journal";
-    if (!confirm(
-      `Reverse payroll for ${run.month}?\n\n`
-      + `This posts a reversing entry for ${undone}. The original entries stay `
-      + `in the ledger — a posted journal is never deleted — and the run reopens `
-      + `at Review so it can be corrected and finalised again.\n\n`
-      + `Attendance and one-time earnings for the month become editable again.`
-    )) return;
-    setRunActionBusy(run.id); setRunActionMsg(null);
-    try {
-      const res = await api.payroll.reverseRun(run.id) as ApiResp<unknown>;
-      if (!res.success) {
-        setRunActionMsg({ type: "err", text: res.error ?? "Could not reverse the run." });
-      } else {
-        setRunActionMsg({ type: "ok", text: `Payroll for ${run.month} reversed and reopened for correction.` });
-        await load();
-      }
-    } catch (e) {
-      setRunActionMsg({ type: "err", text: e instanceof Error ? e.message : "Could not reverse the run." });
-    } finally {
-      // In a finally so a thrown request cannot leave the row spinning —
-      // scripts/loading-flags.test.ts checks exactly this.
-      setRunActionBusy(null);
-    }
-  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -921,7 +849,6 @@ export default function PayrollPage() {
       const empList = empRes.data ?? [];
       const runList = runsRes.data ?? [];
       setClients(clientList);
-      setEmployees(empList);
       setRuns(runList);
 
       if (runList.length > 0) {
@@ -946,73 +873,6 @@ export default function PayrollPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (runClientId) {
-      // Only ACTIVE employees are eligible for a payroll run (mirrors the
-      // backend create_run filter); resigned/terminated staff must not appear.
-      setRunEmployees(employees.filter(e => e.client_id === runClientId && (e.status ?? "active") === "active"));
-    }
-  }, [runClientId, employees]);
-
-
-  useEffect(() => {
-    if (clients.length > 0 && !runClientId) {
-      setRunClientId(clients[0].id);
-      setStatClientId(clients[0].id);
-    }
-  }, [clients, runClientId]);
-
-  useEffect(() => {
-    if (statClientId) {
-      const monthRuns = runs.filter(r => r.client_id === statClientId && r.month === statMonth);
-      const runIds = monthRuns.map(r => r.id);
-      setStatSlips(slips.filter(s => runIds.includes(s.run_id)));
-      setStatRuns(monthRuns);
-    }
-  }, [statClientId, statMonth, runs, slips]);
-
-  async function generatePayslips() {
-    if (!runClientId || runEmployees.length === 0) return;
-    setGenerating(true);
-    setGenerateError(null);
-    try {
-      // Server-side computation (routers/payroll.py::create_run) — the ONLY
-      // place gross/PF/ESI/PT/TDS are computed; see R2.10.
-      await api.payroll.createRun({ client_id: runClientId, month: runMonth });
-      await load();
-    } catch (e) {
-      setGenerateError(e instanceof Error ? e.message : "Failed to generate payslips.");
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  // ── Payslips table (shared DataTable) ──────────────────────────────────────
-  const slipDeductions = (s: PayrollSlip) => s.pf_employee_paise + s.esi_employee_paise + s.pt_paise + s.tds_paise;
-
-  const payslipColumns: Column<PayrollSlip>[] = useMemo(() => [
-    { key: "employee", header: "Employee", accessor: (s) => s.employee?.name ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (s) => <span className="font-medium text-[#0F172A]">{s.employee?.name ?? "—"}</span> },
-    { key: "month", header: "Month", accessor: (s) => s.run?.month ?? "", searchable: true, sortable: true,
-      render: (s) => <span className="text-[#475569]">{s.run?.month ?? "—"}</span> },
-    { key: "gross", header: "Gross", accessor: (s) => s.gross_paise, sortable: true, align: "right",
-      render: (s) => <span className="font-mono">{formatPaise(s.gross_paise)}</span> },
-    { key: "deductions", header: "Deductions", accessor: (s) => slipDeductions(s), sortable: true, align: "right",
-      render: (s) => <span className="font-mono text-red-600">{formatPaise(slipDeductions(s))}</span> },
-    { key: "net", header: "Net Pay", accessor: (s) => s.net_paise, sortable: true, align: "right",
-      render: (s) => <span className="font-mono font-semibold text-green-700">{formatPaise(s.net_paise)}</span> },
-  ], []);
-
-  const payslipMonthOptions = useMemo(() => {
-    const months = Array.from(new Set(slips.map((s) => s.run?.month).filter(Boolean) as string[]));
-    months.sort((a, b) => b.localeCompare(a));
-    return months.map((m) => ({ value: m, label: m }));
-  }, [slips]);
-
-  const payslipFilters: FilterDef<PayrollSlip>[] = useMemo(() => [
-    { key: "month", label: "Month", type: "select", accessor: (s) => s.run?.month ?? "", options: payslipMonthOptions },
-  ], [payslipMonthOptions]);
 
   if (loading) {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading payroll...</p></div>;
@@ -1040,13 +900,6 @@ export default function PayrollPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-8">
       {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
-      {disburseTarget && (
-        <DisburseModal
-          run={disburseTarget}
-          onClose={() => setDisburseTarget(null)}
-          onDone={(msg) => { setDisburseTarget(null); setRunActionMsg({ type: "ok", text: msg }); load(); }}
-        />
-      )}
 
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
@@ -1086,9 +939,6 @@ export default function PayrollPage() {
                 says which clients still need one. The tabs after this are the
                 firm-grain work that genuinely belongs here. */}
             <TabsTrigger value="month" className="flex items-center gap-1.5"><CalendarDays size={14} />Month</TabsTrigger>
-            <TabsTrigger value="monthly" className="flex items-center gap-1.5"><Play size={14} />Monthly Run</TabsTrigger>
-            <TabsTrigger value="payslips" className="flex items-center gap-1.5"><FileText size={14} />Payslips</TabsTrigger>
-            <TabsTrigger value="statutory" className="flex items-center gap-1.5"><Shield size={14} />Statutory</TabsTrigger>
             <TabsTrigger value="statutory-returns" className="flex items-center gap-1.5"><Download size={14} />Statutory Returns</TabsTrigger>
           </TabsList>
 
@@ -1098,273 +948,23 @@ export default function PayrollPage() {
           </TabsContent>
 
           {/* MONTHLY RUN TAB */}
-          <TabsContent value="monthly">
-            <Card className="mb-4">
-              <CardContent className="pt-5">
-                <div className="flex flex-wrap gap-4 items-end">
-                  <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                    <ClientLookup
-                      clients={clients}
-                      value={runClientId}
-                      onChange={setRunClientId}
-                      ariaLabel="Client"
-                      placeholder="Select client…"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
-                    <input type="month" className="border rounded-lg px-3 py-2 text-sm" value={runMonth} onChange={e => setRunMonth(e.target.value)} />
-                  </div>
-                  <Button
-                    onClick={generatePayslips}
-                    disabled={generating || runEmployees.length === 0}
-                    className="flex items-center gap-1.5"
-                  >
-                    <Play size={14} />{generating ? "Generating..." : "Generate Payslips"}
-                  </Button>
-                </div>
-                {generateError && <p className="text-sm text-red-600 mt-3">{generateError}</p>}
-              </CardContent>
-            </Card>
+          {/* Monthly Run, Payslips and Statutory USED TO BE HERE, each behind a
+              client dropdown, and each a rival of the client workspace — which
+              is where a payroll month is actually completed, against that
+              client's ledger, attendance and statutory identity.
 
-            {/* ── Payroll runs for this client — lifecycle: finalize → mark paid ── */}
-            {runClientId && (() => {
-              const clientRunList = runs
-                .filter((r) => r.client_id === runClientId)
-                .sort((a, b) => b.month.localeCompare(a.month));
-              if (clientRunList.length === 0) return null;
-              const statusBadge = (s: string) => {
-                const map: Record<string, string> = {
-                  draft: "bg-[#F1F5F9] text-[#64748B]",
-                  review: "bg-amber-50 text-amber-700",
-                  finalized: "bg-blue-50 text-blue-700",
-                  paid: "bg-green-50 text-green-700",
-                };
-                return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${map[s] ?? map.draft}`}>{s}</span>;
-              };
-              return (
-                <Card className="mb-4">
-                  <CardHeader><CardTitle className="text-base">Payroll Runs</CardTitle></CardHeader>
-                  <CardContent>
-                    {runActionMsg && (
-                      <div className={`mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${runActionMsg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
-                        {runActionMsg.text}
-                        <button onClick={() => setRunActionMsg(null)} className="ml-auto"><X size={12} /></button>
-                      </div>
-                    )}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-xs">
-                          <th className="py-2 px-3 text-left font-semibold">Month</th>
-                          <th className="py-2 px-3 text-center font-semibold">Status</th>
-                          <th className="py-2 px-3 text-center font-semibold">Employees</th>
-                          <th className="py-2 px-3 text-right font-semibold">Gross</th>
-                          <th className="py-2 px-3 text-right font-semibold">Net Pay</th>
-                          <th className="py-2 px-3 text-right font-semibold">Action</th>
-                        </tr></thead>
-                        <tbody className="divide-y divide-[#F1F5F9]">
-                          {clientRunList.map((r) => (
-                            <tr key={r.id} className="hover:bg-[#F8FAFC]">
-                              <td className="py-2.5 px-3 font-medium text-[#1E293B]">{r.month}</td>
-                              <td className="py-2.5 px-3 text-center">{statusBadge(r.status)}</td>
-                              <td className="py-2.5 px-3 text-center text-[#64748B]">{r.headcount ?? "—"}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-[#334155]">{r.total_gross_paise != null ? fmtRs(r.total_gross_paise) : "—"}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-[#334155]">{r.total_net_paise != null ? fmtRs(r.total_net_paise) : "—"}</td>
-                              <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                                {(r.status === "draft" || r.status === "review") && (
-                                  <Button size="sm" variant="outline" disabled={runActionBusy === r.id} onClick={() => finalizeRunAction(r)}>
-                                    {runActionBusy === r.id ? "Finalizing…" : "Finalize"}
-                                  </Button>
-                                )}
-                                {r.status === "finalized" && (
-                                  <Button size="sm" disabled={runActionBusy === r.id} onClick={() => setDisburseTarget(r)} className="flex items-center gap-1.5">
-                                    <CheckCircle size={13} /> Mark Paid
-                                  </Button>
-                                )}
-                                {r.status === "paid" && (
-                                  <span className="text-xs text-green-700 inline-flex items-center gap-1">
-                                    <CheckCircle size={13} /> Paid{r.paid_at ? ` · ${r.paid_at.slice(0, 10)}` : ""}
-                                  </span>
-                                )}
-                                {/* The only way out of a released run, and until
-                                    now it existed only on the server. Beside the
-                                    forward action rather than in a menu: a CA
-                                    who has just been told to "reverse the run
-                                    first" is looking at this row. */}
-                                {(r.status === "finalized" || r.status === "paid") && (
-                                  <Button
-                                    size="sm" variant="outline"
-                                    disabled={runActionBusy === r.id}
-                                    onClick={() => reverseRunAction(r)}
-                                    title="Post a reversing entry and reopen this month for correction. Partner only."
-                                    className="ml-2 text-[#B45309] border-amber-300 hover:bg-amber-50"
-                                  >
-                                    {runActionBusy === r.id ? "Reversing…" : "Reverse"}
-                                  </Button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })()}
+              They are removed rather than left beside their replacement,
+              because two ways to compute and release a month is how the salary
+              register and the ECR each ended up implemented twice, once per
+              surface, with only one of them right.
 
-            {runEmployees.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-[#94A3B8]">No employees for this client.</CardContent></Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Employees in this run ({runEmployees.length})</CardTitle>
-                  <p className="text-xs text-[#64748B] mt-0.5">
-                    Gross pay, PF, ESI, Professional Tax and TDS are computed by the
-                    server when you click &quot;Generate Payslips&quot; — open the
-                    Payslips tab afterwards to see the results.
-                  </p>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
-                          <th className="text-left py-3 px-4">Employee</th>
-                          <th className="text-left py-3 px-4">Designation</th>
-                          <th className="text-right py-3 px-4">Monthly CTC</th>
-                          <th className="text-center py-3 px-4">PF</th>
-                          <th className="text-center py-3 px-4">ESI</th>
-                          <th className="text-center py-3 px-4">PT</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {runEmployees.map(emp => (
-                          <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
-                            <td className="py-3 px-4 font-medium">{emp.name}</td>
-                            <td className="py-3 px-4 text-[#475569]">{emp.designation || "—"}</td>
-                            <td className="py-3 px-4 text-right font-mono">{fmtRs(employeeGrossPaise(emp))}</td>
-                            <td className="py-3 px-4 text-center">{emp.pf_applicable ? "Yes" : "No"}</td>
-                            <td className="py-3 px-4 text-center">{emp.esi_applicable ? "Yes" : "No"}</td>
-                            <td className="py-3 px-4 text-center">{emp.pt_applicable ? (emp.pt_state ?? "Yes") : "No"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* PAYSLIPS TAB */}
-          <TabsContent value="payslips">
-            <Card>
-              <CardHeader><CardTitle>Generated Payslips</CardTitle></CardHeader>
-              <CardContent>
-                <DataTable
-                  data={slips}
-                  columns={payslipColumns}
-                  filters={payslipFilters}
-                  getRowId={(s) => s.id}
-                  loading={loading}
-                  onRefresh={load}
-                  searchPlaceholder="Search by employee or month…"
-                  initialSort={{ key: "month", dir: "desc" }}
-                  exportFilename="payslips"
-                  persistKey="payroll.payslips"
-                  emptyTitle="No payslips generated yet"
-                  emptyDescription="Run a Monthly Run to generate payslips."
-                  rowActions={(s) => (
-                    <Button size="sm" variant="outline" onClick={() => setViewSlip(s)}>View</Button>
-                  )}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* STATUTORY TAB */}
-          <TabsContent value="statutory">
-            <Card className="mb-4">
-              <CardContent className="pt-5">
-                <div className="flex gap-4 items-end">
-                  <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                    <ClientLookup
-                      clients={clients}
-                      value={statClientId}
-                      onChange={setStatClientId}
-                      ariaLabel="Client"
-                      placeholder="Select client…"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
-                    <input type="month" className="border rounded-lg px-3 py-2 text-sm" value={statMonth} onChange={e => setStatMonth(e.target.value)} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            {statSlips.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-[#94A3B8]">No payroll runs for selected month/client.</CardContent></Card>
-            ) : (() => {
-              // SUM what the run stored. Nothing here re-derives a rate, a
-              // ceiling or a formula.
-              //
-              // It used to. The employer PF was Math.min(basic * 12%, 180000) —
-              // basic ALONE where EPF Act s.6 says basic + DA, and a hardcoded
-              // Rs 1,800 that is only right while the ceiling is Rs 15,000. ESI
-              // was gross * 3.25% behind the same monthly-ceiling test Rule 50
-              // contradicts. EDLI was 0.5% OF THAT WRONG NUMBER. Every one of
-              // those figures is already on the slip, computed once by
-              // apps/api and posted to the ledger in the same paise, so a
-              // screen that recomputed them could only ever disagree with the
-              // books it sits beside.
-              const sum = (f: (s: PayrollSlip) => number) => statSlips.reduce((t, s) => t + (f(s) || 0), 0);
-              const totalPfEmp      = sum(s => s.pf_employee_paise);
-              const totalPfEmployer = sum(s => s.pf_employer_paise ?? 0);
-              const totalEsiEmp     = sum(s => s.esi_employee_paise);
-              const totalEsiEmployer = sum(s => s.esi_employer_paise ?? 0);
-              const totalPt         = sum(s => s.pt_paise);
-              const totalTds        = sum(s => s.tds_paise);
-              // From the RUN, not from the slips. The admin charge is floored at
-              // ₹500 per establishment, so a slip sum would under-state it for
-              // every small client — and disagree with both the challan and the
-              // ledger entry (migration 329).
-              const runSum = (f: (r: PayrollRun) => number) =>
-                statRuns.reduce((t, r) => t + (f(r) || 0), 0);
-              const edli            = runSum(r => r.total_edli_paise ?? 0);
-              const pfAdmin         = runSum(r => r.total_pf_admin_paise ?? 0);
-              return (
-                <Card>
-                  <CardHeader><CardTitle>Statutory Contributions — {statMonth}</CardTitle></CardHeader>
-                  <CardContent>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase">
-                          <th className="text-left py-2">Component</th>
-                          <th className="text-right py-2">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="border-b"><td className="py-2">PF Employee Contribution (12% of Basic)</td><td className="py-2 text-right font-mono">{fmtRs(totalPfEmp)}</td></tr>
-                        <tr className="border-b"><td className="py-2">PF Employer Contribution (12% of Basic)</td><td className="py-2 text-right font-mono">{fmtRs(totalPfEmployer)}</td></tr>
-                        <tr className="border-b"><td className="py-2">EDLI (0.5% of PF wages)</td><td className="py-2 text-right font-mono">{fmtRs(edli)}</td></tr>
-                        <tr className="border-b"><td className="py-2">EPF admin charge (0.5%, min ₹500 per establishment)</td><td className="py-2 text-right font-mono">{fmtRs(pfAdmin)}</td></tr>
-                        <tr className="border-b"><td className="py-2">ESI Employee (0.75% of Gross)</td><td className="py-2 text-right font-mono">{fmtRs(totalEsiEmp)}</td></tr>
-                        <tr className="border-b"><td className="py-2">ESI Employer (3.25% of Gross)</td><td className="py-2 text-right font-mono">{fmtRs(totalEsiEmployer)}</td></tr>
-                        <tr className="border-b"><td className="py-2">Professional Tax</td><td className="py-2 text-right font-mono">{fmtRs(totalPt)}</td></tr>
-                        <tr className="font-bold"><td className="py-2">TDS on Salary (IT Act Sec 192)</td><td className="py-2 text-right font-mono">{fmtRs(totalTds)}</td></tr>
-                      </tbody>
-                    </table>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-          </TabsContent>
-
-          {/* STATUTORY RETURNS TAB */}
+              Nothing was deleted before it had a home. Finalise, record payment
+              and reverse now live together in the client month's Release tab;
+              the ECR, the ESIC file, the 24Q working paper, the payslip zip and
+              the salary register are on its Outputs shelf; the roster, the
+              employee form, the bulk import and portal access are on
+              /payroll/people. Statutory Returns stays below because the
+              deadline checklist genuinely spans the firm. */}
           <TabsContent value="statutory-returns">
             <StatutoryReturnsTab runs={runs} slips={slips} clients={clients} />
           </TabsContent>
