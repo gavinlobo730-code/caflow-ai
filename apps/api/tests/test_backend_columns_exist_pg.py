@@ -136,7 +136,20 @@ UNFIXED: dict[str, str] = {}
 # shows an empty chart for every client of a normally-seeded firm. Only the
 # interpolated client_id is unreadable; the same query's select list names
 # client_id literally, so the column itself is still checked.
-MAX_UNREADABLE = 433
+# 433 -> 434: routers/payroll's two statutory-identity upserts (migration 325).
+# Each writes an inline dict of literal column names PLUS a `**update` spread,
+# and the spread is unreadable BY CONSTRUCTION: the endpoints are PATCH-shaped,
+# so which columns a request writes is decided at runtime from what it sent —
+# that is what keeps "leave the TAN alone" and "this client has no TAN"
+# different edits. Two calls, one spread each; the count was 432 before them,
+# so this budget still carries the one unit of slack it did.
+#
+# The columns themselves are not unchecked. Both upserts name firm_id,
+# client_id, state and updated_by literally, and _read_statutory_identity's two
+# select lists name the rest — tan, epf_establishment_code, esic_employer_code,
+# lin, ptrc_number, ptec_number, note — rather than "*", precisely so that
+# every column of both tables is verified against the real schema.
+MAX_UNREADABLE = 434
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
