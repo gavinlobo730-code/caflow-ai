@@ -327,26 +327,28 @@ function getDueDateStatus(
  * statutory remittance file is the last place a second implementation belongs.
  */
 
-/**
- * Generate TDS 24Q summary CSV.
- * IT Act Section 192 — TDS on salary.
- * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
- */
-function generateTds24QData(slips: PayrollSlip[], quarter: string): string {
-  // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-  const header = `# TDS 24Q Summary — ${quarter}\n# IT Act Section 192 — TDS on Salary\n# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT\n# This data must be reviewed and filed on the e-filing portal (incometax.gov.in) by a qualified CA\n`;
-  const csvHeader = "Employee Name,PAN,Designation,Gross Salary (Rs),TDS Deducted (Rs),Quarter";
-  const rows = slips.map(s => {
-    const emp = s.employee!;
-    const grossRs = (s.gross_paise / 100).toFixed(2);
-    const tdsRs = (s.tds_paise / 100).toFixed(2);
-    return `"${emp.name}","${emp.pan || "PAN NOT AVAILABLE"}","${emp.designation || ""}",${grossRs},${tdsRs},"${quarter}"`;
-  });
-  const totalGross = slips.reduce((sum, s) => sum + s.gross_paise, 0);
-  const totalTds = slips.reduce((sum, s) => sum + s.tds_paise, 0);
-  const footer = `"TOTAL","","",${(totalGross / 100).toFixed(2)},${(totalTds / 100).toFixed(2)},""`;
-  return [header, csvHeader, ...rows, footer].join("\n");
-}
+// ── TDS 24Q ─────────────────────────────────────────────────────────────────
+//
+// `generateTds24QData` USED TO LIVE HERE and has been deleted rather than left
+// beside its replacement. It assembled a statutory return in the browser, from
+// whatever payslips this screen happened to have loaded, and it disagreed with
+// domain/payroll/form24q.py on the thing that matters most:
+//
+//   * it wrote "PAN NOT AVAILABLE" into the PAN column and carried on. §206AA
+//     requires tax at the HIGHER of the specified rate or 20% where PAN is not
+//     furnished, so a row declaring tax deducted at slab rates against no PAN
+//     declares a SHORT deduction — and the employer, not the employee, carries
+//     it. The server refuses the row.
+//   * it never looked for a §192 challan, so it would produce a quarter with
+//     nothing showing the tax was deposited.
+//   * it never checked the runs were FINALISED, so a draft month's figures
+//     could be filed and then move.
+//   * it divided paise by 100 in floating point.
+//
+// The quarter's working paper is now GET /api/payroll/24q-source.csv, built
+// from the same rows those refusals are computed on. Same fix as the salary
+// register and the employee import: a statutory document is not a thing the
+// browser assembles.
 
 function downloadFile(content: string, filename: string, mimeType: string,
                      opts?: { bom?: boolean }) {
@@ -370,12 +372,21 @@ function downloadFile(content: string, filename: string, mimeType: string,
 }
 
 /** Determine the TDS 24Q quarter label for a given YYYY-MM month string */
-function getTdsQuarterLabel(month: string): string {
+/** Which 24Q quarter and financial year a payroll month falls in.
+ *
+ *  Returns what the SERVER needs — "Q2" and "2026-27" — not a display label.
+ *  It replaced a label-only helper, which was fine while the CSV was built in
+ *  the browser and useless once the quarter had to be named to an API.
+ *
+ *  The Indian FY runs April to March, so a January–March month belongs to the
+ *  year BEFORE the calendar one. Getting that wrong files Q4 against next
+ *  year's return. */
+function tdsQuarterOf(month: string): { quarter: string; fy: string } {
   const [y, m] = month.split("-").map(Number);
-  if (m >= 4 && m <= 6) return `Q1 Apr–Jun ${y}`;
-  if (m >= 7 && m <= 9) return `Q2 Jul–Sep ${y}`;
-  if (m >= 10 && m <= 12) return `Q3 Oct–Dec ${y}`;
-  return `Q4 Jan–Mar ${y}`;
+  const quarter = m >= 4 && m <= 6 ? "Q1" : m >= 7 && m <= 9 ? "Q2"
+                : m >= 10 && m <= 12 ? "Q3" : "Q4";
+  const fyStart = m >= 4 ? y : y - 1;
+  return { quarter, fy: `${fyStart}-${String(fyStart + 1).slice(2)}` };
 }
 
 // ── Employee Portal access modal ───────────────────────────────────────────
@@ -1124,12 +1135,25 @@ function StatutoryReturnsTab({
   const handleGenerateEsiStatement = (run: PayrollRun) =>
     downloadStatutoryFile(run, "esic", () => api.payroll.runEsic(run.id));
 
-  function handleGenerate24Q(run: PayrollRun) {
-    // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    const runSlips = slipsForRun(run.id);
-    const quarter = getTdsQuarterLabel(run.month);
-    const content = generateTds24QData(runSlips, quarter);
-    downloadFile(content, `TDS_24Q_${run.month}.csv`, "text/csv");
+  /** # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
+   *
+   *  The quarter, not the month: 24Q is a QUARTERLY return, and this button has
+   *  always sat on a run row. The month decides which quarter and which FY.
+   */
+  async function handleGenerate24Q(run: PayrollRun) {
+    setStatutoryBusy(`${run.id}:24q`);
+    try {
+      const { quarter, fy } = tdsQuarterOf(run.month);
+      await api.payroll.download24QWorkingPaper(run.client_id, fy, quarter);
+    } catch (e) {
+      toast({
+        title: "Could not build the 24Q working paper",
+        description: apiErr(e, "The request failed."),
+        variant: "destructive",
+      });
+    } finally {
+      setStatutoryBusy(null);
+    }
   }
 
   return (

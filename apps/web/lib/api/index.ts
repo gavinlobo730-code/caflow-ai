@@ -1331,6 +1331,26 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, rows, dry_run: dryRun }),
       }),
+    /** THE 24Q WORKING PAPER, BUILT BY THE SERVER.
+     *
+     *  It used to be built in the browser — `generateTds24QData` on the payroll
+     *  page — from whatever payslips that screen had loaded, and it disagreed
+     *  with domain/payroll/form24q on the thing that matters: it wrote
+     *  "PAN NOT AVAILABLE" into the PAN column and carried on. §206AA requires
+     *  tax at the HIGHER of the specified rate or 20% where PAN is not
+     *  furnished, so a row declaring tax deducted at slab rates against no PAN
+     *  declares a SHORT deduction, and the employer carries it. It also never
+     *  looked for a §192 challan and never checked the runs were finalised.
+     *
+     *  # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. A working paper, not a
+     *  return; nothing here files anything.
+     */
+    download24QWorkingPaper: (clientId: string, financialYear: string, quarter: string) =>
+      downloadFile(
+        `/api/payroll/24q-source.csv?client_id=${encodeURIComponent(clientId)}`
+        + `&financial_year=${encodeURIComponent(financialYear)}`
+        + `&quarter=${encodeURIComponent(quarter)}`,
+        `24Q-${financialYear}-${quarter}.csv`),
     downloadEmployeeImportTemplate: () =>
       downloadFile("/api/payroll/employees/import-template.csv",
                    "employee-import-template.csv"),

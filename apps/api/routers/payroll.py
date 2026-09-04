@@ -3753,35 +3753,20 @@ def run_esic(
     })
 
 
-@router.get("/24q-source")
-def form_24q_from_payroll(
-    client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
-    quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
-    current_user: dict = Depends(rbac("payroll", "read"))
-):
-    """Assemble Form 24Q's deductee rows from finalised payroll.
+def _assemble_24q_source(db, current_user: dict, client_id: str,
+                         financial_year: str, quarter: str):
+    """Everything a quarter's 24Q needs, assembled ONCE.
 
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Two endpoints render this — the JSON source a screen reads and the CSV
+    working paper a CA keeps — and they must not be two assemblies. A second
+    one would drift, and the drift would be invisible: both would look like a
+    perfectly reasonable 24Q, and only one would carry the §206AA refusal.
 
-    Until now routers/tds.py's compute_24q took every deductee from the request
-    body, so a CA who had just run payroll re-keyed each employee's name, PAN,
-    gross and tax by hand for all three months. Beyond the labour, that is where
-    the return stops agreeing with the books — and the mismatch surfaces as a
-    TRACES default months later.
-
-    Nothing here computes tax. The TDS is what payroll deducted and what the
-    ledger was credited; this only puts it in the shape 24Q wants.
+    Returns (Form24QSource, months, deductor_block).
     """
-    assert_client_access(current_user, client_id)
     if quarter not in QUARTER_MONTHS:
-        raise HTTPException(status_code=422, detail=f"Quarter must be one of {sorted(QUARTER_MONTHS)}.")
-
-    db = _db()
-    if not db:
-        return api_response(True, {"financial_year": financial_year, "quarter": quarter,
-                                   "deductees": [], "problems": [], "totals": {},
-                                   "deductor": {}, "ready": False})
+        raise HTTPException(status_code=422,
+                            detail=f"Quarter must be one of {sorted(QUARTER_MONTHS)}.")
 
     months = months_in_quarter(financial_year, quarter)
     runs = (db.table("payroll_runs")
@@ -3841,6 +3826,38 @@ def form_24q_from_payroll(
     identity, _pt = _read_statutory_identity(db, current_user["firm_id"], client_id)
     deductor, deductor_problems = identity_domain.deductor_block(identity, client_row)
     src.problems.extend(deductor_problems)
+    return src, months, deductor
+
+
+@router.get("/24q-source")
+def form_24q_from_payroll(
+    client_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Assemble Form 24Q's deductee rows from finalised payroll.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    Until now routers/tds.py's compute_24q took every deductee from the request
+    body, so a CA who had just run payroll re-keyed each employee's name, PAN,
+    gross and tax by hand for all three months. Beyond the labour, that is where
+    the return stops agreeing with the books — and the mismatch surfaces as a
+    TRACES default months later.
+
+    Nothing here computes tax. The TDS is what payroll deducted and what the
+    ledger was credited; this only puts it in the shape 24Q wants.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"financial_year": financial_year, "quarter": quarter,
+                                   "deductees": [], "problems": [], "totals": {},
+                                   "deductor": {}, "ready": False})
+
+    src, months, deductor = _assemble_24q_source(
+        db, current_user, client_id, financial_year, quarter)
 
     return api_response(True, {
         "deductor": deductor,
@@ -3857,6 +3874,63 @@ def form_24q_from_payroll(
         "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Review every row, "
                       "then file on TRACES yourself.",
     })
+
+
+@router.get("/24q-source.csv")
+def form_24q_csv(
+    client_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """The quarter's 24Q working paper, as a file.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. A working paper, not a return:
+    # the FVU-validated file is deliberately not built (10-payroll.md,
+    # "Deferred with reasons"). Nothing here transmits anything.
+
+    THIS REPLACES A CSV THE BROWSER BUILT. `generateTds24QData` in
+    apps/web/app/payroll/page.tsx assembled a 24Q from whatever payslips that
+    screen had loaded, and disagreed with this module on the thing that matters:
+
+      * it wrote "PAN NOT AVAILABLE" into the PAN column and carried on. §206AA
+        requires tax at the HIGHER of the specified rate or 20% where PAN is not
+        furnished, so a row declaring tax deducted at slab rates against no PAN
+        declares a SHORT deduction — and the employer carries it, not the
+        employee. domain/payroll/form24q refuses the row.
+      * it never looked for a §192 challan, so it would produce a quarter's
+        return with nothing showing the tax was deposited.
+      * it never checked the runs were FINALISED, so a draft month's figures
+        could be filed and then move.
+      * it divided paise by 100 in floating point.
+
+    A NOT-READY QUARTER STILL DOWNLOADS, and the reasons are IN the file. This
+    is not the return — it is the working paper a CA checks BEFORE filing, and
+    refusing to produce it is refusing to show them what is wrong. The refusals
+    that matter are enforced where they bind: a deductee with no valid PAN is
+    not a row at all, and the banner says the quarter is not ready.
+    """
+    assert_client_access(current_user, client_id)
+    from fastapi.responses import Response
+    from domain.payroll import form24q as form24q_domain
+
+    db = _db()
+    if not db:
+        if quarter not in QUARTER_MONTHS:
+            raise HTTPException(status_code=422,
+                                detail=f"Quarter must be one of {sorted(QUARTER_MONTHS)}.")
+        blob = form24q_domain.to_csv(form24q_domain.Form24QSource(),
+                                     financial_year=financial_year, quarter=quarter)
+    else:
+        src, _months, _deductor = _assemble_24q_source(
+            db, current_user, client_id, financial_year, quarter)
+        blob = form24q_domain.to_csv(src, financial_year=financial_year, quarter=quarter)
+
+    return Response(
+        content=blob, media_type="text/csv",
+        headers={"Content-Disposition":
+                 f'attachment; filename="24Q-{financial_year}-{quarter}.csv"'},
+    )
 
 
 @router.get("/24q-annexure-ii")

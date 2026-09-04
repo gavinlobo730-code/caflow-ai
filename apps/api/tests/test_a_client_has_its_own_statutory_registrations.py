@@ -163,13 +163,47 @@ def test_a_missing_address_is_a_problem_too():
     assert any("address" in p for p in problems)
 
 
-def test_the_24q_endpoint_pushes_those_problems_onto_the_source():
+def test_the_24q_assembly_pushes_those_problems_onto_the_source():
     """Form24QSource.is_ready is `bool(deductees) and not problems`, so a
-    missing TAN must clear `ready` rather than sit in a field beside it."""
-    import inspect
-    src = inspect.getsource(pr.form_24q_from_payroll)
-    assert "src.problems.extend(deductor_problems)" in src
-    assert '"deductor": deductor' in src
+    missing TAN must clear `ready` rather than sit in a field beside it.
+
+    Asserted on the BEHAVIOUR of the assembly rather than on the text of one
+    endpoint. It used to read the endpoint's source for the line that does it —
+    which broke the moment the assembly moved into a helper so the JSON source
+    and the CSV working paper could share it, and which would not have noticed
+    if the line had been kept and neutered.
+    """
+    src, _months, deductor = pr._assemble_24q_source(
+        _Db24Q(), {"firm_id": "F", "id": "u"}, "CLI", "2026-27", "Q1")
+    assert any("TAN" in p and "s.203A" in p for p in src.problems), (
+        "a client with no TAN recorded must make the quarter NOT ready")
+    assert src.is_ready is False
+    assert deductor is not None
+
+
+class _Db24Q:
+    """The smallest database that gets _assemble_24q_source to the deductor
+    block: a client with no statutory identity, and no payroll runs."""
+
+    class _Q:
+        def __init__(self, table): self._table = table
+        def select(self, *_a, **_k): return self
+        def eq(self, *_a, **_k): return self
+        def in_(self, *_a, **_k): return self
+        def maybe_single(self): return self
+
+        def execute(self):
+            class R:
+                pass
+            r = R()
+            if self._table == "clients":
+                # maybe_single() -> a dict; the plain path -> a list.
+                r.data = {"client_name": "Acme", "pan": "AAACA1234E"}
+            else:
+                r.data = []
+            return r
+
+    def table(self, name): return self._Q(name)
 
 
 # ── professional tax: one registration per state, reported once per state ────

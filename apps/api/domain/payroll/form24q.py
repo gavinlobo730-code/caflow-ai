@@ -174,3 +174,117 @@ def build_24q_from_payroll(
         )
 
     return out
+
+
+# ─── The quarter as a file ──────────────────────────────────────────────────
+#
+# The frontend used to build this CSV itself — `generateTds24QData` in
+# apps/web/app/payroll/page.tsx — from the payslips that screen happened to have
+# loaded. It was a SECOND implementation of a statutory return, and it disagreed
+# with this module on the thing that matters most:
+#
+#   * it wrote "PAN NOT AVAILABLE" into the PAN column and carried on. §206AA
+#     requires tax at the HIGHER of the specified rate or 20% where PAN is not
+#     furnished, so a row declaring tax deducted at slab rates against no PAN
+#     declares a SHORT deduction — and the employer, not the employee, carries
+#     it. This module refuses the row instead.
+#   * it never looked for a §192 challan, so it would happily produce a quarter's
+#     return with nothing showing the tax was deposited.
+#   * it never checked whether the runs were FINALISED, so a draft month's
+#     figures could be filed and then move.
+#   * it divided paise by 100 in floating point.
+#
+# So the file is built here, from the same rows the refusals are computed on.
+
+CSV_COLUMNS: list[tuple[str, str]] = [
+    ("Employee Name",       "deductee_name"),
+    ("PAN",                 "deductee_pan"),
+    ("Section",             "section"),
+    ("Payment Date",        "payment_date"),
+    ("Gross Salary",        "payment_amount_paise"),
+    ("TDS Deducted",        "tds_deducted_paise"),
+    ("TDS Deposited",       "tds_deposited_paise"),
+    ("Challan No",          "challan_no"),
+    ("BSR Code",            "bsr_code"),
+    ("Challan Date",        "challan_date"),
+]
+
+_CSV_MONEY = {key for _h, key in CSV_COLUMNS if key.endswith("_paise")}
+
+
+def _rupees(paise) -> str:
+    """Integer paise to a plain two-decimal rupee string.
+
+    The same boundary rule domain/payroll/register.py and domain/gst/money.py
+    follow: money is integer paise everywhere and becomes rupees only where a
+    document is produced. No grouping — this file is read by a program as often
+    as by a person, and parseFloat("1,25,000") is 1.
+    """
+    p = int(paise or 0)
+    sign = "-" if p < 0 else ""
+    p = abs(p)
+    return f"{sign}{p // 100}.{p % 100:02d}"
+
+
+def to_csv(src: "Form24QSource", *, financial_year: str, quarter: str) -> bytes:
+    """The quarter's deductee rows, as a file a CA can check and keep.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This is a working paper, not a
+    # return: the FVU-validated 24Q file is deliberately not built (see
+    # docs/architecture/10-payroll.md, "Deferred with reasons"). Nothing here
+    # transmits anything.
+
+    The banner is part of the document. A CSV of names, PANs and tax deducted
+    that does not say what it is and is not gets forwarded, and the next person
+    to open it has no way to know it was never filed.
+    """
+    import csv as _csv
+    import io as _io
+
+    buf = _io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow([f"# Form 24Q working paper — {financial_year} {quarter}"])
+    writer.writerow(["# IT Act s.192 — TDS on salary. Built from FINALISED payroll runs."])
+    writer.writerow(["# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Not an FVU file; "
+                     "not filed. File on the TRACES/e-filing portal."])
+    if src.problems:
+        # The problems go IN the file, not only on the screen that produced it.
+        # A file downloaded while a quarter was incomplete outlives the toast
+        # that said so.
+        for problem in src.problems:
+            writer.writerow([f"# NOT READY: {problem}"])
+    if src.employees_with_nil_tds:
+        writer.writerow([f"# {src.employees_with_nil_tds} employee(s) paid this quarter had "
+                         "NIL tax and are not deductee rows — Annexure I is a break-up of "
+                         "TDS deducted, and there is nothing to break up."])
+    writer.writerow([])
+
+    writer.writerow([h for h, _k in CSV_COLUMNS])
+    for d in src.deductees:
+        writer.writerow([
+            _rupees(getattr(d, key, 0)) if key in _CSV_MONEY
+            else (getattr(d, key, "") or "")
+            for _h, key in CSV_COLUMNS
+        ])
+
+    if src.deductees:
+        totals = src.totals()
+        row = ["" for _ in CSV_COLUMNS]
+        row[0] = "TOTAL"
+        row[CSV_COLUMNS.index(("Gross Salary", "payment_amount_paise"))] = \
+            _rupees(totals["salary_paise"])
+        row[CSV_COLUMNS.index(("TDS Deducted", "tds_deducted_paise"))] = \
+            _rupees(totals["tds_paise"])
+        writer.writerow(row)
+        # The challan total is the OTHER side of the reconciliation a CA is
+        # actually doing: tax deducted against tax deposited. Stating only the
+        # first invites the return to be filed without the second being checked.
+        writer.writerow([])
+        writer.writerow([f"# TDS deducted   {_rupees(totals['tds_paise'])}"])
+        writer.writerow([f"# Challans on file {_rupees(totals['challan_paise'])}"])
+
+    # utf-8-sig: Excel opens a UTF-8 file as UTF-8 rather than the local code
+    # page, which is where an employee's name turns into mojibake. This file is
+    # a working paper opened in a spreadsheet — it is NOT the portal upload,
+    # which is why the ECR and the ESIC return deliberately carry no BOM.
+    return buf.getvalue().encode("utf-8-sig")
