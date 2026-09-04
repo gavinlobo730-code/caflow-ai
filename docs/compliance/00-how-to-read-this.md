@@ -26,6 +26,29 @@ Consequences, stated plainly:
   several conflicts these files have to leave open.** That is the cheapest
   available improvement to this document.
 
+### All five open findings are now verified
+
+Between 4 and 5 September 2026 every finding this document originally carried as
+an ungraded open question was verified by targeted search, each including
+deliberate attempts to DISPROVE it:
+
+| Finding | Outcome |
+|---|---|
+| Income-tax Act 2025 renumbered the TDS forms | **Confirmed**, and the SECTIONS moved too — which the first pass missed |
+| The 50% wage rule changes the EPF base | **Confirmed and in force**; a live under-computation below the ceiling |
+| PracticeSync cannot be an FIU | **Confirmed**; `CLAUDE.md:404` step one is not achievable |
+| DPDP substantive duties 13 May 2027 | **Confirmed**; one overstatement in this document corrected |
+| Revamped ECR changed the workflow | **Confirmed**; format unchanged, but filing now blocks out of order |
+
+Two of those corrected a claim rather than merely confirming one — s. 195 moved
+to s. 393(2) and not s. 400, and this document's own "the Board can already take
+complaints" overstated the DPDP position. **The verification was worth doing on
+the strength of those two alone.**
+
+Sourcing did not improve: the network policy still blocks every primary host, so
+these remain triangulated rather than read. What changed is breadth and
+adversarial pressure, not access.
+
 Where two sources disagreed, both are recorded. Where a fact was wanted and not
 found, that is written down as not found, rather than filled in from a plausible
 memory — because a confidently wrong regulatory fact in a codebase document is

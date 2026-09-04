@@ -195,32 +195,62 @@ wages per member, NCP days ≤ days in month.
 ⚠️ One source mentioned a `||` delimiter. **Believed wrong** — `#~#` is what the
 ECR 2.0 sources overwhelmingly say.
 
-### ⭐ The revamped ECR — effective wage month September 2025
+### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
-EPFO circular dated **26 September 2025**, applicable from **wage month September
-2025** including for pending earlier months. `[P]`
+**VERIFIED 2026-09-04**, including a search for a deferral or relaxation. The
+launch had one, it has expired, and enforcement is fully live.
 
-**The file format did NOT change** — confirmed by a payroll vendor answering
-exactly this question. `[S]` What changed is the portal workflow:
+**Two circulars, not one**: the launch circular of **26 September 2025**, and a
+**FAQ circular of 8 October 2025**. `[P/S]`
 
-1. **Return filing and payment/challan generation are now separate acts.**
-2. **System-based validations** at submission — wages, UAN validity, ineligible
-   pension contributions.
-3. **Auto-calculation of §7Q interest and damages**, with mandatory payment of
-   §7Q interest.
-4. **Sequential, month-wise chronological filing is now compulsory.**
-5. Support for **revised returns** in specified circumstances.
+**The file format did NOT change** — confirmed by EPFO's own material and by a
+payroll vendor answering exactly this question. The `.txt` layout and the 11-field
+`#~#` schema are unchanged; employers upload the same file. **Only the workflow
+and the validations changed.** `[P/S]`
 
-> **Three consequences for the code**, in order of importance (task #122):
+What did change:
+
+1. **Return and payment are separated, and ordered.** The employer must
+   **submit and approve the return FIRST**, and only then generate the challan
+   and pay. Two states per month, in sequence.
+2. **Sequential month-wise filing is enforced by blocking**, not advised.
+   *"You cannot file for October if September is still pending."* `[S]`
+   There was an **initial four-month relaxation** at launch; after it, the system
+   blocks a Regular Return for a month unless the data from **four months prior**
+   is fully filed and validated. From wage month September 2025 that relaxation
+   expired around January 2026 — **it is fully live now**.
+3. **Pending pre-September-2025 months must also be filed through the revamped
+   system** (FAQ 3, circular 08-10-2025).
+4. **THREE return types**, which the first research pass under-described:
+   - **Regular** — contributions for all active members for a wage month;
+   - **Supplementary** — to add employees registered *after* that month's
+     Regular Return was approved;
+   - **Revised** — to correct wages or contribution details already submitted.
+5. **§7Q interest and §14B damages are auto-computed by EPFO** and surfaced in
+   the *Due Deposit Balance Summary* at challan generation. **§7Q interest is
+   payable with the principal**; **§14B damages may be paid forthwith or
+   later** — an option, not the same obligation.
+6. **System-based validations** now reject what previously passed silently —
+   wages, UAN validity, ineligible pension contributions.
+
+> **What this means for the code** (task #122). `GET /runs/{run_id}/ecr` builds a
+> file **per run**, with no notion of return type and no notion of month
+> sequence — verified by grep; the only mention of either in the ECR path is the
+> marker added by this work.
 >
-> 1. **Chronological filing is enforced.** A client with a gap must file in
->    order. "Which months are outstanding, in sequence" becomes a first-class
->    concept. `GET /runs/{id}/ecr` today emits per-run with no such notion.
-> 2. **EPFO auto-computes §7Q interest and damages.** Do **not** present the
->    product's own figure as authoritative — that is a second implementation of a
->    statutory calculation, which drifts. The house rule against two
->    implementations applies exactly.
-> 3. **Return ≠ payment.** Two states per month, not one.
+> The file it emits is still **correct**, because the format did not change. What
+> is missing is everything around it:
+>
+> - **"Which months are outstanding, in order"** has to become a first-class
+>   concept. A client with a gap cannot file the current month at all, so a
+>   product that hands a CA this month's file without saying "August is blocking
+>   it" is handing them something the portal will refuse.
+> - **Return type** is a real distinction. A late joiner is a *Supplementary*
+>   return, not a re-filed Regular one.
+> - **Never compute §7Q or §14B here.** EPFO computes them. A second
+>   implementation of a statutory interest calculation is exactly the drift this
+>   codebase keeps removing, and the CA would have two numbers with no way to
+>   tell which the portal will accept.
 
 ### Rates — and what actually moved in 2025
 
