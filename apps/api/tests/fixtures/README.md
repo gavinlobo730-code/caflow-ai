@@ -165,3 +165,43 @@ What survives is all known and documented:
 * the 12 the migrations declare and production lacks are the rename set the
   first-run audit describes — production guards those tables under different
   policy names, and no table is left without a policy (asserted).
+
+## Both refreshed 4 September 2026, after migrations 322-331
+
+The bank-entry work (322-324) and payroll v1 items 2-8 (325-331) all landed on
+production between the 3 September capture and this one, and
+`test_guards_match_production_pg.py::test_the_in_flight_exclusion_cannot_excuse_everything`
+said so: the guards fixture had fallen ELEVEN migrations behind the repository,
+one past the ten it allows. That assertion is the ratchet working — past ten,
+the in-flight exclusion stops being a courtesy for the migration in the PR and
+starts excusing real drift.
+
+Same console route as the 293 and 294 refreshes, and the same proof, because
+this session had no libpq DSN to production either. Both files were captured
+through the Supabase MCP `execute_sql` tool in pages, reassembled locally, and
+the reassembly HASHED against production before either file was written:
+
+    -- guards, exactly as guard_snapshot.py's GUARD_SQL orders them
+    md5(string_agg(kind||'|'||tbl||'|'||name||'|'||detail||'|'||expr_md5,
+                   E'\n' ORDER BY kind, tbl, name))
+    -- schema, exactly as schema_snapshot.py's INTROSPECT_SQL orders them
+    md5(string_agg(table_name||'|'||column_name||'|'||data_type||'|'
+                   ||is_nullable||'|'||COALESCE(column_default,''),
+                   E'\n' ORDER BY table_name, column_name))
+
+    guards  10a18316ae164d347b1c83d1212a6ff8   2,096 rows
+    schema  c4ad4bb0377e158edfe042fc589b0fbb   3,931 columns in 268 tables
+
+Both matched. That check is not decoration here: a console pages its results,
+and a dropped or truncated page is exactly the failure this route invites. A
+short capture cannot hash equal, so the hash is what makes the paging safe.
+
+Everything moved in one direction. RLS tables 257 -> 263, policies 597 -> 619,
+constraints 1,151 -> 1,214, columns 3,831 -> 3,931 in 262 -> 268 tables, and
+NOTHING was dropped: no table, column, policy or constraint present on 3
+September is absent now. That is what ten additive migrations should look like,
+and it is worth stating, because a refresh that quietly lost a guard would read
+in the diff as a smaller file rather than as a regression.
+
+`applied_through_migration` moves 321 -> 331 in both metas. 332 is the migration
+in flight in the PR that follows this one.

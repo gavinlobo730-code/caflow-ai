@@ -1304,6 +1304,16 @@
    "nullable": "NO",
    "type": "uuid"
   },
+  "entered_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "entered_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "firm_id": {
    "default": "",
    "nullable": "NO",
@@ -1656,6 +1666,11 @@
    "nullable": "NO",
    "type": "boolean"
   },
+  "is_trusted": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
   "rule_name": {
    "default": "",
    "nullable": "NO",
@@ -1685,6 +1700,16 @@
    "default": "",
    "nullable": "YES",
    "type": "text"
+  },
+  "trusted_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "trusted_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   },
   "txn_type": {
    "default": "'any'::text",
@@ -2128,10 +2153,85 @@
    "nullable": "NO",
    "type": "text"
   },
+  "draft_account_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "draft_category": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "draft_entity_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "draft_entity_type": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "draft_error": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "draft_grade": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "draft_gst_rate_bps": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
+  },
+  "draft_is_interstate": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "draft_label": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "draft_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "draft_rule_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "draft_source": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "drafted_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "entry_state": {
+   "default": "'needs_you'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
   "firm_id": {
    "default": "",
    "nullable": "NO",
    "type": "uuid"
+  },
+  "has_splits": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
   },
   "id": {
    "default": "uuid_generate_v4()",
@@ -2194,6 +2294,11 @@
    "type": "timestamp with time zone"
   },
   "posted_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "posted_by_rule_id": {
    "default": "",
    "nullable": "YES",
    "type": "uuid"
@@ -2924,6 +3029,48 @@
    "type": "text"
   }
  },
+ "client_payroll_settings": {
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "inputs_due_day": {
+   "default": "",
+   "nullable": "YES",
+   "type": "smallint"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "updated_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  }
+ },
  "client_portal_sessions": {
   "client_id": {
    "default": "",
@@ -3215,6 +3362,58 @@
    "default": "now()",
    "nullable": "NO",
    "type": "timestamp with time zone"
+  }
+ },
+ "client_pt_registrations": {
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "ptec_number": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "ptrc_number": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "state": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "updated_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   }
  },
  "client_sales_invoice_lines": {
@@ -3584,6 +3783,63 @@
    "default": "now()",
    "nullable": "NO",
    "type": "timestamp with time zone"
+  }
+ },
+ "client_statutory_identity": {
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "epf_establishment_code": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "esic_employer_code": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "lin": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "tan": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "updated_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   }
  },
  "client_timeline_events": {
@@ -7738,6 +7994,83 @@
    "default": "'stable'::text",
    "nullable": "YES",
    "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
+ "firm_pt_slabs": {
+  "amount_paise": {
+   "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "basis": {
+   "default": "'monthly'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "effective_from": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "from_paise": {
+   "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "months": {
+   "default": "",
+   "nullable": "YES",
+   "type": "ARRAY"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "notification_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "notification_reference": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "recorded_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "state": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "to_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
   },
   "updated_at": {
    "default": "now()",
@@ -12666,6 +12999,93 @@
    "type": "timestamp with time zone"
   }
  },
+ "payroll_one_time_earnings": {
+  "amount_paise": {
+   "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "employee_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "entered_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "entered_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "esi_wages": {
+   "default": "",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "kind": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "label": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "month": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "payment_interval_months": {
+   "default": "",
+   "nullable": "YES",
+   "type": "smallint"
+  },
+  "pf_wages": {
+   "default": "",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "taxable": {
+   "default": "",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
  "payroll_perquisites": {
   "client_id": {
    "default": "",
@@ -12721,6 +13141,53 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  }
+ },
+ "payroll_run_transitions": {
+  "actor_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "from_status": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "gaps": {
+   "default": "'[]'::jsonb",
+   "nullable": "NO",
+   "type": "jsonb"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "override_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "run_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "to_status": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
   }
  },
  "payroll_runs": {
@@ -12789,6 +13256,11 @@
    "nullable": "NO",
    "type": "text"
   },
+  "total_edli_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "total_esi_paise": {
    "default": "0",
    "nullable": "NO",
@@ -12805,6 +13277,16 @@
    "type": "bigint"
   },
   "total_net_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "total_one_time_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "total_pf_admin_paise": {
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
@@ -12895,6 +13377,11 @@
    "default": "''::text",
    "nullable": "NO",
    "type": "text"
+  },
+  "source_structure_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   },
   "special_allowance_paise": {
    "default": "0",
@@ -13037,6 +13524,11 @@
   }
  },
  "payroll_slips": {
+  "attendance_entered": {
+   "default": "",
+   "nullable": "YES",
+   "type": "boolean"
+  },
   "basic_paise": {
    "default": "0",
    "nullable": "NO",
@@ -13114,6 +13606,26 @@
   },
   "net_paise": {
    "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "one_time_earnings_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "one_time_esi_wages_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "one_time_pf_wages_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "one_time_taxable_paise": {
+   "default": "0",
    "nullable": "NO",
    "type": "bigint"
   },

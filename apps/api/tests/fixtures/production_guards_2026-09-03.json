@@ -192,6 +192,14 @@
    "detail": "c",
    "expr_md5": "696e2722cfb8a398fbd7573b743097d4"
   },
+  "attendance.attendance_days_add_up_to_the_working_days": {
+   "detail": "c",
+   "expr_md5": "5e177ed719a301fecc1599ade7eafee2"
+  },
+  "attendance.attendance_days_are_within_a_month": {
+   "detail": "c",
+   "expr_md5": "4f005a43807bcb0efd004ee45da0dd88"
+  },
   "attendance.attendance_employee_id_fkey": {
    "detail": "f",
    "expr_md5": "65deafd493a32e21e621e37c782d238a"
@@ -199,6 +207,10 @@
   "attendance.attendance_employee_id_month_year_key": {
    "detail": "u",
    "expr_md5": "83c866b645e46b71b5243dfaad0869ae"
+  },
+  "attendance.attendance_entered_by_fkey": {
+   "detail": "f",
+   "expr_md5": "0739eae95e9659650a0ddc126391cbf1"
   },
   "attendance.attendance_firm_id_fkey": {
    "detail": "f",
@@ -323,6 +335,14 @@
   "bank_matching_rules.bank_matching_rules_suggested_account_id_fkey": {
    "detail": "f",
    "expr_md5": "d2698dcaa2f0c7b2882b7ff64401f75c"
+  },
+  "bank_matching_rules.bank_matching_rules_trusted_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f8f45634c0e5406013e0f5f50cf8b030"
+  },
+  "bank_matching_rules.bank_matching_rules_trusted_check": {
+   "detail": "c",
+   "expr_md5": "7c73cea8043d19b16e267e2a7fbf4922"
   },
   "bank_matching_rules.bank_matching_rules_txn_type_check": {
    "detail": "c",
@@ -468,6 +488,30 @@
    "detail": "f",
    "expr_md5": "fb3cdac681833e50995da29fa2fe96e1"
   },
+  "bank_transactions.bank_transactions_draft_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "f468d856abd5e183e2592f99d01a16d3"
+  },
+  "bank_transactions.bank_transactions_draft_grade_check": {
+   "detail": "c",
+   "expr_md5": "41daccfceed2d111a9a91ba91cb6de67"
+  },
+  "bank_transactions.bank_transactions_draft_pair_check": {
+   "detail": "c",
+   "expr_md5": "13262d66e1d51eb729e323771bbbdeb5"
+  },
+  "bank_transactions.bank_transactions_draft_rule_id_fkey": {
+   "detail": "f",
+   "expr_md5": "91351833076fa8b9a7c11c52c945310d"
+  },
+  "bank_transactions.bank_transactions_draft_source_check": {
+   "detail": "c",
+   "expr_md5": "fb1aaaa73d122acc22aae4b3bec3637a"
+  },
+  "bank_transactions.bank_transactions_entry_state_check": {
+   "detail": "c",
+   "expr_md5": "cec988607d6992d172d0efa67eecf4b9"
+  },
   "bank_transactions.bank_transactions_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "01ca1f5964137c673767ee9fc7184374"
@@ -487,6 +531,10 @@
   "bank_transactions.bank_transactions_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "bank_transactions.bank_transactions_posted_by_rule_id_fkey": {
+   "detail": "f",
+   "expr_md5": "b5300918e22464f78910f63e2a3280b7"
   },
   "bank_transactions.bank_transactions_reconciled_journal_id_fkey": {
    "detail": "f",
@@ -736,6 +784,30 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "client_payroll_settings.client_payroll_settings_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "client_payroll_settings.client_payroll_settings_firm_id_client_id_key": {
+   "detail": "u",
+   "expr_md5": "2519f139da300b3678ba15125aefd5ce"
+  },
+  "client_payroll_settings.client_payroll_settings_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "client_payroll_settings.client_payroll_settings_inputs_due_day_check": {
+   "detail": "c",
+   "expr_md5": "c344122cffff549d6673302fbeacca5a"
+  },
+  "client_payroll_settings.client_payroll_settings_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "client_payroll_settings.client_payroll_settings_updated_by_fkey": {
+   "detail": "f",
+   "expr_md5": "8fd8d299692a885b516f0dd32bff8bce"
+  },
   "client_portal_sessions.client_portal_sessions_client_id_fkey": {
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
@@ -775,6 +847,38 @@
   "client_profiles.client_profiles_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "client_pt_registrations.client_pt_registrations_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "client_pt_registrations.client_pt_registrations_firm_id_client_id_state_key": {
+   "detail": "u",
+   "expr_md5": "b931bc1332426393e85946dedbfb4ecc"
+  },
+  "client_pt_registrations.client_pt_registrations_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "client_pt_registrations.client_pt_registrations_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "client_pt_registrations.client_pt_registrations_ptec_number_check": {
+   "detail": "c",
+   "expr_md5": "a2fa597e02193feb55d137c14a28e1c3"
+  },
+  "client_pt_registrations.client_pt_registrations_ptrc_number_check": {
+   "detail": "c",
+   "expr_md5": "4a15edc11f602d33aca3ba15987668ff"
+  },
+  "client_pt_registrations.client_pt_registrations_state_check": {
+   "detail": "c",
+   "expr_md5": "708e174f42d6ff66ad56294e1e90668b"
+  },
+  "client_pt_registrations.client_pt_registrations_updated_by_fkey": {
+   "detail": "f",
+   "expr_md5": "8fd8d299692a885b516f0dd32bff8bce"
   },
   "client_sales_invoice_lines.client_sales_invoice_lines_pkey": {
    "detail": "p",
@@ -839,6 +943,42 @@
   "client_sales_invoices.client_sales_invoices_txn_currency_fkey": {
    "detail": "f",
    "expr_md5": "5bd6b73e49e4403c3d42ae7a652e0be8"
+  },
+  "client_statutory_identity.client_statutory_identity_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "client_statutory_identity.client_statutory_identity_epf_establishment_code_check": {
+   "detail": "c",
+   "expr_md5": "ebeef44ba6504123f950d7b526dfe0cf"
+  },
+  "client_statutory_identity.client_statutory_identity_esic_employer_code_check": {
+   "detail": "c",
+   "expr_md5": "937c8d6b33dbeaa52e97d437666642eb"
+  },
+  "client_statutory_identity.client_statutory_identity_firm_id_client_id_key": {
+   "detail": "u",
+   "expr_md5": "2519f139da300b3678ba15125aefd5ce"
+  },
+  "client_statutory_identity.client_statutory_identity_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "client_statutory_identity.client_statutory_identity_lin_check": {
+   "detail": "c",
+   "expr_md5": "b16292ef9c87660b422c122f9d38e47b"
+  },
+  "client_statutory_identity.client_statutory_identity_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "client_statutory_identity.client_statutory_identity_tan_check": {
+   "detail": "c",
+   "expr_md5": "b21c605a9f883ca71ad7c057ce128b40"
+  },
+  "client_statutory_identity.client_statutory_identity_updated_by_fkey": {
+   "detail": "f",
+   "expr_md5": "8fd8d299692a885b516f0dd32bff8bce"
   },
   "client_timeline_events.client_timeline_events_client_id_fkey": {
    "detail": "f",
@@ -1743,6 +1883,50 @@
   "firm_profiles.firm_profiles_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "firm_pt_slabs.firm_pt_slabs_amount_paise_check": {
+   "detail": "c",
+   "expr_md5": "5afc3735c7e44446534a08306fa6e22d"
+  },
+  "firm_pt_slabs.firm_pt_slabs_basis_check": {
+   "detail": "c",
+   "expr_md5": "883c73a4ef317e1ff2f256d7f70b9c29"
+  },
+  "firm_pt_slabs.firm_pt_slabs_check": {
+   "detail": "c",
+   "expr_md5": "e412f65434450562d1985cdcf4817e05"
+  },
+  "firm_pt_slabs.firm_pt_slabs_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "firm_pt_slabs.firm_pt_slabs_firm_id_state_effective_from_from_paise_key": {
+   "detail": "u",
+   "expr_md5": "fd3935be7f648f6bb9ed59786ba02f35"
+  },
+  "firm_pt_slabs.firm_pt_slabs_from_paise_check": {
+   "detail": "c",
+   "expr_md5": "847655ecb7a58fab36a3001a244e74cd"
+  },
+  "firm_pt_slabs.firm_pt_slabs_months_check": {
+   "detail": "c",
+   "expr_md5": "9d1621c4bcda997dff4ec0874580a901"
+  },
+  "firm_pt_slabs.firm_pt_slabs_notification_reference_check": {
+   "detail": "c",
+   "expr_md5": "aa81de0870bf4ac84b166aa4e66aa903"
+  },
+  "firm_pt_slabs.firm_pt_slabs_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "firm_pt_slabs.firm_pt_slabs_recorded_by_fkey": {
+   "detail": "f",
+   "expr_md5": "35ff332c65916a62d13a99fd504f8e09"
+  },
+  "firm_pt_slabs.firm_pt_slabs_state_check": {
+   "detail": "c",
+   "expr_md5": "708e174f42d6ff66ad56294e1e90668b"
   },
   "firms.firms_gst_number_check": {
    "detail": "c",
@@ -2948,6 +3132,42 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "payroll_one_time_earnings.payroll_one_time_earning_interval_is_sane": {
+   "detail": "c",
+   "expr_md5": "b2e0b84cd2df13d70e472ace5c0fc4bf"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earning_is_an_amount": {
+   "detail": "c",
+   "expr_md5": "c65bd85e3c3e1dfb8c9b61b81377009a"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earning_kind_is_known": {
+   "detail": "c",
+   "expr_md5": "8a560926a333dc6441d544c8ba63f4ba"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earning_month_is_a_month": {
+   "detail": "c",
+   "expr_md5": "e5698f9d30c44c36fd9c0f3ef9ef75e0"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_employee_id_fkey": {
+   "detail": "f",
+   "expr_md5": "65deafd493a32e21e621e37c782d238a"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_entered_by_fkey": {
+   "detail": "f",
+   "expr_md5": "0739eae95e9659650a0ddc126391cbf1"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
   "payroll_perquisites.payroll_perquisites_client_id_fkey": {
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
@@ -2967,6 +3187,34 @@
   "payroll_perquisites.payroll_perquisites_value_nonneg": {
    "detail": "c",
    "expr_md5": "c8045bbaacca586e8e98223892eb4f2b"
+  },
+  "payroll_run_transitions.payroll_release_with_gaps_needs_a_reason": {
+   "detail": "c",
+   "expr_md5": "dca19ae82a2def362c613946d35cefaf"
+  },
+  "payroll_run_transitions.payroll_run_transitions_actor_id_fkey": {
+   "detail": "f",
+   "expr_md5": "adc51e6b0d48be4a7246a29046675b50"
+  },
+  "payroll_run_transitions.payroll_run_transitions_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "payroll_run_transitions.payroll_run_transitions_gaps_check": {
+   "detail": "c",
+   "expr_md5": "f40e527582ebbf907428c1ad49141ebb"
+  },
+  "payroll_run_transitions.payroll_run_transitions_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "payroll_run_transitions.payroll_run_transitions_run_id_fkey": {
+   "detail": "f",
+   "expr_md5": "85910ec940f7be46a3cc09f9a65c49d4"
+  },
+  "payroll_run_transitions.payroll_run_transitions_to_status_check": {
+   "detail": "c",
+   "expr_md5": "51ec80332333917bd0966974f6b4a6d3"
   },
   "payroll_runs.payroll_runs_client_id_fkey": {
    "detail": "f",
@@ -3015,6 +3263,10 @@
   "payroll_salary_revisions.payroll_salary_revisions_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "payroll_salary_revisions.payroll_salary_revisions_source_structure_id_fkey": {
+   "detail": "f",
+   "expr_md5": "123cc1429eca9a33d79c2b66cd14ab62"
   },
   "payroll_settlement_components.payroll_settlement_components_exempt_le_gross": {
    "detail": "c",
@@ -4994,6 +5246,22 @@
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "client_payroll_settings.client_payroll_settings_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "client_payroll_settings.client_payroll_settings_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "client_payroll_settings.client_payroll_settings_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
+  "client_payroll_settings.firm_payroll_settings": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
   "client_portal_sessions.firm_isolation": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
@@ -5022,6 +5290,22 @@
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "client_pt_registrations.client_pt_registrations_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "client_pt_registrations.client_pt_registrations_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "client_pt_registrations.client_pt_registrations_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
+  "client_pt_registrations.firm_pt_registrations": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
   "client_sales_invoice_lines.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "a0667d410fceea32e3d8db04bd484ce0"
@@ -5041,6 +5325,22 @@
   "client_sales_invoices.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "6608c3a621fc6249cf3daad5b24419bb"
+  },
+  "client_statutory_identity.client_statutory_identity_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "client_statutory_identity.client_statutory_identity_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "client_statutory_identity.client_statutory_identity_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
+  "client_statutory_identity.firm_statutory_identity": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
   "client_timeline_events.client_timeline_events_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -5517,6 +5817,22 @@
   "firm_profiles.firm_profiles_firm_isolation": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "firm_pt_slabs.firm_firm_pt_slabs": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "firm_pt_slabs.firm_pt_slabs_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "firm_pt_slabs.firm_pt_slabs_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "firm_pt_slabs.firm_pt_slabs_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
   },
   "firms.firms_own": {
    "detail": "permissive cmd=* roles=authenticated",
@@ -6138,6 +6454,22 @@
    "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
    "expr_md5": "70158a0a5215c9e83715df3edc962014"
   },
+  "payroll_one_time_earnings.firm_payroll_one_time_earnings": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "payroll_one_time_earnings.payroll_one_time_earnings_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
   "payroll_perquisites.payroll_perquisites_firm_scope": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -6153,6 +6485,14 @@
   "payroll_perquisites.payroll_perquisites_role_update": {
    "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
    "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
+  "payroll_run_transitions.firm_appends_payroll_transitions": {
+   "detail": "permissive cmd=a roles=authenticated",
+   "expr_md5": "9bc0d2e6c01990d486d8d9d6de8f1b09"
+  },
+  "payroll_run_transitions.firm_reads_payroll_transitions": {
+   "detail": "permissive cmd=r roles=authenticated",
+   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
   },
   "payroll_runs.employee_reads_own_payroll_runs": {
    "detail": "permissive cmd=r roles=authenticated",
@@ -6232,7 +6572,7 @@
   },
   "payroll_slips.employee_reads_own_payslips": {
    "detail": "permissive cmd=r roles=authenticated",
-   "expr_md5": "8f4b2f3aaf2519af9a0cb06781dcf720"
+   "expr_md5": "5f99ffd3bc4dd2a8575dbbfc956b8e36"
   },
   "payroll_slips.payroll_slips_own_firm": {
    "detail": "permissive cmd=* roles=PUBLIC",
@@ -7172,6 +7512,10 @@
    "detail": "on",
    "expr_md5": ""
   },
+  "client_payroll_settings": {
+   "detail": "on",
+   "expr_md5": ""
+  },
   "client_portal_sessions": {
    "detail": "on",
    "expr_md5": ""
@@ -7188,11 +7532,19 @@
    "detail": "on",
    "expr_md5": ""
   },
+  "client_pt_registrations": {
+   "detail": "on",
+   "expr_md5": ""
+  },
   "client_sales_invoice_lines": {
    "detail": "on",
    "expr_md5": ""
   },
   "client_sales_invoices": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "client_statutory_identity": {
    "detail": "on",
    "expr_md5": ""
   },
@@ -7393,6 +7745,10 @@
    "expr_md5": ""
   },
   "firm_profiles": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "firm_pt_slabs": {
    "detail": "on",
    "expr_md5": ""
   },
@@ -7644,7 +8000,15 @@
    "detail": "on",
    "expr_md5": ""
   },
+  "payroll_one_time_earnings": {
+   "detail": "on",
+   "expr_md5": ""
+  },
   "payroll_perquisites": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "payroll_run_transitions": {
    "detail": "on",
    "expr_md5": ""
   },
