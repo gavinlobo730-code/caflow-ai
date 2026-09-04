@@ -104,6 +104,13 @@ type PayrollRun = {
   generated_at: string;
   total_gross_paise?: number;
   total_net_paise?: number;
+  /** Migration 329. EDLI and the EPF administrative charge are employer costs
+   *  OUTSIDE the 12%, and the admin charge is floored at ₹500 per
+   *  ESTABLISHMENT per month — so the figure owed is a property of the RUN and
+   *  cannot be reconstructed by adding up payslips. Three members at ₹60 each
+   *  owe ₹500, not ₹180. */
+  total_edli_paise?: number;
+  total_pf_admin_paise?: number;
   headcount?: number;
   paid_at?: string | null;
   payment_reference?: string | null;
@@ -1248,6 +1255,9 @@ export default function PayrollPage() {
   const [statMonth, setStatMonth] = useState(() => toLocalISO(new Date()).slice(0, 7));
   const [statClientId, setStatClientId] = useState("");
   const [statSlips, setStatSlips] = useState<PayrollSlip[]>([]);
+  /** The runs behind those slips. EDLI and the admin charge come from HERE, not
+   *  from summing slips — see PayrollRun.total_pf_admin_paise. */
+  const [statRuns, setStatRuns] = useState<PayrollRun[]>([]);
 
   const [showAdd, setShowAdd] = useState(false);
   const [showImportEmp, setShowImportEmp] = useState(false);
@@ -1398,6 +1408,7 @@ export default function PayrollPage() {
       const monthRuns = runs.filter(r => r.client_id === statClientId && r.month === statMonth);
       const runIds = monthRuns.map(r => r.id);
       setStatSlips(slips.filter(s => runIds.includes(s.run_id)));
+      setStatRuns(monthRuns);
     }
   }, [statClientId, statMonth, runs, slips]);
 
@@ -1874,7 +1885,14 @@ export default function PayrollPage() {
               const totalEsiEmployer = sum(s => s.esi_employer_paise ?? 0);
               const totalPt         = sum(s => s.pt_paise);
               const totalTds        = sum(s => s.tds_paise);
-              const edli            = sum(s => s.edli_paise ?? 0);
+              // From the RUN, not from the slips. The admin charge is floored at
+              // ₹500 per establishment, so a slip sum would under-state it for
+              // every small client — and disagree with both the challan and the
+              // ledger entry (migration 329).
+              const runSum = (f: (r: PayrollRun) => number) =>
+                statRuns.reduce((t, r) => t + (f(r) || 0), 0);
+              const edli            = runSum(r => r.total_edli_paise ?? 0);
+              const pfAdmin         = runSum(r => r.total_pf_admin_paise ?? 0);
               return (
                 <Card>
                   <CardHeader><CardTitle>Statutory Contributions — {statMonth}</CardTitle></CardHeader>
@@ -1889,7 +1907,8 @@ export default function PayrollPage() {
                       <tbody>
                         <tr className="border-b"><td className="py-2">PF Employee Contribution (12% of Basic)</td><td className="py-2 text-right font-mono">{fmtRs(totalPfEmp)}</td></tr>
                         <tr className="border-b"><td className="py-2">PF Employer Contribution (12% of Basic)</td><td className="py-2 text-right font-mono">{fmtRs(totalPfEmployer)}</td></tr>
-                        <tr className="border-b"><td className="py-2">EDLI (0.5% of Basic)</td><td className="py-2 text-right font-mono">{fmtRs(edli)}</td></tr>
+                        <tr className="border-b"><td className="py-2">EDLI (0.5% of PF wages)</td><td className="py-2 text-right font-mono">{fmtRs(edli)}</td></tr>
+                        <tr className="border-b"><td className="py-2">EPF admin charge (0.5%, min ₹500 per establishment)</td><td className="py-2 text-right font-mono">{fmtRs(pfAdmin)}</td></tr>
                         <tr className="border-b"><td className="py-2">ESI Employee (0.75% of Gross)</td><td className="py-2 text-right font-mono">{fmtRs(totalEsiEmp)}</td></tr>
                         <tr className="border-b"><td className="py-2">ESI Employer (3.25% of Gross)</td><td className="py-2 text-right font-mono">{fmtRs(totalEsiEmployer)}</td></tr>
                         <tr className="border-b"><td className="py-2">Professional Tax</td><td className="py-2 text-right font-mono">{fmtRs(totalPt)}</td></tr>

@@ -826,6 +826,12 @@ class Phase2JournalService:
         single-expense-account design). A future enhancement could split it into a
         dedicated "Contribution to PF & Other Funds" account for the Schedule III
         employee-benefit sub-classification — see roadmap.
+
+        EDLI AND THE ADMIN CHARGE ARE PART OF THAT COST TOO (migration 329), and
+        were not here at all until then. Because the debit is DEFINED as the sum
+        of the credits, adding them to the PF Payable credit raises the salary
+        expense by the same amount automatically — the entry stays balanced by
+        construction and the employer's cost stops being understated.
         """
         net = run["total_net_paise"]
         pf = run["total_pf_paise"]
@@ -837,14 +843,37 @@ class Phase2JournalService:
         # paying cash — so it is a credit leg like any other deduction, and the
         # debit still equals the sum of the credits.
         loans = int(run.get("total_loan_recovery_paise") or 0)
+        # Migration 329. EDLI (0.5%, EDLI 1976) and the EPF administrative
+        # charge (0.5%, floored at ₹500 per ESTABLISHMENT) are EMPLOYER costs
+        # outside the 12%, deducted from nobody and remitted on the same monthly
+        # challan as the rest. They were computed, stored on every slip and
+        # totalled on the statutory card, and they never reached here — so every
+        # accrual this system posted understated the employer's cost of
+        # employment, and PF Payable, by about 1% of PF wages.
+        #
+        # 0 on every run finalised before 329, so nothing about an existing
+        # entry changes.
+        edli = int(run.get("total_edli_paise") or 0)
+        pf_admin = int(run.get("total_pf_admin_paise") or 0)
         month = run.get("month", "")
 
         # Payable credits — only include a line when the amount is non-zero.
         credits: list[tuple[str, int, str]] = [
             (account_ids["net"], net, "Net salary payable to employees"),
         ]
-        if pf > 0:
-            credits.append((account_ids["pf"], pf, "PF payable (employee + employer) — EPF Act"))
+        # ONE credit to PF Payable, not three. All of it is remitted on the same
+        # challan to the same authority, and splitting it would put three lines
+        # against one account in one entry — which reads as three liabilities
+        # and reconciles as one. The narration carries what is in it, because a
+        # line that says "employee + employer" while holding EDLI and admin as
+        # well is a line that lies.
+        pf_total = pf + edli + pf_admin
+        if pf_total > 0:
+            credits.append((account_ids["pf"], pf_total,
+                            "PF payable — employee + employer 12%"
+                            + (", EDLI 0.5%" if edli else "")
+                            + (", admin charge" if pf_admin else "")
+                            + " — EPF Act, EDLI 1976"))
         if esi > 0:
             credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — ESI Act"))
         if pt > 0:
@@ -865,10 +894,15 @@ class Phase2JournalService:
         # leg here (e.g. a future loan/advance recovery) — which would silently
         # understate salary expense. Guarded so that regression surfaces immediately.
         gross = int(run.get("total_gross_paise") or 0)
-        if gross and not (gross <= total_cost <= gross + pf + esi):
+        # The upper bound widened with migration 329: EDLI and the admin charge
+        # are employer cost on top of the 12%, so the total legitimately exceeds
+        # gross + pf + esi by exactly them. Widening it by anything less would
+        # make this guard fire on every correct run.
+        ceiling = gross + pf + esi + edli + pf_admin
+        if gross and not (gross <= total_cost <= ceiling):
             raise ValueError(
                 f"Payroll journal identity violated: total_cost={total_cost} outside "
-                f"[{gross}, {gross + pf + esi}] — a deduction is missing a credit leg."
+                f"[{gross}, {ceiling}] — a deduction is missing a credit leg."
             )
 
         lines: list[dict] = [{
