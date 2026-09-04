@@ -113,12 +113,24 @@ class _Q:
     def limit(self, n):
         return self
 
+    def maybe_single(self):
+        # Added for assert_payroll_enabled's settings read (migration 332).
+        # Without it the read RAISES, and the gate now — correctly — turns a
+        # failed read into a 503 rather than reporting payroll as switched off.
+        # These tests are about the duplicate-run race, so the stub has to be
+        # able to answer the question.
+        self._single = True
+        return self
+
     def _match(self):
         rows = self.s.setdefault(self.t, [])
         return [r for r in rows if all(r.get(k) == v for k, v in self.f)]
 
     def execute(self):
         rows = self.s.setdefault(self.t, [])
+        if getattr(self, "_single", False):
+            m = self._match()
+            return _Resp(m[0] if m else None)
         if self.op == "insert":
             if self.t == "payroll_runs" and self.control.get("fail_next_run_insert"):
                 self.control["fail_next_run_insert"] = False
@@ -155,6 +167,19 @@ FIRM, CLIENT = "firm-1", "client-1"
 USER = {"firm_id": FIRM, "auth_user_id": "u1"}
 
 
+def _payroll_client(db):
+    """Payroll switched ON for this client (migration 332).
+
+    A firm that runs payroll for a client has said so; without the row every
+    write below is refused, which is the gate working rather than a fixture
+    detail. Returns the db so it can wrap a constructor inline.
+    """
+    db.store.setdefault("client_payroll_settings", []).append(
+        {"id": "cps-1", "firm_id": FIRM, "client_id": CLIENT,
+         "payroll_enabled": True})
+    return db
+
+
 @pytest.fixture(autouse=True)
 def _no_side_effects(monkeypatch):
     monkeypatch.setattr(pr.timeline_service, "log", lambda *a, **k: None)
@@ -162,7 +187,7 @@ def _no_side_effects(monkeypatch):
 
 
 def test_create_run_concurrent_insert_collision_returns_friendly_409():
-    db = FakeDB()
+    db = _payroll_client(FakeDB())
     monkeypatch_db = db
     # No existing row — the app-level duplicate SELECT genuinely finds
     # nothing (this is exactly the race: another request's insert lands
@@ -183,7 +208,7 @@ def test_create_run_concurrent_insert_collision_returns_friendly_409():
 
 
 def test_create_run_happy_path_still_works_with_the_new_try_except():
-    db = FakeDB()
+    db = _payroll_client(FakeDB())
     import routers.payroll as pr_mod
     orig_db = pr_mod._db
     pr_mod._db = lambda: db
@@ -212,7 +237,7 @@ def test_create_run_other_db_errors_still_propagate_unmasked():
         def table(self, name):
             return _BoomQ(self.store, name, self.control)
 
-    boom_db = _BoomDB()
+    boom_db = _payroll_client(_BoomDB())
     import routers.payroll as pr_mod
     orig_db = pr_mod._db
     pr_mod._db = lambda: boom_db

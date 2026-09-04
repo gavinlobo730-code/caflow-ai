@@ -306,10 +306,20 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "approve": _AT_LEAST_MANAGER,
         "delete":  _PARTNER_ONLY,
     },
-    # Payroll — salary data is sensitive. Manager+ to run; Partner-only to finalise.
+    # Payroll — salary data is sensitive. Manager+ to run; Partner-only to
+    # finalise, and Partner-only to switch payroll ON for a client at all.
+    #
+    # `enable` is separate from `write` because it is a different KIND of
+    # decision: writing payroll is running the month, enabling it commits the
+    # firm to running payroll for a client — the cost brake in
+    # docs/architecture/10-payroll.md, and what the subscription is sized on.
+    # A Manager agreeing an input cut-off is doing their job; a Manager adding
+    # a payroll client is making a commercial commitment. Migration 332 also
+    # takes the column away from the browser entirely, so this is the one door.
     "payroll": {
         "read":     _AT_LEAST_MANAGER,
         "write":    _AT_LEAST_MANAGER,
+        "enable":   _PARTNER_ONLY,
         "finalize": _PARTNER_ONLY,
     },
     # Time tracking — staff log/read their own time; firm-level reports Manager+.

@@ -1226,6 +1226,15 @@ export const api = {
     oneTimeEarningDefaults: (kind: string, intervalMonths?: number | null) =>
       request(`/api/payroll/one-time-earnings/defaults?kind=${encodeURIComponent(kind)}`
         + (intervalMonths ? `&payment_interval_months=${intervalMonths}` : "")),
+    /** Switch payroll on or off for one client. PARTNER ONLY (migration 332).
+     *
+     *  Through the API and NOT PostgREST, and that is not a convention here —
+     *  migration 332 revokes the column from `authenticated` outright, so a
+     *  direct write is refused by PostgreSQL whatever the policies say. This is
+     *  the only door, and rbac("payroll", "enable") is Partner-only behind it.
+     */
+    setPayrollEnabled: (body: { client_id: string; enabled: boolean; note?: string }) =>
+      request("/api/payroll/enablement", { method: "PUT", body: JSON.stringify(body) }),
     savePayrollSettings: (body: { client_id: string; inputs_due_day?: number | null }) =>
       request("/api/payroll/attendance/settings", { method: "PUT", body: JSON.stringify(body) }),
     updateRunStatus: (runId: string, status: string) =>

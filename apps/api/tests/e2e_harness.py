@@ -157,8 +157,19 @@ class _Query:
     def update(self, payload, **_k):
         self._op = "update"; self._payload = payload; return self
 
-    def upsert(self, payload, **_k):
-        self._op = "upsert"; self._payload = payload; return self
+    def upsert(self, payload, **kw):
+        self._op = "upsert"
+        self._payload = payload
+        # on_conflict is what makes an upsert an UPSERT rather than an insert.
+        # It was discarded, so every upsert appended a second row and the read
+        # afterwards found the STALE one — a second "switch payroll off" left
+        # the "on" row in front of it and the write it should have refused went
+        # through. In Postgres the UNIQUE index behind on_conflict makes that
+        # impossible; the double has to behave the same way or it hides exactly
+        # the bugs it exists to catch.
+        self._on_conflict = [c.strip() for c in str(kw.get("on_conflict") or "").split(",")
+                             if c.strip()]
+        return self
 
     def delete(self, **_k):
         self._op = "delete"; return self
@@ -331,9 +342,21 @@ class _Query:
 
         if self._op in ("insert", "upsert"):
             payload = self._payload if isinstance(self._payload, list) else [self._payload]
+            conflict = getattr(self, "_on_conflict", []) if self._op == "upsert" else []
             inserted = []
             for p in payload:
                 r = dict(p)
+                if conflict and all(c in r for c in conflict):
+                    key = tuple(r[c] for c in conflict)
+                    existing = next(
+                        (x for x in rows
+                         if tuple(x.get(c) for c in conflict) == key), None)
+                    if existing is not None:
+                        # ON CONFLICT DO UPDATE: the row is AMENDED in place,
+                        # keeping its id and every column the payload omits.
+                        existing.update(r)
+                        inserted.append(existing)
+                        continue
                 r.setdefault("id", str(uuid.uuid4()))
                 _apply_defaults(self.table, r)
                 _enforce_unique(self.table, rows, r)
