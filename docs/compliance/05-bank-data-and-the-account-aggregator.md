@@ -5,72 +5,89 @@ Confidence grades and the sourcing caveat: see `00-how-to-read-this.md`.
 
 ---
 
-## 0. The finding that changes the existing plan
+## 0. The finding that changes the existing plan — VERIFIED
 
 `CLAUDE.md:404` instructs, as step one of this work:
 
 > **Register as an FIU** (Financial Information User). … Go via a TSP (Setu,
 > Perfios, Finbox, Digio) rather than building FIU plumbing directly.
 
-**Research indicates this is not achievable as written.** `[P/S]`
+**VERIFIED 2026-09-04: that is not achievable as written.** The verification
+deliberately searched for the opposite — for any route letting an unregulated
+SaaS company become an FIU. Every such search returned the same answer.
 
-> **"Financial Information User" means an entity registered with and regulated by
-> any financial sector regulator.**
+### The definitional text
 
-and **"Financial Sector Regulator"** means **RBI, SEBI, IRDAI, PFRDA, and the
-Department of Revenue, Ministry of Finance**.
+From the **RBI (Non-Banking Financial Companies – Account Aggregator)
+Directions, 2025** `[P via summary]`:
 
-**There is no FIU licence to apply for and no unregulated-FIU tier.** Eligibility
-is *derivative*: you are an FIU **because** you already hold a registration from
-one of those five. A SaaS company holding none of them cannot be an FIU, and **a
-TSP cannot confer it** — a TSP is itself unregulated and merely builds the FIU
-module *for* a regulated FIU.
+> **"Financial Information User"** means an entity **registered with and
+> regulated by any financial sector regulator**.
 
-This is stated in materially identical terms by Sahamati, the Department of
-Financial Services, and every secondary source found. Confidence is high, but it
-is `[S]` and **needs a legal opinion before CLAUDE.md is edited** (task #123).
+> **"Financial Sector Regulator"** … shall mean the Reserve Bank of India,
+> Securities and Exchange Board of India, Insurance Regulatory and Development
+> Authority of India, Pension Fund Regulatory and Development Authority **and
+> Department of Revenue, Ministry of Finance**.
 
-**Being a CA firm does not obviously help.** ICAI sits under the MCA, not under
-any of the five financial sector regulators. `[U — no source addresses CA firms
-directly; this is inference, and it is exactly where a legal opinion might find
-a route.]`
+**There is no FIU licence to apply for and no unregulated-FIU tier.**
+Eligibility is *derivative*: you are an FIU **because** you already hold a
+registration from one of those five. A company holding none of them cannot be
+one, and **a TSP cannot confer it** — a TSP is itself unregulated and merely
+builds the FIU module *for* a regulated FIU.
 
-Note that DoR was added to the list specifically so **GSTN could join as an
-FIP** — it is not a general-purpose door for tax-adjacent software. `[S]`
+The framework is designed this way on purpose: it **never allows raw financial
+data to flow to an unregulated party**.
 
-### The three real options
+### The Department of Revenue does not open a door
+
+The 2025 Directions add DoR to the regulator list, which looks like a way in for
+tax-adjacent software. It is not. DoR is there because:
+
+> Department of Revenue shall be the regulator of **GSTN for this specific
+> purpose**, and GST Returns, viz. Form GSTR-1 and Form GSTR-3B, shall be the
+> Financial Information.
+
+**GSTN is named as an FIP, not an FIU**, and DoR's inclusion is scoped to that.
+
+### A CA firm does not qualify either
+
+ICAI regulates chartered accountants professionally and ethically, but **it is
+not one of the financial sector regulators**. A CA firm is therefore not
+FIU-eligible in its own capacity. `[S — this was inference in the first pass and
+is now sourced.]`
+
+### The three real options, unchanged but now firm
 
 | Route | What it means | Risk |
 |---|---|---|
-| **Partner with a regulated FIU** | An NBFC / bank / SEBI-registered adviser is the FIU; PracticeSync is its TSP or customer-facing surface | See below — this is the pattern regulators watch |
-| **Acquire a registration** | Most plausible is **SEBI Investment Adviser**; an NBFC licence is heavier and brings a reciprocity duty | Regulatory perimeter creep, for duties unrelated to the product |
-| **Do not consume via AA** | Statement upload stays the only path | Zero regulatory exposure — and it is what CLAUDE.md already assumes as the base case |
+| **Partner with a regulated FIU** | An NBFC / bank / SEBI-registered adviser is the FIU; PracticeSync builds the product layer on top | The scrutinised pattern below |
+| **Acquire a registration** | Most plausibly **SEBI Investment Adviser**; an NBFC licence is heavier and carries the reciprocity duty | Regulatory perimeter creep for duties unrelated to the product |
+| **Do not consume via AA** | Statement upload stays the only path | Zero exposure — and coverage (§3) says this is the base case anyway |
 
-⚠️ **The shell-FIU pattern is known and scrutinised.** The question regulators
-ask is *whether the regulated entity is using the information for its own
-regulated activity, or whether its FIU status is enabling another business to
-access the ecosystem*. There are documented instances of **AAs being barred by
-FIPs** after market-facing TSPs created non-compliant journeys. `[S]` That is a
-supply-side kill switch outside your control.
+The partnership route is explicitly the documented one: *"a pure-play fintech
+startup without an NBFC licence, lending licence or investment advisory
+registration has two options: obtain a licence, or partner with a regulated
+entity that acts as the FIU while you build the product on top."* `[S]`
 
-⚠️ **Reciprocity, easy to miss.** RBI circular dated **26 October 2023**: a
-regulated entity joining as an **FI-U must necessarily join as an FIP** where it
-holds financial information. `[S]` So the "get an NBFC licence" route inherits an
-obligation to *publish* into the ecosystem. `[U — whether an FIU holding no
-eligible financial information is simply out of scope; the wording suggests yes.]`
+⚠️ **But the shell-FIU pattern is watched.** The question regulators ask is
+*whether the regulated entity is using the information for its own regulated
+activity, or whether its FIU status is enabling another business to access the
+ecosystem*. There are documented instances of **AAs being barred by FIPs** after
+market-facing TSPs built non-compliant journeys. `[S]` That is a supply-side
+kill switch outside your control.
 
-### Cite the right instrument
+⚠️ **Reciprocity.** RBI circular of **26 October 2023**: a regulated entity
+joining as an **FI-U must necessarily join as an FIP** where it holds financial
+information. `[S]` The NBFC route therefore inherits an obligation to *publish*
+into the ecosystem.
 
-The **2016 Master Direction** (DNBR.PD.009/03.10.119/2016-17) has been
-**repealed and replaced** by the **RBI (Non-Banking Financial Companies –
-Account Aggregator) Directions, 2025**, notified by circular
-**DOR.RRC.REC.302/33-01-010/2025-26 dated 28 November 2025**. `[S]` Reported
-substance: NBFC-AAs permanently in the Base Layer of Scale Based Regulation; NOF
-**₹2 crore**; applications via **PRAVAAH**; a Board-approved **public** pricing
-policy; the AA must not store customer financial data and must not carry on any
-other business.
+### What this means for tasks #102–#107
 
----
+Those six tasks are written on the assumption that registering as an FIU via a
+TSP is the path. **#104 in particular — "complete FIU registration/onboarding
+via the chosen TSP" — describes something that does not exist.** #102 asks
+exactly the right question and its answer is now known. The sequence needs
+rewriting around the three options above before any of it is actioned.
 
 ## 1. The ecosystem
 

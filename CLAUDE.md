@@ -425,14 +425,23 @@ nothing else.
   AA — Finvu, OneMoney, CAMS Finserv, NADL, Anumati — brokers consent between
   them under RBI regulation, on ReBIT schemas. Go via a TSP (Setu, Perfios,
   Finbox, Digio) rather than building FIU plumbing directly.
-  **⚠️ This step may be unachievable as written — do not start it on this
-  instruction alone.** Research of 2026-09-04 indicates an FIU is *defined* as an
-  entity already registered with and regulated by RBI, SEBI, IRDAI, PFRDA or the
-  Department of Revenue; there is no FIU licence to apply for, and a TSP cannot
-  confer one because a TSP is itself unregulated. If so the options are to
-  partner with a regulated FIU, acquire a registration, or not consume via AA at
-  all. Secondary sources only, needs a legal opinion, and the 2016 Master
-  Direction is superseded by the RBI NBFC-AA Directions 2025. See
+  **⚠️ THIS STEP IS NOT ACHIEVABLE AS WRITTEN — verified 2026-09-04, including
+  searches that specifically looked for a way in and did not find one.** The RBI
+  NBFC-AA Directions 2025 (which supersede the 2016 Master Direction) define an
+  FIU as *"an entity registered with and regulated by any financial sector
+  regulator"*, and that means RBI, SEBI, IRDAI, PFRDA or the Department of
+  Revenue. **There is no FIU licence to apply for and no unregulated tier**;
+  eligibility is derivative of a registration you already hold, and a TSP cannot
+  confer it because a TSP is itself unregulated. The framework is built so raw
+  financial data never reaches an unregulated party. The Department of Revenue's
+  presence in that list does NOT help — it is there because DoR regulates GSTN
+  *for the specific purpose* of GSTN being an **FIP**. A CA firm does not
+  qualify either: ICAI is not a financial sector regulator. So the options are
+  to **partner with a regulated FIU** (watch the shell-FIU pattern — FIPs have
+  barred AAs over non-compliant downstream journeys), **acquire a registration**
+  (SEBI RIA is most plausible; an NBFC brings a reciprocity duty to join as an
+  FIP too), or **not consume via AA at all**. Rewrite the six AA tasks around
+  those three before actioning any of them. See
   `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
   it is time-bound, purpose-bound and revocable. So the flow is "CA requests →

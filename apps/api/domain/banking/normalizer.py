@@ -2,19 +2,25 @@
 Bank statement normalization engine (Banking B.1, Part C).
 
 TODO(compliance): docs/compliance/05-bank-data-and-the-account-aggregator.md
-    This is the ONLY way bank data enters the platform, and research in Sept
-    2026 says it stays that way longer than CLAUDE.md's bank-data section
-    assumes. Two findings worth reading before anyone starts an AA feature:
+    This is the ONLY way bank data enters the platform, and it stays that way
+    longer than CLAUDE.md's bank-data section assumed. Two verified findings
+    (2026-09-04) worth reading before anyone starts an AA feature:
 
-    (1) CLAUDE.md says "Register as an FIU". That may be unachievable. An FIU
-        is DEFINED as an entity already registered with and regulated by RBI,
-        SEBI, IRDAI, PFRDA or the Dept of Revenue — there is no FIU licence to
-        apply for, and a TSP cannot confer one because a TSP is itself
-        unregulated. Needs a legal opinion.
+    (1) CLAUDE.md says "Register as an FIU". THAT IS NOT ACHIEVABLE. The RBI
+        NBFC-AA Directions 2025 define an FIU as "an entity registered with and
+        regulated by any financial sector regulator" — RBI, SEBI, IRDAI, PFRDA
+        or the Department of Revenue. There is no FIU licence to apply for and
+        no unregulated tier; eligibility is derivative of a registration you
+        already hold, and a TSP cannot confer it because a TSP is itself
+        unregulated. The Department of Revenue does not open a door: it is in
+        that list because it regulates GSTN for the specific purpose of GSTN
+        being an FIP. ICAI is not a financial sector regulator either, so a CA
+        firm does not qualify. The options are: partner with a regulated FIU,
+        acquire a registration, or do not consume via AA.
 
     (2) Coverage independently confirms upload stays at parity. Co-operative
         banks, RRBs and small finance banks are largely not AA-enabled, and
-        even at live banks the coverage is patchy BY ACCOUNT TYPE — fixed and
+        even at live banks coverage is patchy BY ACCOUNT TYPE — fixed and
         recurring deposits at only ~40% of banks, joint and non-individual
         accounts worse. A CA's client base is exactly the population AA serves
         worst. Upload is the base case, not a hedge.
