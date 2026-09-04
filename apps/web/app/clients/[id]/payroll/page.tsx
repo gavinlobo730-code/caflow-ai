@@ -39,6 +39,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
 
 type Tab = "dashboard" | "employees" | "structures" | "runs" | "statutory" | "setup" | "reports";
 
+/** The server refuses a shorter reason and so does migration 328's CHECK. Not a
+ *  quality bar — a floor under "ok", "-" and ".", which is what a required
+ *  free-text field collects when nothing asks for more. */
+const OVERRIDE_REASON_MIN = 20;
+
 function fmt(paise: number) {
   return "₹" + Math.floor(paise / 100).toLocaleString("en-IN");
 }
@@ -462,6 +467,12 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
    *  verbatim; see createRun. */
   const [runGaps, setRunGaps] = useState<string[]>([]);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  /** The run whose finalise was refused, and what stood. Null when nothing is
+   *  blocked — a separate state from finalizeError because a block is not a
+   *  failure and is answered differently. */
+  const [blockedRun, setBlockedRun] = useState<
+    { runId: string; gaps: string[]; message: string } | null>(null);
+  const [overrideReason, setOverrideReason] = useState("");
 
   // The generic filing walk-throughs (services/filing_demo/pf_ecr and .../esi).
   // Offered only where the server says the demo exists — the dead-control rule.
@@ -525,19 +536,51 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
     await load();
   }
 
-  async function finalizeRun(runId: string) {
+  /** Finalize, and handle the block.
+   *
+   *  Migration 328: a run with an unresolved statutory or attendance gap is
+   *  REFUSED, because finalising posts a real, immutable general-ledger
+   *  journal — the gaps stopped being advice at exactly that moment. The
+   *  server names them; a Partner may go ahead with a written reason, which is
+   *  recorded on the transition log beside the gaps that stood.
+   *
+   *  `overrideReason` is passed explicitly rather than read from state so the
+   *  retry cannot race the textarea.
+   */
+  async function finalizeRun(runId: string, overrideReason?: string) {
     setFinalizing(runId);
     setFinalizeError(null);
-    const res = await apiFetch(`/api/payroll/runs/${runId}/finalize`, { method: "POST", body: JSON.stringify({}) })
-      .catch(() => null) as { success?: boolean; error?: string | null } | null;
+    const res = await apiFetch(`/api/payroll/runs/${runId}/finalize`, {
+      method: "POST",
+      body: JSON.stringify(overrideReason ? { override_reason: overrideReason } : {}),
+    }).catch(() => null) as {
+      success?: boolean; error?: string | null;
+      detail?: string | { message?: string; gaps?: string[] };
+      data?: { overridden_gaps?: string[] };
+    } | null;
     setFinalizing(null);
+
     // task #229: finalize posts a real, immutable GL journal — a silently
     // discarded failure (empty run, journal-posting error, already
     // finalized) left the CA with no idea the run was still a draft.
     if (!res || res.success === false) {
-      setFinalizeError(res?.error ?? "Could not finalize the payroll run — the request failed.");
+      const detail = res?.detail;
+      if (detail && typeof detail === "object" && Array.isArray(detail.gaps)) {
+        // The block, not a failure. Show what stood and offer the override —
+        // and do NOT clear it into a generic error, because the sentences are
+        // the whole point of having collected them.
+        setBlockedRun({ runId, gaps: detail.gaps, message: detail.message ?? "" });
+        setOverrideReason("");
+        return;
+      }
+      setFinalizeError(
+        (typeof detail === "string" ? detail : null)
+        ?? res?.error
+        ?? "Could not finalize the payroll run — the request failed.");
       return;
     }
+    setBlockedRun(null);
+    setOverrideReason("");
     await load();
   }
 
@@ -612,6 +655,55 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
       </div>
 
       {finalizeError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{finalizeError}</p>}
+
+      {/* The block. Migration 328: finalising posts a journal that cannot be
+          changed afterwards, so a run with an unresolved gap is refused rather
+          than warned about. The gaps are NAMED — a count would send the CA back
+          to the draft to work out which. */}
+      {blockedRun && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-900">
+            {blockedRun.message || "This run has things it could not establish."}
+          </p>
+          <ul className="space-y-0.5">
+            {blockedRun.gaps.map((g, i) => (
+              <li key={i} className="text-[11px] text-amber-900">· {g}</li>
+            ))}
+          </ul>
+          <div>
+            <label className="block text-[11px] font-medium text-amber-900 mb-1">
+              Releasing anyway? Say why — this goes on the release log beside these
+              items and is what a reviewer reads months later.
+            </label>
+            <textarea
+              value={overrideReason}
+              onChange={e => setOverrideReason(e.target.value)}
+              rows={2}
+              placeholder="e.g. Client confirmed by email on the 3rd that nobody was on leave."
+              className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-[12px] text-[#1E293B] outline-none focus:border-amber-500 bg-white"
+            />
+            <p className="text-[10px] text-amber-700 mt-0.5">
+              {overrideReason.trim().length}/{OVERRIDE_REASON_MIN} characters
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => finalizeRun(blockedRun.runId, overrideReason.trim())}
+              disabled={overrideReason.trim().length < OVERRIDE_REASON_MIN
+                        || finalizing === blockedRun.runId}
+              className="text-[11px] px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
+            >
+              {finalizing === blockedRun.runId ? "Finalizing…" : "Finalize anyway"}
+            </button>
+            <button
+              onClick={() => { setBlockedRun(null); setOverrideReason(""); }}
+              className="text-[11px] px-3 py-1.5 border border-amber-300 text-amber-900 rounded-lg hover:bg-amber-100"
+            >
+              Go back and fix them
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         {loadFailed ? (

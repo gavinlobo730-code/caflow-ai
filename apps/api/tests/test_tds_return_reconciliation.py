@@ -118,6 +118,16 @@ def _finalize_payroll(db, month="2025-05", basic_paise=3_00_000_00, pan="ABCDE12
         "special_allowance_paise": 0, "pf_applicable": False, "esi_applicable": False,
         "pt_applicable": False, "is_active": True, "status": "active",
     })
+    # Attendance is entered, not defaulted. Migration 328 blocks a finalise with
+    # an unresolved gap, and "nobody entered attendance" is one — this fixture
+    # is about the 24Q reconciliation, so it takes the clean path rather than
+    # the Partner override, which is exercised on its own elsewhere.
+    year, mon = int(month[:4]), int(month[5:7])
+    db.seed("attendance", {"firm_id": FIRM, "employee_id": emp["id"],
+                           "month": mon, "year": year,
+                           "working_days": 26, "days_present": 26,
+                           "casual_leaves": 0, "sick_leaves": 0, "earned_leaves": 0,
+                           "lop_days": 0})
     res = payroll_mod.create_run(payroll_mod.PayrollRunIn(client_id="CLI", month=month), CALLER)
     assert res["success"] is True
     run_id = res["data"]["id"]
