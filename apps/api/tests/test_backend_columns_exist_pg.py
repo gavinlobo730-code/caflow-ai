@@ -149,7 +149,24 @@ UNFIXED: dict[str, str] = {}
 # select lists name the rest — tan, epf_establishment_code, esic_employer_code,
 # lin, ptrc_number, ptec_number, note — rather than "*", precisely so that
 # every column of both tables is verified against the real schema.
-MAX_UNREADABLE = 434
+# 434 -> 436: routers/payroll's attendance write path (migration 326). Two,
+# both unreadable by construction rather than by neglect:
+#
+#   * the attendance upsert takes a LIST COMPREHENSION over the validated rows.
+#     The scanner reads a literal list of literal dicts and cannot read a
+#     comprehension, and building the list into a variable first would be
+#     strictly worse — it hides the same thing and reads no better.
+#   * client_payroll_settings' upsert carries a `**update` spread, because that
+#     endpoint is PATCH-shaped: which columns a request writes is decided at
+#     runtime from what it sent.
+#
+# Neither leaves a column unchecked. Every column of public.attendance the
+# upsert writes — working_days, days_present, casual_leaves, sick_leaves,
+# earned_leaves, lop_days, entered_by, entered_at, plus firm_id/employee_id/
+# month/year — is named literally in _attendance_for's select list a few lines
+# above, and client_payroll_settings' inputs_due_day and note are named in
+# _payroll_settings'.
+MAX_UNREADABLE = 436
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

@@ -1148,6 +1148,22 @@ export const api = {
     createRun: (body: { client_id: string; month: string }) =>
       request("/api/payroll/runs", { method: "POST", body: JSON.stringify(body) }),
     getRunSlips: (runId: string) => request(`/api/payroll/runs/${runId}/slips`),
+
+    // Attendance goes through the API, not straight to PostgREST. The direct
+    // write this replaced saved the page's WHOLE editor — which seeded a
+    // confident 26/26 default row for every employee that had none — so one
+    // Save asserted a full month for people nobody had looked at and
+    // payroll_slips.attendance_entered (migration 324) then read true for all
+    // of them. See domain/payroll/attendance.py.
+    getAttendance: (clientId: string, month: string) =>
+      request(`/api/payroll/attendance?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`),
+    // `rows` must carry ONLY the employees the CA actually touched. lop_days is
+    // omitted and derived server-side; sending one that contradicts the others
+    // is refused rather than corrected.
+    saveAttendance: (body: { client_id: string; month: string; rows: unknown[] }) =>
+      request("/api/payroll/attendance", { method: "PUT", body: JSON.stringify(body) }),
+    savePayrollSettings: (body: { client_id: string; inputs_due_day?: number | null }) =>
+      request("/api/payroll/attendance/settings", { method: "PUT", body: JSON.stringify(body) }),
     updateRunStatus: (runId: string, status: string) =>
       request(`/api/payroll/runs/${runId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
     finalizeRun: (runId: string) =>

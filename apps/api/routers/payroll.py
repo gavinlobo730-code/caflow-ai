@@ -20,8 +20,10 @@ import logging
 from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
-                           StatutoryIdentityIn, PTRegistrationIn)
+                           StatutoryIdentityIn, PTRegistrationIn,
+                           AttendanceIn, PayrollSettingsIn)
 from core.authz import assert_client_access, filter_by_client
+from core.ist_clock import ist_today
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services import employee_portal_service
@@ -34,6 +36,7 @@ from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll import identity as identity_domain
+from domain.payroll import attendance as attendance_domain
 from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
@@ -1297,17 +1300,15 @@ def create_run(
 
     # ONE query for the whole roster, not one per employee. This read used to
     # sit inside the loop, so a 200-employee run made 200 sequential round
-    # trips to Mumbai for rows totalling a few kilobytes. Chunked because
-    # PostgREST puts the id list in the URL.
-    attendance_by_emp: dict[str, dict] = {}
-    _emp_ids = [e["id"] for e in emps]
-    for _i in range(0, len(_emp_ids), 200):
-        _chunk = _emp_ids[_i:_i + 200]
-        _rows = (db.table("attendance").select("*")
-                 .in_("employee_id", _chunk).eq("month", m).eq("year", y)
-                 .execute().data) or []
-        for _r in _rows:
-            attendance_by_emp[str(_r.get("employee_id"))] = _r
+    # trips to Mumbai for rows totalling a few kilobytes.
+    #
+    # Through _attendance_for so the run and the attendance screen read the
+    # same shape, and so the firm filter lives in one place. The employee ids
+    # are already firm-scoped, but the service-role key bypasses RLS and
+    # CLAUDE.md is explicit that the app-layer firm filter is the primary
+    # isolation control rather than an optimisation — this query omitted it.
+    attendance_by_emp = _attendance_for(
+        db, current_user["firm_id"], [e["id"] for e in emps], y, m)
 
     for emp in emps:
         # None means NOT ENTERED, and that is now recorded on the slip rather
@@ -1746,6 +1747,271 @@ def salary_register(
     run_id = run.data[0]["id"]
     slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department, bank_account_no, bank_ifsc)").eq("run_id", run_id).execute()
     return api_response(True, {"month": month, "run": run.data[0], "slips": slips.data or []})
+
+
+# ── Attendance: the server-side contract ─────────────────────────────────────
+# Migration 326. Until now the ONLY thing that wrote public.attendance was
+# app/payroll/attendance/page.tsx, straight through PostgREST — no validation,
+# and a Save that wrote a confident default row for every employee in the firm
+# whether or not the CA had looked at them. See domain/payroll/attendance.py
+# for what that erased and what the identity is.
+
+#: The released statuses. tds_return_service names the same pair
+#: _PAYROLL_POSTED; the ECR, the ESIC return, Form 16 and the 24Q all
+#: refuse anything outside it, and migration 323 made RLS agree.
+_PAYROLL_RELEASED = ("finalized", "paid")
+
+_MOCK_ATTENDANCE: dict[tuple, dict] = {}
+_MOCK_PAYROLL_SETTINGS: dict[tuple, dict] = {}
+
+def _payroll_settings(db, firm_id: str, client_id: str) -> dict:
+    """This client's payroll configuration, or {} — never a default.
+
+    A firm that has not agreed a cut-off with this client has not agreed one,
+    and cutoff_state reports that as `agreed: false` rather than as being on
+    time. See migration 326.
+    """
+    if not db:
+        return dict(_MOCK_PAYROLL_SETTINGS.get((firm_id, client_id), {}))
+    try:
+        return (db.table("client_payroll_settings").select("inputs_due_day, note")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .maybe_single().execute().data) or {}
+    except Exception:
+        _logger.exception("payroll settings read failed for client=%s", client_id)
+        return {}
+
+
+def _client_roster(db, firm_id: str, client_id: str) -> list[dict]:
+    # status = active, matching create_run's own roster query exactly. Showing
+    # a leaver here would invite attendance for somebody the run will not
+    # compute a slip for, which then reads as entered and explains nothing.
+    return (db.table("payroll_employees")
+            .select("id, name, designation, status")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "active")
+            .execute().data) or []
+
+
+def _attendance_for(db, firm_id: str, emp_ids: list[str], year: int, month: int) -> dict:
+    """Every entered row for these employees in this month, keyed by employee.
+
+    Firm-filtered as well as employee-filtered. The employee ids are already
+    firm-scoped by the caller, so this is belt and braces — but the service-role
+    key bypasses RLS and CLAUDE.md is explicit that the app-layer firm filter is
+    the primary isolation control, not an optimisation.
+
+    Chunked because PostgREST puts the id list in the URL.
+    """
+    out: dict[str, dict] = {}
+    for i in range(0, len(emp_ids), 200):
+        # Columns named inline, not via a constant: a select list is the only
+        # place these get checked against the real schema by
+        # tests/test_backend_columns_exist_pg.py, and it cannot read a Name.
+        rows = (db.table("attendance")
+                .select("employee_id, working_days, days_present, casual_leaves, "
+                        "sick_leaves, earned_leaves, lop_days, entered_by, entered_at")
+                .eq("firm_id", firm_id)
+                .in_("employee_id", emp_ids[i:i + 200])
+                .eq("month", month).eq("year", year)
+                .execute().data) or []
+        for r in rows:
+            out[str(r.get("employee_id"))] = r
+    return out
+
+
+@router.get("/attendance")
+def get_attendance(
+    client_id: str = Query(...),
+    month: str = Query(..., description='Payroll month, e.g. "2026-08"'),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """This client's roster for the month, each employee entered or NOT ENTERED.
+
+    `entered` is the absence or presence of a row and nothing else. There is no
+    third value and no flag: having no row is what not-entered IS, and the
+    moment a default row exists the question can never be asked again — which
+    is precisely what the old bulk save did to every employee in the firm.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        year, mon = attendance_domain.parse_month(month)
+    except attendance_domain.AttendanceError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        rows = [dict(v) for k, v in sorted(_MOCK_ATTENDANCE.items())
+                if k[0] == firm_id and k[1] == client_id and k[2] == month]
+        return api_response(True, {
+            "client_id": client_id, "month": month,
+            "days_in_month": attendance_domain.days_in_month(month),
+            "employees": rows, "entered_count": len(rows), "not_entered_count": 0,
+            "cutoff": attendance_domain.cutoff_state(month, None, ist_today()),
+            "locked": False,
+        })
+
+    roster = _client_roster(db, firm_id, client_id)
+    entered = _attendance_for(db, firm_id, [e["id"] for e in roster], year, mon)
+
+    employees = []
+    for emp in roster:
+        row = entered.get(str(emp["id"]))
+        employees.append({
+            "employee_id": emp["id"],
+            "name": emp.get("name"),
+            "designation": emp.get("designation"),
+            "status": emp.get("status"),
+            "entered": row is not None,
+            **{f: (row or {}).get(f) for f in attendance_domain.DAY_FIELDS},
+            "entered_at": (row or {}).get("entered_at"),
+        })
+
+    settings = _payroll_settings(db, firm_id, client_id)
+    return api_response(True, {
+        "client_id": client_id,
+        "month": month,
+        "days_in_month": attendance_domain.days_in_month(month),
+        "employees": employees,
+        "entered_count": sum(1 for e in employees if e["entered"]),
+        "not_entered_count": sum(1 for e in employees if not e["entered"]),
+        "cutoff": attendance_domain.cutoff_state(
+            month, settings.get("inputs_due_day"), ist_today()),
+        "locked": _attendance_is_locked(db, firm_id, client_id, month) is not None,
+    })
+
+
+def _attendance_is_locked(db, firm_id: str, client_id: str, month: str) -> Optional[str]:
+    """The status of a released run for this client-month, or None.
+
+    Attendance is what the slips were computed FROM. Editing it under a
+    finalised run does not change a single figure on that run — the slips are
+    stored — it just makes the inputs stop explaining the output, and the ECR's
+    NCP days stop agreeing with the attendance somebody can now read. Refused
+    rather than allowed-and-warned, because nothing downstream re-reads it.
+    """
+    run = (db.table("payroll_runs").select("status")
+           .eq("firm_id", firm_id).eq("client_id", client_id).eq("month", month)
+           .maybe_single().execute().data)
+    status = (run or {}).get("status")
+    return status if status in _PAYROLL_RELEASED else None
+
+
+@router.put("/attendance")
+def put_attendance(
+    body: AttendanceIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record attendance for the employees in this request, and no others.
+
+    ONLY THE EMPLOYEES SENT. The old page saved its whole editor, which seeded a
+    default 26/26 row for everybody with none — so one Save asserted a confident
+    full month for the entire firm and there was never a gap to report again.
+
+    Validated and refused WHOLE (domain/payroll/attendance.py): a partial write
+    leaves some of a client-month saved and some not, and the ones that failed
+    are then indistinguishable from the ones nobody entered.
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if db:
+        locked = _attendance_is_locked(db, firm_id, body.client_id, body.month)
+        if locked:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Payroll for {body.month} is {locked}. Its payslips were "
+                        f"computed from this attendance and are already posted, so "
+                        f"changing it now would leave the inputs disagreeing with "
+                        f"the payslips and the ECR. Reverse the run first."))
+        roster = {str(e["id"]): (e.get("name") or "") for e in
+                  _client_roster(db, firm_id, body.client_id)}
+    else:
+        roster = {}
+
+    sent_ids = [str(r.employee_id or "").strip() for r in body.rows]
+    if db:
+        # A row for somebody else's employee would be written under this firm's
+        # id and be invisible to the client it actually belongs to.
+        strangers = sorted({i for i in sent_ids if i and i not in roster})
+        if strangers:
+            raise HTTPException(
+                status_code=422,
+                detail=("These employees are not on this client's roster: "
+                        + ", ".join(strangers)))
+
+    try:
+        rows = attendance_domain.build_rows(
+            [r.model_dump() for r in body.rows], period=body.month,
+            names_by_id=roster)
+    except attendance_domain.AttendanceError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    year, mon = attendance_domain.parse_month(body.month)
+    # UTC on disk, as every timestamptz in this schema is. CLAUDE.md's IST
+    # rule is about REPORTING a time, not storing one.
+    stamped = datetime.now(timezone.utc).isoformat()
+    if not db:
+        for row in rows:
+            _MOCK_ATTENDANCE[(firm_id, body.client_id, body.month, row.employee_id)] = {
+                **row.as_write(), "entered_at": stamped}
+        return api_response(True, {"client_id": body.client_id, "month": body.month,
+                                   "saved": len(rows)})
+
+    db.table("attendance").upsert(
+        [{"firm_id": firm_id, "month": mon, "year": year,
+          "entered_by": current_user.get("id"), "entered_at": stamped,
+          **row.as_write()} for row in rows],
+        on_conflict="employee_id,month,year").execute()
+
+    timeline_service.log(
+        body.client_id, "work", "Attendance Entered",
+        f"Attendance recorded for {len(rows)} employee(s) for {body.month}",
+        "info", firm_id=firm_id, entity_type="client", entity_id=body.client_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {"client_id": body.client_id, "month": body.month,
+                               "saved": len(rows)})
+
+
+@router.put("/attendance/settings")
+def put_payroll_settings(
+    body: PayrollSettingsIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record the day of the month this client has agreed to send inputs by.
+
+    PATCH-shaped like the statutory identity: an explicit null clears the
+    cut-off, which is a firm saying it has no agreed date — different from not
+    saying, and the read reports the two differently.
+    """
+    assert_client_access(current_user, body.client_id)
+    sent = body.model_dump(exclude_unset=True)
+    update = {k: sent[k] for k in ("inputs_due_day", "note") if k in sent}
+    if not update:
+        raise HTTPException(status_code=422,
+                            detail="Nothing to record. Send inputs_due_day.")
+    if isinstance(update.get("note"), str):
+        update["note"] = update["note"].strip() or None
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        row = {**_MOCK_PAYROLL_SETTINGS.get((firm_id, body.client_id), {}), **update}
+        _MOCK_PAYROLL_SETTINGS[(firm_id, body.client_id)] = row
+        return api_response(True, {"client_id": body.client_id, **row})
+
+    # Inline, not a payload variable, so the fixed column names are readable to
+    # tests/test_backend_columns_exist_pg.py — see its MAX_UNREADABLE note.
+    row = (db.table("client_payroll_settings")
+           .upsert({"firm_id": firm_id, "client_id": body.client_id,
+                    "updated_by": current_user.get("id"), **update},
+                   on_conflict="firm_id,client_id").execute().data or [{}])[0]
+    return api_response(True, {"client_id": body.client_id,
+                               "inputs_due_day": row.get("inputs_due_day"),
+                               "note": row.get("note")})
 
 
 # ── The client's own statutory registrations ─────────────────────────────────

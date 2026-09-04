@@ -4,7 +4,7 @@ EPF Act §6: PF = 12% of (Basic + DA). ESI Act §2(9): employee 0.75%, employer 
 IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import re
 
@@ -422,3 +422,54 @@ class PTRegistrationIn(BaseModel):
                 "State must be the two-letter code payroll_employees.pt_state "
                 'carries — "MH", "KA", "TN".')
         return s
+
+
+class AttendanceRowIn(BaseModel):
+    """One employee's month.
+
+    `lop_days` is Optional and is DERIVED when omitted — it is the only one of
+    the five that is purely a remainder. Sent and inconsistent with the others,
+    it is refused rather than corrected: silently replacing a number a CA typed
+    is how what is on the screen and what is in the table start to disagree.
+
+    The arithmetic and every refusal live in domain/payroll/attendance.py, not
+    here, because the interesting checks are cross-field and per-month (a
+    28-day February bounds working_days differently from a 31-day March) and a
+    per-field validator cannot see either.
+    """
+    employee_id: str
+    working_days: int
+    days_present: int
+    casual_leaves: int = 0
+    sick_leaves: int = 0
+    earned_leaves: int = 0
+    lop_days: Optional[int] = None
+
+
+class AttendanceIn(BaseModel):
+    """A client-month's attendance, for the employees named and no others.
+
+    The bulk save this replaces wrote its whole editor — which seeded a
+    confident 26/26 default row for every employee in the FIRM that had none.
+    One press of Save therefore asserted a full month for people nobody had
+    looked at, and payroll_slips.attendance_entered (migration 324) then read
+    true for all of them.
+    """
+    client_id: str
+    month: str = Field(..., description='Payroll month, e.g. "2026-08"')
+    rows: list[AttendanceRowIn]
+
+
+class PayrollSettingsIn(BaseModel):
+    """Per-client payroll configuration (migration 326).
+
+    PATCH-shaped: only fields present are written, and an explicit null clears
+    — a firm saying it has no agreed cut-off with this client, which the read
+    reports differently from not having said.
+    """
+    client_id: str
+    inputs_due_day: Optional[int] = Field(
+        None, ge=1, le=28,
+        description="Day of the month the client sends inputs by. Capped at 28 "
+                    "because a cut-off of the 30th does not exist in February.")
+    note: Optional[str] = None
