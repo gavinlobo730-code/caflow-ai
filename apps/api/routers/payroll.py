@@ -22,7 +22,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, PayrollSettingsIn, PTSlabSetIn,
-                           ReleaseIn)
+                           ReleaseIn, ApplyStructureIn)
 from core.authz import assert_client_access, filter_by_client
 from core.ist_clock import ist_today, month_end_date
 from core.permissions import rbac
@@ -39,6 +39,7 @@ from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll import identity as identity_domain
 from domain.payroll import attendance as attendance_domain
 from domain.payroll import firm_rates
+from domain.payroll import salary_structure as structure_domain
 from domain.payroll import professional_tax as pt_domain
 from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
@@ -475,7 +476,14 @@ def _salary_in_force(db, firm_id: str, client_id: str, month: str) -> dict:
     """
     try:
         first_of_month = f"{month}-01"
-        rows = (db.table("payroll_salary_revisions").select("*")
+        # Columns named rather than "*", so every one of them is checked against
+        # the real schema by tests/test_backend_columns_exist_pg.py — the insert
+        # that writes them takes a list variable, which that scanner cannot read.
+        rows = (db.table("payroll_salary_revisions")
+                .select("employee_id, effective_from, basic_paise, hra_percent, "
+                        "da_percent, lta_paise, medical_paise, "
+                        "special_allowance_paise, other_allowances_paise, "
+                        "reason, source_structure_id")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         latest: dict = {}
@@ -1225,6 +1233,153 @@ def create_salary_structure(
     payload["firm_id"] = current_user["firm_id"]
     row = db.table("salary_structures").insert(payload).execute()
     return api_response(True, (row.data or [{}])[0])
+
+
+@router.post("/salary-structures/{structure_id}/apply")
+def apply_salary_structure(
+    structure_id: str,
+    data: ApplyStructureIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Apply a named structure to employees, from a date.
+
+    public.salary_structures has existed since migration 054 and NOTHING HAS
+    EVER READ IT — a CA could create "Junior — 40/20", see it listed, and every
+    employee's basic, HRA and DA still had to be keyed in one at a time.
+
+    IT WRITES A REVISION, NOT A LINK. payroll_salary_revisions (migration 300)
+    is what the run reads, so a structure applied from 1 October starts in
+    October and does not restate September, which is posted to the ledger. A
+    live salary_structure_id on the employee would mean editing a template
+    silently restates everybody on it, months in the general ledger included.
+
+    VALIDATED AND REFUSED WHOLE. A structure that does not fit one employee's
+    gross — a fixed medical allowance larger than the percentages leave, say —
+    stops the whole request. A partial application would leave half a roster on
+    the new scale and half on the old, with nothing on the screen saying which.
+
+    `preview` computes all of it, reports all of it, and writes nothing.
+    """
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not data.assignments:
+        raise HTTPException(status_code=422,
+                            detail="No employees were sent to apply the structure to.")
+
+    if not db:
+        return api_response(True, {"structure_id": structure_id, "applied": 0,
+                                   "preview": data.preview, "employees": [],
+                                   "notes": []})
+
+    assert_not_internal_for_payroll(data.client_id, firm_id)
+
+    structure = (db.table("salary_structures")
+                 .select("id, name, basic_percent, hra_percent, da_percent, "
+                         "lta_percent, medical_paise, special_percent")
+                 .eq("id", structure_id).eq("firm_id", firm_id)
+                 .eq("client_id", data.client_id).maybe_single().execute().data)
+    if not structure:
+        raise HTTPException(status_code=404, detail="Salary structure not found")
+
+    # A row for somebody else's employee would be written under this client's id
+    # and pay a person who does not work here.
+    roster = {str(e["id"]): e for e in (
+        db.table("payroll_employees")
+        .select("id, name, other_allowances_paise")
+        .eq("firm_id", firm_id).eq("client_id", data.client_id)
+        .execute().data) or []}
+    strangers = sorted({a.employee_id for a in data.assignments
+                        if a.employee_id not in roster})
+    if strangers:
+        raise HTTPException(
+            status_code=422,
+            detail=("These employees are not on this client's roster: "
+                    + ", ".join(strangers)))
+
+    seen: set = set()
+    rows: list[dict] = []
+    reported: list[dict] = []
+    notes: list[str] = []
+    problems: list[str] = []
+
+    for assignment in data.assignments:
+        emp = roster[assignment.employee_id]
+        who = emp.get("name") or assignment.employee_id
+        if assignment.employee_id in seen:
+            problems.append(f"{who}: sent twice in one request.")
+            continue
+        seen.add(assignment.employee_id)
+        try:
+            applied = structure_domain.apply_structure(
+                structure, assignment.monthly_gross_paise)
+        except structure_domain.StructureError as e:
+            problems.append(f"{who}: {e}")
+            continue
+
+        notes.extend(structure_domain.drift_note(who, applied))
+        revision = applied.as_revision()
+        # Anything the CA had put in other_allowances is a separate decision and
+        # no structure head produces it — carried forward rather than zeroed.
+        revision["other_allowances_paise"] = int(emp.get("other_allowances_paise") or 0)
+        rows.append({
+            "firm_id": firm_id, "client_id": data.client_id,
+            "employee_id": assignment.employee_id,
+            "effective_from": data.effective_from,
+            "source_structure_id": structure_id,
+            "reason": (data.reason or f"Applied structure: {structure.get('name') or ''}").strip(),
+            **revision,
+        })
+        reported.append({
+            "employee_id": assignment.employee_id, "name": who,
+            "monthly_gross_paise": applied.monthly_gross_paise,
+            **{c.name: c.paise for c in applied.components},
+        })
+
+    if problems:
+        raise HTTPException(status_code=422, detail={
+            "message": ("The structure could not be applied to every employee "
+                        "sent, so none of them were changed."),
+            "problems": problems,
+        })
+
+    # A revision effective inside a month whose payroll is already released does
+    # not change that month — the slips are stored — so it is REPORTED rather
+    # than refused. Backdating is legitimate: it is how a pay rise agreed in
+    # November and effective from September becomes arrears, which this system
+    # computes (domain/payroll/arrears.py, IT Act s.89).
+    released = (db.table("payroll_runs").select("month, status")
+                .eq("firm_id", firm_id).eq("client_id", data.client_id)
+                .in_("status", list(_PAYROLL_RELEASED)).execute().data) or []
+    affected = sorted(r["month"] for r in released
+                      if f"{r['month']}-01" >= data.effective_from[:7] + "-01")
+    if affected:
+        notes.append(
+            "Payroll for " + ", ".join(affected) + " is already released and was "
+            "paid at the old figures. Those months are not recomputed; the "
+            "difference is arrears, and s.89 relief is computed separately.")
+
+    if data.preview:
+        return api_response(True, {
+            "structure_id": structure_id, "structure_name": structure.get("name"),
+            "effective_from": data.effective_from, "preview": True,
+            "applied": 0, "employees": reported, "notes": notes,
+        })
+
+    db.table("payroll_salary_revisions").insert(rows).execute()
+    timeline_service.log(
+        data.client_id, "work", "Salary Structure Applied",
+        f"{structure.get('name') or 'Structure'} applied to {len(rows)} employee(s) "
+        f"from {data.effective_from}",
+        "info", firm_id=firm_id, entity_type="client", entity_id=data.client_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {
+        "structure_id": structure_id, "structure_name": structure.get("name"),
+        "effective_from": data.effective_from, "preview": False,
+        "applied": len(rows), "employees": reported, "notes": notes,
+    })
 
 
 # ─── Payroll Runs ─────────────────────────────────────────────────────────────

@@ -562,3 +562,48 @@ class ReleaseIn(BaseModel):
     more.
     """
     override_reason: Optional[str] = None
+
+
+class StructureAssignmentIn(BaseModel):
+    """One employee and the monthly gross the structure is applied to.
+
+    The gross is NAMED, never inferred. Migration 054 calls the structure's
+    percentages "% of CTC", which cannot be what they mean: an Indian CTC
+    includes the employer's provident fund, itself 12% of basic, so basic as a
+    percentage of CTC is circular. See migration 330 and
+    domain/payroll/salary_structure.py.
+    """
+    employee_id: str
+    monthly_gross_paise: int = Field(..., gt=0)
+
+
+class ApplyStructureIn(BaseModel):
+    """Apply a named structure to a set of employees from a date.
+
+    Writes a payroll_salary_revisions row each (migration 300), not a live link
+    — the run already reads revisions, so one applied from 1 October starts in
+    October and does not restate September, which is posted.
+
+    `preview` computes and reports everything and writes nothing, so a CA can
+    see what each employee's pay would become — including where a two-decimal
+    percentage of basic cannot express the structure's HRA exactly — before
+    committing to it.
+    """
+    client_id: str
+    effective_from: str = Field(..., description="YYYY-MM-DD, the first day it applies")
+    assignments: list[StructureAssignmentIn]
+    reason: Optional[str] = None
+    preview: bool = False
+
+    @field_validator("effective_from")
+    @classmethod
+    def _iso_date(cls, v):
+        s = str(v or "").strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+            raise ValueError("effective_from must be YYYY-MM-DD.")
+        from datetime import date as _date
+        try:
+            _date.fromisoformat(s)
+        except ValueError:
+            raise ValueError(f"{s!r} is not a real date.")
+        return s
