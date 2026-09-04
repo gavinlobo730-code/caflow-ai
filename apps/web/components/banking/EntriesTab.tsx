@@ -167,14 +167,39 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
     return a ? a.account_name : "Unknown ledger";
   }, [accounts]);
 
+  /** The GL ledgers this client's OWN bank and cash accounts post to.
+   *
+   *  A bank line booked to the ledger its own statement belongs to produces
+   *  Dr Bank X / Cr Bank X. That BALANCES, which is why nothing downstream used
+   *  to catch it: the posting kernel's double-entry assertion is satisfied, the
+   *  bank balance stays right because the pair nets to zero, and the line is
+   *  marked posted and leaves the queue — with nothing classified. Once posted
+   *  it is immutable and can only be undone by an append-only reversal.
+   *
+   *  The server refuses it now (domain/banking/posting_map.build_lines and
+   *  splits.build_split_lines). This keeps it off the picker so the refusal is
+   *  a thing a CA never has to read.
+   *
+   *  Every own account, not just the statement's, because moving money between
+   *  two of them is a CONTRA — it has its own category, its own builder and its
+   *  own destination field, and coding it as an ordinary two-leg posting is the
+   *  same mistake wearing a different account id. */
+  const ownLedgerIds = useMemo(
+    () => new Set(bankAccounts.map((b) => b.coa_account_id).filter(Boolean) as string[]),
+    [bankAccounts]);
+
   /** The chart ordered by what THIS client actually codes to, most used first
-   *  — the server's ledger_order, applied to the picker. Orders, never filters. */
+   *  — the server's ledger_order, applied to the picker.
+   *
+   *  It orders, and filters exactly one thing: the client's own bank and cash
+   *  ledgers, for the reason above. */
   const orderedAccounts = useMemo(() => {
-    if (ledgerOrder.length === 0) return accounts;
+    const pickable = accounts.filter((a) => !ownLedgerIds.has(a.id));
+    if (ledgerOrder.length === 0) return pickable;
     const rank = new Map(ledgerOrder.map((id, i) => [id, i]));
-    return [...accounts].sort((a, b) =>
+    return [...pickable].sort((a, b) =>
       (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
-  }, [accounts, ledgerOrder]);
+  }, [accounts, ledgerOrder, ownLedgerIds]);
 
   const acct = bankAccountId ? { bank_account_id: bankAccountId } : {};
 

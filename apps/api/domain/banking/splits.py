@@ -126,6 +126,17 @@ def build_split_lines(splits: list[Split], *, is_credit: bool,
     """
     if not bank_account_id:
         raise SplitError("The bank account is required.")
+    same = [s for s in splits if s.account_id == bank_account_id]
+    if same:
+        # One leg of a split pointing at the statement's OWN bank ledger is the
+        # same fault as the two-leg case, hidden better: the journal still
+        # balances, the other legs still look right, and the bank ledger quietly
+        # carries a debit and a credit for part of one movement. Reconciliation
+        # then shows the line as posted with a fragment of it unclassified.
+        raise SplitError(
+            "A split cannot allocate to the account the statement itself "
+            "belongs to — that leg would debit and credit the same ledger. "
+            "Use a Contra/Transfer if the money moved to another own account.")
     validate_splits(splits, amount_paise)
 
     total = sum(s.amount_paise for s in splits)

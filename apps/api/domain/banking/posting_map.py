@@ -47,6 +47,25 @@ def build_lines(amount_paise: int, is_credit: bool,
         raise ValueError("Posting amount must be positive.")
     if not bank_account_id or not counter_account_id:
         raise ValueError("Both bank and counter accounts are required.")
+    if bank_account_id == counter_account_id:
+        # THE SAME ACCOUNT ON BOTH LEGS BALANCES, which is exactly why nothing
+        # else catches it. Dr Bank X 5,000 / Cr Bank X 5,000 satisfies the
+        # posting kernel's double-entry assertion, nets to zero so the bank
+        # balance stays right by accident, and posts — after which it is
+        # immutable and can only be undone by an append-only reversal.
+        #
+        # What it destroys is the reconciliation: the statement line is marked
+        # posted, so it leaves the queue, and NOTHING was classified. The money
+        # is in the books twice as itself and the expense or income it actually
+        # represents is nowhere.
+        #
+        # build_transfer_lines has refused this since it was written ("Transfer
+        # accounts must differ"). The ordinary two-leg builder never did, so the
+        # rule held only when the category happened to be Transfer.
+        raise ValueError(
+            "A bank line cannot be booked to the account its own statement "
+            "belongs to — that would debit and credit the same ledger and "
+            "classify nothing.")
     if is_credit:  # money into the bank
         return [
             {"account_id": bank_account_id, "debit_paise": amount_paise, "credit_paise": 0},
