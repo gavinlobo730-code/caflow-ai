@@ -1252,6 +1252,16 @@ export const api = {
       request(`/api/payroll/runs/${runId}/finalize`, { method: "POST" }),
     disburseRun: (runId: string, body: { bank_account_id: string; payment_date?: string; payment_reference?: string }) =>
       request(`/api/payroll/runs/${runId}/disburse`, { method: "POST", body: JSON.stringify(body) }),
+    /** Reverse a finalized or paid run. PARTNER ONLY.
+     *
+     *  The endpoint has existed and been complete since the payroll module was
+     *  built — it reverses the disbursement journal, then the accrual, and
+     *  reopens the run at 'review' — and NOTHING in the frontend called it. So
+     *  every refusal that ends "Reverse the run first" (attendance, one-time
+     *  earnings) pointed at something a CA had no way to do.
+     */
+    reverseRun: (runId: string) =>
+      request(`/api/payroll/runs/${runId}/reverse`, { method: "POST" }),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
 
