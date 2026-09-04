@@ -5,63 +5,123 @@ Confidence grades and the sourcing caveat: see `00-how-to-read-this.md`.
 
 ---
 
-## 0. Read this section first: the statutory ground may have moved under the code
+## 0. Read this section first: the statutory ground HAS moved under the code
 
-⚠️ **This is the largest single finding in this document and it is NOT verified.**
-It post-dates the assistant knowledge cutoff and rests entirely on secondary
-sources, though corroboration across independent ones is strong. `[S]`
+**VERIFIED 2026-09-04** by targeted search across many independent sources,
+including adversarial searches looking for a deferral or rollback. No primary
+document could be opened (see `00`), but the corroboration is broad, specific,
+and internally consistent — notification number, rule number, section numbers,
+due dates and transition rule all agree across unrelated sources.
 
-Research indicates the **Income-tax Act, 2025 came into force 1 April 2026**,
-with new **Income-tax Rules, 2026**. "Previous year / assessment year" becomes a
-single **"tax year"**, and the forms are renumbered:
+**This is no longer an open question. It is a live gap in the product.**
+
+### The instrument
+
+**Income-tax Act, 2025** and **Income-tax Rules, 2026**, effective **1 April
+2026**. The Rules were notified by **CBDT Notification No. 22/2026 dated
+20 March 2026 (G.S.R. 198(E))**; a **corrigendum** was issued afterwards to
+correct errors, so check the corrected text rather than the original. `[S]`
+
+"Previous year / assessment year" becomes a single **"tax year"**.
+
+### The statements — renumbered
+
+| 1961 Act | 2025 Act | Prescribed under |
+|---|---|---|
+| 24Q (salary) | **138** | Rule 219; ss. 392 and 393(1) |
+| 26Q (resident non-salary) | **140** | Rule 219; s. 397 |
+| 27Q (non-resident) | **144** | s. 397(3)(b) |
+| 27EQ (TCS) | **143** | |
+
+### The certificates and statements — renumbered
+
+| 1961 Act | 2025 Act | Note |
+|---|---|---|
+| Form 16 | **130** | now **three** parts (A/B/C), not two. **Still TRACES-generated and cannot be issued manually** |
+| Form 16A | **131** | now issued **quarterly**, not annually |
+| Form 26AS | **168** | annual tax credit statement, integrating AIS data |
+| Form 15G + 15H | **121** | merged |
+
+### ⭐ The section codes changed too — this was NOT in the first research pass
+
+TDS provisions were scattered across ss. 192–196D and the whole 194-series. The
+2025 Act consolidates them into a **compact, table-driven architecture under
+ss. 392–402**: `[S]`
 
 | 1961 Act | 2025 Act |
 |---|---|
-| 24Q (salary TDS statement) | **138** |
-| 26Q (resident non-salary) | **140** |
-| 27Q (non-resident) | **144** |
-| 27EQ (TCS) | **143** |
-| Form 16 | **130** |
-| Form 16A | **131** |
-| Form 16B | **132** |
-| Form 27D | **133** |
-| Form 26AS | **168** |
-| Form 15G + 15H | merged into **121** |
-| 3CA / 3CB / 3CD (tax audit) | consolidated into **26** |
-| s.139 (return of income) | **s.263** |
+| s. 192 (salary) | **s. 392** |
+| the 194-series (194A, 194C, 194H, 194I, 194J …) | **s. 393(1)**, one umbrella with a table |
+| **s. 195** (payments to non-residents) | **s. 393(2)** |
+| TCS (206C series) | **s. 394** |
+| s. 139 (return of income) | **s. 263** |
 
-**The transition is by PERIOD, not by filing date.** FY 2025-26 (AY 2026-27) is
-governed entirely by the 1961 Act — returns filed during 2026 still use ITR-1..7,
-Form 16 and Form 26AS, and Q4 FY 2025-26 TDS is still 24Q/26Q. The new numbering
-starts with income from **1 April 2026**.
+TDS challans and returns now use **numeric payment codes 1001–1067**
+corresponding to table entries in s. 393.
 
-**Today is September 2026.** On that reading, Q1 TY 2026-27 (quarter ended 30
-June 2026, due 31 July 2026) should already have been filed on Form 138/140 —
-a deadline that has passed.
+> ⚠️ **Correction to an earlier source.** One search result stated s. 195 moved
+> to **s. 400**. Targeted follow-up shows that is **wrong**: s. 195 is now
+> **s. 393(2)**, and **s. 400(2)** is the unrelated provision making CBDT
+> circulars on DTAA application binding. This is exactly why the claims here are
+> triangulated rather than taken from the first hit.
 
-**What this means for the code.** 25 files under `apps/api` carry `24Q`/`26Q`/`27Q`
-vocabulary — `domain/payroll/form24q.py`, `annexure2.py`, the whole of
-`domain/tds/`, `services/tds_return_service.py`,
-`services/filing_demo/tds_return.py`, `routers/payroll.py` and more. **Nothing in
-the codebase mentions the 2025 Act, "tax year", or any new form number.**
+**Rates and thresholds are substantively UNCHANGED.** `[S]` So
+`domain/tds/section_rates.py` still holds the right *numbers*; what has moved is
+the *labels* — the section a payment is reported under.
 
-If confirmed, this needs **period-aware form vocabulary carrying both sets for
-several years** — bigger and more certain work than any filing integration, and
-due whether or not ERI registration ever happens. It is the same shape
-`compliance_engine` already uses for due dates: derive from the period by rule,
-never a constant.
+### The transition rule — by EVENT, not by filing date
 
-One reassurance: **TDS due dates appear unchanged** (31 Jul / 31 Oct / 31 Jan /
-31 May), which matches `compliance_engine.tds_return_due_date` and CLAUDE.md.
+The Income Tax Department's own position: applicability depends on **the credit
+or the payment, whichever is earlier**. `[P via summary]`
 
-**Also reported:** TRACES was replaced by **TRACES 2.0** on 1 April 2026 at
-`traces.tdscpc.gov.in`; login is PAN + password + captcha with no separate User
-ID, and legacy functions sit under a "Compliance under Income-tax Act, 1961"
-section. `[S]`
+- that event **on or before 31 March 2026** → **1961 Act, old forms**
+- that event **on or after 1 April 2026** → **2025 Act, new forms**
 
-> **Verify against the bare Act and the CBDT notifications before changing one
-> line.** This is precisely the kind of confidently-wrong regulatory fact the
-> codebase already refuses to act on from memory. Tracked as task #125.
+Commencement does not affect liabilities or obligations that arose under the
+1961 Act for tax years beginning before 1 April 2026. So a **belated or revised
+Q4 FY 2025-26 return is still Form 24Q** — the old forms stay correct for old
+periods indefinitely, which is why the product needs **both** vocabularies, not
+a migration from one to the other.
+
+### ⚠️ The deadline has already passed
+
+**Q1 TY 2026-27** (April–June 2026) was due **31 July 2026** on Forms 138 / 140 /
+143 / 144. Today is September 2026.
+
+And the failure is not cosmetic:
+
+> **Filings submitted under the old form numbers for this period get rejected at
+> validation.** Citing an old section code (194C rather than 393(1)) "may lead to
+> processing errors" requiring a correction statement. `[S]`
+
+**ITR forms are the exception and are NOT renumbered yet.** CBDT notified
+ITR-1..7 for **AY 2026-27** on 30 March 2026 under the **1961 Act**, because
+AY 2026-27 covers FY 2025-26. The 2025 Act reaches income-tax *returns* in 2027,
+for tax year 2026-27. `[S]` So the ITR JSON schema work in
+`domain/income_tax/` is unaffected this season.
+
+**Due dates are unchanged** — 31 Jul / 31 Oct / 31 Jan / 31 May — matching
+`compliance_engine.tds_return_due_date` and CLAUDE.md. `[S]`
+
+### What this means for the code, concretely
+
+25 files carry `24Q`/`26Q`/`27Q` vocabulary and **nothing mentions the 2025
+Act**. The impact is not only naming:
+
+- `domain/payroll/form24q.py:176` **emits `section="192"`** into the statement it
+  builds. Under the 2025 Act that field is **392**, on Form **138**.
+- `domain/tds/section_rates.py` is keyed by `"194C"`, `"194J"`, `"195"` and the
+  rest. The rates stay right; the **keys** are what a return no longer accepts.
+- `services/filing_demo/tds_return.py` walks a CA through a portal flow named
+  after forms that no longer exist for current periods.
+
+The shape of the fix is **period-aware form and section vocabulary carrying both
+sets indefinitely** — the same discipline `compliance_engine` already applies to
+due dates: derived from the period by rule, never a stored constant. It is
+bigger and more certain work than any filing integration, and it is due whether
+or not ERI registration ever happens.
+
+Tracked as task #125.
 
 ---
 

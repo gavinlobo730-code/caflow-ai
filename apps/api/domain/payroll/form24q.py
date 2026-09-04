@@ -1,24 +1,30 @@
 """
 TODO(compliance): docs/compliance/03-income-tax-and-tds.md
-    THE FORM NUMBER IN THIS MODULE'S NAME MAY BE OBSOLETE FOR CURRENT PERIODS.
+    THIS MODULE'S FORM NUMBER AND ITS SECTION CODE ARE BOTH OBSOLETE FOR
+    PERIODS FROM 01-04-2026. VERIFIED 2026-09-04, not speculation.
 
-    Research in Sept 2026 (SECONDARY SOURCES ONLY, not verified against the
-    bare Act) reports that the Income-tax Act 2025 and Rules 2026 commenced
-    01-04-2026, replacing previous-year/assessment-year with a single "tax
-    year" and renumbering the statements: 24Q -> 138, 26Q -> 140, 27Q -> 144,
-    27EQ -> 143, Form 16 -> 130, Form 16A -> 131, Form 26AS -> 168.
+    The Income-tax Act 2025 and Income-tax Rules 2026 took effect 01-04-2026
+    (CBDT Notification 22/2026 dated 20-03-2026, G.S.R. 198(E), plus a later
+    corrigendum). 24Q -> Form 138 (Rule 219, ss. 392 and 393(1)); 26Q -> 140;
+    27Q -> 144; 27EQ -> 143. Form 16 -> 130, and it now has THREE parts.
 
-    The transition is BY PERIOD, not by filing date. FY 2025-26 stays entirely
-    on the 1961 Act, so everything this module does for those periods remains
-    correct. The new numbering starts with income from 01-04-2026.
+    AND THE SECTION CODE MOVED, WHICH THIS MODULE EMITS. Line ~176 writes
+    section="192". Under the 2025 Act salary TDS is s. 392, the whole 194-series
+    collapsed into s. 393(1) with a table, and s. 195 became s. 393(2) — not
+    s. 400, whatever one secondary source says. Returns now carry numeric
+    payment codes 1001-1067. Rates and thresholds are UNCHANGED, so
+    section_rates.py holds the right numbers under the wrong keys.
 
-    25 files under apps/api carry 24Q/26Q/27Q vocabulary and nothing mentions
-    the 2025 Act. If confirmed, this needs PERIOD-AWARE form vocabulary
-    carrying both sets for years — the same shape compliance_engine already
-    uses for due dates: derived from the period by rule, never a constant.
-    Those due dates appear unchanged (31 Jul / 31 Oct / 31 Jan / 31 May).
+    TRANSITION IS BY EVENT, NOT BY FILING DATE: credit or payment, whichever is
+    earlier. On or before 31-03-2026 -> 1961 Act and these forms, INDEFINITELY,
+    including belated and revised returns. On or after 01-04-2026 -> the new
+    ones. So both vocabularies are needed forever; this is not a migration.
 
-    VERIFY BEFORE CHANGING ANYTHING.
+    Everything this module does for FY 2025-26 and earlier remains correct.
+    What is missing is the other half. Q1 TY 2026-27 was due 31-07-2026, old
+    form numbers are REJECTED at validation, and an old section code needs a
+    correction statement. Due dates are unchanged (31 Jul / 31 Oct / 31 Jan /
+    31 May).
 Form 24Q, built from payroll instead of typed in again.
 
 WHAT WAS WRONG
