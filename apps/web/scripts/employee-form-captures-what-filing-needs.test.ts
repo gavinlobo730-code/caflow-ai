@@ -27,8 +27,18 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-const PAGE = path.join(import.meta.dirname, "..", "app/payroll/page.tsx");
-const page = () => fs.readFileSync(PAGE, "utf8");
+// The FORM, not the page. It moved to components/payroll/AddEmployeeModal.tsx
+// on 2026-09-04 when the roster became its own screen (/payroll/people); the
+// invariant is unchanged and follows the code.
+const FORM = path.join(import.meta.dirname, "..", "components/payroll/AddEmployeeModal.tsx");
+const page = () => fs.readFileSync(FORM, "utf8");
+
+// The importable column list the People screen offers. It now MIRRORS the
+// server's domain/payroll/employee_import.COLUMNS — a Python parity test holds
+// the two identical — so the columns are asserted against that list rather than
+// against a second one the browser kept for itself.
+const COLUMNS = path.join(import.meta.dirname, "..", "lib/imports/mappers.ts");
+const columns = () => fs.readFileSync(COLUMNS, "utf8");
 
 /** The fields a statutory output cannot be produced without. */
 const REQUIRED_BY_A_FILING = [
@@ -70,9 +80,16 @@ test("each field says what cannot be produced without it", () => {
 test("the CSV import carries them too", () => {
   // A migration is where a roster actually arrives. An import that could not
   // carry these would produce four hundred employees nobody can file for.
-  const s = page();
+  //
+  // The second half of this used to assert `uan: row.uan` — the BROWSER reading
+  // each field off the row. That importer is gone: the whole file now goes to
+  // POST /api/payroll/employees/import, which validates it as a whole, refuses
+  // it as a whole, and is idempotent on employee_code. So what has to be true
+  // here is only that the column is OFFERED; that the server reads it is
+  // asserted in apps/api's test_the_employee_master_and_its_import.py, against
+  // the importer itself rather than against a copy of it.
+  const s = columns();
   for (const f of REQUIRED_BY_A_FILING) {
     assert.match(s, new RegExp(`key: "${f}"`), `${f} must be an importable column`);
-    assert.match(s, new RegExp(`${f}: row\\.${f}`), `${f} must be read from the row`);
   }
 });

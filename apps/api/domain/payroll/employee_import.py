@@ -181,7 +181,20 @@ def _paise(row: dict, key: str) -> tuple[Optional[int], Optional[str]]:
 
 
 def _percent(row: dict, key: str, default: float) -> tuple[Optional[float], Optional[str]]:
-    raw = _text(row, key).replace("%", "").replace(",", "").strip()
+    """A percentage from a spreadsheet cell.
+
+    A COMMA IS A REFUSAL HERE, and that is the difference from `_paise` above.
+    An Indian AMOUNT is grouped — "1,25,000" is a real way to write it, so the
+    amount parser strips the separators. A percentage is never grouped, so a
+    comma in one is a typo, and the only plausible typo is a decimal point typed
+    as a comma: "1,0" meant 10 and would otherwise be read as 1.
+
+    That is not a rounding difference. HRA feeds the §10(13A) exemption and
+    Annexure II, so 1% where the CA meant 10% is money by the time it reaches
+    the payslip. apps/web's bpsFromPercentInput has always refused it; this
+    accepted it until the roster's own test caught the gap.
+    """
+    raw = _text(row, key).replace("%", "").strip()
     if not raw:
         return default, None
     if not re.fullmatch(r"\d+(\.\d+)?", raw):

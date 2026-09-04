@@ -142,20 +142,45 @@ test("the two unfilable cases are told apart", () => {
 // Summing slips would under-state it for every small client, and the card would
 // then disagree with both the EPFO challan and the ledger entry.
 
-test("the statutory card reads EDLI and the admin charge off the run", () => {
-  const page = fs.readFileSync(path.join(ROOT, "app/payroll/page.tsx"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
-  assert.match(page, /const \[statRuns, setStatRuns\] = useState<PayrollRun\[\]>/);
-  assert.match(page, /const edli\s+= runSum\(r => r\.total_edli_paise \?\? 0\)/);
-  assert.match(page, /const pfAdmin\s+= runSum\(r => r\.total_pf_admin_paise \?\? 0\)/);
-  // The slip sum is what under-states the floored charge.
-  assert.doesNotMatch(page, /sum\(s => s\.pf_admin_paise/);
-  assert.doesNotMatch(page, /sum\(s => s\.edli_paise/);
+test("the statutory card reports the whole EPFO challan, not just the 12%", () => {
+  // WHAT THIS USED TO ASSERT, AND WHY IT MOVED.
+  //
+  // The firm rail had a Statutory tab that summed EDLI and the admin charge in
+  // the BROWSER, off the run rows, and this test pinned it to the run rather
+  // than to the slips — because the admin charge is floored at Rs 500 per
+  // ESTABLISHMENT, so three members at Rs 60 each owe Rs 500 and summing slips
+  // under-states it.
+  //
+  // That tab is gone. It was a rival of the client month, which is where a
+  // payroll month is actually completed, and the figure is no longer computed
+  // in a browser at all: GET /api/payroll/reports/statutory-summary returns
+  // pf_challan_total_paise, edli_paise and pf_admin_paise straight off the run
+  // row, and apps/api's test_the_summary_reports_the_whole_challan owns the
+  // arithmetic.
+  //
+  // What has to be true HERE is that the card SHOWS the challan rather than the
+  // contributions, and names the two parts a CA reconciles against.
+  const page = fs.readFileSync(
+    path.join(ROOT, "app/clients/[id]/payroll/page.tsx"), "utf8");
+  assert.match(page, /amount: data\.pf_challan_total_paise \?\? data\.pf_total_paise/,
+    "the card must show the CHALLAN, not the 12% either side");
+  assert.match(page, /EDLI \$\{fmt\(data\.edli_paise \?\? 0\)\}/,
+    "EDLI must be named, so the total can be taken apart again");
+  assert.match(page, /Admin \$\{fmt\(data\.pf_admin_paise \?\? 0\)\}/,
+    "and so must the administrative charge");
 });
 
-test("the admin charge has a row of its own", () => {
-  // It had none at all: computed, stored, and shown nowhere.
-  const page = fs.readFileSync(path.join(ROOT, "app/payroll/page.tsx"), "utf8");
-  assert.match(page, /EPF admin charge \(0\.5%, min ₹500 per establishment\)/);
+test("no screen sums EDLI or the admin charge out of payslips", () => {
+  // The floored charge is a property of the RUN. Summing slips under-states it,
+  // silently, by up to the floor. This is the inverted half of the test above:
+  // whatever screens exist, none of them may compute it.
+  for (const rel of ["app/payroll/page.tsx",
+                     "app/payroll/people/page.tsx",
+                     "app/clients/[id]/payroll/page.tsx"]) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    assert.doesNotMatch(src, /sum\(s => s\.pf_admin_paise/, `${rel} must not sum the admin charge`);
+    assert.doesNotMatch(src, /sum\(s => s\.edli_paise/, `${rel} must not sum EDLI`);
+  }
 });
