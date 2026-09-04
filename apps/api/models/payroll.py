@@ -33,7 +33,15 @@ def _normalize_gender(v: Optional[str]) -> Optional[str]:
 class EmployeeIn(BaseModel):
     client_id: str
     name: str
+    # The identifier this CLIENT uses — EMP001, a number off their previous
+    # payroll software. Unique per client (migration 333) and what the bulk
+    # import is idempotent on.
+    employee_code: Optional[str] = None
     pan: Optional[str] = None
+    # NOT demographics: Part III of the First Schedule widens the OLD-regime nil
+    # band at 60 and again at 80, and domain/payroll/age.py reads this to decide
+    # which ladder §192 withholds on.
+    date_of_birth: Optional[str] = None
     # Privacy-by-design: we store ONLY the last 4 digits of Aadhaar, never the full
     # number (UIDAI norms). The full value must never reach the backend.
     aadhaar_last4: Optional[str] = None
@@ -121,8 +129,26 @@ class EmployeeIn(BaseModel):
         return _normalize_gender(v)
 
 
+class EmployeeImportIn(BaseModel):
+    """A whole employee file, as one request.
+
+    ROWS, NOT A FILE. The browser parses the CSV or XLSX it already knows how to
+    parse (components/CsvImportModal) and posts the cells; this endpoint owns
+    every DECISION about them. Parsing a spreadsheet is presentation; deciding
+    that a PAN is malformed or that two rows are one person is not.
+
+    `dry_run` is what makes whole-file refusal usable: the CA sees exactly what
+    would be created and updated, and every problem, before anything is written.
+    """
+    client_id: str
+    rows: list[dict] = Field(default_factory=list)
+    dry_run: bool = False
+
+
 class EmployeeUpdateIn(BaseModel):
     name: Optional[str] = None
+    employee_code: Optional[str] = None
+    date_of_birth: Optional[str] = None
     pan: Optional[str] = None
     aadhaar_last4: Optional[str] = None
     gender: Optional[str] = None

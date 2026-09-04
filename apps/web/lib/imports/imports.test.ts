@@ -8,7 +8,6 @@ import {
   buildServices,
   buildPurchaseBills,
   buildReceipts,
-  buildEmployees,
   type NameRef,
   type PurchaseServiceRef,
 } from "./mappers.ts";
@@ -291,42 +290,17 @@ test("receipts: bad mode and zero amount reported", () => {
 });
 
 // ── Employees ────────────────────────────────────────────────────────────────
-test("employees: basic → paise, boolean defaults", () => {
-  const { records, errors } = buildEmployees([
-    row({ name: "Ravi Kumar", basic: "25000" }),
-  ], "c1", "firm-1");
-  assert.equal(errors.length, 0);
-  assert.equal(records[0].basic_paise, 2500000);
-  assert.equal(records[0].hra_percent, 40);
-  assert.equal(records[0].pf_applicable, true);
-  assert.equal(records[0].esi_applicable, true);
-  assert.equal(records[0].pt_applicable, false);
-  assert.equal(records[0].firm_id, "firm-1");
-});
+//
+// The four tests that were here — basic → paise, the boolean defaults, Aadhaar
+// reduced to its last four digits, PAN's shape — moved with the code they
+// tested. `buildEmployees` validated a payroll master in the BROWSER and the
+// screen POSTed one employee per row; it accepted PART of a file and could not
+// be re-run without duplicating everybody. It is now
+// `apps/api/domain/payroll/employee_import.py`, and every one of those four
+// assertions has a direct counterpart in
+// `apps/api/tests/test_the_employee_master_and_its_import.py`.
+//
+// What is left here is the column LIST, which is presentation. Its parity with
+// the server's COLUMNS is asserted on the Python side — the server is the
+// authority, so that is where the check belongs.
 
-test("employees: full Aadhaar is reduced to last 4 only (never stored full)", () => {
-  const { records, errors } = buildEmployees([
-    row({ name: "Asha", basic: "30000", aadhaar: "1234 5678 9012" }),
-  ], "c1", "f1");
-  assert.equal(errors.length, 0);
-  assert.equal(records[0].aadhaar_last4, "9012");
-  assert.ok(!("aadhaar" in records[0]));
-});
-
-test("employees: non-12-digit Aadhaar is rejected", () => {
-  const { records, errors } = buildEmployees([
-    row({ name: "Bad Aadhaar", basic: "30000", aadhaar: "12345" }),
-  ], "c1", "f1");
-  assert.equal(records.length, 0);
-  assert.match(errors[0], /aadhaar must be 12 digits/i);
-});
-
-test("employees: missing basic and invalid PAN reported", () => {
-  const { records, errors } = buildEmployees([
-    row({ name: "No Salary", basic: "" }),
-    row({ name: "Bad Pan", basic: "10000", pan: "XXX" }),
-  ], "c1", "f1");
-  assert.equal(records.length, 0);
-  assert.match(errors[0], /basic/i);
-  assert.match(errors[1], /PAN/i);
-});
