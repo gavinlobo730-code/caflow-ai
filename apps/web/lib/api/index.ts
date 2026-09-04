@@ -1208,6 +1208,24 @@ export const api = {
     // is refused rather than corrected.
     saveAttendance: (body: { client_id: string; month: string; rows: unknown[] }) =>
       request("/api/payroll/attendance", { method: "PUT", body: JSON.stringify(body) }),
+    /** One-time and variable earnings — incentive, bonus, ex-gratia, arrears.
+     *
+     *  Through the API, never straight to PostgREST, because saving one is not
+     *  saving a number: each row has to answer three separate questions that
+     *  the browser must not guess — is it PF wages (EPF Act s.2(b)), is it ESI
+     *  wages (ESI Act s.2(22), an INTERVAL test), is it salary (IT Act
+     *  s.17(1)). `defaults` asks the server what the statute says; the row
+     *  stores what was actually saved.
+     */
+    getOneTimeEarnings: (clientId: string, month: string) =>
+      request(`/api/payroll/one-time-earnings?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`),
+    /** Replaces the month's earnings FOR THE EMPLOYEES NAMED. An employee sent
+     *  with no rows has theirs cleared; one not sent is untouched. */
+    saveOneTimeEarnings: (body: { client_id: string; month: string; rows: unknown[] }) =>
+      request("/api/payroll/one-time-earnings", { method: "PUT", body: JSON.stringify(body) }),
+    oneTimeEarningDefaults: (kind: string, intervalMonths?: number | null) =>
+      request(`/api/payroll/one-time-earnings/defaults?kind=${encodeURIComponent(kind)}`
+        + (intervalMonths ? `&payment_interval_months=${intervalMonths}` : "")),
     savePayrollSettings: (body: { client_id: string; inputs_due_day?: number | null }) =>
       request("/api/payroll/attendance/settings", { method: "PUT", body: JSON.stringify(body) }),
     updateRunStatus: (runId: string, status: string) =>

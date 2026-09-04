@@ -138,7 +138,20 @@ def build_esic_return(
 
         lop = int(slip.get("lop_days") or 0)
         worked = max(0, days_in_month - lop)
-        wages = _rupees(slip.get("gross_paise") or 0)
+        # ESI wages, not gross. ESI Act s.2(22) includes additional remuneration
+        # only where "paid at intervals not exceeding two months", so a one-time
+        # earning outside that interval — an annual bonus, ex-gratia — is not
+        # wages here even though it is in the employee's gross pay. Taking it out
+        # is what makes the wages on this return agree with the contribution the
+        # run actually deducted, which computed on the same base (migration 331).
+        #
+        # Subtracted rather than rebuilt from the components: the slip stores
+        # both totals precisely so this figure survives the earning rows being
+        # edited or deleted after the run.
+        one_time_total = int(slip.get("one_time_earnings_paise") or 0)
+        one_time_esi = int(slip.get("one_time_esi_wages_paise") or 0)
+        wages = _rupees(int(slip.get("gross_paise") or 0)
+                        - (one_time_total - one_time_esi))
 
         if lop < 0 or lop > days_in_month:
             out.problems.append(
