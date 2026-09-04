@@ -1,6 +1,25 @@
 """
 Bank statement normalization engine (Banking B.1, Part C).
 
+TODO(compliance): docs/compliance/05-bank-data-and-the-account-aggregator.md
+    This is the ONLY way bank data enters the platform, and research in Sept
+    2026 says it stays that way longer than CLAUDE.md's bank-data section
+    assumes. Two findings worth reading before anyone starts an AA feature:
+
+    (1) CLAUDE.md says "Register as an FIU". That may be unachievable. An FIU
+        is DEFINED as an entity already registered with and regulated by RBI,
+        SEBI, IRDAI, PFRDA or the Dept of Revenue — there is no FIU licence to
+        apply for, and a TSP cannot confer one because a TSP is itself
+        unregulated. Needs a legal opinion.
+
+    (2) Coverage independently confirms upload stays at parity. Co-operative
+        banks, RRBs and small finance banks are largely not AA-enabled, and
+        even at live banks the coverage is patchy BY ACCOUNT TYPE — fixed and
+        recurring deposits at only ~40% of banks, joint and non-individual
+        accounts worse. A CA's client base is exactly the population AA serves
+        worst. Upload is the base case, not a hedge.
+
+
 Converts CSV / XLSX exports from Indian banks into ONE internal format
 (NormalizedTxn: date, description, reference, debit, credit, balance). All
 bank-specific column layouts live in `_ADAPTERS` — no bank-specific logic exists

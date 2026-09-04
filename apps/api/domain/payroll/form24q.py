@@ -1,4 +1,24 @@
 """
+TODO(compliance): docs/compliance/03-income-tax-and-tds.md
+    THE FORM NUMBER IN THIS MODULE'S NAME MAY BE OBSOLETE FOR CURRENT PERIODS.
+
+    Research in Sept 2026 (SECONDARY SOURCES ONLY, not verified against the
+    bare Act) reports that the Income-tax Act 2025 and Rules 2026 commenced
+    01-04-2026, replacing previous-year/assessment-year with a single "tax
+    year" and renumbering the statements: 24Q -> 138, 26Q -> 140, 27Q -> 144,
+    27EQ -> 143, Form 16 -> 130, Form 16A -> 131, Form 26AS -> 168.
+
+    The transition is BY PERIOD, not by filing date. FY 2025-26 stays entirely
+    on the 1961 Act, so everything this module does for those periods remains
+    correct. The new numbering starts with income from 01-04-2026.
+
+    25 files under apps/api carry 24Q/26Q/27Q vocabulary and nothing mentions
+    the 2025 Act. If confirmed, this needs PERIOD-AWARE form vocabulary
+    carrying both sets for years — the same shape compliance_engine already
+    uses for due dates: derived from the period by rule, never a constant.
+    Those due dates appear unchanged (31 Jul / 31 Oct / 31 Jan / 31 May).
+
+    VERIFY BEFORE CHANGING ANYTHING.
 Form 24Q, built from payroll instead of typed in again.
 
 WHAT WAS WRONG

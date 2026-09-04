@@ -1,4 +1,22 @@
 """
+TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+    Two open items on the figures below, neither actionable from memory.
+
+    (1) The Rs 500 A/c-2 minimum was set when the admin charge was 0.65%.
+        Neither this module nor the Sept 2026 research has a primary source
+        confirming it survived the cut to 0.50% on 01-06-2018. Both assert
+        Rs 500 — that is agreement, not verification.
+
+    (2) All four Labour Codes reportedly commenced 21-11-2025, subsuming the
+        EPF Act 1952 and the ESI Act 1948 into the Code on Social Security
+        2020. RATES are unchanged, but "wages" reportedly becomes basic + DA +
+        retaining allowance with a 50% rule — excluded allowances capped at
+        half of total remuneration, the excess DEEMED wages. That changes the
+        BASE these rates apply to, and interacts with the EPF 15,000 and ESI
+        21,000 ceilings at once. Secondary sources only, they disagree in
+        detail, and state rules are still being notified. Read the Code and
+        the notified rules; do not infer this from a vendor blog.
+
 Payroll statutory rates and ceilings, versioned by financial year.
 
 WHY THIS MODULE EXISTS

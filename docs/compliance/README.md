@@ -1,9 +1,9 @@
 # Compliance: the integrations, the filings, and what gates each one
 
-**Status: in progress.** `01-what-exists-today.md` is complete and is derived
-from the code. The per-integration sections are being researched and are not
-here yet; the list at the bottom says which. Do not read the absence of a
-section as "nothing gates that" — read it as "not written down yet".
+**Read `00-how-to-read-this.md` first.** It carries the sourcing caveat, and
+that caveat is not a formality: no primary source could be read directly in the
+session that produced these files, so every external fact is graded and several
+load-bearing ones are open questions rather than findings.
 
 ## Why this exists
 
@@ -41,33 +41,48 @@ Two corollaries, both already true in the code:
    repointed at a live portal. `ENABLE_FILING_SIMULATION=false` is the kill
    switch for any deployment that records real filings.
 
-## Where the code will mark this
+## Where the code marks this
 
-Once the per-integration sections land, every place where a registration or
-commercial step gates the work gets a greppable marker naming its section:
+Every place where a registration or commercial step gates the work carries a
+greppable marker naming the section that explains it:
 
 ```
 grep -rn 'TODO(compliance)' apps/api apps/web
 ```
 
-**Not yet added — that grep returns nothing today.** The convention is
-deliberately scoped rather than a bare `TODO`, because the codebase has zero
-`TODO`/`FIXME` markers anywhere and prefers prose comments; a scoped marker that
-must name a real doc section cannot decay into undifferentiated TODO sludge.
+Eleven markers today, in `domain/gst/portal_service.py`,
+`domain/income_tax/itr_json.py`, `domain/payroll/{ecr,esic,statutory,form24q}.py`,
+`domain/banking/normalizer.py`, and the four prepare-only rails
+(`routers/{einvoice,eway_bill,xbrl_engine,mca_workspace}.py`).
+
+The convention is **new** and deliberately scoped. The codebase had zero
+`TODO`/`FIXME` markers anywhere before this — it prefers prose comments beside
+the code — so a bare `TODO` would have been against the grain and would have
+decayed into the usual sludge. A marker that must name a real doc section
+cannot. `tests/test_compliance_markers_point_somewhere_real.py` enforces it:
+a marker with no doc path, or one pointing at a file that does not exist,
+fails the suite. Rename a doc and the markers fail rather than silently
+orphaning.
 
 ## Contents
 
 | | |
 |---|---|
-| `01-what-exists-today.md` | The code-derived inventory: every external service, every artifact produced, every last mile. **Start here.** |
+| `00-how-to-read-this.md` | The sourcing caveat and the confidence grades. **Read first.** |
+| `01-what-exists-today.md` | Code-derived: every external service, every artifact produced, every last mile. |
+| `02-gst.md` | The GSP gate, the taxpayer's API switch, DSC vs EVC, e-invoicing, e-way bill. |
+| `03-income-tax-and-tds.md` | ERI registration, the 4-IP whitelist, ITR schemas, TRACES, the RPU/FVU chain — and the 2025 Act renumbering. |
+| `04-mca-epfo-esic.md` | The three with no API at all, the revamped ECR, and the Labour Codes. |
+| `05-bank-data-and-the-account-aggregator.md` | Why the FIU step may be unachievable, and why upload stays the base case. |
+| `06-data-protection-dpdp.md` | The only section with a real deadline: 13 May 2027. |
 
-Still to be written, one file each:
+### If you read only three things
 
-- GST — the GSP/ASP route, e-invoicing, e-way bill, DSC vs EVC
-- Income tax and TDS — ERI registration, ITR JSON, TRACES, the RPU/FVU chain
-- MCA, EPFO and ESIC — and whether programmatic filing is possible at all
-- Bank data — the Account Aggregator, FIU registration, TSPs
-- Data protection — DPDP Act obligations for holding clients' financial data
+1. **`00`** — how much to trust the rest.
+2. **`05` §0** — `CLAUDE.md:404` tells you to register as an FIU, and research
+   says that is not a thing a SaaS company can do.
+3. **`03` §0** — the Income-tax Act 2025 may have renumbered every TDS form the
+   product emits, and 25 files carry the old vocabulary.
 
 ## What is deliberately NOT duplicated here
 

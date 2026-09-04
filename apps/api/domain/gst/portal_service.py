@@ -70,6 +70,13 @@ class ManualGSTProvider(GSTPortalProvider):
 
 
 def get_provider(provider_name: str = "manual") -> GSTPortalProvider:
+    # TODO(compliance): docs/compliance/02-gst.md — this is the seam a GSP would
+    # plug into, and the parameter is a trap. It takes a name and IGNORES it, so
+    # the day a second provider exists a caller asking for it by name gets
+    # MANUAL data and no error. Wire the switch in the same commit that adds the
+    # provider, not after. Reading GST returns needs a GSP: the specs are public
+    # but production credentials are a licence key issued only to an empanelled
+    # GSP, and there is no direct-to-GSTN route at any turnover.
     return ManualGSTProvider()
 
 

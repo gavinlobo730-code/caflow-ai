@@ -1,4 +1,14 @@
 """
+TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+    EPFO has no employer API; the ceiling is generate-the-file, human uploads.
+    But the REVAMPED ECR (circular 26-09-2025, from wage month Sept 2025)
+    changed the workflow around this file without changing the file itself:
+    sequential month-wise filing is now COMPULSORY, return filing and payment
+    are separate acts, and EPFO auto-computes s.7Q interest and damages. This
+    builder emits per run with no notion of outstanding-month sequence, and
+    nothing here should ever present its own s.7Q figure as authoritative —
+    that would be a second implementation of a statutory calculation.
+
 The EPFO Electronic Challan cum Return (ECR) file.
 
 WHAT THIS PRODUCES

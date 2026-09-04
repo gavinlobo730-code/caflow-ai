@@ -405,6 +405,15 @@ nothing else.
   AA — Finvu, OneMoney, CAMS Finserv, NADL, Anumati — brokers consent between
   them under RBI regulation, on ReBIT schemas. Go via a TSP (Setu, Perfios,
   Finbox, Digio) rather than building FIU plumbing directly.
+  **⚠️ This step may be unachievable as written — do not start it on this
+  instruction alone.** Research of 2026-09-04 indicates an FIU is *defined* as an
+  entity already registered with and regulated by RBI, SEBI, IRDAI, PFRDA or the
+  Department of Revenue; there is no FIU licence to apply for, and a TSP cannot
+  confer one because a TSP is itself unregulated. If so the options are to
+  partner with a regulated FIU, acquire a registration, or not consume via AA at
+  all. Secondary sources only, needs a legal opinion, and the 2016 Master
+  Direction is superseded by the RBI NBFC-AA Directions 2025. See
+  `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
   it is time-bound, purpose-bound and revocable. So the flow is "CA requests →
   client approves → CA sees data", with a re-consent path when it lapses. That is
@@ -480,6 +489,26 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
   sleeps, so `.github/workflows/wake-before-scheduler.yml` pings `/health` across the
   window to keep it alive; the sweep also catches up on jobs whose trigger was slept
   through.
+
+## Compliance, integrations and filing
+
+`docs/compliance/` is the single place that says, for every statutory output:
+what the product computes today, what the last mile actually is, and **what gates
+closing it** — which is almost never code. Read it before estimating any filing
+or integration work, and read `docs/compliance/00-how-to-read-this.md` first for
+how much to trust the rest.
+
+Places in the code where a registration, empanelment or licence gates the work
+carry a scoped marker naming its section:
+
+```
+grep -rn 'TODO(compliance)' apps/api apps/web
+```
+
+That convention is deliberate and narrow — the codebase otherwise has **no**
+`TODO`/`FIXME` markers at all and prefers prose comments beside the code.
+`tests/test_compliance_markers_point_somewhere_real.py` fails a marker with no
+doc path or one pointing at a file that does not exist.
 
 ## Where the design is written down
 

@@ -3,6 +3,20 @@ XBRL Generation Engine — MCA taxonomy mapping, validation, XML generation.
 Companies Act 2013, Schedule III. MCA XBRL taxonomy MCA_2023.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-FILE XBRL to MCA portal
+#
+# TODO(compliance): docs/compliance/04-mca-epfo-esic.md
+#   MCA has NO filing API and no programme to join — unlike GST, there is
+#   nothing here that could be bought or applied for. But the XBRL instance
+#   document is the one genuinely machine-facing artefact in the whole MCA /
+#   EPFO / ESIC landscape: MCA publishes taxonomies and Business Rules, ships a
+#   validator, and addresses software vendors directly about schema URLs.
+#   So this rail is right, and the leverage is here.
+#
+#   The taxonomy/schema URL MOVES with the validation tool version, and MCA's
+#   own vendor note exists because of it. Version it the way the rate
+#   registries are versioned — a LATEST_VERIFIED marker plus a hand-download
+#   step — which is the ITR JSON schema pattern in CLAUDE.md and for the same
+#   reason: it cannot be inferred, somebody downloads it.
 """
 from __future__ import annotations
 import logging
