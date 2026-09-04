@@ -145,3 +145,27 @@ def rates_for(fy: str | None = None) -> PayrollRates:
     if fy in RATES_BY_FY:
         return RATES_BY_FY[fy]
     return RATES_BY_FY[LATEST_VERIFIED_FY]
+
+
+def admin_charge_for_establishment(per_member_total_paise: int,
+                                   fy: str | None = None) -> int:
+    """The EPF administrative charge an ESTABLISHMENT owes for a month.
+
+    The 0.5% is computed per member, but the charge carries a statutory MINIMUM
+    of ₹500 per establishment per month — not per member — so the figure that is
+    actually owed can only be settled on the run total. Three members at ₹60
+    each owe ₹500, not ₹180.
+
+    That is why it lives here rather than in _compute_pf: a per-payslip function
+    cannot see the establishment, and a caller that simply added up payslips
+    would under-state the charge for every small client.
+
+    A run with NO members owes nothing — the floor applies to an establishment
+    that is contributing, not to one with no payroll at all. Returning ₹500 for
+    an empty run would invent a liability out of a month in which nobody was
+    employed.
+    """
+    total = int(per_member_total_paise or 0)
+    if total <= 0:
+        return 0
+    return max(total, rates_for(fy).pf.admin_minimum_paise)

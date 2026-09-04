@@ -131,3 +131,31 @@ test("the two unfilable cases are told apart", () => {
   assert.doesNotMatch(s, /Downloaded, with \$\{problems\.length\}/,
     "a filable return cannot carry problems; that branch was unreachable");
 });
+
+// ── EDLI and the EPF admin charge come from the RUN, not from the slips ──────
+//
+// Migration 329. Both are employer costs outside the 12%, and the admin charge
+// carries a statutory MINIMUM of ₹500 per ESTABLISHMENT per month — so what is
+// owed is a property of the run and cannot be reconstructed by adding up
+// payslips. Three members at ₹60 each owe ₹500, not ₹180.
+//
+// Summing slips would under-state it for every small client, and the card would
+// then disagree with both the EPFO challan and the ledger entry.
+
+test("the statutory card reads EDLI and the admin charge off the run", () => {
+  const page = fs.readFileSync(path.join(ROOT, "app/payroll/page.tsx"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(page, /const \[statRuns, setStatRuns\] = useState<PayrollRun\[\]>/);
+  assert.match(page, /const edli\s+= runSum\(r => r\.total_edli_paise \?\? 0\)/);
+  assert.match(page, /const pfAdmin\s+= runSum\(r => r\.total_pf_admin_paise \?\? 0\)/);
+  // The slip sum is what under-states the floored charge.
+  assert.doesNotMatch(page, /sum\(s => s\.pf_admin_paise/);
+  assert.doesNotMatch(page, /sum\(s => s\.edli_paise/);
+});
+
+test("the admin charge has a row of its own", () => {
+  // It had none at all: computed, stored, and shown nowhere.
+  const page = fs.readFileSync(path.join(ROOT, "app/payroll/page.tsx"), "utf8");
+  assert.match(page, /EPF admin charge \(0\.5%, min ₹500 per establishment\)/);
+});

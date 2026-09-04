@@ -45,6 +45,7 @@ from domain.payroll.form24q import (
 from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
 from domain.payroll.statutory import rates_for as payroll_rates_for
+from domain.payroll.statutory import admin_charge_for_establishment as payroll_admin_charge
 from domain.payroll import declarations as decl_domain
 from domain.payroll import gratuity as gratuity_domain
 from domain.payroll import bonus as bonus_domain
@@ -1304,7 +1305,7 @@ def create_run(
 
     slips = []
     totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0,
-              "loan_recovery": 0}
+              "loan_recovery": 0, "edli": 0, "admin": 0}
 
     # ESI Rule 50: someone whose wages rise above the ceiling PART WAY THROUGH a
     # contribution period stays in the scheme until that period ends. Answering
@@ -1399,6 +1400,12 @@ def create_run(
         totals["gross"] += slip["gross_paise"]
         totals["net"]   += slip["net_paise"]
         totals["pf"]    += slip["pf_employee_paise"] + slip["pf_employer_paise"]
+        # EDLI and the administrative charge are EMPLOYER costs outside the 12%,
+        # deducted from nobody and remitted on the same challan. They were
+        # computed, stored on the slip and shown on the statutory card, and they
+        # never reached the ledger — see migration 329.
+        totals["edli"]  += int(slip.get("edli_paise") or 0)
+        totals["admin"] += int(slip.get("pf_admin_paise") or 0)
         totals["esi"]   += slip["esi_employee_paise"] + slip["esi_employer_paise"]
         totals["pt"]    += slip["pt_paise"]
         totals["tds"]   += slip["tds_paise"]
@@ -1416,6 +1423,12 @@ def create_run(
             db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
             raise
 
+    # The ₹500-per-ESTABLISHMENT floor on the admin charge can only be settled
+    # here: it is not per member, so summing payslips under-states it for every
+    # small client. One rule, in domain/payroll/statutory.py, shared with
+    # /statutory-position — which had the floor and was the only place that did.
+    totals["admin"] = payroll_admin_charge(totals["admin"], fy)
+
     # Update run totals
     db.table("payroll_runs").update({
         "total_gross_paise": totals["gross"],
@@ -1425,6 +1438,8 @@ def create_run(
         "total_pt_paise":    totals["pt"],
         "total_tds_paise":   totals["tds"],
         "total_loan_recovery_paise": totals["loan_recovery"],
+        "total_edli_paise":     totals["edli"],
+        "total_pf_admin_paise": totals["admin"],
         "headcount":         len(emps),
     }).eq("id", run_id).execute()
 
@@ -3555,10 +3570,10 @@ def statutory_position(
 
     # The EPF administrative charge has a statutory MINIMUM of ₹500 a month per
     # ESTABLISHMENT, not per member — so it can only be settled on the run
-    # total, never on one payslip.
-    rates = payroll_rates_for(fy)
-    if totals["pf_admin_paise"] and totals["pf_admin_paise"] < rates.pf.admin_minimum_paise:
-        totals["pf_admin_paise"] = rates.pf.admin_minimum_paise
+    # total, never on one payslip. MOVED to domain/payroll/statutory.py rather
+    # than copied when create_run needed the same rule: two implementations of
+    # one statutory floor drift, and this one was the only place that had it.
+    totals["pf_admin_paise"] = payroll_admin_charge(totals["pf_admin_paise"], fy)
 
     return api_response(True, {
         "month": month, "financial_year": fy,
