@@ -1,21 +1,38 @@
 """
 TODO(compliance): docs/compliance/04-mca-epfo-esic.md
-    Two open items on the figures below, neither actionable from memory.
-
     (1) The Rs 500 A/c-2 minimum was set when the admin charge was 0.65%.
         Neither this module nor the Sept 2026 research has a primary source
         confirming it survived the cut to 0.50% on 01-06-2018. Both assert
         Rs 500 — that is agreement, not verification.
 
-    (2) All four Labour Codes reportedly commenced 21-11-2025, subsuming the
-        EPF Act 1952 and the ESI Act 1948 into the Code on Social Security
-        2020. RATES are unchanged, but "wages" reportedly becomes basic + DA +
-        retaining allowance with a 50% rule — excluded allowances capped at
-        half of total remuneration, the excess DEEMED wages. That changes the
-        BASE these rates apply to, and interacts with the EPF 15,000 and ESI
-        21,000 ceilings at once. Secondary sources only, they disagree in
-        detail, and state rules are still being notified. Read the Code and
-        the notified rules; do not infer this from a vendor blog.
+    (2) THE PF WAGE BASE IS NOW WRONG BELOW THE CEILING. Verified 2026-09-04.
+
+        The four Labour Codes commenced 21-11-2025; the Code on Social Security
+        rules were notified 08-05-2026; and a Ministry notification of
+        29-05-2026 re-declared Rs 15,000 as the Chapter III (EPF) wage ceiling
+        under the new Code. So this is in force, not pending.
+
+        s. 2(y) of the Code on Wages defines wages as basic + DA + retaining
+        allowance, and caps the EXCLUSIONS (HRA, conveyance, overtime, employer
+        PF, statutory bonus...) at 50% of total remuneration — any excess is
+        DEEMED wages. The Code on Social Security adopts that definition for
+        computing PF. It is a cap on exclusions, not a floor under basic.
+
+        routers/payroll.py computes `pf_wages = basic + da` with no add-back.
+        Above the ceiling that is harmless, because min(wages, 15000) makes the
+        add-back irrelevant. BELOW the ceiling it under-states: on a total of
+        28,000 split 10,000 basic / 18,000 HRA, wages are 14,000 not 10,000,
+        and employee PF is 1,680 not 1,200 — 480 a month understated on EACH
+        side, in somebody's own provident fund.
+
+        Fixing it is NOT a formula tweak. It needs a CA to confirm the reading,
+        and it needs a per-employee input this product does not hold: the split
+        of total remuneration into wage and excluded components. Until both
+        exist, report the gap by name (the statutory_gaps shape) rather than
+        emitting a confident wrong number.
+
+        ESI may err the OTHER way — _compute_esi uses gross, and the Code's
+        definition is narrower — but that is UNCONFIRMED. Do not change it.
 
 Payroll statutory rates and ceilings, versioned by financial year.
 

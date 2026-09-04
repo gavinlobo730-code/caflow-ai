@@ -323,36 +323,122 @@ June 2020; a **Bulk IP Aadhaar Upload** Excel facility exists. `[S]`
 
 ---
 
-## 4. Cross-cutting: the Labour Codes, 21 November 2025
+## 4. Cross-cutting: the Labour Codes and the 50% wage rule
 
-**This is the largest change in the area and it affects computation, not just
-filing.** `[S — PIB plus Big-4 and law-firm alerts, consistent]`
+**VERIFIED 2026-09-04**, including adversarial searches for a deferral, a stay
+or transitional relief. None found. No primary document could be opened (see
+`00`), but the chain is corroborated across independent sources and, unlike the
+rest of this file, **it changes a number the product computes today**.
 
-- **All four Labour Codes commenced 21 November 2025**, replacing 29 central
-  laws. **The EPF Act 1952 and the ESI Act 1948 stand subsumed** into the Code on
-  Social Security 2020; ESIC confirmed by notification dated 30 December 2025.
-- **Supporting rules are incomplete.** As at commencement only Gujarat and
-  Arunachal Pradesh had final rules under all four Codes; existing rules continue
-  so far as not contrary to the Codes.
-- **Contribution rates are unchanged** (EPF 12%/12%, ESI 0.75%/3.25%). **The base
-  is not.** "Wages" becomes basic + DA + retaining allowance, with a **50% rule**:
-  excluded allowances cannot exceed 50% of total remuneration, and **the excess is
-  deemed wages**. Industry estimates put the statutory-cost increase at 5–15%.
-- ESIC registration is now mandatory for all establishments including educational
-  and medical institutions; **SPREE 2025** ran an amnesty 1 July – 31 Dec 2025.
+### The chain of commencement
 
-⚠️ One source refers to "full operational rollout targeted for 1 April 2026";
-what that referred to, and the current state of central and state rules as at
-September 2026, **could not be established.** `[U]`
+| Date | What |
+|---|---|
+| **21 Nov 2025** | All four Labour Codes in force (PIB). The EPF Act 1952 and ESI Act 1948 stand subsumed into the **Code on Social Security 2020** |
+| **8 May 2026** | Final **Rules under the Code on Social Security** notified |
+| **29 May 2026** | Ministry of Labour notification declaring **₹15,000 the wage ceiling for Chapter III (EPF)** under the new Code |
 
-> **The 50% rule deserves a specific warning (task #121).** Its interaction with
-> the EPF ₹15,000 ceiling, the ESI ₹21,000 ceiling and the `*_BY_FY` registries in
-> `domain/payroll/statutory.py` is **not something to infer from vendor blog
-> posts**, and several of the available sources are exactly that and do not agree
-> in detail. This is a read-the-Code-and-the-notified-rules job, and it belongs
-> with the statutory data the codebase already refuses to write from memory.
+So the framework is not "commenced but awaiting rules" any more. The rules are
+notified and the ceiling has been formally re-notified under the new Code.
 
----
+### The rule
+
+**s. 2(y), Code on Wages 2019** defines wages as **basic pay + dearness
+allowance + retaining allowance**, then lists exclusions (HRA, conveyance,
+overtime, employer PF contribution, statutory bonus and others). Then:
+
+> the exclusions **shall not exceed 50% of total remuneration**, and **the excess
+> shall be deemed to form part of wages**.
+
+**The Code on Social Security adopts that definition for computing PF
+contributions.** `[S]`
+
+> It is best read, as one commentary titles it, as **a cap on exclusions, not a
+> ceiling on wages**. It does not force basic to be 50% of CTC; it adds back
+> whatever excess there is.
+
+**Both ceilings are unchanged** — EPF **₹15,000**, ESI **₹21,000** (unchanged
+since January 2017). That is what bounds the damage.
+
+### ⚠️ What the code computes today, and why it is wrong
+
+`routers/payroll.py:957` computes
+
+```python
+pf_wages = basic + da + ot.pf_wages_paise
+```
+
+— the **old** definition, with no add-back — and then applies the ceiling
+(`min(pf_wages, 15_000_00)`).
+
+For anyone whose basic + DA is **already at or above ₹15,000**, the ceiling
+makes the add-back irrelevant and **the figure is right**. The exposure is
+employees **below** the ceiling on a low-basic / high-allowance structure — which
+is the classic Indian salary structure at exactly those salary levels.
+
+Worked example, and the arithmetic is in the commit that added this section:
+
+```
+total remuneration        28,000
+exclusions (HRA)          18,000   = 64% of total  -> exceeds 50%
+50% of total              14,000
+excess deemed wages        4,000
+
+wages OLD (basic + DA)    10,000   <- what the code computes
+wages NEW (with add-back) 14,000   <- both still under the 15,000 ceiling
+
+employee PF @12%           1,200  ->  1,680
+UNDER-DEDUCTED               480 per month, per side
+```
+
+**₹480 a month on each side, ₹5,760 a year each, and the employee is
+short-credited in their own provident fund.** This is not a disclosure or a
+labelling problem like the TDS renumbering — it is a wrong rupee figure in
+somebody's pay and in a statutory remittance.
+
+### ESI — the error probably runs the OTHER way, and this is less certain
+
+`_compute_esi` takes **gross**, which was right under ESI Act §2(9), where
+"wages" was already broad. Under the Code's definition ESI wages would be the
+**narrower** basic + DA + retaining allowance **with the same 50% add-back** —
+which is generally **less than gross**.
+
+So where the EPF base is probably **under**-stated, the ESI base may be
+**over**-stated. `[U]` Sources still routinely describe ESI as computed "on
+gross wages", and whether the Code's narrower definition displaces §2(9) for
+contribution purposes is exactly the sort of question that needs a practitioner
+rather than a search engine. **Do not change the ESI base on the strength of
+this paragraph.**
+
+Note also that ESI **eligibility** (₹21,000) is assessed on gross and is
+separate from the contribution base, and Rule 50's contribution-period
+continuation already works correctly in `domain/payroll/statutory.py`.
+
+### Gratuity
+
+Gratuity under the Payment of Gratuity Act is computed on "wages", so the same
+redefinition reaches it. Not separately verified here. `[U]`
+
+### What to do about it
+
+**Not a formula tweak.** It needs, in order:
+
+1. A **CA to confirm** the add-back applies as described for EPF, and to settle
+   the ESI question above.
+2. A per-employee **salary-structure input** the product does not currently
+   hold: the split of total remuneration into wage and excluded components. The
+   employee master has basic and DA; it does not have "what fraction of total
+   remuneration is excluded", which is what the rule needs.
+3. **Period-awareness**, since months before 21 Nov 2025 are computed on the old
+   definition and must stay that way.
+
+Until (1) and (2) exist, the honest behaviour is the one this codebase already
+uses everywhere else: **compute what can be computed, and report the gap by
+name** — the `statutory_gaps` shape in `routers/payroll.py`, so a CA sees which
+employees have a structure where the add-back could bite rather than getting a
+confident wrong number.
+
+Tracked as task #121.
 
 ## 5. Verify before relying on any of this
 
