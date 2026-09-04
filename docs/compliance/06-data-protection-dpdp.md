@@ -12,23 +12,37 @@ somebody might never pursue. **This is not.** DPDP applies to PracticeSync
 whether or not GST filing, ERI registration or the Account Aggregator is ever
 built, and it has dates.
 
-## 1. Status — settled, and phased
+## 1. Status — VERIFIED, settled, and phased
 
-The **Digital Personal Data Protection Rules, 2025** were notified by MeitY on
-**13 November 2025** and gazetted **14 November** (G.S.R. 843–846(E)) — 23 rules
-plus schedules. `[S — very widely and consistently reported]`
+**VERIFIED 2026-09-04**, including a search specifically for an extension,
+deferral or industry reprieve. **None found**, and several sources say plainly
+that no grace period is expected.
 
-| Phase | Date | What comes into force |
+The **Digital Personal Data Protection Rules, 2025** were notified **13 November
+2025** (G.S.R. 846(E) is the number most consistently cited for the Rules
+themselves) and start an **eighteen-month phased rollout**. `[P/S]`
+
+The phasing is set by **Rule 1 (Commencement)** and is unusually precise — it
+names which rules switch on when:
+
+| Phase | Date | Rules in force |
 |---|---|---|
-| 1 | **13 Nov 2025** | Definitions; **the Data Protection Board is constituted and can take complaints** |
-| 2 | **13 Nov 2026** | **Consent Manager registration opens** |
-| 3 | **13 May 2027** | **All substantive Data Fiduciary obligations** — notice, consent, security, breach reporting, retention/erasure, data-principal rights, SDF duties, cross-border |
+| 1 | **13 Nov 2025** | **Rules 1, 2 and 17–21** — definitions, and the Data Protection Board's own constitution and procedure |
+| 2 | **13 Nov 2026** | **Rule 4** — Consent Manager registration opens |
+| 3 | **13 May 2027** | **Rules 3, 5–16, 22 and 23** — notice, consent, security safeguards, breach reporting, retention and erasure, children's data, data-principal rights, SDF duties, cross-border |
 
-⚠️ A minority of sources write 14 Nov / 14 May, counting from gazette
-publication rather than notification. Use the 13th and note the ±1 day.
+> ⚠️ **Correction to an earlier draft of this file.** It said the Board "is
+> constituted and can take complaints", implying exposure today. That
+> overstates it. What commenced in November 2025 is the Board's own
+> constitution and procedure (Rules 17–21) — **not the Data Fiduciary duties**,
+> which are Rules 3 and 5–16 and do not exist until 13 May 2027. One source
+> puts the Board's inquiry and penalty machinery at **13 Nov 2026**. `[S]`
+>
+> So there is, as yet, **nothing for a Data Fiduciary to be penalised for**.
+> The deadline is real and fixed; the exposure is not retrospective.
 
-> **From today (September 2026): about 20 months to the substantive obligations,
-> about 2 months to the Consent Manager date, and the Board is already live.**
+**From today (September 2026): roughly 20 months to the substantive obligations,
+and about 2 months to the Consent Manager date.**
 
 ## 2. Scope — narrower than it first looks, but not where it matters
 
@@ -87,14 +101,21 @@ language, with an **itemised list** of data collected, the specific purposes, an
 **direct links** to withdraw consent, exercise rights and complain. `[S]`
 
 **Rule 6 — Security safeguards.** The most directly actionable, and it carries a
-hard number: `[S]`
+hard number. **Verified 2026-09-04** `[S]`:
 
-- encryption, obfuscation, masking **or** tokenisation;
-- access control;
-- continuous monitoring and logging for detection and investigation, with
-  **logs retained at least one year**;
+- **encryption in transit and at rest** (or obfuscation, masking, tokenisation);
+- **access control on a need-to-know basis**, and authentication controls
+  including **multi-factor authentication**;
+- monitoring and **logging of personal-data access**, with **logs retained at
+  least one year**;
+- **regular security vulnerability assessments**;
+- documented **incident response procedures**;
 - business continuity and backup;
 - **contractual flow-down of equivalent safeguards to processors**.
+
+> The detail matters: this is not "have good security". It names MFA, need-to-know
+> access, vulnerability assessment and a one-year access log as specific
+> obligations — each of which is a discrete engineering task with a lead time.
 
 **Rule 7 — Breach notification, two stages:** `[S]`
 
@@ -170,12 +191,21 @@ question and it needs a written position before May 2027.
 ## 6. Consent Managers — and why the product must not become one
 
 A **Consent Manager** is a DPDP-registered entity through which a principal
-gives, manages and withdraws consent. Registration conditions: incorporated in
-India, **net worth ≥ ₹2 crore**, conflict-of-interest policy, secure
-infrastructure, audit-ready logging. `[S]`
+gives, manages and withdraws consent. **Verified 2026-09-04** `[S]`.
 
-**First Schedule Part B carries a hard conflict rule: a Consent Manager may not
-act as Data Fiduciary or Data Processor for the same data principals it serves.**
+**First Schedule Part A** — registration conditions: incorporated in India,
+**net worth ≥ ₹2 crore** (inflation-adjusted annually), conflict-of-interest
+policy, secure infrastructure, audit-ready logging.
+
+**First Schedule Part B** carries the conflict rule, and it is confirmed:
+
+> A Consent Manager **may not simultaneously act as Data Fiduciary or Data
+> Processor for the same data principal whose consent it manages.**
+
+Part B also requires **non-discrimination** — consent flows facilitated neutrally
+across all fiduciaries, no preferential treatment — and **transparent published
+pricing**, with no revenue from data sharing or consent manipulation. The role is
+designed as a *data-blind neutral intermediary*.
 
 > **So PracticeSync must not become a Consent Manager. That rule would forbid the
 > product.**
