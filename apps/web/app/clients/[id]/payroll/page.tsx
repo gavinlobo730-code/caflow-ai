@@ -1107,12 +1107,33 @@ function ReleaseTab({ clientId }: { clientId: string }) {
 // contributions actually made; the button says so rather than spending a round
 // trip to be told.
 
+type ECRSequence = {
+  outstanding?: string[];
+  months_known_from?: string | null;
+  note?: string;
+  filings?: { id: string; wage_month: string; return_type: string; status: string;
+              trrn?: string | null; submitted_on?: string; approved_on?: string | null }[];
+};
+
 function OutputsTab({ clientId }: { clientId: string }) {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [runId, setRunId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "warn" | "err"; text: string } | null>(null);
+  // The client's EPFO queue. Held here rather than derived from the runs list
+  // because "which months is EPFO waiting for" depends on what was FILED, which
+  // only the server knows — a run being finalised says the books closed, not
+  // that anybody uploaded anything.
+  const [ecrSeq, setEcrSeq] = useState<ECRSequence | null>(null);
+  const [recording, setRecording] = useState(false);
+
+  const loadSequence = useCallback(async () => {
+    try {
+      const res = (await api.payroll.ecrSequence(clientId)) as { data?: ECRSequence };
+      setEcrSeq(res?.data ?? null);
+    } catch { /* the panel simply does not render */ }
+  }, [clientId]);
 
   useEffect(() => {
     (async () => {
@@ -1123,7 +1144,8 @@ function OutputsTab({ clientId }: { clientId: string }) {
         setRunId(list[0]?.id ?? "");
       } catch { /* the empty state below says it */ } finally { setLoading(false); }
     })();
-  }, [clientId]);
+    loadSequence();
+  }, [clientId, loadSequence]);
 
   const run = runs.find((r) => r.id === runId);
   const released = !!run && (run.status === "finalized" || run.status === "paid");
@@ -1143,7 +1165,9 @@ function OutputsTab({ clientId }: { clientId: string }) {
     setBusy(kind); setMsg(null);
     try {
       const res = (await (kind === "ecr" ? api.payroll.runEcr(run.id) : api.payroll.runEsic(run.id))) as {
-        data?: { filename?: string; lines?: string; csv?: string; problems?: string[]; filable?: boolean };
+        data?: { filename?: string; lines?: string; csv?: string; problems?: string[];
+                 filable?: boolean; blocking_months?: string[]; sequence_note?: string;
+                 required_returns?: string[]; return_type_reason?: string };
       };
       const d = res?.data;
       const problems = d?.problems ?? [];
@@ -1156,6 +1180,12 @@ function OutputsTab({ clientId }: { clientId: string }) {
       }
       const content = kind === "ecr" ? d.lines : d.csv;
       if (!content) { setMsg({ kind: "err", text: "The server returned an empty file." }); return; }
+      // The file is CORRECT even when the month is blocked — EPFO's sequence
+      // rule is about the upload, not the contents — so this warns beside the
+      // download rather than withholding it. Same judgement the server makes in
+      // keeping blocking_months out of `problems`.
+      const blocked = kind === "ecr" ? (d.blocking_months ?? []) : [];
+      const needs = kind === "ecr" ? (d.required_returns ?? []) : [];
       // Both go to a government portal. Neither gets a BOM — extra bytes break
       // the parse on upload.
       const blob = new Blob([content], { type: kind === "ecr" ? "text/plain" : "text/csv" });
@@ -1165,7 +1195,14 @@ function OutputsTab({ clientId }: { clientId: string }) {
       a.download = d.filename ?? `${label.replace(/\s/g, "_")}_${run.month}.${kind === "ecr" ? "txt" : "csv"}`;
       a.click();
       URL.revokeObjectURL(url);
-      setMsg({ kind: "ok", text: `${label} downloaded.` });
+      if (blocked.length) {
+        setMsg({ kind: "warn", text: d.sequence_note ?? `${label} downloaded.` });
+      } else if (needs.length) {
+        setMsg({ kind: "warn", text: `${label} downloaded. Upload it as a `
+          + `${needs.join(" and a ")} return — ${d.return_type_reason ?? ""}` });
+      } else {
+        setMsg({ kind: "ok", text: `${label} downloaded.` });
+      }
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "That did not work." });
     } finally { setBusy(null); }
@@ -1223,6 +1260,26 @@ function OutputsTab({ clientId }: { clientId: string }) {
           : "bg-red-50 text-red-600"}`}>{msg.text}</p>
       )}
 
+      {/* THE EPFO QUEUE. Since the ECR was revamped (circulars 26-09-2025 and
+          08-10-2025) EPFO blocks a wage month while an earlier one is pending,
+          so a CA needs to see the order BEFORE they take a file to the portal.
+          The sentence is composed on the server — it carries the limit that
+          makes the list safe to read, and rebuilding it here would be the
+          business logic this codebase keeps out of the browser. */}
+      {ecrSeq?.note && (
+        <div className={`rounded-xl border p-3 ${(ecrSeq.outstanding?.length ?? 0)
+          ? "border-amber-200 bg-amber-50" : "border-[#E2E8F0] bg-white"}`}>
+          <p className="text-[11px] font-semibold text-[#1E293B]">EPFO filing order</p>
+          <p className="text-[11px] text-[#475569] mt-1">{ecrSeq.note}</p>
+          {!!ecrSeq.filings?.length && (
+            <p className="text-[10px] text-[#94A3B8] mt-2">
+              Recorded: {ecrSeq.filings.map((f) =>
+                `${f.wage_month} ${f.return_type} (${f.status})`).join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         {items.map((it) => (
           <div key={it.key} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
@@ -1240,8 +1297,124 @@ function OutputsTab({ clientId }: { clientId: string }) {
           reconciles the challans against before paying them, and the register
           is the month read employee by employee — the Reports tab that used to
           hold it was a noun for the same thing. */}
+      {/* RECORDING A FILING IS NOT FILING. There is no EPFO API, so the product
+          cannot observe that a return went in and can only be told. Without
+          this the queue above never advances and every month stays outstanding
+          for ever, which turns a real warning into noise. */}
+      {released && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[12px] font-semibold text-[#1E293B]">
+                Record what you filed with EPFO
+              </p>
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                After you upload at unifiedportal-emp.epfindia.gov.in. Nothing here
+                is transmitted — this only tells PracticeSync the month is done, so
+                the next one stops being blocked.
+              </p>
+            </div>
+            <button onClick={() => setRecording((v) => !v)}
+              className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] shrink-0">
+              {recording ? "Cancel" : "Record filing"}
+            </button>
+          </div>
+          {recording && run && (
+            <ECRFilingForm
+              run={run}
+              onDone={(text) => { setRecording(false); setMsg({ kind: "ok", text }); loadSequence(); }}
+              onError={(text) => setMsg({ kind: "err", text })}
+            />
+          )}
+        </div>
+      )}
+
       <StatutoryTab clientId={clientId} />
       <ReportsTab clientId={clientId} />
+    </div>
+  );
+}
+
+// ─── Recording an EPFO filing ────────────────────────────────────────────────
+//
+// Three return types, and which one a month needs is a fact about what has
+// already been accepted for it rather than a preference — the ECR download says
+// which, in `required_returns`. This form defaults to Regular because that is
+// what an untouched month needs, and offers the other two rather than deciding:
+// the CA is reading the portal and knows what they just did.
+//
+// SUBMITTED IS NOT APPROVED. EPFO blocks a later month unless the earlier one is
+// filed AND validated, and the challan cannot be generated until the return is
+// approved, so only an approved return clears a month. The two are separate
+// options here for that reason, not as a workflow nicety.
+
+function ECRFilingForm({ run, onDone, onError }: {
+  run: PayrollRun;
+  onDone: (text: string) => void;
+  onError: (text: string) => void;
+}) {
+  const [returnType, setReturnType] = useState("regular");
+  const [status, setStatus] = useState("submitted");
+  const [submittedOn, setSubmittedOn] = useState("");
+  const [approvedOn, setApprovedOn] = useState("");
+  const [trrn, setTrrn] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.payroll.recordEcrFiled(run.id, {
+        return_type: returnType,
+        status,
+        submitted_on: submittedOn || undefined,
+        approved_on: status === "approved" ? (approvedOn || undefined) : undefined,
+        trrn: trrn.trim() || undefined,
+      });
+      onDone(`Recorded the ${returnType} return for ${run.month} as ${status}.`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "That did not save.");
+    } finally { setSaving(false); }
+  }
+
+  const field = "border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400";
+  return (
+    <div className="mt-3 pt-3 border-t border-[#F1F5F9] grid grid-cols-2 gap-3">
+      <label className="text-[11px] text-[#64748B]">Return type
+        <select value={returnType} onChange={(e) => setReturnType(e.target.value)}
+          className={`${field} w-full mt-1`}>
+          <option value="regular">Regular — every active member for the month</option>
+          <option value="supplementary">Supplementary — members added after the Regular was approved</option>
+          <option value="revised">Revised — figures already submitted, corrected</option>
+        </select>
+      </label>
+      <label className="text-[11px] text-[#64748B]">State at the portal
+        <select value={status} onChange={(e) => setStatus(e.target.value)}
+          className={`${field} w-full mt-1`}>
+          <option value="submitted">Submitted — not yet validated</option>
+          <option value="approved">Approved — this clears the month</option>
+        </select>
+      </label>
+      <label className="text-[11px] text-[#64748B]">Submitted on
+        <input type="date" value={submittedOn} onChange={(e) => setSubmittedOn(e.target.value)}
+          className={`${field} w-full mt-1`} />
+      </label>
+      {status === "approved" && (
+        <label className="text-[11px] text-[#64748B]">Approved on
+          <input type="date" value={approvedOn} onChange={(e) => setApprovedOn(e.target.value)}
+            className={`${field} w-full mt-1`} />
+        </label>
+      )}
+      <label className="text-[11px] text-[#64748B]">TRRN (optional)
+        <input value={trrn} onChange={(e) => setTrrn(e.target.value)}
+          placeholder="EPFO reference for the upload"
+          className={`${field} w-full mt-1`} />
+      </label>
+      <div className="col-span-2 flex justify-end">
+        <button onClick={save} disabled={saving}
+          className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+          {saving ? "Recording…" : "Record"}
+        </button>
+      </div>
     </div>
   );
 }

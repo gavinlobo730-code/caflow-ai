@@ -233,24 +233,48 @@ What did change:
 6. **System-based validations** now reject what previously passed silently —
    wages, UAN validity, ineligible pension contributions.
 
-> **What this means for the code** (task #122). `GET /runs/{run_id}/ecr` builds a
-> file **per run**, with no notion of return type and no notion of month
-> sequence — verified by grep; the only mention of either in the ECR path is the
-> marker added by this work.
+> **What this means for the code — BUILT, migration 335** (task #122).
 >
-> The file it emits is still **correct**, because the format did not change. What
-> is missing is everything around it:
+> `GET /runs/{run_id}/ecr` used to build a file **per run**, with no notion of
+> return type and no notion of month sequence, so it could hand a CA a
+> perfectly-formed October file while September was outstanding and call that
+> done. The file was never wrong — the format did not change — but the upload
+> would be refused.
 >
-> - **"Which months are outstanding, in order"** has to become a first-class
->   concept. A client with a gap cannot file the current month at all, so a
->   product that hands a CA this month's file without saying "August is blocking
->   it" is handing them something the portal will refuse.
-> - **Return type** is a real distinction. A late joiner is a *Supplementary*
->   return, not a re-filed Regular one.
-> - **Never compute §7Q or §14B here.** EPFO computes them. A second
->   implementation of a statutory interest calculation is exactly the drift this
->   codebase keeps removing, and the CA would have two numbers with no way to
->   tell which the portal will accept.
+> What now exists:
+>
+> - **`public.epfo_ecr_filings`** records what the CA actually filed, per wage
+>   month and return type, typed in from the portal. Nothing observes a filing,
+>   because there is no EPFO API; nothing infers one either, and in particular
+>   finalising a run is NOT treated as a filing. **Deliberately not
+>   `public.filings`**: that table drives `journal_period_lock_reason`, whose
+>   premise is that a GST return cannot be recalled. A Revised ECR is the
+>   sanctioned correction path, so recording an ECR there would freeze a month
+>   of ledger and fight the very correction EPFO expects.
+> - **`domain/payroll/ecr_sequence.py`** answers *"which months are outstanding,
+>   in order"* and *"which return does this month need"*. Every earlier
+>   outstanding month is named, not a four-month window: the launch relaxation
+>   has already moved once, and encoding it would err in the only direction that
+>   matters. A month that needs both a Supplementary and a Revised gets **both**
+>   — picking one silently drops the other — and the module says outright that it
+>   does not know which order EPFO wants them in, because none of the circulars
+>   seen ranks them.
+> - **Submitted is not approved.** Only an approved Regular clears a month, since
+>   the portal blocks a later month unless the earlier one is filed *and*
+>   validated.
+> - **The honest limit is stated in the sentence the CA reads**: outstanding
+>   months are drawn from the months this system holds a finalised run for. A
+>   month run on paper or with a previous provider is invisible here and will
+>   still block the upload, so an empty list means "nothing outstanding that we
+>   know about", never "nothing outstanding".
+> - **§7Q and §14B are still not computed, anywhere**, and that is now enforced
+>   rather than intended: `test_nothing_in_payroll_computes_7q_or_14b` tokenises
+>   every payroll module and fails if either section number appears outside a
+>   string or a comment.
+>
+> What remains is the upload itself, and it is not code: EPFO has no employer
+> API, so a human takes the file to the portal and then tells the product what
+> they did.
 
 ### Rates — and what actually moved in 2025
 

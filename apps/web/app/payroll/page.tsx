@@ -550,7 +550,9 @@ function StatutoryReturnsTab({
     try {
       const res = (await fetcher()) as {
         data?: { filename?: string; lines?: string; csv?: string;
-                 problems?: string[]; filable?: boolean };
+                 problems?: string[]; filable?: boolean;
+                 blocking_months?: string[]; sequence_note?: string;
+                 required_returns?: string[]; return_type_reason?: string };
       };
       const d = res?.data;
       if (!d) throw new Error("The server returned no file.");
@@ -580,6 +582,23 @@ function StatutoryReturnsTab({
         // Both go to a government portal. Neither gets a BOM.
         { bom: false },
       );
+
+      // EPFO blocks a wage month while an earlier one is pending (circulars
+      // 26-09-2025 and 08-10-2025). The FILE is still correct — the rule is
+      // about the upload — so this warns after the download rather than
+      // withholding it, which is the same judgement the server makes in keeping
+      // blocking_months out of `problems`. It is said HERE as well as on the
+      // client month because this rail can still download an ECR, and a warning
+      // that appears on only one of two paths is the same as no warning.
+      const blocked = what === "ecr" ? (d.blocking_months ?? []) : [];
+      const needs = what === "ecr" ? (d.required_returns ?? []) : [];
+      if (blocked.length) {
+        toast({ title: `${label} downloaded — but EPFO will refuse it today`,
+                description: d.sequence_note });
+      } else if (needs.length) {
+        toast({ title: `${label} downloaded — upload it as a ${needs.join(" and a ")} return`,
+                description: d.return_type_reason });
+      }
     } catch (e) {
       toast({
         title: `Couldn't build the ${what === "ecr" ? "ECR" : "ESIC return"}`,

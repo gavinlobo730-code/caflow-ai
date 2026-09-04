@@ -3,8 +3,8 @@ TODO(compliance): docs/compliance/04-mca-epfo-esic.md
     EPFO has no employer API; the ceiling is generate-the-file, human uploads.
     THE FILE THIS BUILDS IS STILL CORRECT — verified 2026-09-04 that the
     revamped ECR did NOT change the format: same .txt, same 11 fields, same
-    #~# schema. What changed is everything around it, and none of it is
-    modelled here.
+    #~# schema. What changed is everything around it, and none of that
+    belongs in this module.
 
     Two circulars: launch 26-09-2025, FAQs 08-10-2025. From wage month
     September 2025:
@@ -22,15 +22,23 @@ TODO(compliance): docs/compliance/04-mca-epfo-esic.md
         the Due Deposit Balance Summary. s.7Q is payable with the principal;
         s.14B may be paid forthwith or later.
 
-    This builder emits per run: no return type, no month sequence. So a CA can
-    be handed a valid file for a month the portal will refuse because an
-    earlier one is outstanding. "Which months are outstanding, in order" needs
-    to become a first-class concept, and a late joiner is a SUPPLEMENTARY
-    return rather than a re-filed Regular one.
+    The month sequence and the return type ARE now modelled, in
+    domain/payroll/ecr_sequence.py with migration 335 behind it: the ECR
+    endpoint reports which earlier months are outstanding and whether this month
+    needs a Regular, a Supplementary or a Revised return. They live there rather
+    than here because they are facts about a CLIENT'S FILING HISTORY, and this
+    module is about one month's file. It still emits per run and still knows
+    nothing about any other month, which is correct.
 
-    And never compute s.7Q or s.14B here. EPFO computes them; a second
-    implementation of a statutory interest calculation drifts, and the CA would
-    have two numbers with no way to tell which the portal will accept.
+    What remains outstanding is the upload itself, and it is not code: EPFO has
+    no employer API, so a human takes this file to the portal.
+
+    And never compute s.7Q or s.14B — not here, not in ecr_sequence, not
+    anywhere. EPFO computes them and shows them in the Due Deposit Balance
+    Summary; a second implementation of a statutory interest calculation drifts,
+    and the CA would have two numbers with no way to tell which the portal will
+    accept. tests/test_the_ecr_knows_which_months_are_outstanding.py fails if
+    any payroll module grows one.
 
 The EPFO Electronic Challan cum Return (ECR) file.
 
