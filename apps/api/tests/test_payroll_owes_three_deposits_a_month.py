@@ -172,8 +172,9 @@ def db(monkeypatch):
     d = FakeDB()
     wire_e2e(monkeypatch, d, [payroll_mod])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    for cid in ("CLI-ON", "CLI-OFF", "CLI-RUN"):
-        d.seed("clients", {"id": cid, "firm_id": FIRM,
+    for cid, cname in (("CLI-ON", "Acme Pvt Ltd"), ("CLI-OFF", "Beta LLP"),
+                       ("CLI-RUN", "Gamma Industries")):
+        d.seed("clients", {"id": cid, "firm_id": FIRM, "client_name": cname,
                            "financial_year_start": "2026-04-01"})
     d.seed("client_payroll_settings", {"id": "s-1", "firm_id": FIRM,
                                        "client_id": "CLI-ON",
@@ -192,6 +193,27 @@ def db(monkeypatch):
 
 def _states(month="2026-08", user=PARTNER):
     return payroll_mod.payroll_client_states(month=month, current_user=user)["data"]
+
+
+def test_every_row_carries_the_client_s_name(db):
+    """A queue keyed by UUID is not a queue anybody can work, and the screen
+    that reads this (the Month tab on /payroll) is the one a bureau opens
+    first. The name is fetched in ONE query for the firm, not one per row."""
+    by_id = {c["client_id"]: c for c in _states()["clients"]}
+    assert by_id["CLI-ON"]["client_name"] == "Acme Pvt Ltd"
+    assert by_id["CLI-RUN"]["client_name"] == "Gamma Industries"
+
+
+def test_a_deleted_client_with_payroll_history_is_named_as_such(db):
+    """A blank cell reads as a rendering fault. This row is a client that was
+    removed while its payroll settings and runs survived — worth showing,
+    because the history is still somebody's statutory record."""
+    d = db
+    d.seed("client_payroll_settings", {"id": "s-9", "firm_id": FIRM,
+                                       "client_id": "CLI-GONE",
+                                       "payroll_enabled": True})
+    row = next(c for c in _states()["clients"] if c["client_id"] == "CLI-GONE")
+    assert row["client_name"] == "(client no longer on file)"
 
 
 def test_a_client_with_no_run_this_month_is_not_started(db):

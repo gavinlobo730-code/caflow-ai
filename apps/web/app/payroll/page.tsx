@@ -11,7 +11,7 @@ import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2, Upload,
-  Pencil, Ban, Trash2, RotateCcw, Receipt,
+  Pencil, Ban, Trash2, RotateCcw, Receipt, CalendarDays, ArrowRight,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -383,6 +383,196 @@ function getTdsQuarterLabel(month: string): string {
 // stored server-side, so it can never be fetched again — which is why the link
 // is shown here for copying, not just emailed and forgotten. Re-inviting mints
 // a fresh link and invalidates this one.
+/** THE CLIENT-MONTH QUEUE — the bureau's screen on the 3rd and the 10th.
+ *
+ *  ONE PAYROLL SURFACE (payroll v1 item 10). This page and
+ *  /clients/[id]/payroll had grown into RIVALS: both let a CA add an employee,
+ *  compute a run and read payslips, this one behind a client dropdown and that
+ *  one inside the client's own workspace. Two places to do one job is how the
+ *  salary register and the ECR each ended up implemented twice.
+ *
+ *  The client workspace is canonical — a payroll month is COMPLETED for one
+ *  client, and that is where the client's ledger, attendance and statutory
+ *  identity already live. What was missing was the other half: a month is
+ *  FOUND across the firm, and there was no screen that answered "which of my
+ *  forty clients still need doing". A CA opened each client in turn to find out.
+ *
+ *  So this leads INTO the workspace rather than competing with it: every row is
+ *  a link, and nothing here computes or writes anything.
+ *
+ *  It reads GET /api/payroll/client-states, which answers for the whole firm in
+ *  three queries rather than three per client, and which is scoped by
+ *  filter_by_client — an Executive assigned to four clients sees four rows, not
+ *  the headcount and net pay of all forty.
+ */
+type ClientMonthState = {
+  client_id: string;
+  client_name: string;
+  payroll_enabled: boolean;
+  inputs_due_day: number | null;
+  run_status: string | null;
+  headcount: number | null;
+  total_net_paise: number | null;
+};
+
+/** What this client-month needs from a human, in the module's own vocabulary.
+ *
+ *  "Payroll off" and "not started" are DIFFERENT answers and the queue must not
+ *  merge them: one is a decision the firm made, the other is work outstanding.
+ *  That distinction is the whole reason client-states reports a disabled client
+ *  rather than omitting it. */
+function monthState(c: ClientMonthState): {
+  label: string; className: string; note: string; needsWork: boolean;
+} {
+  if (!c.payroll_enabled) {
+    return {
+      label: "Not run", className: "bg-[#F1F5F9] text-[#64748B]",
+      note: "Payroll is switched off for this client. A Partner turns it on in the client's payroll setup.",
+      needsWork: false,
+    };
+  }
+  if (c.run_status === "paid") {
+    return { label: "Paid", className: "bg-green-100 text-green-700",
+             note: "Salaries disbursed and the payment journal posted.", needsWork: false };
+  }
+  if (c.run_status === "finalized") {
+    return { label: "Finalised", className: "bg-emerald-100 text-emerald-700",
+             note: "The accrual is posted. Still to disburse.", needsWork: true };
+  }
+  if (c.run_status) {
+    return { label: "Draft", className: "bg-blue-100 text-blue-700",
+             note: `The run exists at "${c.run_status}" and has not been released.`, needsWork: true };
+  }
+  return { label: "Not started", className: "bg-amber-100 text-amber-700",
+           note: "Payroll is on for this client and this month has no run yet.",
+           needsWork: true };
+}
+
+function MonthQueueTab({ month, onMonthChange }: {
+  month: string; onMonthChange: (m: string) => void;
+}) {
+  const [rows, setRows] = useState<ClientMonthState[]>([]);
+  const [loading, setLoading] = useState(true);
+  // A failed read must not render as "no clients" — that is indistinguishable
+  // from a firm that runs payroll for nobody, and it is the mistake M17 fixed
+  // across this module.
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.payroll.payrollClientStates(month) as
+        ApiResp<{ month: string; clients: ClientMonthState[] }>;
+      if (!res?.data) { setError("Could not load the payroll month."); setRows([]); return; }
+      setRows(res.data.clients ?? []);
+    } catch (e) {
+      setError(apiErr(e, "Could not load the payroll month."));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [month]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const outstanding = rows.filter(r => monthState(r).needsWork).length;
+  const running = rows.filter(r => r.payroll_enabled).length;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-row items-start justify-between flex-wrap gap-3">
+          <div>
+            <CardTitle className="text-base">The payroll month</CardTitle>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Every client you run payroll for, and what each still needs. Open a
+              client to do the work.
+            </p>
+          </div>
+          <input
+            type="month" value={month} onChange={e => onMonthChange(e.target.value)}
+            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+          />
+        </div>
+        {!loading && !error && rows.length > 0 && (
+          <p className="text-xs text-[#475569] mt-3">
+            {outstanding === 0
+              ? `All ${running} payroll client(s) are done for this month.`
+              : `${outstanding} of ${running} payroll client(s) still need work.`}
+          </p>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <p className="text-center text-[#94A3B8] py-12 text-sm">Loading the month…</p>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
+            <Button size="sm" variant="outline" onClick={load}>Retry</Button>
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-center text-[#94A3B8] py-12 text-sm">
+            No client has payroll switched on. A Partner turns it on from a
+            client&apos;s payroll setup.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide bg-[#F8FAFC]">
+                  <th className="text-left py-3 px-4">Client</th>
+                  <th className="text-left py-3 px-4">State</th>
+                  <th className="text-right py-3 px-4">Employees</th>
+                  <th className="text-right py-3 px-4">Net pay</th>
+                  <th className="text-left py-3 px-4">Inputs due</th>
+                  <th className="py-3 px-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(c => {
+                  const st = monthState(c);
+                  return (
+                    <tr key={c.client_id} className="border-b hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{c.client_name}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs ${st.className}`} title={st.note}>
+                          {st.label}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-[#475569]">
+                        {c.headcount ?? <span className="text-[#CBD5E1]">—</span>}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono">
+                        {c.total_net_paise != null
+                          ? fmtRs(c.total_net_paise)
+                          : <span className="text-[#CBD5E1]">—</span>}
+                      </td>
+                      <td className="py-3 px-4 text-[#64748B] text-xs">
+                        {c.inputs_due_day ? `Day ${c.inputs_due_day}` : "—"}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {/* The link IS the point: this screen finds the work, the
+                            client workspace does it. */}
+                        <Link href={`/clients/${c.client_id}/payroll`}>
+                          <Button size="sm" variant="outline" className="flex items-center gap-1.5">
+                            Open<ArrowRight size={13} />
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
 function PortalAccessModal({ employee, onClose, onChanged }: {
   employee: Employee;
   onClose: () => void;
@@ -1246,6 +1436,11 @@ export default function PayrollPage() {
   const [slips, setSlips] = useState<PayrollSlip[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // The month the QUEUE is showing. Defaults to the current IST month — the
+  // bureau opens this on the 3rd looking at the month just ended, and the
+  // control is right there to move it.
+  const [queueMonth, setQueueMonth] = useState(() => toLocalISO(new Date()).slice(0, 7));
+
   const [runClientId, setRunClientId] = useState("");
   const [runMonth, setRunMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [runEmployees, setRunEmployees] = useState<Employee[]>([]);
@@ -1640,14 +1835,27 @@ export default function PayrollPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="employees">
+        <Tabs defaultValue="month">
           <TabsList className="mb-6">
+            {/* Month is FIRST and default. This page and /clients/[id]/payroll
+                had grown into rivals — both able to add an employee, compute a
+                run and read payslips, this one behind a client dropdown. The
+                client workspace is canonical, because a payroll month is
+                COMPLETED for one client; what was missing was the screen that
+                says which clients still need one. The tabs after this are the
+                firm-grain work that genuinely belongs here. */}
+            <TabsTrigger value="month" className="flex items-center gap-1.5"><CalendarDays size={14} />Month</TabsTrigger>
             <TabsTrigger value="employees" className="flex items-center gap-1.5"><Users size={14} />Employees</TabsTrigger>
             <TabsTrigger value="monthly" className="flex items-center gap-1.5"><Play size={14} />Monthly Run</TabsTrigger>
             <TabsTrigger value="payslips" className="flex items-center gap-1.5"><FileText size={14} />Payslips</TabsTrigger>
             <TabsTrigger value="statutory" className="flex items-center gap-1.5"><Shield size={14} />Statutory</TabsTrigger>
             <TabsTrigger value="statutory-returns" className="flex items-center gap-1.5"><Download size={14} />Statutory Returns</TabsTrigger>
           </TabsList>
+
+          {/* MONTH TAB — the queue, and the way into the client workspace. */}
+          <TabsContent value="month">
+            <MonthQueueTab month={queueMonth} onMonthChange={setQueueMonth} />
+          </TabsContent>
 
           {/* EMPLOYEES TAB */}
           <TabsContent value="employees">
