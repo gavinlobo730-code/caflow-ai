@@ -204,6 +204,11 @@ export default function AttendancePage() {
   const [earnClient, setEarnClient] = useState<string>("");
   /** client_id → client_name, so the picker names a client rather than a UUID. */
   const [clientNames, setClientNames] = useState<Record<string, string>>({});
+  /** client_id -> whether the firm runs payroll for them (migration 332).
+   *  Read off the attendance response, which is client-scoped, so it fills in
+   *  as clients are opened rather than in one firm-wide query. */
+  const [payrollOn, setPayrollOn] = useState<Record<string, boolean>>({});
+  const [enabling, setEnabling] = useState(false);
   const [earnings, setEarnings] = useState<EarningRow[]>([]);
   const [earnLocked, setEarnLocked] = useState(false);
   const [earnSaving, setEarnSaving] = useState(false);
@@ -332,6 +337,7 @@ export default function AttendancePage() {
       const res = await api.payroll.getOneTimeEarnings(earnClient, month) as {
         data?: {
           locked?: boolean;
+          payroll_enabled?: boolean;
           rows?: Array<{
             id: string; employee_id: string; kind: string; label: string | null;
             amount_paise: number; pf_wages: boolean; esi_wages: boolean;
@@ -341,6 +347,7 @@ export default function AttendancePage() {
         };
       };
       setEarnLocked(Boolean(res?.data?.locked));
+      setPayrollOn(prev => ({ ...prev, [earnClient]: Boolean(res?.data?.payroll_enabled) }));
       setEarnings((res?.data?.rows ?? []).map(r => ({
         key: r.id,
         employee_id: r.employee_id,
@@ -384,6 +391,39 @@ export default function AttendancePage() {
     } catch {
       /* The row keeps whatever it had; the CA can still set the three by hand,
          and the server refuses a row that has not answered them. */
+    }
+  }
+
+  /** Switch payroll on or off for the selected client. PARTNER ONLY.
+   *
+   *  A 403 back from here is the RBAC refusal, not the enablement gate, and it
+   *  is reported as itself: a Manager who is told "payroll is not switched on"
+   *  and then cannot switch it on has been sent in a circle.
+   */
+  async function togglePayroll(next: boolean) {
+    if (!earnClient) return;
+    setEnabling(true);
+    setEarnMsg("");
+    try {
+      const res = await api.payroll.setPayrollEnabled({
+        client_id: earnClient, enabled: next,
+      }) as { success?: boolean; error?: string | null; detail?: string };
+      if (res?.success === false) {
+        setEarnMsg(res.error || res.detail
+          || "Only a Partner can switch payroll on for a client.");
+      } else {
+        setPayrollOn(prev => ({ ...prev, [earnClient]: next }));
+        setEarnMsg(next
+          ? "Payroll switched on for this client."
+          : "Payroll switched off. Existing records stay readable.");
+      }
+    } catch (e) {
+      setEarnMsg(e instanceof Error ? e.message
+        : "Could not change payroll for this client.");
+    } finally {
+      // In a finally so a thrown request cannot leave the control disabled —
+      // scripts/loading-flags.test.ts checks exactly this.
+      setEnabling(false);
     }
   }
 
@@ -972,17 +1012,51 @@ export default function AttendancePage() {
                     </select>
                   </div>
                   <Button size="sm" variant="outline" onClick={addEarning}
-                          disabled={!earnClient || earnLocked}
+                          disabled={!earnClient || earnLocked || !payrollOn[earnClient]}
                           className="flex items-center gap-1.5">
                     <Plus size={14} />Add earning
                   </Button>
                   <Button size="sm" onClick={saveEarnings}
-                          disabled={!earnClient || earnLocked || earnSaving}
+                          disabled={!earnClient || earnLocked || earnSaving
+                                    || !payrollOn[earnClient]}
                           className="flex items-center gap-1.5">
                     <Save size={14} />{earnSaving ? "Saving…" : "Save"}
                   </Button>
                   {earnMsg && <span className="text-sm text-[#334155]">{earnMsg}</span>}
                 </div>
+
+                {/* THE COST BRAKE (migration 332). Payroll is switched on per
+                    client by a Partner, so a firm's cost is bounded by a
+                    decision somebody made rather than by how many clients
+                    happen to exist — and payroll stays off the screen for the
+                    clients that have none, which is most of them. */}
+                {earnClient && (
+                  <div className={`mb-4 rounded-lg border px-3 py-2 text-sm flex
+                                   items-start justify-between gap-3 ${
+                    payrollOn[earnClient]
+                      ? "border-[#E2E8F0] bg-white text-[#334155]"
+                      : "border-slate-300 bg-slate-50 text-[#334155]"}`}>
+                    <span>
+                      {payrollOn[earnClient] ? (
+                        <>This firm runs payroll for{" "}
+                          <strong>{clientNames[earnClient] ?? earnClient}</strong>.</>
+                      ) : (
+                        <>Payroll is <strong>not switched on</strong> for{" "}
+                          {clientNames[earnClient] ?? earnClient}. Nothing payroll can
+                          be created for them until a Partner turns it on; anything
+                          already recorded stays readable.</>
+                      )}
+                    </span>
+                    <Button size="sm"
+                            variant={payrollOn[earnClient] ? "outline" : "default"}
+                            disabled={enabling}
+                            onClick={() => togglePayroll(!payrollOn[earnClient])}>
+                      {enabling
+                        ? "Saving…"
+                        : payrollOn[earnClient] ? "Switch off" : "Switch on"}
+                    </Button>
+                  </div>
+                )}
 
                 {earnLocked && (
                   <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2

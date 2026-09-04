@@ -520,6 +520,21 @@ class PayrollSettingsIn(BaseModel):
     note: Optional[str] = None
 
 
+class PayrollEnablementIn(BaseModel):
+    """Switch payroll on or off for one client (migration 332).
+
+    Its own request model and its own endpoint rather than a field on
+    PayrollSettingsIn, because it is a Partner decision and that one is Manager+
+    — and because a PATCH-shaped model whose absent fields mean "leave alone"
+    is the wrong shape for a switch. `enabled` is REQUIRED: turning payroll on
+    and turning it off are both explicit acts, and neither should be reachable
+    by omitting a field.
+    """
+    client_id: str
+    enabled: bool
+    note: Optional[str] = None
+
+
 class PTSlabBandIn(BaseModel):
     """One band of a state's professional-tax slab set (migration 327).
 

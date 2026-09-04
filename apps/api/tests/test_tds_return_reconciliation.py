@@ -29,6 +29,12 @@ def _setup(monkeypatch):
     wire_e2e(monkeypatch, db, [pb, payroll_mod])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5", "financial_year_start": "2025-04-01"})
+    # Payroll is switched ON for this client (migration 332). A firm that
+    # runs payroll for a client has said so; without the row every write
+    # below is refused, which is the gate working rather than a fixture
+    # detail — see assert_payroll_enabled.
+    db.seed("client_payroll_settings", {"id": "cps-1", "firm_id": FIRM, "client_id": "CLI",
+                                        "payroll_enabled": True})
     # Company PAN (4th char != P/H) — non-individual rate applies.
     db.seed("vendors", {
         "id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "Sharma Consulting Pvt Ltd",

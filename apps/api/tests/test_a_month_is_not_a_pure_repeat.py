@@ -223,6 +223,12 @@ def db(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     d.seed("clients", {"id": "CLI", "firm_id": FIRM,
                        "financial_year_start": "2026-04-01"})
+    # Payroll is switched ON for this client (migration 332). A firm that
+    # runs payroll for a client has said so; without the row every write
+    # below is refused, which is the gate working rather than a fixture
+    # detail — see assert_payroll_enabled.
+    d.seed("client_payroll_settings", {"id": "cps-1", "firm_id": FIRM, "client_id": "CLI",
+                                        "payroll_enabled": True})
     d.seed("payroll_employees", {
         "id": "e-1", "firm_id": FIRM, "client_id": "CLI", "name": "Asha",
         "basic_paise": BASIC, "hra_percent": 0.0, "da_percent": 0.0,

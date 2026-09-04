@@ -22,7 +22,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, PayrollSettingsIn, PTSlabSetIn,
-                           OneTimeEarningsIn,
+                           OneTimeEarningsIn, PayrollEnablementIn,
                            ReleaseIn, ApplyStructureIn)
 from core.authz import assert_client_access, filter_by_client
 from core.ist_clock import ist_today, month_end_date
@@ -1231,6 +1231,7 @@ def create_employee(
         return api_response(True, {"id": "mock-id", **data.model_dump()})
     # Guardrail G4: no payroll/HR for the internal practice client.
     assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
     payload["status"] = "active"
@@ -1317,6 +1318,7 @@ def create_salary_structure(
         return api_response(True, {"id": "mock-id", **data.model_dump()})
     # Guardrail G4: no payroll/HR for the internal practice client.
     assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
     row = db.table("salary_structures").insert(payload).execute()
@@ -1362,6 +1364,7 @@ def apply_salary_structure(
                                    "notes": []})
 
     assert_not_internal_for_payroll(data.client_id, firm_id)
+    assert_payroll_enabled(db, firm_id, data.client_id)
 
     structure = (db.table("salary_structures")
                  .select("id, name, basic_percent, hra_percent, da_percent, "
@@ -1512,6 +1515,7 @@ def create_run(
 
     # Guardrail G4: no payroll/HR for the internal practice client.
     assert_not_internal_for_payroll(client_id, current_user["firm_id"])
+    assert_payroll_enabled(db, current_user["firm_id"], client_id)
 
     # Check for duplicate run
     existing = db.table("payroll_runs").select("id").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()
@@ -2455,12 +2459,61 @@ def _payroll_settings(db, firm_id: str, client_id: str) -> dict:
     if not db:
         return dict(_MOCK_PAYROLL_SETTINGS.get((firm_id, client_id), {}))
     try:
-        return (db.table("client_payroll_settings").select("inputs_due_day, note")
+        return (db.table("client_payroll_settings")
+                .select("inputs_due_day, note, payroll_enabled, "
+                        "payroll_enabled_by, payroll_enabled_on")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .maybe_single().execute().data) or {}
     except Exception:
         _logger.exception("payroll settings read failed for client=%s", client_id)
         return {}
+
+
+def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
+    """Refuse a payroll WRITE for a client the firm has not switched payroll on for.
+
+    WRITES ONLY, and that asymmetry is the point (migration 332). A client whose
+    payroll the firm has stopped running still has Form 16s to issue, an ECR
+    history somebody may be asked about, and payslips the employee portal serves.
+    Blocking those would make switching payroll off destructive rather than
+    administrative, and nobody would dare use the switch.
+
+    NO ROW MEANS NOT ENABLED. client_payroll_settings is sparse — migration 326
+    created it for the input cut-off, which most clients have never set — so
+    absence is the ordinary state and it is the same answer as false. Migration
+    332 backfilled a true row for every client that already had an employee or a
+    run, so this cannot switch off a payroll somebody is already running.
+
+    Mock mode has no database and no settings; the guard is a no-op there, the
+    same way assert_not_internal_for_payroll's lookup is.
+    """
+    if not db:
+        return
+
+    # Read directly rather than through _payroll_settings, which swallows a
+    # failed read into {}. Here the two answers are not the same: "this client
+    # is not a payroll client" is a settled fact and a 403, while "the settings
+    # could not be read" is a transient failure and must not be reported as the
+    # firm having made a decision it did not make. A CA told payroll is switched
+    # off would go looking for a Partner to switch it on, and find it already on.
+    try:
+        row = (db.table("client_payroll_settings").select("payroll_enabled")
+               .eq("firm_id", firm_id).eq("client_id", client_id)
+               .maybe_single().execute().data) or {}
+    except Exception:
+        _logger.exception("payroll enablement read failed for client=%s", client_id)
+        raise HTTPException(
+            status_code=503,
+            detail=("Could not check whether payroll is switched on for this "
+                    "client, so nothing was written. Try again."))
+
+    if not row.get("payroll_enabled"):
+        raise HTTPException(
+            status_code=403,
+            detail=("Payroll is not switched on for this client. A Partner turns "
+                    "it on under Payroll → Settings; until then nothing payroll "
+                    "can be created for them. Existing payroll records stay "
+                    "readable."))
 
 
 def _client_roster(db, firm_id: str, client_id: str) -> list[dict]:
@@ -2585,6 +2638,12 @@ def get_attendance(
         "cutoff": attendance_domain.cutoff_state(
             month, settings.get("inputs_due_day"), ist_today()),
         "locked": _attendance_is_locked(db, firm_id, client_id, month) is not None,
+        # Migration 332. Reported on the screen a CA opens first, because a
+        # client payroll is switched OFF for still answers every read — the
+        # roster, last month's slips — and would otherwise look ordinary right
+        # up until Save is refused.
+        "payroll_enabled": bool(settings.get("payroll_enabled")),
+        "payroll_enabled_on": settings.get("payroll_enabled_on"),
     })
 
 
@@ -2622,6 +2681,8 @@ def put_attendance(
     assert_client_access(current_user, body.client_id)
     db = _db()
     firm_id = current_user["firm_id"]
+
+    assert_payroll_enabled(db, firm_id, body.client_id)
 
     if db:
         locked = _attendance_is_locked(db, firm_id, body.client_id, body.month)
@@ -2724,6 +2785,12 @@ def get_one_time_earnings(
         "taxable_paise": b.taxable_paise,
         "locked": (_attendance_is_locked(db, firm_id, client_id, month) is not None
                    if db else False),
+        # Migration 332. Reported here as well as on the attendance read,
+        # because this is the tab the switch lives on and a client payroll is
+        # off for still answers every read — the screen would look ordinary
+        # right up until Save is refused.
+        "payroll_enabled": bool(
+            (_payroll_settings(db, firm_id, client_id) or {}).get("payroll_enabled")),
         "kinds": list(one_time_domain.KINDS),
     })
 
@@ -2747,6 +2814,8 @@ def put_one_time_earnings(
     assert_client_access(current_user, body.client_id)
     db = _db()
     firm_id = current_user["firm_id"]
+
+    assert_payroll_enabled(db, firm_id, body.client_id)
 
     if db:
         # The same refusal attendance carries, for the same reason: the slips
@@ -2907,6 +2976,76 @@ def put_payroll_settings(
                                "note": row.get("note")})
 
 
+@router.put("/enablement")
+def put_payroll_enablement(
+    body: PayrollEnablementIn,
+    current_user: dict = Depends(rbac("payroll", "enable"))
+):
+    """Switch payroll on or off for one client. PARTNER ONLY.
+
+    THE COST BRAKE (migration 332, docs/architecture/10-payroll.md). Payroll is
+    bundled into the subscription rather than priced per employee, so what bounds
+    the firm's cost is a decision somebody made rather than how many clients
+    happen to exist. It also keeps payroll off the screen for the clients that
+    have none, which is most of them.
+
+    A SEPARATE ENDPOINT FROM /attendance/settings, which writes the same row.
+    That one is Manager+ — a Manager agreeing an input cut-off with a client is
+    doing their job. This one commits the firm to running payroll for a client,
+    which is a commercial act. Migration 332 also revokes the column from
+    `authenticated` outright, so the browser cannot reach it through PostgREST
+    under any policy and this is the only door.
+
+    SWITCHING OFF DESTROYS NOTHING. Every payroll record stays readable — Form
+    16s, the ECR history, payslips the employee portal serves — and only WRITES
+    are refused. A switch that lost history would be one nobody dared use.
+    """
+    assert_client_access(current_user, body.client_id)
+    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    # UTC on disk, as every timestamptz in this schema is. CLAUDE.md's IST rule
+    # is about REPORTING a time, not storing one.
+    stamped = datetime.now(timezone.utc).isoformat()
+
+    if not db:
+        row = {**_MOCK_PAYROLL_SETTINGS.get((firm_id, body.client_id), {}),
+               "payroll_enabled": body.enabled,
+               "payroll_enabled_by": current_user.get("id"),
+               "payroll_enabled_on": stamped}
+        if body.note is not None:
+            row["note"] = (body.note or "").strip() or None
+        _MOCK_PAYROLL_SETTINGS[(firm_id, body.client_id)] = row
+        return api_response(True, {"client_id": body.client_id, **row})
+
+    # Inline, not a payload variable, so the fixed column names are readable to
+    # tests/test_backend_columns_exist_pg.py — see its MAX_UNREADABLE note.
+    row = (db.table("client_payroll_settings")
+           .upsert({"firm_id": firm_id, "client_id": body.client_id,
+                    "payroll_enabled": body.enabled,
+                    "payroll_enabled_by": current_user.get("id"),
+                    "payroll_enabled_on": stamped,
+                    "updated_by": current_user.get("id")},
+                   on_conflict="firm_id,client_id").execute().data or [{}])[0]
+
+    timeline_service.log(
+        body.client_id, "work",
+        "Payroll " + ("Enabled" if body.enabled else "Disabled"),
+        ("Payroll switched on for this client"
+         if body.enabled else
+         "Payroll switched off for this client. Existing records stay readable."),
+        "info", firm_id=firm_id, entity_type="client", entity_id=body.client_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {
+        "client_id": body.client_id,
+        "payroll_enabled": row.get("payroll_enabled"),
+        "payroll_enabled_by": row.get("payroll_enabled_by"),
+        "payroll_enabled_on": row.get("payroll_enabled_on"),
+    })
+
+
 # ── The client's own statutory registrations ─────────────────────────────────
 # Migration 325. Three finished returns below — the ECR, the ESIC contribution
 # file and Form 24Q — are returns BY AN ESTABLISHMENT, and until now nothing
@@ -3017,6 +3156,7 @@ def put_statutory_identity(
 
     db = _db()
     firm_id = current_user["firm_id"]
+    assert_payroll_enabled(db, firm_id, body.client_id)
     if not db:
         row = {**_MOCK_IDENTITY.get((firm_id, body.client_id), {}), **update}
         _MOCK_IDENTITY[(firm_id, body.client_id)] = row
@@ -3071,6 +3211,7 @@ def put_pt_registration(
 
     db = _db()
     firm_id = current_user["firm_id"]
+    assert_payroll_enabled(db, firm_id, body.client_id)
     key = (firm_id, body.client_id, body.state)
     if not db:
         row = {**_MOCK_PT_REGISTRATIONS.get(key, {}),
@@ -3651,6 +3792,7 @@ def upsert_declaration(
         raise HTTPException(status_code=422, detail={"problems": problems})
 
     db = _db()
+    assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
         return api_response(True, {"declaration": None, "problems": [],
                                    "notices": decl_domain.notices(candidate)})
@@ -4320,6 +4462,7 @@ def record_settlement(
     _parse_leaving_date(body.leaving_date)
 
     db = _db()
+    assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": False})
 
@@ -4706,6 +4849,7 @@ def record_perquisites(
     assert_client_access(current_user, body.client_id)
     assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
     db = _db()
+    assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": 0})
 
@@ -4800,6 +4944,7 @@ def add_salary_revision(
         raise HTTPException(status_code=422, detail="basic cannot be negative")
 
     db = _db()
+    assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": False})
 
@@ -4891,6 +5036,7 @@ def add_employee_loan(
         raise HTTPException(status_code=422, detail="instalment must be positive")
 
     db = _db()
+    assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     notices = []
     if body.interest_rate_bps == 0:
         notices.append(
