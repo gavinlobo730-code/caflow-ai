@@ -12,7 +12,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
-import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
+import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
@@ -255,7 +255,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+  const [form, setForm] = useState({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
   const [aadhaarError, setAadhaarError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -278,21 +278,40 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
 
   useEffect(() => { load(); }, [load]);
 
-  /** Bulk-import employees through the EXISTING /api/payroll/employees endpoint. */
-  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
-    const { records, errors } = buildEmployees(rows, clientId, firmId);
-    let imported = 0;
-    for (const emp of records) {
-      // Responses follow the { success, data, error } contract.
-      const res = await apiFetch<unknown>("/api/payroll/employees", {
-        method: "POST",
-        body: JSON.stringify(emp),
-      }).catch(() => null) as { success?: boolean; error?: string | null } | null;
-      if (res && res.success !== false) imported++;
-      else errors.push(`Employee "${emp.name}": ${res?.error ?? "request failed"}`);
+  /** The whole file, in ONE request, decided by the server.
+   *
+   *  This used to validate in the browser (`buildEmployees`) and POST
+   *  /employees once per row. It accepted PART of a file — thirty-one of fifty
+   *  employees landed and there was no list of the nineteen — and re-importing
+   *  the corrected file made a second copy of the thirty-one, because nothing
+   *  identified an employee across two imports.
+   *
+   *  Now: whole-file validation, whole-file refusal, and idempotent on
+   *  `employee_code` (migration 333), so "fix the spreadsheet and upload it
+   *  again" is actually the answer to a refusal.
+   */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[]; skipped?: number; skippedDetail?: string[] }> {
+    try {
+      const res = await api.payroll.importEmployees(clientId, rows);
+      const data = res?.data;
+      await load();
+      return {
+        imported: data?.created ?? 0,
+        errors: [],
+        // Updates are not "skipped" — they are the idempotency working — but
+        // this is the field the shared modal has for "something happened that
+        // was not a create", and saying nothing would make a corrected
+        // re-import of twenty people read as importing zero.
+        skipped: data?.updated ?? 0,
+        skippedDetail: (data?.updated ?? 0) > 0
+          ? [`${data?.updated} existing employee(s) updated from their employee code`]
+          : undefined,
+      };
+    } catch (err) {
+      // NOTHING was written — the endpoint refuses the file as a whole. The
+      // message carries the offending rows; lib/api's errorMessage keeps them.
+      return { imported: 0, errors: [err instanceof Error ? err.message : "Import failed"] };
     }
-    if (imported > 0) await load();
-    return { imported, errors };
   }
 
   async function addEmployee() {
@@ -330,6 +349,11 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
           client_id: clientId,
           firm_id: firmId,
           ...rest,
+          // Empty strings, not omissions: '' would hit migration 333's
+          // not-blank CHECK on the code, and Postgres will not read '' as a
+          // date. Both columns mean "unknown" when NULL.
+          employee_code: rest.employee_code?.trim() || undefined,
+          date_of_birth: rest.date_of_birth || undefined,
           aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
           basic_paise: basic,
           hra_percent: hraBps / 100,
@@ -345,7 +369,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
       }
       await load();
       setShowAdd(false);
-      setForm({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+      setForm({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
     } catch {
       // Replaces a .catch(() => null) on the request alone, which left the
       // reload after it unguarded.
@@ -398,6 +422,17 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
           <p className="text-[12px] font-semibold text-[#1E293B]">New Employee</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Name *" value={form.name} onChange={v => setForm(f => ({...f, name: v}))} placeholder="Employee name" />
+            <div>
+              <Field label="Employee Code" value={form.employee_code} onChange={v => setForm(f => ({...f, employee_code: v}))} placeholder="e.g. EMP001" />
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">Your own code. A bulk import that repeats it updates this employee instead of adding a second one.</p>
+            </div>
+            <div>
+              <Field label="Date of Birth" value={form.date_of_birth} onChange={v => setForm(f => ({...f, date_of_birth: v}))} placeholder="YYYY-MM-DD" type="date" />
+              {/* Not demographics. Part III of the First Schedule widens the
+                  OLD-regime nil band at 60 and again at 80, and without this
+                  every employee is withheld on the general ladder. */}
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">Decides the old-regime slab at 60 and 80. Leave blank if unknown — the run will say so.</p>
+            </div>
             <Field label="Designation" value={form.designation} onChange={v => setForm(f => ({...f, designation: v}))} placeholder="e.g. Manager" />
             <Field label="Department" value={form.department} onChange={v => setForm(f => ({...f, department: v}))} placeholder="e.g. Accounts" />
             <Field label="Basic Salary (₹/month) *" value={form.basic_paise} onChange={v => setForm(f => ({...f, basic_paise: v}))} placeholder="e.g. 25000" type="number" />

@@ -513,91 +513,62 @@ export function buildReceipts(
   return { records, errors };
 }
 
-// ── Payroll employees → POST /api/payroll/employees ─────────────────────────
-
-export interface BuiltEmployee {
-  client_id: string;
-  firm_id: string;
-  name: string;
-  pan?: string;
-  // Privacy-by-design: only the last 4 digits of Aadhaar are ever stored/sent.
-  aadhaar_last4?: string;
-  designation?: string;
-  department?: string;
-  basic_paise: number;
-  hra_percent: number;
-  pf_applicable: boolean;
-  esi_applicable: boolean;
-  pt_applicable: boolean;
-}
+// ── Payroll employees → POST /api/payroll/employees/import ──────────────────
+//
+// `buildEmployees` USED TO LIVE HERE and has been deleted rather than left
+// beside its replacement. It validated a payroll master IN THE BROWSER — PAN's
+// shape under §139A, Aadhaar's truncation to four digits, the default HRA of
+// 40% — and the screen then POSTed /employees once per row in a loop.
+//
+// Three problems, and the third is the one that hurt:
+//
+//   * business logic in the frontend, which the house rules forbid outright,
+//     and which a second client would have to reimplement identically;
+//   * one Singapore-to-Mumbai round trip per employee, so a fifty-row file was
+//     fifty cross-region round trips;
+//   * IT ACCEPTED PART OF A FILE. Rows that validated were written and the rest
+//     were listed, so a CA was left with thirty-one of fifty employees and no
+//     way to tell which nineteen were missing. Fixing the file and re-importing
+//     then created a SECOND copy of the thirty-one, because nothing identified
+//     an employee across two imports — and a duplicated employee is paid twice,
+//     filed twice on the ECR under one UAN, and issued two Form 16s.
+//
+// `domain/payroll/employee_import.py` now owns all of it: the whole file is
+// validated, the whole file is refused, and migration 333's `employee_code`
+// makes a re-import UPDATE rather than duplicate.
+//
+// What stays here is the COLUMN LIST, because it is presentation — the headers
+// CsvImportModal maps a spreadsheet onto. It mirrors the server's COLUMNS and
+// the server is the authority; a column added here and not there is simply
+// ignored, which is the safe direction.
 
 export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: "employee_code", label: "Employee Code", required: false, hint: "Your own code, e.g. EMP001 — re-importing a row with the same code UPDATES that employee instead of adding a second one" },
   { key: "name", label: "Name", required: true, hint: "Employee full name" },
   { key: "pan", label: "PAN", required: false, hint: "10-char PAN (optional)" },
-  { key: "aadhaar", label: "Aadhaar", required: false, hint: "12-digit Aadhaar (optional) — only the last 4 digits are stored" },
+  { key: "date_of_birth", label: "Date of Birth", required: false, hint: "YYYY-MM-DD or DD/MM/YYYY — decides the old-regime slab at 60 and 80" },
+  { key: "gender", label: "Gender", required: false, hint: "male / female / other (Maharashtra PT exemption)" },
   { key: "designation", label: "Designation", required: false, hint: "e.g. Manager (optional)" },
   { key: "department", label: "Department", required: false, hint: "e.g. Accounts (optional)" },
+  { key: "joining_date", label: "Joining Date", required: false, hint: "YYYY-MM-DD or DD/MM/YYYY" },
   { key: "basic", label: "Basic Salary (₹/month)", required: true, hint: "Monthly basic in rupees, e.g. 25000" },
   { key: "hra_percent", label: "HRA %", required: false, hint: "Defaults to 40 if blank" },
+  { key: "da_percent", label: "DA %", required: false, hint: "Defaults to 0 if blank" },
+  { key: "other_allowances", label: "Other Allowances (₹)", required: false, hint: "Monthly, in rupees" },
+  { key: "lta", label: "LTA (₹)", required: false, hint: "Monthly, in rupees" },
+  { key: "medical", label: "Medical (₹)", required: false, hint: "Monthly, in rupees" },
+  { key: "special_allowance", label: "Special Allowance (₹)", required: false, hint: "Monthly, in rupees" },
+  { key: "uan", label: "UAN", required: false, hint: "12 digits — the ECR rejects anything else" },
+  { key: "esi_number", label: "ESIC IP Number", required: false, hint: "The employee's ESIC insurance number" },
+  { key: "aadhaar", label: "Aadhaar", required: false, hint: "12-digit Aadhaar (optional) — only the last 4 digits are stored" },
   { key: "pf_applicable", label: "PF Applicable", required: false, hint: "yes / no (default yes)" },
   { key: "esi_applicable", label: "ESI Applicable", required: false, hint: "yes / no (default yes)" },
   { key: "pt_applicable", label: "PT Applicable", required: false, hint: "yes / no (default no)" },
+  { key: "pt_state", label: "PT State", required: false, hint: "Two-letter state code, e.g. MH" },
+  { key: "bank_account_no", label: "Bank Account No", required: false, hint: "For the salary advice" },
+  { key: "bank_ifsc", label: "Bank IFSC", required: false, hint: "e.g. HDFC0001234" },
+  { key: "bank_name", label: "Bank Name", required: false },
 ];
-
-export function buildEmployees(
-  rows: Record<string, string>[],
-  clientId: string,
-  firmId: string,
-): { records: BuiltEmployee[]; errors: string[] } {
-  const records: BuiltEmployee[] = [];
-  const errors: string[] = [];
-
-  rows.forEach((r, i) => {
-    const rowNo = i + 1;
-    const name = str(r.name);
-    if (!name) { errors.push(`Row ${rowNo}: name is required`); return; }
-
-    const basicPaise = toPaise(r.basic);
-    if (!Number.isFinite(num(r.basic)) || basicPaise <= 0) {
-      errors.push(`Row ${rowNo}: basic salary (₹) must be greater than zero`); return;
-    }
-
-    const pan = str(r.pan).toUpperCase() || undefined;
-    if (pan && !PAN_RE.test(pan)) { errors.push(`Row ${rowNo}: invalid PAN "${pan}"`); return; }
-
-    // Aadhaar: accept the full 12 digits the firm has, but keep ONLY the last 4.
-    // The full number is never placed on the built record (so it is never sent/stored).
-    let aadhaarLast4: string | undefined;
-    const aadhaarDigits = str(r.aadhaar).replace(/\D/g, "");
-    if (aadhaarDigits) {
-      if (aadhaarDigits.length !== 12) { errors.push(`Row ${rowNo}: Aadhaar must be 12 digits`); return; }
-      aadhaarLast4 = aadhaarDigits.slice(-4);
-    }
-
-    const hraRaw = str(r.hra_percent);
-    const hraPercent = hraRaw ? num(r.hra_percent) : 40;
-    if (hraRaw && (!Number.isFinite(hraPercent) || hraPercent < 0)) {
-      errors.push(`Row ${rowNo}: HRA % must be a non-negative number`); return;
-    }
-
-    records.push({
-      client_id: clientId,
-      firm_id: firmId,
-      name,
-      pan,
-      aadhaar_last4: aadhaarLast4,
-      designation: str(r.designation) || undefined,
-      department: str(r.department) || undefined,
-      basic_paise: basicPaise,
-      hra_percent: hraPercent,
-      pf_applicable: toBool(r.pf_applicable, true),
-      esi_applicable: toBool(r.esi_applicable, true),
-      pt_applicable: toBool(r.pt_applicable, false),
-    });
-  });
-
-  return { records, errors };
-}
 
 // ── Credit & Debit Notes ─────────────────────────────────────────────────────
 // Four entities, one shared row-parsing core per side (sales / purchase) since

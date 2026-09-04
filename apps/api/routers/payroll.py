@@ -23,7 +23,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, PayrollSettingsIn, PTSlabSetIn,
                            OneTimeEarningsIn, PayrollEnablementIn,
-                           ReleaseIn, ApplyStructureIn)
+                           ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
 from core.ist_clock import ist_today, month_end_date
 from core.permissions import rbac
@@ -38,6 +38,7 @@ from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll import identity as identity_domain
+from domain.payroll import age as age_domain
 from domain.payroll import attendance as attendance_domain
 from domain.payroll import firm_rates
 from domain.payroll import salary_structure as structure_domain
@@ -374,6 +375,32 @@ def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
     if lwf.is_gap:
         gaps.append(f"{(emp.get('name') or emp.get('id') or 'employee')}: {lwf.note}")
     return gaps
+
+
+def _age_gap(emp: dict, declaration, fy: Optional[str]) -> list[str]:
+    """An OLD-regime employee whose date of birth nobody recorded.
+
+    Part III of the First Schedule widens the nil band at 60 and again at 80,
+    and `domain/payroll/age.senior_status` returns not-senior for an unknown
+    date — which is the right DEFAULT and might be the wrong ANSWER. A zero for
+    "under sixty" and a zero for "we do not know" are the same number meaning
+    opposite things, which is the mistake this list exists to stop.
+
+    ONLY on the old regime, and that is not a shortcut. §115BAC(1A) has one
+    ladder for every individual regardless of age, and payroll withholds on the
+    new regime by default — so reporting a missing date of birth for every
+    employee would put a line on every run that changes nothing, and a gap list
+    nobody can act on is a gap list nobody reads.
+    """
+    if declaration is None or declaration.uses_new_regime:
+        return []
+    if not age_domain.senior_status_unknown(emp.get("date_of_birth"), fy):
+        return []
+    who = emp.get("name") or emp.get("id") or "employee"
+    return [f"{who}: on the old regime with no date of birth on file, so the "
+            f"general slab was used. Part III of the First Schedule widens the "
+            f"nil band at 60 and at 80; if they are 60 or over this "
+            f"over-deducts."]
 
 
 def _to_nearest_rupee(paise: int) -> int:
@@ -995,6 +1022,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         month=pt_month,
         tds_already_deducted_paise=tds_already_deducted_paise,
         months_already_paid=months_already_paid,
+        date_of_birth=emp.get("date_of_birth"),
     )
 
     statutory_deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
@@ -1083,6 +1111,7 @@ def _monthly_tds(
     month: Optional[int],
     tds_already_deducted_paise: int = 0,
     months_already_paid: int = 0,
+    date_of_birth=None,
 ) -> int:
     """This month's TDS under §192, after §192(3).
 
@@ -1127,6 +1156,10 @@ def _monthly_tds(
         # _verified_only_from_month.
         verified_only=_verified_only_from_month(month, declaration),
         professional_tax_paise=professional_tax_paise,
+        # Part III of the First Schedule — the OLD-regime nil band widens at 60
+        # and again at 80. Nothing here supplied it before migration 333, so an
+        # old-regime employee of 62 was withheld on the general ladder.
+        date_of_birth=date_of_birth,
     )
 
     remaining_months = _months_remaining_for_spread(months_already_paid)
@@ -1240,6 +1273,118 @@ def create_employee(
     timeline_service.log(data.client_id, "work", "Employee Added",
         f"{data.name} added to payroll", "info")
     return api_response(True, emp)
+
+
+@router.post("/employees/import")
+def import_employees(
+    data: EmployeeImportIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """A whole employee file, validated as a whole and refused as a whole.
+
+    WHAT THIS REPLACES. The browser validated the spreadsheet — PAN's shape,
+    Aadhaar's truncation, the default HRA — and then POSTed /employees once per
+    row in a loop. Three problems, and the third is the one that hurt:
+
+      * business logic in the frontend, which the house rules forbid;
+      * one Singapore-to-Mumbai round trip per employee;
+      * IT ACCEPTED PART OF A FILE. Thirty-one of fifty employees landed and the
+        CA had no way to tell which nineteen were missing. Fixing the file and
+        re-importing then created a SECOND copy of the thirty-one, because
+        nothing identified an employee across two imports.
+
+    Migration 333's `employee_code` is that identity, so a row whose code is
+    already on file UPDATES rather than duplicates, and re-importing a corrected
+    file is safe. Which is the only way "fix the spreadsheet and upload it
+    again" can be the answer to a refusal.
+
+    All-or-nothing, and there is no lenient mode to turn on: a partially
+    imported payroll master is never what anybody wanted.
+    """
+    assert_client_access(current_user, data.client_id)
+    from domain.payroll import employee_import as importer
+
+    db = _db()
+    if not db:
+        result = importer.validate(data.rows, existing_by_code={})
+        return api_response(True, result.summary())
+
+    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
+
+    # ONE query for every code already on file, not one per row — the whole
+    # reason this endpoint exists is that the per-row shape crossed a region
+    # boundary fifty times.
+    existing = (db.table("payroll_employees").select("id, employee_code")
+                .eq("firm_id", current_user["firm_id"])
+                .eq("client_id", data.client_id).execute().data) or []
+    existing_by_code = {str(r["employee_code"]).lower(): r["id"]
+                        for r in existing if r.get("employee_code")}
+
+    result = importer.validate(data.rows, existing_by_code=existing_by_code)
+    if not result.ok:
+        # 422, not 400: the request is well-formed and the CONTENT is what is
+        # refused. Every problem comes back at once, keyed to the row number the
+        # CA sees in their spreadsheet — a file fixed one error at a time is a
+        # file uploaded nineteen times.
+        raise HTTPException(status_code=422, detail={
+            "message": f"{len(result.problems)} problem(s); nothing was imported.",
+            "problems": result.problems,
+        })
+    if data.dry_run:
+        return api_response(True, {**result.summary(), "dry_run": True})
+
+    created = 0
+    if result.to_create:
+        rows = [{**payload, "firm_id": current_user["firm_id"],
+                 "client_id": data.client_id, "status": "active"}
+                for payload in result.to_create]
+        # One insert for the whole file. PostgREST takes a list, so fifty
+        # employees are one round trip rather than fifty.
+        created = len((db.table("payroll_employees").insert(rows).execute().data) or [])
+
+    updated = 0
+    for employee_id, payload in result.to_update:
+        # An UPDATE per employee, unavoidably: each targets a different id, and
+        # a bulk upsert would need every column of every row restated. This is
+        # the branch a REPEATED import takes, not the first one, and a corrected
+        # file usually changes a handful of people rather than all of them.
+        (db.table("payroll_employees").update(payload)
+         .eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute())
+        updated += 1
+
+    timeline_service.log(
+        data.client_id, "work", "Employees Imported",
+        f"{created} added, {updated} updated from a bulk import", "info")
+    return api_response(True, {"ok": True, "problems": [],
+                               "created": created, "updated": updated})
+
+
+@router.get("/employees/import-template.csv")
+def employee_import_template(
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """The header row this import actually reads.
+
+    Header ONLY, no example rows. A template with examples in it gets uploaded
+    with the examples still in, and "Ravi Kumar, 50000" becomes an employee.
+
+    CsvImportModal also renders a template, from `EMPLOYEE_IMPORT_COLUMNS`. That
+    is not a second implementation: it is the same list rendered where the CA
+    already is, and `test_the_browser_s_column_list_mirrors_the_server_s` holds
+    the two identical — a column the browser offers and this ignores is one a CA
+    fills in that silently does nothing. This endpoint is the AUTHORITY, and the
+    way to get the columns without opening the app.
+    """
+    from fastapi.responses import Response
+    from domain.payroll import employee_import as importer
+
+    return Response(
+        content=importer.template_csv().encode("utf-8-sig"),
+        media_type="text/csv",
+        headers={"Content-Disposition":
+                 'attachment; filename="employee-import-template.csv"'},
+    )
 
 
 @router.patch("/employees/{employee_id}")
@@ -1643,6 +1788,8 @@ def create_run(
                              firm_pt_slabs=firm_pt_slabs, pt_on=pt_on,
                              one_time=one_time_by_emp.get(str(emp["id"])))
         statutory_gaps.extend(_statutory_gaps(emp, pt_covered))
+        statutory_gaps.extend(
+            _age_gap(emp, declarations.get(emp["id"]), fy))
         attendance_gaps.extend(_attendance_gap(emp, attendance is not None))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -4717,6 +4864,7 @@ def record_settlement(
         # A settlement is the end of the employment, so nothing is coming that
         # could still be proved. Only what was verified counts.
         verified_only=True,
+        date_of_birth=emp.get("date_of_birth"),
     )
     tds = max(0, annual_tax - max(0, tds_paid))
     net_paid = max(0, s.net_payable_paise - tds)

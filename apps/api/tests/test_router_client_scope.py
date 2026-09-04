@@ -958,6 +958,14 @@ EXEMPT: dict[str, str] = {
         "a statutory lookup by kind and payment interval — EPF Act s.2(b), ESI "
         "Act s.2(22), IT Act s.17(1). Reads no table and takes no client. The "
         "GET and PUT of the earnings themselves are client-guarded.",
+    # A static header row and nothing else — domain/payroll/employee_import
+    # .template_csv(). It reads no table, takes no client, and returns the same
+    # bytes for every firm. The IMPORT it is a template for
+    # (POST /employees/import) calls assert_client_access.
+    "/api/payroll/employees/import-template.csv":
+        "the CSV header the bulk import reads, built from a module constant. "
+        "No table, no client_id, identical for every caller. POST "
+        "/employees/import is client-guarded.",
     "/api/engagement-letters/templates":
         "engagement_templates has firm_id and no client_id (migration 115) — a "
         "template is firm property, reused across every client. A client guard "

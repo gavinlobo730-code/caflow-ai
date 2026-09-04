@@ -78,6 +78,7 @@ from typing import Optional
 from domain.income_tax.itr_engine import (
     Deductions80C, Deductions80D, HRADetails, ITRComputeRequest, ITREngine,
 )
+from domain.payroll import age as age_domain
 
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 
@@ -354,6 +355,7 @@ def _build_request(
     salary_for_80ccd2_paise: Optional[int] = None,
     professional_tax_paise: int = 0,
     is_government_employee: bool = False,
+    date_of_birth=None,
 ) -> ITRComputeRequest:
     """Turn a declaration into an ITR engine request.
 
@@ -366,6 +368,19 @@ def _build_request(
     regime with nothing claimed, and it reproduces what payroll computed before
     declarations existed.
     """
+    # Part III of the First Schedule: a resident of sixty or more AT ANY TIME
+    # during the previous year gets a wider nil band under the OLD regime, and
+    # wider still at eighty. The engine has always implemented all three ladders
+    # (itr_engine._slabs_for); nothing here ever told it which one applied,
+    # because payroll held no date of birth until migration 333. So an employee
+    # of 62 on an old-regime intimation was withheld on the general ladder and
+    # over-deducted every month. The statutory test is NOT an age on 1 April —
+    # domain/payroll/age.py carries the reasoning and the March-birthday case.
+    #
+    # Unknown reads as not-senior, which is exactly the behaviour that preceded
+    # this: it is not a claim about the employee, and the RUN reports it as a
+    # gap rather than letting the silence stand.
+    is_senior, is_very_senior = age_domain.senior_status(date_of_birth, fy)
     req = ITRComputeRequest(
         gross_salary_paise=max(0, projected_annual_salary_paise),
         fy=fy,
@@ -373,6 +388,8 @@ def _build_request(
         employer_nps_80ccd2_paise=max(0, employer_nps_paise),
         salary_for_80ccd2_paise=salary_for_80ccd2_paise,
         is_government_employee=is_government_employee,
+        is_senior_citizen=is_senior,
+        is_very_senior_citizen=is_very_senior,
     )
     if decl is None:
         return req

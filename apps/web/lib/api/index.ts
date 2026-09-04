@@ -464,6 +464,19 @@ async function errorMessage(res: Response): Promise<string> {
       if (msgs.length) return msgs.join(" · ");
     }
     if (detail && typeof detail === "object" && typeof detail.message === "string") {
+      // A refusal that names WHICH rows is worth more than its headline. The
+      // employee bulk import returns {message, problems[]} and the problems are
+      // the whole point — a file fixed one error at a time is a file uploaded
+      // nineteen times. Capped, because a fifty-row file of nonsense produces
+      // fifty problems and a toast is not a report.
+      const problems = Array.isArray(detail.problems)
+        ? (detail.problems as unknown[]).filter((p): p is string => typeof p === "string")
+        : [];
+      if (problems.length) {
+        const shown = problems.slice(0, 10).join(" · ");
+        const rest = problems.length > 10 ? ` · and ${problems.length - 10} more` : "";
+        return `${detail.message} ${shown}${rest}`;
+      }
       return detail.message;
     }
   } catch {
@@ -1293,6 +1306,34 @@ export const api = {
       downloadFile(
         `/api/payroll/reports/salary-register.csv?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`,
         `salary-register-${month}.csv`),
+    /** THE EMPLOYEE MASTER, AS ONE FILE AND ONE DECISION.
+     *
+     *  This replaces a browser-side validator (`buildEmployees`) and a loop
+     *  that POSTed /employees once per row. Three problems with that, and the
+     *  third is the one that hurt: business logic in the frontend; one
+     *  Singapore-to-Mumbai round trip per employee; and IT ACCEPTED PART OF A
+     *  FILE — thirty-one of fifty employees landed and the CA had no way to
+     *  tell which nineteen were missing. Re-importing the corrected file then
+     *  made a second copy of the thirty-one.
+     *
+     *  Migration 333's `employee_code` is what fixed that: a row whose code is
+     *  already on file UPDATES rather than duplicates.
+     *
+     *  A refusal is a 422 whose message names every offending row. `dryRun`
+     *  shows what a clean file would do before anything is written.
+     */
+    importEmployees: (clientId: string, rows: Record<string, string>[], dryRun = false) =>
+      request<{ success: boolean; data: {
+        ok: boolean; problems: string[];
+        created?: number; updated?: number;
+        would_create?: number; would_update?: number;
+      } }>(`/api/payroll/employees/import`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, rows, dry_run: dryRun }),
+      }),
+    downloadEmployeeImportTemplate: () =>
+      downloadFile("/api/payroll/employees/import-template.csv",
+                   "employee-import-template.csv"),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
 

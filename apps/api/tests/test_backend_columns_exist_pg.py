@@ -185,7 +185,20 @@ UNFIXED: dict[str, str] = {}
 # esi_wages, taxable, payment_interval_months, note, entered_by, entered_at —
 # rather than "*", precisely so this scanner verifies them all against the real
 # schema.
-MAX_UNREADABLE = 439
+# 439 -> 441: routers/payroll's employee bulk import (migration 333) writes with
+# a **payload spread — one insert built by a list comprehension over the
+# validated rows, and one update per employee whose code was already on file.
+# Both are unreadable to this scanner for the usual reason: the column names
+# come from a dict domain/payroll/employee_import.py built, not from a literal.
+#
+# The columns are checked, twice over and more strictly than here. The import's
+# OWN read names them literally — select("id, employee_code") — so the
+# idempotency key is verified against the real schema by this scanner; and
+# tests/test_333_an_employee_has_a_code_and_a_dob_pg.py INSERTS employee_code
+# and date_of_birth into real PostgreSQL, which proves the columns exist, their
+# types accept the values, and their constraints refuse what they should. A
+# scanner can only prove the first of those three.
+MAX_UNREADABLE = 441
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
