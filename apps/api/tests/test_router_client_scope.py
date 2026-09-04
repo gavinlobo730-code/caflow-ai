@@ -929,6 +929,24 @@ FOLLOW: dict[str, str] = {
 # endpoint nobody looked at — which is the whole point of listing them here
 # rather than loosening the sweep.
 EXEMPT: dict[str, str] = {
+    # ── /api/payroll: the firm's own reading of a state notification ────────
+    # firm_pt_slabs has firm_id and NO client_id (migration 327), and that is
+    # the whole point of it: professional tax is levied by the STATE, so the
+    # slab a CA reads off the Gujarat notification is the same slab for every
+    # client of that firm with staff in Gujarat. Recording it once is what makes
+    # the marginal cost of the next state zero, and a client guard here would
+    # have to invent a client to check.
+    #
+    # The figure DOES reach client data — it drives a deduction on a payslip —
+    # and that path is guarded where it belongs: create_run calls
+    # assert_client_access before it reads these rows.
+    "/api/payroll/statutory-values":
+        "firm_pt_slabs is firm property with no client_id (migration 327) — "
+        "professional tax is a state levy, so one recorded slab set serves "
+        "every client of the firm in that state. The run that USES it is "
+        "client-guarded.",
+    "/api/payroll/statutory-values/pt":
+        "same table: recording and removing one state's slab set.",
     "/api/engagement-letters/templates":
         "engagement_templates has firm_id and no client_id (migration 115) — a "
         "template is firm property, reused across every client. A client guard "
