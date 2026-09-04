@@ -2976,6 +2976,76 @@ def put_payroll_settings(
                                "note": row.get("note")})
 
 
+@router.get("/client-states")
+def payroll_client_states(
+    month: Optional[str] = Query(None, description='Payroll month, e.g. "2026-08". '
+                                                   'Defaults to the current IST month.'),
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Where every client of this firm stands on one payroll month.
+
+    THE FIRM GRAIN. Every other payroll read in this router answers for ONE
+    client, because that is where a month is completed. This one answers for the
+    firm, because that is where a month is FOUND — and a CA firm's client list
+    is the screen they actually open first.
+
+    TWO QUERIES FOR THE WHOLE FIRM, not two per client. Both tables hold at most
+    one row per client, so this is a few kilobytes whatever the firm's size; the
+    per-client loop that would otherwise sit here is the shape
+    docs/architecture/10-payroll.md's reporting rule exists to forbid.
+
+    A client with payroll switched off is REPORTED, not omitted. "We do not run
+    payroll for them" and "we do and have not started" are different answers,
+    and a list that shows only the second cannot tell a CA which is which.
+
+    SCOPED TO THE CALLER'S CLIENTS, not merely to their firm. This is the one
+    payroll endpoint that answers for many clients at once, so it is also the
+    one where firm scoping alone would be a leak: an Executive assigned to four
+    clients would otherwise read the headcount and net pay of all forty. The
+    filter is filter_by_client (core/authz.py), the same helper every other
+    firm-wide list in this codebase uses, applied to the assembled rows rather
+    than to each query — the rows are already keyed by client_id, and filtering
+    once is both cheaper and impossible to apply to only half the data.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    month = (month or ist_today().strftime("%Y-%m")).strip()
+
+    if not db:
+        return api_response(True, {"month": month, "clients": []})
+
+    enabled = {}
+    for row in ((db.table("client_payroll_settings")
+                 .select("client_id, payroll_enabled, inputs_due_day")
+                 .eq("firm_id", firm_id).execute().data) or []):
+        enabled[str(row.get("client_id"))] = row
+
+    runs = {}
+    for row in ((db.table("payroll_runs")
+                 .select("client_id, status, headcount, total_net_paise")
+                 .eq("firm_id", firm_id).eq("month", month)
+                 .execute().data) or []):
+        runs[str(row.get("client_id"))] = row
+
+    out = []
+    for cid in sorted(set(enabled) | set(runs)):
+        setting = enabled.get(cid) or {}
+        run = runs.get(cid)
+        out.append({
+            "client_id": cid,
+            "payroll_enabled": bool(setting.get("payroll_enabled")),
+            "inputs_due_day": setting.get("inputs_due_day"),
+            # None means no run for this month — which for an ENABLED client is
+            # "not started" and for a disabled one is simply not applicable.
+            # Left as None rather than invented, so the screen can say which.
+            "run_status": (run or {}).get("status"),
+            "headcount": (run or {}).get("headcount"),
+            "total_net_paise": (run or {}).get("total_net_paise"),
+        })
+    return api_response(True, {"month": month,
+                               "clients": filter_by_client(current_user, out)})
+
+
 @router.put("/enablement")
 def put_payroll_enablement(
     body: PayrollEnablementIn,

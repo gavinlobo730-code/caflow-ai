@@ -15,6 +15,7 @@ logic is server-side; the pure helpers here are deterministic and unit-tested.
 """
 import os
 import logging
+import re
 from calendar import month_name
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
@@ -230,6 +231,88 @@ def has_non_resident_vendors(client_id: str, firm_id: Optional[str] = None) -> b
         return False
 
 
+def _names(service_type: str, abbreviation: str) -> bool:
+    """Does this service name MENTION a statutory abbreviation, rather than
+    merely contain its letters?
+
+    `"roc" in s` was the test, and "roc" sits inside "p-ROC-essing". So a
+    service called "Payroll processing" — or "Invoice processing", or
+    "Bookkeeping and processing" — generated AOC-4 and MGT-7 against a client
+    that may not be a company at all, silently, for every financial year
+    anybody generated. This module's own comments say twice over that a WRONG
+    date in a CA's calendar is worse than a missing one, because a missing one
+    is a gap somebody notices and a wrong one is trusted; two ROC filings
+    conjured out of the word "processing" are exactly that.
+
+    Anchored at the start of a word and NOT at the end, deliberately: "gstr-1
+    filing" and "gstr" have to keep matching "gst", and every real false
+    positive found by sweeping the four abbreviations against the service
+    catalogue's own vocabulary was a mid-word one.
+
+    Only the short abbreviations go through here. "advance tax", "income tax",
+    "audit", "payroll" and "salary" are long enough or multi-word enough that
+    they do not embed in anything a firm would name a service.
+    """
+    return re.search(r"\b" + re.escape(abbreviation), service_type) is not None
+
+
+def _payroll_obligations(financial_year: str) -> list[dict]:
+    """The statutory DEPOSITS one client's payroll owes for one FY.
+
+    Running payroll is not a filing service, which is why this module said for
+    so long that payroll "implies no filing obligations and returns []". That is
+    true of the RETURN and false of the DEPOSIT: every month a payroll is run,
+    three separate authorities are owed money on three different dates, and
+    missing any of them costs interest that dwarfs the fee.
+
+      EPF   15th of the following month — EPF Scheme 1952, para 38(1).
+            Late draws 12% a year under §7Q PLUS damages under §14B of up to
+            100% of the arrear.
+      ESI   15th of the following month — ESI (General) Regulations 1950,
+            reg. 31. It was the 21st until the 2017 amendment, so a date copied
+            from older material is a week late.
+      TDS   7th of the following month — IT Act §192 with Rule 30(2) — EXCEPT
+            March, which is 30 April. §201(1A)(ii) charges 1.5% a month from
+            the date of DEDUCTION rather than the due date, so three weeks late
+            on March costs two months of interest, not one.
+
+    Every date comes from compliance_engine.payroll_deposit_due_dates, which has
+    computed all three since the payroll module was built and which NOTHING has
+    ever called. This is the caller.
+
+    PROFESSIONAL TAX IS DELIBERATELY ABSENT, and that is the same refusal
+    payroll_deposit_due_dates makes: its due date is fixed by each state and
+    there is no single rule, so inventing one would put a wrong date in a CA's
+    calendar. A missing date is a gap somebody notices; a wrong one is trusted.
+
+    THE 24Q RETURN IS NOT HERE EITHER — it is already emitted by
+    _tds_obligations, quarterly, for a TDS engagement. Emitting it again from
+    the payroll side would put the same deadline in the calendar twice for the
+    clients where a firm runs both, and the dedup key is
+    (obligation_type, period_start), which would not catch it.
+    """
+    out: list[dict] = []
+    for (y, m) in fy_months(financial_year):
+        ps = date(y, m, 1)
+        pe = ce.last_day_of_month(y, m)
+        lbl = f"{month_name[m]} {y}"
+        for dep in ce.payroll_deposit_due_dates(y, m):
+            out.append(_spec(_PAYROLL_OBLIGATION_TYPE[dep["label"]], "Payroll",
+                             f"{dep['label']} {lbl}", ps, pe, dep["due_date"]))
+    return out
+
+
+# The obligation_type each deposit is recorded under. Stable strings, because
+# the generator dedups on (obligation_type, period_start) — renaming one would
+# make every existing row invisible to the dedup and generate the whole year
+# again beside itself.
+_PAYROLL_OBLIGATION_TYPE = {
+    "EPF contribution": "EPF_DEPOSIT",
+    "ESI contribution": "ESI_DEPOSIT",
+    "TDS on salary": "TDS_SALARY_DEPOSIT",
+}
+
+
 def _itr_obligation(financial_year: str, is_audit: bool = False) -> list[dict]:
     fye = fy_end_year(financial_year)
     return [_spec("ITR", "Income Tax", f"ITR FY {financial_year}",
@@ -276,8 +359,13 @@ def obligations_for_service(service_type: str, financial_year: str,
                             gst_state_code: Optional[str] = None,
                             client_has_non_resident_vendors: bool = False) -> list[dict]:
     """Deterministic, pure: the statutory obligations a service engagement implies for
-    one FY. Keyword-matched on service_type. Non-statutory services (accounting /
-    bookkeeping / payroll) imply no filing obligations and return [].
+    one FY. Keyword-matched on service_type. Accounting and bookkeeping imply no
+    filing obligations and return [].
+
+    PAYROLL USED TO BE IN THAT SENTENCE and should not have been. It implies no
+    RETURN, which is what the sentence meant, but it implies three DEPOSITS
+    every month — EPF, ESI and salary TDS — to three authorities on two
+    different dates. See _payroll_obligations.
 
     client_has_non_resident_vendors is passed IN rather than looked up here, so
     this stays pure and unit-testable — the same reason gst_frequency and
@@ -287,18 +375,20 @@ def obligations_for_service(service_type: str, financial_year: str,
     """
     s = (service_type or "").lower()
     specs: list[dict] = []
-    if "gst" in s:
+    if _names(s, "gst"):
         specs += _gst_obligations(financial_year, gst_frequency, gst_state_code)
-    if "tds" in s:
+    if _names(s, "tds"):
         specs += _tds_obligations(financial_year, client_has_non_resident_vendors)
     if "advance tax" in s:
         specs += _advance_tax_obligations(financial_year)
-    elif "itr" in s or "income tax" in s:
+    elif _names(s, "itr") or "income tax" in s:
         specs += _itr_obligation(financial_year)
-    if "roc" in s or "mca" in s:
+    if _names(s, "roc") or _names(s, "mca"):
         specs += _roc_obligations(financial_year, agm_date)
     if "audit" in s:
         specs += _tax_audit_obligation(financial_year)
+    if "payroll" in s or "salary" in s:
+        specs += _payroll_obligations(financial_year)
     return specs
 
 

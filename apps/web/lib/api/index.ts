@@ -1226,6 +1226,15 @@ export const api = {
     oneTimeEarningDefaults: (kind: string, intervalMonths?: number | null) =>
       request(`/api/payroll/one-time-earnings/defaults?kind=${encodeURIComponent(kind)}`
         + (intervalMonths ? `&payment_interval_months=${intervalMonths}` : "")),
+    /** Where every client of this firm stands on one payroll month.
+     *
+     *  The FIRM grain — every other payroll read answers for one client. Two
+     *  queries server-side for the whole firm, and scoped to the caller's own
+     *  clients rather than merely their firm, so an Executive assigned to four
+     *  does not read the headcount and net pay of forty.
+     */
+    payrollClientStates: (month?: string) =>
+      request(`/api/payroll/client-states${month ? `?month=${encodeURIComponent(month)}` : ""}`),
     /** Switch payroll on or off for one client. PARTNER ONLY (migration 332).
      *
      *  Through the API and NOT PostgREST, and that is not a convention here —

@@ -30,6 +30,13 @@ import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skel
 function matchesUrlType(complianceType: string, urlType: string): boolean {
   if (urlType === "TDS") return complianceType.startsWith("TDS") || complianceType === "TCS_RETURN";
   if (urlType === "MCA") return complianceType.startsWith("MCA");
+  // The three monthly payroll DEPOSITS — EPF, ESI and salary TDS. Grouped by
+  // the suffix rather than a list, because they are the only obligations that
+  // are a payment to an authority rather than a return, and nothing else in the
+  // set ends this way. TDS_SALARY_DEPOSIT is deliberately caught by the "TDS"
+  // group as well: it genuinely is TDS, and a CA filtering to TDS should see
+  // what they owe as well as what they file.
+  if (urlType === "PAYROLL") return complianceType.endsWith("_DEPOSIT");
   return complianceType === urlType;
 }
 
@@ -39,6 +46,7 @@ const TYPE_LABELS: Record<string, string> = {
   ITR:    "Income Tax",
   TDS:    "TDS",
   MCA:    "MCA",
+  PAYROLL: "Payroll deposits",
 };
 
 interface EmptyStateCopy { title: string; desc: string }
@@ -48,6 +56,7 @@ const TYPE_EMPTY_STATES: Record<string, EmptyStateCopy> = {
   ITR:    { title: "No Income Tax deadlines found",   desc: "Create a client and add an Income Tax compliance obligation." },
   TDS:    { title: "No TDS deadlines found",          desc: "Create a client and add a TDS compliance obligation." },
   MCA:    { title: "No MCA deadlines found",          desc: "Create a client and add an MCA compliance obligation." },
+  PAYROLL: { title: "No payroll deposits found",      desc: "Payroll deposits — EPF, ESI and salary TDS — are generated for a client with a payroll engagement." },
 };
 
 // ─── Styling ───────────────────────────────────────────────────────────────
@@ -62,7 +71,13 @@ const FILING_STATUS_COLORS: Record<string, string> = {
 // TDS27Q is here so a firm that HAS non-resident payees can filter to it. The
 // "TDS" group filter above already catches it by prefix, so a firm that has
 // none never sees the option and never sees an empty row for it either.
-const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "TDS27Q", "ADVANCE_TAX", "MCA_AOC4", "MCA_MGT7"];
+// EPF/ESI/TDS_SALARY are the monthly payroll DEPOSITS (EPF Scheme 1952 para
+// 38(1), ESI Regulations reg. 31, IT Act Rule 30(2)). They were computed by
+// services/compliance_engine.payroll_deposit_due_dates from the day the payroll
+// module was built and reached no calendar until the generator started emitting
+// them — three authorities owed money every month, on two different dates,
+// nowhere on this screen.
+const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "TDS27Q", "ADVANCE_TAX", "MCA_AOC4", "MCA_MGT7", "EPF_DEPOSIT", "ESI_DEPOSIT", "TDS_SALARY_DEPOSIT"];
 const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 
 function LoadingSpinner() {
