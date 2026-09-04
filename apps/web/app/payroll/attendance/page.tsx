@@ -3,7 +3,22 @@
 /**
  * Attendance & Leave Management — PracticeSync AI
  * All leave/attendance data stored per employee per month/year.
- * LOP (Loss of Pay) = Working Days - Days Present - CL - SL - EL
+ *
+ * LOP (Loss of Pay) = Working Days - Days Present - CL - SL - EL, and the
+ * SERVER is the authority on it (domain/payroll/attendance.py). This page no
+ * longer writes public.attendance directly, for two reasons:
+ *
+ *   1. calcLOP below floors the remainder at zero, so 26 days present plus
+ *      four days' casual leave in a 26-day month became "no loss of pay" and a
+ *      full month's salary. The endpoint refuses that row instead; the floor
+ *      survives here only to render the same number for a row that IS valid,
+ *      and a negative remainder is now shown as the contradiction it is.
+ *
+ *   2. Save used to upsert `Object.values(attendance)` — the whole editor,
+ *      which seeds a default 26/26 row for every employee that has none. One
+ *      press therefore asserted a confident full month for the entire firm's
+ *      roster, and payroll_slips.attendance_entered (migration 324) then read
+ *      true for everybody. Only TOUCHED employees are sent now.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -14,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { api } from "@/lib/api";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
@@ -25,6 +41,9 @@ type Employee = {
   id: string;
   name: string;
   designation: string;
+  /** The endpoint is client-scoped, as the rest of the app is; this page is
+   *  the firm-wide rail, so a save fans out one request per client. */
+  client_id: string;
 };
 
 type AttendanceRow = {
@@ -84,9 +103,16 @@ const ATTENDANCE_EXPORT_COLUMNS: Column<AttendanceExportRow>[] = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** The remainder BEFORE the floor. Negative means the days entered add up to
+ *  more than the month contains, which is a contradiction the CA has to
+ *  resolve — the server refuses such a row. calcLOP's `Math.max(0, …)` used to
+ *  hide it, and hiding it paid a full month. */
+function rawLOP(row: AttendanceRow): number {
+  return row.working_days - row.days_present - row.casual_leaves - row.sick_leaves - row.earned_leaves;
+}
+
 function calcLOP(row: AttendanceRow): number {
-  const lop = row.working_days - row.days_present - row.casual_leaves - row.sick_leaves - row.earned_leaves;
-  return Math.max(0, lop);
+  return Math.max(0, rawLOP(row));
 }
 
 function calcNetPayDays(row: AttendanceRow): number {
@@ -117,6 +143,12 @@ export default function AttendancePage() {
   // Leave balance tab state
   const [leaveYear, setLeaveYear] = useState(today.getFullYear());
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
+  /** Employees who genuinely HAVE a row for this month. Not the same as the
+   *  editor having values for them — the editor seeds a 26/26 default for
+   *  everybody, which is exactly what used to get written. */
+  const [entered, setEntered] = useState<Set<string>>(new Set());
+  /** Employees the CA actually edited. Only these are sent. */
+  const [touched, setTouched] = useState<Set<string>>(new Set());
   const [editingLeave, setEditingLeave] = useState<string | null>(null);
   const [editLeaveForm, setEditLeaveForm] = useState<Partial<LeaveBalance>>({});
 
@@ -129,7 +161,7 @@ export default function AttendancePage() {
       const sb = getSupabaseClient();
 
       // Load employees from payroll_employees table
-      const empRes = await sb.from("payroll_employees").select("id, name, designation").eq("firm_id", fid);
+      const empRes = await sb.from("payroll_employees").select("id, name, designation, client_id").eq("firm_id", fid);
       if (empRes.error) throw empRes.error;
       const emps: Employee[] = empRes.data ?? [];
       setEmployees(emps);
@@ -142,8 +174,14 @@ export default function AttendancePage() {
       if (attRes.error) throw attRes.error;
 
       const attMap: Record<string, AttendanceRow> = {};
+      // The editor still seeds a default so the inputs have something to show.
+      // What changed is that the seed is no longer indistinguishable from a
+      // saved row: `entered` records which employees actually have one, and
+      // only `touched` rows are ever sent.
+      const have = new Set<string>();
       for (const emp of emps) {
         const existing = (attRes.data ?? []).find((a: AttendanceRow & { employee_id: string }) => a.employee_id === emp.id);
+        if (existing) have.add(emp.id);
         attMap[emp.id] = existing
           ? {
               employee_id: emp.id,
@@ -163,6 +201,8 @@ export default function AttendancePage() {
             };
       }
       setAttendance(attMap);
+      setEntered(have);
+      setTouched(new Set());
     } catch {
       setLoadFailed(true);
     } finally {
@@ -221,34 +261,90 @@ export default function AttendancePage() {
       ...prev,
       [empId]: { ...prev[empId], [field]: Math.max(0, value) },
     }));
+    // Touching a row is what makes it savable. Without this the save would
+    // have to guess, and the old guess was "everything".
+    setTouched(prev => new Set(prev).add(empId));
   }
 
+  /** Save ONLY the employees the CA touched, through the API.
+   *
+   *  What this replaces upserted `Object.values(attendance)` straight into
+   *  PostgREST — the whole editor, including the 26/26 default seeded for
+   *  every employee that had no row. One press wrote a confident full month
+   *  for the entire firm, and payroll_slips.attendance_entered (migration 324)
+   *  then read true for people nobody had looked at.
+   *
+   *  `lop_days` is deliberately NOT sent: the server derives it, and a sent
+   *  value that contradicts the others is refused rather than corrected.
+   *
+   *  The endpoint is client-scoped, so a firm-wide edit fans out one request
+   *  per client. Each is validated and refused whole, so a client whose rows
+   *  do not add up is reported by name and nothing of that client's is
+   *  written — the others still save, and the message says which failed.
+   */
   async function saveAttendance() {
-    if (!firmId) return;
+    const month = `${attYear}-${String(attMonth).padStart(2, "0")}`;
+    const toSave = employees.filter(e => touched.has(e.id) && attendance[e.id]);
+    if (toSave.length === 0) {
+      setSaveMsg("Nothing to save — no attendance was changed.");
+      setTimeout(() => setSaveMsg(""), 3000);
+      return;
+    }
+
+    const byClient: Record<string, Employee[]> = {};
+    for (const emp of toSave) {
+      (byClient[emp.client_id] ??= []).push(emp);
+    }
+
     setSaving(true);
     setSaveMsg("");
-    const sb = getSupabaseClient();
-    const rows = Object.values(attendance).map(row => ({
-      firm_id: firmId,
-      employee_id: row.employee_id,
-      month: attMonth,
-      year: attYear,
-      working_days: row.working_days,
-      days_present: row.days_present,
-      casual_leaves: row.casual_leaves,
-      sick_leaves: row.sick_leaves,
-      earned_leaves: row.earned_leaves,
-      lop_days: calcLOP(row),
-    }));
+    let saved = 0;
+    const failures: string[] = [];
+
     try {
-      const { error } = await sb.from("attendance").upsert(rows, { onConflict: "employee_id,month,year" });
-      setSaveMsg(error ? `Error: ${error.message}` : "Attendance saved successfully.");
-    } catch (e) {
-      setSaveMsg(`Error: ${e instanceof Error ? e.message : "the request failed"}`);
+    for (const [clientId, emps] of Object.entries(byClient)) {
+      const rows = emps.map(emp => {
+        const row = attendance[emp.id];
+        return {
+          employee_id: emp.id,
+          working_days: row.working_days,
+          days_present: row.days_present,
+          casual_leaves: row.casual_leaves,
+          sick_leaves: row.sick_leaves,
+          earned_leaves: row.earned_leaves,
+        };
+      });
+      try {
+        const res = await api.payroll.saveAttendance({ client_id: clientId, month, rows }) as
+          { success?: boolean; error?: string | null; detail?: string; data?: { saved?: number } };
+        if (res?.success === false) {
+          // The server's own sentence names the employee and the field. A
+          // generic "couldn't save" would throw away the only useful part.
+          failures.push(res.error || res.detail || "the request was refused");
+        } else {
+          saved += res?.data?.saved ?? rows.length;
+        }
+      } catch (e) {
+        failures.push(e instanceof Error ? e.message : "the request failed");
+      }
+    }
+
     } finally {
+      // In a finally, per scripts/loading-flags.test.ts: a flag left raised
+      // leaves the Save button permanently disabled until the page reloads,
+      // and here that would look exactly like a save in progress.
       setSaving(false);
     }
-    setTimeout(() => setSaveMsg(""), 3000);
+
+    setSaveMsg(failures.length
+      ? `Error: ${failures.join(" ")}`
+      : `Attendance saved for ${saved} employee${saved === 1 ? "" : "s"}.`);
+    if (!failures.length) {
+      await load();
+      // A refusal has to stay on screen long enough to read and act on; a
+      // success does not.
+      setTimeout(() => setSaveMsg(""), 3000);
+    }
   }
 
   async function saveLeaveBalance(lb: LeaveBalance) {
@@ -371,8 +467,11 @@ export default function AttendancePage() {
                     >
                       <Download size={14} />Export
                     </Button>
-                    <Button size="sm" onClick={saveAttendance} disabled={saving} className="flex items-center gap-1.5">
-                      <Save size={14} />{saving ? "Saving..." : "Save Attendance"}
+                    <Button size="sm" onClick={saveAttendance} disabled={saving || touched.size === 0} className="flex items-center gap-1.5">
+                      <Save size={14} />
+                      {saving ? "Saving..."
+                        : touched.size === 0 ? "Save Attendance"
+                        : `Save ${touched.size} employee${touched.size === 1 ? "" : "s"}`}
                     </Button>
                   </div>
                 </div>
@@ -410,13 +509,30 @@ export default function AttendancePage() {
                             working_days: 26, days_present: 26,
                             casual_leaves: 0, sick_leaves: 0, earned_leaves: 0,
                           };
+                          const remainder = rawLOP(row);
                           const lop = calcLOP(row);
                           const netDays = calcNetPayDays(row);
+                          const isEntered = entered.has(emp.id);
+                          const isTouched = touched.has(emp.id);
                           return (
-                            <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
+                            <tr key={emp.id} className={`border-b hover:bg-[#F8FAFC] ${remainder < 0 ? "bg-red-50" : ""}`}>
                               <td className="py-3 px-4">
                                 <div className="font-medium text-[#0F172A]">{emp.name}</div>
                                 {emp.designation && <div className="text-xs text-[#64748B]">{emp.designation}</div>}
+                                {/* The whole point of the fix, on the row. A seeded
+                                    26/26 and a saved 26/26 used to look identical,
+                                    and the old Save turned every one of the first
+                                    kind into the second. */}
+                                {!isEntered && !isTouched && (
+                                  <div className="text-[10px] font-medium text-amber-600 mt-0.5">
+                                    Not entered — the run will assume a full month
+                                  </div>
+                                )}
+                                {isTouched && (
+                                  <div className="text-[10px] font-medium text-blue-600 mt-0.5">
+                                    Edited — will be saved
+                                  </div>
+                                )}
                               </td>
                               {(["working_days", "days_present", "casual_leaves", "sick_leaves", "earned_leaves"] as const).map(field => (
                                 <td key={field} className="py-2 px-3 text-center">
@@ -431,10 +547,22 @@ export default function AttendancePage() {
                                 </td>
                               ))}
                               <td className="py-3 px-3 text-center">
-                                <span className={`font-semibold ${lop > 0 ? "text-red-600" : "text-[#94A3B8]"}`}>{lop}</span>
+                                {remainder < 0 ? (
+                                  // Shown rather than floored. The server refuses
+                                  // this row, and quietly displaying 0 would leave
+                                  // the CA wondering why the save was rejected.
+                                  <span className="text-[10px] font-medium text-red-700">
+                                    {row.days_present + row.casual_leaves + row.sick_leaves + row.earned_leaves} days
+                                    entered vs {row.working_days} working
+                                  </span>
+                                ) : (
+                                  <span className={`font-semibold ${lop > 0 ? "text-red-600" : "text-[#94A3B8]"}`}>{lop}</span>
+                                )}
                               </td>
                               <td className="py-3 px-3 text-center">
-                                <span className="font-semibold text-green-700">{netDays}</span>
+                                {remainder < 0
+                                  ? <span className="text-[#94A3B8]">—</span>
+                                  : <span className="font-semibold text-green-700">{netDays}</span>}
                               </td>
                             </tr>
                           );
@@ -615,17 +743,40 @@ export default function AttendancePage() {
               const emp = employees.find(e => e.name.toLowerCase() === row.employee_name?.toLowerCase());
               if (!emp) { errors.push(`Employee "${row.employee_name}" not found`); continue; }
               const empId = emp.id;
+              // `|| 26` turned an unparseable working_days into a confident 26
+              // and `|| 0` turned an unparseable leave count into no leave —
+              // the same silent-default fault as the seeded row, one column
+              // down. A number that is not a number rejects the ROW.
+              const nums: Record<string, number> = {};
+              let bad = false;
+              for (const [field, fallback] of [["working_days", 26], ["days_present", 26],
+                                               ["casual_leaves", 0], ["sick_leaves", 0],
+                                               ["earned_leaves", 0]] as [string, number][]) {
+                const raw = (row as Record<string, string | undefined>)[field];
+                if (raw === undefined || raw === "") { nums[field] = fallback; continue; }
+                const n = Number(raw.trim());
+                if (!Number.isInteger(n) || n < 0) {
+                  errors.push(`${emp.name}: ${field} "${raw}" is not a whole number of days`);
+                  bad = true;
+                  break;
+                }
+                nums[field] = n;
+              }
+              if (bad) continue;
               setAttendance(prev => ({
                 ...prev,
                 [empId]: {
                   employee_id: empId,
-                  working_days: parseInt(row.working_days ?? "26") || 26,
-                  days_present: parseInt(row.days_present ?? "26") || 26,
-                  casual_leaves: parseInt(row.casual_leaves ?? "0") || 0,
-                  sick_leaves: parseInt(row.sick_leaves ?? "0") || 0,
-                  earned_leaves: parseInt(row.earned_leaves ?? "0") || 0,
+                  working_days: nums.working_days,
+                  days_present: nums.days_present,
+                  casual_leaves: nums.casual_leaves,
+                  sick_leaves: nums.sick_leaves,
+                  earned_leaves: nums.earned_leaves,
                 },
               }));
+              // An imported row is an entered row: it goes to the server on the
+              // next Save, and nothing else would mark it.
+              setTouched(prev => new Set(prev).add(empId));
               imported++;
             }
             return { imported, errors };

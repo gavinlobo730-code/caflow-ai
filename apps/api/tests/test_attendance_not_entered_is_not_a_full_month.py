@@ -91,6 +91,12 @@ def test_an_entered_attendance_row_is_still_honoured():
 
 
 # ── the run ──────────────────────────────────────────────────────────────────
+#
+# The attendance seeds carry firm_id because public.attendance requires it
+# (NOT NULL, migration 027) and the run's read filters on it. That filter was
+# added with migration 326: the ids were already firm-scoped, but the
+# service-role key bypasses RLS and CLAUDE.md makes the app-layer firm filter
+# the primary isolation control, not an optimisation.
 
 import routers.payroll as payroll_mod  # noqa: E402
 from tests.e2e_harness import FakeDB, wire_e2e  # noqa: E402
@@ -125,7 +131,8 @@ def test_the_run_names_every_employee_nobody_entered_attendance_for(monkeypatch)
     _seed_employee(db, "Asha", "e-asha")
     _seed_employee(db, "Bikram", "e-bikram")
     # Only Asha has attendance. Bikram is the silent full month.
-    db.seed("attendance", {"employee_id": "e-asha", "month": 6, "year": 2026,
+    db.seed("attendance", {"firm_id": FIRM, "employee_id": "e-asha",
+                           "month": 6, "year": 2026,
                            "working_days": 26, "days_present": 24, "lop_days": 2})
 
     out = payroll_mod.create_run(
@@ -141,7 +148,8 @@ def test_a_slip_records_that_nobody_entered_attendance(monkeypatch):
     db = _run_db(monkeypatch)
     _seed_employee(db, "Asha", "e-asha")
     _seed_employee(db, "Bikram", "e-bikram")
-    db.seed("attendance", {"employee_id": "e-asha", "month": 6, "year": 2026,
+    db.seed("attendance", {"firm_id": FIRM, "employee_id": "e-asha",
+                           "month": 6, "year": 2026,
                            "working_days": 26, "days_present": 24, "lop_days": 2})
 
     payroll_mod.create_run(
