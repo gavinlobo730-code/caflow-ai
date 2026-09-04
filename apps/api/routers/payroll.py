@@ -2119,7 +2119,12 @@ def disburse_run(
         raise HTTPException(status_code=400,
                             detail=f"Link {bank.get('bank_name', 'this bank account')} to a ledger account before disbursing salaries from it.")
 
-    payment_date = data.payment_date or str(datetime.now(timezone.utc).date())
+    # ist_today(), not the UTC date. A disbursement posts on the day the money
+    # left, and that day is the Indian business day: between midnight and 05:30
+    # IST the UTC date is still YESTERDAY, so a payment made at 2am on the 1st
+    # posted into the previous month — and period_validation_service then
+    # validated it against the wrong financial year. Same bug the accrual had.
+    payment_date = data.payment_date or ist_today().isoformat()
 
     from services.phase2_journal_service import Phase2JournalService
     svc = Phase2JournalService()
@@ -2194,7 +2199,12 @@ def reverse_run(
 
     from services.phase2_journal_service import phase2_journal_service
     from services.period_validation_service import period_validation_service
-    reversal_date = str(datetime.now(timezone.utc).date())
+    # A reversal is a NEW posting dated when it happens — which is the Indian
+    # business day, not the UTC one. Before 05:30 IST they are different days,
+    # and on 1 April they are different FINANCIAL YEARS: a reversal made at 2am
+    # IST on 1 April would post to 31 March, into a year a CA may have just
+    # locked, and be validated against it below.
+    reversal_date = ist_today().isoformat()
     # FY-lock: a reversal is a new posting — block it if its date is in a locked year.
     period_validation_service.validate_posting_date(firm_id, reversal_date)
 
@@ -2222,6 +2232,18 @@ def reverse_run(
         "paid_from_account_id":          None,
         "payment_reference":             None,
     }).eq("id", run_id).eq("firm_id", firm_id).execute()
+
+    # ONTO THE TRANSITION LOG, like every other status move (migration 328).
+    # It was the only one that did not reach it — and it is the move a reviewer
+    # would most want there, because it is the one that UNDOES a release. The
+    # log said a run was finalised on the 3rd and paid on the 5th, and nothing
+    # at all about the reversal on the 6th that took both back; a month later
+    # the run reads as a draft that was never released.
+    #
+    # `run` still carries the pre-update status, so from_status records what was
+    # actually reversed — finalized or paid — rather than the 'review' it has
+    # just become.
+    _log_transition(db, firm_id, run, "review", current_user.get("id"))
 
     timeline_service.log(run["client_id"], "work", "Payroll Reversed",
         f"Payroll for {run['month']} reversed and reopened for correction", "warning",

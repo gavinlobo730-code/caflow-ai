@@ -1279,6 +1279,44 @@ export default function PayrollPage() {
     finally { setRunActionBusy(null); }
   }
 
+  /** Reverse a finalized or paid run. PARTNER ONLY, enforced by the endpoint's
+   *  rbac("payroll", "finalize") — this is a control, not the guard.
+   *
+   *  The confirmation names what is UNDONE rather than asking "are you sure":
+   *  a reversal posts two more journals (the disbursement's, then the
+   *  accrual's), it does not delete the originals, and the run comes back at
+   *  'review' rather than 'draft'. A CA who thinks Reverse erases the month
+   *  will not understand why the ledger still shows four entries.
+   */
+  async function reverseRunAction(run: PayrollRun) {
+    const undone = run.status === "paid"
+      ? "the disbursement journal and then the salary accrual"
+      : "the salary accrual journal";
+    if (!confirm(
+      `Reverse payroll for ${run.month}?\n\n`
+      + `This posts a reversing entry for ${undone}. The original entries stay `
+      + `in the ledger — a posted journal is never deleted — and the run reopens `
+      + `at Review so it can be corrected and finalised again.\n\n`
+      + `Attendance and one-time earnings for the month become editable again.`
+    )) return;
+    setRunActionBusy(run.id); setRunActionMsg(null);
+    try {
+      const res = await api.payroll.reverseRun(run.id) as ApiResp<unknown>;
+      if (!res.success) {
+        setRunActionMsg({ type: "err", text: res.error ?? "Could not reverse the run." });
+      } else {
+        setRunActionMsg({ type: "ok", text: `Payroll for ${run.month} reversed and reopened for correction.` });
+        await load();
+      }
+    } catch (e) {
+      setRunActionMsg({ type: "err", text: e instanceof Error ? e.message : "Could not reverse the run." });
+    } finally {
+      // In a finally so a thrown request cannot leave the row spinning —
+      // scripts/loading-flags.test.ts checks exactly this.
+      setRunActionBusy(null);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -1759,6 +1797,22 @@ export default function PayrollPage() {
                                   <span className="text-xs text-green-700 inline-flex items-center gap-1">
                                     <CheckCircle size={13} /> Paid{r.paid_at ? ` · ${r.paid_at.slice(0, 10)}` : ""}
                                   </span>
+                                )}
+                                {/* The only way out of a released run, and until
+                                    now it existed only on the server. Beside the
+                                    forward action rather than in a menu: a CA
+                                    who has just been told to "reverse the run
+                                    first" is looking at this row. */}
+                                {(r.status === "finalized" || r.status === "paid") && (
+                                  <Button
+                                    size="sm" variant="outline"
+                                    disabled={runActionBusy === r.id}
+                                    onClick={() => reverseRunAction(r)}
+                                    title="Post a reversing entry and reopen this month for correction. Partner only."
+                                    className="ml-2 text-[#B45309] border-amber-300 hover:bg-amber-50"
+                                  >
+                                    {runActionBusy === r.id ? "Reversing…" : "Reverse"}
+                                  </Button>
                                 )}
                               </td>
                             </tr>
