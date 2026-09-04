@@ -473,3 +473,79 @@ class PayrollSettingsIn(BaseModel):
         description="Day of the month the client sends inputs by. Capped at 28 "
                     "because a cut-off of the 30th does not exist in February.")
     note: Optional[str] = None
+
+
+class PTSlabBandIn(BaseModel):
+    """One band of a state's professional-tax slab set (migration 327).
+
+    `to_paise` NULL is the top band — "and above". `months` NULL means every
+    month; naming months covers a differential month or a half-yearly levy
+    without adding a rule engine, which is on this design's
+    deliberately-not-built list.
+    """
+    from_paise: int = Field(..., ge=0)
+    to_paise: Optional[int] = Field(None, ge=1)
+    amount_paise: int = Field(..., ge=0)
+    basis: str = "monthly"
+    months: Optional[list[int]] = None
+
+    @field_validator("basis")
+    @classmethod
+    def _known_basis(cls, v):
+        s = str(v or "monthly").strip().lower()
+        if s not in ("monthly", "half_yearly"):
+            raise ValueError('basis must be "monthly" or "half_yearly".')
+        return s
+
+    @field_validator("months")
+    @classmethod
+    def _real_months(cls, v):
+        if v is None:
+            return None
+        months = sorted({int(m) for m in v})
+        if not months or any(m < 1 or m > 12 for m in months):
+            raise ValueError("months must be calendar months, 1 to 12.")
+        return months
+
+
+class PTSlabSetIn(BaseModel):
+    """One state's whole slab set, as at one notification.
+
+    THE WHOLE SET IN ONE REQUEST, deliberately. The bands must start at zero and
+    meet end to start; a per-band endpoint would let a half-recorded state exist
+    between two calls, and during that window a wage in the hole would come out
+    as a silent nil — the exact fault the refusals in professional_tax.py exist
+    to prevent.
+
+    notification_reference and notification_date are REQUIRED. The only reason a
+    hand-entered figure may drive a statutory deduction is that a named person
+    read a named notification on a named date.
+    """
+    state: str
+    effective_from: str = Field(..., description="YYYY-MM-DD, when the notification takes effect")
+    notification_reference: str = Field(..., min_length=1)
+    notification_date: str = Field(..., description="YYYY-MM-DD")
+    bands: list[PTSlabBandIn]
+    note: Optional[str] = None
+
+    @field_validator("state")
+    @classmethod
+    def _state_code(cls, v):
+        s = str(v or "").strip().upper()
+        if not re.match(r"^[A-Z]{2}$", s):
+            raise ValueError('State must be the two-letter code payroll_employees.pt_state '
+                             'carries — "GJ", "TG", "KL".')
+        return s
+
+    @field_validator("effective_from", "notification_date")
+    @classmethod
+    def _iso_date(cls, v):
+        s = str(v or "").strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+            raise ValueError("Dates must be YYYY-MM-DD.")
+        from datetime import date as _date
+        try:
+            _date.fromisoformat(s)
+        except ValueError:
+            raise ValueError(f"{s!r} is not a real date.")
+        return s

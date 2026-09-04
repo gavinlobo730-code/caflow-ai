@@ -551,6 +551,24 @@ export type EntryListState = EntryState | "to_do" | "all";
  *  domain/banking/charge_gst.ALLOWED_RATES_BPS and migration 254's CHECK. */
 export const BANK_CHARGE_GST_RATES_BPS = [0, 500, 1200, 1800, 2800] as const;
 
+/** One band of a firm-recorded professional-tax slab set (migration 327).
+ *  `to_paise` null is the top band — "and above"; `months` null is every
+ *  month. The notification is carried with the figure because that is the only
+ *  reason a hand-entered number may drive a statutory deduction. */
+export type PTSlabRow = {
+  id: string;
+  state: string;
+  effective_from: string;
+  basis: string;
+  from_paise: number;
+  to_paise: number | null;
+  amount_paise: number;
+  months: number[] | null;
+  notification_reference: string;
+  notification_date: string;
+  note: string | null;
+};
+
 export interface TreatyRateRow {
   id: string;
   country_code: string;
@@ -572,6 +590,34 @@ export const api = {
    *  agreements with over ninety countries, MFN clauses need their own §90(1)
    *  notification, and a wrong rate too low disallows the whole expenditure
    *  under IT Act §40(a)(i). */
+  // The firm's own reading of the state professional-tax notifications
+  // (migration 327). FIRM-scoped, not client-scoped, and that is the point:
+  // PT is a state levy, so one recorded slab set serves every client of the
+  // firm with staff in that state.
+  statutoryValues: {
+    list: () => request<ApiResp<{
+      pt_slabs: PTSlabRow[];
+      pt_levying_states: Record<string, string>;
+      pt_modelled_states: string[];
+      pt_recorded_states: string[];
+      pt_conflicts: string[];
+    }>>("/api/payroll/statutory-values"),
+    // The WHOLE set in one call. The bands must start at zero and meet end to
+    // start; a per-band call would let a half-recorded state exist between two
+    // requests, and a wage in the hole would come out as a silent nil.
+    savePtSlabs: (body: {
+      state: string; effective_from: string;
+      notification_reference: string; notification_date: string;
+      bands: Array<{ from_paise: number; to_paise: number | null; amount_paise: number;
+                     basis?: string; months?: number[] | null }>;
+      note?: string | null;
+    }) => request<ApiResp<{ state: string; effective_from: string; bands: number }>>(
+      "/api/payroll/statutory-values/pt", { method: "PUT", body: JSON.stringify(body) }),
+    removePtSlabs: (state: string, effectiveFrom: string) =>
+      request<ApiResp<{ deleted: boolean }>>(
+        `/api/payroll/statutory-values/pt?state=${encodeURIComponent(state)}` +
+        `&effective_from=${encodeURIComponent(effectiveFrom)}`, { method: "DELETE" }),
+  },
   treatyRates: {
     list: () => request<ApiResp<{ rates: TreatyRateRow[]; natures: string[] }>>(
       "/api/tds/treaty-rates"),

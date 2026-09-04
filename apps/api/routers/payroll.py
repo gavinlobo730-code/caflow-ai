@@ -21,9 +21,9 @@ from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
-                           AttendanceIn, PayrollSettingsIn)
+                           AttendanceIn, PayrollSettingsIn, PTSlabSetIn)
 from core.authz import assert_client_access, filter_by_client
-from core.ist_clock import ist_today
+from core.ist_clock import ist_today, month_end_date
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services import employee_portal_service
@@ -37,6 +37,8 @@ from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll import identity as identity_domain
 from domain.payroll import attendance as attendance_domain
+from domain.payroll import firm_rates
+from domain.payroll import professional_tax as pt_domain
 from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
@@ -275,8 +277,17 @@ def _compute_pt_tn(gross_paise: int, month: Optional[int]) -> int:
     return _slab_lookup(_PT_SLABS_TN_HALF_YEARLY, gross_paise * 6)
 
 
+#: The states whose slabs are in this file, verified against the state Act and
+#: pinned by tests. For these the code wins over anything a firm records — see
+#: firm_rates.slabs_recorded_against_a_modelled_state for why the disagreement
+#: is reported rather than resolved either way in silence.
+_PT_MODELLED_STATES = pt_domain.MODELLED_STATES
+
+
 def _compute_pt(gross_paise: int, state: Optional[str] = None,
-                month: Optional[int] = None, gender: Optional[str] = None) -> int:
+                month: Optional[int] = None, gender: Optional[str] = None,
+                firm_slabs: Optional[list[dict]] = None,
+                on: Optional[date] = None) -> int:
     """Professional Tax for the run month in paise. IT Act §16(iii) — PT actually
     paid is deductible from salary income; the PT liability itself is fixed by
     the employee's state. KA/WB are plain monthly slabs; MH and TN have their
@@ -289,7 +300,19 @@ def _compute_pt(gross_paise: int, state: Optional[str] = None,
         return _compute_pt_mh(gross_paise, month, gender)
     if code == "TN":
         return _compute_pt_tn(gross_paise, month)
-    return _slab_lookup(_PT_SLABS_BY_STATE.get(code, ()), gross_paise)
+    if code in _PT_SLABS_BY_STATE:
+        return _slab_lookup(_PT_SLABS_BY_STATE[code], gross_paise)
+
+    # Not modelled here. The firm's own reading of the state notification, if it
+    # has recorded one and it covers every wage (migration 327). Anything less
+    # stays 0 AND stays a reported gap — firm_rates returns usable=False, and
+    # _statutory_gaps names the state — so this is never a silent fall-back.
+    if firm_slabs and on is not None:
+        result = firm_rates.professional_tax(
+            firm_slabs, gross_paise=gross_paise, month=month, on=on, state=code)
+        if result.usable:
+            return result.employee_paise
+    return 0
 
 
 def _attendance_gap(emp: dict, attendance_entered: bool) -> list[str]:
@@ -319,7 +342,7 @@ def _attendance_gap(emp: dict, attendance_entered: bool) -> list[str]:
             f"on the 26-day default. Enter it, or confirm the default is right."]
 
 
-def _statutory_gaps(emp: dict) -> list[str]:
+def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
     """Statutory deductions this employee's state levies that we did not compute.
 
     A zero PT for Delhi and a zero PT for Gujarat are the same number meaning
@@ -333,8 +356,14 @@ def _statutory_gaps(emp: dict) -> list[str]:
     """
     gaps: list[str] = []
     if emp.get("pt_applicable"):
+        state = (emp.get("pt_state") or "").strip().upper()
         pt = classify_pt_state(emp.get("pt_state"))
-        if pt.is_gap:
+        # A state the FIRM has recorded usable slabs for is no longer a gap —
+        # the deduction was computed, from a notification somebody read
+        # (migration 327). Covered is decided once per run, because whether a
+        # recorded set is usable depends on the payroll month's date and on the
+        # bands covering every wage, not merely on rows existing.
+        if pt.is_gap and state not in (pt_covered or set()):
             gaps.append(f"{(emp.get('name') or emp.get('id') or 'employee')}: {pt.note}")
     lwf = classify_lwf_state(emp.get("pt_state"))
     if lwf.is_gap:
@@ -795,7 +824,9 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
                   months_already_paid: int = 0,
                   loan_instalment_paise: int = 0,
                   gross_already_paid_paise: int = 0,
-                  months_employed_in_fy: int = 12) -> dict:
+                  months_employed_in_fy: int = 12,
+                  firm_pt_slabs: Optional[list[dict]] = None,
+                  pt_on: Optional[date] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
@@ -805,6 +836,12 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     `pt_month` is the calendar month (1-12) of the payroll run — required for the
     states whose Professional Tax depends on the month (Maharashtra's February
     differential, Tamil Nadu's Sep/Mar half-yearly deduction).
+
+    `firm_pt_slabs` are the slabs THIS FIRM recorded off a state notification
+    (migration 327), used only for states this file does not model, and only
+    where they cover every wage. `pt_on` is the payroll month's end date, which
+    picks the version in force — a run for an earlier month must compute at the
+    figures that applied to it. Both are loaded once per run, not per employee.
     """
     working_days  = (attendance or {}).get("working_days", 26)
     days_present  = (attendance or {}).get("days_present", 26)
@@ -846,7 +883,8 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
                   "employer_epf": 0, "edli": 0, "admin": 0})
     esi  = (_compute_esi(gross, fy, covered_at_period_start=esi_covered_at_period_start)
             if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
-    pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender")) if emp.get("pt_applicable") else 0
+    pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender"),
+                       firm_slabs=firm_pt_slabs, on=pt_on) if emp.get("pt_applicable") else 0
 
     # IT Act §192: TDS on salary, on the year's PROJECTED income. What the
     # employee declared decides the regime and the deductions; §192(3) decides
@@ -1294,6 +1332,20 @@ def create_run(
     # for Delhi and a zero PT for Gujarat are the same number meaning opposite
     # things, and only one of them is a liability nobody has settled.
     statutory_gaps: list[str] = []
+
+    # The firm's own reading of the state PT notifications (migration 327), read
+    # ONCE for the whole run rather than per employee — a 200-employee run in
+    # three states is one query, and the slabs cannot change mid-run. `pt_on` is
+    # the payroll MONTH's end, not today: a run for an earlier month computes at
+    # the figures that applied to it.
+    firm_pt_slabs = _read_firm_pt_slabs(db, current_user["firm_id"])
+    pt_on = date.fromisoformat(month_end_date(month))
+    pt_covered = _states_the_firm_covers(firm_pt_slabs, pt_on)
+    # Recorded against a state the code models: reported, never applied. One
+    # typo must not replace a table verified against the state Act for every
+    # client of this firm.
+    statutory_gaps.extend(firm_rates.slabs_recorded_against_a_modelled_state(
+        firm_pt_slabs, _PT_MODELLED_STATES))
     # Employees for whom NOBODY entered attendance this month. Reported with
     # the run, never silently defaulted — see _attendance_gap.
     attendance_gaps: list[str] = []
@@ -1334,8 +1386,9 @@ def create_run(
                              gross_already_paid_paise=tds_ytd.get(emp["id"], (0, 0, 0))[2],
                              months_employed_in_fy=_months_employed_in_fy(
                                  emp.get("joining_date"), fy),
-                             loan_instalment_paise=loan_due.get(emp["id"], 0))
-        statutory_gaps.extend(_statutory_gaps(emp))
+                             loan_instalment_paise=loan_due.get(emp["id"], 0),
+                             firm_pt_slabs=firm_pt_slabs, pt_on=pt_on)
+        statutory_gaps.extend(_statutory_gaps(emp, pt_covered))
         attendance_gaps.extend(_attendance_gap(emp, attendance is not None))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -1747,6 +1800,188 @@ def salary_register(
     run_id = run.data[0]["id"]
     slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department, bank_account_no, bank_ifsc)").eq("run_id", run_id).execute()
     return api_response(True, {"month": month, "run": run.data[0], "slips": slips.data or []})
+
+
+# ── The firm's own reading of the state PT slabs ─────────────────────────────
+# Migration 327. domain/payroll/professional_tax.py models four of the
+# twenty-two states that levy PT and reports the rest as gaps. That refusal is
+# right — Article 276 makes the employer liable, so a silent nil is a shortfall
+# with interest — and it is also not a product: the only remedy on offer was
+# that somebody edits Python.
+#
+# So the CA records what they READ, once per firm, with the notification it came
+# from. See domain/payroll/firm_rates.py for the rules on using one.
+
+_MOCK_PT_SLABS: dict[tuple, list[dict]] = {}
+
+#: Selected everywhere firm slabs are read, so the columns are checked against
+#: the real schema by tests/test_backend_columns_exist_pg.py.
+def _read_firm_pt_slabs(db, firm_id: str) -> list[dict]:
+    if not db:
+        return [dict(r) for rows in
+                [v for k, v in sorted(_MOCK_PT_SLABS.items()) if k[0] == firm_id]
+                for r in rows]
+    try:
+        return (db.table("firm_pt_slabs")
+                # Named inline, and including recorded_by, so every column of
+                # this table is checked against the real schema by
+                # tests/test_backend_columns_exist_pg.py — the insert is a list
+                # comprehension, which that scanner cannot read.
+                .select("id, state, effective_from, basis, from_paise, to_paise, "
+                        "amount_paise, months, notification_reference, "
+                        "notification_date, note, recorded_by")
+                .eq("firm_id", firm_id).order("state").execute().data) or []
+    except Exception:
+        # Degrades to "nothing recorded", which leaves the state a reported gap.
+        # The other direction — treating a failed read as "covered" — would
+        # deduct nothing and say nothing.
+        _logger.exception("firm PT slab read failed for firm=%s", firm_id)
+        return []
+
+
+def _pt_slabs_by_state(slabs: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for row in slabs:
+        out.setdefault(str(row.get("state") or "").strip().upper(), []).append(row)
+    return out
+
+
+def _states_the_firm_covers(slabs: list[dict], on: date) -> set[str]:
+    """States whose recorded slabs are usable for a run on `on`.
+
+    Usable means: a version effective on or before that date, whose bands start
+    at zero and meet end to start. A half-recorded state is NOT covered — a wage
+    falling in a hole would otherwise come out as a silent nil, which is the
+    fault this whole mechanism exists to avoid importing.
+
+    Excludes the states the code models: for those the code wins and the
+    disagreement is reported (firm_rates.slabs_recorded_against_a_modelled_state).
+    """
+    covered: set[str] = set()
+    for state, rows in _pt_slabs_by_state(slabs).items():
+        if state in _PT_MODELLED_STATES:
+            continue
+        version = firm_rates.in_force(rows, on)
+        if version and firm_rates.bands_cover_every_wage(version):
+            covered.add(state)
+    return covered
+
+
+@router.get("/statutory-values")
+def get_statutory_values(
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """What this firm has recorded, and which states still need it.
+
+    Returns the levying/modelled/recorded sets alongside the rows so the Settings
+    screen can say "eighteen states levy this, you have recorded three" without
+    holding its own copy of who levies what.
+    """
+    slabs = _read_firm_pt_slabs(_db(), current_user["firm_id"])
+    covered = _states_the_firm_covers(slabs, ist_today())
+    return api_response(True, {
+        "pt_slabs": slabs,
+        "pt_levying_states": pt_domain.LEVYING_STATES,
+        "pt_modelled_states": sorted(_PT_MODELLED_STATES),
+        "pt_recorded_states": sorted(covered),
+        "pt_conflicts": firm_rates.slabs_recorded_against_a_modelled_state(
+            slabs, _PT_MODELLED_STATES),
+    })
+
+
+@router.put("/statutory-values/pt")
+def put_pt_slabs(
+    body: PTSlabSetIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record one state's slab set, as at one notification.
+
+    THE WHOLE SET IN ONE REQUEST, and that is the point. The bands have to start
+    at zero and meet end to start, and a per-band endpoint would let a
+    half-recorded state exist between two calls — during which a wage in the hole
+    would come out as a silent nil. So the set is validated whole, refused
+    whole, and REPLACES that (state, effective_from) rather than adding to it.
+
+    A revision is a NEW effective_from, never an edit of an old one: a run for an
+    earlier month must keep computing at the figures that applied to it, and
+    those months are posted to the general ledger.
+    """
+    bands = [b.model_dump() for b in body.bands]
+    if not firm_rates.bands_cover_every_wage(bands):
+        raise HTTPException(status_code=422, detail=(
+            "These slabs do not cover every wage. They must start at 0, each "
+            "band's upper bound must be the next band's lower bound, and the "
+            "highest band must be left open ('and above'). A wage falling in a "
+            "hole would come out as nil, which is indistinguishable from a state "
+            "saying nothing is due."))
+
+    bases = {b.get("basis") or "monthly" for b in bands}
+    if len(bases) > 1:
+        raise HTTPException(status_code=422, detail=(
+            "Every band in one slab set must share the same basis — a state "
+            "reads its slab against the month or against six months, not both."))
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    key = (firm_id, body.state, body.effective_from)
+    rows = [{"state": body.state, "effective_from": body.effective_from,
+             "notification_reference": body.notification_reference.strip(),
+             "notification_date": body.notification_date,
+             "note": (body.note or "").strip() or None, **band}
+            for band in bands]
+
+    if not db:
+        _MOCK_PT_SLABS[key] = rows
+        return api_response(True, {"state": body.state,
+                                   "effective_from": body.effective_from,
+                                   "bands": len(rows)})
+
+    if body.state in _PT_MODELLED_STATES:
+        # Recorded, not refused: the CA may well be right that the notification
+        # has moved. It is REPORTED on every run rather than applied, so the
+        # disagreement reaches somebody who can make the code change.
+        _logger.info("caflow.payroll firm %s recorded PT slabs for modelled state %s",
+                     firm_id, body.state)
+
+    # Replace rather than merge: a set that was six bands and is now five must
+    # not leave the sixth behind, where it would overlap and make the lookup
+    # order-dependent.
+    (db.table("firm_pt_slabs").delete()
+     .eq("firm_id", firm_id).eq("state", body.state)
+     .eq("effective_from", body.effective_from).execute())
+    db.table("firm_pt_slabs").insert(
+        [{"firm_id": firm_id, "recorded_by": current_user.get("id"), **row}
+         for row in rows]).execute()
+
+    return api_response(True, {"state": body.state,
+                               "effective_from": body.effective_from,
+                               "bands": len(rows)})
+
+
+@router.delete("/statutory-values/pt")
+def delete_pt_slabs(
+    state: str = Query(..., description='Two-letter state code, e.g. "GJ"'),
+    effective_from: str = Query(..., description="The version to remove, YYYY-MM-DD"),
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Remove one recorded version.
+
+    The state goes back to being a reported gap if nothing earlier remains,
+    which is the correct outcome: an employer deducting on slabs nobody stands
+    behind is exactly what the gap says.
+    """
+    state = (state or "").strip().upper()
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        _MOCK_PT_SLABS.pop((firm_id, state, effective_from), None)
+        return api_response(True, {"state": state, "effective_from": effective_from,
+                                   "deleted": True})
+    (db.table("firm_pt_slabs").delete()
+     .eq("firm_id", firm_id).eq("state", state)
+     .eq("effective_from", effective_from).execute())
+    return api_response(True, {"state": state, "effective_from": effective_from,
+                               "deleted": True})
 
 
 # ── Attendance: the server-side contract ─────────────────────────────────────

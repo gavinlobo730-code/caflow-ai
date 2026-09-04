@@ -166,7 +166,12 @@ UNFIXED: dict[str, str] = {}
 # month/year — is named literally in _attendance_for's select list a few lines
 # above, and client_payroll_settings' inputs_due_day and note are named in
 # _payroll_settings'.
-MAX_UNREADABLE = 436
+# 436 -> 437: routers/payroll's firm_pt_slabs insert (migration 327) takes a
+# LIST COMPREHENSION over the validated bands, which this scanner cannot read —
+# and building the list into a variable first would hide the same thing while
+# reading no better. The columns are not unchecked: _read_firm_pt_slabs names
+# every one of them, recorded_by included, in its select list.
+MAX_UNREADABLE = 437
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

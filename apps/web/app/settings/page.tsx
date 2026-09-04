@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2 } from "lucide-react";
+import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2, Scale } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -690,6 +690,22 @@ export default function SettingsPage() {
               <Link
                 href="/settings/firm-hsn-library"
                 className="px-4 py-1.5 border border-violet-200 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap"
+              >
+                Manage →
+              </Link>
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Scale size={15} className="text-indigo-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-[#0F172A]">Statutory Values</p>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">Your firm&apos;s reading of the state professional-tax notifications. Twenty-two states levy it and four are built in; the rest deduct nothing until you record them here, once, for every client.</p>
+                </div>
+              </div>
+              <Link
+                href="/settings/statutory-values"
+                className="px-4 py-1.5 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
               >
                 Manage →
               </Link>
