@@ -185,7 +185,20 @@ def build_ecr(
             )
             continue
 
-        pf_wages = int(slip.get("basic_paise") or 0) + int(slip.get("da_paise") or 0)
+        # EPF Act s.6: PF wages = basic + DA. Plus whichever one-time earnings the
+        # CA recorded AS PF wages (migration 331) — in practice arrears of basic
+        # and DA, which s.2(b)'s exclusion of "any bonus, commission or any other
+        # similar allowance" does not reach, and on which EPFO takes contributions
+        # in the month of payment.
+        #
+        # Read off the slip's stored figure, not re-derived from the earning
+        # rows: those can be edited or deleted after a run, and the ECR must
+        # agree with the contribution that was actually deducted. Omitting it
+        # here would file EPF wages lower than the 12% remitted against them,
+        # which the portal reconciles and rejects.
+        pf_wages = (int(slip.get("basic_paise") or 0)
+                    + int(slip.get("da_paise") or 0)
+                    + int(slip.get("one_time_pf_wages_paise") or 0))
         ncp = int(slip.get("lop_days") or 0)
 
         member = ECRMember(

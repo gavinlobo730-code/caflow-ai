@@ -141,6 +141,16 @@ class AnnexureII:
 _SALARY_COMPONENTS = (
     "basic_paise", "hra_paise", "da_paise", "lta_paise", "medical_paise",
     "special_allowance_paise", "other_allowances_paise",
+    # One-time and variable earnings (migration 331) — bonus, incentive,
+    # ex-gratia, arrears — all salary under §17(1)(iv).
+    #
+    # DELIBERATELY one_time_TAXABLE_paise and not one_time_earnings_paise. The
+    # slip stores both because they differ: a genuine reimbursement of
+    # expenditure is paid to the employee, is in gross and in net, and is not
+    # their income. This is the exact case the comment below anticipated when it
+    # said summing components rather than gross keeps a non-salary component out
+    # of the salary figure — the first component to actually be one.
+    "one_time_taxable_paise",
 )
 
 

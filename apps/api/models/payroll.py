@@ -460,6 +460,51 @@ class AttendanceIn(BaseModel):
     rows: list[AttendanceRowIn]
 
 
+class OneTimeEarningIn(BaseModel):
+    """One amount paid to one employee in one payroll month that is not a rate.
+
+    The three statutory booleans are REQUIRED and have no default. Each one is a
+    different Act asking a different question, and the answers genuinely differ
+    between two payments a payslip would print almost identically:
+
+      pf_wages   EPF Act s.2(b) excludes bonus and commission from basic wages;
+                 arrears of basic and DA are not excluded.
+      esi_wages  ESI Act s.2(22) includes additional remuneration paid at
+                 intervals not exceeding two months — an INTERVAL test, so the
+                 same word means different things at two clients.
+      taxable    IT Act s.17(1)(iv). False only for a genuine reimbursement.
+
+    A default would answer one of them silently, and the wrong answer is not
+    visible on a payslip — it surfaces months later in an ECR that does not
+    reconcile. domain/payroll/one_time_earnings.statutory_defaults() proposes
+    them for the screen to prefill; the request has to state them.
+    """
+    employee_id: str
+    kind: str = Field(..., description="incentive | bonus | ex_gratia | arrears | "
+                                       "commission | reimbursement | other")
+    amount_paise: int = Field(..., description="Integer paise. Signed: a negative "
+                                               "amount recovers an earlier overpayment.")
+    pf_wages: bool
+    esi_wages: bool
+    taxable: bool
+    label: Optional[str] = None
+    payment_interval_months: Optional[int] = None
+    note: Optional[str] = None
+
+
+class OneTimeEarningsIn(BaseModel):
+    """A client-month's one-time earnings, replacing what is there for the
+    employees named and no others.
+
+    Same contract as attendance: only the employees SENT are touched, and the
+    request is validated and refused WHOLE. A partial write would leave some of
+    a client-month saved and some not, and nothing on the screen would say which.
+    """
+    client_id: str
+    month: str = Field(..., description='Payroll month, e.g. "2026-08"')
+    rows: list[OneTimeEarningIn]
+
+
 class PayrollSettingsIn(BaseModel):
     """Per-client payroll configuration (migration 326).
 

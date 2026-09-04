@@ -159,6 +159,12 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, firm: dict) -> byte
         ("Medical Allowance", "medical_paise"),
         ("Special Allowance", "special_allowance_paise"),
         ("Other Allowances", "other_allowances_paise"),
+        # One-time and variable earnings (migration 331). LAST, because it is
+        # the line that is not a monthly rate — every row above it repeats next
+        # month and this one does not. Without it the earnings block sums to
+        # LESS than the gross printed directly under it, with no line to point
+        # at, which is exactly the reconciliation migration 222 existed to fix.
+        ("Bonus / Incentive / Arrears", "one_time_earnings_paise"),
     ]
     gross_paise = int(slip.get("gross_paise") or 0)
     earning_rows = [["Earnings", "Amount (₹)"]]

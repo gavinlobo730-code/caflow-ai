@@ -22,6 +22,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, PayrollSettingsIn, PTSlabSetIn,
+                           OneTimeEarningsIn,
                            ReleaseIn, ApplyStructureIn)
 from core.authz import assert_client_access, filter_by_client
 from core.ist_clock import ist_today, month_end_date
@@ -53,6 +54,7 @@ from domain.payroll import bonus as bonus_domain
 from domain.payroll import leave_encashment as leave_domain
 from domain.payroll import settlement as settlement_domain
 from domain.payroll import arrears as arrears_domain
+from domain.payroll import one_time_earnings as one_time_domain
 from domain.payroll import perquisites as perq_domain
 from dataclasses import replace as _replace
 
@@ -686,7 +688,24 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                    and _fy_for_month(r["month"]) == fy]
         if not earlier:
             return {}
-        slips = (db.table("payroll_slips").select("employee_id, tds_paise")
+        # gross_paise IS SELECTED. It was not, and the accumulator two lines
+        # below has always read `sl.get("gross_paise")` — which on a row that
+        # never carried the column is None, so every month's
+        # gross_already_paid_paise was zero. The §192 projection then estimated
+        # the year as `gross * months_left` alone: a run for October with six
+        # months already paid projected six months of income instead of twelve
+        # and withheld tax at a slab the employee is not in. It fails in the
+        # employee's favour and in the deductor's disfavour, which is why
+        # nothing surfaced it — §192(1) makes the EMPLOYER liable for the
+        # shortfall, and §201(1A) charges interest on it at 1% a month.
+        #
+        # PostgREST returns exactly the columns named, so a select list is a
+        # contract with the code that reads the rows. This one was a select list
+        # narrowed for performance while a reader of the dropped column stayed
+        # behind. tests/test_backend_columns_exist_pg.py checks that a named
+        # column EXISTS, not that every column read is named — the reverse
+        # direction, which is why it stayed green.
+        slips = (db.table("payroll_slips").select("employee_id, tds_paise, gross_paise")
                  .in_("run_id", earlier).execute().data) or []
         out: dict = {}
         for sl in slips:
@@ -836,7 +855,8 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
                   gross_already_paid_paise: int = 0,
                   months_employed_in_fy: int = 12,
                   firm_pt_slabs: Optional[list[dict]] = None,
-                  pt_on: Optional[date] = None) -> dict:
+                  pt_on: Optional[date] = None,
+                  one_time: Optional["one_time_domain.Bundle"] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
     IT Act Section 192: TDS on salary — simplified monthly deduction (annual
@@ -852,6 +872,12 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     where they cover every wage. `pt_on` is the payroll month's end date, which
     picks the version in force — a run for an earlier month must compute at the
     figures that applied to it. Both are loaded once per run, not per employee.
+
+    `one_time` is this employee's one-time and variable earnings for the month
+    (migration 331) — incentive, bonus, ex-gratia, arrears — already summed into
+    the four bases they feed. It is NOT prorated by attendance and it does NOT
+    recur in the §192 projection; both of those are the point of the type. See
+    domain/payroll/one_time_earnings.py.
     """
     working_days  = (attendance or {}).get("working_days", 26)
     days_present  = (attendance or {}).get("days_present", 26)
@@ -884,15 +910,41 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     # previously dropped from gross entirely — understating gross AND net for
     # any employee who had one. LOP-prorated like every other fixed component.
     other     = _prorate(emp.get("other_allowances_paise", 0))
-    gross     = basic + hra + da + lta + medical + special + other
+
+    # One-time and variable earnings (migration 331). Added to gross AFTER the
+    # proration and deliberately outside _prorate: every component above is a
+    # MONTHLY RATE, and a rate earned over 22 of 26 days is worth 22/26 of
+    # itself. A bonus is not a rate — it is a decided figure — and scaling a
+    # decided figure by attendance pays somebody a fraction of an amount that
+    # was never per-day.
+    ot = one_time or one_time_domain.EMPTY
+    recurring = basic + hra + da + lta + medical + special + other
+    gross     = recurring + ot.total_paise
 
     # EPF Act §6: PF wages = Basic + DA (task #229 — basic alone under-computed PF).
-    pf   = (_compute_pf(basic + da, fy, eps_eligible=emp.get("eps_eligible", True))
+    # Plus whichever one-time earnings the CA recorded AS PF wages, which under
+    # EPF Act §2(b) is in practice arrears of basic and DA and nothing else: the
+    # section excludes "any bonus, commission or any other similar allowance"
+    # from basic wages, so an incentive or a festival bonus does not belong here
+    # however large it is.
+    pf_wages = basic + da + ot.pf_wages_paise
+    pf   = (_compute_pf(pf_wages, fy, eps_eligible=emp.get("eps_eligible", True))
             if emp.get("pf_applicable")
             else {"employee": 0, "employer": 0, "employer_eps": 0,
                   "employer_epf": 0, "edli": 0, "admin": 0})
-    esi  = (_compute_esi(gross, fy, covered_at_period_start=esi_covered_at_period_start)
+    # ESI Act §2(22) includes additional remuneration "paid at intervals not
+    # exceeding two months", so the ESI wage base takes only the one-time
+    # earnings that pass that INTERVAL test — a monthly incentive does, an
+    # annual bonus does not. It matters twice over, because this same figure is
+    # what the ₹21,000 coverage ceiling is tested against: folding a bonus in
+    # here would throw an employee out of ESI for a month on money the Act says
+    # is not their wages.
+    esi_wages = recurring + ot.esi_wages_paise
+    esi  = (_compute_esi(esi_wages, fy, covered_at_period_start=esi_covered_at_period_start)
             if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
+    # Professional tax is on the whole of what is earned in the month. The state
+    # Acts levy on "salary or wage" without the exclusions the EPF and ESI Acts
+    # carry, so gross here is gross — one-time earnings included.
     pt   = _compute_pt(gross, emp.get("pt_state"), month=pt_month, gender=emp.get("gender"),
                        firm_slabs=firm_pt_slabs, on=pt_on) if emp.get("pt_applicable") else 0
 
@@ -905,10 +957,37 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     # is fewer than twelve, and for a mid-year RAISE picks the new rate up for
     # the remaining months without rewriting the ones already paid.
     months_left = max(0, months_employed_in_fy - max(0, months_already_paid))
-    annual_gross = max(0, gross_already_paid_paise) + gross * months_left
+    # THE ONE-TIME AMOUNT IS ADDED ONCE, NOT PROJECTED. `gross * months_left`
+    # is right for a monthly rate and catastrophic for a decided figure: a
+    # ₹50,000 Diwali bonus paid in April would be multiplied by the twelve
+    # months still to come and the projection would withhold tax on ₹6 lakh of
+    # income the employee will never receive.
+    #
+    # And the direction of the remaining error is deliberate. §192(1) charges
+    # tax on the "estimated income of the assessee under the head Salaries". A
+    # variable payment already made is a fact; one not yet made is a guess about
+    # somebody else's discretion, so a bonus is estimated as nil until it is
+    # paid and then estimated in full. That under-withholds by at most one
+    # month, and §192(3) corrects it in the very next run because the run reads
+    # what this deductor has already deducted. Projecting the guess forward
+    # instead over-withholds every remaining month and refunds at assessment —
+    # an error that does not self-correct and that the employee funds.
+    #
+    # `gross_already_paid_paise` needs no adjustment: earlier months' one-time
+    # amounts are in the gross that was actually paid, which is exactly right.
+    annual_gross = (max(0, gross_already_paid_paise)
+                    + recurring * months_left
+                    + ot.taxable_paise)
     tds_monthly = _monthly_tds(
         declaration=declaration,
         annual_gross_paise=annual_gross,
+        # Deliberately the RECURRING basic and DA, with no one-time amount in
+        # them even where the CA recorded arrears as PF wages. This figure is
+        # the §10(13A) salary base against which the HRA exemption's 10% and
+        # 40/50% tests run, and arrears of an earlier year inflating it would
+        # cut this year's exemption on rent that was paid against this year's
+        # salary. Arrears relief has its own path — §89 and Form 10E,
+        # domain/payroll/arrears.py — which is where the earlier year belongs.
         basic_plus_da_paise=(basic + da) * 12,
         hra_received_paise=hra * 12,
         professional_tax_paise=pt * 12,
@@ -940,6 +1019,15 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "medical_paise":      medical,
         "special_allowance_paise": special,
         "other_allowances_paise":  other,
+        # Stored, not recomputed from payroll_one_time_earnings at payslip time.
+        # Those rows can be edited or deleted after a run and a released payslip
+        # has to keep saying what it said; and the two statutory bases cannot be
+        # derived back out of a single total once they are gone. Same reasoning
+        # as the PF EPS/EPF split (migration 295).
+        "one_time_earnings_paise":  ot.total_paise,
+        "one_time_pf_wages_paise":  ot.pf_wages_paise,
+        "one_time_esi_wages_paise": ot.esi_wages_paise,
+        "one_time_taxable_paise":   ot.taxable_paise,
         "pf_employee_paise":  pf["employee"],
         "pf_employer_paise":  pf["employer"],
         # Stored, not recomputed at ECR time: the return must agree with the
@@ -1460,7 +1548,7 @@ def create_run(
 
     slips = []
     totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0,
-              "loan_recovery": 0, "edli": 0, "admin": 0}
+              "loan_recovery": 0, "edli": 0, "admin": 0, "one_time": 0}
 
     # ESI Rule 50: someone whose wages rise above the ceiling PART WAY THROUGH a
     # contribution period stays in the scheme until that period ends. Answering
@@ -1519,6 +1607,10 @@ def create_run(
     attendance_by_emp = _attendance_for(
         db, current_user["firm_id"], [e["id"] for e in emps], y, m)
 
+    # One-time and variable earnings for the month (migration 331), also one
+    # query for the whole run.
+    one_time_by_emp = _one_time_for(db, current_user["firm_id"], client_id, month)
+
     for emp in emps:
         # None means NOT ENTERED, and that is now recorded on the slip rather
         # than being indistinguishable from a confirmed full month.
@@ -1544,7 +1636,8 @@ def create_run(
                              months_employed_in_fy=_months_employed_in_fy(
                                  emp.get("joining_date"), fy),
                              loan_instalment_paise=loan_due.get(emp["id"], 0),
-                             firm_pt_slabs=firm_pt_slabs, pt_on=pt_on)
+                             firm_pt_slabs=firm_pt_slabs, pt_on=pt_on,
+                             one_time=one_time_by_emp.get(str(emp["id"])))
         statutory_gaps.extend(_statutory_gaps(emp, pt_covered))
         attendance_gaps.extend(_attendance_gap(emp, attendance is not None))
         slip["run_id"]      = run_id
@@ -1565,6 +1658,7 @@ def create_run(
         totals["pt"]    += slip["pt_paise"]
         totals["tds"]   += slip["tds_paise"]
         totals["loan_recovery"] += slip.get("loan_recovery_paise", 0)
+        totals["one_time"] += slip.get("one_time_earnings_paise", 0)
 
     # Atomicity: the run header row was inserted first (above), but PostgREST
     # exposes no multi-statement transaction here — so if the slip insert
@@ -1595,6 +1689,10 @@ def create_run(
         "total_loan_recovery_paise": totals["loan_recovery"],
         "total_edli_paise":     totals["edli"],
         "total_pf_admin_paise": totals["admin"],
+        # How much of this month's gross was NOT the recurring salary bill —
+        # the single number that answers "why is this month bigger than last
+        # month" before anybody opens a slip.
+        "total_one_time_paise": totals["one_time"],
         "headcount":         len(emps),
     }).eq("id", run_id).execute()
 
@@ -2344,6 +2442,7 @@ def delete_pt_slabs(
 _PAYROLL_RELEASED = ("finalized", "paid")
 
 _MOCK_ATTENDANCE: dict[tuple, dict] = {}
+_MOCK_ONE_TIME: dict[tuple, dict] = {}
 _MOCK_PAYROLL_SETTINGS: dict[tuple, dict] = {}
 
 def _payroll_settings(db, firm_id: str, client_id: str) -> dict:
@@ -2400,6 +2499,31 @@ def _attendance_for(db, firm_id: str, emp_ids: list[str], year: int, month: int)
         for r in rows:
             out[str(r.get("employee_id"))] = r
     return out
+
+
+def _one_time_for(db, firm_id: str, client_id: str, month: str) -> dict:
+    """Every one-time earning recorded for this client-month, bundled per employee.
+
+    ONE query for the whole run, like the attendance read above and for the same
+    reason: a 200-employee run must not make 200 round trips to Mumbai. Scoped
+    by client as well as firm — the earnings belong to a client-month the same
+    way the run does — and the firm filter is the primary isolation control
+    because the service-role key bypasses RLS.
+
+    `month` is the run's "YYYY-MM"; the column is a DATE pinned to the first of
+    the month by migration 331's CHECK, so the equality is exact.
+    """
+    rows = (db.table("payroll_one_time_earnings")
+            # Columns named inline, not `*`: a select list is the only place
+            # these get checked against the real schema by
+            # tests/test_backend_columns_exist_pg.py.
+            .select("id, employee_id, kind, label, amount_paise, "
+                    "pf_wages, esi_wages, taxable, payment_interval_months")
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .eq("month", f"{month}-01")
+            .execute().data) or []
+    return one_time_domain.bundles_by_employee(rows)
 
 
 @router.get("/attendance")
@@ -2556,6 +2680,193 @@ def put_attendance(
     )
     return api_response(True, {"client_id": body.client_id, "month": body.month,
                                "saved": len(rows)})
+
+
+@router.get("/one-time-earnings")
+def get_one_time_earnings(
+    client_id: str,
+    month: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """This client-month's one-time earnings, and what the statute says of each.
+
+    `divergence` is the sentence where a saved row disagrees with the statutory
+    default — a CA may know something the default cannot, but a disagreement in
+    what the ECR and the ESIC return are built from should be VISIBLE rather
+    than silent.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        rows = [r for (f, c, m, _eid), r in _MOCK_ONE_TIME.items()
+                if f == firm_id and c == client_id and m == month]
+    else:
+        rows = (db.table("payroll_one_time_earnings")
+                .select("id, employee_id, kind, label, amount_paise, pf_wages, "
+                        "esi_wages, taxable, payment_interval_months, note, "
+                        "entered_by, entered_at")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("month", f"{month}-01")
+                .execute().data) or []
+
+    out = []
+    for r in rows:
+        out.append({**r, "divergence": one_time_domain.divergence_note(r)})
+
+    b = one_time_domain.bundle(rows)
+    return api_response(True, {
+        "client_id": client_id, "month": month, "rows": out,
+        "total_paise": b.total_paise,
+        "pf_wages_paise": b.pf_wages_paise,
+        "esi_wages_paise": b.esi_wages_paise,
+        "taxable_paise": b.taxable_paise,
+        "locked": (_attendance_is_locked(db, firm_id, client_id, month) is not None
+                   if db else False),
+        "kinds": list(one_time_domain.KINDS),
+    })
+
+
+@router.put("/one-time-earnings")
+def put_one_time_earnings(
+    body: OneTimeEarningsIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Replace this client-month's one-time earnings for the employees named.
+
+    REPLACE, PER EMPLOYEE. An employee sent with no rows has their earnings for
+    the month cleared; an employee not sent at all is untouched. Upserting row
+    by row instead would make "I deleted the duplicate bonus" impossible to
+    express, and keying on (employee, month, kind) would make two separate
+    incentives in one month collide into one.
+
+    Refused whole, like attendance: a partial write leaves half a client-month
+    saved with nothing on the screen saying which half.
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if db:
+        # The same refusal attendance carries, for the same reason: the slips
+        # are STORED, so editing the inputs under a released run does not change
+        # a figure — it just stops the inputs explaining the output, and stops
+        # the ECR's PF wages agreeing with anything a CA can now read.
+        locked = _attendance_is_locked(db, firm_id, body.client_id, body.month)
+        if locked:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Payroll for {body.month} is {locked}. Its payslips already "
+                        f"carry these earnings, so changing them now would leave the "
+                        f"inputs disagreeing with the payslips, the ECR and the "
+                        f"ledger. Reverse the run first."))
+        roster = {str(e["id"]) for e in _client_roster(db, firm_id, body.client_id)}
+        strangers = sorted({str(r.employee_id or "").strip() for r in body.rows}
+                           - roster - {""})
+        if strangers:
+            raise HTTPException(
+                status_code=422,
+                detail=("These employees are not on this client's roster: "
+                        + ", ".join(strangers)))
+
+    try:
+        attendance_domain.parse_month(body.month)
+    except attendance_domain.AttendanceError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Whole-request validation. Every problem at once, addressed to a row a CA
+    # can find on the screen, rather than the first one the loop happens to hit.
+    problems: list[str] = []
+    for i, r in enumerate(body.rows, start=1):
+        for msg in one_time_domain.validate(r.model_dump()):
+            problems.append(f"Row {i}: {msg}")
+    if problems:
+        raise HTTPException(status_code=422, detail=" ".join(problems))
+
+    touched = sorted({str(r.employee_id).strip() for r in body.rows})
+    stamped = datetime.now(timezone.utc).isoformat()
+
+    if not db:
+        for key in list(_MOCK_ONE_TIME):
+            f, c, m, _rid = key
+            if (f, c, m) == (firm_id, body.client_id, body.month) and \
+               str(_MOCK_ONE_TIME[key].get("employee_id")) in touched:
+                del _MOCK_ONE_TIME[key]
+        for i, r in enumerate(body.rows):
+            _MOCK_ONE_TIME[(firm_id, body.client_id, body.month, f"mock-ote-{i}")] = {
+                "id": f"mock-ote-{i}", "employee_id": str(r.employee_id).strip(),
+                "kind": r.kind.strip().lower(), "label": r.label,
+                "amount_paise": int(r.amount_paise),
+                "pf_wages": bool(r.pf_wages), "esi_wages": bool(r.esi_wages),
+                "taxable": bool(r.taxable),
+                "payment_interval_months": r.payment_interval_months,
+                "note": r.note, "entered_at": stamped,
+            }
+        return api_response(True, {"client_id": body.client_id, "month": body.month,
+                                   "saved": len(body.rows),
+                                   "employees_touched": len(touched)})
+
+    # Delete-then-insert, scoped to the employees in the request. Not a
+    # transaction — PostgREST exposes none here — so the insert is attempted
+    # first for a single employee's worth of rows only after that employee's
+    # rows are gone, and a failure leaves the month emptier rather than
+    # doubled. Duplicated earnings are the worse outcome: they are paid.
+    for i in range(0, len(touched), 200):
+        (db.table("payroll_one_time_earnings").delete()
+         .eq("firm_id", firm_id).eq("client_id", body.client_id)
+         .eq("month", f"{body.month}-01")
+         .in_("employee_id", touched[i:i + 200]).execute())
+
+    if body.rows:
+        db.table("payroll_one_time_earnings").insert(
+            [{"firm_id": firm_id, "client_id": body.client_id,
+              "month": f"{body.month}-01",
+              "employee_id": str(r.employee_id).strip(),
+              "kind": r.kind.strip().lower(),
+              "label": r.label,
+              "amount_paise": int(r.amount_paise),
+              "pf_wages": bool(r.pf_wages),
+              "esi_wages": bool(r.esi_wages),
+              "taxable": bool(r.taxable),
+              "payment_interval_months": r.payment_interval_months,
+              "note": r.note,
+              "entered_by": current_user.get("id"),
+              "entered_at": stamped} for r in body.rows]).execute()
+
+    timeline_service.log(
+        body.client_id, "work", "Payroll Earnings Recorded",
+        f"{len(body.rows)} one-time earning(s) recorded for {body.month}",
+        "info", firm_id=firm_id, entity_type="client", entity_id=body.client_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {"client_id": body.client_id, "month": body.month,
+                               "saved": len(body.rows),
+                               "employees_touched": len(touched)})
+
+
+@router.get("/one-time-earnings/defaults")
+def one_time_earning_defaults(
+    kind: str,
+    payment_interval_months: Optional[int] = None,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """What the three Acts say about this kind of payment, with the reasoning.
+
+    A PROPOSAL for the form to prefill, not a decision. The row stores what was
+    saved, because the interval test means "an incentive" answers differently at
+    two clients and because a slip has to stay readable after these defaults
+    change.
+    """
+    try:
+        d = one_time_domain.statutory_defaults(kind, payment_interval_months)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return api_response(True, {
+        "kind": kind, "payment_interval_months": payment_interval_months,
+        "pf_wages": d.pf_wages, "esi_wages": d.esi_wages, "taxable": d.taxable,
+        "reason": d.reason,
+    })
 
 
 @router.put("/attendance/settings")

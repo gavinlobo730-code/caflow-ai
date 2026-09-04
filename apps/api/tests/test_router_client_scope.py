@@ -947,6 +947,17 @@ EXEMPT: dict[str, str] = {
         "client-guarded.",
     "/api/payroll/statutory-values/pt":
         "same table: recording and removing one state's slab set.",
+    # ── /api/payroll: what the three Acts say about a KIND of payment ───────
+    # A pure statutory lookup (migration 331, domain/payroll/one_time_earnings):
+    # "is a quarterly incentive ESI wages" is answered by ESI Act s.2(22) and
+    # nothing about any client. It reads no table, takes no client_id, and
+    # returns the same three booleans and the same sentence for every firm.
+    # The endpoint that WRITES against a client — PUT /one-time-earnings —
+    # calls assert_client_access, and so does the run that applies the rows.
+    "/api/payroll/one-time-earnings/defaults":
+        "a statutory lookup by kind and payment interval — EPF Act s.2(b), ESI "
+        "Act s.2(22), IT Act s.17(1). Reads no table and takes no client. The "
+        "GET and PUT of the earnings themselves are client-guarded.",
     "/api/engagement-letters/templates":
         "engagement_templates has firm_id and no client_id (migration 115) — a "
         "template is firm property, reused across every client. A client guard "

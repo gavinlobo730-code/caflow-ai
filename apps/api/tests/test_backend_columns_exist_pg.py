@@ -175,7 +175,17 @@ UNFIXED: dict[str, str] = {}
 # takes a list variable built in a loop, which this scanner cannot read. The
 # columns are not unchecked — _salary_in_force names every one of them,
 # source_structure_id included, in its select list rather than using "*".
-MAX_UNREADABLE = 438
+# 438 -> 439: routers/payroll's payroll_one_time_earnings insert (migration 331)
+# takes a LIST COMPREHENSION over the validated rows — one row per earning, and
+# a request carries several. Same shape as the attendance upsert two notes
+# above, unreadable for the same reason, and building the list into a variable
+# first would hide the same thing while reading no better. Not one column goes
+# unchecked: _one_time_for and get_one_time_earnings name every column of the
+# table literally in their select lists — kind, label, amount_paise, pf_wages,
+# esi_wages, taxable, payment_interval_months, note, entered_by, entered_at —
+# rather than "*", precisely so this scanner verifies them all against the real
+# schema.
+MAX_UNREADABLE = 439
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

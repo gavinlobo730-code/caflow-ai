@@ -23,7 +23,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, Download, Edit2, Check, X } from "lucide-react";
+import { ArrowLeft, Save, Upload, Download, Edit2, Check, X, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -33,6 +33,8 @@ import { api } from "@/lib/api";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { formatPaise } from "@/lib/services/formatting";
 import type { Column } from "@/lib/table/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -54,6 +56,50 @@ type AttendanceRow = {
   sick_leaves: number;
   earned_leaves: number;
 };
+
+/** One extra amount paid in this month that is NOT a monthly rate.
+ *
+ *  The three booleans are three different Acts asking three different
+ *  questions, and the browser must never guess any of them — the server
+ *  proposes them (GET /one-time-earnings/defaults) and the row records what
+ *  was saved:
+ *
+ *    pf_wages   EPF Act s.2(b) — bonus and commission are NOT basic wages;
+ *               arrears of basic and DA are.
+ *    esi_wages  ESI Act s.2(22) — additional remuneration paid at intervals
+ *               NOT EXCEEDING TWO MONTHS. An interval test, not a name test.
+ *    taxable    IT Act s.17(1)(iv). False only for a real reimbursement.
+ *
+ *  `amount_rs` is the typed string, kept as typed. It becomes paise through
+ *  paiseFromRupeeInput, which REFUSES anything that is not an amount —
+ *  parseFloat("1,25,000") is 1, and a CA types amounts that way.
+ */
+type EarningRow = {
+  key: string;
+  employee_id: string;
+  kind: string;
+  label: string;
+  amount_rs: string;
+  pf_wages: boolean;
+  esi_wages: boolean;
+  taxable: boolean;
+  payment_interval_months: number | null;
+  /** The sentence the server returns where a saved row disagrees with the
+   *  statutory default. Shown, never enforced — a CA may know something the
+   *  default cannot, but a disagreement in what the ECR is built from should
+   *  not be silent. */
+  divergence?: string | null;
+};
+
+const EARNING_KINDS = [
+  { value: "incentive",     label: "Incentive" },
+  { value: "bonus",         label: "Bonus" },
+  { value: "ex_gratia",     label: "Ex-gratia" },
+  { value: "arrears",       label: "Arrears" },
+  { value: "commission",    label: "Commission" },
+  { value: "reimbursement", label: "Reimbursement" },
+  { value: "other",         label: "Other" },
+];
 
 type LeaveBalance = {
   id?: string;
@@ -152,6 +198,18 @@ export default function AttendancePage() {
   const [editingLeave, setEditingLeave] = useState<string | null>(null);
   const [editLeaveForm, setEditLeaveForm] = useState<Partial<LeaveBalance>>({});
 
+  // ── One-time and variable earnings (migration 331) ───────────────────────
+  // Kept per client, because that is the grain the endpoint works at and the
+  // grain a payroll month has. The firm rail edits one client at a time here.
+  const [earnClient, setEarnClient] = useState<string>("");
+  /** client_id → client_name, so the picker names a client rather than a UUID. */
+  const [clientNames, setClientNames] = useState<Record<string, string>>({});
+  const [earnings, setEarnings] = useState<EarningRow[]>([]);
+  const [earnLocked, setEarnLocked] = useState(false);
+  const [earnSaving, setEarnSaving] = useState(false);
+  const [earnMsg, setEarnMsg] = useState("");
+  const [earnLoading, setEarnLoading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
@@ -165,6 +223,14 @@ export default function AttendancePage() {
       if (empRes.error) throw empRes.error;
       const emps: Employee[] = empRes.data ?? [];
       setEmployees(emps);
+
+      // Names for the clients this firm actually runs payroll for. Firm-scoped
+      // like every other read on this page — RLS is the control here, but the
+      // filter is the primary one and omitting it is what CLAUDE.md forbids.
+      const cliRes = await sb.from("clients").select("id, client_name").eq("firm_id", fid);
+      setClientNames(Object.fromEntries(
+        (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
+          [c.id, c.client_name])));
 
       // Load attendance for selected month/year
       const attRes = await sb.from("attendance").select("*")
@@ -255,6 +321,151 @@ export default function AttendancePage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (firmId && employees.length > 0) loadLeaveBalances(); }, [loadLeaveBalances, firmId, employees]);
+
+  // ── One-time and variable earnings ──────────────────────────────────────
+
+  const loadEarnings = useCallback(async () => {
+    if (!earnClient) { setEarnings([]); setEarnLocked(false); return; }
+    const month = `${attYear}-${String(attMonth).padStart(2, "0")}`;
+    setEarnLoading(true);
+    try {
+      const res = await api.payroll.getOneTimeEarnings(earnClient, month) as {
+        data?: {
+          locked?: boolean;
+          rows?: Array<{
+            id: string; employee_id: string; kind: string; label: string | null;
+            amount_paise: number; pf_wages: boolean; esi_wages: boolean;
+            taxable: boolean; payment_interval_months: number | null;
+            divergence?: string | null;
+          }>;
+        };
+      };
+      setEarnLocked(Boolean(res?.data?.locked));
+      setEarnings((res?.data?.rows ?? []).map(r => ({
+        key: r.id,
+        employee_id: r.employee_id,
+        kind: r.kind,
+        label: r.label ?? "",
+        // Round-tripped through the same string form the CA types, so editing
+        // an existing row and saving it back cannot change the amount.
+        amount_rs: (r.amount_paise / 100).toFixed(2),
+        pf_wages: r.pf_wages,
+        esi_wages: r.esi_wages,
+        taxable: r.taxable,
+        payment_interval_months: r.payment_interval_months,
+        divergence: r.divergence ?? null,
+      })));
+    } catch {
+      setEarnMsg("Could not load this month's earnings.");
+    } finally {
+      setEarnLoading(false);
+    }
+  }, [earnClient, attMonth, attYear]);
+
+  useEffect(() => { loadEarnings(); }, [loadEarnings]);
+
+  /** Ask the server what the three Acts say about this kind and interval.
+   *
+   *  The browser does not decide any of it. "Is a quarterly incentive ESI
+   *  wages" is ESI Act s.2(22) and the answer moves with the INTERVAL, which
+   *  is exactly the kind of rule that drifts the moment it exists twice.
+   */
+  async function applyStatutoryDefaults(key: string, kind: string, interval: number | null) {
+    try {
+      const res = await api.payroll.oneTimeEarningDefaults(kind, interval) as {
+        data?: { pf_wages: boolean; esi_wages: boolean; taxable: boolean; reason: string };
+      };
+      const d = res?.data;
+      if (!d) return;
+      setEarnings(prev => prev.map(r => r.key === key
+        ? { ...r, pf_wages: d.pf_wages, esi_wages: d.esi_wages, taxable: d.taxable,
+            divergence: null }
+        : r));
+    } catch {
+      /* The row keeps whatever it had; the CA can still set the three by hand,
+         and the server refuses a row that has not answered them. */
+    }
+  }
+
+  function addEarning() {
+    const emp = employees.find(e => e.client_id === earnClient);
+    setEarnings(prev => [...prev, {
+      key: `new-${prev.length}-${Date.now()}`,
+      employee_id: emp?.id ?? "",
+      kind: "bonus",
+      label: "",
+      amount_rs: "",
+      // Seeded from the statute for a bonus paid once, then re-asked whenever
+      // the kind or interval changes.
+      pf_wages: false, esi_wages: false, taxable: true,
+      payment_interval_months: null,
+    }]);
+  }
+
+  function updateEarning(key: string, patch: Partial<EarningRow>) {
+    setEarnings(prev => prev.map(r => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  /** Save the month's earnings for this client.
+   *
+   *  Every employee currently shown is sent, including those whose rows were
+   *  all removed — the endpoint REPLACES per employee, so an employee sent
+   *  with no rows has theirs cleared. That is what makes "I deleted the
+   *  duplicate bonus" expressible at all.
+   *
+   *  Amounts go through paiseFromRupeeInput, which returns null rather than
+   *  coercing. A refused amount is named here rather than sent as NaN.
+   */
+  async function saveEarnings() {
+    const month = `${attYear}-${String(attMonth).padStart(2, "0")}`;
+    const rows: Array<Record<string, unknown>> = [];
+    const bad: string[] = [];
+
+    for (const r of earnings) {
+      if (!r.employee_id) { bad.push("a row has no employee"); continue; }
+      const paise = paiseFromRupeeInput(r.amount_rs);
+      if (paise === null || paise === 0) {
+        const who = employees.find(e => e.id === r.employee_id)?.name ?? "an employee";
+        bad.push(`${who}: "${r.amount_rs}" is not an amount`);
+        continue;
+      }
+      rows.push({
+        employee_id: r.employee_id,
+        kind: r.kind,
+        label: r.label || null,
+        amount_paise: paise,
+        pf_wages: r.pf_wages,
+        esi_wages: r.esi_wages,
+        taxable: r.taxable,
+        payment_interval_months: r.payment_interval_months,
+      });
+    }
+
+    if (bad.length > 0) {
+      setEarnMsg(`Not saved — ${bad.join("; ")}.`);
+      return;
+    }
+
+    setEarnSaving(true);
+    setEarnMsg("");
+    try {
+      const res = await api.payroll.saveOneTimeEarnings({
+        client_id: earnClient, month, rows,
+      }) as { success?: boolean; error?: string | null; detail?: string };
+      if (res?.success === false) {
+        setEarnMsg(res.error || res.detail || "Save refused.");
+      } else {
+        setEarnMsg(`Saved ${rows.length} earning(s) for ${month}.`);
+        await loadEarnings();
+      }
+    } catch (e) {
+      setEarnMsg(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      // In a finally, so a thrown save cannot leave the button spinning
+      // forever — scripts/loading-flags.test.ts checks exactly this.
+      setEarnSaving(false);
+    }
+  }
 
   function updateAtt(empId: string, field: keyof Omit<AttendanceRow, "employee_id">, value: number) {
     setAttendance(prev => ({
@@ -401,6 +612,7 @@ export default function AttendancePage() {
           <TabsList className="mb-6">
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
             <TabsTrigger value="leave-balance">Leave Balances</TabsTrigger>
+            <TabsTrigger value="earnings">One-time Earnings</TabsTrigger>
           </TabsList>
 
           {/* ATTENDANCE TAB */}
@@ -723,6 +935,203 @@ export default function AttendancePage() {
                     </tbody>
                   </table>
                 </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ONE-TIME AND VARIABLE EARNINGS TAB (migration 331) */}
+          <TabsContent value="earnings">
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  One-time &amp; variable earnings — {MONTHS[attMonth - 1]} {attYear}
+                </CardTitle>
+                <p className="text-xs text-[#64748B] mt-1">
+                  Incentive, bonus, ex-gratia, arrears. These are <strong>not</strong> prorated by
+                  loss of pay — a decided amount is not a monthly rate. Each row states whether it
+                  is PF wages (EPF Act s.2(b)), ESI wages (ESI Act s.2(22)) and salary
+                  (IT Act s.17(1)); the answers differ between payments with the same name.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-4 items-end mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+                    <select
+                      className="border rounded-lg px-3 py-2 text-sm min-w-[220px]"
+                      value={earnClient}
+                      onChange={e => setEarnClient(e.target.value)}
+                    >
+                      <option value="">Select a client…</option>
+                      {Array.from(new Set(employees.map(e => e.client_id))).map(cid => (
+                        <option key={cid} value={cid}>
+                          {clientNames[cid] ?? cid}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={addEarning}
+                          disabled={!earnClient || earnLocked}
+                          className="flex items-center gap-1.5">
+                    <Plus size={14} />Add earning
+                  </Button>
+                  <Button size="sm" onClick={saveEarnings}
+                          disabled={!earnClient || earnLocked || earnSaving}
+                          className="flex items-center gap-1.5">
+                    <Save size={14} />{earnSaving ? "Saving…" : "Save"}
+                  </Button>
+                  {earnMsg && <span className="text-sm text-[#334155]">{earnMsg}</span>}
+                </div>
+
+                {earnLocked && (
+                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2
+                                  text-sm text-amber-900 flex items-start gap-2">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <span>
+                      This month&apos;s payroll is released. Its payslips already carry these
+                      earnings, so changing them now would leave the inputs disagreeing with the
+                      payslips, the ECR and the ledger. Reverse the run first.
+                    </span>
+                  </div>
+                )}
+
+                {!earnClient ? (
+                  <p className="text-sm text-[#64748B]">Select a client to record earnings.</p>
+                ) : earnLoading ? (
+                  <p className="text-sm text-[#64748B]">Loading…</p>
+                ) : earnings.length === 0 ? (
+                  <p className="text-sm text-[#64748B]">
+                    Nothing recorded for this month. That is a real answer, not a blank —
+                    most months have none.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-xs text-[#64748B]">
+                          <th className="py-2 pr-3">Employee</th>
+                          <th className="py-2 pr-3">Kind</th>
+                          <th className="py-2 pr-3">Description</th>
+                          <th className="py-2 pr-3">Amount (₹)</th>
+                          <th className="py-2 pr-3">Every (months)</th>
+                          <th className="py-2 pr-3">PF wages</th>
+                          <th className="py-2 pr-3">ESI wages</th>
+                          <th className="py-2 pr-3">Salary</th>
+                          <th className="py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {earnings.map(r => (
+                          <tr key={r.key} className="border-b align-top">
+                            <td className="py-2 pr-3">
+                              <select
+                                className="border rounded px-2 py-1 text-sm"
+                                value={r.employee_id}
+                                disabled={earnLocked}
+                                onChange={e => updateEarning(r.key, { employee_id: e.target.value })}
+                              >
+                                <option value="">—</option>
+                                {employees.filter(e => e.client_id === earnClient).map(e => (
+                                  <option key={e.id} value={e.id}>{e.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-2 pr-3">
+                              <select
+                                className="border rounded px-2 py-1 text-sm"
+                                value={r.kind}
+                                disabled={earnLocked}
+                                onChange={e => {
+                                  updateEarning(r.key, { kind: e.target.value });
+                                  applyStatutoryDefaults(r.key, e.target.value,
+                                                         r.payment_interval_months);
+                                }}
+                              >
+                                {EARNING_KINDS.map(k => (
+                                  <option key={k.value} value={k.value}>{k.label}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-2 pr-3">
+                              <input
+                                className="border rounded px-2 py-1 text-sm w-40"
+                                value={r.label}
+                                disabled={earnLocked}
+                                placeholder="Diwali bonus"
+                                onChange={e => updateEarning(r.key, { label: e.target.value })}
+                              />
+                            </td>
+                            <td className="py-2 pr-3">
+                              <input
+                                className="border rounded px-2 py-1 text-sm w-28 text-right"
+                                value={r.amount_rs}
+                                disabled={earnLocked}
+                                inputMode="decimal"
+                                placeholder="50000"
+                                onChange={e => updateEarning(r.key, { amount_rs: e.target.value })}
+                              />
+                              {/* Shown only once it parses. paiseFromRupeeInput
+                                  returns null rather than coercing, so a half-typed
+                                  amount simply shows nothing instead of a number
+                                  that is not what was typed. */}
+                              {paiseFromRupeeInput(r.amount_rs) !== null && (
+                                <div className="text-[11px] text-[#64748B] text-right mt-0.5">
+                                  {formatPaise(paiseFromRupeeInput(r.amount_rs) as number)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <input
+                                type="number" min={1} max={12}
+                                className="border rounded px-2 py-1 text-sm w-16"
+                                value={r.payment_interval_months ?? ""}
+                                disabled={earnLocked}
+                                placeholder="—"
+                                onChange={e => {
+                                  const v = e.target.value === "" ? null : Number(e.target.value);
+                                  updateEarning(r.key, { payment_interval_months: v });
+                                  applyStatutoryDefaults(r.key, r.kind, v);
+                                }}
+                              />
+                            </td>
+                            {(["pf_wages", "esi_wages", "taxable"] as const).map(f => (
+                              <td key={f} className="py-2 pr-3">
+                                <input
+                                  type="checkbox"
+                                  checked={r[f]}
+                                  disabled={earnLocked}
+                                  onChange={e => updateEarning(r.key, { [f]: e.target.checked })}
+                                />
+                              </td>
+                            ))}
+                            <td className="py-2">
+                              <button
+                                className="text-[#64748B] hover:text-red-600 disabled:opacity-40"
+                                disabled={earnLocked}
+                                aria-label="Remove earning"
+                                onClick={() => setEarnings(prev =>
+                                  prev.filter(x => x.key !== r.key))}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {earnings.some(r => r.divergence) && (
+                      <div className="mt-4 space-y-1">
+                        {earnings.filter(r => r.divergence).map(r => (
+                          <p key={r.key} className="text-xs text-amber-800 flex items-start gap-1.5">
+                            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                            {r.divergence}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
