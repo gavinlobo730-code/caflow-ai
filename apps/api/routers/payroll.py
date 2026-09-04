@@ -3283,12 +3283,26 @@ def payroll_client_states(
                  .execute().data) or []):
         runs[str(row.get("client_id"))] = row
 
+    # The NAME, because a queue keyed by UUID is not a queue anybody can work.
+    # A third small query for the whole firm rather than one per row, and rather
+    # than making the browser fetch `clients` itself — this endpoint returns
+    # finished rows, which is what docs/architecture/10-payroll.md's reporting
+    # rule asks of a screen a bureau opens every morning.
+    names = {}
+    for row in ((db.table("clients").select("id, client_name")
+                 .eq("firm_id", firm_id).execute().data) or []):
+        names[str(row.get("id"))] = row.get("client_name")
+
     out = []
     for cid in sorted(set(enabled) | set(runs)):
         setting = enabled.get(cid) or {}
         run = runs.get(cid)
         out.append({
             "client_id": cid,
+            # A client row that exists in payroll but not in `clients` is a
+            # deleted client with payroll history. Named as such rather than
+            # blank, because a blank cell reads as a rendering fault.
+            "client_name": names.get(cid) or "(client no longer on file)",
             "payroll_enabled": bool(setting.get("payroll_enabled")),
             "inputs_due_day": setting.get("inputs_due_day"),
             # None means no run for this month — which for an ENABLED client is
