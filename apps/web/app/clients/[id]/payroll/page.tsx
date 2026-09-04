@@ -15,6 +15,7 @@ import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
+import { api } from "@/lib/api";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
@@ -109,10 +110,18 @@ interface SalaryStructure {
 }
 
 interface StatutoryData {
+  /** The 12% either side. NOT what is remitted — see pf_challan_total_paise. */
   pf_total_paise: number;
+  edli_paise?: number;
+  pf_admin_paise?: number;
+  /** Contributions + EDLI + admin charge: the figure on the EPFO challan. */
+  pf_challan_total_paise?: number;
   esi_total_paise: number;
   pt_total_paise: number;
   tds_24q_paise: number;
+  one_time_paise?: number;
+  gross_paise?: number;
+  status?: string;
 }
 
 interface SalaryRegister {
@@ -849,18 +858,38 @@ function StatutoryTab({ clientId }: { clientId: string }) {
       {data && (
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "PF Challan (Employer + Employee)", amount: data.pf_total_paise, due: "15th of following month", color: "blue" },
-            { label: "ESI Challan (Employer + Employee)", amount: data.esi_total_paise, due: "15th of following month", color: "green" },
-            { label: "PT Challan", amount: data.pt_total_paise, due: "varies by state", color: "amber" },
-            { label: "TDS — 24Q", amount: data.tds_24q_paise, due: "7th of following month", color: "red" },
-          ].map(({ label, amount, due, color }) => (
+            // The PF card shows the CHALLAN, not the contributions. EDLI and the
+            // admin charge are remitted on the same challan, and a card headed
+            // "PF Challan" showing only the 12% either side was about 1% of PF
+            // wages short of what the CA was about to pay — with no line to
+            // explain the gap. The two are named underneath so the total can be
+            // taken apart again.
+            {
+              label: "PF Challan (Employer + Employee)",
+              amount: data.pf_challan_total_paise ?? data.pf_total_paise,
+              due: "15th of following month", color: "blue",
+              detail: `Contributions ${fmt(data.pf_total_paise ?? 0)} · EDLI ${fmt(data.edli_paise ?? 0)} · Admin ${fmt(data.pf_admin_paise ?? 0)}`,
+            },
+            { label: "ESI Challan (Employer + Employee)", amount: data.esi_total_paise, due: "15th of following month", color: "green", detail: "" },
+            { label: "PT Challan", amount: data.pt_total_paise, due: "varies by state", color: "amber", detail: "" },
+            { label: "TDS — 24Q", amount: data.tds_24q_paise, due: "7th of following month", color: "red", detail: "" },
+          ].map(({ label, amount, due, color, detail }) => (
             <div key={label} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
               <p className="text-[11px] font-semibold text-[#64748B]">{label}</p>
               <p className={`text-2xl font-bold mt-1 text-${color}-600`}>{fmt(amount ?? 0)}</p>
+              {detail && <p className="text-[10px] text-[#94A3B8] mt-1 font-mono">{detail}</p>}
               <p className="text-[10px] text-[#94A3B8] mt-1">Due: {due}</p>
             </div>
           ))}
         </div>
+      )}
+
+      {data && (data.one_time_paise ?? 0) !== 0 && (
+        <p className="text-[11px] text-[#64748B]">
+          {fmt(data.one_time_paise ?? 0)} of the gross this month was one-time
+          earnings — a bonus, arrears or a reimbursement — not the recurring
+          salary bill. It is the usual reason a month&apos;s challans jump.
+        </p>
       )}
 
       {!data && !loading && (
@@ -1358,6 +1387,8 @@ function ReportsTab({ clientId }: { clientId: string }) {
   // M17: a failed salary-register fetch must not render blank — that reads as
   // "no salary data" when the request actually failed.
   const [loadFailed, setLoadFailed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -1373,6 +1404,22 @@ function ReportsTab({ clientId }: { clientId: string }) {
     }
   }
 
+  // The file is built by the SERVER, from the full slip row. This screen shows
+  // eight columns; the register a CA hands over has twenty-eight — attendance,
+  // employer contributions, EDLI, the admin charge and one-time earnings among
+  // them. Exporting what is on screen would produce a document that does not
+  // reconcile to the bank advice.
+  async function downloadRegister(): Promise<void> {
+    setDownloading(true); setDownloadError(null);
+    try {
+      await api.payroll.downloadSalaryRegister(clientId, month);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Could not build the register");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
@@ -1381,7 +1428,12 @@ function ReportsTab({ clientId }: { clientId: string }) {
         <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
           {loading ? "Loading…" : "Load Salary Register"}
         </button>
+        <button onClick={downloadRegister} disabled={downloading}
+          className="px-4 py-1.5 border border-[#E2E8F0] text-[12px] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-50">
+          {downloading ? "Building…" : "Download CSV"}
+        </button>
       </div>
+      {downloadError && <p className="text-[11px] text-red-600">{downloadError}</p>}
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
           <div className="px-4 py-3 border-b border-[#F1F5F9] flex items-center justify-between">

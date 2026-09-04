@@ -164,12 +164,22 @@ async def _errors_with_cors(request: Request, call_next):
         return _failure_response(request, exc)
 
 
+# `expose_headers` is NOT cosmetic. A browser lets script read only the seven
+# CORS-safelisted response headers unless the server names the others here, and
+# the web app is on Cloudflare Pages while this API is on Render — every request
+# is cross-origin. So `Content-Disposition` was invisible to `lib/api`'s
+# downloadFile across all twelve download endpoints: it reads the header for the
+# filename, never found it, and silently used its own fallback. That is why a
+# downloaded payslip arrived named for the month rather than the person.
+# `X-Payslip-Problems` is the bulk-payslip zip saying which employees it could
+# not render; unreadable, it would be the same as not sending it.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Payslip-Problems"],
 )
 
 

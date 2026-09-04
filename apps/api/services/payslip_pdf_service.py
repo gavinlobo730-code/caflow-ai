@@ -283,6 +283,92 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
     return pdf, filename
 
 
+def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, str, list[str]]:
+    """Every payslip in one run, as a zip. Returns (zip_bytes, filename, problems).
+
+    WHY A ZIP AND NOT THIRTY REQUESTS. get_payslip_pdf renders ONE slip and
+    re-reads the firm for each — so a CA with thirty employees clicked thirty
+    times, waited for thirty round trips to Mumbai, and got thirty files named
+    the same thing, because the single-slip filename is `payslip-YYYY-MM.pdf`
+    with no employee in it. The month-end pack is one action.
+
+    ONE QUERY FOR THE SLIPS AND ONE FOR THE FIRM. The per-slip path reads the
+    firm every time; here it is read once and passed to every render, which is
+    the difference between one round trip and thirty.
+
+    A SLIP THAT WILL NOT RENDER IS REPORTED, NOT SKIPPED SILENTLY. If one
+    employee's slip fails, the other twenty-nine are still worth having — but a
+    zip that quietly contains twenty-nine files when the run has thirty is a
+    trap, because nobody counts. The names come back in `problems` and the
+    caller puts them on the response.
+
+    Firm-scoped on the RUN, once, rather than per slip: the slips are selected
+    by run_id, so proving the run belongs to the firm proves it for all of them.
+    """
+    import io
+    import zipfile
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+
+    run = (db.table("payroll_runs")
+           .select("id, firm_id, client_id, month, status")
+           .eq("id", run_id).maybe_single().execute().data)
+    if not run:
+        raise ValueError("Payroll run not found")
+    # Fail CLOSED, like get_payslip_pdf: deny unless ownership is proven.
+    if not firm_id or run.get("firm_id") != firm_id:
+        raise PermissionError("Access denied")
+
+    slips = (db.table("payroll_slips")
+             .select("*, payroll_employees(name, pan, designation, department)")
+             .eq("run_id", run_id).execute().data) or []
+    if not slips:
+        raise ValueError("This run has no payslips")
+
+    firm = _load_firm(run.get("firm_id"))
+    month = run.get("month") or "payslips"
+
+    problems: list[str] = []
+    used: set[str] = set()
+    buf = io.BytesIO()
+    # ZIP_DEFLATED: a payslip PDF is mostly text and compresses well, and a
+    # thirty-employee pack is emailed rather than streamed.
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for slip in slips:
+            employee = slip.pop("payroll_employees", None) or {}
+            name = (employee.get("name") or "employee").strip()
+            try:
+                pdf = build_payslip_pdf(slip, employee, run, firm)
+            except Exception as e:  # noqa: BLE001 — one bad slip must not lose the rest
+                logger.exception("payslip render failed for slip %s", slip.get("id"))
+                problems.append(f"{name}: could not be rendered ({e.__class__.__name__}).")
+                continue
+            zf.writestr(_payslip_filename(name, month, used), pdf)
+
+    return buf.getvalue(), f"payslips-{month}.zip", problems
+
+
+def _payslip_filename(name: str, month: str, used: set) -> str:
+    """A file name per employee, unique within the zip.
+
+    The single-slip endpoint names every file `payslip-YYYY-MM.pdf`, which is
+    fine for one download and useless for thirty — they collide, and a zip
+    entry written twice under one name is not an error, it is a file the reader
+    silently keeps only one of. Two employees genuinely can share a name, so
+    the collision is resolved with a counter rather than assumed away.
+    """
+    safe = "".join(ch if (ch.isalnum() or ch in " -_") else "" for ch in name).strip()
+    safe = "-".join(safe.split()) or "employee"
+    stem = f"payslip-{month}-{safe}"
+    candidate, n = f"{stem}.pdf", 2
+    while candidate in used:
+        candidate = f"{stem}-{n}.pdf"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
 def _load_firm(firm_id: Optional[str]) -> dict:
     if not firm_id:
         return {}

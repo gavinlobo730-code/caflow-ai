@@ -8,7 +8,9 @@
  * IT Act Section 234B/234C: interest on under-payment of advance tax / TDS.
  *
  * Reports:
- *  1. Payslip Summary   — all employees for a selected month
+ *  1. Payslip Summary   — one payroll run (a client, a month), and the
+ *                        month-end pack: the salary register and every
+ *                        payslip in one zip, both built by the server
  *  2. Year-to-Date      — month-by-month breakdown per employee (Form 16 prep)
  *  3. Cost to Company   — Gross + Employer PF + Employer ESI per employee
  *  4. TDS Projection    — month-by-month TDS plan to avoid 234B/234C interest
@@ -28,6 +30,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
+import { api } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -296,13 +299,26 @@ function CategoryBadge({ category }: { category: DueCategory }) {
 
 // ── 1. Payslip Summary ────────────────────────────────────────────────────
 
-function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: PayrollRun[] }) {
-  const availableMonths = Array.from(new Set(runs.map(r => r.month))).sort().reverse();
-  const [selectedMonth, setSelectedMonth] = useState(availableMonths[0] ?? "");
+function PayslipSummaryTab({
+  slips, runs, clientNames,
+}: { slips: PayrollSlip[]; runs: PayrollRun[]; clientNames: Record<string, string> }) {
+  // THE SELECTOR IS A RUN, NOT A MONTH. It used to be a month, and a firm that
+  // runs payroll for two clients in August had both clients' employees in one
+  // table under one TOTAL — a number that is nobody's payroll. A run is exactly
+  // one client for exactly one month, which is also what a salary register and
+  // a payslip pack are.
+  const runOptions = [...runs].sort(
+    (a, b) => b.month.localeCompare(a.month)
+           || (clientNames[a.client_id] ?? "").localeCompare(clientNames[b.client_id] ?? ""),
+  );
+  const [selectedRunId, setSelectedRunId] = useState(runOptions[0]?.id ?? "");
+  const [busy, setBusy] = useState<"" | "register" | "payslips">("");
+  const [note, setNote] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null);
 
-  const monthSlips = slips.filter(s => s.run?.month === selectedMonth);
+  const run = runs.find(r => r.id === selectedRunId);
+  const runSlips = slips.filter(s => s.run_id === selectedRunId);
 
-  const totals = monthSlips.reduce(
+  const totals = runSlips.reduce(
     (acc, s) => ({
       gross: acc.gross + s.gross_paise,
       pf: acc.pf + s.pf_employee_paise,
@@ -314,59 +330,92 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
     { gross: 0, pf: 0, esi: 0, pt: 0, tds: 0, net: 0 },
   );
 
-  function exportCsv(): void {
-    const header = "Employee,PAN,Designation,Gross,PF,ESI,PT,TDS,Net Pay";
-    const rows = monthSlips.map(s => {
-      const emp = s.employee;
-      return [
-        `"${emp?.name ?? ""}"`,
-        `"${emp?.pan ?? ""}"`,
-        `"${emp?.designation ?? ""}"`,
-        (s.gross_paise / 100).toFixed(2),
-        (s.pf_employee_paise / 100).toFixed(2),
-        (s.esi_employee_paise / 100).toFixed(2),
-        (s.pt_paise / 100).toFixed(2),
-        (s.tds_paise / 100).toFixed(2),
-        (s.net_paise / 100).toFixed(2),
-      ].join(",");
-    });
-    const footer = [
-      `"TOTAL"`, `""`, `""`,
-      (totals.gross / 100).toFixed(2),
-      (totals.pf / 100).toFixed(2),
-      (totals.esi / 100).toFixed(2),
-      (totals.pt / 100).toFixed(2),
-      (totals.tds / 100).toFixed(2),
-      (totals.net / 100).toFixed(2),
-    ].join(",");
-    downloadCsv([header, ...rows, footer].join("\n"), `Payslip_Summary_${selectedMonth}.csv`);
+  // Both files are built by the SERVER. The register used to be assembled here
+  // out of `paise / 100`, from the eight columns this screen happened to load —
+  // so it carried no attendance, no employer contributions and no one-time
+  // earnings, and a CA reconciling it against the bank advice was reading a
+  // different document from the one payroll actually paid.
+  async function downloadRegister(): Promise<void> {
+    if (!run) return;
+    setBusy("register"); setNote(null);
+    try {
+      await api.payroll.downloadSalaryRegister(run.client_id, run.month);
+    } catch (err) {
+      setNote({ kind: "error", text: err instanceof Error ? err.message : "Could not build the register" });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function downloadPayslips(): Promise<void> {
+    if (!run) return;
+    setBusy("payslips"); setNote(null);
+    try {
+      const problems = await api.payroll.downloadRunPayslips(run.id, run.month);
+      // A zip one file short is a trap nobody counts their way out of, so the
+      // employees it could not render are said out loud rather than left to be
+      // noticed.
+      setNote(problems.length
+        ? { kind: "warn", text: `The zip is missing ${problems.length} payslip${problems.length === 1 ? "" : "s"}: ${problems.join("; ")}` }
+        : { kind: "ok", text: `${runSlips.length} payslips downloaded.` });
+    } catch (err) {
+      setNote({ kind: "error", text: err instanceof Error ? err.message : "Could not build the payslips" });
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <div>
-          <CardTitle className="text-base">Payslip Summary</CardTitle>
-          <p className="text-xs text-[#64748B] mt-0.5">All employees for a selected month</p>
+      <CardHeader className="pb-3">
+        <div className="flex flex-row items-start justify-between flex-wrap gap-3">
+          <div>
+            <CardTitle className="text-base">Payslip Summary</CardTitle>
+            <p className="text-xs text-[#64748B] mt-0.5">One client, one month — the month-end pack</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              className="border rounded-lg px-3 py-2 text-sm"
+              value={selectedRunId}
+              onChange={e => { setSelectedRunId(e.target.value); setNote(null); }}
+            >
+              {runOptions.length === 0 && <option value="">No payroll runs</option>}
+              {runOptions.map(r => (
+                <option key={r.id} value={r.id}>
+                  {(clientNames[r.client_id] ?? "Client")} — {monthLabel(r.month)}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm" variant="outline" onClick={downloadRegister}
+              disabled={!run || busy !== ""}
+              className="flex items-center gap-1.5"
+            >
+              <Download size={13} />{busy === "register" ? "Building…" : "Salary register"}
+            </Button>
+            <Button
+              size="sm" variant="outline" onClick={downloadPayslips}
+              disabled={!run || runSlips.length === 0 || busy !== ""}
+              className="flex items-center gap-1.5"
+            >
+              <FileText size={13} />{busy === "payslips" ? "Building…" : "Payslips (zip)"}
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <select
-            className="border rounded-lg px-3 py-2 text-sm"
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-          >
-            {availableMonths.map(m => (
-              <option key={m} value={m}>{monthLabel(m)}</option>
-            ))}
-          </select>
-          <Button size="sm" variant="outline" onClick={exportCsv} disabled={monthSlips.length === 0} className="flex items-center gap-1.5">
-            <Download size={13} />Export CSV
-          </Button>
-        </div>
+        {note && (
+          <p className={`text-xs mt-3 ${
+            note.kind === "error" ? "text-red-600"
+            : note.kind === "warn" ? "text-amber-700"
+            : "text-green-700"}`}>
+            {note.text}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="p-0">
-        {monthSlips.length === 0 ? (
-          <p className="text-center text-[#94A3B8] py-12 text-sm">No payroll data for {selectedMonth || "selected month"}.</p>
+        {runSlips.length === 0 ? (
+          <p className="text-center text-[#94A3B8] py-12 text-sm">
+            {run ? `No payslips in the ${monthLabel(run.month)} run.` : "No payroll runs yet."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -383,7 +432,7 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
                 </tr>
               </thead>
               <tbody>
-                {monthSlips.map(s => (
+                {runSlips.map(s => (
                   <tr key={s.id} className="border-b hover:bg-[#F8FAFC]">
                     <td className="py-3 px-4 font-medium">{s.employee?.name ?? "—"}</td>
                     <td className="py-3 px-4 font-mono text-xs text-[#64748B]">{s.employee?.pan || "—"}</td>
@@ -396,7 +445,7 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
                   </tr>
                 ))}
                 <tr className="bg-[#F8FAFC] font-semibold border-t-2 border-[#E2E8F0]">
-                  <td className="py-3 px-4" colSpan={2}>Total ({monthSlips.length} employees)</td>
+                  <td className="py-3 px-4" colSpan={2}>Total ({runSlips.length} employees)</td>
                   <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
                   <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.pf)}</td>
                   <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.esi)}</td>
@@ -1150,6 +1199,7 @@ export default function PayrollReportsPage() {
   const [slips, setSlips] = useState<PayrollSlip[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [runs, setRuns] = useState<PayrollRun[]>([]);
+  const [clientNames, setClientNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1158,12 +1208,19 @@ export default function PayrollReportsPage() {
     try {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
-      const [empRes, runsRes] = await Promise.all([
+      const [empRes, runsRes, clientsRes] = await Promise.all([
         sb.from("payroll_employees").select("*").eq("firm_id", firmId),
         sb.from("payroll_runs").select("*").eq("firm_id", firmId).order("month", { ascending: false }),
+        sb.from("clients").select("id, client_name").eq("firm_id", firmId),
       ]);
       if (empRes.error) throw new Error(empRes.error.message);
       if (runsRes.error) throw new Error(runsRes.error.message);
+      // A missing client name is not worth failing the page for — the run is
+      // still selectable, it just reads "Client — August 2026".
+      setClientNames(Object.fromEntries(
+        ((clientsRes.data ?? []) as { id: string; client_name: string }[])
+          .map(c => [c.id, c.client_name]),
+      ));
 
       const empList: Employee[] = empRes.data ?? [];
       const runList: PayrollRun[] = runsRes.data ?? [];
@@ -1273,7 +1330,7 @@ export default function PayrollReportsPage() {
           </TabsList>
 
           <TabsContent value="payslip-summary">
-            <PayslipSummaryTab slips={slips} runs={runs} />
+            <PayslipSummaryTab slips={slips} runs={runs} clientNames={clientNames} />
           </TabsContent>
           <TabsContent value="ytd">
             <YtdTab slips={slips} employees={employees} />

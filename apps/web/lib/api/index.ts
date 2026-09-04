@@ -473,7 +473,7 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 /** Fetch a binary endpoint with auth and trigger a browser blob download. */
-async function downloadFile(path: string, fallbackFilename: string, extraHeaders?: Record<string, string>): Promise<void> {
+async function downloadFile(path: string, fallbackFilename: string, extraHeaders?: Record<string, string>): Promise<Headers> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
@@ -503,6 +503,11 @@ async function downloadFile(path: string, fallbackFilename: string, extraHeaders
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  // The headers go back to the caller because a file body cannot carry a
+  // message: the bulk-payslip zip reports the employees it could not render on
+  // X-Payslip-Problems. Both that and Content-Disposition are only readable
+  // because main.py names them in the CORS expose_headers list.
+  return res.headers;
 }
 
 /**
@@ -1262,6 +1267,32 @@ export const api = {
      */
     reverseRun: (runId: string) =>
       request(`/api/payroll/runs/${runId}/reverse`, { method: "POST" }),
+    /** THE MONTH-END PACK, in one action.
+     *
+     *  downloadPayslip below is right for one employee asking for theirs. This
+     *  is for the CA who has thirty and was clicking thirty times — and getting
+     *  thirty files called `payslip-2026-08.pdf`, because that endpoint's
+     *  filename carries the month and not the person.
+     *
+     *  Returns the employees whose payslip could not be rendered. The zip still
+     *  holds the ones that worked — twenty-nine payslips are worth having — but
+     *  a zip quietly one file short is a trap nobody counts their way out of,
+     *  so the names come back and the caller has to say them.
+     */
+    downloadRunPayslips: async (runId: string, month?: string): Promise<string[]> => {
+      const headers = await downloadFile(
+        `/api/payroll/runs/${runId}/payslips.zip`,
+        `payslips-${month ?? runId}.zip`);
+      const problems = headers.get("X-Payslip-Problems");
+      return problems ? problems.split("; ").filter(Boolean) : [];
+    },
+    /** The salary register as a file. It goes to the client, into the audit
+     *  file, and beside the bank advice; the JSON endpoint could only be read
+     *  on a screen and retyped. */
+    downloadSalaryRegister: (clientId: string, month: string) =>
+      downloadFile(
+        `/api/payroll/reports/salary-register.csv?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`,
+        `salary-register-${month}.csv`),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
 
