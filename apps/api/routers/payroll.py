@@ -34,6 +34,8 @@ import calendar
 
 from domain.payroll import wage_base
 from domain.payroll.ecr import build_ecr
+from domain.payroll import ecr_sequence
+from services import epfo_ecr_filing_service as ecr_filings
 from domain.payroll.esic import build_esic_return
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
@@ -3726,35 +3728,14 @@ def delete_pt_registration(
     return api_response(True, {"client_id": client_id, "state": state, "deleted": True})
 
 
-@router.get("/runs/{run_id}/ecr")
-def run_ecr(
-    run_id: str,
-    current_user: dict = Depends(rbac("payroll", "read"))
-):
-    """Build the EPFO Electronic Challan cum Return for a finalised run.
+def _build_run_ecr(db, current_user: dict, run_id: str):
+    """(run, month, ECRFile) for a finalised run, or the right HTTP refusal.
 
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    Returns the file's text for a human to download and upload at
-    unifiedportal-emp.epfindia.gov.in. Nothing here transmits anything, and
-    nothing is written.
-
-    Every figure comes off the stored payslips. The split between EPS and EPF is
-    read, never recomputed — a return that disagreed with the general ledger
-    would be worse than no return, and two implementations of one statutory
-    split drift the first time a ceiling moves.
-
-    A run that is not yet finalised is refused rather than filed: the ECR is a
-    return of contributions actually made, and a draft run's figures can still
-    change. `problems` names every member the file cannot carry — no UAN, a
-    ceiling breached, absent all month yet contributing — so they are fixed
-    before the upload rather than after the portal rejects the batch.
+    ONE implementation, called by the download and by the record-what-you-filed
+    endpoint. The members frozen onto a filing record have to be the members the
+    CA actually uploaded, and the surest way to guarantee that is for both paths
+    to come through the same builder rather than assembling the figures twice.
     """
-    db = _db()
-    if not db:
-        return api_response(True, {"run_id": run_id, "lines": "", "members": [],
-                                   "problems": [], "totals": {}, "filable": False})
-    _assert_run_scope(db, current_user, run_id)
-
     run = (db.table("payroll_runs").select("*").eq("id", run_id)
            .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
     if not run:
@@ -3787,8 +3768,44 @@ def run_ecr(
                             detail=f"Run month {month!r} is not YYYY-MM; cannot bound NCP days.")
 
     ceiling = payroll_rates_for(_fy_for_month(month)).pf.wage_ceiling_paise
-    ecr = build_ecr(slips=slips, employees_by_id=by_id,
-                    days_in_month=days_in_month, wage_ceiling_paise=ceiling)
+    return run, month, build_ecr(slips=slips, employees_by_id=by_id,
+                                 days_in_month=days_in_month,
+                                 wage_ceiling_paise=ceiling)
+
+
+@router.get("/runs/{run_id}/ecr")
+def run_ecr(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """Build the EPFO Electronic Challan cum Return for a finalised run.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Returns the file's text for a human to download and upload at
+    unifiedportal-emp.epfindia.gov.in. Nothing here transmits anything, and
+    nothing is written.
+
+    Every figure comes off the stored payslips. The split between EPS and EPF is
+    read, never recomputed — a return that disagreed with the general ledger
+    would be worse than no return, and two implementations of one statutory
+    split drift the first time a ceiling moves.
+
+    A run that is not yet finalised is refused rather than filed: the ECR is a
+    return of contributions actually made, and a draft run's figures can still
+    change. `problems` names every member the file cannot carry — no UAN, a
+    ceiling breached, absent all month yet contributing — so they are fixed
+    before the upload rather than after the portal rejects the batch.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "run_id": run_id, "lines": "", "members": [], "problems": [],
+            "totals": {}, "filable": False, "outstanding_months": [],
+            "blocking_months": [], "sequence_note": "",
+            "required_returns": [], "return_type_reason": "",
+            "interest_and_damages": ecr_sequence.INTEREST_AND_DAMAGES_NOTE})
+    _assert_run_scope(db, current_user, run_id)
+    run, month, ecr = _build_run_ecr(db, current_user, run_id)
 
     # BESIDE the file, never inside ecr.problems. The establishment code is not
     # a field on an ECR — EPFO takes the establishment from the portal login —
@@ -3797,6 +3814,22 @@ def run_ecr(
     # domain/payroll/identity.py.
     ident, _pt = _read_statutory_identity(db, current_user["firm_id"], run.get("client_id"))
     estab_gaps = identity_domain.ecr_gaps(ident)
+
+    # WHERE THIS MONTH SITS IN THE CLIENT'S FILING ORDER. Reported BESIDE the
+    # file for the same reason the establishment code is (domain/payroll/
+    # identity.py): a blocked month's file is not WRONG, and folding this into
+    # ecr.problems would flip is_filable and withhold a correct return. What it
+    # changes is whether the portal will accept the upload today, which the CA
+    # needs to know before they try, not after.
+    prior = ecr_filings.read_filings(db, firm_id=current_user["firm_id"],
+                                     client_id=run.get("client_id"))
+    sequence = ecr_sequence.sequence_for(
+        month,
+        finalised_months=ecr_filings.finalised_months(
+            db, firm_id=current_user["firm_id"], client_id=run.get("client_id")),
+        filings=prior)
+    decision = ecr_sequence.decide_returns(
+        month, members=ecr_filings.members_from_ecr(ecr), filings=prior)
 
     return api_response(True, {
         "run_id": run_id,
@@ -3809,9 +3842,161 @@ def run_ecr(
         "filable": ecr.is_filable,
         "establishment_code": ident.get("epf_establishment_code"),
         "identity_gaps": [g.note for g in estab_gaps],
+        # The revamped ECR, effective wage month September 2025. The file format
+        # did not change; the workflow around it did. See
+        # docs/compliance/04-mca-epfo-esic.md.
+        "outstanding_months": list(sequence.outstanding),
+        "blocking_months": list(sequence.blocking),
+        "sequence_note": sequence.note,
+        "required_returns": list(decision.required_returns),
+        "return_type_reason": decision.reason,
+        "new_members": list(decision.new_members),
+        "changed_members": list(decision.changed_members),
+        "withdrawn_members": list(decision.withdrawn_members),
+        "interest_and_damages": ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
         "disclaimer": "CA REVIEW REQUIRED — upload this to the EPFO portal yourself. "
                       "Nothing has been transmitted.",
     })
+
+
+class ECRFiledIn(BaseModel):
+    """What the CA did at the EPFO portal, recorded after they did it."""
+    return_type: str = ecr_sequence.REGULAR
+    status: str = ecr_sequence.SUBMITTED
+    submitted_on: Optional[str] = None
+    approved_on: Optional[str] = None
+    trrn: Optional[str] = None
+
+
+@router.post("/runs/{run_id}/ecr/filed")
+def record_ecr_filed(
+    run_id: str,
+    body: ECRFiledIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Record that this run's ECR was filed with EPFO.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    This transmits nothing and files nothing. It writes down what a human
+    already did on unifiedportal-emp.epfindia.gov.in, because there is no EPFO
+    API to observe it with, and because without that record the product cannot
+    tell which months are outstanding or whether the next return is a Regular,
+    a Supplementary or a Revised.
+
+    Nothing else in the codebase infers a filing. Finalising a run closes the
+    books; it does not upload anything, and treating it as a filing would mark
+    every month clear and blind the CA to the sequence exactly when it matters.
+
+    The member figures frozen onto the record come from the run's own ECR,
+    rebuilt through the one builder the download uses, so what is stored is what
+    was uploaded rather than a second reading of the payslips.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"run_id": run_id, "recorded": False,
+                                   "reason": "mock mode: nothing is stored"})
+    _assert_run_scope(db, current_user, run_id)
+    run, month, ecr = _build_run_ecr(db, current_user, run_id)
+
+    try:
+        row = ecr_filings.record_filing(
+            db, firm_id=current_user["firm_id"], client_id=run.get("client_id"),
+            wage_month=month, return_type=body.return_type, status=body.status,
+            submitted_on=body.submitted_on, approved_on=body.approved_on,
+            trrn=body.trrn, run_id=run_id,
+            members=ecr_filings.members_from_ecr(ecr),
+            recorded_by=current_user.get("id"))
+    except ecr_filings.ECRFilingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    prior = ecr_filings.read_filings(db, firm_id=current_user["firm_id"],
+                                     client_id=run.get("client_id"))
+    sequence = ecr_sequence.sequence_for(
+        month,
+        finalised_months=ecr_filings.finalised_months(
+            db, firm_id=current_user["firm_id"], client_id=run.get("client_id")),
+        filings=prior)
+    return api_response(True, {
+        "run_id": run_id, "month": month, "filing": row,
+        "outstanding_months": list(sequence.outstanding),
+        "interest_and_damages": ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
+    })
+
+
+@router.get("/clients/{client_id}/ecr-sequence")
+def client_ecr_sequence(
+    client_id: str,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Which of this client's wage months EPFO is still waiting for, in order.
+
+    The queue view for the revamped ECR's blocking rule. `outstanding` is the
+    months this system holds a finalised run for with no approved Regular
+    return recorded — oldest first, which is the order they have to be filed in.
+
+    Read `months_known_from` with it. A month the client ran on paper, with a
+    previous provider, or before they were onboarded here is not visible to this
+    endpoint and will still block the upload; an empty list means "nothing
+    outstanding that we know about", never "nothing outstanding".
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"client_id": client_id, "outstanding": [],
+                                   "filings": [], "months_known_from": None,
+                                   "note": ecr_sequence.outstanding_note((), None),
+                                   "interest_and_damages":
+                                       ecr_sequence.INTEREST_AND_DAMAGES_NOTE})
+    firm_id = current_user["firm_id"]
+    known = ecr_filings.finalised_months(db, firm_id=firm_id, client_id=client_id)
+    prior = ecr_filings.read_filings(db, firm_id=firm_id, client_id=client_id)
+    rows = (db.table("epfo_ecr_filings")
+            .select("id, wage_month, return_type, status, trrn, submitted_on, "
+                    "approved_on, run_id")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .is_("deleted_at", "null").execute().data) or []
+    return api_response(True, {
+        "client_id": client_id,
+        "outstanding": list(ecr_sequence.outstanding_months(
+            finalised_months=known, filings=prior)),
+        "months_known_from": known[0] if known else None,
+        "note": ecr_sequence.outstanding_note(
+            ecr_sequence.outstanding_months(finalised_months=known, filings=prior),
+            known[0] if known else None),
+        "filings": sorted(rows, key=lambda r: (str(r.get("wage_month") or ""),
+                                               str(r.get("return_type") or ""))),
+        "interest_and_damages": ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
+    })
+
+
+@router.post("/ecr-filings/{filing_id}/retract")
+def retract_ecr_filing(
+    filing_id: str,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Withdraw a filing recorded in error.
+
+    Soft delete, never a hard one. Retracting a Regular re-opens its month and
+    every later month with it, so the row stays with `deleted_at` set rather
+    than vanishing — a sequence that changed with nothing recording that it had
+    is worse than a wrong entry somebody can see.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"filing_id": filing_id, "retracted": False,
+                                   "reason": "mock mode: nothing is stored"})
+    row = (db.table("epfo_ecr_filings").select("client_id")
+           .eq("id", filing_id).eq("firm_id", current_user["firm_id"])
+           .maybe_single().execute().data)
+    if not row:
+        raise HTTPException(status_code=404, detail="Filing record not found")
+    assert_client_access(current_user, row.get("client_id"))
+    done = ecr_filings.retract_filing(db, firm_id=current_user["firm_id"],
+                                      filing_id=filing_id)
+    if not done:
+        raise HTTPException(status_code=409,
+                            detail="That filing record is already retracted.")
+    return api_response(True, {"filing_id": filing_id, "retracted": True})
 
 
 @router.get("/runs/{run_id}/esic")

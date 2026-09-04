@@ -1384,6 +1384,29 @@ export const api = {
     runEcr: (runId: string) => request(`/api/payroll/runs/${runId}/ecr`),
     runEsic: (runId: string) => request(`/api/payroll/runs/${runId}/esic`),
 
+    /** The revamped ECR (EPFO circulars 26-09-2025 and 08-10-2025) enforces
+     *  MONTH-WISE SEQUENCE: October cannot be filed while September is pending.
+     *  This is the client's queue — which wage months EPFO is still waiting
+     *  for, oldest first, which is the order they must be filed in.
+     *
+     *  `note` is composed on the SERVER, in domain/payroll/ecr_sequence.py.
+     *  Render it; do not rebuild the sentence here. It carries the limit that
+     *  makes the list safe to read — only months run in PracticeSync are
+     *  counted, and a month run elsewhere will still block the upload. */
+    ecrSequence: (clientId: string) =>
+      request(`/api/payroll/clients/${clientId}/ecr-sequence`),
+
+    /** Record that a run's ECR was filed. This transmits NOTHING and files
+     *  nothing: there is no EPFO API, so the product cannot observe a filing
+     *  and can only be told about one, after a human did it on the portal.
+     *  Without this the sequence never advances and every month stays
+     *  outstanding for ever. */
+    recordEcrFiled: (runId: string, body: {
+      return_type: string; status: string;
+      submitted_on?: string; approved_on?: string; trrn?: string;
+    }) => request(`/api/payroll/runs/${runId}/ecr/filed`,
+                  { method: "POST", body: JSON.stringify(body) }),
+
     // ── Employee portal provisioning ──────────────────────────────────────
     // The activation link is returned ONCE, here. Only its sha256 is stored,
     // so it cannot be fetched again — a caller that needs to re-send must

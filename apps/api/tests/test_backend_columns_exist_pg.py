@@ -198,7 +198,21 @@ UNFIXED: dict[str, str] = {}
 # and date_of_birth into real PostgreSQL, which proves the columns exist, their
 # types accept the values, and their constraints refuse what they should. A
 # scanner can only prove the first of those three.
-MAX_UNREADABLE = 441
+# 441 -> 443: services/epfo_ecr_filing_service.record_filing (migration 335)
+# writes one INSERT and one UPDATE whose payload is a dict assembled
+# conditionally — trrn, approved_on, run_id and recorded_by go on only when
+# given, because writing them as NULL is not the same statement as leaving them
+# unset. A literal dict cannot express that, so both are invisible here for the
+# usual reason: the keys come from Python, not from source text.
+#
+# Checked elsewhere, and more strictly. The same module's READS name every
+# column literally — select("wage_month, return_type, status, members") and
+# select("month, status") — so this scanner verifies those against the real
+# schema; and tests/test_335_epfo_ecr_filings_pg.py INSERTs every column this
+# payload can carry into real PostgreSQL, which proves they exist, that their
+# types accept the values, and that the CHECKs and the one-Regular-per-month
+# unique index refuse what they should. A scanner proves only the first.
+MAX_UNREADABLE = 443
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
