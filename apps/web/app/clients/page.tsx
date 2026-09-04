@@ -24,6 +24,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
 import { usePermissions } from "@/lib/auth/AuthContext";
+import { api } from "@/lib/api";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -40,6 +41,57 @@ const CLIENT_IMPORT_COLUMNS = [
 
 // Raw entity_type (not the friendly ENTITY_LABELS) so an exported CSV can be
 // re-imported via CLIENT_IMPORT_COLUMNS above without a manual translation step.
+/** One client's standing on this payroll month, as the firm-grain endpoint
+ *  returns it (GET /api/payroll/client-states). `run_status` is null when no
+ *  run exists for the month, which for an ENABLED client means "not started"
+ *  and for a disabled one means nothing at all — the two are rendered
+ *  differently rather than collapsed into one word. */
+type PayrollState = {
+  client_id: string;
+  payroll_enabled: boolean;
+  run_status: string | null;
+  headcount: number | null;
+};
+
+/** The badge for a client's payroll month, or null where there is nothing
+ *  honest to say. Colour follows the module's own vocabulary: a released run
+ *  (finalized/paid) is settled, a draft is in hand, and an enabled client with
+ *  no run is the one that needs somebody. */
+function payrollBadge(p: PayrollState | undefined):
+    { label: string; className: string; title: string } | null {
+  if (!p) return null;
+  if (!p.payroll_enabled) {
+    return {
+      label: "Payroll off",
+      className: "bg-[#F1F5F9] text-[#64748B]",
+      title: "This firm does not run payroll for this client. Existing payroll "
+           + "records stay readable; nothing new can be created.",
+    };
+  }
+  const status = p.run_status;
+  if (status === "paid" || status === "finalized") {
+    return {
+      label: status === "paid" ? "Payroll paid" : "Payroll finalised",
+      className: "bg-green-100 text-green-700",
+      title: `This month's payroll is ${status}.`,
+    };
+  }
+  if (status) {
+    return {
+      label: "Payroll draft",
+      className: "bg-blue-100 text-blue-700",
+      title: "This month's payroll run exists and has not been released.",
+    };
+  }
+  return {
+    label: "Payroll due",
+    className: "bg-amber-100 text-amber-700",
+    title: "Payroll is switched on for this client and this month's run has "
+         + "not been started.",
+  };
+}
+
+
 const CLIENT_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Client) => unknown }[] = [
   { key: "client_name", header: "Client Name", accessor: (c) => c.client_name },
   { key: "entity_type", header: "Entity Type", accessor: (c) => c.entity_type },
@@ -74,6 +126,12 @@ export default function ClientsPage() {
   const [clients, setClients]     = useState<Client[]>([]);
   const [filtered, setFiltered]   = useState<Client[]>([]);
   const [healthScores, setHealthScores] = useState<Record<string, number>>({});
+  /** client_id -> this month's payroll state (migration 332, payroll v1 item 11).
+   *  Only clients the firm has a payroll setting or run for appear, so a client
+   *  the firm does not run payroll for shows no badge at all rather than an
+   *  "off" one — most clients have no payroll and a badge on all forty would
+   *  be noise. */
+  const [payrollStates, setPayrollStates] = useState<Record<string, PayrollState>>({});
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [search, setSearch]       = useState("");
@@ -123,6 +181,16 @@ export default function ClientsPage() {
       setClients(data);
       setFiltered(data);
       getLatestHealthScores(data.map((c) => c.id)).then(setHealthScores).catch(() => {});
+      // One firm-wide request, not one per client. Failure is silent and the
+      // badges simply do not appear: a payroll state is useful context on this
+      // screen, never the reason it exists, and a client list that refuses to
+      // render because payroll could not be read would be a worse screen.
+      api.payroll.payrollClientStates()
+        .then((res) => {
+          const rows = (res as { data?: { clients?: PayrollState[] } })?.data?.clients ?? [];
+          setPayrollStates(Object.fromEntries(rows.map((r) => [r.client_id, r])));
+        })
+        .catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
     } finally {
@@ -582,6 +650,15 @@ export default function ClientsPage() {
                   {healthScores[c.id] !== undefined && (
                     <HealthBadgeLight score={healthScores[c.id]} />
                   )}
+
+                  {(() => {
+                    const p = payrollBadge(payrollStates[c.id]);
+                    return p ? (
+                      <Badge variant="secondary" className={`text-xs ${p.className}`} title={p.title}>
+                        {p.label}
+                      </Badge>
+                    ) : null;
+                  })()}
 
                   <Badge
                     variant="secondary"

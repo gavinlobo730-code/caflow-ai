@@ -104,7 +104,60 @@ def test_tds_itr_advance_roc_audit_obligations():
 
 def test_non_statutory_services_generate_nothing():
     assert ob.obligations_for_service("Accounting Outsourcing", FY) == []
-    assert ob.obligations_for_service("Payroll", FY) == []
+
+
+def test_payroll_owes_three_deposits_every_month():
+    """Payroll used to be asserted here, beside accounting, as generating
+    nothing. That was true of the RETURN and false of the DEPOSIT.
+
+    Running a payroll owes EPF (para 38(1)), ESI (reg. 31) and salary TDS
+    (Rule 30(2)) to three authorities every month, and missing any of them
+    costs interest — 12% plus damages up to the whole arrear under EPF s.7Q
+    and s.14B, 1.5% a month from the date of deduction under s.201(1A)(ii).
+    """
+    p = ob.obligations_for_service("Payroll", FY)
+    assert len(p) == 36, "three deposits x twelve months"
+    assert {s["obligation_type"] for s in p} == {
+        "EPF_DEPOSIT", "ESI_DEPOSIT", "TDS_SALARY_DEPOSIT"}
+    assert {s["compliance_type"] for s in p} == {"Payroll"}
+
+    def _due(kind, period_start):
+        return next(s["due_date"] for s in p
+                    if s["obligation_type"] == kind and s["period_start"] == period_start)
+
+    # April 2025 wages: EPF and ESI on the 15th, TDS on the 7th.
+    assert _due("EPF_DEPOSIT", "2025-04-01") == "2025-05-15"
+    assert _due("ESI_DEPOSIT", "2025-04-01") == "2025-05-15"
+    assert _due("TDS_SALARY_DEPOSIT", "2025-04-01") == "2025-05-07"
+
+    # MARCH IS THE EXCEPTION. Tax deducted in March is due 30 April, not
+    # 7 April — Rule 30(2)'s proviso, and the date most often missed.
+    assert _due("TDS_SALARY_DEPOSIT", "2026-03-01") == "2026-04-30"
+    assert _due("EPF_DEPOSIT", "2026-03-01") == "2026-04-15"
+
+    # No professional tax: its date is per state and there is no single rule.
+    # A missing date is a gap somebody notices; a wrong one is trusted.
+    assert not [s for s in p if "professional" in s["period_label"].lower()]
+
+
+def test_a_service_name_containing_the_letters_roc_is_not_an_roc_engagement():
+    """`"roc" in s` was the test, and "roc" sits inside "p-ROC-essing".
+
+    So "Payroll processing", "Invoice processing" and "Bookkeeping and
+    processing" each generated AOC-4 and MGT-7 against a client that may not be
+    a company at all — two ROC filings conjured out of the word "processing",
+    in a calendar whose whole value is that its dates are right.
+    """
+    for name in ("Invoice processing", "Bookkeeping and processing"):
+        assert ob.obligations_for_service(name, FY) == [], name
+
+    payroll = ob.obligations_for_service("Payroll processing", FY)
+    assert {s["compliance_type"] for s in payroll} == {"Payroll"}
+
+    # And the real ones still match, including the abbreviation as a prefix.
+    assert {s["obligation_type"] for s in ob.obligations_for_service("ROC Compliance", FY)} \
+        == {"MCA_AOC4", "MCA_MGT7"}
+    assert ob.obligations_for_service("GSTR-1 filing", FY), "gstr must still match gst"
 
 
 def test_escalation_tier_thresholds():
