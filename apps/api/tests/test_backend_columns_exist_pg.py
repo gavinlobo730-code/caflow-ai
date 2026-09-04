@@ -171,7 +171,11 @@ UNFIXED: dict[str, str] = {}
 # and building the list into a variable first would hide the same thing while
 # reading no better. The columns are not unchecked: _read_firm_pt_slabs names
 # every one of them, recorded_by included, in its select list.
-MAX_UNREADABLE = 437
+# 437 -> 438: routers/payroll's payroll_salary_revisions insert (migration 330)
+# takes a list variable built in a loop, which this scanner cannot read. The
+# columns are not unchecked — _salary_in_force names every one of them,
+# source_structure_id included, in its select list rather than using "*".
+MAX_UNREADABLE = 438
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
