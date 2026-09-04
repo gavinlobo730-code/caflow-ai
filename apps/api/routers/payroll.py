@@ -32,6 +32,7 @@ from services import employee_portal_service
 from services.internal_client_service import assert_not_internal_for_payroll
 import calendar
 
+from domain.payroll import wage_base
 from domain.payroll.ecr import build_ecr
 from domain.payroll.esic import build_esic_return
 from domain.payroll.annexure2 import build_annexure_ii
@@ -948,13 +949,36 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     recurring = basic + hra + da + lta + medical + special + other
     gross     = recurring + ot.total_paise
 
-    # EPF Act §6: PF wages = Basic + DA (task #229 — basic alone under-computed PF).
-    # Plus whichever one-time earnings the CA recorded AS PF wages, which under
-    # EPF Act §2(b) is in practice arrears of basic and DA and nothing else: the
+    # THE PF WAGE BASE, WHICH CHANGED ON 21-11-2025.
+    #
+    # Until then: EPF Act §6, PF wages = Basic + DA (task #229 — basic alone
+    # under-computed PF). From the commencement of the four Labour Codes the
+    # Code on Social Security subsumed the EPF Act and adopts the Code on Wages
+    # §2(y) definition, which caps the listed EXCLUSIONS at half of total
+    # remuneration and deems the excess to be wages.
+    #
+    # HRA is clause (f) verbatim and LTA is clause (d), "the value of any
+    # travelling concession". Everything else — medical, special, other — stays
+    # on the wage side, which is both the correct reading (see the module) and
+    # the only direction that cannot under-deduct. domain/payroll/wage_base.py
+    # holds the reasoning and the period test; it returns the old figure
+    # unchanged for any month ending before 21-11-2025, so historic payslips
+    # recompute identically.
+    _wb = wage_base.compute(
+        wage_components_paise=basic + da + medical + special + other,
+        excluded_components_paise=hra + lta,
+        fy_label=fy,
+        month=pt_month,
+    )
+    # One-time earnings are deliberately outside the §2(y) test — a bonus is an
+    # exclusion at (a) and a commission at (i), and putting them in the
+    # DENOMINATOR would raise the half and shrink the add-back. Arrears of basic
+    # and DA still reach the base here exactly as they always did, which under
+    # EPF Act §2(b) is in practice all `ot.pf_wages_paise` ever holds: the
     # section excludes "any bonus, commission or any other similar allowance"
     # from basic wages, so an incentive or a festival bonus does not belong here
     # however large it is.
-    pf_wages = basic + da + ot.pf_wages_paise
+    pf_wages = _wb.wages_paise + ot.pf_wages_paise
     pf   = (_compute_pf(pf_wages, fy, eps_eligible=emp.get("eps_eligible", True))
             if emp.get("pf_applicable")
             else {"employee": 0, "employer": 0, "employer_eps": 0,
@@ -1056,6 +1080,12 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "one_time_pf_wages_paise":  ot.pf_wages_paise,
         "one_time_esi_wages_paise": ot.esi_wages_paise,
         "one_time_taxable_paise":   ot.taxable_paise,
+        # The §2(y) working, kept so a CA reconciling a challan can see WHY the
+        # base differs from basic + DA rather than only that it does. Zero and
+        # false for every month before 21-11-2025.
+        "pf_wages_paise":              _wb.wages_paise,
+        "pf_wages_addback_paise":      _wb.deemed_addback_paise,
+        "pf_wages_rule_applied":       _wb.rule_applied,
         "pf_employee_paise":  pf["employee"],
         "pf_employer_paise":  pf["employer"],
         # Stored, not recomputed at ECR time: the return must agree with the

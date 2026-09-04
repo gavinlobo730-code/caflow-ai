@@ -5,34 +5,18 @@ TODO(compliance): docs/compliance/04-mca-epfo-esic.md
         confirming it survived the cut to 0.50% on 01-06-2018. Both assert
         Rs 500 — that is agreement, not verification.
 
-    (2) THE PF WAGE BASE IS NOW WRONG BELOW THE CEILING. Verified 2026-09-04.
-
-        The four Labour Codes commenced 21-11-2025; the Code on Social Security
-        rules were notified 08-05-2026; and a Ministry notification of
-        29-05-2026 re-declared Rs 15,000 as the Chapter III (EPF) wage ceiling
-        under the new Code. So this is in force, not pending.
-
-        s. 2(y) of the Code on Wages defines wages as basic + DA + retaining
-        allowance, and caps the EXCLUSIONS (HRA, conveyance, overtime, employer
-        PF, statutory bonus...) at 50% of total remuneration — any excess is
-        DEEMED wages. The Code on Social Security adopts that definition for
-        computing PF. It is a cap on exclusions, not a floor under basic.
-
-        routers/payroll.py computes `pf_wages = basic + da` with no add-back.
-        Above the ceiling that is harmless, because min(wages, 15000) makes the
-        add-back irrelevant. BELOW the ceiling it under-states: on a total of
-        28,000 split 10,000 basic / 18,000 HRA, wages are 14,000 not 10,000,
-        and employee PF is 1,680 not 1,200 — 480 a month understated on EACH
-        side, in somebody's own provident fund.
-
-        Fixing it is NOT a formula tweak. It needs a CA to confirm the reading,
-        and it needs a per-employee input this product does not hold: the split
-        of total remuneration into wage and excluded components. Until both
-        exist, report the gap by name (the statutory_gaps shape) rather than
-        emitting a confident wrong number.
+    (2) THE PF WAGE BASE MOVED ON 21-11-2025, AND IS NOW HANDLED. The Code on
+        Social Security subsumed the EPF Act and adopts the Code on Wages
+        s.2(y) definition: exclusions capped at half of total remuneration,
+        excess deemed wages. domain/payroll/wage_base.py implements it,
+        migration 334 stores the working on the slip, and the rates below are
+        unaffected — the CEILING is unchanged and the RATES are unchanged; it
+        was only the BASE they apply to that moved.
 
         ESI may err the OTHER way — _compute_esi uses gross, and the Code's
-        definition is narrower — but that is UNCONFIRMED. Do not change it.
+        definition is narrower — but that is UNCONFIRMED and deliberately NOT
+        changed. Gratuity is computed on "wages" too and is likewise untouched.
+        Both are pinned by tests so a later change is a deliberate act.
 
 Payroll statutory rates and ceilings, versioned by financial year.
 

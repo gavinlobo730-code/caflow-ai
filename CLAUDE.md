@@ -249,24 +249,22 @@ from domain.payroll.statutory import RATES_BY_FY, LATEST_VERIFIED_FY
 print('payroll     latest', max(RATES_BY_FY), '| verified', LATEST_VERIFIED_FY)"
 ```
 
-**⚠️ The PF wage BASE is now wrong below the ceiling, and this is a live
-under-computation rather than a gap.** The four Labour Codes commenced
-21-11-2025, the Code on Social Security rules were notified 08-05-2026, and a
-Ministry notification of 29-05-2026 re-declared ₹15,000 as the Chapter III wage
-ceiling under the new Code. `s.2(y)` of the Code on Wages caps the EXCLUSIONS
-(HRA, conveyance, overtime, employer PF, statutory bonus…) at **50% of total
-remuneration**, and the excess is **deemed wages**; the Code on Social Security
-adopts that definition for computing PF. `routers/payroll.py` still computes
-`pf_wages = basic + da`. Above the ceiling that is harmless — `min(wages,
-15000)` makes the add-back moot — but BELOW it the figure is short: on ₹28,000
-split ₹10,000 basic / ₹18,000 HRA, wages are ₹14,000 not ₹10,000 and employee PF
-is ₹1,680 not ₹1,200, understating **₹480 a month on each side**. Fixing it
-needs a CA to confirm the reading AND a per-employee input the product does not
-hold — the split of total remuneration into wage and excluded components — so
-until both exist the honest behaviour is to report the gap by name, not to
-guess. ESI may err the OTHER way (`_compute_esi` uses gross; the Code's
-definition is narrower) but that is UNCONFIRMED — do not change it. Verified
-2026-09-04; see `docs/compliance/04-mca-epfo-esic.md`.
+**The PF wage BASE changed on 21-11-2025 and is now handled.** The Code on
+Social Security subsumed the EPF Act and adopts the Code on Wages `s.2(y)`
+definition: the listed EXCLUSIONS are capped at **50% of total remuneration**
+and the excess is **deemed wages**. `domain/payroll/wage_base.py` implements it,
+period-aware — any month ending before commencement reproduces the old
+`basic + DA` exactly — and migration 334 stores the working on the slip. Of the
+components modelled, only **HRA** (clause f) and **LTA** (clause d, "the value
+of any travelling concession") are excluded; everything else stays on the wage
+side, because that is the direction that cannot under-deduct and because a cash
+medical allowance is not clause (b) and a special allowance is not clause (e)
+(*RPFC v. Vivekananda Vidyamandir*, 2019). Rates and both ceilings are
+unchanged — it was only the base they apply to that moved. **ESI is deliberately
+NOT changed**: `_compute_esi` uses gross, the Code's definition is narrower, so
+ESI may err the other way — unconfirmed, and pinned by a test so a later change
+is deliberate. Gratuity likewise. Verified 2026-09-04; see
+`docs/compliance/04-mca-epfo-esic.md`.
 
 **Partly a gap: professional tax and the Labour Welfare Fund.** PT slabs are
 still bare literals in `routers/payroll.py`, covering **Maharashtra, Tamil Nadu,

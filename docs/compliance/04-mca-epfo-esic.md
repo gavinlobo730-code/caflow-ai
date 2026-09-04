@@ -390,41 +390,57 @@ contributions.** `[S]`
 **Both ceilings are unchanged** — EPF **₹15,000**, ESI **₹21,000** (unchanged
 since January 2017). That is what bounds the damage.
 
-### ⚠️ What the code computes today, and why it is wrong
+### ✅ FIXED — what the code does now
 
-`routers/payroll.py:957` computes
+`routers/payroll.py` computed `pf_wages = basic + da` with no add-back. It now
+calls `domain/payroll/wage_base.compute`, which applies §2(y) for any payroll
+month **ending on or after 21-11-2025** and reproduces the old figure exactly
+for every earlier month.
 
-```python
-pf_wages = basic + da + ot.pf_wages_paise
-```
-
-— the **old** definition, with no add-back — and then applies the ceiling
-(`min(pf_wages, 15_000_00)`).
-
-For anyone whose basic + DA is **already at or above ₹15,000**, the ceiling
-makes the add-back irrelevant and **the figure is right**. The exposure is
-employees **below** the ceiling on a low-basic / high-allowance structure — which
-is the classic Indian salary structure at exactly those salary levels.
-
-Worked example, and the arithmetic is in the commit that added this section:
+The failure it closes, and the arithmetic is a test rather than a claim:
 
 ```
-total remuneration        28,000
-exclusions (HRA)          18,000   = 64% of total  -> exceeds 50%
-50% of total              14,000
-excess deemed wages        4,000
+total remuneration        28,000   (10,000 basic + 18,000 HRA)
+exclusions = 64% of total  ->  excess over the 14,000 half = 4,000 deemed wages
 
-wages OLD (basic + DA)    10,000   <- what the code computes
-wages NEW (with add-back) 14,000   <- both still under the 15,000 ceiling
-
+wages OLD (basic + DA)    10,000
+wages NEW (with add-back) 14,000   <- both under the 15,000 ceiling
 employee PF @12%           1,200  ->  1,680
-UNDER-DEDUCTED               480 per month, per side
 ```
 
-**₹480 a month on each side, ₹5,760 a year each, and the employee is
-short-credited in their own provident fund.** This is not a disclosure or a
-labelling problem like the TDS renumbering — it is a wrong rupee figure in
-somebody's pay and in a statutory remittance.
+**₹480 a month on each side.** Above the ceiling nothing changes, because
+`min(wages, 15000)` already made the add-back moot.
+
+**Which components are excluded, and the rule for deciding.** Of what the
+product models, exactly two are named by the statute closely enough to classify
+without judgement — **HRA** is clause (f) verbatim, **LTA** is clause (d), *"the
+value of any travelling concession"*. Everything else stays on the wage side,
+deliberately:
+
+- it is **the direction that cannot under-deduct** — misclassifying a wage as
+  excluded short-credits an employee's provident fund and draws §7Q interest;
+  the opposite merely over-states;
+- and the two obvious candidates do not survive reading the clauses. A cash
+  **medical allowance** is not clause (b), which is amenities *in kind* excluded
+  by government order. A **special allowance** is not clause (e), which is about
+  defraying expenses actually entailed by the job — and *RPFC v. Vivekananda
+  Vidyamandir* (2019) held universally-paid allowances to be basic wages.
+
+So a component the module has never heard of is treated as a wage, and adding an
+excluded one is a deliberate act requiring a clause to cite.
+
+**One-time earnings are outside the test.** A bonus is an exclusion at (a) and a
+commission at (i), but putting them in the *denominator* would raise the 50% half
+and shrink the add-back — the direction that under-deducts. Arrears of basic and
+DA still reach the base on top, as they always did.
+
+**Migration 334** stores `pf_wages_paise`, `pf_wages_addback_paise` and
+`pf_wages_rule_applied` on every slip, following the rule of migrations 295 and
+329: a figure the ECR and the ledger must agree on is stored, never recomputed
+from inputs that can move. **There is no backfill, deliberately** — slips before
+commencement were right for their period, and released slips record what the
+employer actually remitted. Correcting an under-remitted past month is a CA's
+decision with a statutory consequence, not a migration.
 
 ### ESI — the error probably runs the OTHER way, and this is less certain
 
