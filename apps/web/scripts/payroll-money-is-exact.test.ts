@@ -29,8 +29,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = path.join(import.meta.dirname, "..");
+// The employee FORM moved to components/payroll/AddEmployeeModal.tsx on
+// 2026-09-04, when the roster became its own screen (/payroll/people). The
+// invariants are unchanged and follow the code.
+const FORM = "components/payroll/AddEmployeeModal.tsx";
 const FILES = [
+  FORM,
   "app/payroll/page.tsx",
+  "app/payroll/people/page.tsx",
   "app/clients/[id]/payroll/page.tsx",
 ];
 
@@ -52,19 +58,21 @@ test("no payroll form parses a number with parseFloat", () => {
 
 test("the float-multiplying helper is gone with its last caller", () => {
   // rsToP was Math.round(rs * 100) — the second half of the forbidden form.
-  assert.doesNotMatch(code("app/payroll/page.tsx"), /function rsToP/,
-    "rsToP must not come back; paiseFromRupeeInput never multiplies");
+  for (const f of FILES) {
+    assert.doesNotMatch(code(f), /function rsToP/,
+      `rsToP must not come back in ${f}; paiseFromRupeeInput never multiplies`);
+  }
 });
 
 test("amounts and rates both come from lib/money/rupeeInput", () => {
-  const a = src("app/payroll/page.tsx");
+  const a = src(FORM);
   assert.match(a, /import \{ paiseFromRupeeInput, bpsFromPercentInput \} from "@\/lib\/money\/rupeeInput"/);
   const b = src("app/clients/[id]/payroll/page.tsx");
   assert.match(b, /import \{ paiseFromRupeeInput, bpsFromPercentInput \} from "@\/lib\/money\/rupeeInput"/);
 });
 
 test("a field the parser refuses stops the save instead of becoming a number", () => {
-  const a = src("app/payroll/page.tsx");
+  const a = src(FORM);
   // The employee form: all four fields checked, and the save returns.
   assert.match(a, /if \(basicPaise === null \|\| otherPaise === null \|\| hraBps === null \|\| daBps === null\)/,
     "every parsed field must be checked before the payload is built");
@@ -78,13 +86,24 @@ test("a field the parser refuses stops the save instead of becoming a number", (
     "a salary STRUCTURE is applied to a whole roster; a bad percentage there is wrong every month");
 });
 
-test("the CSV importer rejects a bad percentage the way it rejects a bad amount", () => {
-  const a = src("app/payroll/page.tsx");
-  // Amounts already skipped the row and reported. Percentages did not.
-  assert.match(a, /const hraBps = bpsFromPercentInput\(row\.hra_percent \?\? "40"\);/,
-    "the importer must parse the percentage exactly");
-  assert.match(a, /must be plain percentages, without commas/,
-    "a refused percentage must reject the ROW, not silently take a default");
-  assert.match(a, /if \(row\.hra_percent && bpsFromPercentInput\(row\.hra_percent\) === null\)/,
-    "validateRow must show it before the import runs, as it does for amounts");
+test("no payroll screen keeps a second CSV importer", () => {
+  // This test used to assert the BROWSER importer parsed percentages exactly.
+  // That importer is gone: the whole file now goes to
+  // POST /api/payroll/employees/import, which validates it as a whole, refuses
+  // it as a whole, and is idempotent on employee_code.
+  //
+  // The guarantee did not disappear with it — it MOVED, and moving it found a
+  // real gap. domain/payroll/employee_import._percent stripped commas the way
+  // the amount parser does, so "1,0" was read as 10% where the browser had
+  // always refused it. A percentage is never grouped; only an amount is.
+  // apps/api's test_a_comma_in_a_percentage_is_refused_even_though_one_in_an_amount_is_not
+  // now holds that, against the importer itself rather than a copy of it.
+  //
+  // What has to stay true HERE is that no screen grows a second one back.
+  for (const f of FILES) {
+    assert.doesNotMatch(code(f), /bpsFromPercentInput\(row\./,
+      `${f} must not parse import rows itself — the server owns the file`);
+    assert.doesNotMatch(code(f), /paiseFromRupeeInput\(row\./,
+      `${f} must not parse import rows itself — the server owns the file`);
+  }
 });

@@ -108,6 +108,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["payroll"],
   ["payroll","attendance"],
   ["payroll","declarations"],
+  ["payroll","people"],
   ["payroll","reports"],
   ["payroll","statutory"],
   ["pipeline"],

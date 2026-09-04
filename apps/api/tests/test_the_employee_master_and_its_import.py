@@ -229,6 +229,32 @@ def test_a_basic_that_is_not_an_amount_is_refused_not_coerced():
         assert not result.ok, f"{bad!r} was accepted"
 
 
+def test_a_comma_in_a_percentage_is_refused_even_though_one_in_an_amount_is_not():
+    """The asymmetry is deliberate and it is the whole point.
+
+    An Indian AMOUNT is grouped — "1,25,000" is a real way to write it, so the
+    amount parser strips the separators. A PERCENTAGE is never grouped, so a
+    comma in one is a typo, and the only plausible typo is a decimal point typed
+    as a comma: "1,0" meant 10 and reads as 1.
+
+    That is not a rounding difference. HRA feeds the §10(13A) exemption and
+    Annexure II, so 1% where the CA meant 10% is money by the time it reaches
+    the payslip. apps/web's bpsFromPercentInput has always refused it; this
+    module accepted it until scripts/payroll-money-is-exact.test.ts — written
+    for the browser importer this replaced — pointed at the gap.
+    """
+    assert importer.validate([_row(basic="1,25,000")], existing_by_code={}).ok, (
+        "an amount is allowed to be grouped")
+    assert not importer.validate([_row(hra_percent="1,0")], existing_by_code={}).ok, (
+        "a percentage is not; 1,0 meant 10 and would read as 1")
+    assert not importer.validate([_row(da_percent="1,0")], existing_by_code={}).ok
+
+
+def test_a_plain_percentage_still_works():
+    result = importer.validate([_row(hra_percent="40.5")], existing_by_code={})
+    assert result.ok and result.to_create[0]["hra_percent"] == 40.5
+
+
 def test_a_date_is_read_day_first():
     """A spreadsheet in India writes 03/04/1985 for 3 April. Month-first moves
     a date of birth by a month — which, in March, decides whether the employee
