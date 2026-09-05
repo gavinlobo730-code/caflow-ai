@@ -455,8 +455,15 @@ nothing else.
   not ledger-keeping. What is NOT settled is whether a purpose could be ADDED —
   only Sahamati can answer that, and **every primary source was unreachable**
   (the egress proxy refused every fetch this session, Wikipedia included), so
-  purpose CODES still must not be written from this research. #103–#107 stay open
-  pending that one question. **Stopping is a real outcome**, not a
+  purpose CODES still must not be written from this research. #104–#107 stay open
+  pending that one question. **Gate 0b (#103) is measured too, and points the
+  same way**: the live book is 7 clients and 2 bank accounts — too small for an
+  honest percentage, and one was not invented — but the composition needs no
+  sample size. **Zero individual clients** (4 Private Limited, 1 LLP, 1
+  Partnership, 1 Proprietorship), every account a **Current** account, and one of
+  the two banks is **Cosmos Bank**, the co-operative this file already named as
+  the AA gap. The one well-served AA case — savings, individual, singly held,
+  ~72 banks — does not appear at all. **Stopping is a real outcome**, not a
   failure — statement upload is the base case regardless. See
   `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
