@@ -58,6 +58,8 @@ WHICH RETURN THE ROW BELONGS IN
 """
 from __future__ import annotations
 
+from domain.tds import vocabulary
+
 import logging
 from datetime import date
 from typing import Optional
@@ -99,6 +101,28 @@ def _as_date(v) -> Optional[date]:
         return date.fromisoformat(str(v)[:10]) if v else None
     except (ValueError, TypeError):
         return None
+
+
+def _display_form(return_type: str, when) -> str:
+    """The period's own name for a statement the register routes by KEY.
+
+    `when` is the bill's event date — the credit or the payment, whichever the
+    register recorded — which is exactly what the 2025 Act's transition rule
+    turns on, so this asks by date rather than by financial year.
+
+    Falls back to the routing key rather than raising. The register is a
+    reporting read over rows that may predate any of this; a row that cannot
+    name its Act is better than a register that will not load. Reuses the
+    module's own _as_date, which returns None on anything unparseable — and
+    None is what makes statement_form refuse, which is what triggers the
+    fallback. One date parser in this file, not two.
+    """
+    kind = (vocabulary.NON_RESIDENT if return_type == FORM_27Q
+            else vocabulary.RESIDENT_NON_SALARY)
+    try:
+        return vocabulary.statement_form(kind, event_date=_as_date(when))
+    except Exception:
+        return return_type
 
 
 def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
@@ -213,13 +237,22 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "surcharge_paise": int(bill.get("tds_surcharge_paise") or 0),
             "cess_paise": int(bill.get("tds_cess_paise") or 0),
             "quarter": fy_quarter(when),
+            # THE ROUTING KEY IS STORED; THE DISPLAY NAME IS NOT. return_type
+            # stays "26Q"/"27Q" — what is_27q compares against and what every
+            # row already on this table carries. The period's own form number
+            # (140 or 144 from FY 2026-27) is DERIVED from this row and the
+            # bill's date whenever it is read, so it is on the response and not
+            # in the column list. Storing it would add a column that says
+            # nothing the row does not already imply, and this codebase stores a
+            # figure only when it cannot be derived back out later.
             "return_type": return_type,
             "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,
             "deductee_tin": (v.get("tax_identification_number") or None) if is_27q else None,
             "non_deduction_reason": non_deduction_reason,
         }, on_conflict="purchase_bill_id").execute()
         out = {"synced": True, "action": "recorded", "tds_paise": deducted,
-               "quarter": fy_quarter(when), "return_type": return_type}
+               "quarter": fy_quarter(when), "return_type": return_type,
+               "return_form": _display_form(return_type, when)}
         if gaps:
             # Named, machine-readable, and beside the vendor it is about — the
             # same shape payroll's statutory_gaps uses. A gap that only exists

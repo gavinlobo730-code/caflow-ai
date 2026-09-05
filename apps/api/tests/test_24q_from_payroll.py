@@ -40,7 +40,8 @@ def _challan(**over) -> dict:
     return base
 
 
-def _build(slips_by_month=None, emps=None, challans=None):
+def _build(slips_by_month=None, emps=None, challans=None,
+           financial_year="2026-27"):
     slips_by_month = slips_by_month or {"2026-04": [_slip()]}
     emps = emps or [_emp()]
     challans = [_challan()] if challans is None else challans
@@ -49,6 +50,9 @@ def _build(slips_by_month=None, emps=None, challans=None):
         employees_by_id={e["id"]: e for e in emps},
         challans=challans,
         record_cls=TDSDeducteeRecord,
+        # The fixtures are 2026-04 onward, so FY 2026-27 — the Income-tax Act
+        # 2025. The section on a deductee row is therefore 392, not 192.
+        financial_year=financial_year,
     )
 
 
@@ -74,7 +78,10 @@ def test_a_deductee_row_is_built_from_the_payslip():
     d = src.deductees[0]
     assert d.deductee_name == "ASHA KUMAR"
     assert d.deductee_pan == "ABCDE1234F"
-    assert d.section == "192"
+    # 392, not 192: these fixtures are FY 2026-27, which the Income-tax Act
+    # 2025 governs. This assertion pinned the old label before
+    # domain/tds/vocabulary.py existed, and passing was the bug.
+    assert d.section == "392"
     assert d.payment_amount_paise == 1_00_000_00
     assert d.tds_deducted_paise == 5_000_00
     assert d.payment_date == "2026-04-30", "payment date is the month end"

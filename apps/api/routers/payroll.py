@@ -35,6 +35,7 @@ import calendar
 from domain.payroll import wage_base
 from domain.payroll.ecr import build_ecr
 from domain.payroll import ecr_sequence
+from domain.tds import vocabulary as tds_vocabulary
 from services import epfo_ecr_filing_service as ecr_filings
 from domain.payroll.esic import build_esic_return
 from domain.payroll.annexure2 import build_annexure_ii
@@ -4122,6 +4123,7 @@ def _assemble_24q_source(db, current_user: dict, client_id: str,
         employees_by_id={e["id"]: e for e in employees},
         challans=challans,
         record_cls=TDSDeducteeRecord,
+        financial_year=financial_year,
     )
     if draft_months:
         src.problems.append(
@@ -4245,10 +4247,16 @@ def form_24q_csv(
             db, current_user, client_id, financial_year, quarter)
         blob = form24q_domain.to_csv(src, financial_year=financial_year, quarter=quarter)
 
+    # The FILENAME carries the form number too, and it is on the artifact rather
+    # than on a screen — a file called 24Q-2026-27-Q1.csv whose contents say
+    # "Form 138" contradicts itself in the CA's downloads folder, months after
+    # whatever produced it is gone.
+    form_no = tds_vocabulary.statement_form(tds_vocabulary.SALARY,
+                                            fy_label=financial_year)
     return Response(
         content=blob, media_type="text/csv",
         headers={"Content-Disposition":
-                 f'attachment; filename="24Q-{financial_year}-{quarter}.csv"'},
+                 f'attachment; filename="{form_no}-{financial_year}-{quarter}.csv"'},
     )
 
 
