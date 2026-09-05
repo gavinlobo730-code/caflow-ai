@@ -215,6 +215,15 @@ turn it on, decide the roles, and decide whether the surface that holds
 **employee PAN, UAN, ESIC number, salary and bank account** should be behind it.
 Per §2 that is the highest-exposure surface in the product.
 
+> ⚠️ **Two of those bullets are corrected in §5c, which read production rather
+> than the code.** `REQUIRE_MFA` defaults off *in code* but `render.yaml`
+> records it as **`true` in production** — "ships dark" describes the default,
+> not the deployment. And the real problem turned out not to be the flag at
+> all: both Partners hold verified TOTP factors, and **every session since they
+> enrolled is `aal1`, authenticated by password alone**. MFA was enrolled and
+> never asked for. §5c has the measurements, the three fail-opens that caused
+> it, and the role and surface decisions.
+
 ### The one-year log floor is already met — and the risk runs the other way
 
 Rule 6 wants access logs kept **at least** a year. There is **no purge of
@@ -339,7 +348,7 @@ position on those, and still wants the legal opinion behind it.
 |---|---|---|
 | ~~#126~~ | ~~Write the retention position per data category, then refuse erasure with a reason~~ | **DONE — see §5b.** `domain/dpdp/retention.py`; the payroll delete now names the statute and the date |
 | ~~#127~~ | ~~Decide what `audit_log` may hold~~ | **DONE — migration 336.** The residue stopped growing on the day it merged |
-| **#128** | Turn `REQUIRE_MFA` on, and decide whether payroll sits behind it | Configuration and scope, not a build |
+| ~~#128~~ | ~~Turn `REQUIRE_MFA` on, and decide whether payroll sits behind it~~ | **DONE — see §5c**, and it WAS a build: MFA was enrolled and never asked for. Roles → `Partner,Manager`; payroll behind the guard |
 | **#129** | Give the customer, vendor and client deletes the same statutory refusal | Follow-on from #126 — needs a dependency query that returns dates |
 
 None of it is urgent in the penalty sense — there is nothing to be penalised for
@@ -483,6 +492,110 @@ and `taxinformation.cbic.gov.in` are both blocked by the network egress proxy
 from the build environment, so the grades in `00-how-to-read-this.md` apply and
 each rule carries its own `confidence`. Nothing is graded `[P]`. Verified
 2026-09-05.
+
+## 5c. MFA — the flag was never the blocker (task #128)
+
+### What the task assumed, and what production says
+
+#128 was written as "configuration and scope, not a build": validate
+`REQUIRE_MFA` in staging, turn it on, decide the roles and surfaces. Two of
+those three premises did not survive contact with the data.
+
+**`render.yaml` already says `REQUIRE_MFA` is `true` in production** — it is
+`sync: false`, so the value lives in the Render dashboard and no test can see
+it, but the manifest's own comment records it as on and gives its evidence.
+§5a's "it ships dark" describes the CODE DEFAULT, not the deployment.
+
+**And it has never bitten anyone.** Measured 2026-09-05: the four routers the
+guard is attached to — assignments, identity, practice, billing — have seen **no
+activity at all** since MFA was enrolled on 2026-08-15. Not one event in
+`audit_log`. Whatever the dashboard holds, the control had never once met a real
+request.
+
+### The finding: MFA is enrolled and is not being asked for
+
+| measured on production, 2026-09-05 | |
+|---|---|
+| users | 2, both Partner |
+| with a **verified** TOTP factor | **2** (enrolled 2026-08-15) |
+| sessions created since enrolment | **89** |
+| …of those, `aal2` | **1** — on enrolment day itself |
+| …of those, carrying a `totp` AMR claim | **1** |
+| browser writes to `audit_log` on 3 September | **162**, from `aal1` sessions |
+
+Every session since enrolment authenticated with `password` alone. The app is in
+daily use on those sessions. **So the challenge is not happening**, and turning
+enforcement up — or adding a daily-use surface to the guard — would have 403'd
+both of the product's users.
+
+### Why, by reading: three fail-opens in a row
+
+```
+try {
+  const { data } = await auth.mfa.getAuthenticatorAssuranceLevel();
+  return !!data && data.currentLevel === "aal1" && data.nextLevel === "aal2";
+} catch { return false; }          //  (1) an error means "nothing owed"
+```
+
+1. `catch { return false }` turns *I could not tell* into *nothing is owed*, and
+   a null `data` does the same.
+2. The caller repeated it: `.catch(() => setMfaPending(false))`.
+3. `AuthGuard` rendered the app while the answer was still `null`.
+
+It also asks the wrong oracle. `nextLevel` is derived from the **user object the
+client happens to hold**, so a session restored from storage whose cached user
+carries no `factors` array reports `aal1` — nothing owed — for an account with a
+verified factor in the database. That matches the shape of the evidence exactly:
+the challenge worked on enrolment day, when the user object was fresh, and has
+not been asked for since.
+
+`lib/auth/mfaAssurance.ts` now asks **both** oracles and believes whichever
+reports a factor, treats a null payload as no answer, retries, and then fails
+**closed**. `lib/auth/guardDecision.ts` makes "unresolved is not permission" a
+tested predicate rather than an inline line nobody could test.
+
+> **What this does not prove.** That it makes production sessions `aal2`. The
+> evidence establishes the OUTCOME; the fix removes a fail-open that would
+> produce exactly that outcome. Confirming cause needs one real login against
+> the deployed app, which no test here can do.
+
+### The two decisions
+
+**Roles: `Partner,Manager`** (was `Partner`). The guard filters by role, so the
+role list and the guarded routers have to be chosen together — payroll RBAC is
+**Manager+**, so putting payroll behind the guard while the list held only
+Partner would leave every Manager who runs payroll unchallenged. Enforced-looking
+and not enforced. Executive and Reviewer are deliberately out: neither can reach
+payroll nor any of the four administration routers, so adding them would be a
+login step protecting nothing. **If a surface they can reach ever goes behind the
+guard, this list must be revisited in the same change** — a test asserts the pair.
+
+**Surfaces: payroll joins the four.** It is the highest-exposure personal data in
+the product and the first guarded router that holds DATA rather than firm
+administration.
+
+### The one step left, and why it is the owner's
+
+`MFA_REQUIRED_ROLES` is not declared in `render.yaml` — it is exempt, so
+production reads the **code default**, which this change moves to
+`Partner,Manager`. That much ships with the merge.
+
+`REQUIRE_MFA` itself is `sync: false` and cannot be read or set from here.
+Nothing in this change turns it on or off. After deploying, confirm the fix did
+what the evidence says it should:
+
+```sql
+SELECT s.created_at::date, s.aal,
+       string_agg(DISTINCT c.authentication_method, ',') AS methods
+  FROM auth.sessions s
+  LEFT JOIN auth.mfa_amr_claims c ON c.session_id = s.id
+ WHERE s.created_at >= now() - interval '2 days'
+ GROUP BY 1, 2 ORDER BY 1 DESC;
+```
+
+**`aal2` with a `totp` claim means it worked.** Another day of `aal1` /
+`password` means it did not, and payroll is now behind a guard whose flag may be
+on — so check this before the next payroll run, not after.
 
 ## 6. Consent Managers — and why the product must not become one
 

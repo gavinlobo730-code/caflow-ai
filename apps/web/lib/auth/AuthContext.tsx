@@ -90,17 +90,29 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
 }
 
+import { resolveAssurance, toMfaPending } from "./mfaAssurance";
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-/** Resolve whether the current session still owes a TOTP challenge (aal1 → aal2). */
-async function resolveMfaPending(session: Session | null): Promise<boolean> {
+// Whether this session still owes an MFA challenge.
+//
+// The logic lives in lib/auth/mfaAssurance.ts, dependency-free and unit-tested,
+// because the version inlined here FAILED OPEN three ways: it swallowed errors
+// as "nothing owed", read a null payload the same way, and asked only
+// getAuthenticatorAssuranceLevel() — whose nextLevel comes from the cached user
+// object, so a restored session reports "nothing owed" for an account that has a
+// verified factor. Production showed the result: both Partners enrolled on
+// 2026-08-15, and every session since is aal1 with a `password` AMR claim only.
+//
+// `null` now means UNRESOLVED and AuthGuard refuses to render on it. It is no
+// longer a synonym for false.
+async function resolveMfaPending(session: Session | null): Promise<boolean | null> {
   if (!session) return false;
-  try {
-    const { data } = await getSupabaseClient().auth.mfa.getAuthenticatorAssuranceLevel();
-    return !!data && data.currentLevel === "aal1" && data.nextLevel === "aal2";
-  } catch {
-    return false;
-  }
+  const mfa = getSupabaseClient().auth.mfa;
+  return toMfaPending(await resolveAssurance({
+    getAuthenticatorAssuranceLevel: () => mfa.getAuthenticatorAssuranceLevel(),
+    listFactors: () => mfa.listFactors(),
+  }));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -157,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applyContext(session?.user ?? null);
       // Resolve MFA assurance for the restored session (null = computing).
       setMfaPending(null);
-      resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(false));
+      resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
     }).catch(() => {
       clearTimeout(timeout);
       setLoading(false);
@@ -173,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Set null first so the guard never treats an unresolved aal1 session as
         // "fully authenticated" and skips the challenge.
         setMfaPending(null);
-        resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(false));
+        resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
       }
     );
 
