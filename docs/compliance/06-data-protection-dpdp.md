@@ -337,13 +337,152 @@ position on those, and still wants the legal opinion behind it.
 
 | Task | | Kind |
 |---|---|---|
-| **#126** | Write the retention position per data category, then refuse erasure **with a reason** | Prerequisite — the Rules 8/14 tagging has nothing to write until this exists |
+| ~~#126~~ | ~~Write the retention position per data category, then refuse erasure with a reason~~ | **DONE — see §5b.** `domain/dpdp/retention.py`; the payroll delete now names the statute and the date |
 | ~~#127~~ | ~~Decide what `audit_log` may hold~~ | **DONE — migration 336.** The residue stopped growing on the day it merged |
 | **#128** | Turn `REQUIRE_MFA` on, and decide whether payroll sits behind it | Configuration and scope, not a build |
+| **#129** | Give the customer, vendor and client deletes the same statutory refusal | Follow-on from #126 — needs a dependency query that returns dates |
 
 None of it is urgent in the penalty sense — there is nothing to be penalised for
-until 13 May 2027. **#127 is the one that is time-sensitive anyway**, because it
-is the only item whose cost rises every month it waits.
+until 13 May 2027. **#127 was the one that was time-sensitive anyway**, because
+it was the only item whose cost rose every month it waited; it is done.
+
+## 5b. The retention position — WRITTEN AND BUILT (task #126)
+
+`apps/api/domain/dpdp/retention.py` is the position. This table is written from
+`position()` in that module, so the two cannot drift; the module is the
+authority and this is its readable form.
+
+### Why the position had to come first
+
+DPDP **s. 8(7)** obliges erasure on withdrawal or when the purpose is served —
+*"unless retention is necessary for compliance with any law for the time being
+in force."* Every erasure request therefore runs into a prior question: which
+law requires this kept, and until when? Until that was written down, tagging
+every row with a retention expiry had nothing to write into the column, and
+every answer to a data principal was invented on the spot.
+
+### What the code was doing instead
+
+**Every deletion guard in the codebase is REFERENTIAL.** `delete_employee`
+refuses while a payslip exists; `delete_customer` while an invoice does;
+`delete_client` while any history does. Each says "something points at this
+row" — a different question from the one DPDP asks, and one that fails in a way
+that gets worse with time:
+
+> **A REFERENTIAL REFUSAL NEVER LAPSES.** A payslip from FY 2018-19 refused
+> erasure in 2019 and would refuse it identically in 2050, long after every
+> statute had released the record. From 13 May 2027 that is a standing failure
+> to erase — and the refusal named no statute and no date, so nobody could tell
+> whether it was right.
+
+A retention duty is the opposite shape: **it ends**, and the date is computable.
+
+### The anchor is the part that is easy to get wrong
+
+Every period is measured from a different event, and reading them all as
+"N years from the end of the financial year" is wrong in the direction that
+destroys records. For **FY 2020-21**, the same books are held under three duties
+that end on three different days:
+
+| Duty | Measured from | Released |
+|---|---|---|
+| Companies Act s. 128(5) | the eight FYs immediately preceding | **31-03-2029** |
+| Income-tax Rule 6F(5) | six years from the end of the **assessment** year | **31-03-2028** |
+| CGST s. 36 | 72 months from the **annual-return due date** | **31-12-2027** |
+
+**GST is the trap.** Seventy-two months runs from the GSTR-9 due date
+(31 December following the FY) — *81 months* from the FY end, not 72. Anchoring
+it to 31 March releases the record **nine months early**. The rule calls
+`compliance_engine.gstr9_due_date` rather than restating 31 December, so an
+extension moves it; a test pins that it asks rather than copies.
+
+**Longest duty wins.** A payroll record is at once the employer's books, an
+income-tax record and a provident-fund record, so the category is released only
+when the last duty lapses.
+
+### The position
+
+| Category | Holds | Duties | Whose duty |
+|---|---|---|---|
+| **books_of_account** | a proprietor's or partner's name, PAN and bank details on the documents making up the ledger | Companies Act s. 128(5); IT Rule 6F(5); CGST s. 36 | client |
+| **gst_returns** | GSTIN, and a proprietor's PAN within it | CGST s. 36; Companies Act s. 128(5) | client |
+| **payroll** | PAN, UAN, ESIC number, date of birth, bank account, salary, Form 12BB — **the highest-exposure personal data in the product** | IT Rule 6F(5); Companies Act s. 128(5); **EPF ⚠**; **ESI ⚠** | client (as employer) |
+| **tds_records** | the deductee's PAN and amounts against it | IT Rule 6F(5); Companies Act s. 128(5) | client |
+| **income_tax_records** | an individual assessee's whole return | IT Rule 6F(5) | client |
+| **client_onboarding** | PAN, GSTIN, identity documents, engagement record | PMLA s. 12 — 5 years | **firm** |
+| **access_logs** | who read or changed what, and when | DPDP r. 6 — ≥ 1 year, a **floor** not a ceiling | **platform** |
+| **support_correspondence** | whatever a person wrote to the firm | none identified | — |
+| **product_telemetry** | which screens an account opened | none identified | — |
+
+**Almost none of this is PracticeSync's own duty**, which is why `duty_holder`
+reaches the refusal sentence. Telling an employee "we won't delete this" when
+the truthful answer is "your employer must keep this until 2034" is a different
+statement, and only one of them is true.
+
+### ⚠ Two duties are real and their periods are NOT established
+
+**EPF** and **ESI** are both in the state the state PT slabs and the s. 393
+payment codes are in: the duty is certain, the period is not written here.
+
+- **EPF** — search returns *75 years from the date of entry*, sourced to HR
+  commentary rather than to a paragraph of the Scheme. A provident-fund
+  entitlement is lifelong, so a very long period is plausible, **which is
+  exactly why guessing it is unsafe**: it would put a specific date into a
+  refusal a CA then relies on.
+- **ESI** — Regulation 66 gives five years from the last entry for the
+  **Accident Book specifically**. Whether the same period governs the register
+  of employees is asserted by secondary sources and was not confirmed against
+  the regulation that covers it. A period read off the wrong regulation is worse
+  than none.
+
+Adding either is a human step: read the provision, add it to the module.
+
+### The refusal direction is REVERSED here, deliberately
+
+Elsewhere an unmodelled statutory figure means *do not compute* — an unlisted PT
+state deducts nothing. Here it must mean **do not delete**, because the action
+being authorised is irreversible:
+
+- an **unknown category** refuses. The registry is closed; a category nobody has
+  classified is not an unregulated one.
+- an **unestablished period** refuses and names itself as a gap.
+- an **unanswerable question** (a period-anchored duty asked without a period)
+  refuses and says what to ask again with.
+- a category with **no duty at all** is erasable — different from an unread one,
+  and only this one releases.
+
+All three kinds of refusal are reported together. An earlier version returned on
+the first it found, so a payslip whose month could not be read said "tell me the
+period" and never mentioned EPF and ESI — which do not depend on the period at
+all. A refusal naming one of three reasons invites the reader to fix that one
+and expect the record to be released.
+
+### What is wired, and what is not
+
+**Wired:** `DELETE /payroll/employees/{id}`. Payroll is the doc's own named
+highest-exposure surface and an employee is the paradigm data principal, so this
+is where an erasure request actually lands. It now answers with the statute, the
+duty-holder and the date — for FY 2025-26 payroll, *until 31 March 2034* — plus
+the two unestablished duties, instead of "this employee has payroll history".
+
+**Not wired, and deliberately:** the customer, vendor and client deletes. Their
+dependency checks select `id` alone across several tables with differing date
+columns, so naming a *date* there needs a dependency query that returns one —
+mechanical, but its own change. Naming a statute without a date would look
+answered and would not be. Those parties are also mostly businesses: a private
+limited company's PAN is not personal data, so they are largely outside DPDP
+except for sole proprietors. Tracked as **#129**.
+
+**Also not built:** publishing the position under Rule 14. `position()` emits
+the structure a notice or a DPA annexe needs, and nothing serves it yet.
+
+### Sourcing
+
+Search results only. **No primary source could be fetched** — `indiankanoon.org`
+and `taxinformation.cbic.gov.in` are both blocked by the network egress proxy
+from the build environment, so the grades in `00-how-to-read-this.md` apply and
+each rule carries its own `confidence`. Nothing is graded `[P]`. Verified
+2026-09-05.
 
 ## 6. Consent Managers — and why the product must not become one
 
