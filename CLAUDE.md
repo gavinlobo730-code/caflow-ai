@@ -438,8 +438,17 @@ nothing else.
   to **partner with a regulated FIU** (watch the shell-FIU pattern — FIPs have
   barred AAs over non-compliant downstream journeys), **acquire a registration**
   (SEBI RIA is most plausible; an NBFC brings a reciprocity duty to join as an
-  FIP too), or **not consume via AA at all**. Rewrite the six AA tasks around
-  those three before actioning any of them. See
+  FIP too), or **not consume via AA at all**. The six AA tasks are now sequenced
+  around those three as **three gates, cheapest-and-most-fatal first**, and the
+  ordering carries a finding of its own: **purpose-fit is UPSTREAM of FIU
+  eligibility.** Eligibility is solvable with money; purpose is not. A consent
+  artefact carries a `Purpose`, the FIP validates every fetch against it, and
+  purpose limitation is enforced — so if no purpose honestly covers a CA keeping
+  a client's books (and no published code was found that does), a fully licensed
+  FIU still could not pull this data for this use. That question and "how many of
+  this firm's clients could AA even reach" are both FREE, both come first, and
+  either can end it before a rupee is spent. **Stopping is a real outcome**, not a
+  failure — statement upload is the base case regardless. See
   `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
   it is time-bound, purpose-bound and revocable. So the flow is "CA requests →
