@@ -104,7 +104,7 @@ and either can end the project before a rupee is spent.
 | | |
 |---|---|
 | ~~#102~~ | ~~Is there a lawful PURPOSE for a CA keeping a client's books?~~ **ANSWERED — provisionally NO. §2.** |
-| **#103** | **What percentage of THIS firm's clients could AA actually reach?** |
+| ~~#103~~ | ~~What percentage of THIS firm's clients could AA actually reach?~~ **MEASURED — §3a. No honest percentage at n=7, and the composition is the worst case anyway.** |
 
 **#102 is upstream of FIU eligibility**, which is the non-obvious part. Eligibility
 is solvable with money — buy a registration, or partner with someone who has one.
@@ -125,6 +125,14 @@ this data for this use, and every rupee spent on eligibility is wasted.
 **#103 settles the commercial case independently.** §3 shows a CA's client base is
 precisely the population AA serves worst. If most clients are unreachable, the ROI
 question is answered before the legal one.
+
+> **#103 is now measured — §3a.** The book is too small for a percentage (7
+> clients, 2 accounts) and one is not invented. But the composition needs no
+> sample size: **zero individual clients**, every account a **Current** account,
+> and one of the two banks is **Cosmos Bank** — the co-operative this repository
+> already named as its example of an AA gap. The one well-served case (savings,
+> individual, singly held) does not appear at all. **Both gates now point the
+> same way.**
 
 **Gate 1 — paid, only if Gate 0 clears**
 
@@ -366,6 +374,99 @@ OneMoney 65+, Finvu 60+, NADL 60+** — which is why FIUs contract with several.
 > **Statement upload staying at parity for years is not a hedge. It is the base
 > case.**
 
+### 3a. Measured against the real client book (task #103) — the deliverable was a percentage, and there isn't an honest one
+
+**Measured on production, 2026-09-05.** The whole book:
+
+| | |
+|---|---|
+| firms | 2 |
+| live clients | **7** |
+| bank accounts | **2** |
+| uploaded statements | 1 |
+| bank transactions | 13 |
+
+#### No percentage from this is honest
+
+The task asked for *"a number — what percentage of this firm's clients could
+actually be served"*. **At n = 7 clients and n = 2 accounts there is no such
+number**, and computing one would be fabricated precision: a single account
+either way moves "coverage" by fifty points. The composition below is a real
+finding; a ratio drawn from it would not be.
+
+#### But the composition answers the question anyway, and it does not depend on n
+
+| entity type | clients |
+|---|---|
+| Private Limited | 4 |
+| Proprietorship | 1 |
+| LLP | 1 |
+| Partnership | 1 |
+| **Individual** | **0** |
+
+| account | bank | AA status |
+|---|---|---|
+| Current | HDFC Bank | major private bank — live `[S]` |
+| Current | **Cosmos Bank** | **co-operative — the example CLAUDE.md already names as a gap** |
+
+Read that against the coverage table above:
+
+> **The one well-served AA case — savings, individual, singly held, all ~72
+> banks — does not appear in this book even once.**
+
+Every client is a non-individual entity or a proprietorship. Every account is a
+**Current** account, not savings. And one of the two banks present is a
+co-operative that this repository had already picked, before any data was
+looked at, as its example of an AA blind spot.
+
+That is §3's argument confirmed from the firm's own data rather than from
+national statistics — and it is the part that does not get better with a larger
+sample, because it is about *what kind of clients a CA has*, not how many.
+
+#### The re-runnable measurement
+
+When the book is real, run this and the percentage becomes meaningful. It is the
+half we own; the other half — which of these banks and account types each AA
+actually reaches — still needs Sahamati's matrices, which could not be fetched
+(§2's sourcing note).
+
+```sql
+SELECT entity_type, count(*) FROM public.clients
+ WHERE deleted_at IS NULL GROUP BY 1 ORDER BY 2 DESC;
+
+SELECT account_type, bank_name, count(*) FROM public.bank_accounts
+ GROUP BY 1, 2 ORDER BY 3 DESC;
+```
+
+Cross the second against Sahamati's per-bank per-account-type matrix. **Count
+non-individual and Current rows as unserved until proven otherwise** — that is
+the direction the evidence points, and assuming the reverse is how a coverage
+claim becomes a purchase.
+
+#### The AA count is still unverified
+
+The recorded figures — no AA covering all ~176–179 FIPs, live counts around
+Anumati 80+, CAMS 70+, OneMoney 65+, Finvu 60+, NADL 60+, hence multiple AA
+contracts and a cost multiplier the single-vendor pitch hides — **could not be
+checked this session**: `sahamati.org.in` is blocked along with every other host.
+Still `[S]`, still to confirm under #130's browser step.
+
+#### What this settles
+
+Gate 0b was meant to answer the commercial question independently of the legal
+one. It does, and in the same direction:
+
+- **Legal (#102):** no purpose appears to cover third-party bookkeeping, and
+  that defeats the partner route too.
+- **Commercial (#103):** the client base is entirely the population AA serves
+  worst — zero individuals, all Current accounts, a co-operative bank in a
+  two-account sample.
+
+**Both gates point at stopping.** Neither is yet conclusive on its own — #102
+awaits Sahamati, #103 awaits a client book big enough to divide — but nothing
+found so far argues for spending on gate 1, and #104's legal opinion should wait
+until #130 comes back.
+
 ## 4. Costs
 
 **No published rate cards.** `[U]` Three models dominate `[S]`: per-consent
@@ -388,7 +489,8 @@ come first:
 |---|---|---|
 | 1a | ~~Whether any code fits third-party bookkeeping~~ — **answered provisionally NO, §2.** No published purpose or template describes it, and purposes are derivative of the FIU's own regulatory permission | ~~#102~~ **done** |
 | 1b | **Read the actual taxonomy** (`api.rebit.org.in/purpose/`, Sahamati's purpose-codes page, guideline **PC001**) and **ask Sahamati whether a purpose can be ADDED.** Still no purpose code should be written from research — every fetch was blocked, including Wikipedia | **#102 follow-on**, gates #103–#107 |
-| 2 | **Current FIP coverage for the client types a CA actually serves** — from Sahamati's own matrices, against a real client book | **#103** (gate 0) |
+| 2a | ~~Coverage for the client types a CA actually serves~~ — **measured, §3a.** Composition is the worst case; no percentage is honest at n=7 | ~~#103~~ **done** |
+| 2b | **Sahamati's per-bank per-account-type matrix and the FIP↔AA matrix** — blocked with everything else, so the AA counts and the per-account-type coverage remain `[S]` | **#130** (browser step) |
 | 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
 | 4 | Whether the reciprocity duty binds an FIU holding no financial information | **#104** (gate 1) |
 | 5 | The complete FI-type enumeration | **#106** (gate 2) |
