@@ -15,6 +15,7 @@ from models.common import api_response
 from models.parties import CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
+from services import party_erasure
 from core.exceptions import NotFoundError
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -138,11 +139,22 @@ def _match_existing(candidates: list[dict], gstin: str, pan: str) -> Optional[di
 # rows. CGST Act §35/36 (and IT Act §44AA) require books & records to be
 # preserved, so we BLOCK a permanent delete at the application layer whenever any
 # of these exist and steer the user to deactivation instead.
-_DEPENDENCY_TABLES: list[tuple[str, str]] = [
-    ("invoices", "client_sales_invoices"),
-    ("receipts", "receipts"),
-    ("credit_notes", "credit_notes"),
-    ("recurring_templates", "recurring_invoice_templates"),
+# (label, table, date column). The DATE is what lets the refusal name a
+# statute AND the day the duty lapses instead of only "records exist" — see
+# domain/dpdp/retention.py. Each table names its own column because they differ,
+# and reading the wrong one silently anchors retention to the wrong year.
+#
+# recurring_invoice_templates carries None deliberately: a template is a
+# SCHEDULE, not an accounting record. Its start_date says when billing begins,
+# not when a transaction happened, so using it as a retention anchor would date
+# a statutory duty from a diary entry. It still blocks the delete — a live
+# template pointing at a deleted customer is a bug — but on referential
+# grounds, which is the honest reason for it.
+_DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
+    ("invoices", "client_sales_invoices", "invoice_date"),
+    ("receipts", "receipts", "receipt_date"),
+    ("credit_notes", "credit_notes", "credit_note_date"),
+    ("recurring_templates", "recurring_invoice_templates", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a customer's permanent delete.
@@ -150,26 +162,45 @@ _SOFT_DELETE_DEPENDENCY_TABLES = {"client_sales_invoices", "credit_notes"}
 
 
 def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> dict:
-    """Count the accounting records linked to a customer.
+    """Count the accounting records linked to a customer, and find the newest.
 
     A non-zero opening balance is itself an accounting dependency. Returns
-    {counts: {...}, total: int, has_any: bool}. customer_id is a globally unique
-    UUID, so filtering dependents by customer_id alone is sufficient and correct.
+    {counts, total, has_any, latest_record_date} — the last being the newest
+    DATED record, which is what lets the refusal name the day the statutory duty
+    lapses. None means the only blockers carry no accounting date (a recurring
+    template, an opening balance). customer_id is a globally unique UUID, so
+    filtering dependents by customer_id alone is sufficient and correct.
     """
     counts: dict[str, int] = {}
-    for label, table in _DEPENDENCY_TABLES:
+    latest: str | None = None
+    for label, table, date_col in _DEPENDENCY_TABLES:
         try:
-            q = db.table(table).select("id").eq("customer_id", customer_id)
+            columns = "id" if date_col is None else f"id, {date_col}"
+            q = db.table(table).select(columns).eq("customer_id", customer_id)
             if table in _SOFT_DELETE_DEPENDENCY_TABLES:
                 q = q.is_("deleted_at", None)
             resp = q.execute()
-            counts[label] = len(resp.data or [])
+            rows = resp.data or []
+            counts[label] = len(rows)
+            if date_col:
+                for row in rows:
+                    value = row.get(date_col)
+                    # ISO dates compare correctly as text; anything unparseable
+                    # is skipped rather than guessed, exactly as the payroll
+                    # path skips an unreadable month.
+                    if isinstance(value, str) and len(value) >= 10:
+                        if latest is None or value[:10] > latest:
+                            latest = value[:10]
         except Exception as e:  # a missing/locked table must never mask a dependency
             _logger.warning("dependency count failed for %s: %s", table, e)
             counts[label] = 0
     counts["opening_balance"] = 1 if (opening_balance_paise or 0) != 0 else 0
     total = sum(counts.values())
-    return {"counts": counts, "total": total, "has_any": total > 0}
+    # latest_record_date is the newest DATED accounting record. None means the
+    # only blockers are undated ones (a recurring template, an opening balance),
+    # which block referentially and carry no statutory clock.
+    return {"counts": counts, "total": total, "has_any": total > 0,
+            "latest_record_date": latest}
 
 
 # ---------------------------------------------------------------------------
@@ -734,7 +765,13 @@ def delete_customer(
                 if c["id"] == customer_id:
                     if permanent:
                         if (c.get("opening_balance_paise") or 0) != 0:
-                            raise HTTPException(status_code=409, detail="Customer has accounting records and cannot be deleted. Deactivate instead.")
+                            # Same sentence as the live path: a mock-only message is a
+                            # second wording of one refusal, and they drift.
+                            raise HTTPException(
+                                status_code=409,
+                                detail=party_erasure.refusal(
+                                    party_erasure.CUSTOMER, latest_record_date=None),
+                            )
                         MOCK_CUSTOMERS.pop(i)
                         return api_response(True, {"id": customer_id, "deleted": True})
                     MOCK_CUSTOMERS[i]["is_active"] = False
@@ -749,9 +786,14 @@ def delete_customer(
             deps = _customer_dependencies(db, customer_id, opening)
             if deps["has_any"]:
                 # CASCADE FKs would otherwise destroy these records silently.
+                # The refusal names the statute and the date it lapses, not just
+                # that records exist — see services/party_erasure.py.
                 raise HTTPException(
                     status_code=409,
-                    detail="This customer has linked accounting records and cannot be permanently deleted. Deactivate the customer instead to preserve history.",
+                    detail=party_erasure.refusal(
+                        party_erasure.CUSTOMER,
+                        latest_record_date=deps.get("latest_record_date"),
+                    ),
                 )
             del_resp = db.table("customers").delete().eq("id", customer_id).eq("firm_id", firm_id).execute()
             if not del_resp.data:

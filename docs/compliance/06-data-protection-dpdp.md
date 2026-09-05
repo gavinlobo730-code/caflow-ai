@@ -349,7 +349,7 @@ position on those, and still wants the legal opinion behind it.
 | ~~#126~~ | ~~Write the retention position per data category, then refuse erasure with a reason~~ | **DONE — see §5b.** `domain/dpdp/retention.py`; the payroll delete now names the statute and the date |
 | ~~#127~~ | ~~Decide what `audit_log` may hold~~ | **DONE — migration 336.** The residue stopped growing on the day it merged |
 | ~~#128~~ | ~~Turn `REQUIRE_MFA` on, and decide whether payroll sits behind it~~ | **DONE — see §5c**, and it WAS a build: MFA was enrolled and never asked for. Roles → `Partner,Manager`; payroll behind the guard |
-| **#129** | Give the customer, vendor and client deletes the same statutory refusal | Follow-on from #126 — needs a dependency query that returns dates |
+| ~~#129~~ | ~~Give the customer, vendor and client deletes the same statutory refusal~~ | **DONE — see §5d.** Customer and vendor wired; the client delete turned out not to erase anything |
 
 None of it is urgent in the penalty sense — there is nothing to be penalised for
 until 13 May 2027. **#127 was the one that was time-sensitive anyway**, because
@@ -474,13 +474,17 @@ is where an erasure request actually lands. It now answers with the statute, the
 duty-holder and the date — for FY 2025-26 payroll, *until 31 March 2034* — plus
 the two unestablished duties, instead of "this employee has payroll history".
 
-**Not wired, and deliberately:** the customer, vendor and client deletes. Their
-dependency checks select `id` alone across several tables with differing date
-columns, so naming a *date* there needs a dependency query that returns one —
-mechanical, but its own change. Naming a statute without a date would look
-answered and would not be. Those parties are also mostly businesses: a private
-limited company's PAN is not personal data, so they are largely outside DPDP
-except for sole proprietors. Tracked as **#129**.
+**Also wired, in #129:** the customer and vendor permanent deletes. Their
+dependency queries now return each table's own date column — they differ
+(`invoice_date`, `receipt_date`, `bill_date`, …) and reading the wrong one
+anchors retention to the wrong year — and the newest dated record drives the
+refusal. `services/party_erasure.py` writes the sentence once for both.
+
+**Not wired, because it is not an erasure path:** `DELETE /clients/{id}`.
+`client_repo.soft_delete` sets `deleted_at` and destroys nothing, so a retention
+refusal there would tell a CA they may not *hide* a client until 2034 — false,
+and unhelpful. A test pins that the endpoint stays free of one, and fails if
+that soft delete ever starts destroying rows.
 
 **Also not built:** publishing the position under Rule 14. `position()` emits
 the structure a notice or a DPA annexe needs, and nothing serves it yet.
@@ -596,6 +600,77 @@ SELECT s.created_at::date, s.aal,
 **`aal2` with a `totp` claim means it worked.** Another day of `aal1` /
 `password` means it did not, and payroll is now behind a guard whose flag may be
 on — so check this before the next payroll run, not after.
+
+## 5d. The party deletes, and the question #126 left open (task #129)
+
+### Two reasons under one sentence
+
+`delete_customer` and `delete_vendor` refused with a single line — *"this
+customer has linked accounting records and cannot be permanently deleted"* —
+which names no law, gives no date, and never lapses. But the guard was doing
+**two different jobs** under that one sentence, and they come apart:
+
+| reason | does it end? |
+|---|---|
+| **Retention** — the law requires the record kept | **yes**, on a computable date |
+| **Referential** — other rows point at this one | **no**, while the documents exist |
+
+That matters because the customer FKs are `ON DELETE CASCADE`, and two of the
+vendor tables carry a `vendor_id` with **no FK at all** — so a hard delete
+either destroys linked records silently or strands them pointing at a party that
+no longer exists.
+
+`services/party_erasure.py` writes the sentence once for both routers, and says
+which reason applies.
+
+### The dates come from each table's own column
+
+The dependency queries selected `id` alone. They now select the table's own date
+column, and the **newest** dated record drives the refusal — retention runs from
+the financial year of the record, so the most recent one is held longest:
+
+| table | column | | table | column |
+|---|---|---|---|---|
+| `client_sales_invoices` | `invoice_date` | | `purchase_bills` | `bill_date` |
+| `receipts` | `receipt_date` | | `purchase_payments` | `payment_date` |
+| `credit_notes` | `credit_note_date` | | `debit_notes` | `debit_note_date` |
+| `recurring_invoice_templates` | **none** | | `purchase_credit_notes` | `credit_note_date` |
+
+**The recurring template is undated deliberately.** It is a SCHEDULE, not an
+accounting record: `start_date` says when billing begins, not when a transaction
+happened, so dating a statutory duty from it would anchor retention to a diary
+entry. It still blocks the delete — a live template pointing at a deleted
+customer is a bug — but on referential grounds, which is the honest reason. An
+opening balance is undated for the same reason, and the refusal says so rather
+than invoking a statute it cannot date.
+
+### A lapsed duty does NOT permit the delete — the answer to #126's open question
+
+Retention lapsing means **the law no longer requires you to keep this**. It does
+not mean nothing else needs it: the invoices are still referenced by posted
+journal entries, by GST returns already filed, and by the ageing schedules.
+Cascading them away because a statute stopped compelling their retention would
+destroy posted books to satisfy a request the law does not make.
+
+So the refusal stands either way, and what changes is **what it says**:
+
+- before the date — *"Companies Act 2013 (s. 128(5)) requires the client to keep
+  books of account … until 31 March 2034. Until then this customer cannot be
+  permanently deleted."*
+- after it — *"Statutory retention over this customer's records has lapsed — no
+  law now requires them kept. It still cannot be permanently deleted: … deleting
+  the customer would cascade them away."*
+
+A CA can now see whether the obstacle is the law or the books.
+
+### The client delete is not an erasure path
+
+#129 asked for all three. `DELETE /clients/{id}` calls
+`client_repo.soft_delete`, which sets `deleted_at` / `is_deleted` and **destroys
+nothing**. Putting a retention refusal there would tell a CA they may not *hide*
+a client until 2034 — false, and unhelpful. Erasure refusals belong on paths that
+erase. A test pins that the endpoint stays free of one, and fails if that soft
+delete ever starts destroying rows.
 
 ## 6. Consent Managers — and why the product must not become one
 

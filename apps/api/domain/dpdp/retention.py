@@ -112,7 +112,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
-from core.ist_clock import ist_today, normalise_fy_label
+from core.ist_clock import ist_fy_label, ist_today, normalise_fy_label
 from services.compliance_engine import gstr9_due_date
 
 # Whose duty the retention is. Not decoration: it decides what the refusal
@@ -593,6 +593,28 @@ def erasure_decision(
         reason=(f"Every statutory retention duty over {category.label} has "
                 f"lapsed. Nothing in this position refuses erasure."),
     )
+
+
+def decision_for_record_date(
+    category_key: str,
+    record_date: date | None,
+    *,
+    today: date | None = None,
+) -> ErasureDecision:
+    """`erasure_decision` for a category anchored to the financial year a RECORD
+    belongs to.
+
+    The LATEST record decides: retention runs from the financial year of the
+    record, so the most recent one is held longest and is the only one that
+    matters to whether the party may go. `None` asks without a period, which
+    refuses and says what to ask again with — never silently permits.
+
+    Shared by the customer and vendor deletes so the derivation exists once. The
+    payroll delete has its own, because its input is a run month rather than a
+    document date.
+    """
+    fy = ist_fy_label(record_date) if record_date is not None else None
+    return erasure_decision(category_key, fy_label=fy, today=today)
 
 
 def position() -> list[dict]:
