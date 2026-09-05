@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 import { LogoIcon } from "@/components/LogoIcon";
 import { isPublicPath } from "./public-paths";
+import { mayRenderProtected } from "./guardDecision";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading, mfaPending, hasFirm } = useAuth();
@@ -52,13 +53,22 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const isPublic = isPublicPath(pathname);
-  if (!session && !isPublic) return null;
-  // MFA challenge owed: render only the login page (the challenge UI); block
-  // everything else while we redirect there.
-  if (session && mfaPending === true && !onLogin) return null;
-  // Firm-less user: block protected pages while redirecting to onboarding.
-  if (session && hasFirm === false && !isPublic) return null;
+  // One predicate, in lib/auth/guardDecision.ts so it can be unit-tested —
+  // AuthGuard imports React and next/navigation and nothing here can be.
+  //
+  // The rule that changed: UNRESOLVED (null) IS NOT PERMISSION. It used to fall
+  // through to `children`, so anyone whose MFA assurance could not be
+  // determined got the whole app — the third of the three fail-opens described
+  // in lib/auth/mfaAssurance.ts. The resolver retries internally and then
+  // answers `pending`, so this is a brief loading state rather than a place
+  // anybody gets stuck.
+  if (!mayRenderProtected({
+    hasSession: !!session,
+    mfaPending,
+    hasFirm,
+    isPublic: isPublicPath(pathname),
+    onLogin,
+  })) return null;
 
   return <>{children}</>;
 }

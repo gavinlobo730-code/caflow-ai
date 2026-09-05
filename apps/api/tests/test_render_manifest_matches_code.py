@@ -74,9 +74,12 @@ EXEMPT: dict[str, str] = {
         "Setting it wrong mislabels dashboards; leaving it unset is correct "
         "for this service, so declaring it would invite a needless value.",
     "MFA_REQUIRED_ROLES":
-        "Only consulted when REQUIRE_MFA is on, and defaults to 'Partner' — "
-        "the safe tier. REQUIRE_MFA is declared; this rider does not need to "
-        "be until someone wants a different set of roles.",
+        "Only consulted when REQUIRE_MFA is on, and defaults to "
+        "'Partner,Manager' — the roles that can reach payroll and the four "
+        "firm-administration routers the guard is attached to. The default IS "
+        "the intended production value, so declaring it here would create a "
+        "second place for it to drift from core/security_config.py, which "
+        "explains the choice.",
     "GROQ_TEXT_MODEL":
         "Model-name override with a working default pinned in code. Declaring "
         "it would encourage pinning a model in the environment, where a stale "

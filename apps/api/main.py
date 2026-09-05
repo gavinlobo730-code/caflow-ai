@@ -326,7 +326,17 @@ app.include_router(filing_demo_router.router, dependencies=_CLIENT_GUARD)
 app.include_router(tds_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(mca_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence_v2.router, dependencies=_CLIENT_GUARD)
-app.include_router(payroll.router, dependencies=_CLIENT_GUARD)
+# Payroll carries BOTH guards. It is the highest-exposure personal data in the
+# product — employee PAN, Aadhaar-linked UAN, ESIC number, date of birth, bank
+# account, salary and Form 12BB family data — and DPDP Rule 6 names multi-factor
+# authentication as a specific obligation from 13-05-2027. The other four MFA
+# routers are firm ADMINISTRATION; this is the first one that guards the DATA.
+#
+# It is also why MFA_REQUIRED_ROLES defaults to Partner,Manager rather than
+# Partner alone: payroll RBAC is Manager+ (core/permissions.py), so guarding
+# this router while the role list held only Partner would leave the people who
+# actually run payroll untouched — enforced-looking and not enforced.
+app.include_router(payroll.router, dependencies=_CLIENT_GUARD + _MFA_GUARD)
 app.include_router(fixed_assets.router, dependencies=_CLIENT_GUARD)
 app.include_router(banking.router, dependencies=_CLIENT_GUARD)
 app.include_router(timeline.router, dependencies=_CLIENT_GUARD)
