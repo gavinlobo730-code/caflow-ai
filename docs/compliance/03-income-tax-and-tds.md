@@ -105,23 +105,61 @@ for tax year 2026-27. `[S]` So the ITR JSON schema work in
 
 ### What this means for the code, concretely
 
-25 files carry `24Q`/`26Q`/`27Q` vocabulary and **nothing mentions the 2025
-Act**. The impact is not only naming:
+**BUILT — `domain/tds/vocabulary.py`** (task #125). The shape is a period-aware
+form and section vocabulary carrying **both sets permanently**, the same
+discipline `compliance_engine` applies to due dates: derived from the period by
+rule, never a stored constant.
 
-- `domain/payroll/form24q.py:176` **emits `section="192"`** into the statement it
-  builds. Under the 2025 Act that field is **392**, on Form **138**.
-- `domain/tds/section_rates.py` is keyed by `"194C"`, `"194J"`, `"195"` and the
-  rest. The rates stay right; the **keys** are what a return no longer accepts.
-- `services/filing_demo/tds_return.py` walks a CA through a portal flow named
-  after forms that no longer exist for current periods.
+**It is a fork, not a migration, and that is the whole design.** A belated or
+revised FY 2025-26 statement filed today is still Form 24Q citing s. 192, and
+there is no date after which that stops being true. Nothing was replaced.
 
-The shape of the fix is **period-aware form and section vocabulary carrying both
-sets indefinitely** — the same discipline `compliance_engine` already applies to
-due dates: derived from the period by rule, never a stored constant. It is
-bigger and more certain work than any filing integration, and it is due whether
-or not ERI registration ever happens.
+What it resolves from the period:
 
-Tracked as task #125.
+| | 1961 Act | 2025 Act |
+|---|---|---|
+| statements | 24Q · 26Q · 27Q · 27EQ | 138 · 140 · 144 · 143 |
+| certificates | 16 · 16A · 26AS · 15G/15H | 130 · 131 · 168 · 121 |
+| sections | 192 · 194-series · 195 · 206C | 392 · **393(1)** · 393(2) · 394 |
+
+`act_for_date` is the definition — the transition is by **event**, credit or
+payment whichever is earlier — and `act_for_fy` is derived from it. The two
+agree because commencement falls on 1 April 2026, which is exactly an FY
+boundary, so no return straddles it. That is stated in the module rather than
+relied on silently.
+
+Three things it **refuses** rather than guessing:
+
+- **The s. 393 payment-code table (1001–1067) is not held.** Sixty-seven guessed
+  codes would be sixty-seven wrong labels, and a wrong payment code is
+  *accepted* and then wrong — worse than a rejection, because nothing tells the
+  CA. `payment_code_gap()` names it, and it rides on the 24Q/138 working paper
+  so a complete-looking file says which column is missing. **This is a human
+  step**, like the ITR schemas and the state PT slabs.
+- **s. 393(1) has no reverse.** The whole 194-series collapsed into it, so
+  asking which of 194C, 194J or 194H a line was means inventing one.
+- **A form cannot be asked for without a period.** Defaulting to today would
+  file a belated FY 2025-26 statement on Form 138 — the exact bug.
+
+Two changes the wiring forced, both about *stored* data meeting the fork:
+
+- **`domain/payroll/form24q.py` now requires `financial_year`** and emits the
+  period's section. Twelve existing tests failed on the missing argument, and
+  one was asserting `section == "192"` on FY 2026-27 fixtures — it had been
+  pinning the bug.
+- **Challan matching accepts BOTH section labels, in every period.** A challan
+  records a deposit somebody typed in, and which label they used depends on when
+  they typed it, not on which Act governs the quarter. Filtering on one name
+  drops the deposit and raises "no challan recorded" against a quarter that was
+  paid on time.
+
+**`domain/tds/section_rates.py` is deliberately NOT rekeyed.** The rates are
+unchanged and the 1961-Act keys stay; translation happens at the boundary where
+a statement is emitted. A test pins that, so a later rekeying is a decision
+rather than a tidy-up.
+
+**ITR is untouched**, as above — AY 2026-27 is still the 1961 Act, and a test
+pins that too.
 
 ---
 

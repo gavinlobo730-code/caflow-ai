@@ -40,6 +40,8 @@ Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
 
+from domain.tds import vocabulary as _vocabulary
+
 from core.ist_clock import month_end_date
 from domain.reporting.model import apportion
 from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord
@@ -240,7 +242,11 @@ def tds_26q_from_books(
 
     return {
         "period": {"financial_year": fy, "quarter": quarter, "start": start, "end": end, "due_date": due_date},
-        "form": "26Q",
+        # Form 140 from FY 2026-27, still 26Q for earlier periods — including a
+        # belated or revised one filed today. See domain/tds/vocabulary.py.
+        "form": _vocabulary.statement_form(_vocabulary.RESIDENT_NON_SALARY, fy_label=fy),
+        "act": _vocabulary.vocabulary_for(fy).act_name,
+        "statutory_gaps": [g.note for g in _vocabulary.vocabulary_for(fy).gaps()],
         "source": "posted_purchase_bills",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -396,7 +402,12 @@ def tds_24q_from_books(
 
     return {
         "period": {"financial_year": fy, "quarter": quarter, "start": start, "end": end, "due_date": due_date},
-        "form": "24Q",
+        # The PERIOD names the form, not a literal. FY 2026-27 onward this is
+        # Form 138 under the Income-tax Act 2025; a belated FY 2025-26 return is
+        # still 24Q, for ever. domain/tds/vocabulary.py carries both.
+        "form": _vocabulary.statement_form(_vocabulary.SALARY, fy_label=fy),
+        "act": _vocabulary.vocabulary_for(fy).act_name,
+        "statutory_gaps": [g.note for g in _vocabulary.vocabulary_for(fy).gaps()],
         "source": "finalized_payroll_runs",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,

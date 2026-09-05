@@ -6,6 +6,7 @@ All monetary amounts in integer paise.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
 """
+from domain.tds import vocabulary as tds_vocabulary
 from fastapi import APIRouter, HTTPException, Query, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -169,7 +170,11 @@ def compute_26q(req: Compute26QRequest, user: dict = Depends(rbac("tds", "comput
     return {
         "success": True,
         "data": {
-            "form": "26Q",
+            # Form 140 from FY 2026-27; still the 1961-Act name for an earlier
+            # period, including a belated or revised one. See
+            # domain/tds/vocabulary.py — this is a fork, not a migration.
+            "form": tds_vocabulary.statement_form(
+                tds_vocabulary.RESIDENT_NON_SALARY, fy_label=payload.financial_year),
             "tan": payload.tan,
             "deductor_name": payload.deductor_name,
             "financial_year": payload.financial_year,
@@ -247,7 +252,11 @@ def compute_24q(req: Compute24QRequest, user: dict = Depends(rbac("tds", "comput
     return {
         "success": True,
         "data": {
-            "form": "24Q",
+            # Form 138 from FY 2026-27; still the 1961-Act name for an earlier
+            # period, including a belated or revised one. See
+            # domain/tds/vocabulary.py — this is a fork, not a migration.
+            "form": tds_vocabulary.statement_form(
+                tds_vocabulary.SALARY, fy_label=payload.financial_year),
             "tan": payload.tan,
             "deductor_name": payload.deductor_name,
             "financial_year": payload.financial_year,

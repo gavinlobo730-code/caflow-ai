@@ -23,6 +23,8 @@ Read-only end to end — this module performs no write of any kind.
 """
 from __future__ import annotations
 
+from domain.tds import vocabulary
+
 from datetime import date
 
 from services.filing_demo import common
@@ -75,6 +77,18 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
 
     fy = str(rec.get("financial_year") or "")
     quarter = str(rec.get("quarter") or "")
+
+    # THE STORED return_type IS AN INTERNAL KEY; WHAT THE CA READS IS THE
+    # PERIOD'S OWN FORM NUMBER. tds_returns.return_type holds "24Q"/"26Q" (and
+    # migration 037's CHECK constrains it to those), so the row stays keyed that
+    # way — rekeying would orphan every saved return. But this walk-through is
+    # meant to be portal-faithful, and from FY 2026-27 the portal shows Form 138
+    # and Form 140 under the Income-tax Act 2025. A demo that rehearses a form
+    # number the portal no longer accepts teaches the wrong step.
+    _kind = (vocabulary.SALARY if form == "24Q"
+             else vocabulary.RESIDENT_NON_SALARY)
+    _vocab = vocabulary.vocabulary_for(fy) if fy else None
+    form_no = _vocab.statement(_kind) if _vocab else form
 
     # Figures come from the saved row. A quick-created row often carries
     # zeros; the honest fallback is the same from-books computation the
@@ -133,7 +147,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
 
     stages = [
         common.summary_stage(
-            f"Form {form} · {quarter} {fy}",
+            f"Form {form_no} · {quarter} {fy}",
             "On the e-filing portal this statement travels as an .fvu file, "
             "uploaded under the deductor's TAN login. These are the figures "
             "the FVU-validated file would carry." + figures_note,
@@ -149,10 +163,18 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("financial_year", fy).eq("quarter", quarter)
                 .execute().data) or []
+    # Both section vocabularies, always. A 2026-27 deposit may sit in the table
+    # as "192" (this codebase's internal key) or as "392" (copied off the
+    # challan the CA paid), and splitting on one name would move a salary
+    # challan into the non-salary statement — where it reconciles against
+    # nothing.
+    _salary_sections = {"192", "392"}
     if form == "24Q":
-        challans = [c for c in challans if (c.get("section") or "") == "192"]
+        challans = [c for c in challans
+                    if (c.get("section") or "") in _salary_sections]
     else:
-        challans = [c for c in challans if (c.get("section") or "") != "192"]
+        challans = [c for c in challans
+                    if (c.get("section") or "") not in _salary_sections]
     if challans:
         challan_rows = [
             [{"text": str(c.get("challan_no") or "")},
@@ -233,7 +255,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             "Income Tax Department",
             "Token number / Provisional Receipt Number (PRN)",
             common.specimen_tds_prn(return_id),
-            f"Form {form} for {quarter} {fy} — on the real portal this Token "
+            f"Form {form_no} for {quarter} {fy} — on the real portal this Token "
             "would appear under e-File → View Filed Forms, and TRACES would "
             "pick the statement up for Form 16/16A once processed.",
             [
@@ -248,7 +270,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
 
     return common.envelope(
         "tds",
-        f"File Form {form} (TDS)",
+        f"File Form {form_no} (TDS)",
         f"{fy} · {quarter}",
         return_id,
         {

@@ -14,8 +14,14 @@ TODO(compliance): docs/compliance/03-income-tax-and-tds.md
     correction statement.
 
     Do NOT rekey this file. Periods up to 31-03-2026 still report under these
-    section numbers, indefinitely, including belated and revised returns. What
-    is needed is a period-aware mapping alongside, not a replacement.
+    section numbers, indefinitely, including belated and revised returns.
+
+    THE PERIOD-AWARE MAPPING NOW EXISTS ALONGSIDE: domain/tds/vocabulary.py.
+    It takes a 1961-Act section — the keys below, which stay — and returns the
+    label that period's statement must carry. Translation happens at the
+    BOUNDARY, where a form or a return line is emitted; every rate lookup, every
+    stored challan and every test in this codebase goes on using these keys, and
+    a test pins that so a later rekeying is deliberate rather than tidy.
 FY-versioned TDS-on-payments section rates — single source of truth.
 
 IT Act 1961, Chapter XVII-B: Sections 193/194/194A/194B/194C/194D/194G/194H/

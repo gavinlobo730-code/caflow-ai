@@ -13,6 +13,7 @@ NOT a filing engine: it never submits anything, never touches GST/accounting/ban
 schemas, and never emails clients (escalations are internal only). All money/date
 logic is server-side; the pure helpers here are deterministic and unit-tested.
 """
+from domain.tds import vocabulary
 import os
 import logging
 import re
@@ -177,13 +178,25 @@ def _tds_obligations(financial_year: str,
         "Q3": (date(fye - 1, 10, 1), date(fye - 1, 12, 31)),
         "Q4": (date(fye, 1, 1), date(fye, 3, 31)),
     }
+    # THE OBLIGATION'S KIND IS STABLE; ITS TITLE IS NOT. The kind code stays
+    # "TDS26Q"/"TDS27Q" because it is an internal key that existing rows and
+    # existing tests carry, and rekeying it would orphan every obligation
+    # already generated. What the CA READS is the period's own form number —
+    # 26Q/27Q up to FY 2025-26, 140/144 from FY 2026-27 — because a reminder
+    # naming a form the portal no longer accepts sends them to the wrong place.
+    vocab = vocabulary.vocabulary_for(financial_year)
+    resident_form = vocab.statement(vocabulary.RESIDENT_NON_SALARY)
+    non_resident_form = vocab.statement(vocabulary.NON_RESIDENT)
+
     out = []
     for q, (ps, pe) in quarters.items():
         due = ce.tds_return_due_date(q, fye)
-        out.append(_spec("TDS26Q", "TDS", f"TDS 26Q {q} FY {financial_year}",
+        out.append(_spec("TDS26Q", "TDS",
+                         f"TDS {resident_form} {q} FY {financial_year}",
                          ps, pe, due))
         if has_non_resident_vendors:
-            out.append(_spec("TDS27Q", "TDS", f"TDS 27Q {q} FY {financial_year}",
+            out.append(_spec("TDS27Q", "TDS",
+                             f"TDS {non_resident_form} {q} FY {financial_year}",
                              ps, pe, due))
     return out
 

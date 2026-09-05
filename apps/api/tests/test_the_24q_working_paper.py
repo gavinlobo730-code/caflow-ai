@@ -181,6 +181,7 @@ def test_a_row_with_no_valid_pan_is_not_in_the_file():
                    "challan_no": "1", "bsr_code": "0510308",
                    "payment_date": "2026-05-05"}],
         record_cls=_Row,
+        financial_year="2026-27",
     )
     assert src.deductees == []
     assert any("PAN" in p for p in src.problems)

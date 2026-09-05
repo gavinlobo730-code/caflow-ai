@@ -20,11 +20,15 @@ TODO(compliance): docs/compliance/03-income-tax-and-tds.md
     including belated and revised returns. On or after 01-04-2026 -> the new
     ones. So both vocabularies are needed forever; this is not a migration.
 
-    Everything this module does for FY 2025-26 and earlier remains correct.
-    What is missing is the other half. Q1 TY 2026-27 was due 31-07-2026, old
-    form numbers are REJECTED at validation, and an old section code needs a
-    correction statement. Due dates are unchanged (31 Jul / 31 Oct / 31 Jan /
-    31 May).
+    THE OTHER HALF NOW EXISTS: domain/tds/vocabulary.py resolves the form
+    number and the section code from the PERIOD, carrying both vocabularies
+    permanently, and this module takes a financial_year so it can ask. What
+    remains outstanding is the s. 393 numeric payment-code table (1001-1067),
+    which is not held and is not guessed — vocabulary.payment_code_gap() names
+    it, and it rides on the working paper so the CA fills it in on the portal.
+
+    Due dates are unchanged (31 Jul / 31 Oct / 31 Jan / 31 May) and
+    services/compliance_engine.py remains their single source.
 Form 24Q, built from payroll instead of typed in again.
 
 WHAT WAS WRONG
@@ -68,7 +72,16 @@ import calendar
 import re
 from dataclasses import dataclass, field
 
+from domain.tds import vocabulary
+
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+
+#: The 1961-Act salary section. STILL the right key to hold internally — every
+#: rate table and every stored challan is keyed by it, and periods up to
+#: 31-03-2026 report under it indefinitely. What must not happen is emitting it
+#: onto a statement for a 2026-27 event, where the section is s. 392 and the
+#: form is 138. vocabulary.section_code() does that translation at the boundary;
+#: this constant is what goes INTO it, never what comes out.
 SECTION_192 = "192"
 
 # Indian FY quarters, and the payroll months that fall in each.
@@ -135,16 +148,34 @@ def build_24q_from_payroll(
     employees_by_id: dict[str, dict],
     challans: list[dict],
     record_cls,
+    financial_year: str,
 ) -> Form24QSource:
     """Assemble deductee rows from finalised payslips.
 
     `record_cls` is domain.tds.tds_computer.TDSDeducteeRecord, passed in so this
     module stays free of that import and can be tested on its own.
+
+    `financial_year` is REQUIRED and has no default. The section written onto
+    every deductee row depends on it — s. 192 for a 1961-Act period, s. 392 for
+    a 2025-Act one — and a default would silently pick one, which is precisely
+    how a belated FY 2025-26 statement ends up citing a section that did not
+    exist when the salary was paid.
     """
+    vocab = vocabulary.vocabulary_for(financial_year)
+    section = vocab.section(SECTION_192)
     out = Form24QSource()
 
+    # THE CHALLAN FILTER ACCEPTS BOTH VOCABULARIES, ALWAYS, whatever period this
+    # is. A challan is a record of a deposit somebody typed in, and which label
+    # they used depends on when they typed it and what the portal showed them —
+    # not on which Act governs the quarter the challan is being matched to. A
+    # 2026-27 deposit may sit in the table as "192" (keyed the way the rest of
+    # this codebase keys it) or as "392" (copied off the challan). Accepting
+    # only the period's own name would silently drop the deposit and raise "no
+    # challan recorded" against a quarter that was paid on time.
+    salary_sections = {SECTION_192, "192B", "", vocab.section(SECTION_192)}
     section_192_challans = [c for c in challans
-                            if str(c.get("section") or "").strip() in (SECTION_192, "192B", "")]
+                            if str(c.get("section") or "").strip() in salary_sections]
     out.challans = section_192_challans
 
     any_tds = False
@@ -179,7 +210,7 @@ def build_24q_from_payroll(
             out.deductees.append(record_cls(
                 deductee_name=name.upper(),
                 deductee_pan=pan,
-                section=SECTION_192,
+                section=section,
                 nature_of_payment="Salary",
                 payment_date=_last_day(month),
                 payment_amount_paise=gross,
@@ -269,10 +300,24 @@ def to_csv(src: "Form24QSource", *, financial_year: str, quarter: str) -> bytes:
 
     buf = _io.StringIO()
     writer = _csv.writer(buf)
-    writer.writerow([f"# Form 24Q working paper — {financial_year} {quarter}"])
-    writer.writerow(["# IT Act s.192 — TDS on salary. Built from FINALISED payroll runs."])
+
+    # THE BANNER NAMES THE PERIOD'S FORM AND SECTION, NOT A CONSTANT. A working
+    # paper headed "Form 24Q" for a 2026-27 quarter is a document a CA would
+    # take to the portal and have rejected, and the CSV outlives whatever screen
+    # produced it — so the names are resolved here rather than assumed.
+    vocab = vocabulary.vocabulary_for(financial_year)
+    form_no = vocab.statement(vocabulary.SALARY)
+    section_no = vocab.section(SECTION_192)
+    writer.writerow([f"# Form {form_no} working paper — {financial_year} {quarter}"])
+    writer.writerow([f"# {vocab.act_name} s.{section_no} — TDS on salary. "
+                     f"Built from FINALISED payroll runs."])
     writer.writerow(["# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Not an FVU file; "
                      "not filed. File on the TRACES/e-filing portal."])
+    # The s. 393 payment-code table is not held here, so the code is not on the
+    # rows. Saying so IN the file is the point: a CA reading a complete-looking
+    # working paper has no other way to learn that one column is missing.
+    for gap in vocab.gaps():
+        writer.writerow([f"# MISSING — {gap.note}"])
     if src.problems:
         # The problems go IN the file, not only on the screen that produced it.
         # A file downloaded while a quarter was incomplete outlives the toast
