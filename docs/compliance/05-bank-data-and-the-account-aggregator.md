@@ -81,6 +81,14 @@ joining as an **FI-U must necessarily join as an FIP** where it holds financial
 information. `[S]` The NBFC route therefore inherits an obligation to *publish*
 into the ecosystem.
 
+> ⚠️ **#102 found that the first two routes may both fail for a reason that has
+> nothing to do with eligibility — see §2.** A purpose code is derivative of the
+> FIU's own regulatory permission, so a partner FIU's permitted purposes come
+> from *its* licence, and bookkeeping is not within an NBFC-lender's or an
+> investment adviser's. Buying a SEBI RIA registration buys **CT004, Wealth
+> Management and/or Advisory** — advising on investments, not writing up a
+> ledger. **Read §2 before pricing either route.**
+
 ### What this means for tasks #102–#107 — REWRITTEN (task #123)
 
 Those six tasks were written on the assumption that registering as an FIU via a
@@ -95,7 +103,7 @@ and either can end the project before a rupee is spent.
 
 | | |
 |---|---|
-| **#102** | **Is there a lawful PURPOSE for a CA keeping a client's books?** |
+| ~~#102~~ | ~~Is there a lawful PURPOSE for a CA keeping a client's books?~~ **ANSWERED — provisionally NO. §2.** |
 | **#103** | **What percentage of THIS firm's clients could AA actually reach?** |
 
 **#102 is upstream of FIU eligibility**, which is the non-obvious part. Eligibility
@@ -103,8 +111,16 @@ is solvable with money — buy a registration, or partner with someone who has o
 Purpose is not. The consent artefact carries a `Purpose`, the FIP validates every
 fetch against it, and purpose limitation is **enforced**. If no purpose honestly
 covers third-party bookkeeping, then a fully licensed FIU still could not pull
-this data for this use, and every rupee spent on eligibility is wasted. §2 records
-that no such published code was found and that the taxonomy could not be read.
+this data for this use, and every rupee spent on eligibility is wasted.
+
+> **#102 is now answered, provisionally, and it is worse than "not found".** No
+> published purpose or Fair Use Template describes third-party bookkeeping, and
+> the reason is structural: a purpose is derivative of the FIU's own regulatory
+> permission, and bookkeeping is not a regulated financial activity under any of
+> the five regulators. **That defeats the partner route as well as the
+> registration route** — see §2. What is NOT settled is whether a purpose could
+> be *added*, which only Sahamati can answer, so #103–#107 stay open pending
+> that question and a reading of the actual taxonomy.
 
 **#103 settles the commercial case independently.** §3 shows a CA's client base is
 precisely the population AA serves worst. If most clients are unreachable, the ROI
@@ -192,18 +208,118 @@ Monthly bookkeeping sits comfortably inside ≤45 pulls / ≤1 year — but **it
 annual re-consent per client**, which is a renewal workflow, not a one-off
 onboarding step.
 
-### ⚠️ Purpose codes — unresolved, and a real design question
+### ⚠️ Purpose codes — ANSWERED, provisionally, and the answer is no (task #102)
 
-ReBIT publishes the taxonomy at `api.rebit.org.in/purpose/`. **Both that and its
-mirror were blocked, and the recovered fragments contradict each other** — one
-gives `103` = process a loan application and `104` = monitor for collection;
-another shows `code: 101, text: "Loan"`, which is a *category*, not a purpose.
-**Do not write purpose codes from this research.** `[U]`
+**The question:** is there a lawful purpose under which a CA firm can pull a
+client's bank data to keep that client's books? Purpose limitation is enforced —
+the FIP validates every fetch against the artefact's `Purpose` — so if no purpose
+honestly covers this, **no route works and no amount of spend fixes it.**
 
-> **More importantly: no purpose code was found that describes *a chartered
-> accountant maintaining a client's books*.** The nearest published analogue is
-> "Spend and Investment Analytics". Purpose limitation is **enforced, not
-> advisory**, so purpose-fit is a blocker to resolve *first*, not a formality.
+**Provisional answer: NO — and the reason is structural, not a gap in a list.**
+
+#### What was found
+
+The Sahamati **Fair Use Template Library** publishes 20+ templates. Those whose
+identity could be confirmed from page titles `[P/S]`:
+
+| ID | Use case |
+|---|---|
+| CT001 | Loan Underwriting |
+| CT003 | Account Monitoring |
+| CT004 | Wealth Management and/or Advisory Services |
+| CT006 | Income Verification |
+| CT042 | Employee/Vendor Monitoring |
+| CT045 | Employee/Vendor Verification (one-time) |
+
+The B2B half of the library covers *enterprise risk, compliance, operational
+monitoring and onboarding* — employment disclosures, vendor onboarding,
+compliance reporting, counterparty assessments, government programme
+participation. `[S]`
+
+**Every one of them is a data user assessing SOMEBODY ELSE'S risk.** That is the
+wrong shape for this. A CA writing up a client's ledger is not assessing the
+client as a counterparty; the client is the firm's **principal**, not its
+subject. No template, and no purpose code, was found that describes maintaining
+another person's books.
+
+#### The structural reason — and it defeats the partner route too
+
+This is the part that goes beyond "none published". Purpose codes are **not free
+labels an FIU picks**. Sahamati's guideline **PC001** maps FIU use cases to
+purpose codes *by type of use case*, and the guidance on purpose code 102
+("Customer spending patterns, budget or other reportings", category *Personal
+Finance*) says FIUs using it must ensure their implementation is **within the
+scope of their regulatory permissions**. `[S]`
+
+So a purpose is derivative of the FIU's own registration, exactly as FIU status
+itself is (§0). Which means:
+
+> **Partnering with a regulated FIU does not rescue purpose-fit.** A partner
+> FIU's permitted purposes flow from *its* licence. Pulling a client's bank data
+> so a third-party CA can write up their books is not within an NBFC-lender's or
+> an investment adviser's regulatory permission. Option 1 of the three in §0
+> solves eligibility and still fails here.
+
+It also sharpens the SEBI-RIA idea floated in §0 as "most plausible". An RIA maps
+onto **CT004, Wealth Management and/or Advisory** — advising on investments. It
+does not map onto bookkeeping. Acquiring that registration would buy a purpose
+the product does not want.
+
+**Bookkeeping is not a regulated financial activity under any of the five
+regulators.** That is why no purpose covers it, and it is not the kind of gap a
+Fair Use Template can close — a template sets *bounds* on an existing purpose,
+it does not create regulatory permission.
+
+#### A near-miss to not repeat
+
+ICAI's Code of Ethics bars a CA from listing on **service-marketplace
+aggregators**. `[S]` That is a different word wearing the same clothes — nothing
+to do with **Account** Aggregators, and it is not evidence either way here. It
+surfaces on the obvious searches, so it is recorded to stop somebody citing it.
+
+#### ⚠️ The sourcing limit, which is worse than last time
+
+**Not one primary source could be read.** Every `WebFetch` in this session was
+refused by the network egress proxy — `api.rebit.org.in`,
+`specifications.rebit.org.in`, `sahamati.org.in`, and, on a control attempt,
+**`en.wikipedia.org` as well**. The block is not specific to Indian government or
+regulator hosts; **fetching is unavailable, full stop.** Search snippets were the
+only channel.
+
+So the purpose-code fragments remain contradictory and **must still not be
+written down as a table** — an earlier round had `103` = loan application and
+`104` = collection monitoring against another source's `101` = "Loan" (a
+*category*, not a purpose). This round adds `102` = "Customer spending patterns,
+budget or other reportings", *Personal Finance*. Three fragments, no authority.
+`[U]`
+
+#### What is settled, and what is not
+
+The task's stop condition is *"no honest purpose exists **and** none can be
+added"*. Only the first half is established, and only provisionally:
+
+- **Established `[S, triangulated]`** — no published purpose or template
+  describes third-party bookkeeping, and the framework's design explains why.
+- **NOT established** — whether one could be added. That is a question for
+  **Sahamati** (RBI-recognised SRO since 05-06-2026) and nobody else. A TSP
+  cannot answer it and is paid to say yes.
+
+**So #103–#107 are NOT closed on this evidence.** Two things must happen first,
+and both are somebody with a browser rather than more research from here:
+
+1. **Read the actual taxonomy** — `api.rebit.org.in/purpose/`, the
+   `sahamati.org.in/aa-community-guidelines-purpose-codes/` page, and guideline
+   **PC001**. If a purpose does cover this, everything above is wrong and cheaply
+   corrected.
+2. **Ask Sahamati directly**, in these words: *"Under which purpose code, if any,
+   may a chartered accountancy firm obtain a client's bank transaction data for
+   the purpose of maintaining that client's books of account — and if none
+   exists, what is the process for proposing one?"*
+
+**If the answer is none and none can be added, close #103–#107 and keep
+statement upload.** That remains a legitimate outcome: §3 already argues upload
+is the base case rather than a fallback, because a CA's client base is precisely
+the population AA serves worst.
 
 ### FI types — and GST is one
 
@@ -270,7 +386,8 @@ come first:
 
 | # | To verify | Task |
 |---|---|---|
-| 1 | **The ReBIT purpose code list, and whether any code fits third-party bookkeeping** — the taxonomy was blocked and the recovered fragments contradicted each other, so no purpose code should be written from this research | **#102** (gate 0) |
+| 1a | ~~Whether any code fits third-party bookkeeping~~ — **answered provisionally NO, §2.** No published purpose or template describes it, and purposes are derivative of the FIU's own regulatory permission | ~~#102~~ **done** |
+| 1b | **Read the actual taxonomy** (`api.rebit.org.in/purpose/`, Sahamati's purpose-codes page, guideline **PC001**) and **ask Sahamati whether a purpose can be ADDED.** Still no purpose code should be written from research — every fetch was blocked, including Wikipedia | **#102 follow-on**, gates #103–#107 |
 | 2 | **Current FIP coverage for the client types a CA actually serves** — from Sahamati's own matrices, against a real client book | **#103** (gate 0) |
 | 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
 | 4 | Whether the reciprocity duty binds an FIU holding no financial information | **#104** (gate 1) |

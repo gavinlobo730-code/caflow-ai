@@ -443,11 +443,20 @@ nothing else.
   ordering carries a finding of its own: **purpose-fit is UPSTREAM of FIU
   eligibility.** Eligibility is solvable with money; purpose is not. A consent
   artefact carries a `Purpose`, the FIP validates every fetch against it, and
-  purpose limitation is enforced — so if no purpose honestly covers a CA keeping
-  a client's books (and no published code was found that does), a fully licensed
-  FIU still could not pull this data for this use. That question and "how many of
-  this firm's clients could AA even reach" are both FREE, both come first, and
-  either can end it before a rupee is spent. **Stopping is a real outcome**, not a
+  purpose limitation is enforced. **Gate 0a is now answered, provisionally NO:**
+  no published purpose code or Sahamati Fair Use Template describes maintaining
+  another person's books — the B2B templates are all a data user assessing
+  somebody else's risk, which is the wrong shape — and the reason is structural
+  rather than a gap in a list. A purpose is DERIVATIVE OF THE FIU'S OWN
+  REGULATORY PERMISSION, and bookkeeping is not a regulated financial activity
+  under any of the five regulators. **So purpose defeats the PARTNER route too**,
+  not just the do-it-yourself one: a partner FIU's permitted purposes come from
+  its licence, and buying a SEBI RIA registration buys wealth-management advice,
+  not ledger-keeping. What is NOT settled is whether a purpose could be ADDED —
+  only Sahamati can answer that, and **every primary source was unreachable**
+  (the egress proxy refused every fetch this session, Wikipedia included), so
+  purpose CODES still must not be written from this research. #103–#107 stay open
+  pending that one question. **Stopping is a real outcome**, not a
   failure — statement upload is the base case regardless. See
   `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
