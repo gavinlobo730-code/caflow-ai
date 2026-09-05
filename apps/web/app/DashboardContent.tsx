@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Users, Clock, AlertTriangle, FileCheck,
   Calendar, Sparkles, CheckCircle2,
-  ChevronRight, FlaskConical, X, UserPlus,
+  ChevronRight, X, UserPlus,
   Upload, BookOpen, ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
@@ -62,7 +62,6 @@ interface KPIs {
   pendingTasks: number;
   filingsDueThisMonth: number;
   overdueFilings: number;
-  demoFilings: number;
 }
 
 interface RecentClient {
@@ -225,7 +224,7 @@ export default function DashboardContent() {
           .from("users").select("firm_id").eq("auth_user_id", user!.id).maybeSingle();
         const firmId: string | null = userData?.firm_id ?? null;
         if (!firmId) {
-          setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
+          setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
           setRecentClients([]); setRecentTasks([]); setLoading(false); return;
         }
 
@@ -235,15 +234,12 @@ export default function DashboardContent() {
         const [
           { count: totalClients },
           { count: pendingCount },
-          { count: demoCount },
           { data: clientsData },
           { data: tasksRaw },
           complianceResp,
         ] = await Promise.all([
           supabase.from("clients").select("id", { count: "exact", head: true }).eq("firm_id", firmId).eq("is_internal", false),
           supabase.from("tasks").select("id", { count: "exact", head: true }).eq("firm_id", firmId).neq("status", "completed"),
-          // DEMO MODE filing simulations (separate from real compliance status).
-          supabase.from("demo_filings").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
           supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).eq("is_internal", false).order("created_at", { ascending: false }).limit(5),
           supabase.from("tasks").select("id, title, due_date, status, clients(client_name)").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
           // H13: pulls from the SAME authoritative aggregation the Compliance
@@ -263,7 +259,6 @@ export default function DashboardContent() {
           pendingTasks: pendingCount ?? 0,
           filingsDueThisMonth,
           overdueFilings,
-          demoFilings: demoCount ?? 0,
         });
         setRecentClients((clientsData as RecentClient[]) ?? []);
         setRecentTasks(
@@ -279,7 +274,7 @@ export default function DashboardContent() {
           }))
         );
       } catch {
-        setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
+        setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
         setRecentClients([]); setRecentTasks([]);
         setLoadFailed(true);
       } finally {
@@ -427,21 +422,9 @@ export default function DashboardContent() {
             </div>
           )}
         </Link>
-        {/* DEMO MODE: simulated filings — only surfaced once some exist, clearly labelled. */}
-        {!loading && (kpis?.demoFilings ?? 0) > 0 && (
-          <>
-            <div className="w-px h-8 bg-[#F1F5F9]" />
-            <Link href="/deadlines" className="flex items-center gap-2.5 group" title="Simulated filings — DEMO MODE only, nothing submitted">
-              <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
-                <FlaskConical size={13} className="text-amber-600" />
-              </div>
-              <div>
-                <span className="text-xl font-bold text-amber-700">{kpis?.demoFilings ?? 0}</span>
-                <span className="text-xs text-[#94A3B8] ml-1.5">Demo Filed</span>
-              </div>
-            </Link>
-          </>
-        )}
+        {/* The "Demo Filed" KPI is gone with the browser-side simulation it
+            counted (see app/deadlines/page.tsx). demo_filings has no writer
+            now, so the card could only ever have read zero. */}
       </div>
 
       {/* ── Three-column Briefing Grid ──────────────────────────────────── */}
