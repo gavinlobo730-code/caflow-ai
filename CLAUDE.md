@@ -612,10 +612,18 @@ Demo filing walk-throughs exist to SHOW these flows before they are real. There
 is exactly ONE implementation: the shared filing-demo framework —
 `services/filing_demo/` (a flow per statutory filing, GSTR-3B included), served
 by `POST /api/filing-demo/{flow}/preview` and rendered by
-`components/FilingDemoWizard.tsx`. GSTR-3B used to carry a second, bespoke one
-at `POST /gst-workspace/gstr3b/{id}/simulate-filing`; it was the first built and
-has been deleted rather than left beside its replacement, because two demos of
-one return drift and each needs its own safety argument. They are portal-faithful
+`components/FilingDemoWizard.tsx`. **Two rivals have been deleted rather than
+left beside it**, because two demos of one return drift and each needs its own
+safety argument: the bespoke `POST /gst-workspace/gstr3b/{id}/simulate-filing`,
+and a browser-side one (`DemoFilingModal` + `lib/filing/demoFiling`) reachable
+from `/deadlines`. The second is the cautionary one — it minted the reference
+and validated IN THE BROWSER, wrote `demo_filings` over PostgREST so `rbac()`
+never ran, and **never called the server, so `ENABLE_FILING_SIMULATION` did not
+reach it**: turning the kill switch off left it simulating filings anyway.
+`apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts` holds
+the line, and every screen offering the wizard must probe
+`fetchFilingDemoCapabilities` first. A demo belongs on the screen where the
+RETURN lives, never on the deadline list — a deadline row is not a return. They are portal-faithful
 in sequence, transmit nothing, write nothing, and every response carries an
 honest `SIM-NOT-FILED` reference; any realistic-looking reference they display
 is labelled SPECIMEN at the point of display. `ENABLE_FILING_SIMULATION`

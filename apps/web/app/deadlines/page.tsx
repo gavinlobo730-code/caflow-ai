@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar, AlertTriangle, Clock, CheckCircle, FileText,
-  ExternalLink, FlaskConical, Users, ArrowRight,
+  ExternalLink, Users, ArrowRight,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +16,6 @@ import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/d
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
-import DemoFilingModal from "@/components/DemoFilingModal";
-import { getDemoFilingsByEntry, saveDemoFiling, type DemoFiling } from "@/lib/data/demoFilings";
-import { isSimulatable, DEMO_STATUS_LABEL } from "@/lib/filing/demoFiling";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useToast } from "@/components/ui/use-toast";
@@ -87,7 +84,7 @@ function LoadingSpinner() {
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-3 w-72" />
       </div>
-      {/* Stat cards (Due This Week / Overdue / In Progress / Pending / Filed / Demo Filed) */}
+      {/* Stat cards (Due This Week / Overdue / In Progress / Pending / Filed) */}
       <DashboardSkeleton cards={6} className="grid-cols-2 md:grid-cols-6" />
       {/* Compliance table (Client, Type, Period, Due Date, Status, ARN) */}
       <TableSkeleton cols={6} rows={5} />
@@ -108,22 +105,18 @@ function DeadlinesContent() {
   const [error, setError] = useState<string | null>(null);
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
-  const [demoFilings, setDemoFilings] = useState<Record<string, DemoFiling>>({});
-  const [demoEntry, setDemoEntry] = useState<ComplianceEntry | null>(null);
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [recs, cls, demos] = await Promise.all([
+      const [recs, cls] = await Promise.all([
         getComplianceCalendar(undefined),
         getClients().catch(() => [] as Client[]),
-        getDemoFilingsByEntry(undefined).catch(() => ({} as Record<string, DemoFiling>)),
       ]);
       setRecords(recs);
       setClients(cls);
-      setDemoFilings(demos);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load deadline data");
     } finally {
@@ -132,21 +125,6 @@ function DeadlinesContent() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  async function handleSimulated(demoReference: string) {
-    if (!demoEntry) return;
-    await saveDemoFiling(demoEntry, demoReference);
-    setDemoFilings(prev => ({
-      ...prev,
-      [demoEntry.id]: {
-        id: "local", firm_id: "", client_id: demoEntry.client_id,
-        compliance_entry_id: demoEntry.id, compliance_type: demoEntry.compliance_type,
-        period_start: demoEntry.period_start, period_end: demoEntry.period_end,
-        demo_reference: demoReference, demo_status: "demo_filed",
-        simulated_at: new Date().toISOString(),
-      },
-    }));
-  }
 
   async function handleMarkFiled() {
     if (!markFiled) return;
@@ -223,9 +201,6 @@ function DeadlinesContent() {
   const inProgress  = typeRecords.filter(r => r.filing_status === "in_progress").length;
   const filed       = typeRecords.filter(r => r.filing_status === "filed").length;
   const pending     = typeRecords.filter(r => r.filing_status === "pending").length;
-  const demoCount   = Object.values(demoFilings).filter(d =>
-    urlType ? matchesUrlType(d.compliance_type, urlType) : true
-  ).length;
 
   const STATS = [
     { label: "Due This Week", value: dueThisWeek, icon: Clock,          color: "text-amber-600", bg: "bg-amber-50"  },
@@ -233,8 +208,31 @@ function DeadlinesContent() {
     { label: "In Progress",   value: inProgress,   icon: FileText,       color: "text-blue-600",  bg: "bg-blue-50"   },
     { label: "Pending",       value: pending,       icon: Calendar,       color: "text-purple-600",bg: "bg-purple-50" },
     { label: "Filed",         value: filed,         icon: CheckCircle,   color: "text-green-600", bg: "bg-green-50"  },
-    { label: "Demo Filed",    value: demoCount,    icon: FlaskConical,   color: "text-amber-600", bg: "bg-amber-50"  },
   ];
+
+  // ── WHERE THE FILING DEMO WENT ─────────────────────────────────────────────
+  //
+  // This screen used to carry a "Simulate Filing" action per row, backed by
+  // components/DemoFilingModal and lib/filing/demoFiling. Both are deleted.
+  //
+  // It was a SECOND implementation of the filing demo, and the wrong one. It
+  // generated the reference and ran the validation IN THE BROWSER, wrote the
+  // result straight to demo_filings over PostgREST, and — the part that
+  // mattered — never asked the server whether demos were enabled. So
+  // ENABLE_FILING_SIMULATION, which CLAUDE.md calls THE KILL SWITCH for any
+  // deployment that records real filings, did not reach it: turning the flag
+  // off left this button simulating filings and persisting demo references.
+  //
+  // The capability is not lost. The shared framework (services/filing_demo/ +
+  // components/FilingDemoWizard) offers it on the five screens where the return
+  // actually lives — GST, TDS, MCA, payroll and tax filing — each gated on
+  // fetchFilingDemoCapabilities, portal-faithful, and honest about what it did
+  // not do. A deadline row is not a return, so there is nothing here for the
+  // wizard to walk through; the CA opens the client and demos it there.
+  //
+  // Do not add one back. Two demos of one filing drift, and each needs its own
+  // safety argument.
+  // ───────────────────────────────────────────────────────────────────────────
 
   // ── DataTable columns ──────────────────────────────────────────────────────
   const columns: Column<ComplianceEntry>[] = useMemo(() => [
@@ -282,26 +280,17 @@ function DeadlinesContent() {
           <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
             {r.filing_status}
           </Badge>
-          {demoFilings[r.id] && (
-            <Badge className="text-[10px] bg-amber-100 text-amber-700 flex items-center gap-1">
-              <FlaskConical size={10} /> {DEMO_STATUS_LABEL}
-            </Badge>
-          )}
         </div>
       ),
     },
     {
       key: "arn", header: "ARN",
-      accessor: (r) => (demoFilings[r.id] ? demoFilings[r.id].demo_reference : (r.arn_number ?? "")),
+      accessor: (r) => r.arn_number ?? "",
       render: (r) => (
-        <span className="text-xs text-[#64748B] font-mono">
-          {demoFilings[r.id]
-            ? <span className="text-amber-700" title="Demo reference — not filed with any portal">{demoFilings[r.id].demo_reference}</span>
-            : (r.arn_number ?? "—")}
-        </span>
+        <span className="text-xs text-[#64748B] font-mono">{r.arn_number ?? "—"}</span>
       ),
     },
-  ], [clientMap, clientGstinMap, demoFilings, todayForDueDateColor]);
+  ], [clientMap, clientGstinMap, todayForDueDateColor]);
 
   // ── DataTable filters — status always; type only when URL doesn't set it ────
   // (Matching the original: the Type dropdown is hidden — and not applied — when
@@ -471,15 +460,6 @@ function DeadlinesContent() {
                 <CheckCircle size={12} /> {r.filed_date ? formatDate(r.filed_date) : "Filed"}
               </span>
             )}
-            {isSimulatable(r.compliance_type) && (
-              <button
-                onClick={() => setDemoEntry(r)}
-                className="text-xs text-amber-700 hover:underline flex items-center gap-1"
-                title="Run a demo of the filing workflow — submits nothing"
-              >
-                <FlaskConical size={12} /> Simulate Filing
-              </button>
-            )}
             <Link
               href={`/clients/${r.client_id}`}
               className="text-xs text-blue-600 hover:underline flex items-center gap-1"
@@ -497,14 +477,6 @@ function DeadlinesContent() {
         </div>
       )}
 
-      {demoEntry && (
-        <DemoFilingModal
-          entry={demoEntry}
-          clientName={clientMap[demoEntry.client_id] ?? demoEntry.client_id.slice(0, 8)}
-          onConfirmed={handleSimulated}
-          onClose={() => setDemoEntry(null)}
-        />
-      )}
     </div>
   );
 }
