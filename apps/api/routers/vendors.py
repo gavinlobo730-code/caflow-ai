@@ -16,6 +16,7 @@ from models.common import api_response
 from models.parties import VendorIn, VendorUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
+from services import party_erasure
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 
@@ -128,11 +129,15 @@ def _match_existing_vendor(candidates: list[dict], gstin: str, pan: str) -> Opti
 # with one) — a hard-delete would leave those rows pointing at a vendor that
 # no longer exists instead of cascading, which is worse than data loss, so
 # they must be guarded here at the application layer regardless.
-_VENDOR_DEPENDENCY_TABLES: list[tuple[str, str]] = [
-    ("bills", "purchase_bills"),
-    ("payments", "purchase_payments"),
-    ("debit_notes", "debit_notes"),
-    ("credit_notes", "purchase_credit_notes"),
+# (label, table, date column) — mirrors customers.py. The DATE is what lets the
+# refusal name a statute AND the day the duty lapses instead of only "records
+# exist"; each table names its own column because they differ, and reading the
+# wrong one silently anchors retention to the wrong year.
+_VENDOR_DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
+    ("bills", "purchase_bills", "bill_date"),
+    ("payments", "purchase_payments", "payment_date"),
+    ("debit_notes", "debit_notes", "debit_note_date"),
+    ("credit_notes", "purchase_credit_notes", "credit_note_date"),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a vendor's permanent delete.
@@ -140,23 +145,40 @@ _SOFT_DELETE_VENDOR_DEPENDENCY_TABLES = {"purchase_bills", "debit_notes", "purch
 
 
 def _vendor_dependencies(db, vendor_id: str, opening_balance_paise: int) -> dict:
-    """Count the accounting records linked to a vendor. Mirrors
-    customers.py's _customer_dependencies exactly. Returns
-    {counts: {...}, total: int, has_any: bool}."""
+    """Count the accounting records linked to a vendor, and find the newest.
+
+    Mirrors customers.py's _customer_dependencies exactly. Returns
+    {counts, total, has_any, latest_record_date} — the last being the newest
+    DATED record, which is what lets the refusal name the day the statutory duty
+    lapses. None means the only blocker carries no accounting date."""
     counts: dict[str, int] = {}
-    for label, table in _VENDOR_DEPENDENCY_TABLES:
+    latest: str | None = None
+    for label, table, date_col in _VENDOR_DEPENDENCY_TABLES:
         try:
-            q = db.table(table).select("id").eq("vendor_id", vendor_id)
+            columns = "id" if date_col is None else f"id, {date_col}"
+            q = db.table(table).select(columns).eq("vendor_id", vendor_id)
             if table in _SOFT_DELETE_VENDOR_DEPENDENCY_TABLES:
                 q = q.is_("deleted_at", None)
             resp = q.execute()
-            counts[label] = len(resp.data or [])
+            rows = resp.data or []
+            counts[label] = len(rows)
+            if date_col:
+                for row in rows:
+                    value = row.get(date_col)
+                    # ISO dates compare correctly as text; anything unparseable
+                    # is skipped rather than guessed.
+                    if isinstance(value, str) and len(value) >= 10:
+                        if latest is None or value[:10] > latest:
+                            latest = value[:10]
         except Exception as e:  # a missing/locked table must never mask a dependency
             _logger.warning("dependency count failed for %s: %s", table, e)
             counts[label] = 0
     counts["opening_balance"] = 1 if (opening_balance_paise or 0) != 0 else 0
     total = sum(counts.values())
-    return {"counts": counts, "total": total, "has_any": total > 0}
+    # latest_record_date is the newest DATED accounting record. None means the
+    # only blocker is an opening balance, which carries no statutory clock.
+    return {"counts": counts, "total": total, "has_any": total > 0,
+            "latest_record_date": latest}
 
 
 # ---------------------------------------------------------------------------
@@ -683,7 +705,13 @@ def delete_vendor(
                 if v["id"] == vendor_id:
                     if permanent:
                         if (v.get("opening_balance_paise") or 0) != 0:
-                            raise HTTPException(status_code=409, detail="Vendor has accounting records and cannot be deleted. Deactivate instead.")
+                            # Same sentence as the live path: a mock-only message is a
+                            # second wording of one refusal, and they drift.
+                            raise HTTPException(
+                                status_code=409,
+                                detail=party_erasure.refusal(
+                                    party_erasure.VENDOR, latest_record_date=None),
+                            )
                         MOCK_VENDORS.pop(i)
                         return api_response(True, {"id": vendor_id, "deleted": True})
                     MOCK_VENDORS[i]["is_active"] = False
@@ -697,9 +725,14 @@ def delete_vendor(
             opening = vend.get("opening_balance_paise") or 0
             deps = _vendor_dependencies(db, vendor_id, opening)
             if deps["has_any"]:
+                # The refusal names the statute and the date it lapses, not just
+                # that records exist — see services/party_erasure.py.
                 raise HTTPException(
                     status_code=409,
-                    detail="This vendor has linked accounting records and cannot be permanently deleted. Deactivate the vendor instead to preserve history.",
+                    detail=party_erasure.refusal(
+                        party_erasure.VENDOR,
+                        latest_record_date=deps.get("latest_record_date"),
+                    ),
                 )
             del_resp = db.table("vendors").delete().eq("id", vendor_id).eq("firm_id", firm_id).execute()
             if not del_resp.data:
