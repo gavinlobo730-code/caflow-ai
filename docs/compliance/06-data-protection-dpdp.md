@@ -286,12 +286,59 @@ The options, and a recommendation:
 already there**, since they can neither be edited nor deleted whatever anyone
 decides.
 
+### ✅ DECIDED AND BUILT — migration 336
+
+**A, taken.** `public.audit_redact` replaces the VALUE of a person's government
+and financial identifiers in every trigger-written snapshot; `audit_capture`
+routes both `to_jsonb(NEW)` and `to_jsonb(OLD)` through it.
+
+**The key survives, only the value goes.** Dropping the key would lose the fact
+that the field changed at all — the row would look identical to one where it did
+not. `bank_account_no` still appears on both sides of the update that changed it,
+each carrying `[redacted]`, so the log still answers *who changed what, and
+when*. What is given up is the before/after value of one field: the part DPDP
+objects to holding for ever, and the part an audit trail needs least.
+
+Redacted — derived from the live schema, not from memory:
+
+`pan` · `deductee_pan` · `deductor_pan` · `landlord_pan` · `lender_pan` ·
+`vendor_pan` · `aadhaar_last4` · `uan` · `bank_account_no` · `account_number` ·
+`date_of_birth` · `deductee_tin` · `tax_identification_number`
+
+**Four near-misses deliberately left alone**, because over-redaction turns an
+audit log into a list of timestamps: `gstin`/`supplier_gstin` (a business
+registration, public on the portal, and the key a CA reads to know which
+registration a change touched), `ifsc`/`ifsc_code`/`bank_ifsc` (a branch code
+identifies a branch, not a person — harmless once the account number beside it is
+gone), `bank_account_id` (a uuid FK, not an account number), and
+`esic_employer_code` (the employer's registration). **Names, emails and phone
+numbers are also kept** — personal data, but they are how a human reads an audit
+row at all. That is the line to move first if the position must be stricter, and
+the list is a single array constant so moving it is a one-line migration.
+
+**Why this does not weaken the edit log.** Rule 3(1) is about accounting entries
+— who altered a voucher, when, and what moved. A PAN, a UAN, an Aadhaar fragment
+and a bank account number are none of those; no money moves when one changes, and
+nothing in the list appears on `journal_entries`, `journal_lines` or any amount
+column.
+
+**One writer, because only one writer does this.** Measured before building: of
+893 service-role rows written by `audit_service.log_event`, ZERO carry an
+identifier — that path takes small hand-built intent dicts, not row snapshots.
+All 1,470 identifier-bearing rows came through the trigger. A Python twin would
+have been a second implementation of one rule, built for a case that does not
+occur.
+
+**The 1,469 already written are unchanged**, and cannot be otherwise: `audit_log`
+blocks UPDATE and DELETE. Option C — the Rule 3(1) argument — remains the
+position on those, and still wants the legal opinion behind it.
+
 ### What this became
 
 | Task | | Kind |
 |---|---|---|
 | **#126** | Write the retention position per data category, then refuse erasure **with a reason** | Prerequisite — the Rules 8/14 tagging has nothing to write until this exists |
-| **#127** | Decide what `audit_log` may hold | **Owner decision with a lead time** — deferring it grows a residue nothing can undo |
+| ~~#127~~ | ~~Decide what `audit_log` may hold~~ | **DONE — migration 336.** The residue stopped growing on the day it merged |
 | **#128** | Turn `REQUIRE_MFA` on, and decide whether payroll sits behind it | Configuration and scope, not a build |
 
 None of it is urgent in the penalty sense — there is nothing to be penalised for

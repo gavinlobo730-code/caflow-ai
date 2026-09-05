@@ -19,11 +19,17 @@ TODO(compliance): docs/compliance/06-data-protection-dpdp.md
        written can be taken back. Measured 2026-09-05: 1,469 of 46,311 rows
        already carried an identifier.
 
-       The recommendation on file is to REDACT ON WRITE for the tables that
-       carry identifiers — the log needs to show who changed what and when, not
-       a column-wise copy of the row. Not done here because it trades against
-       the audit trail's completeness and is an owner's decision. See §5a of the
-       doc, and task #127.
+       DONE for the TRIGGER path, in migration 336: public.audit_redact
+       replaces the VALUE of a person's government and financial identifiers
+       and keeps the KEY, so the log still shows which field changed.
+
+       NOT done here, and deliberately: of 893 rows this Python path has
+       written, ZERO carried an identifier — it is called with small hand-built
+       intent dicts, not row snapshots. Adding a redactor here would be a second
+       implementation of one rule, for a case that does not occur. IF YOU EVER
+       PASS A WHOLE ROW to old_data/new_data, that stops being true — redact it
+       at the call site, or move the rule into one shared place and pin the two
+       with a parity test, the way this codebase does elsewhere.
 """
 import logging
 from typing import Optional
