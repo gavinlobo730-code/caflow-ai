@@ -36,6 +36,7 @@ from domain.payroll import wage_base
 from domain.payroll.ecr import build_ecr
 from domain.payroll import ecr_sequence
 from domain.tds import vocabulary as tds_vocabulary
+from domain.dpdp import retention as dpdp_retention
 from services import epfo_ecr_filing_service as ecr_filings
 from domain.payroll.esic import build_esic_return
 from domain.payroll.annexure2 import build_annexure_ii
@@ -1435,6 +1436,44 @@ def update_employee(
     return api_response(True, (row.data or [{}])[0])
 
 
+def _payroll_retention_refusal(db, firm_id: str, slips: list[dict]) -> str:
+    """Why this employee's payroll record cannot be erased, naming the statute
+    and the date.
+
+    The LATEST month drives it: retention runs from the financial year the
+    record belongs to, so the most recent payslip is the one whose duty expires
+    last. A month that cannot be read is skipped rather than guessed — and if
+    none can be read the refusal falls back to the category-level sentence,
+    which still names the statutes and still refuses.
+    """
+    # Bounded by the months this employee was paid for, not by transaction
+    # volume — a career is a few hundred rows — and it runs only on the refusal
+    # path of a Partner-initiated delete.
+    run_ids = [s["run_id"] for s in slips if s.get("run_id")]
+    runs = []
+    if run_ids:
+        runs = (db.table("payroll_runs").select("month")
+                .in_("id", run_ids).eq("firm_id", firm_id).execute().data or [])
+
+    # Parsed, not sorted as text: '2026-6' beside '2026-12' orders wrongly as a
+    # string and would pick the earlier month, understating the retention by a
+    # year. An unreadable month is dropped here rather than guessed.
+    starts: list[date] = []
+    for run in runs:
+        try:
+            year, month = str(run.get("month") or "").split("-")[:2]
+            starts.append(date(int(year), int(month), 1))
+        except (ValueError, TypeError):
+            continue
+
+    fy = ist_fy_label(max(starts)) if starts else None
+
+    decision = dpdp_retention.erasure_decision("payroll", fy_label=fy)
+    return (f"{decision.reason} To remove this employee from active payroll, "
+            f"deactivate them (mark resigned/terminated) instead — the record "
+            f"stays, which is what the duty above requires.")
+
+
 @router.delete("/employees/{employee_id}")
 def delete_employee(
     employee_id: str,
@@ -1456,12 +1495,18 @@ def delete_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    slip = (db.table("payroll_slips").select("id")
-            .eq("employee_id", employee_id).limit(1).execute().data)
-    if slip:
+    # The refusal has to say WHICH LAW and UNTIL WHEN, not merely that a row
+    # points at this one. An employee asking to be erased under DPDP is a data
+    # principal exercising a right, and "this employee has payroll history" is
+    # not an answer to it — it names no statute, and it never lapses, so it
+    # would still refuse in 2050. domain/dpdp/retention.py holds the position;
+    # the run's month gives the financial year each duty is measured from.
+    slips = (db.table("payroll_slips").select("run_id")
+             .eq("employee_id", employee_id).execute().data or [])
+    if slips:
         raise HTTPException(
             status_code=409,
-            detail="This employee has payroll history and cannot be deleted. Deactivate them (mark resigned/terminated) instead.",
+            detail=_payroll_retention_refusal(db, current_user["firm_id"], slips),
         )
 
     db.table("payroll_employees").delete().eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
