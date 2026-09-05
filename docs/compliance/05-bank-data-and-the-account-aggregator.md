@@ -81,13 +81,52 @@ joining as an **FI-U must necessarily join as an FIP** where it holds financial
 information. `[S]` The NBFC route therefore inherits an obligation to *publish*
 into the ecosystem.
 
-### What this means for tasks #102–#107
+### What this means for tasks #102–#107 — REWRITTEN (task #123)
 
-Those six tasks are written on the assumption that registering as an FIU via a
+Those six tasks were written on the assumption that registering as an FIU via a
 TSP is the path. **#104 in particular — "complete FIU registration/onboarding
-via the chosen TSP" — describes something that does not exist.** #102 asks
-exactly the right question and its answer is now known. The sequence needs
-rewriting around the three options above before any of it is actioned.
+via the chosen TSP" — described something that does not exist.**
+
+They are now sequenced as **three gates, cheapest-and-most-fatal first**. The
+reordering is the substance, not the relabelling: two questions below are free,
+and either can end the project before a rupee is spent.
+
+**Gate 0 — free, and either answer can stop everything**
+
+| | |
+|---|---|
+| **#102** | **Is there a lawful PURPOSE for a CA keeping a client's books?** |
+| **#103** | **What percentage of THIS firm's clients could AA actually reach?** |
+
+**#102 is upstream of FIU eligibility**, which is the non-obvious part. Eligibility
+is solvable with money — buy a registration, or partner with someone who has one.
+Purpose is not. The consent artefact carries a `Purpose`, the FIP validates every
+fetch against it, and purpose limitation is **enforced**. If no purpose honestly
+covers third-party bookkeeping, then a fully licensed FIU still could not pull
+this data for this use, and every rupee spent on eligibility is wasted. §2 records
+that no such published code was found and that the taxonomy could not be read.
+
+**#103 settles the commercial case independently.** §3 shows a CA's client base is
+precisely the population AA serves worst. If most clients are unreachable, the ROI
+question is answered before the legal one.
+
+**Gate 1 — paid, only if Gate 0 clears**
+
+| | |
+|---|---|
+| **#104** | Legal opinion on eligibility, then **choose one of the three routes** |
+| **#105** | DPDP obligations, incl. `DataLife` as a clock separate from consent expiry |
+
+**Gate 2 — build, only once a route is chosen**
+
+| | |
+|---|---|
+| **#106** | The consent flow — approval happens **at the AA**, callback-driven, annual re-consent |
+| **#107** | Contract and pilot, shaped by whichever route #104 chose |
+
+**Stopping is a real outcome.** If #102 finds no honest purpose, or #103 finds the
+coverage is not there, the answer is to close #104–#107 and keep statement upload.
+Per §3 that is the base case anyway, not a fallback.
 
 ## 1. The ecosystem
 
@@ -226,10 +265,16 @@ Buying both from one vendor is convenient and costs you leverage on FIP coverage
 
 ## 5. Verify before relying on any of this
 
-1. **The FIU eligibility position, with a legal opinion.** Task #123.
-2. The full text of the NBFC-AA Directions 2025.
-3. **The ReBIT purpose code list, and whether any code fits third-party
-   bookkeeping.**
-4. Whether the reciprocity duty binds an FIU holding no financial information.
-5. The complete FI-type enumeration.
-6. Current FIP coverage for the client types a CA actually serves.
+Each now has an owner in the rewritten sequence above, and the two free ones
+come first:
+
+| # | To verify | Task |
+|---|---|---|
+| 1 | **The ReBIT purpose code list, and whether any code fits third-party bookkeeping** — the taxonomy was blocked and the recovered fragments contradicted each other, so no purpose code should be written from this research | **#102** (gate 0) |
+| 2 | **Current FIP coverage for the client types a CA actually serves** — from Sahamati's own matrices, against a real client book | **#103** (gate 0) |
+| 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
+| 4 | Whether the reciprocity duty binds an FIU holding no financial information | **#104** (gate 1) |
+| 5 | The complete FI-type enumeration | **#106** (gate 2) |
+
+Note the swap: items 1 and 2 were listed last in the first pass and are now
+first, because they cost nothing and either can close the whole line of work.
