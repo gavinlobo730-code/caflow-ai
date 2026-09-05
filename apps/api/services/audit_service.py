@@ -1,6 +1,29 @@
 """
 Audit trail service — immutable log of all sensitive mutations.
 Covers: journal entries, invoices, compliance records, user role changes, client changes.
+
+TODO(compliance): docs/compliance/06-data-protection-dpdp.md
+    TWO THINGS ABOUT audit_log THAT A FUTURE CHANGE COULD BREAK WITHOUT NOTICING.
+
+    1. THERE IS NO PURGE, AND THAT IS NOW LOAD-BEARING. DPDP Rule 6 requires
+       logs of personal-data access to be kept AT LEAST ONE YEAR, in force from
+       13-05-2027. Nothing sweeps this table today, so retention is unbounded
+       and the floor is met by accident. Anyone adding a tidy-up here must keep
+       a year, and should say so where they add it.
+
+    2. THE ROWS CARRY FULL SNAPSHOTS, AND THEY CANNOT BE ERASED. Migration 111
+       puts a trigger on every firm-scoped table and writes to_jsonb(NEW) /
+       to_jsonb(OLD) — every column, including PAN, UAN, ESIC number, salary and
+       bank account where the table has them. UPDATE and DELETE are blocked by
+       trigger, so a DPDP erasure request cannot reach any of it, and nothing
+       written can be taken back. Measured 2026-09-05: 1,469 of 46,311 rows
+       already carried an identifier.
+
+       The recommendation on file is to REDACT ON WRITE for the tables that
+       carry identifiers — the log needs to show who changed what and when, not
+       a column-wise copy of the row. Not done here because it trades against
+       the audit trail's completeness and is an owner's decision. See §5a of the
+       doc, and task #127.
 """
 import logging
 from typing import Optional

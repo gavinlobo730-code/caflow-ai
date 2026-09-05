@@ -171,8 +171,9 @@ children's-data violations. **All monetary — no criminal sanction.** `[S]`
 
 ### The two items worth starting now
 
-1. **Rule 6** — one-year log retention, encryption/tokenisation, and the
-   processor flow-down clauses.
+1. **Rule 6** — encryption/tokenisation, MFA, access logging and the processor
+   flow-down clauses. **See §5a: two of these are in a different state than this
+   list assumed.**
 2. **Rules 8 and 14** — tag every row with the **consent, purpose and retention
    expiry** that justifies it.
 
@@ -183,10 +184,119 @@ children's-data violations. **All monetary — no criminal sanction.** `[S]`
 > That is **also exactly what an Account Aggregator `DataLife` would demand**, so
 > it is not wasted work under either future. Build it once.
 
-⚠️ **An open question nobody addressed:** how a DPDP erasure request interacts
-with the **append-only `audit_log`** — which CLAUDE.md correctly treats as the
-thing that is immutable — and with statutory retention. `[U]` It is a real
-question and it needs a written position before May 2027.
+---
+
+## 5a. What the code actually does — READ, not assumed (task #124)
+
+Everything above is sourced from outside. This section is different: it is what
+the repository and the production database say, checked on **2026-09-05**. Treat
+it as fact about *this codebase*, not as a legal claim.
+
+It corrects the section above in three places.
+
+### MFA is BUILT, and it ships dark
+
+Not a gap to fill — a switch to throw, plus a scope decision.
+
+`core/auth.mfa_guard` requires an **aal2** token for roles in
+`MFA_REQUIRED_ROLES`, and `main.py` already attaches it. But:
+
+- **`REQUIRE_MFA` defaults OFF.** The guard is a no-op pass-through until it is
+  set — deliberately, so it could ship before being validated in staging.
+- **`MFA_REQUIRED_ROLES` defaults to `Partner` alone.**
+- It guards **four** routers: assignments, identity, practice, billing — the
+  firm-administration surfaces.
+- **Payroll is not among them.** The separate platform-admin path
+  (`require_platform_admin_mfa`) genuinely enforces aal2 today, but that is for
+  destructive platform operations, not for the data.
+
+So Rule 6's MFA obligation is a configuration and coverage question:
+turn it on, decide the roles, and decide whether the surface that holds
+**employee PAN, UAN, ESIC number, salary and bank account** should be behind it.
+Per §2 that is the highest-exposure surface in the product.
+
+### The one-year log floor is already met — and the risk runs the other way
+
+Rule 6 wants access logs kept **at least** a year. There is **no purge of
+`audit_log` anywhere** — no job, no script, no scheduled sweep — and `UPDATE`
+and `DELETE` are both blocked by database trigger. Retention is unbounded.
+
+So this is not work. What it needs is to be *known*, because the failure mode is
+somebody adding a tidy-up later and silently dropping below the floor. Noted in
+`services/audit_service.py` where a person writing that purge would look.
+
+### ⚠️ The erasure question is not open — it is answered, and it is worse
+
+The earlier note called this an open question. It is not open; it just had not
+been looked at. **Migration 111 puts an audit trigger on every firm-scoped table
+with an `id` column**, minus a fixed exclusion list, and the trigger writes
+**`to_jsonb(NEW)` and `to_jsonb(OLD)` — complete row snapshots** — into
+`audit_log`, which is append-only by trigger.
+
+Payroll is **not** on the exclusion list (which covers the audit log itself,
+event feeds, derived tables, AI output and a few child tables). Neither are
+customers, vendors or clients.
+
+**Measured in production on 2026-09-05:** 46,311 audit rows since 19 June 2026,
+and **1,469 of them already carry a `pan`, `uan` or `bank_account_number`** in
+their snapshot — 1,304 customer, 160 vendor, 3 client, 2 firm. Payroll shows 2
+rows only because payroll has barely been used yet; the mechanism covers it and
+fires the moment it is.
+
+> Not every one of those 1,469 is personal data — a private limited company's PAN
+> is not. It is an upper bound, and the direction of travel is what matters.
+
+**So personal identifiers are accumulating, at roughly 7,000 rows a year at
+current low usage, in a table nothing can delete from.** And it cannot be fixed
+retroactively: those rows can be neither edited nor deleted, by design. Every
+month it runs, the permanent residue grows.
+
+### The position
+
+Two questions were being conflated.
+
+**(a) Erasing a principal's record from the live tables.** Governed by statutory
+retention, not by DPDP alone — DPDP does not override a retention duty imposed by
+another law. Where the Companies Act, IT Act or GST require the record to be
+kept, the answer to an erasure request is a **refusal with a reason**, in the
+shape this codebase already uses everywhere else — never a silent no-op. That
+needs a written retention position per data category, which is task #126.
+
+**(b) Erasing the copy inside `audit_log`.** Different problem, and the real one.
+The resolution is to **minimise what the log holds rather than delete from it**.
+The log exists to show *who changed what, and when*. It does not need a
+column-wise copy of the whole row to do that. `to_jsonb(NEW)` is the cheapest
+thing to write and the most expensive thing to hold for ever.
+
+The honest tension: shrinking the snapshot weakens the audit trail, which
+CLAUDE.md treats as load-bearing — the proviso to Rule 3(1) of the Companies
+(Accounts) Rules 2014 requires an edit log, and **the log is what is immutable,
+not the entry**. So this is a trade-off for an owner, not a unilateral fix.
+
+The options, and a recommendation:
+
+| | Option | Effect |
+|---|---|---|
+| **A** | **Redact on write** — exclude a named list of identifier columns from the snapshot, for the tables that carry them | Stops the residue growing; the log still shows the change happened and which fields moved. **Recommended.** |
+| B | Tokenise or hash the identifiers in the snapshot | Same effect, more machinery, and a hash of a PAN is still a re-identifiable value |
+| C | Do nothing, and rely on the log being a record required by law under Rule 3(1) | A real argument, but it needs the legal opinion before it can be relied on — and it does nothing about volume |
+| D | Add the payroll tables to migration 111's exclusion list | Worst of both: loses audit coverage exactly where the data is most sensitive |
+
+**A for what is written from here; C as the legal backstop for the 1,469 rows
+already there**, since they can neither be edited nor deleted whatever anyone
+decides.
+
+### What this became
+
+| Task | | Kind |
+|---|---|---|
+| **#126** | Write the retention position per data category, then refuse erasure **with a reason** | Prerequisite — the Rules 8/14 tagging has nothing to write until this exists |
+| **#127** | Decide what `audit_log` may hold | **Owner decision with a lead time** — deferring it grows a residue nothing can undo |
+| **#128** | Turn `REQUIRE_MFA` on, and decide whether payroll sits behind it | Configuration and scope, not a build |
+
+None of it is urgent in the penalty sense — there is nothing to be penalised for
+until 13 May 2027. **#127 is the one that is time-sensitive anyway**, because it
+is the only item whose cost rises every month it waits.
 
 ## 6. Consent Managers — and why the product must not become one
 
