@@ -713,11 +713,30 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
         {result ? (
           <>
+            {/* LEAD WITH THE OUTCOME, NOT THE COUNTER.
+                Re-uploading a statement that is already in produced a green
+                tick over the words "0 transactions imported", which reads as a
+                failure — the CA's next move is to try again. Both numbers were
+                accurate; the headline was answering "what did this click add?"
+                when the question in the CA's head is "is this statement in?".
+                Nothing was rejected here, so nothing is coloured as a problem;
+                what changes is which sentence is the big one. */}
             <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 text-center space-y-1">
               <CheckCircle size={20} className="text-green-600 mx-auto" />
-              <p className="text-sm font-medium text-green-700">{result.imported} transaction{result.imported === 1 ? "" : "s"} imported</p>
-              {result.duplicates_skipped > 0 && (
-                <p className="text-xs text-green-600">{result.duplicates_skipped} duplicate{result.duplicates_skipped === 1 ? "" : "s"} skipped (already imported)</p>
+              {result.imported === 0 && result.duplicates_skipped > 0 ? (
+                <>
+                  <p className="text-sm font-medium text-green-700">Already imported — nothing new to add</p>
+                  <p className="text-xs text-green-600">
+                    All {result.duplicates_skipped} line{result.duplicates_skipped === 1 ? " was" : "s were"} already in this client&apos;s books.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-green-700">{result.imported} transaction{result.imported === 1 ? "" : "s"} imported</p>
+                  {result.duplicates_skipped > 0 && (
+                    <p className="text-xs text-green-600">{result.duplicates_skipped} line{result.duplicates_skipped === 1 ? " was" : "s were"} already in and {result.duplicates_skipped === 1 ? "was" : "were"} skipped</p>
+                  )}
+                </>
               )}
             </div>
             {/* Say what checked it. A verified import and an unverified one
