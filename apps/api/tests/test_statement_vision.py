@@ -8,10 +8,18 @@ will sometimes read 8 as 3 or drop a row at a page break. For an invoice that is
 tolerable, because a human checks the six fields it produced. For a statement it
 is not: nobody reads 300 lines to check them.
 
-So on this path the tie-out is MANDATORY, it is enforced BEFORE anything is
-rasterised or sent, and a reading that does not add up to the printed closing
-balance is refused rather than imported. Most of what follows is that rule and
-the ways round it that must not exist.
+So on this path the arithmetic is MANDATORY and a reading that does not add up
+is refused rather than imported. Two things can supply it — the totals the
+statement prints on itself, read by a separate call that is shown no
+transactions, or the balances the CA types — and either will do, which is why a
+scan of a statement that states its own totals now needs nothing typed in.
+
+What has NOT relaxed is the outcome: a scan is never imported unverified. What
+changed is when the refusal lands. It used to come before any call at all, by
+demanding the balances up front; whether they are needed is now a fact about the
+picture, so the totals probe goes first, alone, on the last page, and the twenty
+page reads behind it never happen. Most of what follows is that rule and the
+ways round it that must not exist.
 
 No network anywhere. The model is injected, so the real prompt, the real
 parsing and the real refusals are all exercised against fabricated replies.
@@ -46,18 +54,42 @@ _ROWS = [
 ]
 
 
+#: The default answer to the totals probe: "this page prints no totals row".
+#: Deliberately the default, so every test that does not say otherwise runs in
+#: the world where the CA's balances are the only evidence — which is the case
+#: that has to keep working, and the case the refusals are written for.
+NO_TOTALS = '{"label": null}'
+
+
 class _Model:
-    """A fake vision model that counts how often it was actually called."""
-    def __init__(self, reply=None, raises=None):
+    """A fake vision model that counts how often it was actually called.
+
+    It answers by PROMPT, because the endpoint makes two different calls with
+    two different jobs — transcribe the totals row on the last page, and read
+    the transactions off every page — and a fake that answered both the same way
+    could not tell them apart. `rows_calls` is the expensive one; `totals_calls`
+    is the single page-sized probe that decides whether to make it.
+    """
+    def __init__(self, reply=None, raises=None, totals=NO_TOTALS):
         self.reply = json.dumps(_ROWS) if reply is None else reply
+        self.totals = totals
         self.raises = raises
         self.calls = 0
+        self.rows_calls = 0
+        self.totals_calls = 0
 
     def __call__(self, *, image, mime, prompt):
         self.calls += 1
+        if prompt is vision.TOTALS_PROMPT or prompt == vision.TOTALS_PROMPT:
+            self.totals_calls += 1
+            if self.raises:
+                raise self.raises
+            return self.totals
+        self.rows_calls += 1
         if self.raises:
             raise self.raises
-        return self.reply if isinstance(self.reply, str) else self.reply[self.calls - 1]
+        return (self.reply if isinstance(self.reply, str)
+                else self.reply[self.rows_calls - 1])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -244,15 +276,23 @@ def test_a_scan_without_asking_for_ai_is_refused_and_says_how(monkeypatch):
     assert model.calls == 0, "a model was called without being asked for"
 
 
-def test_asking_for_ai_without_the_balances_is_refused_BEFORE_spending(monkeypatch):
-    """The refusal has to come before rasterising and before the model, or it is
-    the same refusal, later and dearer."""
+def test_a_scan_with_no_totals_and_no_balances_is_refused_after_ONE_call(monkeypatch):
+    """Nothing could check this reading, so it is refused — and the refusal
+    costs one page-sized probe rather than the whole statement.
+
+    This used to refuse before any call at all, by demanding the balances up
+    front. It cannot any more: whether the balances are needed depends on
+    whether the statement prints its own totals, and that is a fact about the
+    picture. So the probe goes first, alone, on the last page — and the twenty
+    page reads behind it never happen.
+    """
     db, model = _setup(monkeypatch)
     with pytest.raises(HTTPException) as e:
         _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True)
     assert e.value.status_code == 422
     assert "proves every line was read" in str(e.value.detail)
-    assert model.calls == 0, "it spent money and then refused"
+    assert model.totals_calls == 1
+    assert model.rows_calls == 0, "it read the whole statement and then refused"
 
 
 def test_an_unconfigured_deployment_refuses_before_rasterising(monkeypatch):
@@ -268,7 +308,7 @@ def test_a_scan_that_ties_out_imports_and_says_a_model_read_it(monkeypatch):
     db, model = _setup(monkeypatch)
     res = _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True,
                   opening=1_00_000_00, closing=1_30_000_00)
-    assert model.calls == 1
+    assert model.rows_calls == 1
     assert res["data"]["tie_out"]["agrees"] is True
     assert res["data"]["read_with_ai"] is True, \
         "a CA reviewing these lines is entitled to know they came off a picture"
@@ -293,7 +333,7 @@ def test_a_photograph_is_read_and_recorded_as_an_image(monkeypatch):
     db, model = _setup(monkeypatch)
     res = _upload(filename="statement.jpg", content=b"\xff\xd8\xff-not-really-a-jpeg",
                   allow_vision=True, opening=1_00_000_00, closing=1_30_000_00)
-    assert model.calls == 1
+    assert model.rows_calls == 1
     assert res["data"]["read_with_ai"] is True
     assert db.rows("bank_statements")[0]["source_format"] == "image"
 
@@ -324,3 +364,155 @@ def test_a_broken_csv_is_not_rescued_by_the_model(monkeypatch):
         _upload(filename="stmt.csv", content=b"nonsense,without,any,columns\n1,2,3,4\n",
                 allow_vision=True, opening=1, closing=2)
     assert model.calls == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# The statement's own totals, on a scan
+# ══════════════════════════════════════════════════════════════════════════════
+
+_TOTALS = ('{"label": "Grand Total", "total_withdrawals": "20,000.00", '
+           '"total_deposits": "50,000.00"}')
+
+
+def test_the_totals_are_transcribed_from_the_page():
+    got = vision.read_printed_totals(b"page", call_model=_Model(totals=_TOTALS))
+    assert got == {"label": "Grand Total",
+                   "total_debits_paise": 20_000_00,
+                   "total_credits_paise": 50_000_00}
+
+
+def test_the_totals_call_is_SHOWN_NO_TRANSACTIONS():
+    """THE REASON THIS IS A SECOND CALL AT ALL.
+
+    A model that produced the transactions and the totals in one reply can
+    produce a total that agrees BY CONSTRUCTION — asked for a grand total beside
+    a list it has just written out, it will add the list up. The check would be
+    the reading verifying itself, which is worth nothing and looks exactly like
+    a passing check.
+
+    So the prompt this call sends must contain no transactions, and must tell
+    the model to transcribe rather than compute. If either stops being true the
+    independence is gone and the check is decoration.
+    """
+    seen = {}
+
+    def spy(*, image, mime, prompt):
+        seen["prompt"] = prompt
+        return _TOTALS
+
+    vision.read_printed_totals(b"page", call_model=spy)
+    prompt = seen["prompt"]
+    assert prompt == vision.TOTALS_PROMPT
+    assert "TRANSCRIBE" in prompt
+    assert "do NOT work either figure out from anything else" in " ".join(prompt.split())
+    for row in _ROWS:
+        assert row["description"] not in prompt, "the totals call saw the rows"
+    assert "50,000.00" not in prompt, "the totals call saw an amount"
+
+
+@pytest.mark.parametrize("reply, why", [
+    ('{"label": null}', "the page prints no totals row"),
+    ('{"label": "Sum of transactions", "total_withdrawals": "1", "total_deposits": "2"}',
+     "an invented label is what a model that COMPUTED tends to write"),
+    ('{"label": "Grand Total", "total_withdrawals": "", "total_deposits": "50,000.00"}',
+     "half a pair is not a pair"),
+    ('{"label": "Grand Total", "total_withdrawals": "about twenty thousand", '
+     '"total_deposits": "50,000.00"}', "not money"),
+    ("I could not find a totals row on this page.", "prose, not JSON"),
+    ('["Grand Total", "20,000.00"]', "an array is the wrong shape"),
+])
+def test_anything_but_a_clean_transcription_is_None(reply, why):
+    """None means "fall back to the balances the CA types". A plausible pair of
+    invented numbers means a real import is refused, or a wrong one accepted —
+    so the bar is high and everything else is None."""
+    assert vision.read_printed_totals(b"page", call_model=_Model(totals=reply)) is None, why
+
+
+def test_a_totals_call_that_fails_is_not_fatal():
+    """The totals are the bonus half of the evidence on this path. Failing the
+    whole upload because they could not be fetched would be the wrong trade —
+    the balances still work, and the caller refuses if neither is available."""
+    model = _Model(totals=_TOTALS, raises=RuntimeError("provider down"))
+    assert vision.read_printed_totals(b"page", call_model=model) is None
+
+
+def test_a_fenced_totals_reply_is_still_read():
+    """Same tolerance _rows_from_reply extends, and now literally the same code
+    (_strip_fence): a code fence is a formatting habit, not a failure to read."""
+    fenced = "```json\n" + _TOTALS + "\n```"
+    assert vision.read_printed_totals(b"page", call_model=_Model(totals=fenced))
+
+
+# ── At the endpoint ──────────────────────────────────────────────────────────
+
+def test_a_scan_that_prints_its_totals_needs_nothing_typed_in(monkeypatch):
+    """The point of the change. A CA photographing a statement that ends with
+    its own Grand Total no longer types two numbers off the same page."""
+    db, model = _setup(monkeypatch, model=_Model(totals=_TOTALS))
+    res = _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True)
+    data = res["data"]
+    assert data["verified"] is True
+    assert data["totals_check"]["agrees"] is True
+    assert data["tie_out"]["checked"] is False, "nothing was typed in"
+    assert data["read_with_ai"] is True
+    assert db.rows("bank_transactions")
+
+
+def test_a_scan_whose_reading_misses_its_own_totals_imports_NOTHING(monkeypatch):
+    """The control, with the balances out of the picture entirely. The model
+    read two transactions; the statement says the withdrawals came to more than
+    they add up to. A row was missed, so nothing is imported."""
+    wrong = ('{"label": "Grand Total", "total_withdrawals": "35,000.00", '
+             '"total_deposits": "50,000.00"}')
+    db, model = _setup(monkeypatch, model=_Model(totals=wrong))
+    with pytest.raises(HTTPException) as e:
+        _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True)
+    assert e.value.status_code == 422
+    assert "Grand Total" in str(e.value.detail)
+    assert not db.rows("bank_transactions"), "a refused scan wrote transactions"
+    assert not db.rows("bank_statements")
+
+
+def test_the_totals_are_read_from_the_LAST_page(monkeypatch):
+    """A statement prints its grand total at the end. Probing the first page
+    would find a page header, or a "brought forward" line, on every multi-page
+    scan."""
+    seen = []
+
+    class _Pages(_Model):
+        def __call__(self, *, image, mime, prompt):
+            if prompt == vision.TOTALS_PROMPT:
+                seen.append(image)
+            return super().__call__(image=image, mime=mime, prompt=prompt)
+
+    # Three pages of the same two rows, so the totals the probe reports have to
+    # cover all six or the import is refused before the assertion is reached.
+    three_pages = ('{"label": "Grand Total", "total_withdrawals": "60,000.00", '
+                   '"total_deposits": "1,50,000.00"}')
+    _setup(monkeypatch, model=_Pages(totals=three_pages))
+    pdf = _blank_pdf(3)
+    _upload(filename="scan.pdf", content=pdf, allow_vision=True)
+    assert len(seen) == 1, "one probe, not one per page"
+    assert seen[0] == vision.page_images(pdf)[-1]
+
+
+def test_both_kinds_of_evidence_are_checked_when_both_are_there(monkeypatch):
+    """They answer different questions and neither implies the other, so a scan
+    that has both gets both. The totals cannot say this file is the whole
+    period; the balances cannot catch a misread that preserves their
+    arithmetic."""
+    db, model = _setup(monkeypatch, model=_Model(totals=_TOTALS))
+    res = _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True,
+                  opening=1_00_000_00, closing=1_30_000_00)
+    assert res["data"]["totals_check"]["agrees"] is True
+    assert res["data"]["tie_out"]["agrees"] is True
+
+
+def test_matching_totals_do_not_excuse_balances_that_disagree(monkeypatch):
+    """Verified means every check that ran passed, not that one of them did."""
+    db, model = _setup(monkeypatch, model=_Model(totals=_TOTALS))
+    with pytest.raises(HTTPException) as e:
+        _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True,
+                opening=1_00_000_00, closing=9_99_999_00)
+    assert e.value.status_code == 422
+    assert not db.rows("bank_transactions")

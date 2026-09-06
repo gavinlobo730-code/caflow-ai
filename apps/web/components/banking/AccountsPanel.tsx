@@ -650,10 +650,6 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       setError("Give BOTH the opening and closing balance — one alone cannot check anything.");
       return;
     }
-    if (allowVision && (openingPaise === null || closingPaise === null)) {
-      setError("Reading a scan needs the opening and closing balances printed on the statement — they are what proves every line was read.");
-      return;
-    }
     setImporting(true); setError(null);
     try {
       // Server-side parse + normalize + dedup (bank-specific adapters, fail-loud,
@@ -763,7 +759,9 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <label className="block text-xs font-medium text-[#475569] mb-1">
                   Statement balances
                   <span className="font-normal text-[#94A3B8]">
-                    {allowVision ? " — required for a scan" : " — optional; they say this file is the whole period"}
+                    {allowVision
+                      ? " — needed for a scan only if it prints no totals"
+                      : " — optional; they say this file is the whole period"}
                   </span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -793,7 +791,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       {isImage
                         ? "A photograph has to be read this way."
                         : "Only used if the PDF has no readable text — a normal PDF is parsed exactly, without AI."}
-                      {" The balances above are then required, and the import is refused unless the figures add up."}
+                      {" Nothing is imported unless the figures add up — to the statement\u2019s own totals if it prints them, otherwise to the balances above, which we\u2019ll then ask for."}
                     </span>
                   </span>
                 </label>

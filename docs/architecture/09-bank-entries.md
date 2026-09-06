@@ -52,6 +52,17 @@ the totals row carries no date, so `_rows_to_txns` has already dropped it by the
 time a caller sees the rows, and reading it afterwards would mean parsing the
 file twice.
 
+On a **scan**, the same totals are read by a vision model — but by a SECOND
+call, given the last page alone and shown no transactions
+(`vision.read_printed_totals`). A model asked for a grand total beside a list it
+has just written out will add the list up, and a reading that verifies itself is
+worth nothing while looking exactly like a passing check. Because the call is
+independent, its figures are allowed to gate the import; because it is a single
+page-sized probe run BEFORE the pages are read, a scan that nothing could check
+is refused one call in rather than twenty. The balances are the fallback on that
+path, not the price of entry — but the invariant holds: a scan is never imported
+unverified.
+
 It refuses to guess. A totals row does not follow the column mapping — the label
 sits in column 0 and the figures wherever the bank put them — so they are read
 positionally, and only when there are exactly TWO of them, in the order the

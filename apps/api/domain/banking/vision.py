@@ -12,16 +12,29 @@ model produced. It is NOT tolerable for a statement: nobody reads 300 lines to
 check them, so a misread number would go into the books silently and be found
 at reconciliation, months later, if at all.
 
-So the arithmetic is the control, and on this path it is NOT OPTIONAL:
+So the arithmetic is the control, and on this path it is NOT OPTIONAL. A model
+cannot fake a sum by being confident — it either read every line or the figures
+do not land. That is the whole reason this path is allowed to exist; see
+routers/banking.py, where it is enforced, and domain/banking/tie_out.py for the
+arithmetic.
 
-    opening + Σ credits − Σ debits == closing
+There are two things the reading can be checked against, and EITHER will do:
 
-The caller must supply the opening and closing balances printed on the
-statement, and the import is refused unless the model's reading reproduces them
-to the paisa. A model cannot fake that by being confident — it either read every
-line or the sum does not land. That single check is the whole reason this path
-is allowed to exist; see routers/banking.py, where it is enforced, and
-domain/banking/tie_out.py for the arithmetic.
+  * the totals the statement PRINTS on itself — read by `read_printed_totals`
+    below, from the last page, by a SEPARATE call that is shown no
+    transactions. That independence is the point: a model asked for a grand
+    total beside a list it has just written out will add the list up, and a
+    reading that verifies itself is worth nothing while looking exactly like a
+    passing check;
+  * the opening and closing balances the CA types in, which is the only
+    evidence that can say this file is the whole period.
+
+Whichever is available runs, both run when both are, and the import is refused
+unless what runs passes. The balances used to be demanded up front, before
+anything was rasterised. They are now the FALLBACK, asked for only when the
+totals probe finds nothing — one page-sized call in, rather than twenty — because
+a CA photographing a statement that ends with its own Grand Total should not
+have to retype two numbers off the same picture.
 
 WHAT THE MODEL IS ASKED FOR, AND WHAT IT IS NOT TRUSTED WITH
 
@@ -128,10 +141,8 @@ def _rows_from_reply(reply: str) -> list[dict]:
     refused, because a partial reading that then fails the tie-out is harder to
     act on than a clear "it could not read this".
     """
-    text = (reply or "").strip()
-    if text.startswith("```"):
-        text = text.split("```")[1] if "```" in text[3:] else text[3:]
-        text = text.split("\n", 1)[1] if text.lower().startswith("json") else text
+    text = _strip_fence(reply)
+
     def _unreadable(cause: Optional[Exception] = None) -> StatementParseError:
         return StatementParseError(
             "The statement image could not be read. Try a clearer scan, or "
@@ -234,3 +245,113 @@ def read_statement(
             "photograph, a flat, straight, well-lit image reads best — "
             "otherwise upload the CSV or Excel export.")
     return txns
+
+
+# ── The statement's own totals, read SEPARATELY ──────────────────────────────
+
+TOTALS_PROMPT = """
+You are looking at the LAST page of an Indian bank statement.
+
+Many statements end with a row that states the TOTAL of all withdrawals and all
+deposits for the whole statement — usually labelled "Grand Total", "Total" or
+"Totals".
+
+If such a row is printed on this page, return ONLY this JSON object, no prose
+and no code fence:
+
+  {"label": "<the label exactly as printed>",
+   "total_withdrawals": "<the withdrawal/debit figure exactly as printed>",
+   "total_deposits": "<the deposit/credit figure exactly as printed>"}
+
+Rules:
+- TRANSCRIBE. Copy the two figures character for character from the printed
+  row. Keep the commas. Do NOT add up the transactions on the page, and do NOT
+  work either figure out from anything else — if it is not printed, it is not
+  an answer.
+- This must be the total for the WHOLE statement. A page subtotal, a "carried
+  forward" or "brought forward" line, or a closing balance is NOT it.
+- If there is no such row on this page, or you are not certain, return exactly:
+  {"label": null}
+""".strip()
+
+
+def read_printed_totals(
+    image: bytes,
+    *,
+    call_model: ModelCall,
+    mime: str = "image/png",
+) -> Optional[dict]:
+    """The totals row the statement prints, transcribed by a SECOND, separate call.
+
+    WHY A SECOND CALL AND NOT ANOTHER FIELD ON THE FIRST
+
+        The totals are worth having on this path for the same reason as on every
+        other one: they are the evidence, printed on the statement, that every
+        line was read, and they save the CA typing two numbers off the page.
+
+        But a model that produced the transactions AND the totals in one reply
+        can produce a total that AGREES BY CONSTRUCTION — asked for a grand
+        total beside a list it has just written out, a language model will
+        happily add the list up. The check would then be the reading verifying
+        itself, which is worth nothing and looks exactly like a passing check.
+
+        So this is a separate call, given ONE page and no transactions, whose
+        only instruction is to transcribe a row or say there is none. It cannot
+        add up rows it has not been shown. That independence is the whole reason
+        the figures are allowed to gate an import.
+
+    WHY IT REFUSES SO READILY
+        A statement that prints no totals must come back as None, not as a
+        plausible pair of numbers — None means the caller falls back to the
+        balances the CA types, and a wrong pair means a real import is refused
+        or, worse, a wrong one is accepted. So the label has to look like a
+        totals label (the same pattern the parser uses) and both figures have to
+        look like money. Anything else is None.
+    """
+    from .tie_out import _looks_numeric
+    from .normalizer import _TOTAL_LABEL
+
+    try:
+        reply = call_model(image=image, mime=mime, prompt=TOTALS_PROMPT)
+    except Exception as e:  # noqa: BLE001 — the provider's own exceptions
+        # NOT fatal. The totals are a bonus on this path; the balances remain,
+        # and the caller refuses if neither is available. Failing the whole
+        # upload because the optional half of the evidence could not be fetched
+        # would be the wrong trade.
+        _logger.warning("printed-totals read failed (%s): %s", type(e).__name__, e)
+        return None
+
+    try:
+        obj = json.loads(_strip_fence(reply))
+    except ValueError:
+        _logger.warning("printed-totals reply was not JSON")
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    label = " ".join(str(obj.get("label") or "").split())
+    debit = str(obj.get("total_withdrawals") or "").strip()
+    credit = str(obj.get("total_deposits") or "").strip()
+    if not _TOTAL_LABEL.match(label):
+        # Includes the {"label": null} case the prompt asks for, and an invented
+        # label like "Sum of transactions" — which is what a model that computed
+        # rather than read tends to write.
+        return None
+    if not (_looks_numeric(debit) and _looks_numeric(credit)):
+        return None
+    return {
+        "label": label,
+        "total_debits_paise": abs(_to_paise(debit)),
+        "total_credits_paise": abs(_to_paise(credit)),
+    }
+
+
+def _strip_fence(reply: str) -> str:
+    """A model that wrapped its JSON in a code fence, unwrapped. Same tolerance
+    _rows_from_reply extends, and for the same reason: the fence is a formatting
+    habit, not a failure to read the page."""
+    text = (reply or "").strip()
+    if text.startswith("```"):
+        text = text.split("```")[1] if "```" in text[3:] else text[3:]
+        text = text.split("\n", 1)[1] if text.lower().startswith("json") else text
+    return text.strip()
