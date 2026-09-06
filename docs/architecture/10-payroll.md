@@ -137,54 +137,87 @@ competitor makes: we say what we do not know.
 | **Release** | Three gated steps, never batched: **Lock** (posts the accrual, approver ≠ locker) → **Publish payslips** → **Record payment**. Reverse is present, never primary, and demands a reason. | — |
 | **Outputs** | This client-month's shelf — payslips, register, ECR, ESIC, PT basis, bank advice, 24Q feed — each *exists* or *blocked, because…*, every one **server-built**. | Download, then Mark handed over |
 
-## Live defects — these ship before any of the above
+## Live defects as at 2026-09-04 — ALL FIVE NOW ADDRESSED
 
-Each was verified by reading the code, not inferred.
+Each was verified by reading the code when this design was written, and each has
+since been fixed. **The descriptions are kept as the record of what was wrong**,
+because four of the five are the kind of mistake that gets made again; each now
+opens with what closed it.
 
-### 1. The ECR and ESI files the CA downloads are computed in the browser, by wrong rules
+| # | Was | Now |
+|---|---|---|
+| 1 | ECR/ESI built in the browser, by wrong rules | **Fixed** — browser generators deleted, server-built |
+| 2 | Payroll accrual dated to the button press, in UTC | **Fixed** — dated to the payroll month |
+| 3 | Salary amounts parsed with `parseFloat` | **Fixed** — no `parseFloat` in the payroll page |
+| 4 | Employees could read draft payslips | **Fixed** — migration 323 |
+| 5 | No attendance row paid everybody a full month | **Partly** — the number is unchanged; the silence is gone |
 
-`apps/web/app/payroll/page.tsx:279` builds the EPFO ECR client-side. The server's
-correct `GET /runs/{run_id}/ecr` and `/esic` **have no caller in the web app.**
+**Item 5 is the one to read.** It is the only one where the computed figure did
+not change: what changed is that the run now says nobody entered anything. That
+distinction is the whole fix, and it is the same shape as `statutory_gaps`.
+
+**References below name a SYMBOL, not a line.** They were written as
+`payroll.py:1472` and similar, and every one had drifted within days — `:1472` is
+now a retention refusal sentence added by a later task. A line number into a
+living file is a pointer that rots silently, and `file::symbol` is the convention
+CLAUDE.md already uses.
+
+### 1. The ECR and ESI files the CA downloads were computed in the browser, by wrong rules
+
+> **FIXED 2026-09-04.** Both are server-built — `api.payroll.runEcr` /
+> `runEsic`, backed by `domain/payroll/ecr.py` and `domain/payroll/esic.py`. The
+> browser generators are deleted, and `apps/web/app/payroll/page.tsx` carries a
+> comment above the TDS 24Q block recording that they are not coming back.
+
+`apps/web/app/payroll/page.tsx` built the EPFO ECR client-side. The server's
+correct `GET /runs/{run_id}/ecr` and `/esic` **had no caller in the web app.**
 The browser version:
 
-- hardcodes **`NCP_DAYS` to 0** — every employee's loss-of-pay days are remitted
+- hardcoded **`NCP_DAYS` to 0** — every employee's loss-of-pay days remitted
   to EPFO as zero;
-- puts **PAN in `MEMBER_ID`**, or fabricates `EMP0001` when there is no PAN. The
+- put **PAN in `MEMBER_ID`**, or fabricated `EMP0001` when there was no PAN. The
   field is the **UAN**. A fabricated member id in a statutory remittance file;
-- computes **EPF wages on basic alone**. EPF Act §6 is basic **+ DA** — the exact
-  bug the September audit fixed in the backend;
-- tests ESI eligibility as `gross_paise <= 2100000` for the current month,
+- computed **EPF wages on basic alone**. EPF Act §6 is basic **+ DA** — the exact
+  bug the September audit had already fixed in the backend;
+- tested ESI eligibility as `gross_paise <= 2100000` for the current month,
   ignoring **Rule 50 contribution periods** — also already fixed in the backend;
-- computes ESI contributions in **floating point**.
+- computed ESI contributions in **floating point**.
 
-This is CLAUDE.md's "zero business logic in the frontend" rule being violated in
-the one place where violating it produces a wrong statutory filing. **Delete both
-browser generators; call the server.**
+This was CLAUDE.md's "zero business logic in the frontend" rule being violated in
+the one place where violating it produces a wrong statutory filing.
 
-### 2. The payroll accrual is dated to the button press, in UTC
+### 2. The payroll accrual was dated to the button press, in UTC
 
-`services/phase2_journal_service.py` posts the payroll journal with
-`entry_date=str(datetime.now(timezone.utc).date())`. Finalising August's payroll
-on 3 September dates the accrual **3 September** — August's P&L carries no salary
-cost and September carries two months, in books this firm produces. And between
-00:00 and 05:30 IST the UTC date is **yesterday**.
+> **FIXED.** `services/phase2_journal_service.py::journal_for_payroll` now posts
+> with `entry_date=month_end_date(run["month"])`. The comment there records that
+> the same change fixed a second bug the original write-up missed: `_create_journal`
+> dedupes on `(client, reference_no, entry_date)`, so with `today` in the key a
+> **re-finalisation on a later day produced a SECOND accrual for the same month.**
 
-It must be the payroll month in IST. The idempotency comment at
-`routers/payroll.py:1472` already admits the dedup key is wrong for the same
-reason.
+The journal was posted with `entry_date=str(datetime.now(timezone.utc).date())`.
+Finalising August's payroll on 3 September dated the accrual **3 September** —
+August's P&L carried no salary cost and September carried two months, in books
+this firm produces. And between 00:00 and 05:30 IST the UTC date is **yesterday**,
+so a March run finalised just after IST midnight could land in the wrong
+**financial year**.
 
-### 3. Employee salary amounts are parsed with `parseFloat`
+### 3. Employee salary amounts were parsed with `parseFloat`
 
-`app/payroll/page.tsx:531` — `rsToP(parseFloat(form.basic_rs) || 0)`.
+> **FIXED.** There is no `parseFloat` anywhere in `apps/web/app/payroll/page.tsx`.
+
+The employee form did `rsToP(parseFloat(form.basic_rs) || 0)`.
 `parseFloat("1,25,000")` is **1**. CLAUDE.md records that all 61 money call sites
 were converted to `lib/money/rupeeInput.ts` and that there is no longer a second
-way. This form is a second way. The CSV importer eleven hundred lines below it
-carries a comment explaining this exact trap — and was fixed while the form
+way. This form was a second way. The CSV importer eleven hundred lines below it
+carried a comment explaining this exact trap — and was fixed while the form
 beside it was not.
 
-### 4. Employees can read draft payslips
+### 4. Employees could read draft payslips
 
-Migration 262:
+> **FIXED by migration 323**, which adds the missing predicate:
+> `AND run_id IN (SELECT public.my_payroll_run_ids())`.
+
+Migration 262 created:
 
 ```sql
 CREATE POLICY "employee_reads_own_payslips" ON public.payroll_slips
@@ -193,30 +226,46 @@ CREATE POLICY "employee_reads_own_payslips" ON public.payroll_slips
 ```
 
 No predicate on the run's status, and `payroll_runs.status` is
-`draft | review | finalized`. The employee portal query has no status filter
-either. A CA creating a draft run to check the numbers exposes every linked
+`draft | review | finalized`. The employee portal query had no status filter
+either. A CA creating a draft run to check the numbers exposed every linked
 employee's unapproved payslip.
 
-**Latent, not live** — production holds zero payroll employees and none linked to
-a login. It goes live with the first portal invite. Fix belongs in the RLS
-policy: the frontend reads that table directly, so a page filter is not a control.
+It was **latent, not live** — production held zero payroll employees and none
+linked to a login — and it would have gone live with the first portal invite. The
+fix belongs in the RLS policy, as the frontend reads that table directly, so a
+page filter would not have been a control.
 
 ### 5. No attendance row means everybody is paid a full month
 
-`routers/payroll.py:1268` reads `attendance = (att_res.data or [None])[0]`, and
+> **PARTLY FIXED, and the remaining half is deliberate.** The computation is
+> unchanged: `routers/payroll.py::_compute_slip` still defaults `working_days`
+> and `days_present` to **26** and `lop_days` to **0**. What changed is that a
+> missing row is no longer indistinguishable from a confirmed one —
+> `attendance` is `None` when nothing was entered, the slip carries
+> `attendance_entered`, and `routers/payroll.py::_attendance_gap` returns a named
+> gap per employee in the run's response.
+>
+> It **warns rather than blocks**, matching `_statutory_gaps` exactly, and that is
+> a decision rather than an omission: a run is a DRAFT — nothing posted, nothing
+> paid, no journal until Finalize — so refusing to compute it would stop a CA
+> seeing the very figures that tell them what is missing. The original write-up
+> below asked for a block; the shipped answer is a named gap, for the same reason
+> the unmodelled professional-tax states report themselves instead of deducting
+> nothing in silence.
+
 `_compute_slip` defaults `working_days` and `days_present` to **26** and
 `lop_days` to **0**. The `attendance` table's own columns default to 26 as well
 (migrations 027, 054, 093).
 
 So a client who has sent **nothing** — no LOP, no absence, no inputs at all —
 produces a run in which every employee is paid for a full month. "Nobody told us
-anything" and "26 days present, confirmed" are the same value, and the CA cannot
-tell them apart.
+anything" and "26 days present, confirmed" are the same value, and the CA could
+not tell them apart.
 
-This is the most dangerous defect in the module, because it fails **silently and
-in the employee's favour**, and it compounds with defect 1: a full-month default
-means no LOP, which makes the ECR's hardcoded `NCP_DAYS = 0` look consistent.
-An absent row must be an explicit *not entered* that blocks release.
+This was the most dangerous defect in the module, because it failed **silently
+and in the employee's favour**, and it compounded with defect 1: a full-month
+default means no LOP, which made the ECR's hardcoded `NCP_DAYS = 0` look
+consistent.
 
 ## Go to market
 
