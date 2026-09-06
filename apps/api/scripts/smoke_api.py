@@ -106,6 +106,48 @@ def checks(client_id: str, start: str, end: str) -> list[Check]:
     ]
 
 
+def wake(client: httpx.Client, base: str, attempts: int = 3) -> tuple[bool, float, str]:
+    """Get the instance out of bed BEFORE anything is timed.
+
+    WHY THIS EXISTS
+        Render's free tier spins the instance down after ~15 minutes without
+        traffic, and waking it takes the better part of a minute. This workflow
+        runs every 6 hours, so it almost always arrives at a sleeping instance
+        and the FIRST request pays the whole cold start. That was landing on the
+        `health` check's 5s budget and failing it — 56.55s on 2026-09-06 — which
+        made the workflow permanently red for a reason that has nothing to do
+        with whether the API works.
+
+        A check that is always red is a check nobody reads. The next time the
+        API is genuinely broken it will look exactly like this, and get scrolled
+        past.
+
+    SO THE WAKE IS UNTIMED, AND REPORTED ANYWAY
+        The cold start is a real fact about the deployment and the point is not
+        to hide it — it is printed on its own line, with its own duration, and
+        excluded from the budgets. What the budgets then measure is what they
+        were always meant to measure: how long a WARM instance takes to answer.
+
+    A FAILURE HERE IS A REAL FAILURE
+        If the instance never answers, that is the API being down, and the
+        caller stops rather than running seven checks that will each time out
+        and print the same thing seven times.
+    """
+    started = time.monotonic()
+    last = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            r = client.get(f"{base}/health")
+            if r.status_code < 400:
+                return True, time.monotonic() - started, f"HTTP {r.status_code}"
+            last = f"HTTP {r.status_code}"
+        except Exception as e:  # noqa: BLE001 — a cold instance refuses connections
+            last = type(e).__name__
+        if attempt < attempts:
+            time.sleep(2 * attempt)
+    return False, time.monotonic() - started, last
+
+
 def sign_in(supabase_url: str, anon_key: str, email: str, password: str) -> str:
     """A real user's access token, via the same password grant the login page
     uses. Fails loudly: a smoke check that silently ran unauthenticated would
@@ -222,14 +264,23 @@ def main() -> int:
     start = os.environ.get("SMOKE_START_DATE", "2026-04-01")
     end = os.environ.get("SMOKE_END_DATE", "2027-03-31")
 
-    token = sign_in(supabase_url, anon, email, password)
-
     # Longer than the largest budget, so a slow endpoint is reported as slow
     # rather than as a transport error — the distinction the frontend's own
     # 45s abort blurred, turning every over-budget call into a retry.
     failures = []
     with httpx.Client(timeout=120) as client:
         print(f"smoke: {base}")
+
+        # Untimed, and always printed. See wake().
+        awake, wake_s, detail = wake(client, base)
+        print(f"  WAKE  {'instance ready':28s} {wake_s:7.2f}s  {detail}"
+              f"{'  (cold start — not counted against any budget)' if wake_s > 5 else ''}")
+        if not awake:
+            print(f"\nsmoke: the API never answered /health ({detail}) — "
+                  f"not running the remaining checks")
+            return 1
+
+        token = sign_in(supabase_url, anon, email, password)
         for c in checks(client_id, start, end):
             ok, line = run_check(client, base, c, token)
             print(("  PASS  " if ok else "  FAIL  ") + line)
