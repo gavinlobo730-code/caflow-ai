@@ -463,8 +463,16 @@ nothing else.
   Partnership, 1 Proprietorship), every account a **Current** account, and one of
   the two banks is **Cosmos Bank**, the co-operative this file already named as
   the AA gap. The one well-served AA case — savings, individual, singly held,
-  ~72 banks — does not appear at all. **Stopping is a real outcome**, not a
-  failure — statement upload is the base case regardless. See
+  ~72 banks — does not appear at all. **On that basis #104 has CHOSEN ROUTE 3 —
+  do not consume via AA — provisionally, with no counsel engaged and nothing
+  spent.** The asymmetry that makes that decidable now: routes 1 and 2 (partner,
+  or acquire a registration) both require paid counsel and are the routes gate 0
+  argues against, while route 3 requires none, costs nothing and forecloses
+  nothing. **#105–#107 are not started and should not be** — they specify work
+  under a route not taken. The one thing that reopens gate 1 is #130 finding a
+  purpose exists or can be added; the counsel brief is already written in §0a so
+  the money is spent once, on the right questions. **Stopping is a real
+  outcome**, not a failure — statement upload is the base case regardless. See
   `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
   it is time-bound, purpose-bound and revocable. So the flow is "CA requests →
