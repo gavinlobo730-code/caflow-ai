@@ -2,14 +2,20 @@
 //
 // WHAT WAS WRONG
 //
-//   Measured on production 2026-09-05. Both Partners hold a VERIFIED TOTP
-//   factor, enrolled 2026-08-15. Every session created since — 88 of them,
-//   through today — is `aal1`, and every one carries a single AMR claim:
-//   `password`. Not one `totp` since the day of enrolment. Meanwhile the app is
-//   in daily use on those sessions: 162 browser writes reached audit_log on
-//   3 September alone, from a session that never completed a challenge.
+//   ⚠️ CORRECTED 2026-09-06. This comment used to open with production evidence
+//   — "88 sessions since enrolment, every one aal1/password, so MFA is enrolled
+//   and is not being asked for" — AND THAT EVIDENCE WAS MISREAD. Those sessions
+//   carry user_agent `python-httpx/0.28.1`: they are apps/api/scripts/
+//   smoke_api.py signing in with a password grant about four times a day from
+//   GitHub Actions, which has no browser and no challenge and therefore can
+//   never be aal2. Split by client, EVERY BROWSER SESSION SINCE ENROLMENT IS
+//   aal2 with a `totp` claim. The challenge was happening.
 //
-//   So MFA is enrolled and is not being asked for.
+//   The fail-opens below are real all the same — they are defects in this file,
+//   found by reading it, and each one would let a session through unchallenged
+//   whether or not it had yet. That is why the fix stands and only the story
+//   around it is corrected. See docs/compliance/06-data-protection-dpdp.md §5f
+//   for the re-measurement.
 //
 //   The previous resolution was:
 //
@@ -28,9 +34,10 @@
 //   the client happens to hold, so a session restored from storage whose cached
 //   user carries no `factors` array reports nextLevel `aal1` — no challenge
 //   owed — for an account that has a verified factor sitting in the database.
-//   That is consistent with what production shows: the challenge worked on
-//   enrolment day, when the user object was fresh, and has not been asked for
-//   since.
+//   That is a real hazard for a restored session, and it is why listFactors is
+//   asked as well. It was ALSO offered as the explanation for the production
+//   evidence, and that part is withdrawn: there was no unchallenged browser
+//   session to explain.
 //
 // WHAT THIS DOES
 //
@@ -54,11 +61,12 @@
 //
 // WHAT THIS CANNOT PROVE
 //
-//   That it makes production sessions aal2. The evidence above establishes the
-//   OUTCOME (work happening at aal1 with factors enrolled) and this module
-//   fixes a fail-open that would produce exactly that outcome — but confirming
-//   cause needs one real login against the deployed app, which no test here can
-//   do. See docs/compliance/06-data-protection-dpdp.md §5c.
+//   That it changes anything in production. Confirming that needs one real
+//   browser login against the deployed app, which no test here can do — and as
+//   at 2026-09-06 there has not been one since this shipped, because the live
+//   session predates it and Supabase refreshes a session rather than recreating
+//   it. See docs/compliance/06-data-protection-dpdp.md §5f, which also carries
+//   the query to check it with: only BROWSER rows answer the question.
 //
 // Dependency-free (type-only imports) so it strips to plain JS and unit-tests
 // with `node --experimental-strip-types --test`, like reauth.ts beside it.

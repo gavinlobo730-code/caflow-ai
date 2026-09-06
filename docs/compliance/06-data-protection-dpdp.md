@@ -218,11 +218,15 @@ Per §2 that is the highest-exposure surface in the product.
 > ⚠️ **Two of those bullets are corrected in §5c, which read production rather
 > than the code.** `REQUIRE_MFA` defaults off *in code* but `render.yaml`
 > records it as **`true` in production** — "ships dark" describes the default,
-> not the deployment. And the real problem turned out not to be the flag at
-> all: both Partners hold verified TOTP factors, and **every session since they
-> enrolled is `aal1`, authenticated by password alone**. MFA was enrolled and
-> never asked for. §5c has the measurements, the three fail-opens that caused
-> it, and the role and surface decisions.
+> not the deployment. §5c has the three fail-opens found by reading the client
+> code, and the role and surface decisions.
+>
+> ⚠️ **And §5c's own headline is corrected again in §5f.** "Every session since
+> enrolment is `aal1`" counted the smoke workflow's password-grant logins, which
+> can never be `aal2`. Split by client, **every BROWSER session since enrolment
+> is `aal2` with a `totp` claim.** MFA was being asked for. The fail-opens were
+> real code defects and fixing them was right; the evidence that motivated the
+> work was misread.
 
 ### The one-year log floor is already met — and the risk runs the other way
 
@@ -520,7 +524,39 @@ activity at all** since MFA was enrolled on 2026-08-15. Not one event in
 `audit_log`. Whatever the dashboard holds, the control had never once met a real
 request.
 
-### The finding: MFA is enrolled and is not being asked for
+### ⚠️ The finding was WRONG, and §5f has the corrected measurement
+
+The original text of this section is kept below because the code changes it
+motivated are still right, and because the way it went wrong is the instructive
+part. **But its headline claim does not survive re-measurement.**
+
+The `aal1` sessions it counted are **not the app in daily use**. They are
+`apps/api/scripts/smoke_api.py` — a scheduled GitHub Actions workflow that signs
+a Partner in with a password grant over `python-httpx`, roughly four times a day.
+A password grant has no browser and no challenge, so it can **never** be `aal2`.
+
+Measured 2026-09-06, split by client — the split the original never made:
+
+| sessions since enrolment (2026-08-15) | count | aal |
+|---|---|---|
+| `python-httpx/0.28.1` (the smoke workflow) | **91** | all `aal1`, `password` |
+| **browser** | **1** | **`aal2`, `password,totp`** |
+
+**Every browser session since enrolment is `aal2`.** There is one, created on
+enrolment day, and it was still being refreshed on 2026-09-05 — a Supabase
+session persists and is refreshed rather than recreated, so one sign-in in August
+is exactly what a single user working continuously looks like.
+
+The "162 browser writes to `audit_log` … from `aal1` sessions" line was never
+measurable: `audit_log` carries no session id and no AAL (its `metadata` keys are
+`reversal_date, source, stage, table`), so it cannot be joined to
+`auth.sessions`. That attribution was an inference, and it was the wrong one.
+
+See **§5f** for the full re-measurement, what it means for the fix, and the
+corrected verification recipe.
+
+<details>
+<summary>The original finding, kept as the record of what was believed</summary>
 
 | measured on production, 2026-09-05 | |
 |---|---|
@@ -535,6 +571,8 @@ Every session since enrolment authenticated with `password` alone. The app is in
 daily use on those sessions. **So the challenge is not happening**, and turning
 enforcement up — or adding a daily-use surface to the guard — would have 403'd
 both of the product's users.
+
+</details>
 
 ### Why, by reading: three fail-opens in a row
 
@@ -600,6 +638,12 @@ SELECT s.created_at::date, s.aal,
  WHERE s.created_at >= now() - interval '2 days'
  GROUP BY 1, 2 ORDER BY 1 DESC;
 ```
+
+> ⚠️ **This query is defective and §5f replaces it.** It groups by date and
+> `aal` without separating the client, so the smoke workflow's four daily
+> `aal1` / `password` rows drown out the browser sessions it is actually asking
+> about — and would be read, wrongly, as "the fix failed". Use the version in
+> §5f, which splits on `user_agent`.
 
 **`aal2` with a `totp` claim means it worked.** Another day of `aal1` /
 `password` means it did not, and payroll is now behind a guard whose flag may be
@@ -845,6 +889,125 @@ retention statutes carry the grades already recorded in §5b — **search result
 only, nothing `[P]`**, because `indiankanoon.org` and
 `taxinformation.cbic.gov.in` remain blocked by the egress proxy from this
 environment. Verified 2026-09-06.
+
+## 5f. Running §5c's check — the finding it was checking was wrong
+
+### What was asked, and what came back
+
+§5c ends with a query to run after deploying #128, and a criterion: *"`aal2` with
+a `totp` claim means it worked. Another day of `aal1` / `password` means it did
+not."* Run on 2026-09-06, three sessions existed since the deploy
+(2026-09-05 17:52 UTC), and all three were `aal1` / `password`.
+
+By §5c's own criterion that reads as failure. **It is not**, and the reason is
+that the criterion is wrong.
+
+### All three are a script, and so were the 88 before them
+
+Every one of those sessions carries `user_agent: python-httpx/0.28.1`. Their
+creation times match the **API smoke** workflow's runs to the second:
+
+| session created (UTC) | smoke run started (UTC) | run |
+|---|---|---|
+| 2026-09-05 20:17:43 | 2026-09-05 20:17:33 | #94 |
+| 2026-09-06 04:33:46 | 2026-09-06 04:33:37 | #95 |
+| 2026-09-06 10:52:20 | 2026-09-06 10:52:10 | #96 |
+
+`apps/api/scripts/smoke_api.py::sign_in` posts to `/auth/v1/token` with
+`grant_type=password` as a real Partner, about four times a day.
+**A password grant has no browser and no challenge, so it can never be `aal2`.**
+Those sessions are not evidence about MFA at all.
+
+Split by client, over everything since enrolment on 2026-08-15:
+
+| client | sessions | aal |
+|---|---|---|
+| `python-httpx/0.28.1` | **91** | all `aal1`, `password` |
+| **browser** | **1** | **`aal2`, `password,totp`** |
+
+**Every browser session since enrolment is `aal2`.** There is exactly one — the
+sign-in on enrolment day — and it was still being refreshed on 2026-09-05
+15:02 UTC. A Supabase session is created at sign-in and refreshed thereafter, so
+one row in three weeks is what a single user working continuously looks like, not
+evidence of absence.
+
+Both TOTP factors are still `verified` and untouched since 2026-08-15, so a
+challenge is genuinely owed on any new sign-in.
+
+### So §5c's headline is wrong, and the "162 writes" line was never measurable
+
+*"MFA is enrolled and is not being asked for"* counted script logins. The one
+time a human went through the browser, **the challenge happened and the session
+elevated.**
+
+The supporting line — *"162 browser writes to `audit_log` on 3 September, from
+`aal1` sessions"* — could not have been measured: `audit_log` has no session id
+and no AAL. Its `metadata` keys are `reversal_date, source, stage, table`, so
+there is no join to `auth.sessions`. On 3 September there were 193 actor-attributed
+rows from **one** actor — consistent with the live `aal2` session doing the work.
+
+**None of this makes #128 wrong to have shipped.** The three fail-opens it found
+by reading `mfaAssurance.ts` were real: `catch { return false }`, a null payload
+treated as "no factors", and `AuthGuard` rendering on an unresolved answer. Any
+of them would have let a session through unchallenged. Fixing them was right. It
+is the *evidence* that was misread, and this document stated it as measurement.
+
+### A question §5c left open is now answered: `REQUIRE_MFA` IS ON
+
+§5c records that the flag is `sync: false` and "cannot be read or set from here".
+It can be read — indirectly, four times a day. The smoke workflow's log:
+
+```
+PASS  identity/permissions   1.04s  ok (MFA-guarded: policy enforced;
+                                        authorised response not covered)
+```
+
+`run_check` only prints that line on a **403 whose detail is the MFA-required
+message**. So the backend guard is live in production and is refusing an `aal1`
+Partner on a guarded router, continuously. That is the enforcement half proven.
+
+### The check is still inconclusive, and what would settle it
+
+Nobody has signed in through a browser since the deploy, because the August
+session is still alive. So the *frontend* fix — `mfaAssurance.ts` and
+`guardDecision.ts` — has not been exercised in production yet. It will be at the
+next browser sign-in.
+
+**Use this instead of §5c's query.** It splits on the client, which is the whole
+point:
+
+```sql
+SELECT CASE WHEN s.user_agent ILIKE '%httpx%' OR s.user_agent ILIKE '%python%'
+              THEN 'script' ELSE 'browser' END        AS client,
+       s.aal,
+       (SELECT string_agg(DISTINCT c.authentication_method, ',')
+          FROM auth.mfa_amr_claims c WHERE c.session_id = s.id) AS methods,
+       count(*) AS sessions, max(s.created_at) AS last_session
+  FROM auth.sessions s
+ WHERE s.created_at >= now() - interval '7 days'
+ GROUP BY 1, 2, 3 ORDER BY 1, 5 DESC;
+```
+
+**Only the `browser` rows answer the question.** A `browser` row at `aal2` with a
+`totp` method means the challenge is working. A `browser` row at `aal1` means it
+is not. `script` rows are `aal1` by construction and mean nothing either way — if
+none appears, nobody has signed in since, and the check is simply not yet
+answerable.
+
+### Unrelated, found while checking: the smoke workflow is red
+
+Runs #95 and #96 failed, and not on MFA:
+
+```
+FAIL  health   56.55s  OVER BUDGET of 5s
+```
+
+That is the Render free-tier instance cold-starting — the known behaviour
+`.github/workflows/wake-before-scheduler.yml` exists to absorb around the
+scheduler window, hitting a smoke run outside it. Recorded here because a red
+smoke workflow next to an MFA change invites the wrong conclusion, and because a
+budget that fails on a cold start rather than on latency is measuring two things
+at once. Not changed here.
 
 ## 6. Consent Managers — and why the product must not become one
 

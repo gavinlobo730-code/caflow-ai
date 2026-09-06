@@ -54,6 +54,21 @@ from domain.dpdp import retention as R
 
 # ── the anchors, which are the point ─────────────────────────────────────────
 
+
+def _section_5b(text: str) -> str:
+    """Just §5b — the published position table — and nothing after it.
+
+    This used to slice from "## 5b." all the way to "## 6.", which swept in
+    §§5c-5f as well. Those sections are about MFA, the party deletes and bank
+    data, and any table any of them grows can have a row starting `| **word** |`
+    — which the category parser below then reads as a category the code does not
+    hold. §5f's client-split table (`| **browser** |`) did exactly that. The
+    slice now ends where §5b does.
+    """
+    start = text.index("## 5b.")
+    return text[start:text.index("## 5c.", start)]
+
+
 def test_one_financial_year_three_duties_three_different_dates():
     """The worked example from the module docstring. If these ever collapse to
     one date, an anchor has been flattened."""
@@ -367,14 +382,14 @@ def test_the_published_table_names_every_category_the_code_holds():
     drifts from the code that actually refuses, and the drift is invisible —
     both halves look fine on their own."""
     text = _DOC.read_text()
-    section = text[text.index("## 5b."):text.index("## 6.")]
+    section = _section_5b(text)
     for key in R.CATEGORIES:
         assert f"**{key}**" in section, f"{key} is in the code and not in §5b"
 
 
 def test_the_published_table_does_not_invent_a_category():
     text = _DOC.read_text()
-    section = text[text.index("## 5b."):text.index("## 6.")]
+    section = _section_5b(text)
     import re
     # Anchored to the ROW START: "| **firm** |" and "| **platform** |" appear
     # mid-row in the whose-duty column and are duty holders, not categories.
@@ -387,7 +402,7 @@ def test_the_worked_example_in_the_doc_matches_what_the_code_computes():
     """The three dates in §5b's anchor table are the whole argument for anchors
     mattering. If the code moves and the doc does not, the argument is stale."""
     text = _DOC.read_text()
-    section = text[text.index("## 5b."):text.index("## 6.")]
+    section = _section_5b(text)
     for expected in ("31-03-2029", "31-03-2028", "31-12-2027"):
         assert expected in section
     assert R.RULES["companies_act_books"].retained_until(fy_label="2020-21") == date(2029, 3, 31)
