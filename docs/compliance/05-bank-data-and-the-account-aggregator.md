@@ -423,9 +423,11 @@ added"*. Only the first half is established, and only provisionally:
 
 - **Established `[S, triangulated]`** — no published purpose or template
   describes third-party bookkeeping, and the framework's design explains why.
-- **NOT established** — whether one could be added. That is a question for
-  **Sahamati** (RBI-recognised SRO since 05-06-2026) and nobody else. A TSP
-  cannot answer it and is paid to say yes.
+- **NOT established** — whether one could be added. **§2a refines this:** it is
+  two questions, not one. A **Fair Use Template** (bounds on a use case) is
+  Sahamati's; the **purpose code** itself is ReBIT's, and a template cannot
+  create a purpose that does not exist. A TSP can answer neither and is paid to
+  say yes.
 
 **So #103–#107 are NOT closed on this evidence.** Two things must happen first,
 and both are somebody with a browser rather than more research from here:
@@ -443,6 +445,104 @@ and both are somebody with a browser rather than more research from here:
 statement upload.** That remains a legitimate outcome: §3 already argues upload
 is the base case rather than a fallback, because a CA's client base is precisely
 the population AA serves worst.
+
+### 2a. Gate 0a follow-on (task #130) — the question needed splitting, and the channel has a catch
+
+**Neither half of #130 could be done from here, and that is now confirmed rather
+than assumed:** `sahamati.org.in` and `api.rebit.org.in` were re-tested on a
+second day and both are still refused by the egress proxy. Sending an enquiry to
+an RBI-recognised SRO in the firm's name is a person's action in any case.
+
+But searching — which does work — moved the question forward in two ways worth
+recording before anybody spends time on it.
+
+#### 1. "Can a purpose be added?" is TWO questions with TWO different owners
+
+§2 asked Sahamati whether a purpose could be added. That slightly conflates two
+things, and the distinction decides who to write to:
+
+| | what it is | who governs it |
+|---|---|---|
+| **Purpose code** | the entry in the ReBIT taxonomy — `Purpose {code, refUri, text, Category}` | **ReBIT**, published at `api.rebit.org.in/purpose/` |
+| **Fair Use Template** | the outer BOUNDS on consent attributes for a use case (pull count, validity, data range) | **Sahamati's Fair Use Committee**, proposed via User Councils |
+
+**A Fair Use Template does not create a purpose. It constrains one that already
+exists.** So even a successful FUT proposal would not answer §2's question — it
+would cap the parameters of a purpose that still has to exist first. The
+taxonomy question goes to ReBIT; only the bounds question goes to Sahamati.
+
+#### 2. There IS a documented proposal process — and the channel runs through FIUs
+
+Sahamati's own FAQ describes it `[S]`: *"If your use case is not listed, please
+contact Sahamati by selecting the purpose field as 'Fair Use'. The team will
+share a form for you to fill out and guide you on the next steps to propose
+limits before the appropriate participatory governance forum."*
+
+Governance is: **FIU User Councils propose → Sahamati's Fair Use Committee
+reviews and approves.** The library was *"developed through a collaborative
+effort by active Financial Information Users... via various User Councils"*.
+`[S]`
+
+> ⚠️ **The catch.** The proposal channel is populated by **FIUs** — and §0
+> establishes that PracticeSync cannot be one. So the mechanism for adding a
+> template appears to run through the very membership category we are excluded
+> from. That is not conclusive: "mainly FIUs" is not "only FIUs", and Sahamati
+> may well answer a non-member's question. But it means **the realistic asker is
+> a partner FIU**, which folds back into route 1 — and route 1 is what §2 says
+> purpose already forecloses.
+
+#### The enquiry, ready to send
+
+Contacts found `[S]`: **info@sahamati.org.in** (general), services@sahamati.org.in
+(technical onboarding), and a contact form at `sahamati.org.in/contact/`.
+
+Written out so the human step is sending it, not drafting it. **It asks two
+questions of two bodies, per the split above.**
+
+> **Subject:** Purpose code availability for a chartered accountancy firm
+> maintaining a client's books of account
+>
+> We are a practice-management platform used by chartered accountancy firms in
+> India. We are assessing whether the Account Aggregator framework can lawfully
+> serve one specific use case, and would rather establish that before pursuing
+> any commercial or registration route.
+>
+> **The use case:** a CA firm, engaged by its client, obtains that client's bank
+> transaction data with the client's consent, for the purpose of **maintaining
+> the client's books of account** — bookkeeping and statutory compliance work
+> the firm performs on the client's behalf. The CA firm is the client's agent,
+> not a lender, adviser or counterparty assessing the client's risk.
+>
+> **Question 1 — is there an existing purpose code that covers this?** Our
+> reading of the published Fair Use Template library is that the available
+> use cases describe a data user assessing somebody else's risk or advising on
+> investments, and that none describes maintaining another person's books. We
+> would rather be corrected than proceed on that reading.
+>
+> **Question 2 — if none exists, what is the process for proposing one, and who
+> owns it?** We understand the Fair Use Committee governs the BOUNDS on a use
+> case via the User Councils, while the purpose code taxonomy itself is
+> published by ReBIT. If a new purpose code is required rather than a new
+> template, we would be grateful to be pointed to the right body.
+>
+> **A related question on eligibility**, since it may make the above moot: we
+> understand from the RBI (NBFC–AA) Directions 2025 that FIU status is
+> derivative of a registration with a financial sector regulator, and that ICAI
+> is not one. If the only realistic route is a regulated partner acting as the
+> FIU, we would like to understand whether such a partner may declare a purpose
+> that serves **its client's** business rather than its own regulated activity.
+>
+> We are not seeking onboarding at this stage — only to establish whether this
+> use case has a lawful home in the framework at all.
+
+#### What this changes, and what it does not
+
+**It does not change #104's decision.** Route 3 stands: nothing here supplies a
+purpose, and the one channel discovered runs through a membership we cannot
+hold. If anything the catch above narrows the opening.
+
+**What it changes is the cost of asking.** The question is now split correctly,
+addressed to the right bodies, and drafted. Sending it costs one email.
 
 ### FI types — and GST is one
 
@@ -603,7 +703,7 @@ come first:
 | # | To verify | Task |
 |---|---|---|
 | 1a | ~~Whether any code fits third-party bookkeeping~~ — **answered provisionally NO, §2.** No published purpose or template describes it, and purposes are derivative of the FIU's own regulatory permission | ~~#102~~ **done** |
-| 1b | **Read the actual taxonomy** (`api.rebit.org.in/purpose/`, Sahamati's purpose-codes page, guideline **PC001**) and **ask Sahamati whether a purpose can be ADDED.** Still no purpose code should be written from research — every fetch was blocked, including Wikipedia | **#102 follow-on**, gates #103–#107 |
+| 1b | **Read the actual taxonomy** (`api.rebit.org.in/purpose/`, Sahamati's purpose-codes page, guideline **PC001**), and **send the enquiry drafted in §2a** — split correctly between ReBIT (the purpose code) and Sahamati (the template bounds). Re-tested 2026-09-06: both hosts still blocked. Still no purpose code from research | **#130** |
 | 2a | ~~Coverage for the client types a CA actually serves~~ — **measured, §3a.** Composition is the worst case; no percentage is honest at n=7 | ~~#103~~ **done** |
 | 2b | **Sahamati's per-bank per-account-type matrix and the FIP↔AA matrix** — blocked with everything else, so the AA counts and the per-account-type coverage remain `[S]` | **#130** (browser step) |
 | 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
