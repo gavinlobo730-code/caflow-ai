@@ -334,6 +334,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = computing || savingComputed;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -470,7 +474,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks}
-              disabled={computing || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
+              disabled={actionInFlight || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </button>
@@ -508,7 +512,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     ))}
                   </div>
                 )}
-                <button onClick={saveComputed} disabled={savingComputed}
+                <button onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
                 </button>

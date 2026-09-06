@@ -392,6 +392,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = computing || saving || savingComputed;
 
   // The generic filing walk-through (services/filing_demo/gstr1). Offered
   // only where the server says the demo exists — the dead-control rule.
@@ -538,7 +542,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             className="w-full border rounded px-3 py-1.5 text-sm" />
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
-            <button onClick={computeFromBooks} disabled={computing || !computePeriod}
+            <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </button>
@@ -566,7 +570,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   <div><p className="text-xs text-[#64748B]">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
                 </div>
-                <button onClick={saveComputed} disabled={savingComputed}
+                <button onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
                 </button>
@@ -586,7 +590,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             onChange={(e) => setGstin(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={saving || !period || !gstin}
+            <button onClick={saveNew} disabled={actionInFlight || !period || !gstin}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </button>
@@ -686,6 +690,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = computing || saving || savingComputed;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -899,7 +907,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             className="w-full border rounded px-3 py-1.5 text-sm" />
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
-            <button onClick={computeFromBooks} disabled={computing || !computePeriod}
+            <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </button>
@@ -1035,7 +1043,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     );
                   })()}
                 </details>
-                <button onClick={saveComputed} disabled={savingComputed}
+                <button onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
                 </button>
@@ -1055,7 +1063,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             onChange={(e) => setGstin(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={saving || !period || !gstin}
+            <button onClick={saveNew} disabled={actionInFlight || !period || !gstin}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </button>

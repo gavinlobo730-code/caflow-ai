@@ -31,6 +31,9 @@ function Billing() {
   // gets linked to, same as any other document. GET /api/practice already
   // resolves this server-side and is Partner-gated, matching this page.
   const [internalClientId, setInternalClientId] = useState<string | null>(null);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -67,12 +70,15 @@ function Billing() {
   }
 
   async function generate(scheduleId: string) {
+    setRowBusy(true);
+    try {
     setMsg(null);
     try {
       const r = await api.billing.generate(scheduleId) as ApiResp<{ invoice?: { id: string; invoice_no?: string }; created: boolean }>;
       setMsg(r.data?.created ? `Draft invoice generated (${r.data.invoice?.invoice_no ?? r.data.invoice?.id})` : "Already generated for this period");
       await load();
     } catch (e) { setMsg(e instanceof Error ? e.message : "Generate failed"); }
+  } finally { setRowBusy(false); }
   }
 
   if (loading) return <div className="p-8 text-sm text-gray-500">Loading billing…</div>;
@@ -153,7 +159,7 @@ function Billing() {
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(s.amount_paise)}</td>
                 <td className="px-4 py-2.5 text-gray-600">{s.next_run_date ?? "—"}</td>
                 <td className="px-4 py-2.5 text-right">
-                  <button onClick={() => generate(s.id)} className="text-[12px] text-blue-600 hover:underline">Generate draft</button>
+                  <button disabled={rowBusy} onClick={() => generate(s.id)} className="text-[12px] text-blue-600 hover:underline">Generate draft</button>
                 </td>
               </tr>
             ))}

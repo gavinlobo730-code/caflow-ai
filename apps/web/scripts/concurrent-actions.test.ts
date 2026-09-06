@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findConcurrentActions } from "./concurrent-actions.ts";
+import { findConcurrentActions, findUnguardedActions } from "./concurrent-actions.ts";
 import { sourceFilesUnder } from "./await-waterfalls.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -116,6 +116,27 @@ test("a flag derived from both counts as guarding both", () => {
     }`), []);
 });
 
+test("a component with destructured props is not skipped", () => {
+  // The body brace is NOT the first `{` after the name — that is the parameter
+  // object. Taking it treated `{ clientId }` as the whole component, found no
+  // useState inside, and skipped the component entirely. A whole class of
+  // components was invisible to an earlier version of this rule, which is how
+  // it produced a confident count that was too low.
+  const found = findConcurrentActions(`
+    export function Screen({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+      const [saving, setSaving] = useState(false);
+      const [computing, setComputing] = useState(false);
+      async function save() { setSaving(true); try { await api.save(clientId); } finally { setSaving(false); } }
+      async function compute() { setComputing(true); try { await api.go(); } finally { setComputing(false); } }
+      return (<div>
+        <button onClick={save} disabled={saving}>Save</button>
+        <button onClick={compute} disabled={computing}>Compute</button>
+      </div>);
+    }`);
+  assert.equal(found.length, 2, "a destructured-props component must be analysed like any other");
+  assert.equal(found[0].component, "Screen");
+});
+
 // ─── the ratchet ────────────────────────────────────────────────────────────
 
 test("no screen can start a second action while one is running", () => {
@@ -140,4 +161,54 @@ test("the ratchet is reading the app, not an empty directory", () => {
   const files = ["app", "components"].flatMap((d) =>
     sourceFilesUnder(path.join(WEB, d), fs, path));
   assert.ok(files.length > 250, `only ${files.length} source files walked`);
+});
+
+
+// ─── the other half of the family ───────────────────────────────────────────
+//
+// A single unguarded Delete needs no second button to go wrong — just an
+// impatient double-click. findConcurrentActions cannot see these: it only looks
+// at components with two or more actions.
+
+test("a server call on a button that is never disabled is a finding", () => {
+  const found = findUnguardedActions(`
+    export function Screen() {
+      async function remove(id) { await api.things.delete(id); await load(); }
+      return <button onClick={() => remove(x.id)}>Delete</button>;
+    }`);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].fn, "remove");
+});
+
+test("the same button with any guard at all is not a finding", () => {
+  assert.deepEqual(findUnguardedActions(`
+    export function Screen() {
+      async function remove(id) { await api.things.delete(id); }
+      return <button onClick={() => remove(x.id)} disabled={busy}>Delete</button>;
+    }`), []);
+});
+
+test("a handler that touches no server is not a finding", () => {
+  assert.deepEqual(findUnguardedActions(`
+    export function Screen() {
+      async function focus() { await nextTick(); input.focus(); }
+      return <button onClick={focus}>Focus</button>;
+    }`), []);
+});
+
+test("no button calls the server with nothing stopping a second click", () => {
+  const found: string[] = [];
+  for (const dir of ["app", "components"]) {
+    for (const file of sourceFilesUnder(path.join(WEB, dir), fs, path)) {
+      const rel = path.relative(WEB, file);
+      for (const f of findUnguardedActions(fs.readFileSync(file, "utf8"))) {
+        found.push(`${rel}:${f.line} ${f.fn}()`);
+      }
+    }
+  }
+  assert.deepEqual(found.sort(), [],
+    "This button calls the server and is never disabled, so a double-click " +
+    "sends the request twice — on a Delete or a Purge that is two deletions. " +
+    "Give the handler a loading state and disable the button on it:\n  " +
+    found.join("\n  "));
 });

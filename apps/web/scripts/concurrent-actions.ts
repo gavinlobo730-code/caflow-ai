@@ -23,8 +23,32 @@ export interface Finding {
   missing: string[];
 }
 
-const COMPONENT = /^(?:export\s+)?(?:default\s+)?function\s+([A-Z]\w*)\s*\(/gm;
-const USESTATE = /const \[(\w+)\s*,\s*(set\w+)\]\s*=\s*useState(?:<[^>]*>)?\(\s*false\s*\)/g;
+//: Leading whitespace is allowed deliberately. Real components sit at column
+//: zero, but the unit tests below write theirs inside indented template
+//: literals — and with `^` anchored hard, those tests detected nothing and the
+//: ones asserting "no findings" passed for the wrong reason. A rule whose own
+//: negative tests are vacuous is not a rule.
+const COMPONENT = /^[ \t]*(?:export\s+)?(?:default\s+)?function\s+([A-Z]\w*)\s*\(/gm;
+/** The body brace of a component, NOT its destructured props.
+ *
+ *  `function Screen({ clientId })` puts a `{` right after the name, so taking
+ *  the first one found the PARAMETER OBJECT and treated it as the whole
+ *  component — which held no useState, so every component with destructured
+ *  props was silently skipped. That is how a scan can report a confident number
+ *  and still be blind to a third of the app. Skip the balanced parens first. */
+function bodyBrace(src: string, afterName: number): number {
+  let depth = 0, i = afterName;
+  for (; i < src.length; i++) {
+    if (src[i] === "(") depth++;
+    else if (src[i] === ")" && --depth === 0) { i++; break; }
+  }
+  const b = src.indexOf("{", i);
+  return b;
+}
+//: `useState(true)` counts too. A list that starts out loading is still a
+//: loading flag, and treating it as absent made three Retry buttons in
+//: app/memory/page.tsx read as having no guard at all.
+const USESTATE = /const \[(\w+)\s*,\s*(set\w+)\]\s*=\s*useState(?:<[^>]*>)?\(\s*(?:true|false)\s*\)/g;
 const FUNC = /(?:async function (\w+)|const (\w+)\s*=\s*async)/g;
 /** Not "a request is in flight" — see the header. */
 const NOT_IN_FLIGHT = /copied|failed|modal|open|show|expanded|dirty|touched/i;
@@ -70,7 +94,7 @@ function buttonTags(src: string): Array<[number, string]> {
 export function findConcurrentActions(source: string): Finding[] {
   const found: Finding[] = [];
   for (const cm of all(COMPONENT, source)) {
-    const open = source.indexOf("{", cm.index + cm[0].length);
+    const open = bodyBrace(source, cm.index + cm[0].length - 1);
     if (open < 0) continue;
     const body = braceBlock(source, open)[0];
     const before = source.slice(0, open).split("\n").length - 1;
@@ -138,4 +162,44 @@ export function findConcurrentActions(source: string): Finding[] {
     }
   }
   return found;
+}
+
+/** A button that calls the server and is NEVER disabled.
+ *
+ *  The other half of the family, and the more common one. `findConcurrentActions`
+ *  only looks at components with two or more actions, so a screen with a single
+ *  unguarded Delete is invisible to it — and that button needs no second button
+ *  to go wrong, just an impatient double-click. Found 31 of these, 18 of which
+ *  wrote something: deleteAccount, purgeSingle, retire, handleDelete, archive.
+ */
+export function findUnguardedActions(source: string): Finding[] {
+  const out: Finding[] = [];
+  const setters: string[] = [];
+  for (const m of all(USESTATE, source)) setters.push(m[2]);
+
+  for (const m of all(FUNC, source)) {
+    const name = m[1] || m[2];
+    const i = source.indexOf("{", m.index + m[0].length);
+    if (i < 0) continue;
+    const body = braceBlock(source, i)[0];
+    if (body.indexOf("await") < 0) continue;
+    if (!/api\.\w+\.|supabase|fetch\(/.test(body)) continue;
+    // A handler that raises a flag of its own has a loading state; whether its
+    // button is wired to it is a different (and much larger, mostly harmless —
+    // a re-read is idempotent) question, deliberately not ratcheted here. This
+    // rule is about handlers with NO loading state at all, which is what makes
+    // a second click a second write.
+    if (setters.some((st) => new RegExp("\\b" + st + "\\(true\\)").test(body))) continue;
+    // Delegating to a wrapper that raises a flag counts as guarded, which is
+    // why the button's own `disabled` is what decides below rather than this.
+    for (const [off, tag] of buttonTags(source)) {
+      if (!new RegExp("onClick=\\{(?:\\s*\\(\\)\\s*=>\\s*)?" + name + "\\b").test(tag)) continue;
+      if (tag.indexOf("disabled=") >= 0) continue;
+      out.push({
+        component: "", fn: name, guards: "(nothing)", missing: ["a loading state"],
+        line: source.slice(0, off).split("\n").length,
+      });
+    }
+  }
+  return out;
 }

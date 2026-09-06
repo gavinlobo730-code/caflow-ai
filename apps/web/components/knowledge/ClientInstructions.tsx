@@ -24,6 +24,9 @@ export function ClientInstructions({
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", body: "", is_pinned: false });
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
 
   // Direct Supabase read (RLS-enforced: knowledge_articles_own_firm /
   // client_instructions_assignment / *_internal_partner_only policies mirror
@@ -53,10 +56,16 @@ export function ClientInstructions({
     catch (e) { setError(e instanceof Error ? e.message : "Create failed"); }
   }
   async function togglePin(i: Instruction) {
+    setRowBusy(true);
+    try {
     try { await api.instructions.update(clientId, i.id, { is_pinned: !i.is_pinned }); await load(); } catch { /* backend enforces */ }
+  } finally { setRowBusy(false); }
   }
   async function archive(i: Instruction) {
+    setRowBusy(true);
+    try {
     try { await api.instructions.archive(clientId, i.id); await load(); } catch { /* backend enforces */ }
+  } finally { setRowBusy(false); }
   }
 
   const visible = pinnedOnly ? items.filter((i) => i.is_pinned) : items;
@@ -98,8 +107,8 @@ export function ClientInstructions({
               </div>
               {!pinnedOnly && canWrite && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => togglePin(i)} title="Pin/unpin" className="text-gray-400 hover:text-amber-500"><Pin size={13} /></button>
-                  <button onClick={() => archive(i)} title="Archive" className="text-gray-400 hover:text-red-500"><Archive size={13} /></button>
+                  <button disabled={rowBusy} onClick={() => togglePin(i)} title="Pin/unpin" className="text-gray-400 hover:text-amber-500"><Pin size={13} /></button>
+                  <button disabled={rowBusy} onClick={() => archive(i)} title="Archive" className="text-gray-400 hover:text-red-500"><Archive size={13} /></button>
                 </div>
               )}
             </div>

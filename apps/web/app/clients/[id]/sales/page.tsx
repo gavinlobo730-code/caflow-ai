@@ -985,6 +985,13 @@ function Statements({ clientId }: { clientId: string }) {
   const [applyInvoiceId, setApplyInvoiceId] = useState("");
   const [applyAmount, setApplyAmount] = useState("");
   const [applying, setApplying] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  // Download had no loading state at all, so the button was never disabled and
+  // a second click fetched the PDF again.
+  const [downloading, setDownloading] = useState(false);
+  const actionInFlight = applying || downloading || emailing || loading;
   const [applyError, setApplyError] = useState<string | null>(null);
 
   const loadCredit = useCallback(async (custId: string) => {
@@ -1069,6 +1076,8 @@ function Statements({ clientId }: { clientId: string }) {
   }
 
   async function downloadPdf() {
+    setDownloading(true);
+    try {
     if (!stmt) return;
     const token = await getAuthToken();
     const res = await fetch(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${customerId}&start_date=${start}&end_date=${end}`,
@@ -1076,6 +1085,7 @@ function Statements({ clientId }: { clientId: string }) {
     if (!res.ok) { setError("PDF download failed."); return; }
     const blob = await res.blob();
     window.open(URL.createObjectURL(blob), "_blank");
+  } finally { setDownloading(false); }
   }
 
   function openEmail() {
@@ -1120,13 +1130,13 @@ function Statements({ clientId }: { clientId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={generate} disabled={loading || !customerId}
+          <button onClick={generate} disabled={actionInFlight || !customerId}
             className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {loading ? "Generating…" : "Generate"}
           </button>
           {stmt && (
             <>
-              <button onClick={downloadPdf} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={13} /> Download PDF</button>
+              <button disabled={actionInFlight} onClick={downloadPdf} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={13} /> Download PDF</button>
               <button onClick={openEmail} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Send size={13} /> Email</button>
             </>
           )}
@@ -1206,7 +1216,7 @@ function Statements({ clientId }: { clientId: string }) {
             {emailMsg && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{emailMsg}</p>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
-              <button onClick={sendEmail} disabled={emailing || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
+              <button onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
             </div>
           </div>
         </div>
@@ -1240,7 +1250,7 @@ function Statements({ clientId }: { clientId: string }) {
             {applyError && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{applyError}</p>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
-              <button onClick={applyCredit} disabled={applying || !applyInvoiceId || !applyAmount}
+              <button onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
               </button>
@@ -2547,6 +2557,10 @@ function Customers({
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<CustomerDependencies | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = deactivating || deleteBusy;
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
@@ -2901,7 +2915,7 @@ function Customers({
               </button>
               <button
                 onClick={confirmDeactivate}
-                disabled={deactivating}
+                disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >
                 {deactivating ? "Deactivating…" : "Deactivate"}
@@ -2943,7 +2957,7 @@ function Customers({
                   </button>
                   <button
                     onClick={confirmDelete}
-                    disabled={deleteBusy}
+                    disabled={actionInFlight}
                     className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
                   >
                     {deleteBusy ? "Deleting…" : "Delete permanently"}

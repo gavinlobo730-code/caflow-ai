@@ -149,6 +149,13 @@ export default function CopilotPage() {
   const [conversationsError, setConversationsError] = useState<string | null>(null);
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = rowBusy || sending;
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -190,6 +197,8 @@ export default function CopilotPage() {
   useEffect(() => { scrollToBottom(); }, [messages]);
 
   const openConversation = async (convId: string) => {
+    setRowBusy(true);
+    try {
     setActiveConv(convId);
     try {
       const res = (await api.copilotV2.getConversation(convId)) as { data: Conversation & { messages: Message[] } };
@@ -198,9 +207,12 @@ export default function CopilotPage() {
     } catch (e) {
       setChatError(e instanceof Error ? e.message : "Couldn't open conversation.");
     }
+  } finally { setRowBusy(false); }
   };
 
   const newConversation = async () => {
+    setRowBusy(true);
+    try {
     try {
       const res = (await api.copilotV2.createConversation({ context_type: contextType })) as { data: Conversation };
       const conv = res.data;
@@ -211,6 +223,7 @@ export default function CopilotPage() {
     } catch (e) {
       setChatError(e instanceof Error ? e.message : "Couldn't start a new conversation.");
     }
+  } finally { setRowBusy(false); }
   };
 
   const sendMessage = async (content?: string) => {
@@ -324,7 +337,7 @@ export default function CopilotPage() {
         {/* Sidebar — conversation history */}
         <div className="w-64 bg-white border-r border-[#E2E8F0] flex flex-col flex-shrink-0">
           <div className="p-3 border-b border-[#F1F5F9]">
-            <button
+            <button disabled={actionInFlight}
               onClick={newConversation}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-white transition-colors"
               style={{ backgroundColor: "#182350" }}
@@ -343,7 +356,7 @@ export default function CopilotPage() {
               <p className="text-xs text-[#94A3B8] text-center py-6">No conversations yet</p>
             ) : (
               conversations.map((conv: Conversation) => (
-                <button
+                <button disabled={actionInFlight}
                   key={conv.id}
                   onClick={() => openConversation(conv.id)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
@@ -391,7 +404,7 @@ export default function CopilotPage() {
                     </p>
                     <div className="grid grid-cols-2 gap-2 max-w-lg">
                       {suggestions.slice(0, 6).map((q: string, i: number) => (
-                        <button
+                        <button disabled={actionInFlight}
                           key={i}
                           onClick={() => sendMessage(q)}
                           className="text-left text-xs px-3 py-2.5 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#AFD2FA] hover:bg-[#EFF6FF] text-[#475569] transition-colors"
@@ -432,7 +445,7 @@ export default function CopilotPage() {
                 <div className="px-6 py-2 border-t border-[#F1F5F9] bg-white">
                   <div className="flex gap-2 overflow-x-auto pb-1 max-w-3xl mx-auto">
                     {suggestions.slice(0,4).map((q: string, i: number) => (
-                      <button
+                      <button disabled={actionInFlight}
                         key={i}
                         onClick={() => sendMessage(q)}
                         className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-[#EFF6FF] hover:border-[#AFD2FA] text-[#475569] transition-colors whitespace-nowrap"
@@ -466,7 +479,7 @@ export default function CopilotPage() {
                   </div>
                   <button
                     onClick={() => sendMessage()}
-                    disabled={!input.trim() || sending}
+                    disabled={actionInFlight || !input.trim()}
                     className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
                     style={{ backgroundColor: input.trim() ? "#182350" : "#E2E8F0" }}
                   >

@@ -1083,6 +1083,10 @@ function Vendors({ clientId }: { clientId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<VendorRow | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<VendorDependencies | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = deactivating || deleteBusy || saving;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1456,7 +1460,7 @@ function Vendors({ clientId }: { clientId: string }) {
               </button>
               <button
                 onClick={confirmDeactivate}
-                disabled={deactivating}
+                disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >
                 {deactivating ? "Deactivating…" : "Deactivate"}
@@ -1498,7 +1502,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   </button>
                   <button
                     onClick={confirmDelete}
-                    disabled={deleteBusy}
+                    disabled={actionInFlight}
                     className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
                   >
                     {deleteBusy ? "Deleting…" : "Delete permanently"}
@@ -1828,7 +1832,7 @@ function Vendors({ clientId }: { clientId: string }) {
 
           <div className="flex gap-3 justify-end">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
+            <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
           </div>
         </div>
       )}

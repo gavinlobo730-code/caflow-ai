@@ -92,6 +92,13 @@ export default function ScheduledReportsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = rowBusy || saving;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -181,6 +188,8 @@ export default function ScheduledReportsPage() {
   }
 
   async function handleToggle(id: string, current: boolean) {
+    setRowBusy(true);
+    try {
     try {
       const supabase = getSupabaseClient();
       const { error } = await supabase
@@ -192,9 +201,12 @@ export default function ScheduledReportsPage() {
     } catch (e) {
       setToast({ message: e instanceof Error ? e.message : "Update failed", type: "error" });
     }
+  } finally { setRowBusy(false); }
   }
 
   async function handleDelete(id: string) {
+    setRowBusy(true);
+    try {
     if (!confirm("Delete this schedule?")) return;
     try {
       const supabase = getSupabaseClient();
@@ -205,6 +217,7 @@ export default function ScheduledReportsPage() {
     } catch (e) {
       setToast({ message: e instanceof Error ? e.message : "Delete failed", type: "error" });
     }
+  } finally { setRowBusy(false); }
   }
 
   return (
@@ -295,7 +308,7 @@ export default function ScheduledReportsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <button
+                    <button disabled={actionInFlight}
                       onClick={() => handleToggle(s.id, s.is_active)}
                       className={`flex items-center gap-1 text-xs font-medium ${
                         s.is_active ? "text-green-600" : "text-[#94A3B8]"
@@ -309,7 +322,7 @@ export default function ScheduledReportsPage() {
                     </button>
                   </td>
                   <td className="px-5 py-3">
-                    <button
+                    <button disabled={actionInFlight}
                       onClick={() => handleDelete(s.id)}
                       className="flex items-center gap-1 text-xs text-red-500 hover:underline"
                     >
@@ -412,7 +425,7 @@ export default function ScheduledReportsPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={saving}
+                disabled={actionInFlight}
                 className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1.5"
               >
                 {saving && <Loader2 size={12} className="animate-spin" />}

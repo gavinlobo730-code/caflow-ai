@@ -70,6 +70,13 @@ export default function StatutoryValuesPage() {
   const [months, setMonths] = useState<number[]>([]);
   const [bands, setBands] = useState<BandDraft[]>([{ ...EMPTY_BAND, from: "0" }]);
   const [note, setNote] = useState("");
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = rowBusy || saving;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,6 +168,8 @@ export default function StatutoryValuesPage() {
   }
 
   async function remove(row: PTSlabRow) {
+    setRowBusy(true);
+    try {
     const ok = await confirmDialog({
       title: `Remove ${row.state} slabs effective ${row.effective_from}?`,
       message: "The whole version goes, not just this band. If nothing earlier "
@@ -178,6 +187,7 @@ export default function StatutoryValuesPage() {
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "The request failed." });
     }
+  } finally { setRowBusy(false); }
   }
 
   // Grouped for display: one card per (state, effective_from), which is what a
@@ -280,7 +290,7 @@ export default function StatutoryValuesPage() {
                           </p>
                           {first.note && <p className="text-xs text-[#94A3B8] mt-0.5">{first.note}</p>}
                         </div>
-                        <button onClick={() => remove(first)}
+                        <button disabled={actionInFlight} onClick={() => remove(first)}
                           className="text-[#94A3B8] hover:text-red-600 shrink-0"
                           aria-label="Remove this version">
                           <Trash2 size={15} />
@@ -422,7 +432,7 @@ export default function StatutoryValuesPage() {
               <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-[#F1F5F9]">
                 <button onClick={() => setShowForm(false)}
                   className="px-4 py-1.5 text-sm text-[#475569] hover:bg-[#F8FAFC] rounded-lg">Cancel</button>
-                <button onClick={save} disabled={saving}
+                <button onClick={save} disabled={actionInFlight}
                   className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}
                 </button>
