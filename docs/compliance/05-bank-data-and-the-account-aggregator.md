@@ -247,7 +247,7 @@ question is answered before the legal one.
 | | |
 |---|---|
 | ~~#104~~ | ~~Legal opinion on eligibility, then choose one of the three routes~~ **DECIDED — route 3, provisionally, §0a. No counsel engaged: its precondition ("only after #102 and #103 come back positive") was not met, and route 3 is the one route that needs none.** |
-| **#105** | DPDP obligations, incl. `DataLife` as a clock separate from consent expiry — **not started; nothing is being held under AA** |
+| ~~#105~~ | ~~DPDP obligations, incl. `DataLife` as a clock separate from consent expiry~~ **SPLIT — see `06`, §5e.** Its AA half is moot under route 3 by the task's own scoping line, and `DataLife`'s collision with the eight-year Companies Act period is written down there rather than built. **Its headline half was live all along**: the product has held bank data since migration 006 through statement upload, and the retention position had **no bank category at all**. It now has one, and the bank-account delete names the statute and the date. |
 
 **Gate 2 — build, only once a route is chosen**
 
@@ -262,10 +262,14 @@ Per §3 that is the base case anyway, not a fallback.
 
 > **That is where this now stands.** Both gate-0 questions came back against, and
 > #104 has chosen route 3 on that basis (§0a) — provisionally, spending nothing,
-> reversing nothing. **#105–#107 are not started and should not be**: they
-> specify work under a route that has not been taken. The single thing that
-> would reopen gate 1 is **#130** finding that a purpose exists or can be added,
-> and the counsel brief in §0a is written and waiting for that.
+> reversing nothing. **#106 and #107 are not started and should not be**: they
+> specify work under a route that has not been taken. **#105 turned out not to be
+> one of them.** Its AA-specific parts are moot, but its headline obligation — DPDP
+> duties for holding a client's bank data — never depended on AA at all, and
+> checking it found bank data missing from the retention position entirely. That
+> half is done; see `06`, §5e. The single thing that would reopen gate 1 is
+> **#130** finding that a purpose exists or can be added, and the counsel brief in
+> §0a is written and waiting for that.
 
 ## 1. The ecosystem
 

@@ -19,6 +19,7 @@ from fastapi.responses import Response
 from typing import Optional
 
 from models.common import api_response
+from services import bank_erasure
 from core.authz import assert_client_access, filter_by_client
 
 _logger = logging.getLogger("caflow.banking")
@@ -269,42 +270,62 @@ _DELETE_BLOCKERS = (
 
 
 def _delete_blockers(db, firm_id: str, client_id: str,
-                     accounts: list[dict]) -> dict[str, list[str]]:
-    """{bank_account_id: [reasons it cannot be permanently deleted]}.
+                     accounts: list[dict]) -> tuple[dict[str, list[str]],
+                                                    dict[str, str | None]]:
+    """({bank_account_id: [referential reasons]}, {bank_account_id: newest
+    statement_to}).
 
     A fixed four queries whatever the number of accounts (CLAUDE.md, "Reporting
     performance") — the answer is one short list per account, so the reads are
     keyed by the account ids rather than scanning what they point at.
+
+    The statements probe now selects `statement_to` alongside the key, which
+    costs no extra round trip and is what dates the retention duty: a statement
+    is the voucher for the entries posted off it, and the NEWEST one is held
+    longest (services/bank_erasure.py).
     """
     ids = [a["id"] for a in accounts if a.get("id")]
     coa_by_account = {a["id"]: a.get("coa_account_id") for a in accounts if a.get("id")}
     coa_ids = [c for c in coa_by_account.values() if c]
     out: dict[str, list[str]] = {i: [] for i in ids}
+    latest: dict[str, str | None] = {i: None for i in ids}
     if not ids:
-        return out
+        return out, latest
 
-    def _hit(table: str, col: str, values: list[str]) -> set:
+    def _rows(table: str, col: str, values: list[str], extra: str = "") -> list[dict]:
         if not values:
-            return set()
+            return []
         try:
-            rows = (db.table(table).select(col).in_(col, values).execute().data or [])
-            return {r.get(col) for r in rows}
+            select = f"{col}, {extra}" if extra else col
+            return (db.table(table).select(select).in_(col, values).execute().data or [])
         except Exception as e:  # noqa: BLE001 — an unreadable table blocks the delete
             _logger.error("delete-check on %s failed: %s", table, e)
-            return set(values)
+            # Unreadable means BLOCKED, not clear. The date stays None, so the
+            # refusal falls back to the referential sentence rather than
+            # inventing a statutory date from a query that did not answer.
+            return [{col: v} for v in values]
+
+    statements = _rows("bank_statements", "bank_account_id", ids, "statement_to")
+    for row in statements:
+        aid, end = row.get("bank_account_id"), row.get("statement_to")
+        if aid in latest and end and (latest[aid] is None or str(end) > str(latest[aid])):
+            latest[aid] = str(end)[:10]
 
     hits = {
-        "statements":      _hit("bank_statements", "bank_account_id", ids),
-        "reconciliations": _hit("bank_reconciliations", "bank_account_id", ids),
-        "payroll":         _hit("payroll_runs", "paid_from_account_id", ids),
-        "ledger":          _hit("journal_lines", "account_id", coa_ids),
+        "statements":      {r.get("bank_account_id") for r in statements},
+        "reconciliations": {r.get("bank_account_id") for r in
+                            _rows("bank_reconciliations", "bank_account_id", ids)},
+        "payroll":         {r.get("paid_from_account_id") for r in
+                            _rows("payroll_runs", "paid_from_account_id", ids)},
+        "ledger":          {r.get("account_id") for r in
+                            _rows("journal_lines", "account_id", coa_ids)},
     }
     for aid in ids:
         for key, reason in _DELETE_BLOCKERS:
             probe = coa_by_account.get(aid) if key == "ledger" else aid
             if probe and probe in hits[key]:
                 out[aid].append(reason)
-    return out
+    return out, latest
 
 
 def _ledger_is_disposable(db, firm_id: str, coa_account_id: str,
@@ -505,9 +526,19 @@ def bank_accounts_deletable(
     firm_id = current_user["firm_id"]
     accounts = (db.table("bank_accounts").select("id, coa_account_id")
                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
-    blockers = _delete_blockers(db, firm_id, client_id, accounts)
-    return api_response(True, {aid: {"deletable": not reasons, "blocked_by": reasons}
-                               for aid, reasons in blockers.items()})
+    blockers, latest = _delete_blockers(db, firm_id, client_id, accounts)
+    # `reason` is the SAME sentence the DELETE would refuse with. The panel used
+    # to build its own from blocked_by in the browser, which meant two wordings
+    # of one refusal and neither of them naming a statute.
+    return api_response(True, {
+        aid: {
+            "deletable": not reasons,
+            "blocked_by": reasons,
+            "reason": (bank_erasure.refusal(reasons, latest_statement_end=latest.get(aid))
+                       if reasons else None),
+        }
+        for aid, reasons in blockers.items()
+    })
 
 
 @router.delete("/accounts/{account_id}")
@@ -531,7 +562,15 @@ def delete_bank_account(
 
     Its ledger account goes with it when nothing anywhere references it and it
     is one this app created for a bank. A chart account built by hand is left
-    alone; the response says which happened."""
+    alone; the response says which happened.
+
+    WHEN IT REFUSES, IT NAMES THE LAW
+        A bank statement is the voucher for every receipt and payment posted off
+        it, and Companies Act s. 128(5) requires the vouchers relevant to any
+        entry kept for eight financial years. So the 409 says which statute,
+        whose duty it is and the date it lapses, from the newest statement's
+        own period — not "bank statements have been imported for it", which
+        names nothing and never ends. services/bank_erasure.py writes it."""
     db = _db()
     if not db:
         return api_response(True, {"deleted": True, "mock": True})
@@ -544,14 +583,13 @@ def delete_bank_account(
 
     # Re-checked server-side. The client asked /deletable to decide what to show;
     # it is not what decides whether the row goes.
-    reasons = _delete_blockers(db, firm_id, account.get("client_id"), [account]).get(account_id, [])
+    blockers, latest = _delete_blockers(db, firm_id, account.get("client_id"), [account])
+    reasons = blockers.get(account_id, [])
     if reasons:
         raise HTTPException(
             status_code=409,
-            detail=("This bank account cannot be deleted because "
-                    + "; ".join(reasons)
-                    + ". Deactivate it instead — that keeps its history and takes "
-                      "it out of the pickers."))
+            detail=bank_erasure.refusal(
+                reasons, latest_statement_end=latest.get(account_id)))
 
     coa_id = account.get("coa_account_id")
     drop_ledger = _ledger_is_disposable(db, firm_id, coa_id, account_id)

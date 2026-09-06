@@ -25,9 +25,13 @@ import { fmt, BankAccount } from "@/components/banking/shared";
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  // {id: {deletable, blocked_by}} — decides whether Delete is offered at all,
-  // and what the disabled one says when it is not.
-  const [deletability, setDeletability] = useState<Record<string, { deletable: boolean; blocked_by: string[] }>>({});
+  // {id: {deletable, blocked_by, reason}} — decides whether Delete is offered at
+  // all, and what the disabled one says when it is not. `reason` is the SERVER's
+  // sentence, the same one the DELETE refuses with: it names the statute, the
+  // duty-holder and the date the duty lapses (services/bank_erasure.py). This
+  // panel used to compose its own from blocked_by, which meant two wordings of
+  // one refusal and neither of them naming a law.
+  const [deletability, setDeletability] = useState<Record<string, { deletable: boolean; blocked_by: string[]; reason?: string | null }>>({});
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   // null = closed, "new" = create form, BankAccount = edit that account.
@@ -50,7 +54,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
         // hiding it left money on the balance sheet with no account to explain it.
         // The pickers below filter to activeAccounts themselves.
         api.banking.listBankAccounts({ client_id: clientId, include_inactive: "true" }) as Promise<{ success: boolean; data: BankAccount[] }>,
-        (api.banking.bankAccountsDeletable({ client_id: clientId }) as Promise<{ success: boolean; data: Record<string, { deletable: boolean; blocked_by: string[] }> }>)
+        (api.banking.bankAccountsDeletable({ client_id: clientId }) as Promise<{ success: boolean; data: Record<string, { deletable: boolean; blocked_by: string[]; reason?: string | null }> }>)
           .catch(() => ({ success: false, data: {} })),
       ]);
       setStatements(stmts);
@@ -178,7 +182,8 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                       <button onClick={() => deleteAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Delete</button>
                     ) : deletability[a.id] ? (
                       <span className="ml-3 text-[#CBD5E1] cursor-not-allowed"
-                            title={`Cannot be deleted because ${deletability[a.id].blocked_by.join("; ")}. Deactivate it instead — that keeps its history.`}>Delete</span>
+                            title={deletability[a.id].reason
+                              || `Cannot be deleted because ${deletability[a.id].blocked_by.join("; ")}. Deactivate it instead — that keeps its history.`}>Delete</span>
                     ) : null}
                   </td>
                 </tr>
