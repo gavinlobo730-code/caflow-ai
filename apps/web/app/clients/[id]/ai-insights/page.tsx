@@ -77,7 +77,7 @@ export default function AiInsightsPage() {
           ) : loadFailed ? (
             <div className="text-center py-12 space-y-2">
               <p className="text-sm text-red-600 font-medium">Couldn&apos;t load AI insights — the request failed or timed out.</p>
-              <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              <button disabled={loading} onClick={load} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
             </div>
           ) : insights.length === 0 ? (
             <div className="text-center py-12 space-y-2">

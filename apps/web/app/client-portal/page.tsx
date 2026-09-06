@@ -860,9 +860,9 @@ export default function ClientPortalPage() {
                           return (
                             <div className="text-center py-10 space-y-3">
                               <p className="text-sm text-red-600 font-medium">Couldn&apos;t load outstanding dues — the request failed or timed out.</p>
-                              <button
+                              <button disabled={duesLoading}
                                 onClick={() => loadDues(selectedClientId)}
-                                className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                                className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
                               >
                                 Retry
                               </button>
@@ -937,7 +937,7 @@ export default function ClientPortalPage() {
                     ) : messagesFailed ? (
                       <div className="text-center py-10 space-y-2">
                         <p className="text-sm text-red-600 font-medium">Couldn&apos;t load messages.</p>
-                        <button onClick={() => loadPortalMessages(selectedClientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                        <button disabled={messagesLoading} onClick={() => loadPortalMessages(selectedClientId)} className="disabled:opacity-40 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
                       </div>
                     ) : portalMessages.length === 0 ? (
                       <div className="text-center py-10 space-y-2">

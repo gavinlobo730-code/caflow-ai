@@ -1107,7 +1107,7 @@ function LedgerDrillDown({
             loadFailed ? (
               <div className="text-center py-10">
                 <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load this ledger — the request failed or timed out.</p>
-                <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
               </div>
             ) : (
               <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account in the selected range.</div>
@@ -1227,7 +1227,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
             <button onClick={() => updateBasis("accrual")} className={`px-3 py-1 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Accrual</button>
             <button onClick={() => updateBasis("cash")} className={`px-3 py-1 font-medium border-l border-[#E2E8F0] transition-colors ${basis === "cash" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Cash</button>
           </div>
-          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
         </div>
       </div>
       {basis === "cash" && (
@@ -1264,7 +1264,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
         loadFailed ? (
           <div className="text-center py-12">
             <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the trial balance — the request failed or timed out.</p>
-            <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
           </div>
         ) : (
           <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries as at {asOf}.</div>
@@ -1406,7 +1406,7 @@ function FXReports({ clientId, financialYear, onFinancialYearChange }: { clientI
               {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button disabled={loading} onClick={load} className="disabled:opacity-40 p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
         </div>
       </div>
 
@@ -1848,7 +1848,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
             ariaLabel="Period"
           />
           <BasisToggle />
-          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
             disabled={plExportDisabled}
@@ -1925,7 +1925,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
               <p className="text-sm text-red-600 font-medium mb-2">
                 Couldn&apos;t load {columns.filter((c) => c.error).length > 1 ? "some periods" : "this report"} — the request failed or timed out.
               </p>
-              <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
             </div>
           ) : unionAccounts.length === 0 && (
             <div className="text-center py-12 text-[#94A3B8] text-sm">No posted entries with Revenue or Expense accounts in the selected period.</div>
@@ -2170,7 +2170,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
             ariaLabel="As of / period"
           />
           <BasisToggle />
-          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
             disabled={bsExportDisabled}
@@ -2265,7 +2265,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               <p className="text-sm text-red-600 font-medium mb-2">
                 Couldn&apos;t load {columns.filter((c) => c.error).length > 1 ? "some periods" : "this report"} — the request failed or timed out.
               </p>
-              <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
             </div>
           ) : unionAccounts.length === 0 && (
             <div className="text-center py-8 text-[#94A3B8] text-sm">No posted journal entries found for this client.</div>
@@ -2629,7 +2629,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
             granularity={granularity} onGranularityChange={setGranularity}
             ariaLabel="Period"
           />
-          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
             disabled={!withData.length}
@@ -2661,7 +2661,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
       {!loading && allFailed && (
         <div className="text-center py-12">
           <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the cash flow statement — the request failed or timed out.</p>
-          <button onClick={() => load(true)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
         </div>
       )}
 
@@ -2835,7 +2835,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
             </button>
           ))}
         </div>
-        <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
+        <button disabled={loading} onClick={load} className="disabled:opacity-40 text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
       </div>
 
       {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}

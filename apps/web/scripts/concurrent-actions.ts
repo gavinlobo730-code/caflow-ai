@@ -203,3 +203,44 @@ export function findUnguardedActions(source: string): Finding[] {
   }
   return out;
 }
+
+/** A button whose handler HAS a loading state that the button is not wired to.
+ *
+ *  The third shape, and the mildest: the work is tracked, the control just does
+ *  not reflect it. All 15 found were Retry buttons on a failed load plus a
+ *  suggested-prompt chip, so a repeat cost a wasted request rather than a
+ *  duplicate write — which is why this was measured and recorded before it was
+ *  fixed, rather than folded in silently.
+ *
+ *  The flag to disable on is the LOADING one, never the failure one. These
+ *  handlers usually raise a pair (`loading` and `loadFailed`); wiring Retry to
+ *  `loadFailed` would disable it exactly when it is needed.
+ */
+export function findUnwiredActions(source: string): Finding[] {
+  const out: Finding[] = [];
+  const flagOf: Record<string, string> = {};
+  for (const m of all(USESTATE, source)) flagOf[m[2]] = m[1];
+
+  for (const m of all(FUNC, source)) {
+    const name = m[1] || m[2];
+    const i = source.indexOf("{", m.index + m[0].length);
+    if (i < 0) continue;
+    const body = braceBlock(source, i)[0];
+    if (body.indexOf("await") < 0) continue;
+    if (!/api\.\w+\.|supabase|fetch\(/.test(body)) continue;
+    const raised = Object.keys(flagOf)
+      .filter((st) => new RegExp("\\b" + st + "\\(true\\)").test(body))
+      .map((st) => flagOf[st]);
+    if (!raised.length) continue;               // findUnguardedActions' job
+    for (const [off, tag] of buttonTags(source)) {
+      if (!new RegExp("onClick=\\{(?:\\s*\\(\\)\\s*=>\\s*)?" + name + "\\b").test(tag)) continue;
+      if (tag.indexOf("disabled=") >= 0) continue;
+      out.push({
+        component: "", fn: name, guards: "(not wired)",
+        missing: raised.filter((f) => !/fail|error/i.test(f)).sort(),
+        line: source.slice(0, off).split("\n").length,
+      });
+    }
+  }
+  return out;
+}

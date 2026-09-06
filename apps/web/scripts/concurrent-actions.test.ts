@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findConcurrentActions, findUnguardedActions } from "./concurrent-actions.ts";
+import { findConcurrentActions, findUnguardedActions, findUnwiredActions } from "./concurrent-actions.ts";
 import { sourceFilesUnder } from "./await-waterfalls.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -211,4 +211,56 @@ test("no button calls the server with nothing stopping a second click", () => {
     "sends the request twice — on a Delete or a Purge that is two deletions. " +
     "Give the handler a loading state and disable the button on it:\n  " +
     found.join("\n  "));
+});
+
+
+// ─── the third shape: tracked, but the button does not know ─────────────────
+
+test("a handler with a loading state whose button ignores it is a finding", () => {
+  const found = findUnwiredActions(`
+    export function Screen() {
+      const [loading, setLoading] = useState(false);
+      const [loadFailed, setLoadFailed] = useState(false);
+      async function load() { setLoading(true); setLoadFailed(false); try { await api.things.list(); } finally { setLoading(false); } }
+      return <button onClick={load}>Retry</button>;
+    }`);
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0].missing, ["loading"],
+    "the LOADING flag, never the failure one — wiring Retry to loadFailed " +
+    "would disable it exactly when it is needed");
+});
+
+test("the same button wired to its flag is not a finding", () => {
+  assert.deepEqual(findUnwiredActions(`
+    export function Screen() {
+      const [loading, setLoading] = useState(false);
+      async function load() { setLoading(true); try { await api.things.list(); } finally { setLoading(false); } }
+      return <button onClick={load} disabled={loading}>Retry</button>;
+    }`), []);
+});
+
+test("a handler with NO flag is the other rule's finding, not this one", () => {
+  // Reported once, by findUnguardedActions. Two rules claiming the same button
+  // would make the count meaningless.
+  assert.deepEqual(findUnwiredActions(`
+    export function Screen() {
+      async function remove(id) { await api.things.delete(id); }
+      return <button onClick={() => remove(x.id)}>Delete</button>;
+    }`), []);
+});
+
+test("no button leaves its own loading state unwired", () => {
+  const found: string[] = [];
+  for (const dir of ["app", "components"]) {
+    for (const file of sourceFilesUnder(path.join(WEB, dir), fs, path)) {
+      const rel = path.relative(WEB, file);
+      for (const f of findUnwiredActions(fs.readFileSync(file, "utf8"))) {
+        found.push(`${rel}:${f.line} ${f.fn}() -> disabled={${f.missing.join(" || ")}}`);
+      }
+    }
+  }
+  assert.deepEqual(found.sort(), [],
+    "This handler tracks that it is working, but its button ignores it, so a " +
+    "second click fires a second request. Wire the button to the LOADING " +
+    "flag (not the failure one):\n  " + found.join("\n  "));
 });
