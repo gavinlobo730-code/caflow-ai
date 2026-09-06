@@ -74,3 +74,34 @@ test(`${which} is blocked while IMPORTING, and live while only reading`, () => {
     "live during it rather than trapping the CA in the dialog");
 });
 }
+
+// ─── What the outcome panel says ────────────────────────────────────────────
+//
+// Re-uploading a statement that was already in showed a green tick over
+// "0 transactions imported", with "475 duplicates skipped" underneath. Both
+// numbers were true and the whole thing read as a failure: the CA's next move
+// is to try again, on a statement that is already fully imported.
+//
+// The counter was answering "what did this click add?". The question in the
+// CA's head is "is this statement in?".
+
+test("a re-upload leads with the outcome, not with a zero", () => {
+  const panel = src.slice(src.indexOf("{result ? ("), src.indexOf("{result ? (") + 2200);
+  assert.match(panel, /result\.imported === 0 && result\.duplicates_skipped > 0/,
+    "nothing-new-to-add is a different sentence from nothing-happened, and " +
+    "the panel has to tell them apart");
+  assert.match(panel, /Already imported/,
+    "the headline on that branch must say the statement IS in");
+  const zeroBranch = panel.slice(panel.indexOf("result.imported === 0"));
+  const headline = zeroBranch.slice(0, zeroBranch.indexOf("</p>"));
+  assert.doesNotMatch(headline, /\{result\.imported\}/,
+    "leading with the count is the bug: on a re-upload the count is 0 and " +
+    "reads as a failure");
+});
+
+test("the duplicate line never calls a skipped row a 'duplicate' twice over", () => {
+  // "475 duplicates skipped (already imported)" said the same thing twice and
+  // still did not say the thing that matters — that the LINES are in the books.
+  assert.doesNotMatch(src, /skipped \(already imported\)/,
+    "replaced by wording that says where the lines ARE");
+});
