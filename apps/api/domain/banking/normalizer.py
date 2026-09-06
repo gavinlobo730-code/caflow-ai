@@ -2,28 +2,48 @@
 Bank statement normalization engine (Banking B.1, Part C).
 
 TODO(compliance): docs/compliance/05-bank-data-and-the-account-aggregator.md
-    This is the ONLY way bank data enters the platform, and it stays that way
-    longer than CLAUDE.md's bank-data section assumed. Two verified findings
-    (2026-09-04) worth reading before anyone starts an AA feature:
+    This is the ONLY way bank data enters the platform, and as of 2026-09-06 it
+    is the only way it is ever GOING to — not a stage on the way to a live feed.
 
-    (1) CLAUDE.md says "Register as an FIU". THAT IS NOT ACHIEVABLE. The RBI
-        NBFC-AA Directions 2025 define an FIU as "an entity registered with and
-        regulated by any financial sector regulator" — RBI, SEBI, IRDAI, PFRDA
-        or the Department of Revenue. There is no FIU licence to apply for and
-        no unregulated tier; eligibility is derivative of a registration you
-        already hold, and a TSP cannot confer it because a TSP is itself
-        unregulated. The Department of Revenue does not open a door: it is in
-        that list because it regulates GSTN for the specific purpose of GSTN
-        being an FIP. ICAI is not a financial sector regulator either, so a CA
-        firm does not qualify. The options are: partner with a regulated FIU,
-        acquire a registration, or do not consume via AA.
+    THE DECISION, SO NOBODY RE-OPENS IT BY ACCIDENT: route 3, do not consume via
+    the Account Aggregator (§0a, task #104). This marker is not an open item. It
+    is here because this file is the AA seam, and somebody grepping the
+    compliance markers should find the decision rather than assume a gap.
 
-    (2) Coverage independently confirms upload stays at parity. Co-operative
-        banks, RRBs and small finance banks are largely not AA-enabled, and
-        even at live banks coverage is patchy BY ACCOUNT TYPE — fixed and
-        recurring deposits at only ~40% of banks, joint and non-individual
-        accounts worse. A CA's client base is exactly the population AA serves
-        worst. Upload is the base case, not a hedge.
+    (1) PURPOSE is what closed it, and purpose is UPSTREAM of everything else.
+        A consent artefact carries a Purpose, the FIP validates EVERY fetch
+        against it, and the published taxonomy (codes 101-105) names the class
+        of licensee each purpose serves — SEBI RIAs, stock brokers, PFRDA
+        Retirement Advisors, lenders, insurers. None describes an agent keeping
+        the customer's own books. So a fully licensed FIU still could not pull
+        this data for this use, which is why this defeats the PARTNER route too
+        and not just the do-it-yourself one. ⚠️ The near-miss is code 102: its
+        NAME reads like bookkeeping and its scope is financial advisory by SEBI-
+        and PFRDA-registered advisers. Do not declare it. (§2, §2b, #130.)
+
+    (2) ELIGIBILITY would have blocked it anyway, and is the finding people
+        reach first. CLAUDE.md once said "Register as an FIU". THAT IS NOT
+        ACHIEVABLE: the RBI NBFC-AA Directions 2025 define an FIU as "an entity
+        registered with and regulated by any financial sector regulator" — RBI,
+        SEBI, IRDAI, PFRDA or the Department of Revenue. There is no FIU licence
+        to apply for and no unregulated tier; a TSP cannot confer it, being
+        itself unregulated. ICAI is not a financial sector regulator. Note the
+        ordering though: eligibility is solvable with money and purpose is not,
+        so purpose is the one that decides.
+
+    (3) COVERAGE says upload stays at parity regardless. Co-operative banks,
+        RRBs and small finance banks are largely not AA-enabled, and even at
+        live banks coverage is patchy BY ACCOUNT TYPE. Measured against this
+        firm's own book (§3a): zero individual clients, every account a Current
+        account, one of two banks a co-operative. The one case AA serves well
+        does not appear at all. Upload is the base case, not a hedge.
+
+    WHAT WOULD REOPEN IT — one thing, and it is not code: a purpose code that
+    covers an agent maintaining the customer's books either existing or being
+    added. The enquiry that would settle it is drafted in §2a and needs a person
+    to send it. Until then, do not start an AA feature; if it is ever started,
+    read §6 FIRST — the consent flow's shape is specified there, and the mistake
+    it exists to prevent is putting the approval in our own UI.
 
 
 Converts CSV / XLSX exports from Indian banks into ONE internal format
