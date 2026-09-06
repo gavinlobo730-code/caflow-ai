@@ -545,7 +545,22 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [remember, setRemember] = useState(true);
   const [overrideBalance, setOverrideBalance] = useState(false);
 
+  // ── The tie-out, and reading a scan ──────────────────────────────────────
+  // The two balances PRINTED on the statement. The server checks
+  // opening + credits - debits == closing before importing anything, which is
+  // the only thing that proves every line was read. Optional for a file we can
+  // parse; REQUIRED for a scan, because there a model did the reading.
+  const [openingRs, setOpeningRs] = useState("");
+  const [closingRs, setClosingRs] = useState("");
+  const [allowVision, setAllowVision] = useState(false);
+
   const account = accounts.find((a) => a.id === accountId);
+  const isImage = /\.(jpe?g|png|webp)$/i.test(file?.name ?? "");
+  const couldBeAScan = isImage || /\.pdf$/i.test(file?.name ?? "");
+  const openingPaise = openingRs.trim() ? paiseFromRupeeInput(openingRs) : null;
+  const closingPaise = closingRs.trim() ? paiseFromRupeeInput(closingRs) : null;
+  const balancesTyped = openingRs.trim() !== "" || closingRs.trim() !== "";
+  const balancesBad = balancesTyped && (openingPaise === null || closingPaise === null);
 
   function resetMapping() {
     setMapping(null); setInspected(null); setPreview(null); setOverrideBalance(false);
@@ -553,7 +568,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) { setFile(f); setError(null); setResult(null); resetMapping(); }
+    if (f) { setFile(f); setError(null); setResult(null); resetMapping(); setAllowVision(false); }
   }
 
   function baseForm(): FormData {
@@ -604,7 +619,16 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
   async function handleImport() {
     if (!account) { setError("Select a bank account."); return; }
-    if (!file) { setError("Select a statement file (.csv, .xlsx or .pdf)."); return; }
+    if (!file) { setError("Select a statement file (.csv, .xlsx or .pdf), or a scan."); return; }
+    if (balancesBad) { setError("Enter both balances as plain amounts, e.g. 1,30,000.00"); return; }
+    if (balancesTyped && (openingPaise === null || closingPaise === null)) {
+      setError("Give BOTH the opening and closing balance — one alone cannot check anything.");
+      return;
+    }
+    if (allowVision && (openingPaise === null || closingPaise === null)) {
+      setError("Reading a scan needs the opening and closing balances printed on the statement — they are what proves every line was read.");
+      return;
+    }
     setImporting(true); setError(null);
     try {
       // Server-side parse + normalize + dedup (bank-specific adapters, fail-loud,
@@ -619,6 +643,13 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
         form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
         form.append("save_mapping", remember ? "true" : "false");
       }
+      // Integer paise, parsed by lib/money/rupeeInput — the one parser
+      // (CLAUDE.md). Both or neither: one alone cannot check anything.
+      if (openingPaise !== null && closingPaise !== null) {
+        form.append("opening_balance_paise", String(openingPaise));
+        form.append("closing_balance_paise", String(closingPaise));
+      }
+      if (allowVision) form.append("allow_vision", "true");
       const res = (await api.banking.uploadStatement(form)) as {
         success: boolean; data: { imported: number; duplicates_skipped: number; total_rows: number }; error?: string;
       };
@@ -677,12 +708,55 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               </div>
               <div>
                 <label className="block text-xs font-medium text-[#475569] mb-1">Statement File * <span className="font-normal text-[#94A3B8]">(.csv, .xlsx or .pdf)</span></label>
-                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf" onChange={handleFile} className="hidden" />
+                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleFile} className="hidden" />
                 <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-[#E2E8F0] rounded-lg py-4 text-sm text-[#64748B] hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>
                 <p className="text-[10px] text-[#94A3B8] mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
               </div>
+
+              {/* The two figures printed on the statement. The server checks
+                  opening + credits - debits == closing before importing
+                  anything — the only thing that proves every line was read. */}
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">
+                  Statement balances
+                  <span className="font-normal text-[#94A3B8]">
+                    {allowVision ? " — required for a scan" : " — optional, but we\u2019ll check the statement adds up"}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={openingRs} onChange={(e) => setOpeningRs(e.target.value)}
+                         placeholder="Opening e.g. 1,00,000.00" className={inputCls} inputMode="decimal" />
+                  <input value={closingRs} onChange={(e) => setClosingRs(e.target.value)}
+                         placeholder="Closing e.g. 1,30,000.00" className={inputCls} inputMode="decimal" />
+                </div>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  {balancesBad
+                    ? "Enter plain amounts — 1,30,000.00"
+                    : "Give both and nothing imports unless the lines add up from one to the other."}
+                </p>
+              </div>
+
+              {/* Only offered for a file that could BE a scan. A CSV never needs
+                  it, and a text PDF is parsed properly without it — the server
+                  tries the real parsers first and never sends a readable file
+                  to a model. */}
+              {couldBeAScan && (
+                <label className="flex items-start gap-2 text-xs text-[#475569] cursor-pointer">
+                  <input type="checkbox" checked={allowVision} className="mt-0.5"
+                         onChange={(e) => setAllowVision(e.target.checked)} />
+                  <span>
+                    Read this with AI if it is a scan or a photo
+                    <span className="block text-[10px] text-[#94A3B8]">
+                      {isImage
+                        ? "A photograph has to be read this way."
+                        : "Only used if the PDF has no readable text — a normal PDF is parsed exactly, without AI."}
+                      {" The balances above are then required, and the import is refused unless the figures add up."}
+                    </span>
+                  </span>
+                </label>
+              )}
             </div>
 
             {inspected && mapping && (

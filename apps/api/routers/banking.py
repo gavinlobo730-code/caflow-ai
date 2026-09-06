@@ -67,6 +67,8 @@ from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from domain.banking import parse_statement, file_hash, StatementParseError
 from domain.banking.tie_out import tie_out
+from domain.banking import vision
+from services import statement_vision
 from domain.banking.normalizer import (
     balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
 )
@@ -643,6 +645,73 @@ def bank_account_balance(
 
 # ─── Statements ───────────────────────────────────────────────────────────────
 
+# Image formats a photographed statement arrives as. A scan is usually a PDF;
+# a phone photo is not, and parse_statement has no extension to dispatch on.
+_IMAGE_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+               ".png": "image/png", ".webp": "image/webp"}
+
+
+def _read_statement_file(filename: str, content: bytes, mapping, *,
+                         allow_vision: bool, has_balances: bool):
+    """(transactions, source_format, used_vision) for an uploaded statement.
+
+    THE ORDER MATTERS. The deterministic parsers are tried first and always: a
+    text PDF must never be sent to a model just because a model is available,
+    because a parse from real characters beats a reading of pixels and costs
+    nothing. Vision is only for what genuinely cannot be parsed — a scan or a
+    photograph — and only when the CA has asked for it.
+
+    WHY IT REFUSES BEFORE IT SPENDS ANYTHING
+        A scan read without the tie-out is a model's word for 300 numbers that
+        nobody will check. So the balances are required BEFORE a page is
+        rasterised or a model is called, not after: doing the expensive half and
+        then refusing would be the same refusal, later and dearer.
+    """
+    name = (filename or "").lower().strip()
+    ext = name[name.rfind("."):] if "." in name else ""
+    is_image = ext in _IMAGE_MIME
+
+    if not is_image:
+        try:
+            txns = parse_statement(filename or "", content, mapping)
+            fmt = "pdf" if name.endswith(".pdf") else "xlsx" if name.endswith(".xlsx") else "csv"
+            return txns, fmt, False
+        except StatementParseError as e:
+            # Only a PDF with no readable text is a candidate for the model. A
+            # malformed CSV is a malformed CSV and a picture will not help.
+            if not (name.endswith(".pdf") and "scanned" in str(e).lower()):
+                raise
+            if not allow_vision:
+                raise StatementParseError(
+                    "This PDF is a scan — there is no text in it to read. It can "
+                    "be read with AI instead: turn that on for this upload and "
+                    "give the opening and closing balances printed on the "
+                    "statement, which is how the figures get checked.") from e
+
+    if not allow_vision:
+        raise StatementParseError(
+            "A photographed statement can be read with AI. Turn that on for "
+            "this upload and give the opening and closing balances printed on "
+            "the statement, which is how the figures get checked.")
+    if not statement_vision.available():
+        raise StatementParseError(
+            "Reading a scanned statement is not configured on this deployment. "
+            "Upload the CSV or Excel export instead.")
+    if not has_balances:
+        # NOT NEGOTIABLE on this path — see domain/banking/vision.py.
+        raise StatementParseError(
+            "Reading a scan needs the opening and closing balances printed on "
+            "the statement. They are what proves every line was read: the "
+            "figures are only accepted if they add up to the closing balance "
+            "exactly.")
+
+    images = [content] if is_image else vision.page_images(content)
+    txns = vision.read_statement(
+        images, call_model=statement_vision.call,
+        mime=_IMAGE_MIME.get(ext, "image/png"))
+    return txns, ("image" if is_image else "pdf-scan"), True
+
+
 @router.post("/statements/import")
 def import_statement(
     data: StatementImportIn,
@@ -673,9 +742,10 @@ async def upload_statement(
     save_mapping: bool = Form(False),
     opening_balance_paise: Optional[int] = Form(None),
     closing_balance_paise: Optional[int] = Form(None),
+    allow_vision: bool = Form(False),
     current_user: dict = Depends(rbac("banking", "write")),
 ):
-    """Upload a CSV/XLSX bank statement. Parsing + normalization + dedup happen
+    """Upload a CSV/XLSX/PDF bank statement, or a scan of one. Parsing + normalization + dedup happen
     SERVER-SIDE (Banking B.1) — the browser sends the raw file only. Returns the
     counts of imported and duplicate-skipped transactions.
 
@@ -688,6 +758,13 @@ async def upload_statement(
         as one. They are optional because most existing callers do not send them
         and an import that used to work must keep working; when they are absent
         the response says so rather than reading as verified.
+
+    EXCEPT ON A SCAN, WHERE THEY ARE REQUIRED
+        `allow_vision` lets a scanned or photographed statement be read by a
+        vision model. There the tie-out is the ONLY evidence that the model read
+        every line, so the balances are mandatory and the refusal happens before
+        anything is rasterised or sent. A deterministic parse is always tried
+        first and a text PDF never reaches the model.
     """
     assert_client_access(current_user, client_id)
     content = await file.read()
@@ -721,8 +798,12 @@ async def upload_statement(
             mapping = saved.get("mapping")
             mapping_source = "saved"
 
+    has_balances = (opening_balance_paise is not None
+                    and closing_balance_paise is not None)
     try:
-        txns = parse_statement(file.filename or "", content, mapping)
+        txns, fmt, used_vision = _read_statement_file(
+            file.filename or "", content, mapping,
+            allow_vision=allow_vision, has_balances=has_balances)
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -734,10 +815,16 @@ async def upload_statement(
                   closing_paise=closing_balance_paise)
     if tie["checked"] and not tie["agrees"]:
         raise HTTPException(status_code=422, detail=tie["reason"])
+    if used_vision and not tie.get("agrees"):
+        # Belt and braces. _read_statement_file already refuses a vision upload
+        # with no balances, so this cannot normally be reached — but the day
+        # somebody adds a second way into that branch, the arithmetic must still
+        # be what decides, not the fact that a model sounded sure.
+        raise HTTPException(
+            status_code=422,
+            detail="A scanned statement is only accepted when its figures add "
+                   "up to the closing balance printed on it.")
 
-    _name = (file.filename or "").lower()
-    fmt = ("pdf" if _name.endswith(".pdf")
-           else "xlsx" if _name.endswith(".xlsx") else "csv")
     if not db:
         # Mock mode returns the same SHAPE as the real path. Omitting
         # column_source/balance_check here would leave the frontend reading
@@ -747,7 +834,8 @@ async def upload_statement(
                                    "duplicates_skipped": 0, "total_rows": len(txns),
                                    "column_source": mapping_source,
                                    "balance_check": balance_agreement(txns),
-                                   "tie_out": tie})
+                                   "tie_out": tie,
+                                   "read_with_ai": used_vision})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
         "source_format": fmt, "file_hash": file_hash(content),
@@ -790,6 +878,10 @@ async def upload_statement(
     # Always present, whether it verified anything or named itself a gap. An
     # unchecked import and a checked one must not look the same to the caller.
     result["tie_out"] = tie
+    # Say when a model read the statement. A CA reviewing these lines later is
+    # entitled to know they came off a picture rather than a file, and the
+    # source_format on the statement row records the same thing durably.
+    result["read_with_ai"] = used_vision
     # Propose for what just landed — one chunk, so the upload stays fast; the
     # screen keeps redrafting while counts.undrafted is non-zero, then passes
     # the trusted-rule drafts with a progress bar (09-bank-entries.md).
