@@ -270,6 +270,13 @@ Per §3 that is the base case anyway, not a fallback.
 > half is done; see `06`, §5e. The single thing that would reopen gate 1 is
 > **#130** finding that a purpose exists or can be added, and the counsel brief in
 > §0a is written and waiting for that.
+>
+> **#130 has since answered its first half — §2b — and it does not reopen
+> anything.** The taxonomy was recovered: five purpose codes, each naming the
+> class of licensee it serves, none of them an agent keeping another person's
+> books. So "a purpose exists" is settled NO, from the source's own words rather
+> than from its silence. Only "can one be ADDED" is still open, it is a person's
+> email, and the channel for asking runs through FIU membership we cannot hold.
 
 ## 1. The ecosystem
 
@@ -343,6 +350,12 @@ the FIP validates every fetch against the artefact's `Purpose` — so if no purp
 honestly covers this, **no route works and no amount of spend fixes it.**
 
 **Provisional answer: NO — and the reason is structural, not a gap in a list.**
+
+> **Updated by §2b (task #130): no longer provisional on this question.** The
+> taxonomy has since been recovered, and every one of its five entries names the
+> class of licensee it is for. The structural claim below was an inference; it is
+> now what the source itself says. What stays open is only whether a purpose
+> could be ADDED.
 
 #### What was found
 
@@ -420,6 +433,13 @@ written down as a table** — an earlier round had `103` = loan application and
 budget or other reportings", *Personal Finance*. Three fragments, no authority.
 `[U]`
 
+> **SUPERSEDED by §2b (task #130).** The fragments later resolved: repeated
+> independent queries returned one consistent set of five entries, each naming
+> the licensee class it serves, and each of the contradictions above is explained
+> there rather than merely replaced. The table is now written down — still `[S]`,
+> because the page has never been opened. **The refusal above was right for the
+> evidence it had**, which is why it is left standing rather than edited away.
+
 #### What is settled, and what is not
 
 The task's stop condition is *"no honest purpose exists **and** none can be
@@ -436,14 +456,15 @@ added"*. Only the first half is established, and only provisionally:
 **So #103–#107 are NOT closed on this evidence.** Two things must happen first,
 and both are somebody with a browser rather than more research from here:
 
-1. **Read the actual taxonomy** — `api.rebit.org.in/purpose/`, the
-   `sahamati.org.in/aa-community-guidelines-purpose-codes/` page, and guideline
-   **PC001**. If a purpose does cover this, everything above is wrong and cheaply
-   corrected.
-2. **Ask Sahamati directly**, in these words: *"Under which purpose code, if any,
-   may a chartered accountancy firm obtain a client's bank transaction data for
-   the purpose of maintaining that client's books of account — and if none
-   exists, what is the process for proposing one?"*
+1. ~~**Read the actual taxonomy**~~ — **DONE, §2b.** It did not need a browser in
+   the end: search recovered all five entries with their licensee classes, and
+   nothing in them covers this. The offer above stands — if a purpose does cover
+   it, everything here is wrong and cheaply corrected — but the taxonomy's own
+   text is now against it rather than merely silent.
+2. **Ask Sahamati directly** — still open, and now **narrower**: the "is there
+   one?" half is answered, so what is left is whether a purpose can be ADDED for
+   an agent acting on the customer's own behalf, and who owns that decision. The
+   enquiry in §2a is drafted to that.
 
 **If the answer is none and none can be added, close #103–#107 and keep
 statement upload.** That remains a legitimate outcome: §3 already argues upload
@@ -456,6 +477,11 @@ the population AA serves worst.
 than assumed:** `sahamati.org.in` and `api.rebit.org.in` were re-tested on a
 second day and both are still refused by the egress proxy. Sending an enquiry to
 an RBI-recognised SRO in the firm's name is a person's action in any case.
+
+> **PARTLY OVERTAKEN by §2b.** The fetch block is real and still in force on a
+> third day — but the *reading* half turned out not to need a fetch. Search
+> recovered the whole taxonomy. Only the *asking* half is still a person's job,
+> and it is now a shorter ask.
 
 But searching — which does work — moved the question forward in two ways worth
 recording before anybody spends time on it.
@@ -517,17 +543,29 @@ questions of two bodies, per the split above.**
 > the firm performs on the client's behalf. The CA firm is the client's agent,
 > not a lender, adviser or counterparty assessing the client's risk.
 >
-> **Question 1 — is there an existing purpose code that covers this?** Our
-> reading of the published Fair Use Template library is that the available
-> use cases describe a data user assessing somebody else's risk or advising on
-> investments, and that none describes maintaining another person's books. We
-> would rather be corrected than proceed on that reading.
+> **What we have already established, so as not to ask you for it.** We have
+> read the published purpose codes (101–105) and the Fair Use Template library.
+> Each purpose code names the class of licensee it serves — SEBI RIAs and stock
+> brokers, PFRDA Retirement Advisors, lenders, insurers, insurance brokers — and
+> the B2B templates describe an enterprise verifying or monitoring a third party.
+> Our reading is therefore that **no existing purpose describes an agent
+> maintaining the customer's own books**, and that code 102 in particular, despite
+> its name, is scoped to financial advisory by SEBI- and PFRDA-registered
+> advisers. We would rather be corrected than proceed on that reading, but we are
+> not asking you to confirm what is on your own site.
 >
-> **Question 2 — if none exists, what is the process for proposing one, and who
-> owns it?** We understand the Fair Use Committee governs the BOUNDS on a use
-> case via the User Councils, while the purpose code taxonomy itself is
-> published by ReBIT. If a new purpose code is required rather than a new
-> template, we would be grateful to be pointed to the right body.
+> **Our question is whether a purpose can be ADDED for this relation**, and who
+> owns that decision. We understand the Fair Use Committee governs the BOUNDS on
+> a use case via the User Councils, while the purpose code taxonomy itself is
+> published by ReBIT — so a new template would not help us if what is missing is
+> a purpose. If a new purpose code is required, we would be grateful to be
+> pointed to the right body.
+>
+> **The relation is the part we think is genuinely new.** Every published purpose
+> describes a regulated provider acting towards its customer. Ours is the
+> customer's own **agent**, engaged by them, acting on their instructions, with no
+> assessment of them at all. If the framework has no place for an agent, that is a
+> clear answer and we will stop.
 >
 > **A related question on eligibility**, since it may make the above moot: we
 > understand from the RBI (NBFC–AA) Directions 2025 that FIU status is
@@ -543,10 +581,132 @@ questions of two bodies, per the split above.**
 
 **It does not change #104's decision.** Route 3 stands: nothing here supplies a
 purpose, and the one channel discovered runs through a membership we cannot
-hold. If anything the catch above narrows the opening.
+hold. If anything the catch above narrows the opening. **§2b narrows it further**
+— the taxonomy, once read, is affirmatively against this rather than silent on
+it.
 
 **What it changes is the cost of asking.** The question is now split correctly,
 addressed to the right bodies, and drafted. Sending it costs one email.
+
+### 2b. Gate 0a follow-on, round 2 (task #130) — the taxonomy, READ, and it settles the question
+
+**§2 refused to tabulate the purpose codes, and that refusal was right at the
+time: three rounds of search had produced three mutually contradictory
+fragments.** This round the fragments RESOLVED — repeated independent queries
+against Sahamati's own site returned the same five entries with the same wording,
+each carrying the class of licensee it is for. That last part is what makes them
+usable, and it is what was missing before.
+
+**Still not `[P]`.** `api.rebit.org.in` and `sahamati.org.in` were re-tested a
+third time, on a third day, and both are still refused by the egress proxy —
+along with `en.wikipedia.org` on the control, so it remains a blanket block
+rather than anything about these hosts. What follows is `[S]`, from search
+snippets of the publisher's own pages, and the page itself has never been read.
+
+#### The taxonomy
+
+| code | name | who it is for | what it is for |
+|---|---|---|---|
+| **101** | Wealth Management | SEBI RIAs, stock brokers | facilitating investment transactions, one-time or recurring |
+| **102** | Customer spending patterns, budget or other reportings | SEBI RIAs, PFRDA Retirement Advisors | financial advisory, typically recurring |
+| **103** | Aggregated Statement | lenders, insurers, insurance brokers | underwriting and/or income verification, typically one-time |
+| **104** | Explicit consent for monitoring of the accounts | lenders | continuous monitoring to assess repayment health |
+| **105** | Explicit one-time consent for accounts | stock brokers | verifying an account exists and is active, at onboarding or profile change |
+
+Five is what five separate queries returned, consistently and with nothing else;
+whether the published page holds a sixth could not be confirmed, because it
+cannot be opened. `refUri` takes the form
+`https://api.rebit.org.in/aa/purpose/102.xml`. `[S]`
+
+The two earlier contradictory fragments are explained rather than merely
+displaced. *"103 = loan application"* and *"104 = collection monitoring"* were
+loose paraphrases of the right rows. *"101 = Loan"* was the category-versus-
+purpose confusion §2 suspected: 101 is Wealth Management, and "Loan" was never a
+purpose at all.
+
+#### What the taxonomy says that no amount of inference could
+
+§2 argued that a purpose is **derivative of the FIU's own regulatory
+permission**, and reached it by inference from one guidance note. **The taxonomy
+states it in its own text: every single entry names the licensee class it is
+for.** SEBI RIAs. Stock brokers. PFRDA Retirement Advisors. Lenders. Insurers.
+Insurance brokers.
+
+There is no entry for an agent maintaining the customer's own records, because
+every entry describes **a regulated provider acting in its own regulated
+capacity towards a customer**. A CA writing up a client's ledger is the opposite
+relation: the client is the firm's **principal**, and the firm holds no financial
+sector registration at all.
+
+**So #102's answer is no longer provisional on the taxonomy question.** No
+purpose code covers third-party bookkeeping. The structural reason is confirmed
+from the source rather than inferred.
+
+#### ⚠️ The near-miss is code 102, and its NAME is the trap
+
+Read as a label alone, *"Customer spending patterns, budget or other
+reportings"* sounds like it could cover bookkeeping — spending patterns and
+reporting are, on the face of it, what a CA produces. **Its description rules it
+out**: it is for *financial advisory use cases*, by *SEBI RIAs and PFRDA
+Retirement Advisors*.
+
+This is the near-miss §2 warned about in the abstract, now identified by number.
+Anybody who reaches for a purpose code by scanning names will land on 102.
+
+**And Sahamati's own guidance points that way.** Its purpose-codes page says
+that where a new use case is discovered, *"the most appropriate purpose code is
+expected to be used, based on judgement and aligned with the descriptions
+above"*. `[S]` For a use case that genuinely has no home, "pick the nearest by
+judgement" is an instruction to mislabel — and the label is not cosmetic: the FIP
+validates **every fetch** against the artefact's `Purpose`, and a consent
+obtained under a purpose that does not describe the actual use is a consent
+defect, not a paperwork one.
+
+> **Recorded as a rule, not an observation: if this is ever revisited, do not
+> declare 102.** Not as a placeholder, not for a pilot, not "until a better one
+> exists".
+
+#### The B2B templates confirm the shape finding, by name
+
+§2 said every B2B Fair Use Template is *"a data user assessing somebody else's
+risk"*, from page titles. The process-based B2B set is now named `[S]`: **CT040**
+Cross Validation, **CT042** Employee / Vendor Monitoring, **CT043** Employee
+Compliance Reporting, **CT045** One-time Employee / Vendor verification, **CT047**
+Government Scheme Beneficiary monitoring.
+
+Every one is an enterprise checking a **third party** — an employee, a vendor, a
+beneficiary. The one consumer-side template that surfaced, **CT008 Personal
+Finance Management**, is first-party: an individual managing their own money.
+Neither shape is an agent keeping another person's books. The finding holds under
+its own names.
+
+#### GSTN does not open a side door either
+
+GST is an FI type (`GSTR1_3B`, GSTN as FIP), which looks promising for a CA
+product. Sahamati's own framing of why GSTN joined is **cash-flow-based lending
+to MSMEs** — *"help the MSMEs move from collateral based lending to information
+based lending"*. `[S]` Even the one FI type a CA would most want is provisioned
+for a lender assessing the taxpayer, not for the taxpayer's own accountant.
+
+#### What this changes
+
+**Half of #130 is now done, and it did not need a browser after all.** The
+taxonomy has been read well enough to answer the question it was asked to answer.
+
+| | |
+|---|---|
+| **Does a purpose exist?** | **Settled: no.** `[S]`, from the taxonomy's own text, no longer an inference from absence |
+| **Can one be added?** | **Still open.** Two owners (§2a): ReBIT for the code, Sahamati's Fair Use Committee for the bounds — and the proposal channel runs through FIUs, which §0 establishes we cannot be |
+
+**#104's route 3 stands and is stronger.** §0a named the one thing that would
+reopen gate 1 — #130 finding a purpose exists or can be added. It does not exist,
+and the reason it does not is now confirmed rather than inferred. Only the
+"can it be added" half remains, and it faces the membership catch in §2a.
+
+**The enquiry in §2a gets shorter, not longer.** Its Question 1 — "is there an
+existing code that covers this?" — is answered, and asking an SRO a question the
+answer to which is on its own website spends the ask badly. What is left is the
+one thing only they can answer.
 
 ### FI types — and GST is one
 
