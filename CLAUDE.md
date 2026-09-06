@@ -474,10 +474,12 @@ and why that does not arise under upload.
   declare 102** — not as a placeholder, not for a pilot. Grades are `[S]`, from
   search snippets of the publisher's pages: **every fetch is still refused** by
   the egress proxy on a third day, Wikipedia included, so nothing here is `[P]`.
-  What is NOT settled is whether a purpose could be ADDED — that is a person's
-  email to Sahamati/ReBIT, drafted in §2a, and the proposal channel runs through
-  FIU membership §0 says we cannot hold. #106–#107 stay open pending that one
-  question. **The whole line is now CLOSED — §7**: route 3 has no counterparty, so
+  What is NOT settled is whether a purpose could be ADDED, and **the owner has
+  decided not to ask** (2026-09-06, §7): the proposal channel runs through FIU
+  membership §0 says we cannot hold, so the realistic asker is a partner FIU —
+  the route purpose already forecloses. The enquiry stays drafted in §2a so
+  reopening costs one email, but **nothing is outstanding and nobody is waiting
+  on anybody.** **The whole line is CLOSED — §7**: route 3 has no counterparty, so
   #107's contract and pilot have no subject, and §7 carries the four gate
   questions and their answers in ONE table rather than eight cross-references.
   Verified before closing: no AA code, no config, no migration anywhere, and the

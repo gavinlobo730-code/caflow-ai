@@ -526,7 +526,11 @@ effort by active Financial Information Users... via various User Councils"*.
 > a partner FIU**, which folds back into route 1 — and route 1 is what §2 says
 > purpose already forecloses.
 
-#### The enquiry, ready to send
+#### The enquiry, drafted — and NOT being sent (owner decision, 2026-09-06)
+
+> It is kept verbatim below rather than deleted. The decision not to ask is
+> recorded in §7 with its reasoning, and the whole point of keeping the draft is
+> that reversing that decision costs one email rather than an afternoon.
 
 Contacts found `[S]`: **info@sahamati.org.in** (general), services@sahamati.org.in
 (technical onboarding), and a contact form at `sahamati.org.in/contact/`.
@@ -591,7 +595,9 @@ hold. If anything the catch above narrows the opening. **§2b narrows it further
 it.
 
 **What it changes is the cost of asking.** The question is now split correctly,
-addressed to the right bodies, and drafted. Sending it costs one email.
+addressed to the right bodies, and drafted. Sending it would cost one email —
+and **the owner has decided not to send it** (§7). The draft stays so that
+staying closed and reopening are both cheap.
 
 ### 2b. Gate 0a follow-on, round 2 (task #130) — the taxonomy, READ, and it settles the question
 
@@ -872,7 +878,7 @@ come first:
 | # | To verify | Task |
 |---|---|---|
 | 1a | ~~Whether any code fits third-party bookkeeping~~ — **answered provisionally NO, §2.** No published purpose or template describes it, and purposes are derivative of the FIU's own regulatory permission | ~~#102~~ **done** |
-| 1b | ~~Read the actual taxonomy~~ — **DONE, §2b.** Codes 101–105 recovered with their licensee classes; none covers an agent keeping another's books, so §2's answer is settled rather than inferred. **Still to do: send the enquiry drafted in §2a**, now shortened to the one open question (can a purpose be ADDED, and who owns that). Hosts re-tested 2026-09-06 and still blocked, so the taxonomy stays `[S]` | **#130** (person) |
+| 1b | ~~Read the actual taxonomy~~ — **DONE, §2b.** Codes 101–105 recovered with their licensee classes; none covers an agent keeping another's books, so §2's answer is settled rather than inferred. ~~Still to do: send the enquiry drafted in §2a~~ — **NOT being sent, owner decision 2026-09-06 (§7).** Nothing is outstanding on this row. Hosts re-tested 2026-09-06 and still blocked, so the taxonomy stays `[S]` | ~~#130~~ **closed** |
 | 2a | ~~Coverage for the client types a CA actually serves~~ — **measured, §3a.** Composition is the worst case; no percentage is honest at n=7 | ~~#103~~ **done** |
 | 2b | **Sahamati's per-bank per-account-type matrix and the FIP↔AA matrix** — blocked with everything else, so the AA counts and the per-account-type coverage remain `[S]` | **#130** (browser step) |
 | 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
@@ -1064,7 +1070,7 @@ Two stale artefacts surfaced while checking, and both are fixed:
   eligibility** — which is the part a reader coming to `00` first would otherwise
   get backwards, because eligibility is the finding people reach first.
 
-### The one thing that would reopen it
+### The one thing that would reopen it — and the owner has decided not to ask
 
 Not code, and not a change of mind:
 
@@ -1072,13 +1078,32 @@ Not code, and not a change of mind:
 > either exists, or can be added.**
 
 That is one question to Sahamati and ReBIT, drafted in §2a and shortened by §2b
-to the part they alone can answer. It needs a person to send it. If the answer is
-yes, gate 1 reopens, the counsel brief in §0a is already written, and #107 comes
-back — as a *new* piece of work priced against whichever route the opinion then
-supports.
+to the part they alone can answer.
 
-If the answer is no, or nobody ever asks, nothing further happens and nothing is
-lost.
+> **OWNER DECISION, 2026-09-06: the enquiry is NOT being sent.** So this line has
+> no open action and nobody is waiting on anybody. It is closed, not paused.
+
+**That is a reasonable decision and it is worth writing down why**, because
+"we never asked" reads like an oversight and this was not one. Three things had
+to be true for the ask to be worth making, and only the first is:
+
+1. *the answer could change the outcome* — yes, it is the one thing that would
+   reopen gate 1;
+2. *there is a realistic route to a yes* — §2a found the proposal channel runs
+   through **FIU membership**, and §0 establishes we cannot hold one. The
+   realistic asker is a partner FIU, which is the route purpose already
+   forecloses;
+3. *the answer arrives in a useful time* — a taxonomy change at an SRO is not a
+   thing that happens on a product's timetable.
+
+Two of the three fail. Against that, statement upload works today, is at parity,
+and §3 argued before any of the gates were answered that it is the base case
+rather than a fallback.
+
+**Nothing is spent and nothing is foreclosed.** The draft stays in §2a exactly as
+it is: if this is ever revisited the ask costs one email, and the counsel brief
+in §0a is already written for the case where the answer comes back yes. Reversing
+this decision costs the same as taking it did — nothing.
 
 ### What stays true regardless
 
