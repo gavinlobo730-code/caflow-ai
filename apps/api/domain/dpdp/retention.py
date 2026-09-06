@@ -89,6 +89,40 @@ duty it is tells an employee "we won't delete this" when the truthful answer is
 "your employer must keep this until 2029" — so `duty_holder` is on every rule
 and reaches the sentence.
 
+A BANK STATEMENT IS A VOUCHER, AND THE THREE STATUTES REACH IT DIFFERENTLY
+
+`bank_data` was missing from this position until task #105, which is the failure
+mode this module was written to make visible: the product has held bank
+statements since migration 006, and an unclassified category refuses — so the
+data was neither erasable nor accounted for.
+
+It carries the same three duties as the ledger, and they do not reach it by the
+same words:
+
+  * Companies Act s. 128(5) reaches it EXPRESSLY. The subsection is not about
+    books alone — it requires "the books of account ... TOGETHER WITH THE
+    VOUCHERS RELEVANT TO ANY ENTRY" to be kept for eight financial years, and
+    s. 2(12) defines "books and papers" to include vouchers, writings and
+    documents in electronic form. A statement is the voucher for every receipt
+    and payment posted off it.
+  * CGST s. 36 reaches it as the "other records" a registered person keeps under
+    s. 35(1) with the "relevant documents" of Rule 56.
+  * Income-tax Rule 6F(5) is the WEAKEST of the three here: r. 6F(2) enumerates
+    the cash book, journal, ledger and original bills and receipts, and does not
+    name a bank statement. It is listed because the statement is the support for
+    entries that are enumerated, and because it changes no outcome — the
+    Companies Act period is the longest of the three, so it is the one the
+    decision returns. If it were the only rule, it would need reading properly
+    before being relied on.
+
+What is NOT in this category is `bank_matching_rules` and
+`bank_statement_column_mappings`. They are the firm's own configuration, not a
+record of anything that happened, and `DELETE /banking/rules/{id}` deletes one
+outright and rightly carries no statutory refusal. They are left unclassified
+rather than declared duty-free: unclassified refuses, which is the safe
+direction, and asserting "no duty" for a table nobody has audited is a positive
+claim this module should not make for free.
+
 SOURCING
 
 Search results only; no primary source could be fetched (indiankanoon and
@@ -386,6 +420,20 @@ _CATEGORIES: tuple[Category, ...] = (
         holds="an individual assessee's whole return",
         tables=("itr_computations", "capital_gains_records"),
         rules=("income_tax_books",),
+    ),
+    Category(
+        key="bank_data",
+        label="bank statements and the lines imported from them",
+        holds=("the client's own account number and IFSC, and — in every "
+               "narration — the name, UPI handle or reference of whoever was on "
+               "the other side of the payment. That counterparty is usually a "
+               "stranger to the engagement: they are not the firm's client, they "
+               "were never asked anything, and they are a data principal all the "
+               "same"),
+        tables=("bank_accounts", "bank_statements", "bank_transactions",
+                "bank_transaction_splits", "bank_reconciliations",
+                "bank_reconciliation_matches"),
+        rules=("companies_act_books", "income_tax_books", "gst_records"),
     ),
     Category(
         key="client_onboarding",

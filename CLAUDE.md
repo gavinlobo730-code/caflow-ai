@@ -419,6 +419,17 @@ is how bank data enters the platform today, and it is not going away. When a liv
 bank feed is built, it goes through India's **Account Aggregator** framework and
 nothing else.
 
+**The DPDP duties over bank data are live NOW and do not wait for AA.** An
+uploaded statement holds the client's account number and, in every narration, the
+name or UPI handle of a COUNTERPARTY who is usually a stranger to the engagement
+— the largest population of third-party data principals in the product. It is a
+`bank_data` category in `domain/dpdp/retention.py` (Companies Act s. 128(5)
+reaches it expressly, as the "vouchers relevant to any entry"), and the
+bank-account delete names the statute and the date. See
+`docs/compliance/06-data-protection-dpdp.md` §5e — which also records why the
+AA consent artefact's `DataLife` clock would collide with the eight-year period,
+and why that does not arise under upload.
+
 - **Register as an FIU** (Financial Information User). Banks are FIPs; a licensed
   AA — Finvu, OneMoney, CAMS Finserv, NADL, Anumati — brokers consent between
   them under RBI regulation, on ReBIT schemas. Go via a TSP (Setu, Perfios,

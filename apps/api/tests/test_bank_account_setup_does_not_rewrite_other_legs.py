@@ -318,7 +318,8 @@ def _deletable(db):
 def test_a_fresh_mistyped_account_can_be_deleted(monkeypatch):
     db = _setup(monkeypatch)
     acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899")["data"]
-    assert _deletable(db)[acc["id"]] == {"deletable": True, "blocked_by": []}
+    assert _deletable(db)[acc["id"]] == {"deletable": True, "blocked_by": [],
+                                        "reason": None}
 
     res = banking.delete_bank_account(acc["id"], CALLER)
     assert res["success"] is True and res["data"]["deleted"] is True

@@ -418,10 +418,14 @@ when the last duty lapses.
 | **payroll** | PAN, UAN, ESIC number, date of birth, bank account, salary, Form 12BB — **the highest-exposure personal data in the product** | IT Rule 6F(5); Companies Act s. 128(5); **EPF ⚠**; **ESI ⚠** | client (as employer) |
 | **tds_records** | the deductee's PAN and amounts against it | IT Rule 6F(5); Companies Act s. 128(5) | client |
 | **income_tax_records** | an individual assessee's whole return | IT Rule 6F(5) | client |
+| **bank_data** | the client's account number and IFSC, and — in every narration — the name, UPI handle or reference of the **counterparty**, who is usually a stranger to the engagement | Companies Act s. 128(5); IT Rule 6F(5); CGST s. 36 | client |
 | **client_onboarding** | PAN, GSTIN, identity documents, engagement record | PMLA s. 12 — 5 years | **firm** |
 | **access_logs** | who read or changed what, and when | DPDP r. 6 — ≥ 1 year, a **floor** not a ceiling | **platform** |
 | **support_correspondence** | whatever a person wrote to the firm | none identified | — |
 | **product_telemetry** | which screens an account opened | none identified | — |
+
+`bank_data` was **added by #105** — see §5e. It was missing from the original
+nine, which is the failure mode the module exists to make visible.
 
 **Almost none of this is PracticeSync's own duty**, which is why `duty_holder`
 reaches the refusal sentence. Telling an employee "we won't delete this" when
@@ -671,6 +675,176 @@ nothing**. Putting a retention refusal there would tell a CA they may not *hide*
 a client until 2034 — false, and unhelpful. Erasure refusals belong on paths that
 erase. A test pins that the endpoint stays free of one, and fails if that soft
 delete ever starts destroying rows.
+
+## 5e. Bank data — the half of #105 that route 3 does not make moot (task #105)
+
+### The task said its own AA half was conditional, and it was right
+
+#105 is written as an AA gate, and its second line scopes itself:
+
+> Runs alongside #104. Needed under routes 1 and 2; **moot under route 3.**
+
+#104 chose **route 3 — do not consume via AA** (`05`, §0a). So the AA-specific
+work this task asked for — DataLife as a separate clock, an immediate-revocation
+path, an annual re-consent journey — is moot by the task's own terms, and
+building it would be designing for a route not taken.
+
+**DataLife is recorded here rather than built, because it is the one part that
+would have forced an architectural decision** and it should not have to be
+re-derived if #130 ever reopens the purpose question. `[S]`
+
+A ReBIT consent artefact carries **four different clocks**, and they are
+routinely conflated:
+
+| field | bounds |
+|---|---|
+| `consentStart` / `consentExpiry` | how long the consent itself is valid |
+| `FIDataRange` | **which period of data** may be fetched |
+| `frequency` | how often it may be fetched |
+| **`DataLife`** | **how long the FIU may keep what it fetched** — a unit and a value, e.g. `1 YEAR` |
+
+`DataLife` is the separate clock, and it is separate from consent expiry in both
+directions: fetched data may outlive the consent up to `DataLife`, and it must
+go at `DataLife` even while the consent is still live.
+
+**It would have collided head-on with §5b.** The Companies Act requires the
+vouchers relevant to any entry kept for **eight financial years**; a fair-use
+`DataLife` is measured in months or a year. Both are binding, so the resolution
+cannot be to pick one. It would have had to be a **split**: the raw fetched
+statement is the FIU's copy and dies at `DataLife`, while the receipts and
+payments **posted from it** are the client's own books and stay for eight years.
+That is a real architectural constraint — it says the imported statement and the
+entries derived from it cannot share a lifecycle — and it is exactly the sort of
+thing that is cheap to write down now and expensive to discover during a build.
+
+**Under statement upload it does not arise at all.** An uploaded statement is the
+client's own document, handed to their own CA. There is no third party imposing a
+retention ceiling on it, so there is one clock, and it is the statutory one.
+
+### The half that is live today, and the gap it found
+
+The headline obligation — **DPDP duties for holding a client's bank data** — is
+not conditional on AA at all. The product has held bank data since **migration
+006**, through statement upload, and `bank_accounts`, `bank_statements` and
+`bank_transactions` all carry production rows.
+
+So the check that mattered was whether §5b's position covered it:
+
+```
+cd apps/api && python3 -c "
+from domain.dpdp.retention import CATEGORIES
+tables = {t for c in CATEGORIES.values() for t in c.tables}
+print('bank tables in the position:', sorted(t for t in tables if 'bank' in t) or 'NONE')"
+```
+
+> `bank tables in the position: NONE`
+
+**None of the nine categories covered bank data.** Not one.
+
+Nothing was being wrongly destroyed — an unclassified category refuses, which is
+the safe direction and is why the module is built that way. But nothing could be
+*answered* either: the only reply available was *"no retention position is
+written for `bank_data`"*, which a CA cannot act on and which cannot go into a
+Rule 14 publication or a DPA annexe.
+
+### Why bank data is the category where the counterparty problem is worst
+
+Every other category holds data about someone in the engagement — the client, an
+employee, a customer, a vendor. A bank narration holds **whoever was on the other
+side of the payment**: a name, a UPI handle, a cheque reference. That person is
+usually not the firm's client, was never asked anything, and is a data principal
+under DPDP all the same. `bank_transactions` also carries `payee_name` — the
+normalised counterparty (migration 257) — and `attachments`, which is where a
+cheque image lives (migration 259).
+
+A mid-size client generates thousands of these a year. It is the largest
+population of third-party data principals in the product, and it was the one
+category with no written position.
+
+### The three statutes do not reach a statement by the same words
+
+| statute | how it reaches a bank statement |
+|---|---|
+| **Companies Act s. 128(5)** | **expressly.** The subsection requires the books *"together with the **vouchers relevant to any entry** in such books of account"* kept for eight financial years, and s. 2(12) defines "books and papers" to include vouchers, writings and documents in electronic form. A statement is the voucher for every receipt and payment posted off it. |
+| **CGST s. 36** | as the "other records" a registered person keeps under s. 35(1), with the "relevant documents" of Rule 56. |
+| **IT Rule 6F(5)** | **weakest of the three.** r. 6F(2) enumerates the cash book, journal, ledger and original bills and receipts, and **does not name a bank statement.** |
+
+Rule 6F is listed anyway because the statement supports entries that *are*
+enumerated, and because **it changes no outcome**: the Companies Act period is
+the longest of the three, so it is the one the decision returns. If it were ever
+the only rule over this category it would need reading properly first, and the
+module docstring says so.
+
+### What was built
+
+**The category.** `bank_data` in `domain/dpdp/retention.py`, over
+`bank_accounts`, `bank_statements`, `bank_transactions`,
+`bank_transaction_splits`, `bank_reconciliations` and
+`bank_reconciliation_matches`, carrying the three duties above. For a statement
+covering FY 2024-25 the answer is **31 March 2033**.
+
+**Deliberately NOT in it:** `bank_matching_rules` and
+`bank_statement_column_mappings`. They are the firm's own configuration, not a
+record of anything that happened, and `DELETE /banking/rules/{id}` removes one
+outright and rightly carries no statutory refusal. They are left **unclassified
+rather than declared duty-free** — unclassified refuses, which is the safe
+direction, and asserting "no duty" for a table nobody audited is a positive claim
+this position should not make for free.
+
+**The wiring.** `DELETE /banking/accounts/{id}` refused with a joined list of
+referential reasons — *"bank statements have been imported for it; it has been
+reconciled"* — which names no law, gives no date and never lapses. It now uses
+`services/bank_erasure.py`, which makes the same two-reason split #129 made for
+the party deletes:
+
+- **before the date** — *"Companies Act 2013 (s. 128(5)) requires the client to
+  keep bank statements and the lines imported from them for the eight financial
+  years immediately preceding a financial year — until 31 March 2033. … Until
+  then this bank account cannot be deleted; separately, bank statements have been
+  imported for it."*
+- **after it** — *"Statutory retention over this account's bank statements has
+  lapsed — no law now requires them kept. It still cannot be deleted because …"*
+- **with no statement at all** — the blockers are records of other categories (a
+  reconciliation, a payroll run, a posted journal line), so there is nothing here
+  to date a bank-data duty from, and the refusal stays referential rather than
+  invoking a statute it cannot date.
+
+**The date comes from `bank_statements.statement_to`**, and the **newest**
+statement decides — retention runs from the financial year the record belongs to,
+so the most recent one is held longest. The probe already ran; it now selects
+`statement_to` alongside the key, so the four-query budget in `_delete_blockers`
+is unchanged.
+
+**And the tooltip gets the same sentence.** `AccountsPanel.tsx` composed its own
+refusal from `blocked_by` **in the browser**, so the statute would have reached a
+409 the CA may never trigger and never reached the greyed Delete button they
+actually hover. `/accounts/deletable` now returns `reason` — the identical
+string — and a test asserts the two are the same.
+
+### Also found, not fixed
+
+`delete_rule`'s docstring says a rule *"has never written anything to the
+ledger"*. Since **migration 322** a rule a Manager marks **trusted** passes its
+lines with no click, posting as `created_by = trusted_by` — the one place the
+product acts unprompted. The rule still does not write the entry (the pass path
+does, and the entry records who), so the delete is unaffected and the retention
+answer is unchanged. But the sentence is stale and would mislead the next reader.
+
+### What is still not wired
+
+The same thing §5b left open: **nothing publishes the position.** `position()`
+now emits ten categories instead of nine, and no endpoint serves it. Rule 14
+obliges the means of exercising rights to be published, and a DPA annexe needs
+this table. That is the next piece of DPDP work with a real deadline behind it.
+
+### Sourcing
+
+`DataLife` and the four consent-artefact clocks: Sahamati's published consent
+artefact examples and Setu's integration documentation, corroborated `[S]`. The
+retention statutes carry the grades already recorded in §5b — **search results
+only, nothing `[P]`**, because `indiankanoon.org` and
+`taxinformation.cbic.gov.in` remain blocked by the egress proxy from this
+environment. Verified 2026-09-06.
 
 ## 6. Consent Managers — and why the product must not become one
 
