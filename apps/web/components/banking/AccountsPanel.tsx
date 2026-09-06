@@ -584,6 +584,17 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const couldBeAScan = isImage || /\.pdf$/i.test(file?.name ?? "");
   const openingPaise = openingRs.trim() ? paiseFromRupeeInput(openingRs) : null;
   const closingPaise = closingRs.trim() ? paiseFromRupeeInput(closingRs) : null;
+  // ONE request at a time, from ANY control in this dialog.
+  //
+  // Each button used to be disabled only by its OWN flag, so "Map columns" and
+  // "Import" could both be in flight at once — the screenshot that found this
+  // showed "Reading…" and "Importing…" side by side. That is not cosmetic here:
+  // startMapping and runPreview both call setInspected/setMapping/setPreview,
+  // so a read landing mid-import rewrites the dialog under a running upload,
+  // and whichever finishes second overwrites the other's error message. The
+  // import is a WRITE; the CA has to be able to tell which outcome they are
+  // looking at.
+  const busy = checking || importing;
   const balancesTyped = openingRs.trim() !== "" || closingRs.trim() !== "";
   const balancesBad = balancesTyped && (openingPaise === null || closingPaise === null);
 
@@ -696,7 +707,8 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
           <h3 className="text-sm font-semibold text-[#0F172A]">
             {inspected ? "Map the statement columns" : "Import Bank Statement"}
           </h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <button onClick={onClose} disabled={importing} aria-label="Close"
+                  className="text-[#94A3B8] hover:text-[#475569] disabled:opacity-40"><X size={16} /></button>
         </div>
 
         {result ? (
@@ -746,7 +758,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               <div>
                 <label className="block text-xs font-medium text-[#475569] mb-1">Statement File * <span className="font-normal text-[#94A3B8]">(.csv, .xlsx or .pdf)</span></label>
                 <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleFile} className="hidden" />
-                <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-[#E2E8F0] rounded-lg py-4 text-sm text-[#64748B] hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+                <button onClick={() => fileRef.current?.click()} disabled={busy} className="disabled:opacity-40 w-full border-2 border-dashed border-[#E2E8F0] rounded-lg py-4 text-sm text-[#64748B] hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>
                 <p className="text-[10px] text-[#94A3B8] mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
@@ -837,7 +849,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 </p>
 
                 <div className="flex items-center gap-3">
-                  <button onClick={runPreview} disabled={checking}
+                  <button onClick={runPreview} disabled={busy}
                           className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-40">
                     {checking ? "Checking…" : "Check this mapping"}
                   </button>
@@ -924,9 +936,15 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
             {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
             <div className="flex gap-3 justify-end">
-              <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+              {/* Closing mid-import would unmount the dialog with the upload still
+                  in flight: the write continues server-side and the CA never
+                  learns whether 292 transactions landed, so the honest thing is
+                  to make them wait for the answer. A read is abandonable —
+                  nothing has been written — so Cancel stays live for that. */}
+              <button onClick={onClose} disabled={importing}
+                      className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">Cancel</button>
               {!inspected && file && (
-                <button onClick={startMapping} disabled={checking || !account}
+                <button onClick={startMapping} disabled={busy || !account}
                         className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">
                   {checking ? "Reading…" : "Map columns"}
                 </button>
@@ -934,7 +952,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               <button
                 onClick={handleImport}
                 disabled={
-                  importing || !file || accounts.length === 0
+                  busy || !file || accounts.length === 0
                   // With the mapper open, importing is gated on a check having
                   // been run: the preview IS the safety argument for skipping
                   // the column-label validation, so importing without it would
