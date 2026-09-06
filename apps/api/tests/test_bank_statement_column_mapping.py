@@ -248,8 +248,16 @@ def test_inspect_does_offer_a_starting_point_when_the_adapter_really_fits():
 
 
 def test_inspect_refuses_a_file_type_it_cannot_read():
+    # .pdf is now a supported statement format and the mapping screen reads it,
+    # so the unsupported case needs an extension that still is one.
     with pytest.raises(StatementParseError):
+        inspect_statement("statement.docx", b"PK\x03\x04")
+
+
+def test_inspect_refuses_a_corrupt_pdf_cleanly():
+    with pytest.raises(StatementParseError) as e:
         inspect_statement("statement.pdf", b"%PDF-1.4")
+    assert "could not be read as a PDF" in str(e.value)
 
 
 # ── Through the API ──────────────────────────────────────────────────────────

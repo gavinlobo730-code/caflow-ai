@@ -262,8 +262,21 @@ def test_xlsx_parse():
 # ── Malformed files ───────────────────────────────────────────────────────────
 
 def test_unsupported_extension_raises():
+    # .pdf USED to be the example here and is now a supported statement format.
+    # The case this test exists for — a file type we do not read — needs an
+    # extension that is still one.
     with pytest.raises(StatementParseError):
+        parse_statement("statement.docx", b"PK\x03\x04")
+
+
+def test_a_corrupt_pdf_is_a_parse_error_and_not_a_crash():
+    """`%PDF-1.4` and nothing else reaches pdfminer as "No /Root object!", which
+    is not a StatementParseError — so before this it left the endpoint returning
+    500 for a file the CA simply picked by mistake. Every other unreadable-file
+    case here is a 422 that says what to do."""
+    with pytest.raises(StatementParseError) as e:
         parse_statement("statement.pdf", b"%PDF-1.4")
+    assert "could not be read as a PDF" in str(e.value)
 
 
 def test_csv_without_transactions_raises():

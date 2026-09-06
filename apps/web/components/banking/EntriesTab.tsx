@@ -653,7 +653,7 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
           </button>
           <button onClick={() => (bankAccounts.length === 0 ? setShowAccounts(true) : setShowImport(true))}
             disabled={!!progress}
-            title={bankAccounts.length === 0 ? "Add a bank account first" : "Import a statement (.csv or .xlsx) for one of the bank accounts"}
+            title={bankAccounts.length === 0 ? "Add a bank account first" : "Import a statement (.csv, .xlsx or .pdf) for one of the bank accounts"}
             className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40 inline-flex items-center gap-1.5">
             <Upload size={12} /> Import statement
           </button>

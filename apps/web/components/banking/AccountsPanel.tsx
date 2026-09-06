@@ -604,7 +604,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
   async function handleImport() {
     if (!account) { setError("Select a bank account."); return; }
-    if (!file) { setError("Select a statement file (.csv or .xlsx)."); return; }
+    if (!file) { setError("Select a statement file (.csv, .xlsx or .pdf)."); return; }
     setImporting(true); setError(null);
     try {
       // Server-side parse + normalize + dedup (bank-specific adapters, fail-loud,
@@ -676,8 +676,8 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Statement File * <span className="font-normal text-[#94A3B8]">(.csv or .xlsx)</span></label>
-                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx" onChange={handleFile} className="hidden" />
+                <label className="block text-xs font-medium text-[#475569] mb-1">Statement File * <span className="font-normal text-[#94A3B8]">(.csv, .xlsx or .pdf)</span></label>
+                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf" onChange={handleFile} className="hidden" />
                 <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-[#E2E8F0] rounded-lg py-4 text-sm text-[#64748B] hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>
