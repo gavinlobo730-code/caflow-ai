@@ -61,6 +61,10 @@ export default function TDSReturnsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [approving, setApproving] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = approving || loading;
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [prn, setPrn] = useState("");
   const [ackNumber, setAckNumber] = useState("");
@@ -261,7 +265,7 @@ export default function TDSReturnsPage() {
           </div>
         </div>
         <div className="mt-4 flex items-center gap-3">
-          <button onClick={handleCompute} disabled={loading || !clientId}
+          <button onClick={handleCompute} disabled={actionInFlight || !clientId}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
             {loading ? "Computing…" : `Compute ${returnType}`}
           </button>
@@ -437,7 +441,7 @@ export default function TDSReturnsPage() {
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
             {(filingStatus === "prepared") && (
-              <button onClick={handleApprove} disabled={approving || result.validation_errors.length > 0}
+              <button onClick={handleApprove} disabled={actionInFlight || result.validation_errors.length > 0}
                 className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
                 <CheckCircle size={15} />
                 {approving ? "Approving…" : "CA Approve"}

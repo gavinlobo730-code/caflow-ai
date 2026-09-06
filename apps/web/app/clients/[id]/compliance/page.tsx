@@ -211,6 +211,10 @@ export default function CompliancePage() {
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, compliance.map((c) => c.id))); }, [compliance]);
   const [bulkBusy, setBulkBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = bulkBusy || filingLoading;
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   const today = todayLocalISO();
@@ -431,7 +435,7 @@ export default function CompliancePage() {
               />
               <button
                 onClick={handleMarkFiled}
-                disabled={filingLoading}
+                disabled={actionInFlight}
                 className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {filingLoading ? "Saving…" : "Confirm Filed"}
@@ -472,7 +476,7 @@ export default function CompliancePage() {
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <button
                     onClick={bulkMarkFiled}
-                    disabled={bulkBusy}
+                    disabled={actionInFlight}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {bulkBusy ? "Marking…" : "Mark Filed"}

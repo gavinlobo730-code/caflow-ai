@@ -56,6 +56,9 @@ export function ProductServiceManagerPanel({
   const [importStep, setImportStep] = useState<"closed" | "date" | "csv">("closed");
   const [openingBalanceDate, setOpeningBalanceDate] = useState("");
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showToast(msg: string, kind: "success" | "error") {
@@ -90,6 +93,8 @@ export function ProductServiceManagerPanel({
   useEffect(() => { load(); }, [load]);
 
   async function setActive(item: ServiceCatalogueItem, is_active: boolean) {
+    setRowBusy(true);
+    try {
     try {
       const res = (await api.serviceCatalogue.update(item.id, { is_active })) as ApiResp<unknown>;
       if (!res.success) throw new Error(res.error ?? "Update failed");
@@ -98,6 +103,7 @@ export function ProductServiceManagerPanel({
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Update failed", "error");
     }
+  } finally { setRowBusy(false); }
   }
 
   // Permanent delete — the backend only allows this when the item has never
@@ -106,6 +112,8 @@ export function ProductServiceManagerPanel({
   // success:false and a message pointing at Archive instead, which we
   // surface via the same error toast rather than a generic failure.
   async function deleteItem(item: ServiceCatalogueItem) {
+    setRowBusy(true);
+    try {
     const ok = await confirmDialog({
       message: `Permanently delete "${item.name}"? This cannot be undone.`,
       danger: true,
@@ -119,6 +127,7 @@ export function ProductServiceManagerPanel({
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
     }
+  } finally { setRowBusy(false); }
   }
 
   // Bulk actions mirror the Customers tab's pattern (sales/page.tsx): no
@@ -371,11 +380,11 @@ export function ProductServiceManagerPanel({
             )}
             <button onClick={() => setEditing(s)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
             {s.is_active ? (
-              <button onClick={() => setActive(s, false)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
+              <button disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
             ) : (
-              <button onClick={() => setActive(s, true)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+              <button disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
             )}
-            <button onClick={() => deleteItem(s)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
+            <button disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
           </div>
         )}
       />

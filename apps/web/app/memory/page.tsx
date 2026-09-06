@@ -153,7 +153,7 @@ function TriggersTab() {
     <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
       <AlertTriangle size={40} className="text-red-400" />
       <p className="font-medium text-red-600">{loadError}</p>
-      <button onClick={load} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Retry</button>
+      <button onClick={load} disabled={loading} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-40">Retry</button>
     </div>
   );
 
@@ -274,7 +274,7 @@ function ProfilesTab() {
     <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
       <AlertTriangle size={40} className="text-red-400" />
       <p className="font-medium text-red-600">{loadError}</p>
-      <button onClick={load} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Retry</button>
+      <button onClick={load} disabled={loading} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-40">Retry</button>
     </div>
   );
 
@@ -410,7 +410,7 @@ function AnomaliesTab() {
     <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
       <AlertTriangle size={40} className="text-red-400" />
       <p className="font-medium text-red-600">{loadError}</p>
-      <button onClick={load} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Retry</button>
+      <button onClick={load} disabled={loading} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-40">Retry</button>
     </div>
   );
 

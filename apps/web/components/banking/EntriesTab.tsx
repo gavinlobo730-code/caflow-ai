@@ -159,6 +159,10 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
   const [bookBusy, setBookBusy] = useState(false);
   const [rulePrompt, setRulePrompt] = useState<{ pattern: string; accountId: string } | null>(null);
   const [ruleSaving, setRuleSaving] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = bookBusy || ruleSaving;
   const busyRef = useRef(false);
 
   const accountName = useCallback((id: string | null | undefined) => {
@@ -712,7 +716,7 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
             <input value={rulePrompt.pattern} disabled={ruleSaving}
               onChange={(e) => setRulePrompt((r) => (r ? { ...r, pattern: e.target.value } : r))}
               className="px-2 py-1 text-xs font-mono border border-[#C7D2FE] rounded bg-white min-w-[16rem] flex-1" />
-            <button onClick={createRuleFromPrompt} disabled={ruleSaving} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</button>
+            <button onClick={createRuleFromPrompt} disabled={actionInFlight} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</button>
             <button onClick={() => setRulePrompt(null)} disabled={ruleSaving} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-white">Not now</button>
           </div>
         </div>
@@ -756,7 +760,7 @@ export function EntriesTab({ clientId, accounts }: { clientId: string; accounts:
             <p className="text-[10px] text-[#94A3B8]">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
-              <button onClick={applyBookUnder} disabled={bookBusy || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
+              <button onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
             </div>
           </div>
         </div>

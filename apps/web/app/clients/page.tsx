@@ -160,6 +160,10 @@ export default function ClientsPage() {
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, clients.map((c) => c.id))); }, [clients]);
   const [bulkBusy, setBulkBusy]   = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = actionBusy || bulkBusy;
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
@@ -582,7 +586,7 @@ export default function ClientsPage() {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               onClick={bulkArchive}
-              disabled={bulkBusy}
+              disabled={actionInFlight}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Archive size={12} />
@@ -777,7 +781,7 @@ export default function ClientsPage() {
               </button>
               <button
                 onClick={handleArchive}
-                disabled={actionBusy}
+                disabled={actionInFlight}
                 className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
               >
                 {actionBusy ? "Archiving…" : "Archive"}
@@ -811,7 +815,7 @@ export default function ClientsPage() {
               </button>
               <button
                 onClick={handleRestore}
-                disabled={actionBusy}
+                disabled={actionInFlight}
                 className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
               >
                 {actionBusy ? "Restoring…" : "Restore"}
@@ -896,7 +900,7 @@ export default function ClientsPage() {
               {!deleteBlockers && (
                 <button
                   onClick={handleDelete}
-                  disabled={actionBusy || deleteConfirmName !== deleteTarget.client_name}
+                  disabled={actionInFlight || deleteConfirmName !== deleteTarget.client_name}
                   className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40"
                 >
                   {actionBusy ? "Deleting…" : "Delete Permanently"}

@@ -62,6 +62,13 @@ export default function FirmHsnLibraryPage() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = bulkBusy || rowBusy;
 
   function showToast(msg: string, kind: "success" | "error") {
     setToast({ msg, kind });
@@ -112,6 +119,8 @@ export default function FirmHsnLibraryPage() {
   }
 
   async function retire(row: FirmHsnLibraryRow) {
+    setRowBusy(true);
+    try {
     try {
       const res = (await api.firmHsnLibrary.retire(row.id)) as ApiResp<unknown>;
       if (!res.success) throw new Error(res.error ?? "Could not retire this code.");
@@ -120,9 +129,12 @@ export default function FirmHsnLibraryPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not retire this code.", "error");
     }
+  } finally { setRowBusy(false); }
   }
 
   async function restore(row: FirmHsnLibraryRow) {
+    setRowBusy(true);
+    try {
     try {
       const res = (await api.firmHsnLibrary.update(row.id, { is_active: true })) as ApiResp<unknown>;
       if (!res.success) throw new Error(res.error ?? "Could not restore this code.");
@@ -131,12 +143,15 @@ export default function FirmHsnLibraryPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not restore this code.", "error");
     }
+  } finally { setRowBusy(false); }
   }
 
   /** Permanent delete — blocked server-side (with a specific reason) if the
    *  code is still used anywhere. Distinct from retire(), which is always
    *  allowed and just hides the code from the active picker. */
   async function purgeSingle(row: FirmHsnLibraryRow) {
+    setRowBusy(true);
+    try {
     const ok = await confirmDialog({
       message: `Permanently delete ${row.hsn_code} — ${row.description}? This cannot be undone.`,
       danger: true,
@@ -150,6 +165,7 @@ export default function FirmHsnLibraryPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not delete this code.", "error");
     }
+  } finally { setRowBusy(false); }
   }
 
   async function bulkDelete() {
@@ -317,7 +333,7 @@ export default function FirmHsnLibraryPage() {
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <button
                 onClick={bulkDelete}
-                disabled={bulkBusy}
+                disabled={actionInFlight}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={13} /> {bulkBusy ? "Deleting…" : "Delete"}
@@ -398,11 +414,11 @@ export default function FirmHsnLibraryPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button onClick={() => setEditing(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
                             {active ? (
-                              <button onClick={() => retire(r)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Retire"><Archive size={14} /></button>
+                              <button disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Retire"><Archive size={14} /></button>
                             ) : (
-                              <button onClick={() => restore(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+                              <button disabled={actionInFlight} onClick={() => restore(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
                             )}
-                            <button onClick={() => purgeSingle(r)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
+                            <button disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>

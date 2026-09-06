@@ -399,6 +399,10 @@ export default function OnboardingPage() {
   const [reauthOtp, setReauthOtp] = useState("");
   const [reauthError, setReauthError] = useState<string | null>(null);
   const [reauthSending, setReauthSending] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = reauthSending || saving;
 
   async function savePassword() {
     setError(null);
@@ -697,7 +701,7 @@ export default function OnboardingPage() {
                     <button
                       type="button"
                       onClick={resendReauthCode}
-                      disabled={reauthSending}
+                      disabled={actionInFlight}
                       className="text-sm text-blue-700 hover:text-blue-900 hover:underline disabled:opacity-50"
                     >
                       Resend code
@@ -820,7 +824,7 @@ export default function OnboardingPage() {
               </button>
               <button
                 onClick={saveFirmProfile}
-                disabled={saving}
+                disabled={actionInFlight}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {saving ? "Setting up your workspace…" : "Continue"}

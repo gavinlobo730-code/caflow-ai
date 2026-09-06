@@ -110,6 +110,10 @@ export default function RelationshipsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [detectLoading, setDetectLoading] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = detectLoading || saving;
   const [detectToast, setDetectToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -227,7 +231,7 @@ export default function RelationshipsPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleDetectMatches}
-            disabled={detectLoading}
+            disabled={actionInFlight}
             className="text-sm text-[#182350] border border-[#182350]/30 px-3 py-1.5 rounded-md hover:bg-[#AFD2FA]/20 disabled:opacity-50"
           >
             {detectLoading ? "Detecting…" : "Detect Matches"}
@@ -361,7 +365,7 @@ export default function RelationshipsPage() {
               </button>
               <button
                 onClick={handleAddEntity}
-                disabled={saving || !form.full_name.trim()}
+                disabled={actionInFlight || !form.full_name.trim()}
                 className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {saving ? "Adding…" : "Add Entity"}

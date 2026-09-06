@@ -136,6 +136,10 @@ export default function ClientHealthPage() {
   const [overrideModal, setOverrideModal] = useState(false);
   const [overrideForm, setOverrideForm] = useState(EMPTY_OVERRIDE);
   const [savingOverride, setSavingOverride] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = recalculating || savingOverride;
 
   // Plain filtered reads — routed directly to Supabase (RLS: health_scores,
   // health_score_history, health_overrides, health_alerts all scope on
@@ -280,7 +284,7 @@ export default function ClientHealthPage() {
             <p className="text-sm text-gray-500 mb-4">No health score calculated yet</p>
             <button
               onClick={handleRecalculate}
-              disabled={recalculating}
+              disabled={actionInFlight}
               className="inline-flex items-center gap-2 text-sm bg-[#182350] text-white px-4 py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
             >
               <RefreshCw size={14} className={recalculating ? "animate-spin" : ""} />
@@ -298,7 +302,7 @@ export default function ClientHealthPage() {
         <h1 className="text-base font-semibold text-[#182350]">Client Health</h1>
         <button
           onClick={handleRecalculate}
-          disabled={recalculating}
+          disabled={actionInFlight}
           className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50"
         >
           <RefreshCw size={12} className={recalculating ? "animate-spin" : ""} />
@@ -513,7 +517,7 @@ export default function ClientHealthPage() {
               <button onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleAddOverride}
-                disabled={savingOverride || !overrideForm.reason.trim() || !overrideForm.override_score}
+                disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
                 className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {savingOverride ? "Saving…" : "Add Override"}

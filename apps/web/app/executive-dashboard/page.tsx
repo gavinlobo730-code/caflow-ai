@@ -147,8 +147,13 @@ export default function ExecutiveDashboardPage() {
   const [data, setData] = useState<ExecutiveDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
 
   const load = async () => {
+    setRowBusy(true);
+    try {
     setLoading(true);
     setError(null);
     try {
@@ -159,6 +164,7 @@ export default function ExecutiveDashboardPage() {
     } finally {
       setLoading(false);
     }
+  } finally { setRowBusy(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -180,7 +186,7 @@ export default function ExecutiveDashboardPage() {
         <div className="text-center">
           <AlertTriangle size={40} className="mx-auto text-[#CBD5E1] mb-3" />
           <p className="text-[#64748B]">{error || "No data available"}</p>
-          <button onClick={load} className="mt-4 text-sm text-[#182350] underline">Retry</button>
+          <button disabled={rowBusy} onClick={load} className="mt-4 text-sm text-[#182350] underline">Retry</button>
         </div>
       </div>
     );

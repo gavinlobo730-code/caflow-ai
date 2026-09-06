@@ -97,6 +97,10 @@ export default function ClientLifecyclePage() {
     financial_year: "", service_type: "", renewal_date: "", value_paise: "", notes: "",
   });
   const [savingRenewal, setSavingRenewal] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = creatingWorkflow || savingRenewal;
 
   const loadAll = useCallback(async () => {
     if (!clientId) return;
@@ -224,7 +228,7 @@ export default function ClientLifecyclePage() {
         </div>
         <button
           onClick={handleCreateWorkflow}
-          disabled={creatingWorkflow}
+          disabled={actionInFlight}
           className="flex items-center gap-1.5 text-xs bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
         >
           <Plus size={12} /> New Onboarding
@@ -245,7 +249,7 @@ export default function ClientLifecyclePage() {
           <Card className="bg-white border border-gray-200">
             <CardContent className="py-10 text-center">
               <p className="text-sm text-gray-500">No onboarding workflows yet</p>
-              <button
+              <button disabled={actionInFlight}
                 onClick={handleCreateWorkflow}
                 className="mt-3 text-xs text-[#182350] hover:text-[#0D1635] underline"
               >
@@ -413,7 +417,7 @@ export default function ClientLifecyclePage() {
               <button onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleSaveRenewal}
-                disabled={savingRenewal || !renewalForm.service_type || !renewalForm.financial_year}
+                disabled={actionInFlight || !renewalForm.service_type || !renewalForm.financial_year}
                 className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {savingRenewal ? "Saving…" : "Save"}

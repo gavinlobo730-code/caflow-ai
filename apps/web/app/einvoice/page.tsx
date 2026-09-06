@@ -59,6 +59,10 @@ export default function EInvoicePage() {
   const [ackNo, setAckNo] = useState("");
   const [ackDate, setAckDate] = useState("");
   const [savingIRN, setSavingIRN] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = creating || loading || savingIRN;
   const [irnError, setIrnError] = useState<string | null>(null);
 
   async function load(cid: string) {
@@ -176,7 +180,7 @@ export default function EInvoicePage() {
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
-            <button onClick={handleCreate} disabled={creating || !invNo || !invDate || !clientId}
+            <button onClick={handleCreate} disabled={actionInFlight || !invNo || !invDate || !clientId}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
             </button>
@@ -189,7 +193,7 @@ export default function EInvoicePage() {
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 text-center py-10 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button disabled={actionInFlight} onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -241,7 +245,7 @@ export default function EInvoicePage() {
           {irnError && <p className="text-xs text-red-600">{irnError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowIRN(null)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
-            <button onClick={() => handleRecordIRN(showIRN)} disabled={savingIRN || !irn || !ackNo}
+            <button onClick={() => handleRecordIRN(showIRN)} disabled={actionInFlight || !irn || !ackNo}
               className="text-xs px-3 py-1.5 bg-green-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {savingIRN && <Loader2 size={10} className="animate-spin" />} Record IRN
             </button>

@@ -31,6 +31,9 @@ function KnowledgeInner() {
   const [versions, setVersions] = useState<Version[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ scope: "firm", title: "", content: "", department: "", tags: "" });
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
 
   const scope = params.get("scope") ?? undefined;
 
@@ -48,6 +51,8 @@ function KnowledgeInner() {
   useEffect(() => { load(); }, [load]);
 
   async function open(id: string) {
+    setRowBusy(true);
+    try {
     if (expanded === id) { setExpanded(null); return; }
     setExpanded(id);
     try {
@@ -56,6 +61,7 @@ function KnowledgeInner() {
       const v = await api.knowledge.listVersions(id) as ApiResp<Version[]>;
       setVersions(v.data ?? []);
     } catch { setContent(""); setVersions([]); }
+  } finally { setRowBusy(false); }
   }
 
   async function createArticle(e: React.FormEvent) {
@@ -71,7 +77,10 @@ function KnowledgeInner() {
   }
 
   async function restore(id: string, version: number) {
+    setRowBusy(true);
+    try {
     try { await api.knowledge.restoreVersion(id, version); await open(id); await open(id); } catch { /* backend enforces */ }
+  } finally { setRowBusy(false); }
   }
 
   return (
@@ -118,7 +127,7 @@ function KnowledgeInner() {
           {articles.length === 0 && <p className="text-[12px] text-gray-400">No articles found.</p>}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl">
-              <button onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
+              <button disabled={rowBusy} onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div>
                   <p className="text-[13px] font-medium text-[#182350]">{a.title}</p>
                   <p className="text-[11px] text-gray-400 mt-0.5">
@@ -137,7 +146,7 @@ function KnowledgeInner() {
                       <li key={v.version} className="flex items-center justify-between text-[12px] text-gray-600">
                         <span>v{v.version}{v.changed_at ? ` · ${v.changed_at.slice(0, 10)}` : ""}</span>
                         {canAuthor && v.version !== a.current_version && (
-                          <button onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</button>
+                          <button disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</button>
                         )}
                       </li>
                     ))}

@@ -79,6 +79,10 @@ export default function ClientRelationshipsPage() {
   const [roleForm, setRoleForm] = useState({ entity_id: "", role_type: "Director", ownership_percent: "" });
   const [savingRole, setSavingRole] = useState(false);
   const [detectLoading, setDetectLoading] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = detectLoading || savingRole;
 
   const loadAll = useCallback(async () => {
     if (!clientId) return;
@@ -172,7 +176,7 @@ export default function ClientRelationshipsPage() {
         <div className="flex gap-2">
           <button
             onClick={handleDetectMatches}
-            disabled={detectLoading}
+            disabled={actionInFlight}
             className="flex items-center gap-1 text-xs text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded hover:bg-amber-50 disabled:opacity-50"
           >
             <Network size={12} /> Detect Matches
@@ -334,7 +338,7 @@ export default function ClientRelationshipsPage() {
               <button onClick={() => setAddRoleModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleAddRole}
-                disabled={savingRole || !roleForm.entity_id}
+                disabled={actionInFlight || !roleForm.entity_id}
                 className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {savingRole ? "Linking…" : "Link Entity"}

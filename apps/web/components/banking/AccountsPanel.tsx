@@ -40,6 +40,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   const [stmtTxns, setStmtTxns] = useState<BankTransaction[]>([]);
   const [txnsLoading, setTxnsLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
 
   // Loads BOTH the imported statements and the client's bank accounts — the
   // account list drives the import + reconciliation account pickers.
@@ -72,6 +75,8 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   useEffect(() => { loadStatements(); }, [loadStatements]);
 
   async function deactivateAccount(a: BankAccount) {
+    setRowBusy(true);
+    try {
     if (!confirm(`Deactivate ${a.bank_name} (····${a.account_no.slice(-4)})? Existing statements and reconciliations keep it — it just won't be selectable for new imports. You can reactivate it later by editing it.`)) return;
     try {
       const res = await api.banking.updateBankAccount(a.id, { is_active: false }) as { success: boolean; error: string | null };
@@ -79,18 +84,24 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       setMsg({ type: "ok", text: "Bank account deactivated." });
       loadStatements(); onChanged?.();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not deactivate the account." }); }
+  } finally { setRowBusy(false); }
   }
 
   async function reactivateAccount(a: BankAccount) {
+    setRowBusy(true);
+    try {
     try {
       const res = await api.banking.updateBankAccount(a.id, { is_active: true }) as { success: boolean; error: string | null };
       if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not reactivate the account." }); return; }
       setMsg({ type: "ok", text: `${a.bank_name} reactivated.` });
       loadStatements(); onChanged?.();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not reactivate the account." }); }
+  } finally { setRowBusy(false); }
   }
 
   async function deleteAccount(a: BankAccount) {
+    setRowBusy(true);
+    try {
     if (!confirm(`Permanently delete ${a.bank_name} (····${a.account_no.slice(-4)})?\n\n`
       + `This account has no statements, no reconciliations and nothing posted to its `
       + `ledger, so there is no history to keep. Its ledger account goes with it if `
@@ -101,6 +112,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       setMsg({ type: "ok", text: `${a.bank_name} deleted.` });
       loadStatements(); onChanged?.();
     } catch (e) { setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not delete the account." }); }
+  } finally { setRowBusy(false); }
   }
 
   const activeAccounts = accounts.filter((a) => a.is_active);
@@ -172,14 +184,14 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => setAccountModal(a)} className="text-[#4338CA] hover:text-[#3730A3] inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
                     {a.is_active
-                      ? <button onClick={() => deactivateAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Deactivate</button>
-                      : <button onClick={() => reactivateAccount(a)} className="ml-3 text-[#059669] hover:text-[#047857]">Reactivate</button>}
+                      ? <button disabled={rowBusy} onClick={() => deactivateAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Deactivate</button>
+                      : <button disabled={rowBusy} onClick={() => reactivateAccount(a)} className="ml-3 text-[#059669] hover:text-[#047857]">Reactivate</button>}
                     {/* Delete is offered only for an account with no footprint.
                         When it is blocked the button stays, disabled, carrying the
                         reason — "why can't I delete this?" is the question a
                         missing button leaves unanswered. */}
                     {deletability[a.id]?.deletable ? (
-                      <button onClick={() => deleteAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Delete</button>
+                      <button disabled={rowBusy} onClick={() => deleteAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Delete</button>
                     ) : deletability[a.id] ? (
                       <span className="ml-3 text-[#CBD5E1] cursor-not-allowed"
                             title={deletability[a.id].reason

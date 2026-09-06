@@ -56,6 +56,13 @@ export default function TreatyRatesPage() {
   const [noArticle, setNoArticle] = useState(false);
   const [articleRef, setArticleRef] = useState("");
   const [notes, setNotes] = useState("");
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = rowBusy || saving;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +123,8 @@ export default function TreatyRatesPage() {
   }
 
   async function remove(row: TreatyRateRow) {
+    setRowBusy(true);
+    try {
     const ok = await confirmDialog({
       title: "Remove this reading?",
       message: `${row.country_code} · ${NATURE_LABELS[row.nature] ?? row.nature}. Bills already booked keep what they withheld — a deduction records what was true at the time, not what this table says today.`,
@@ -129,6 +138,7 @@ export default function TreatyRatesPage() {
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not remove." });
     }
+  } finally { setRowBusy(false); }
   }
 
   return (
@@ -214,7 +224,7 @@ export default function TreatyRatesPage() {
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-              <button onClick={save} disabled={saving || !country || !nature} className="text-xs px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-40">
+              <button onClick={save} disabled={actionInFlight || !country || !nature} className="text-xs px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-40">
                 {saving ? "Saving…" : "Save reading"}
               </button>
             </div>
@@ -256,7 +266,7 @@ export default function TreatyRatesPage() {
                     <td className="px-4 py-2 text-xs text-[#64748B]">{r.article_ref ?? "—"}</td>
                     <td className="px-4 py-2 text-xs text-[#94A3B8]">{r.verified_on ?? "—"}</td>
                     <td className="px-4 py-2 text-right">
-                      <button onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
+                      <button disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
                         className="text-[#94A3B8] hover:text-red-600"><Trash2 size={14} /></button>
                     </td>
                   </tr>

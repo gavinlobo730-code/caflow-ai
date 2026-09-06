@@ -49,6 +49,13 @@ export default function PlatformAdminPage() {
   const [purgeName, setPurgeName] = useState("");
   const [purgeBusy, setPurgeBusy] = useState(false);
   const [purgeErr, setPurgeErr] = useState("");
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = purgeBusy || rowBusy;
 
   const cleanErr = (e: unknown, fallback: string) =>
     e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : fallback;
@@ -197,8 +204,11 @@ export default function PlatformAdminPage() {
     await act(() => api.platform.softDelete(f.id), `Deleted ${f.name}`);
   }
   async function view(f: FirmRow) {
+    setRowBusy(true);
+    try {
     const u = await api.platform.firmUsers(f.id);
     setDetail({ firm: f, users: u.data });
+  } finally { setRowBusy(false); }
   }
 
   function openPurge(f: FirmRow) {
@@ -320,7 +330,7 @@ export default function PlatformAdminPage() {
           emptyTitle="No firms yet"
           rowActions={(f) => (
             <div className="flex items-center justify-end gap-3 flex-wrap text-xs">
-              <button onClick={() => view(f)} className="text-blue-600 hover:underline">View</button>
+              <button disabled={actionInFlight} onClick={() => view(f)} className="text-blue-600 hover:underline">View</button>
               {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-amber-700 hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
               {f.status === "suspended" && <button onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</button>}
               {f.status !== "deleted" && <button onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</button>}
@@ -391,7 +401,7 @@ export default function PlatformAdminPage() {
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#F1F5F9]">
               <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-[#64748B] px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
               <button onClick={confirmPurge}
-                disabled={purgeBusy || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
+                disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
                 className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
                 {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
               </button>

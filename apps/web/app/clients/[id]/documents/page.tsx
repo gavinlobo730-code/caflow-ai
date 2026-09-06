@@ -64,9 +64,18 @@ export default function DocumentsPage() {
   const [versionPromptDoc, setVersionPromptDoc] = useState<ClientDocument | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState<string | null>(null);
   const [versionHistory, setVersionHistory] = useState<ClientDocument[]>([]);
+  // This row's request is in flight. These handlers had no loading state at
+  // all, so the button was never disabled and a second click sent it again.
+  const [rowBusy, setRowBusy] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = rowBusy || uploading;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadDocuments() {
+    setRowBusy(true);
+    try {
     if (!clientId) return;
     setLoading(true);
     try {
@@ -85,6 +94,7 @@ export default function DocumentsPage() {
     } finally {
       setLoading(false);
     }
+  } finally { setRowBusy(false); }
   }
 
   useEffect(() => {
@@ -163,9 +173,12 @@ export default function DocumentsPage() {
   }
 
   async function handleDownloadDocument(doc: ClientDocument) {
+    setRowBusy(true);
+    try {
     const supabase = getSupabaseClient();
     const { data } = await supabase.storage.from("Documents").createSignedUrl(doc.file_path, 60);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+  } finally { setRowBusy(false); }
   }
 
   async function handleDeleteDocument(doc: ClientDocument) {
@@ -221,7 +234,7 @@ export default function DocumentsPage() {
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button disabled={actionInFlight} onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
         </div>
       ) : documents.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-2">
@@ -270,7 +283,7 @@ export default function DocumentsPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <button
+                          <button disabled={actionInFlight}
                             onClick={() => handleDownloadDocument(doc)}
                             className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
                           >
@@ -350,7 +363,7 @@ export default function DocumentsPage() {
               </button>
               <button
                 onClick={() => handleUploadDocument()}
-                disabled={uploading || !uploadFile || !uploadLabel.trim()}
+                disabled={actionInFlight || !uploadFile || !uploadLabel.trim()}
                 className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
               >
                 {uploading ? "Uploading…" : "Upload"}
