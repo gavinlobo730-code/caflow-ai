@@ -3,13 +3,13 @@
 //
 // WHAT WAS WRONG
 //
-//   Production, 2026-09-05: both Partners hold a VERIFIED TOTP factor enrolled
-//   2026-08-15, and every session created since is aal1 with a single `password`
-//   AMR claim. Not one `totp` after enrolment day — while 162 browser writes
-//   reached audit_log on 3 September from those sessions. MFA was enrolled and
-//   never asked for.
+//   ⚠️ The production evidence this used to cite was misread and is withdrawn —
+//   those aal1 sessions were a CI smoke script's password grants, and every
+//   browser session since enrolment is aal2. See mfaAssurance.ts and
+//   docs/compliance/06-data-protection-dpdp.md §5f.
 //
-//   The old resolution failed open in three places at once: `catch { return
+//   What remains, and is what these tests are actually about:
+//   the old resolution failed open in three places at once: `catch { return
 //   false }`, a null `data` treated the same way, and a caller that rendered the
 //   app while the answer was still unresolved. It also asked only
 //   `getAuthenticatorAssuranceLevel()`, whose `nextLevel` is derived from the
