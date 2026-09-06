@@ -477,7 +477,12 @@ and why that does not arise under upload.
   What is NOT settled is whether a purpose could be ADDED — that is a person's
   email to Sahamati/ReBIT, drafted in §2a, and the proposal channel runs through
   FIU membership §0 says we cannot hold. #106–#107 stay open pending that one
-  question. **Gate 0b (#103) is measured too, and points the
+  question. **The whole line is now CLOSED — §7**: route 3 has no counterparty, so
+  #107's contract and pilot have no subject, and §7 carries the four gate
+  questions and their answers in ONE table rather than eight cross-references.
+  Verified before closing: no AA code, no config, no migration anywhere, and the
+  one compliance marker (`domain/banking/normalizer.py`, the AA seam) rewritten
+  so it states the decision instead of reading as pre-work. **Gate 0b (#103) is measured too, and points the
   same way**: the live book is 7 clients and 2 bank accounts — too small for an
   honest percentage, and one was not invented — but the composition needs no
   sample size. **Zero individual clients** (4 Private Limited, 1 LLP, 1

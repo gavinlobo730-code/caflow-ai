@@ -7,7 +7,7 @@ Confidence grades and the sourcing caveat: see `00-how-to-read-this.md`.
 
 ## 0. The finding that changes the existing plan — VERIFIED
 
-`CLAUDE.md:404` instructs, as step one of this work:
+`CLAUDE.md` → **"Bank data — the Account Aggregator is the only way in"** instructs, as step one of this work:
 
 > **Register as an FIU** (Financial Information User). … Go via a TSP (Setu,
 > Perfios, Finbox, Digio) rather than building FIU plumbing directly.
@@ -254,7 +254,7 @@ question is answered before the legal one.
 | | |
 |---|---|
 | ~~#106~~ | ~~The consent flow — approval happens **at the AA**, callback-driven, annual re-consent~~ **SHAPE WRITTEN, NOTHING BUILT — §6.** Its finding is that the "CA requests → client acts" shape is NOT new to this app (`engagement_sign_public.py` has it), so the design is *follow that*, and the one row that does not transfer is the approval itself. Six refusals recorded, incl. never render the approval and never declare 102 |
-| **#107** | Contract and pilot, shaped by whichever route #104 chose |
+| ~~#107~~ | ~~Contract and pilot, shaped by whichever route #104 chose~~ **CLOSED — §7.** Route 3 has no counterparty, so there is no contract and nothing to pilot. Answered, not abandoned: §7 carries the whole position in one table and the single condition that would reopen it |
 
 **Stopping is a real outcome.** If #102 finds no honest purpose, or #103 finds the
 coverage is not there, the answer is to close #104–#107 and keep statement upload.
@@ -262,9 +262,10 @@ Per §3 that is the base case anyway, not a fallback.
 
 > **That is where this now stands.** Both gate-0 questions came back against, and
 > #104 has chosen route 3 on that basis (§0a) — provisionally, spending nothing,
-> reversing nothing. **#107 is not started and should not be**: it specifies work
-> under a route that has not been taken. **#105 and #106 turned out not to be
-> quite like that.** #106's build is not started either — but its SHAPE is now
+> reversing nothing. **#107 is now CLOSED rather than pending — §7**: route 3 has
+> no counterparty, so there is no contract and nothing to pilot, and §7 collects
+> the whole position into one table so nobody has to reconstruct it from eight
+> cross-references. **#105 and #106 turned out not to be quite like that.** #106's build is not started either — but its SHAPE is now
 > written (§6), because the one thing that would be expensive to get wrong later
 > costs nothing to record now, and recording it also corrected a claim this
 > repository was repeating about its own code. **#105 was different again.** Its
@@ -876,7 +877,7 @@ come first:
 | 2b | **Sahamati's per-bank per-account-type matrix and the FIP↔AA matrix** — blocked with everything else, so the AA counts and the per-account-type coverage remain `[S]` | **#130** (browser step) |
 | 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
 | 4 | Whether the reciprocity duty binds an FIU holding no financial information | **#104** (gate 1) |
-| 5 | The complete FI-type enumeration — **still open, and §6 does not need it**: the shape is specified without the FI-type list, which belongs to a partner's integration | **#107** (gate 2) |
+| 5 | The complete FI-type enumeration | **Moot** — it belongs to a partner's integration, and §7 closes that line. Neither §6's shape nor anything built needs it |
 
 Note the swap: items 1 and 2 were listed last in the first pass and are now
 first, because they cost nothing and either can close the whole line of work.
@@ -1003,3 +1004,90 @@ Nothing in the product. Two things in the record: the "no such shape exists in
 the app" claim is corrected wherever it appears, and the shape lesson is written
 down so that if gate 1 ever reopens, the first implementation does not put an
 "I agree" button on the wrong page.
+
+## 7. #107 — the line is closed, and the one thing that would reopen it
+
+### The task answers itself
+
+#107 is *"contract and pilot, under whichever route #104 chose"*. #104 chose
+**route 3 — do not consume via AA**. Under route 3 there is no counterparty, so
+**there is no contract, and there is nothing to pilot.**
+
+That makes #107 **answered**, not *not started*. The distinction matters for the
+record: leaving it "pending" for the rest of the project's life would imply
+somebody still owes work, and marking it "cancelled" would throw away the reason.
+It is closed, with the reason attached.
+
+**Closing the task does not upgrade the decision.** §0a chose route 3
+*provisionally*, with no counsel engaged and nothing spent, and that is still its
+status. What is closed is the piece of work that would only have made sense under
+routes 1 and 2.
+
+### The final position, in one place
+
+Four questions were asked across five tasks and eight sections. This is all of it:
+
+| gate | question | answer | where |
+|---|---|---|---|
+| **0a** | Is there a lawful PURPOSE for a CA keeping a client's books? | **No.** The taxonomy names the licensee class each purpose serves; none is an agent keeping the customer's own books. Whether one could be ADDED is the only part still open | §2, §2b · #102, #130 |
+| **0b** | What share of THIS firm's clients could AA reach? | **No honest percentage at n = 7** — but zero individual clients, every account Current, one bank a co-operative. The composition is the worst case and needs no sample size | §3a · #103 |
+| **1** | Are we eligible to be an FIU, and by which route? | **Not eligible directly**; eligibility is derivative of a financial-sector registration. Three routes existed; **route 3 chosen**, because it is the only one needing no paid counsel and it forecloses nothing | §0, §0a · #104 |
+| **1** | What DPDP duties follow from holding this data? | **Live TODAY under upload**, independent of AA — and the check found bank data missing from the retention position entirely. Now classified and wired | `06` §5e · #105 |
+| **2** | What shape is the consent flow? | **Written, not built.** The "CA requests → client acts" shape already exists in `engagement_sign_public.py`; the one step that does not transfer is the approval | §6 · #106 |
+| **2** | Contract and pilot | **This section.** No counterparty under route 3 | §7 · #107 |
+
+### What was checked before closing, rather than asserted
+
+A decision to stop is only safe if nothing is quietly half-built against it.
+Verified 2026-09-06:
+
+- **No AA code anywhere.** No client, no consent model, no callback route, no
+  table, no migration, no dependency.
+- **No configuration.** Nothing AA-shaped in `render.yaml` or `core/`, so there
+  is no env var that could be flipped on.
+- **One compliance marker**, in `domain/banking/normalizer.py` — the AA seam. It
+  has been rewritten: it dated from 2026-09-04, before the decision, and read as
+  *"findings worth reading before anyone starts an AA feature"*, which is how an
+  answered question turns back into an open one. It now states the decision, puts
+  **purpose first** (it was not even mentioned before, and it is the finding that
+  decided the matter), and names the single reopening condition.
+
+Two stale artefacts surfaced while checking, and both are fixed:
+
+- **`CLAUDE.md:404` was cited four times** — in `05` §0, `README`, and `00`
+  twice — and by now points at the Schedule III ageing paragraph, nothing to do
+  with AA. All four now name the **section heading** instead. A line number into
+  a living file is a pointer that rots silently, and this one had.
+- **`00`'s "needs a legal opinion before CLAUDE.md is edited"** was overtaken:
+  CLAUDE.md has been edited repeatedly since, and #104 decided without counsel on
+  a stated asymmetry. It now records that the line closed on **purpose-fit, not
+  eligibility** — which is the part a reader coming to `00` first would otherwise
+  get backwards, because eligibility is the finding people reach first.
+
+### The one thing that would reopen it
+
+Not code, and not a change of mind:
+
+> **A purpose code that covers an agent maintaining the customer's own books
+> either exists, or can be added.**
+
+That is one question to Sahamati and ReBIT, drafted in §2a and shortened by §2b
+to the part they alone can answer. It needs a person to send it. If the answer is
+yes, gate 1 reopens, the counsel brief in §0a is already written, and #107 comes
+back — as a *new* piece of work priced against whichever route the opinion then
+supports.
+
+If the answer is no, or nobody ever asks, nothing further happens and nothing is
+lost.
+
+### What stays true regardless
+
+- **Statement upload is the base case, not a fallback.** §3 argued this before
+  the gates were answered, and every gate since has agreed with it.
+- **The DPDP duties over bank data are live now** and are built — `06` §5e. They
+  never depended on AA, which is the thing #105 discovered by checking.
+- **§6's shape document survives the closure.** It costs nothing to keep and it
+  exists precisely for the case where somebody picks this up later without
+  reading the rest.
+- **Never screen-scrape net banking.** Unchanged, and unrelated to any of the
+  above — it is not a route that becomes attractive because AA was declined.

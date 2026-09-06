@@ -36,7 +36,7 @@ deliberate attempts to DISPROVE it:
 |---|---|
 | Income-tax Act 2025 renumbered the TDS forms | **Confirmed**, and the SECTIONS moved too — which the first pass missed |
 | The 50% wage rule changes the EPF base | **Confirmed and in force**; a live under-computation below the ceiling |
-| PracticeSync cannot be an FIU | **Confirmed**; `CLAUDE.md:404` step one is not achievable |
+| PracticeSync cannot be an FIU | **Confirmed**; CLAUDE.md's bank-data section, step one, is not achievable |
 | DPDP substantive duties 13 May 2027 | **Confirmed**; one overstatement in this document corrected |
 | Revamped ECR changed the workflow | **Confirmed**; format unchanged, but filing now blocks out of order |
 
@@ -66,7 +66,7 @@ of this from scratch — and so that nobody estimates "GST filing" as a sprint.
 
 ## The one finding that changes an existing plan
 
-`CLAUDE.md:404` currently instructs, as step one of the Account Aggregator work:
+`CLAUDE.md` → **"Bank data — the Account Aggregator is the only way in"** instructed, as step one of the Account Aggregator work:
 
 > **Register as an FIU** (Financial Information User). … Go via a TSP … rather
 > than building FIU plumbing directly.
@@ -78,10 +78,23 @@ FIU licence to apply for and no unregulated-FIU tier; eligibility is derivative
 of a registration you already hold. A TSP cannot confer it, because a TSP is
 itself unregulated and merely builds the FIU module *for* a regulated FIU.
 
-This is `[S]`, consistent across several independent restatements, and it needs
-a legal opinion before CLAUDE.md is edited. See `05-bank-data-and-the-account-aggregator.md`
-and task #123. Task #102 already asks exactly the right question; this is why
-it is the first one.
+This is `[S]`, consistent across several independent restatements. **What
+happened next is worth reading before relying on the paragraph above**, because
+the finding turned out not to be the decisive one.
+
+Eligibility is solvable with money — partner with a regulated FIU, or acquire a
+registration. **Purpose is not**, and purpose sits upstream of it: the consent
+artefact carries a `Purpose`, the FIP validates every fetch against it, and the
+published taxonomy (codes 101–105) names the class of licensee each purpose
+serves — SEBI RIAs, stock brokers, PFRDA Retirement Advisors, lenders, insurers.
+None describes an agent keeping the customer's own books, so a fully licensed
+FIU still could not pull this data for this use.
+
+So the line of work was **closed on purpose-fit, not on eligibility**, and closed
+without the legal opinion this paragraph asked for — because the opinion would
+have priced a route that purpose already forecloses. See
+`05-bank-data-and-the-account-aggregator.md` §§0a, 2, 2b and **§7 (the closure)**,
+and tasks #102, #104, #130. CLAUDE.md has since been edited to match.
 
 ## The shape every section shares
 

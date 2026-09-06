@@ -79,8 +79,9 @@ orphaning.
 ### If you read only three things
 
 1. **`00`** — how much to trust the rest.
-2. **`05` §0** — `CLAUDE.md:404` tells you to register as an FIU, and research
-   says that is not a thing a SaaS company can do.
+2. **`05` §0** — CLAUDE.md's bank-data section tells you to register as an FIU,
+   and research says that is not a thing a SaaS company can do. **`05` §7** is
+   where that line of work ends: route 3, closed.
 3. **`03` §0** — the Income-tax Act 2025 may have renumbered every TDS form the
    product emits, and 25 files carry the old vocabulary.
 
