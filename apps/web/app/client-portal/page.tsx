@@ -157,6 +157,10 @@ export default function ClientPortalPage() {
   const [messagesFailed, setMessagesFailed] = useState(false);
   const [newMessageText, setNewMessageText] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = savingRequest || sendingMessage;
 
   // Dues state
   const [apiDues, setApiDues] = useState<ApiDue[]>([]);
@@ -964,7 +968,7 @@ export default function ClientPortalPage() {
                       <div className="flex justify-end">
                         <button
                           onClick={handleSendMessage}
-                          disabled={!newMessageText.trim() || sendingMessage}
+                          disabled={actionInFlight || !newMessageText.trim()}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                         >
                           <MessageSquare size={12} />
@@ -1030,7 +1034,7 @@ export default function ClientPortalPage() {
               </button>
               <button
                 onClick={handleCreateRequest}
-                disabled={!newRequest.title.trim() || savingRequest}
+                disabled={actionInFlight || !newRequest.title.trim()}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
               >
                 {savingRequest ? "Creating…" : "Create Request"}

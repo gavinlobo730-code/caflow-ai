@@ -114,6 +114,10 @@ export default function TaxComputationPage() {
   const [disallDesc, setDisallDesc] = useState("");
   const [disallAmount, setDisallAmount] = useState("");
   const [savingDisall, setSavingDisall] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = computing || savingDisall;
 
   // Distinguishes "fetch failed" from "nothing recorded yet" — a masked
   // failure previously rendered the whole workspace (snapshots,
@@ -426,7 +430,7 @@ export default function TaxComputationPage() {
               // No year resolved means the server never told us which years it
               // can compute. Posting fy:"" would take the engine's own default
               // and put a figure on screen for a year nobody chose.
-              disabled={computing || !fy}
+              disabled={actionInFlight || !fy}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {computing && <Loader2 size={12} className="animate-spin" />}
@@ -563,7 +567,7 @@ export default function TaxComputationPage() {
                   <button onClick={() => setShowDisallForm(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
                   <button
                     onClick={handleSaveDisallowance}
-                    disabled={savingDisall || !disallDesc || !disallAmount}
+                    disabled={actionInFlight || !disallDesc || !disallAmount}
                     className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1"
                   >
                     {savingDisall && <Loader2 size={10} className="animate-spin" />}

@@ -207,6 +207,10 @@ export default function LoansAndFDPage() {
   });
   const [fdError, setFDError] = useState<string | null>(null);
   const [fdSaving, setFDSaving] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = fdSaving || loanSaving;
 
   // EMI Calculator
   const [calcPrincipal, setCalcPrincipal] = useState("");
@@ -895,7 +899,7 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
               <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <button onClick={handleAddLoan} disabled={loanSaving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
               </button>
             </div>
@@ -992,7 +996,7 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
               <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <button onClick={handleAddFD} disabled={fdSaving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
               </button>
             </div>

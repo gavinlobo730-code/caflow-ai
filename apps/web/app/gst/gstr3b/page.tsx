@@ -84,6 +84,10 @@ export default function GSTR3BPage() {
 
   // CA Approve
   const [approving, setApproving] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = approving || loading;
 
   // Rule 37: reported alongside the return, never folded into it. See the
   // panel below for why the two must stay separate.
@@ -225,7 +229,7 @@ export default function GSTR3BPage() {
         </div>
         <button
           onClick={handleCompute}
-          disabled={!clientId || !yearMonth || loading}
+          disabled={actionInFlight || !clientId || !yearMonth}
           className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Calculator className="w-4 h-4" />
@@ -278,7 +282,7 @@ export default function GSTR3BPage() {
               {(filingStatus === "draft" || filingStatus === "validated") && (
                 <button
                   onClick={handleApprove}
-                  disabled={approving}
+                  disabled={actionInFlight}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   <CheckCircle className="w-4 h-4" />

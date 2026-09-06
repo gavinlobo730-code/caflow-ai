@@ -93,6 +93,10 @@ export default function ITRFilingPage() {
   const [ackNumber, setAckNumber] = useState("");
   const [ackDate, setAckDate] = useState("");
   const [savingAck, setSavingAck] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = creating || savingAck || transitioning;
 
   const load = useCallback(async () => {
     // Clearing loading matters: this returns while the id is still unresolved,
@@ -268,7 +272,7 @@ export default function ITRFilingPage() {
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
-            <button onClick={handleCreate} disabled={creating}
+            <button onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
             </button>
@@ -360,7 +364,7 @@ export default function ITRFilingPage() {
             {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && (
               <button
                 onClick={() => handleTransition(selectedFiling, nextStatus(selectedFiling.status)!)}
-                disabled={transitioning}
+                disabled={actionInFlight}
                 className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-blue-700"
               >
                 {transitioning && <Loader2 size={10} className="animate-spin" />}
@@ -409,7 +413,7 @@ export default function ITRFilingPage() {
                 <button onClick={() => setShowAck(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
                 <button
                   onClick={() => handleRecordAck(selectedFiling)}
-                  disabled={savingAck || !ackNumber || !ackDate}
+                  disabled={actionInFlight || !ackNumber || !ackDate}
                   className="text-xs px-3 py-1.5 bg-green-600 text-white rounded disabled:opacity-50 flex items-center gap-1"
                 >
                   {savingAck && <Loader2 size={10} className="animate-spin" />}

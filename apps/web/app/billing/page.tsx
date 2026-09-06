@@ -333,6 +333,10 @@ export default function BillingPage() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [raisingInvoice, setRaisingInvoice] = useState(false);
   const [runningOverdueCheck, setRunningOverdueCheck] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = raisingInvoice || runningOverdueCheck;
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -658,11 +662,11 @@ export default function BillingPage() {
           <div className="flex items-center justify-between">
             <p className="text-xs text-[#64748B]">GST @ 18% applied on CA services — SAC 998211</p>
             <div className="flex items-center gap-2">
-              <button onClick={handleRunOverdueCheck} disabled={runningOverdueCheck}
+              <button onClick={handleRunOverdueCheck} disabled={actionInFlight}
                 className="flex items-center gap-2 px-4 py-2 border border-[#E2E8F0] text-[#334155] text-sm rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60">
                 <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
               </button>
-              <button onClick={handleRaiseInvoice} disabled={raisingInvoice}
+              <button onClick={handleRaiseInvoice} disabled={actionInFlight}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60">
                 <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
               </button>

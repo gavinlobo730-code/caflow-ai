@@ -403,6 +403,10 @@ export default function IncomeTaxPage() {
   const [filedModal, setFiledModal] = useState<{ entry: ITREntry } | null>(null);
   const [filedForm, setFiledForm] = useState({ arn: "", filed_date: "" });
   const [filedLoading, setFiledLoading] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = addLoading || filedLoading;
   const [filedError, setFiledError] = useState<string | null>(null);
 
   // Bulk Mark as Filed modal (batch reference-entry — see BulkMarkFiledModal above)
@@ -1185,7 +1189,7 @@ export default function IncomeTaxPage() {
               </button>
               <button
                 onClick={handleAddSubmit}
-                disabled={addLoading}
+                disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {addLoading ? "Adding…" : "Add Deadline"}
@@ -1285,7 +1289,7 @@ export default function IncomeTaxPage() {
               </button>
               <button
                 onClick={handleMarkFiled}
-                disabled={filedLoading}
+                disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
                 {filedLoading ? "Saving…" : "Confirm Filing"}

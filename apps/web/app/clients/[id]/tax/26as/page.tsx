@@ -103,6 +103,10 @@ export default function Form26ASPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [reconciling, setReconciling] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = reconciling || uploading;
   const [reconError, setReconError] = useState<string | null>(null);
 
   // Distinguishes "fetch failed" from "nothing uploaded yet" — a masked
@@ -359,7 +363,7 @@ export default function Form26ASPage() {
         {parsedUploads.length > 0 && (
           <button
             onClick={handleReconcile}
-            disabled={reconciling}
+            disabled={actionInFlight}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {reconciling ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -390,7 +394,7 @@ export default function Form26ASPage() {
               className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
             <button
               onClick={handleUploadAndParse}
-              disabled={uploading || !rawText.trim()}
+              disabled={actionInFlight || !rawText.trim()}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1"
             >
               {uploading && <Loader2 size={10} className="animate-spin" />}

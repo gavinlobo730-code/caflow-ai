@@ -200,6 +200,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // One action at a time: every button that starts work waits for whichever
+  // is already running. Guarding each on its own flag alone let two fire at
+  // once, and the second could act on what the first was still changing.
+  const actionInFlight = saving || savingPersonal;
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [errors, setErrors] = useState<Partial<Record<keyof FirmForm, string>>>({});
@@ -426,7 +430,7 @@ export default function SettingsPage() {
         <div className="px-5 py-3 border-t border-gray-50 flex justify-end">
           <button
             onClick={savePersonalProfile}
-            disabled={savingPersonal}
+            disabled={actionInFlight}
             className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {savingPersonal ? "Saving…" : "Save Profile"}
@@ -533,7 +537,7 @@ export default function SettingsPage() {
         <div className="px-5 py-3 border-t border-gray-50 flex justify-end">
           <button
             onClick={handleSave}
-            disabled={saving || loading}
+            disabled={actionInFlight || loading}
             className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Saving…" : "Save Changes"}
