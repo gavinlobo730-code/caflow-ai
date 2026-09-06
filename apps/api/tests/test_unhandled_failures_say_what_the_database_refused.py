@@ -64,10 +64,24 @@ def test_a_database_rule_reaches_the_ca_in_its_own_words():
 
 
 def test_a_duplicate_is_409_not_500():
+    """A named document index now gets its own sentence (see
+    tests/test_duplicate_document_reads_as_a_sentence.py); what this pins is the
+    STATUS, and that the index name never reaches the CA."""
     status, message = unhandled_failure(
         ApiError("23505", 'duplicate key value violates unique constraint '
                           '"uq_purchase_bills_vendor_invoice"'))
     assert status == 409, "a duplicate is a conflict, not a server fault"
+    assert "already been entered for this vendor" in message
+    assert "uq_purchase_bills" not in message and "constraint" not in message
+
+
+def test_an_unnamed_duplicate_still_says_something_true():
+    """Only the listed indexes have one unambiguous meaning; everything else
+    keeps the generic sentence rather than getting a guess."""
+    status, message = unhandled_failure(
+        ApiError("23505", 'duplicate key value violates unique constraint '
+                          '"some_other_thing_key"'))
+    assert status == 409
     assert "already exists" in message
 
 

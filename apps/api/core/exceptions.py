@@ -132,6 +132,13 @@ def document_failure_detail(exc: Exception, *, action: str) -> str:
     if state in _NOT_TRANSIENT:
         return f"Could not {action}. {_NOT_TRANSIENT[state]}"
 
+    document = duplicate_document(exc)
+    if document:
+        # Naming the action here would produce "Could not save the invoice: An
+        # invoice with this number already exists" — true, and two sentences
+        # where one does the work.
+        return document
+
     message = postgres_message(exc)
     # postgres_message falls back to the exception's CLASS NAME when there is no
     # message, which is right for a log line and useless to a CA — "Could not
@@ -167,6 +174,72 @@ _SHAPE = {
     "notnull": "A required value was missing. {message}",
     "unique":  "This record already exists. {message}",
 }
+
+
+#: A duplicate DOCUMENT NUMBER, said the way a CA would say it.
+#:
+#: THESE INDEXES ALREADY EXISTED. Two tabs recording the same invoice twice was
+#: investigated as an open hole and turned out to be closed: every document type
+#: below has carried a UNIQUE index since long before this, in the migrations
+#: AND in production, verified against both. What was NOT closed is what the
+#: refusal SAYS. Postgres answers by naming the index, so a CA whose second tab
+#: lost the race was told
+#:
+#:     This record already exists. duplicate key value violates unique
+#:     constraint "client_sales_invoices_firm_client_invoice_no_live_key"
+#:
+#: which is accurate, complete, and reads as a crash. The guard worked and the
+#: sentence wasted it.
+#:
+#: Keyed by the REAL index names. Adding a second set of indexes to say this
+#: more prettily would have been redundant writes on every document a client
+#: ever raises, for a message.
+_DUPLICATE_DOCUMENT = {
+    "client_sales_invoices_firm_client_invoice_no_live_key":
+        "An invoice with this number already exists for this client. Use a "
+        "different number, or delete the existing invoice first.",
+    "credit_notes_firm_client_credit_note_no_key":
+        "A credit note with this number already exists for this client.",
+    "sales_debit_notes_firm_id_debit_note_no_key":
+        "A debit note with this number already exists.",
+    "receipts_firm_client_receipt_no_key":
+        "A receipt with this number already exists for this client.",
+    "purchase_payments_firm_payment_no_key":
+        "A payment with this number already exists.",
+    # The only one keyed per VENDOR, and correctly: a supplier's number is not
+    # ours, so two vendors may both send "INV-1" and both are honest.
+    "uq_purchase_bills_vendor_invoice":
+        "This bill number has already been entered for this vendor. Check "
+        "whether the bill is already recorded before entering it again.",
+    "debit_notes_firm_client_debit_note_no_key":
+        "A debit note with this number already exists for this client.",
+    # Not a typed-in number, but the same shape of refusal: the recurring
+    # template already produced this occurrence.
+    "uq_client_sales_invoices_recurring":
+        "This recurring invoice has already been raised for that period.",
+    "uq_client_sales_invoices_billing_run":
+        "This billing run has already produced an invoice for that period.",
+}
+
+
+def duplicate_document(exc: Exception) -> "str | None":
+    """The sentence for a repeated document number, or None.
+
+    Reads the INDEX NAME out of the refusal rather than the values, so it says
+    nothing about what was being written — the same reason audit snapshots are
+    redacted (migration 336).
+    """
+    if _sqlstate(exc) != "23505":
+        return None
+    # postgres_message never raises — it falls back to the class name — so no
+    # try/except here. A bare one would also be a silent swallow, which this
+    # repository counts (tests/test_soft_failure_visibility.py) and is right to.
+    args = getattr(exc, "args", None)
+    text = f"{args[0] if args else exc} {postgres_message(exc)}"
+    for index, sentence in _DUPLICATE_DOCUMENT.items():
+        if index in text:
+            return sentence
+    return None
 
 
 def _sayable_message(exc: Exception) -> str:
@@ -233,6 +306,11 @@ def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
         return None
 
     status, shape = _CALLER_FAULT[state]
+    # A repeated document number is the one unique violation a CA can act on
+    # without reading an index name.
+    document = duplicate_document(exc)
+    if document:
+        return status, document
     message = _sayable_message(exc)
     text = _SHAPE[shape].format(message=message).strip()
     return status, text or "The database refused this request."
