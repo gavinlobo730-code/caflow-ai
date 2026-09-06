@@ -89,6 +89,114 @@ into the ecosystem.
 > Management and/or Advisory** — advising on investments, not writing up a
 > ledger. **Read §2 before pricing either route.**
 
+### 0a. Gate 1 route decision (task #104) — ROUTE 3, provisionally, and no counsel is engaged yet
+
+**#104's own precondition was "only after #102 and #103 come back positive".
+Neither did.**
+
+| gate | result |
+|---|---|
+| **#102** | Provisionally **NO** — no purpose appears to cover third-party bookkeeping, and because a purpose is derivative of the FIU's own regulatory permission, that defeats the **partner** route too (§2) |
+| **#103** | The client book is entirely the population AA serves worst — zero individual clients, every account Current, one of two banks a co-operative (§3a) |
+
+So the honest answer to "choose one of the three routes" is available **without
+spending anything**, because of an asymmetry worth naming:
+
+> **Routes 1 and 2 require counsel. Route 3 does not.**
+>
+> Deciding to partner, or to acquire a registration, is a decision to spend —
+> and both are the routes gate 0 argues against. Deciding *not to consume via
+> AA* needs no legal opinion, costs nothing, and is **fully reversible**: it
+> forecloses nothing, because statement upload is already built and already the
+> base case.
+
+**Chosen: route 3 — do not consume via AA — provisionally, pending #130.**
+
+#### The written basis
+
+1. **Purpose forecloses routes 1 and 2, not just route 2.** This is the finding
+   that changed the shape of the decision. Buying a registration was always
+   understood to be expensive; what §2 establishes is that *partnering does not
+   avoid the problem*, because a partner FIU's permitted purposes come from its
+   own licence and bookkeeping is not within an NBFC-lender's or an investment
+   adviser's. Route 1 was the cheap escape hatch and it is not one.
+2. **The registration that looks closest is the wrong one.** SEBI RIA maps onto
+   CT004 *Wealth Management and/or Advisory* — advising on investments. It does
+   not map onto keeping books. Acquiring it would buy a purpose the product does
+   not want, plus duties unrelated to it.
+3. **Coverage does not rescue the business case either.** Even granting
+   eligibility and purpose, §3a found the one well-served AA case absent from
+   this book entirely.
+4. **The downside of choosing route 3 wrongly is small and recoverable.** If
+   #130 comes back positive, nothing has been spent and gate 1 reopens with the
+   brief below already written. The downside of choosing routes 1 or 2 wrongly
+   is a legal engagement, a registration or a partnership contract bought
+   against a purpose that does not exist.
+
+#### What would reverse this
+
+**One thing only: #130 finding that a purpose exists or can be added.** Not a
+vendor's assurance, not a TSP's pitch, and not a larger client book — coverage
+is the second-order question and cannot revive a foreclosed purpose. If #130
+comes back positive, re-open gate 1 and engage counsel with the brief below.
+
+#### The counsel brief — written now, because writing it is free
+
+If gate 1 does reopen, money should be spent **once**, on the right questions.
+This is what to put to counsel; it is not itself legal advice and nothing here
+substitutes for it.
+
+**On eligibility**
+
+1. Confirm that under the RBI (NBFC–AA) Directions 2025 there is **no FIU
+   registration to apply for**, and that FIU status is derivative of an existing
+   registration with RBI / SEBI / IRDAI / PFRDA / DoR.
+2. **The Department of Revenue trap.** DoR appears in the definition because it
+   regulates GSTN *for the specific purpose of GSTN being an FIP*. Confirm this
+   opens no door for tax or accounting software, which is the natural
+   misreading.
+3. **The ICAI trap.** Confirm that ICAI is not a financial sector regulator for
+   this purpose, so a CA firm is not FIU-eligible in its own capacity, and that
+   being the client's accountant confers nothing.
+
+**On purpose — the question that now decides everything**
+
+4. **Can a partner FIU lawfully declare a purpose that serves ITS CLIENT's
+   business rather than its own regulated activity?** This is the crux from §2.
+   If the answer is no, route 1 is closed regardless of any commercial terms,
+   and route 2 is closed unless the registration acquired itself permits
+   bookkeeping — which none of the five regulators appears to license.
+5. Whether purpose limitation is breached by using data obtained under one
+   declared purpose to produce a by-product the client also receives (books, as
+   against the advice the purpose names).
+
+**On the partner route specifically**
+
+6. **The shell-FIU pattern.** Regulators ask whether the regulated entity uses
+   the information for its *own* regulated activity, or whether its FIU status
+   is enabling another business into the ecosystem. Ask where the line is, and
+   what evidence of the partner's own use is expected. Note the supply-side kill
+   switch: **FIPs have barred AAs** over non-compliant downstream journeys — an
+   outcome entirely outside our control.
+
+**On the registration route specifically**
+
+7. **Reciprocity.** RBI's circular of 26-10-2023 requires a regulated entity
+   joining as an FI-U to *also* join as an FIP where it holds financial
+   information. **Does that duty bind an FIU that holds none?** If it does, the
+   NBFC route carries an obligation to publish into the ecosystem that has
+   nothing to do with the product.
+8. What ongoing supervisory obligations the acquired registration brings that
+   are unrelated to bookkeeping, and their annual cost.
+
+**On the decision not to proceed**
+
+9. Confirm that **continuing with statement upload creates no exposure** — that
+   parsing a statement the client supplies is outside the AA perimeter
+   entirely, and that nothing in the framework obliges a firm consuming
+   customer-supplied statements to join it. This is the cheapest question in the
+   brief and the one that protects the status quo.
+
 ### What this means for tasks #102–#107 — REWRITTEN (task #123)
 
 Those six tasks were written on the assumption that registering as an FIU via a
@@ -138,8 +246,8 @@ question is answered before the legal one.
 
 | | |
 |---|---|
-| **#104** | Legal opinion on eligibility, then **choose one of the three routes** |
-| **#105** | DPDP obligations, incl. `DataLife` as a clock separate from consent expiry |
+| ~~#104~~ | ~~Legal opinion on eligibility, then choose one of the three routes~~ **DECIDED — route 3, provisionally, §0a. No counsel engaged: its precondition ("only after #102 and #103 come back positive") was not met, and route 3 is the one route that needs none.** |
+| **#105** | DPDP obligations, incl. `DataLife` as a clock separate from consent expiry — **not started; nothing is being held under AA** |
 
 **Gate 2 — build, only once a route is chosen**
 
@@ -151,6 +259,13 @@ question is answered before the legal one.
 **Stopping is a real outcome.** If #102 finds no honest purpose, or #103 finds the
 coverage is not there, the answer is to close #104–#107 and keep statement upload.
 Per §3 that is the base case anyway, not a fallback.
+
+> **That is where this now stands.** Both gate-0 questions came back against, and
+> #104 has chosen route 3 on that basis (§0a) — provisionally, spending nothing,
+> reversing nothing. **#105–#107 are not started and should not be**: they
+> specify work under a route that has not been taken. The single thing that
+> would reopen gate 1 is **#130** finding that a purpose exists or can be added,
+> and the counsel brief in §0a is written and waiting for that.
 
 ## 1. The ecosystem
 
