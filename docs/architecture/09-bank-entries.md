@@ -21,6 +21,44 @@ Underneath, the engine is better than QBO's — see the 2026-08-02 audit, Part 4
 — and none of that showed. The product spoke QuickBooks over a Tally-grade
 kernel.
 
+## Getting the statement in, and knowing it was read whole
+
+Everything below assumes the statement in front of the CA is the whole
+statement. Nothing about the rest of the design notices if it is not: a
+half-imported month drafts, passes and reconciles exactly like a whole one, and
+the client's cash position is simply wrong.
+
+Three checks answer three different questions, and none implies another. All
+three live in `domain/banking/`, and the import path runs whichever it can.
+
+| check | the question | blind to |
+|---|---|---|
+| `normalizer.balance_agreement` | do the rows agree **with each other**? — consecutive deltas against the bank's own running-balance column | a statement with no balance column; rows dropped off either END (a truncated delta chain is still consistent) |
+| `tie_out.totals_agreement` | do the rows agree with what the bank **printed on this file** — its "Grand Total" row? | a file that is only part of the period |
+| `tie_out.tie_out` | do the rows carry the account from the **opening balance to the closing one**? | nothing, but it needs two figures a human types |
+
+`tie_out.statement_check` runs the last two together and decides: either
+failing refuses the import, before anything is written. Its `verified` flag is
+what the response and the screen show, because an unverified import and a
+verified one must not look the same.
+
+The middle one is the reason the balances can stay optional. Most Indian
+statements end with their own totals — the 33-page Cosmos Co-op statement this
+was built against prints `Grand Total 251528.32 252361.07` — so the evidence
+that every line was read is usually already in the file, and asking the CA to
+retype it was asking for something the bank had already written down. It is
+picked up on the SAME pass as the transactions (`normalizer.parse_statement_detailed`);
+the totals row carries no date, so `_rows_to_txns` has already dropped it by the
+time a caller sees the rows, and reading it afterwards would mean parsing the
+file twice.
+
+It refuses to guess. A totals row does not follow the column mapping — the label
+sits in column 0 and the figures wherever the bank put them — so they are read
+positionally, and only when there are exactly TWO of them, in the order the
+adapter says the debit and credit columns come. Anything else returns nothing
+and the balances are the only check left. A totals check that is right most of
+the time is worse than one that says it could not find them.
+
 ## The model: a statement line becomes a voucher
 
 A CA does not "categorise" a bank line. A bank line **becomes a voucher**, and
