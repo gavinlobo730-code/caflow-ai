@@ -185,10 +185,10 @@ export default function AIAssistantPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
               {SUGGESTED_PROMPTS.map((prompt) => (
-                <button
+                <button disabled={loading}
                   key={prompt}
                   onClick={() => sendMessage(prompt)}
-                  className="text-left text-xs text-[#475569] bg-[#F8FAFC] hover:bg-blue-50 hover:text-blue-700 border border-[#E2E8F0] hover:border-blue-200 rounded-lg px-4 py-3 transition-colors"
+                  className="disabled:opacity-40 text-left text-xs text-[#475569] bg-[#F8FAFC] hover:bg-blue-50 hover:text-blue-700 border border-[#E2E8F0] hover:border-blue-200 rounded-lg px-4 py-3 transition-colors"
                 >
                   {prompt}
                 </button>
