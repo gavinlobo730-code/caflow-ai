@@ -254,3 +254,112 @@ def test_every_budget_is_set_and_sane():
         # Above the 45s the frontend itself aborts at would be a budget that
         # permits a request the user never sees the result of.
         assert c.budget_s < 45, f"{c.name}: budget exceeds the client's own timeout"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Waking the instance, and why it is not timed
+# ══════════════════════════════════════════════════════════════════════════════
+# Render's free tier spins down after ~15 minutes idle. This workflow runs every
+# 6 hours, so it nearly always arrives at a sleeping instance and the FIRST
+# request pays the cold start — 56.55s on 2026-09-06, against `health`'s 5s
+# budget. The workflow went red for a reason that says nothing about whether the
+# API works, and a permanently red check is one nobody reads.
+
+
+def test_a_cold_instance_that_answers_on_a_later_attempt_is_awake(monkeypatch):
+    """A refused connection then a 200 is exactly what waking looks like."""
+    monkeypatch.setattr(smoke_api.time, "sleep", lambda _s: None)
+    seen = {"n": 0}
+
+    def cold_then_up(req):
+        seen["n"] += 1
+        if seen["n"] < 3:
+            raise httpx.ConnectError("connection refused")
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(cold_then_up) as c:
+        awake, _elapsed, detail = smoke_api.wake(c, "http://x")
+    assert awake, detail
+    assert seen["n"] == 3, "it gave up before the instance was up"
+
+
+def test_an_instance_that_never_answers_is_not_awake(monkeypatch):
+    monkeypatch.setattr(smoke_api.time, "sleep", lambda _s: None)
+
+    def boom(req):
+        raise httpx.ConnectError("connection refused")
+
+    with _client(boom) as c:
+        awake, _elapsed, detail = smoke_api.wake(c, "http://x")
+    assert not awake
+    assert "ConnectError" in detail, "the true reason must survive"
+
+
+@pytest.mark.parametrize("status", [500, 502, 503])
+def test_a_server_error_is_not_awake(monkeypatch, status):
+    """A 503 from /health is the incident this whole script exists for. Waking
+    must not paper over it."""
+    monkeypatch.setattr(smoke_api.time, "sleep", lambda _s: None)
+    with _client(lambda req: httpx.Response(status, json={})) as c:
+        awake, _elapsed, detail = smoke_api.wake(c, "http://x")
+    assert not awake
+    assert str(status) in detail
+
+
+def test_the_wake_is_not_charged_to_the_health_budget(monkeypatch):
+    """THE REGRESSION TEST. A 56-second wake followed by a fast /health must
+    pass: the budget measures a WARM instance, which is what it always meant."""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(smoke_api.time, "monotonic", lambda: clock["t"])
+
+    def waking(req):
+        # The first call is the wake and takes 56s; everything after is warm.
+        clock["t"] += 56.0 if clock["t"] == 0.0 else 0.4
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(waking) as c:
+        awake, elapsed, _d = smoke_api.wake(c, "http://x")
+        assert awake and elapsed >= 56.0, "the cold start must still be measured"
+        ok, line = smoke_api.run_check(
+            c, "http://x", smoke_api.Check("health", "/health", 5), "t")
+    assert ok, f"the wake was charged to the budget: {line}"
+
+
+def test_a_dead_api_stops_before_running_every_check(monkeypatch, capsys):
+    """Seven timeouts printing the same thing seven times is not a better
+    report than one line saying the API never answered."""
+    for var, val in (("SMOKE_BASE_URL", "http://x"), ("SUPABASE_URL", "http://s"),
+                     ("SUPABASE_ANON_KEY", "k"), ("SMOKE_EMAIL", "e"),
+                     ("SMOKE_PASSWORD", "p"), ("SMOKE_CLIENT_ID", "c")):
+        monkeypatch.setenv(var, val)
+    monkeypatch.setattr(smoke_api.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(smoke_api, "wake", lambda *a, **k: (False, 12.0, "ConnectError"))
+
+    def must_not_be_called(*a, **k):  # pragma: no cover — the point is it is not
+        raise AssertionError("signed in / ran checks against an API that is down")
+
+    monkeypatch.setattr(smoke_api, "sign_in", must_not_be_called)
+    monkeypatch.setattr(smoke_api, "run_check", must_not_be_called)
+
+    assert smoke_api.main() == 1
+    out = capsys.readouterr().out
+    assert "never answered" in out
+    assert "ConnectError" in out
+
+
+def test_the_wake_line_says_a_cold_start_was_not_counted(monkeypatch, capsys):
+    """The cold start is a real fact about the deployment. Excluding it from the
+    budget is not the same as hiding it."""
+    for var, val in (("SMOKE_BASE_URL", "http://x"), ("SUPABASE_URL", "http://s"),
+                     ("SUPABASE_ANON_KEY", "k"), ("SMOKE_EMAIL", "e"),
+                     ("SMOKE_PASSWORD", "p"), ("SMOKE_CLIENT_ID", "c")):
+        monkeypatch.setenv(var, val)
+    monkeypatch.setattr(smoke_api, "wake", lambda *a, **k: (True, 56.55, "HTTP 200"))
+    monkeypatch.setattr(smoke_api, "sign_in", lambda *a, **k: "token")
+    monkeypatch.setattr(smoke_api, "run_check", lambda *a, **k: (True, "fine"))
+
+    assert smoke_api.main() == 0
+    out = capsys.readouterr().out
+    assert "WAKE" in out
+    assert "56.55" in out, "the cold start must be visible, not swallowed"
+    assert "not counted against any budget" in out

@@ -66,6 +66,7 @@ from services.bank_batch_service import bank_batch_service
 from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from domain.banking import parse_statement, file_hash, StatementParseError
+from domain.banking.tie_out import tie_out
 from domain.banking.normalizer import (
     balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
 )
@@ -670,11 +671,24 @@ async def upload_statement(
     bank_account_id: Optional[str] = Form(None),
     column_mapping: Optional[str] = Form(None),
     save_mapping: bool = Form(False),
+    opening_balance_paise: Optional[int] = Form(None),
+    closing_balance_paise: Optional[int] = Form(None),
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Upload a CSV/XLSX bank statement. Parsing + normalization + dedup happen
     SERVER-SIDE (Banking B.1) — the browser sends the raw file only. Returns the
-    counts of imported and duplicate-skipped transactions."""
+    counts of imported and duplicate-skipped transactions.
+
+    THE TIE-OUT, AND WHY IT BLOCKS
+        Give it the opening and closing balances PRINTED ON THE STATEMENT and it
+        checks `opening + credits - debits == closing` before importing
+        anything. A mismatch means lines were missed or a column is mapped to
+        the wrong thing, and it refuses — see domain/banking/tie_out.py for why
+        this is not the same check as balance_agreement and cannot be expressed
+        as one. They are optional because most existing callers do not send them
+        and an import that used to work must keep working; when they are absent
+        the response says so rather than reading as verified.
+    """
     assert_client_access(current_user, client_id)
     content = await file.read()
     if not content:
@@ -712,7 +726,18 @@ async def upload_statement(
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    fmt = "xlsx" if (file.filename or "").lower().endswith(".xlsx") else "csv"
+    # BEFORE anything is written. balance_agreement is computed after the import
+    # and is advisory; this one decides whether the import happens at all, so it
+    # has to run first — reporting "it does not add up" beside rows that are
+    # already in the ledger would be a finding nobody can act on.
+    tie = tie_out(txns, opening_paise=opening_balance_paise,
+                  closing_paise=closing_balance_paise)
+    if tie["checked"] and not tie["agrees"]:
+        raise HTTPException(status_code=422, detail=tie["reason"])
+
+    _name = (file.filename or "").lower()
+    fmt = ("pdf" if _name.endswith(".pdf")
+           else "xlsx" if _name.endswith(".xlsx") else "csv")
     if not db:
         # Mock mode returns the same SHAPE as the real path. Omitting
         # column_source/balance_check here would leave the frontend reading
@@ -721,7 +746,8 @@ async def upload_statement(
         return api_response(True, {"statement_id": "mock-id", "imported": len(txns),
                                    "duplicates_skipped": 0, "total_rows": len(txns),
                                    "column_source": mapping_source,
-                                   "balance_check": balance_agreement(txns)})
+                                   "balance_check": balance_agreement(txns),
+                                   "tie_out": tie})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
         "source_format": fmt, "file_hash": file_hash(content),
@@ -761,6 +787,9 @@ async def upload_statement(
     # to see that the mapping is what was used.
     result["column_source"] = mapping_source
     result["balance_check"] = balance_agreement(txns)
+    # Always present, whether it verified anything or named itself a gap. An
+    # unchecked import and a checked one must not look the same to the caller.
+    result["tie_out"] = tie
     # Propose for what just landed — one chunk, so the upload stays fast; the
     # screen keeps redrafting while counts.undrafted is non-zero, then passes
     # the trusted-rule drafts with a progress bar (09-bank-entries.md).

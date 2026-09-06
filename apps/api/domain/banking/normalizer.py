@@ -637,9 +637,14 @@ def inspect_statement(filename: str, content: bytes, *, sample_rows: int = 8) ->
                 if any(str(c).strip() for c in r)]
     elif name.endswith(".xlsx"):
         rows = _xlsx_rows(content)
+    elif name.endswith(".pdf"):
+        # The mapping screen matters MORE for PDFs, not less: a PDF's columns
+        # come from a layout rather than a labelled export, so detect_format is
+        # likelier to miss and the CA likelier to need to say where things are.
+        rows = _pdf_rows(content)
     else:
         raise StatementParseError(
-            "Unsupported file type — upload a .csv or .xlsx bank statement.")
+            "Unsupported file type — upload a .csv, .xlsx or .pdf bank statement.")
     if not rows:
         raise StatementParseError("File has no data rows.")
 
@@ -699,6 +704,184 @@ def parse_xlsx(content: bytes, mapping: Optional[dict] = None) -> list[Normalize
     return txns
 
 
+def _pdf_rows(content: bytes) -> list[list[str]]:
+    """Rows out of a TEXT-BASED PDF bank statement.
+
+    WHY THIS EXISTS
+        Most Indian banks email a PDF. TallyPrime cannot import one at all — its
+        own documentation says convert it to CSV first — which is why a small
+        industry of PDF-to-Tally converters exists. A CA who receives a PDF has
+        had to convert it by hand before this product would look at it.
+
+    WHY IT PRODUCES ROWS AND NOT TRANSACTIONS
+        Everything downstream — adapter detection, the CA's saved column
+        mapping, date parsing, dedup, balance_agreement — already works on
+        `list[list[str]]` and is well tested. Turning a PDF into that shape
+        means the PDF path inherits all of it instead of growing a second
+        parser that drifts. This function's whole job is the shape.
+
+    TWO STRATEGIES, AND WHY THE SECOND IS NOT A NAIVE SPLIT
+        `extract_tables` is tried first. A statement drawn with ruling lines
+        comes out of it cleanly and there is nothing to infer.
+
+        Plenty of bank PDFs draw no lines at all, and for those the obvious
+        fallback — take the text and split each line on runs of two or more
+        spaces — IS WRONG IN THE WORST WAY. An empty column produces no text,
+        so the split silently yields one cell too few and EVERY VALUE AFTER IT
+        SHIFTS LEFT: a deposit lands in the withdrawal column and the client's
+        cash position inverts. Both of pdfplumber's own text strategies were
+        measured doing their own version of this (merging Narration, Withdrawal
+        and Deposit into one cell).
+
+        So the fallback uses GEOMETRY instead. Words carry x-coordinates; the
+        header line's words define the columns; every other word is assigned to
+        the column its midpoint falls in. A column with no word in a given line
+        stays empty, which is the whole point — the position is preserved
+        because it was never inferred from spacing in the first place.
+
+    WHAT IT REFUSES
+        A SCANNED PDF — a photograph of paper — has no text layer at all, and
+        no amount of geometry invents one. That is refused by the caller with a
+        sentence saying so, rather than returning no rows and looking like an
+        empty statement. Reading pixels is a vision model's job and is
+        deliberately not done here.
+
+    AND WHAT BACKSTOPS IT
+        domain/banking/tie_out.py. A PDF is a layout, not a data format, so this
+        will meet a statement it reads imperfectly. The tie-out is what turns
+        that from a silent wrong number into a refused import, and it is the
+        reason the geometric fallback is safe to offer at all.
+    """
+    import pdfplumber
+
+    def _clean(cell) -> str:
+        # A wrapped narration arrives with embedded newlines; they are part of
+        # one field, not a row break.
+        return "" if cell is None else " ".join(str(cell).split())
+
+    rows: list[list[str]] = []
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                for table in (page.extract_tables() or []):
+                    for raw in table:
+                        cells = [_clean(c) for c in raw]
+                        if any(cells):
+                            rows.append(cells)
+            if rows:
+                return rows
+
+            # No ruled table anywhere in the document — fall back to geometry.
+            for page in pdf.pages:
+                rows.extend(_rows_by_position(page))
+    except StatementParseError:
+        raise
+    except Exception as e:  # noqa: BLE001 — the PDF library's own exceptions
+        # A truncated or non-PDF file reaches pdfminer as "No /Root object!",
+        # which is not a StatementParseError and would leave the endpoint
+        # returning 500 for a file the CA simply picked by mistake. Every other
+        # unreadable-file case here is a 422 that says what to do, and this one
+        # has to be as well.
+        _logger.warning("bank statement PDF unreadable: %s: %s", type(e).__name__, e)
+        raise StatementParseError(
+            "This file could not be read as a PDF. If it downloaded from net "
+            "banking, try downloading it again; otherwise upload the CSV or "
+            "Excel export instead.") from e
+    return rows
+
+
+#: Words whose vertical positions differ by less than this are the same line.
+#: Generous enough for the sub-point jitter in a rendered PDF, tight enough not
+#: to merge two statement rows — bank statement leading is several points.
+_LINE_TOLERANCE = 3.0
+
+
+def _merge_label_words(words: list[dict]) -> list[dict]:
+    """Join header words that are one LABEL into one column.
+
+    "Withdrawal Amt." is a single column and must not become two, or every
+    value to its right lands one column over. The two gaps are not close:
+    measured on a rendered statement at 7.5pt, the space inside a label is
+    2.09pt and the gap between columns is 22-61pt.
+
+    So the split is at ONE EM — the word's own height — which sits between them
+    with roughly a 3x margin on each side and, being expressed in the font's own
+    units, does not need retuning for a statement set in a different size.
+    """
+    if not words:
+        return []
+    out = [dict(words[0])]
+    for w in words[1:]:
+        em = max(w.get("height") or 0, out[-1].get("height") or 0) or 6.0
+        if w["x0"] - out[-1]["x1"] <= em:
+            out[-1]["text"] = f"{out[-1]['text']} {w['text']}"
+            out[-1]["x1"] = w["x1"]
+        else:
+            out.append(dict(w))
+    return out
+
+
+def _rows_by_position(page) -> list[list[str]]:
+    """One list of cells per visual line, columns taken from the header's
+    x-coordinates. See _pdf_rows for why this is not a whitespace split."""
+    words = page.extract_words() or []
+    if not words:
+        return []
+
+    lines: list[list[dict]] = []
+    for w in sorted(words, key=lambda w: (round(w["top"], 1), w["x0"])):
+        if lines and abs(lines[-1][0]["top"] - w["top"]) <= _LINE_TOLERANCE:
+            lines[-1].append(w)
+        else:
+            lines.append([w])
+
+    header = next((ln for ln in lines
+                   if _looks_like_header([w["text"] for w in ln])), None)
+    if header is None:
+        return []
+    header = _merge_label_words(header)
+    if len(header) < 3:
+        return []
+
+    # A boundary sits in the GAP between two header labels, so a value that is
+    # right-aligned under its heading still lands in the right column.
+    starts = [w["x0"] for w in header]
+    ends = [w["x1"] for w in header]
+    bounds = [(ends[i] + starts[i + 1]) / 2 for i in range(len(header) - 1)]
+
+    def _column_of(w: dict) -> int:
+        mid = (w["x0"] + w["x1"]) / 2
+        for i, b in enumerate(bounds):
+            if mid < b:
+                return i
+        return len(bounds)
+
+    out: list[list[str]] = []
+    for ln in lines:
+        cells = [""] * len(header)
+        for w in ln:
+            i = _column_of(w)
+            cells[i] = f"{cells[i]} {w['text']}".strip() if cells[i] else w["text"]
+        if any(cells):
+            out.append(cells)
+    return out
+
+
+def parse_pdf(content: bytes, mapping: Optional[dict] = None) -> list[NormalizedTxn]:
+    rows = _pdf_rows(content)
+    if len(rows) < 2:
+        raise StatementParseError(
+            "No readable text in this PDF. A scanned or photographed statement "
+            "has no text to extract — ask the bank for the CSV or Excel export, "
+            "or for a PDF downloaded from net banking rather than a scan.")
+    txns = _rows_to_txns(rows, _find_header_idx(rows), mapping)
+    if not txns:
+        raise StatementParseError(
+            "No transactions found in this PDF — check the file is a bank "
+            "statement, and map the columns if this bank's layout is new.")
+    return txns
+
+
 def parse_statement(filename: str, content: bytes,
                     mapping: Optional[dict] = None) -> list[NormalizedTxn]:
     """Dispatch by extension. Raises StatementParseError on unsupported/malformed.
@@ -712,4 +895,7 @@ def parse_statement(filename: str, content: bytes,
         return parse_csv(_decode_csv(content), mapping)
     if name.endswith(".xlsx"):
         return parse_xlsx(content, mapping)
-    raise StatementParseError("Unsupported file type — upload a .csv or .xlsx bank statement.")
+    if name.endswith(".pdf"):
+        return parse_pdf(content, mapping)
+    raise StatementParseError(
+        "Unsupported file type — upload a .csv, .xlsx or .pdf bank statement.")
