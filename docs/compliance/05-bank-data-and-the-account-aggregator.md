@@ -253,7 +253,7 @@ question is answered before the legal one.
 
 | | |
 |---|---|
-| **#106** | The consent flow — approval happens **at the AA**, callback-driven, annual re-consent |
+| ~~#106~~ | ~~The consent flow — approval happens **at the AA**, callback-driven, annual re-consent~~ **SHAPE WRITTEN, NOTHING BUILT — §6.** Its finding is that the "CA requests → client acts" shape is NOT new to this app (`engagement_sign_public.py` has it), so the design is *follow that*, and the one row that does not transfer is the approval itself. Six refusals recorded, incl. never render the approval and never declare 102 |
 | **#107** | Contract and pilot, shaped by whichever route #104 chose |
 
 **Stopping is a real outcome.** If #102 finds no honest purpose, or #103 finds the
@@ -262,9 +262,13 @@ Per §3 that is the base case anyway, not a fallback.
 
 > **That is where this now stands.** Both gate-0 questions came back against, and
 > #104 has chosen route 3 on that basis (§0a) — provisionally, spending nothing,
-> reversing nothing. **#106 and #107 are not started and should not be**: they
-> specify work under a route that has not been taken. **#105 turned out not to be
-> one of them.** Its AA-specific parts are moot, but its headline obligation — DPDP
+> reversing nothing. **#107 is not started and should not be**: it specifies work
+> under a route that has not been taken. **#105 and #106 turned out not to be
+> quite like that.** #106's build is not started either — but its SHAPE is now
+> written (§6), because the one thing that would be expensive to get wrong later
+> costs nothing to record now, and recording it also corrected a claim this
+> repository was repeating about its own code. **#105 was different again.** Its
+> AA-specific parts are moot, but its headline obligation — DPDP
 > duties for holding a client's bank data — never depended on AA at all, and
 > checking it found bank data missing from the retention position entirely. That
 > half is done; see `06`, §5e. The single thing that would reopen gate 1 is
@@ -867,12 +871,135 @@ come first:
 | # | To verify | Task |
 |---|---|---|
 | 1a | ~~Whether any code fits third-party bookkeeping~~ — **answered provisionally NO, §2.** No published purpose or template describes it, and purposes are derivative of the FIU's own regulatory permission | ~~#102~~ **done** |
-| 1b | **Read the actual taxonomy** (`api.rebit.org.in/purpose/`, Sahamati's purpose-codes page, guideline **PC001**), and **send the enquiry drafted in §2a** — split correctly between ReBIT (the purpose code) and Sahamati (the template bounds). Re-tested 2026-09-06: both hosts still blocked. Still no purpose code from research | **#130** |
+| 1b | ~~Read the actual taxonomy~~ — **DONE, §2b.** Codes 101–105 recovered with their licensee classes; none covers an agent keeping another's books, so §2's answer is settled rather than inferred. **Still to do: send the enquiry drafted in §2a**, now shortened to the one open question (can a purpose be ADDED, and who owns that). Hosts re-tested 2026-09-06 and still blocked, so the taxonomy stays `[S]` | **#130** (person) |
 | 2a | ~~Coverage for the client types a CA actually serves~~ — **measured, §3a.** Composition is the worst case; no percentage is honest at n=7 | ~~#103~~ **done** |
 | 2b | **Sahamati's per-bank per-account-type matrix and the FIP↔AA matrix** — blocked with everything else, so the AA counts and the per-account-type coverage remain `[S]` | **#130** (browser step) |
 | 3 | **The FIU eligibility position, with a legal opinion**, and the full text of the NBFC-AA Directions 2025 | **#104** (gate 1) |
 | 4 | Whether the reciprocity duty binds an FIU holding no financial information | **#104** (gate 1) |
-| 5 | The complete FI-type enumeration | **#106** (gate 2) |
+| 5 | The complete FI-type enumeration — **still open, and §6 does not need it**: the shape is specified without the FI-type list, which belongs to a partner's integration | **#107** (gate 2) |
 
 Note the swap: items 1 and 2 were listed last in the first pass and are now
 first, because they cost nothing and either can close the whole line of work.
+
+## 6. The consent flow — the SHAPE, specified and NOT built (task #106)
+
+### The concern, stated once
+
+#106 is **gate 2** work, and §0a, the gate table above and CLAUDE.md all say the
+same thing: *"#106 and #107 are not started and should not be — they specify work
+under a route that has not been taken."* #104 chose **route 3**, and #130 has
+since settled that no purpose code covers this.
+
+So this section writes the **shape and nothing else**. **No table, no migration,
+no endpoint, no screen, no model.** It follows the precedent #105 set with
+`DataLife` (`06` §5e): write down the part that would otherwise be re-derived
+badly or got wrong on the first attempt, and build nothing.
+
+Everything below is `[S]` or reasoning over what earlier sections established.
+Fetching is still refused from this environment, so no AA specification has been
+read directly.
+
+### 6a. A claim this repository repeats is wrong, and correcting it is most of the answer
+
+CLAUDE.md says of the AA consent flow, and again of DSC/EVC filing:
+
+> *"the flow is 'CA requests → client approves → CA sees data', with a re-consent
+> path when it lapses. That is a different shape from every other screen in the
+> app, where the CA acts alone."*
+
+**The app already has that shape, and has had it for a long time.**
+`apps/api/routers/engagement_sign_public.py` is a client-facing, no-login flow in
+which the firm sends a tokenised link and the CLIENT acts:
+
+- the token is `secrets.token_urlsafe(32)` — 256 bits, the bearer credential
+  itself, and never reused or overwritten;
+- there is no user JWT, so the route runs on the service-role client with **every
+  query and update constrained to the token's own row**;
+- the response is a deliberate **client-safe projection** — no firm ids, no lead
+  ids, no sign token, no IP, no audit trail;
+- expiry is a DATE reckoned in **IST**, because comparing against UTC would
+  expire a letter up to 5.5 hours early;
+- a backend failure returns **503 with the true cause logged**, distinct from the
+  404 for a token that matches nothing — masking the two together is what once
+  disguised a missing service-role grant as an "invalid link";
+- acceptance is recorded as typed name + explicit consent + timestamp + IP, valid
+  under **IT Act 2000 s. 10A**, and every step writes an engagement event.
+
+That is a careful design and it is already load-bearing. **A consent-request flow
+should follow it, not re-invent it** — and the claim that no such shape exists in
+the app should stop being repeated, because it invites somebody to build a second
+one.
+
+**No gap follows from it either.** `engagements` is already inside the
+`client_onboarding` category of the retention position (`06` §5b) — PMLA s. 12,
+the firm's own duty — so the signer's name and IP, collected from someone who has
+no login, are classified rather than unaccounted for.
+
+### 6b. Where the precedent transfers, and the exact line where it breaks
+
+| step | engagement letter | AA consent | transfers? |
+|---|---|---|---|
+| firm initiates a request for a named client | yes | yes | **yes** |
+| a link is delivered to the client | tokenised, our domain | redirect/handle into the AA's journey | **yes, in shape** |
+| the client is shown what they are agreeing to | our public page | the AA's page | **no** |
+| **the client's approval is captured** | **on our page, by us** | **at the AA, by the AA** | **NO — this is the line** |
+| the firm is told the outcome | our own status | AA callback, then the artefact | yes, in shape |
+| it expires, and can be re-requested | yes | yes, and ≤ 1 year forces annual renewal | **yes** |
+
+**One row breaks, and it is the row the task is named after.** An
+engagement-letter-shaped implementation would put an "I agree" control on our own
+page — and at that moment the consent is *ours*, collected by an unregulated
+party, and worth nothing to an FIP that validates the artefact's signature. The
+precedent is right for the request, the delivery, the expiry and the audit; it is
+wrong for the one step in the middle.
+
+### 6c. The refusals — six, each with the reason it exists
+
+1. **Never render the approval.** No consent checkbox, no "I agree", no "confirm
+   your accounts" in our UI. The approval is the AA's to collect; ours would be a
+   second, invalid one.
+2. **Never touch a credential or an OTP.** Not a field, not a proxy, not "just to
+   pass it through". This is the same rule as *never screen-scrape net banking*,
+   arriving from a different direction — an OTP box in our UI is a credential
+   capture surface whatever it is labelled.
+3. **A consent handle is not a consent.** Holding an id the AA gave us is not
+   holding an artefact. Nothing may be fetched on the strength of a handle whose
+   artefact we have not received and checked.
+4. **Never treat ACTIVE as durable.** `06` §7 records that the client can revoke
+   **without telling the CA**. So the design is *poll and degrade*: assume the
+   consent may already be gone, discover it on the next fetch, and fail the
+   engagement gracefully into the upload path — never surface a stale "connected"
+   badge that is the last thing we were told rather than the current state.
+5. **Never declare purpose 102.** §2b: its name reads like bookkeeping and its
+   scope is financial advisory by SEBI- and PFRDA-registered advisers, and
+   Sahamati's "use the most appropriate code, based on judgement" guidance points
+   straight at it. The FIP validates **every fetch** against `Purpose`, so a
+   wrong code is a consent defect, not a labelling one.
+6. **`DataLife` is not consent expiry, and it collides with retention.** `06` §5e:
+   `DataLife` caps how long the FIU may keep what it fetched (months, or a year),
+   while Companies Act s. 128(5) requires the vouchers kept eight financial years.
+   Both bind, so neither can be picked — **the raw fetched statement and the
+   entries posted from it cannot share a lifecycle.** Any design that stores them
+   as one thing is already wrong.
+
+### 6d. The four clocks, restated because conflating them is the common error
+
+From `06` §5e: `consentStart`/`consentExpiry` (how long the consent is valid),
+`FIDataRange` (which period of data may be fetched), `frequency` (how often), and
+`DataLife` (how long what was fetched may be kept). Four, not one. A design that
+carries a single "expires on" column has lost three of them.
+
+### 6e. What is deliberately NOT specified
+
+The consent-artefact schema, the FIU-side plumbing, the TSP's API surface, and
+the callback contract. All of them belong to a **partner** — and route 3 says
+there is no partner. Specifying them now would be inventing an interface against
+a counterparty that does not exist, which is the most expensive kind of design to
+be wrong about.
+
+### 6f. What this changes today
+
+Nothing in the product. Two things in the record: the "no such shape exists in
+the app" claim is corrected wherever it appears, and the shape lesson is written
+down so that if gate 1 ever reopens, the first implementation does not put an
+"I agree" button on the wrong page.

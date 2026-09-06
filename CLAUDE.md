@@ -497,8 +497,16 @@ and why that does not arise under upload.
   `docs/compliance/05-bank-data-and-the-account-aggregator.md`.
 - **The consent is the CLIENT's, not the CA's.** The account holder consents, and
   it is time-bound, purpose-bound and revocable. So the flow is "CA requests →
-  client approves → CA sees data", with a re-consent path when it lapses. That is
-  a different shape from every other screen in the app, where the CA acts alone.
+  client approves → CA sees data", with a re-consent path when it lapses.
+  **That shape is NOT new to the app** — `routers/engagement_sign_public.py`
+  already does CA-sends-a-tokenised-link → client-acts-without-a-login, with a
+  256-bit bearer token, every query constrained to the token's row, a client-safe
+  projection, IST-dated expiry and an honest 503-vs-404 split. A consent request
+  should follow it rather than invent a second one. **What IS different is one
+  step**: the engagement letter is accepted ON OUR PAGE, and an AA consent is
+  approved AT THE AA. Put an "I agree" in our UI and the consent is ours, from an
+  unregulated party, and worthless. See `docs/compliance/05-…` §6 — the shape is
+  specified there and deliberately not built.
 - **Never screen-scrape net banking.** No credential capture, no stored bank
   logins, no third party that works that way. It breaches bank terms and RBI
   moved the industry onto AA precisely to end it. This is not a performance or
@@ -653,7 +661,11 @@ through the app is intended, and needs:
 - **DSC / EVC signing.** A return is signed by the taxpayer's digital signature
   or an EVC OTP to their registered mobile. The signature is the taxpayer's, not
   the firm's — so the flow is "CA prepares → taxpayer or authorised signatory
-  signs", which is a different shape from every other screen in the app.
+  signs". As with AA consent, **that shape already exists** in
+  `routers/engagement_sign_public.py` and should be followed rather than
+  re-invented; and as with AA consent, the signing itself happens on the PORTAL,
+  never in our UI — an EVC OTP field in this app is a credential capture surface
+  whatever it is labelled.
 - **The rule in "Code rules" still holds and gets stronger, not weaker.** Never
   auto-submit. Real filing means an explicit confirmation click, per return,
   every time — never a batch, never a scheduler, never a retry that resubmits.
@@ -703,6 +715,15 @@ path in today, and it stays at parity for years regardless.
 Restated here only so this list is complete: register as an FIU, go via a TSP,
 the consent is the CLIENT's and is time-bound and revocable, and **never
 screen-scrape net banking**. Read that section before touching any of it.
+
+**The consent flow's SHAPE is written down and nothing is built** —
+`docs/compliance/05-…` §6. It exists so a first attempt does not put an "I agree"
+control on our own page: the request, the tokenised link, the expiry and the
+audit all follow `routers/engagement_sign_public.py`, and the ONE step that does
+not transfer is the approval, which happens at the AA. Six refusals are recorded
+there, including never render the approval, never touch an OTP, never treat a
+consent as durable (the client can revoke without telling the CA), and never
+declare purpose code 102.
 
 ## Reporting times to the user
 
