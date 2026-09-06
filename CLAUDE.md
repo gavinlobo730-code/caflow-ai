@@ -454,20 +454,30 @@ and why that does not arise under upload.
   ordering carries a finding of its own: **purpose-fit is UPSTREAM of FIU
   eligibility.** Eligibility is solvable with money; purpose is not. A consent
   artefact carries a `Purpose`, the FIP validates every fetch against it, and
-  purpose limitation is enforced. **Gate 0a is now answered, provisionally NO:**
-  no published purpose code or Sahamati Fair Use Template describes maintaining
-  another person's books — the B2B templates are all a data user assessing
-  somebody else's risk, which is the wrong shape — and the reason is structural
-  rather than a gap in a list. A purpose is DERIVATIVE OF THE FIU'S OWN
-  REGULATORY PERMISSION, and bookkeeping is not a regulated financial activity
-  under any of the five regulators. **So purpose defeats the PARTNER route too**,
-  not just the do-it-yourself one: a partner FIU's permitted purposes come from
-  its licence, and buying a SEBI RIA registration buys wealth-management advice,
-  not ledger-keeping. What is NOT settled is whether a purpose could be ADDED —
-  only Sahamati can answer that, and **every primary source was unreachable**
-  (the egress proxy refused every fetch this session, Wikipedia included), so
-  purpose CODES still must not be written from this research. #104–#107 stay open
-  pending that one question. **Gate 0b (#103) is measured too, and points the
+  purpose limitation is enforced. **Gate 0a is ANSWERED, NO, and the taxonomy
+  itself is now the authority for it (#130, §2b)** rather than an inference from
+  absence. The five published purpose codes are **101** Wealth Management (SEBI
+  RIAs, stock brokers), **102** Customer spending patterns/budget/other
+  reportings (SEBI RIAs, PFRDA Retirement Advisors — *financial advisory*),
+  **103** Aggregated Statement (lenders, insurers — underwriting and income
+  verification), **104** monitoring of accounts (lenders — repayment health) and
+  **105** one-time account verification (stock brokers). **Every entry names the
+  class of licensee it is for**, which is the proof that a purpose is DERIVATIVE
+  OF THE FIU'S OWN REGULATORY PERMISSION — and none describes an agent keeping
+  the customer's own books. **So purpose defeats the PARTNER route too**, not
+  just the do-it-yourself one: a partner FIU's permitted purposes come from its
+  licence, and buying a SEBI RIA registration buys wealth-management advice, not
+  ledger-keeping. ⚠️ **The near-miss is 102** — its NAME sounds like bookkeeping
+  and its scope is advisory by SEBI/PFRDA registrants; Sahamati's own "use the
+  most appropriate code, based on judgement" guidance points straight at it, and
+  the FIP validates every fetch against the artefact's `Purpose`. **Do not
+  declare 102** — not as a placeholder, not for a pilot. Grades are `[S]`, from
+  search snippets of the publisher's pages: **every fetch is still refused** by
+  the egress proxy on a third day, Wikipedia included, so nothing here is `[P]`.
+  What is NOT settled is whether a purpose could be ADDED — that is a person's
+  email to Sahamati/ReBIT, drafted in §2a, and the proposal channel runs through
+  FIU membership §0 says we cannot hold. #106–#107 stay open pending that one
+  question. **Gate 0b (#103) is measured too, and points the
   same way**: the live book is 7 clients and 2 bank accounts — too small for an
   honest percentage, and one was not invented — but the composition needs no
   sample size. **Zero individual clients** (4 Private Limited, 1 LLP, 1
