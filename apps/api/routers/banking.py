@@ -669,11 +669,22 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
     nothing. Vision is only for what genuinely cannot be parsed — a scan or a
     photograph — and only when the CA has asked for it.
 
-    WHY IT REFUSES BEFORE IT SPENDS ANYTHING
-        A scan read without the tie-out is a model's word for 300 numbers that
-        nobody will check. So the balances are required BEFORE a page is
-        rasterised or a model is called, not after: doing the expensive half and
-        then refusing would be the same refusal, later and dearer.
+    WHY A SCAN IS NEVER IMPORTED UNVERIFIED
+        A scan read with nothing checking it is a model's word for 300 numbers
+        that nobody will read. So SOMETHING has to verify the arithmetic, and
+        there are now two candidates: the totals the statement prints on itself,
+        and the two balances the CA types.
+
+        The totals are tried FIRST, from the last page alone, by a separate call
+        that is shown no transactions and can only transcribe or decline
+        (vision.read_printed_totals). If that finds nothing and no balances were
+        given, the upload is refused THERE — one page-sized call in, rather than
+        twenty — which keeps almost all of the "refuse before you spend" this
+        used to get by demanding the balances up front, while no longer
+        demanding them from the CA whose statement states its own totals.
+
+        What is NOT relaxed is the outcome: `statement_check` has to come back
+        verified or the import is refused. See upload_statement.
     """
     name = (filename or "").lower().strip()
     ext = name[name.rfind("."):] if "." in name else ""
@@ -692,32 +703,40 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
             if not allow_vision:
                 raise StatementParseError(
                     "This PDF is a scan — there is no text in it to read. It can "
-                    "be read with AI instead: turn that on for this upload and "
-                    "give the opening and closing balances printed on the "
-                    "statement, which is how the figures get checked.") from e
+                    "be read with AI instead: turn that on for this upload. If "
+                    "the statement does not print its own totals you will also "
+                    "be asked for the opening and closing balances, which is "
+                    "how the figures get checked.") from e
 
     if not allow_vision:
         raise StatementParseError(
             "A photographed statement can be read with AI. Turn that on for "
-            "this upload and give the opening and closing balances printed on "
-            "the statement, which is how the figures get checked.")
+            "this upload. If the statement does not print its own totals you "
+            "will also be asked for the opening and closing balances, which is "
+            "how the figures get checked.")
     if not statement_vision.available():
         raise StatementParseError(
             "Reading a scanned statement is not configured on this deployment. "
             "Upload the CSV or Excel export instead.")
-    if not has_balances:
-        # NOT NEGOTIABLE on this path — see domain/banking/vision.py.
-        raise StatementParseError(
-            "Reading a scan needs the opening and closing balances printed on "
-            "the statement. They are what proves every line was read: the "
-            "figures are only accepted if they add up to the closing balance "
-            "exactly.")
 
     images = [content] if is_image else vision.page_images(content)
-    txns = vision.read_statement(
-        images, call_model=statement_vision.call,
-        mime=_IMAGE_MIME.get(ext, "image/png"))
-    return txns, ("image" if is_image else "pdf-scan"), True, None
+    mime = _IMAGE_MIME.get(ext, "image/png")
+
+    # The last page, on its own, before anything else is read: that is where a
+    # statement prints its totals, and this call is shown no transactions so it
+    # cannot produce a figure by adding them up.
+    printed = vision.read_printed_totals(
+        images[-1], call_model=statement_vision.call, mime=mime)
+    if printed is None and not has_balances:
+        # One call in, not twenty. Nothing could check this reading.
+        raise StatementParseError(
+            "This scan does not print its own totals, so there is nothing to "
+            "check the reading against. Give the opening and closing balances "
+            "printed on the statement and upload it again — they are what "
+            "proves every line was read.")
+
+    txns = vision.read_statement(images, call_model=statement_vision.call, mime=mime)
+    return txns, ("image" if is_image else "pdf-scan"), True, printed
 
 
 @router.post("/statements/import")
@@ -775,12 +794,16 @@ async def upload_statement(
         anything at all confirmed the parse, so an unchecked import and a
         checked one cannot read the same.
 
-    EXCEPT ON A SCAN, WHERE THEY ARE REQUIRED
+    EXCEPT ON A SCAN, WHERE ONE OF THEM IS REQUIRED
         `allow_vision` lets a scanned or photographed statement be read by a
-        vision model. There the tie-out is the ONLY evidence that the model read
-        every line, so the balances are mandatory and the refusal happens before
-        anything is rasterised or sent. A deterministic parse is always tried
-        first and a text PDF never reaches the model.
+        vision model, and there the arithmetic is not advisory: the import is
+        refused unless `verified` comes back true. Either piece of evidence will
+        do — a statement that prints its own totals needs nothing typed in, and
+        one that does not still needs the balances. The totals are read from the
+        last page by a SEPARATE call that is shown no transactions, so they
+        cannot be a sum of the reading being checked (domain/banking/vision.py).
+        A deterministic parse is always tried first and a text PDF never reaches
+        the model.
     """
     assert_client_access(current_user, client_id)
     content = await file.read()
@@ -832,14 +855,19 @@ async def upload_statement(
     if check["refusal"]:
         raise HTTPException(status_code=422, detail=check["refusal"])
     if used_vision and not check["verified"]:
-        # Belt and braces. _read_statement_file already refuses a vision upload
-        # with no balances, so this cannot normally be reached — but the day
-        # somebody adds a second way into that branch, the arithmetic must still
-        # be what decides, not the fact that a model sounded sure.
+        # Belt and braces, and deliberately kept. Between them the two refusals
+        # above should already cover this path — _read_statement_file refuses a
+        # scan that nothing COULD check, and `refusal` refuses one that a check
+        # rejected — so what is left here is "verified is false for some third
+        # reason". That is unreachable today. It stays because the invariant is
+        # the point: a scan is never imported unverified, whatever route the
+        # code takes to get here, and the arithmetic decides it rather than the
+        # fact that a model sounded sure.
         raise HTTPException(
             status_code=422,
             detail="A scanned statement is only accepted when its figures add "
-                   "up to the closing balance printed on it.")
+                   "up to what the statement itself says — either its own "
+                   "totals, or the opening and closing balances printed on it.")
 
     if not db:
         # Mock mode returns the same SHAPE as the real path. Omitting
