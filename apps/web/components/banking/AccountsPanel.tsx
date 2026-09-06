@@ -471,6 +471,30 @@ interface BalanceCheck {
   disagreeing_rows?: number;
 }
 
+/** Whether the parse matches the totals the BANK printed on the statement.
+ *  Free wherever the bank prints a "Grand Total" row, which most Indian
+ *  statements do — see apps/api/domain/banking/tie_out.py for why this is not
+ *  the same question as `BalanceCheck`, which only asks whether the rows agree
+ *  with each other. */
+interface TotalsCheck {
+  checked: boolean;
+  agrees?: boolean;
+  label?: string;
+  gap?: string;
+  reason?: string;
+}
+
+interface ImportResult {
+  imported: number;
+  duplicates_skipped: number;
+  total_rows: number;
+  /** Did ANYTHING confirm the parse — the statement's own totals, or the two
+   *  balances? An unverified import and a verified one must not look the same. */
+  verified?: boolean;
+  verification_gap?: string | null;
+  totals_check?: TotalsCheck;
+}
+
 interface StatementPreview {
   headers: string[];
   total_rows: number;
@@ -481,6 +505,7 @@ interface StatementPreview {
     debit_paise: number; credit_paise: number; balance_paise: number;
   }[];
   balance_check: BalanceCheck;
+  totals_check?: TotalsCheck;
 }
 
 /** The fields a statement row can carry. Order is the order they are asked for. */
@@ -529,7 +554,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ imported: number; duplicates_skipped: number; total_rows: number } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // ── Column mapping (audit Tier 3.2) ──────────────────────────────────────
@@ -651,7 +676,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       }
       if (allowVision) form.append("allow_vision", "true");
       const res = (await api.banking.uploadStatement(form)) as {
-        success: boolean; data: { imported: number; duplicates_skipped: number; total_rows: number }; error?: string;
+        success: boolean; data: ImportResult; error?: string;
       };
       if (!res.success) { setError(res.error ?? "Import failed."); setImporting(false); return; }
       setResult(res.data);
@@ -687,6 +712,22 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <p className="text-xs text-green-600">{result.duplicates_skipped} duplicate{result.duplicates_skipped === 1 ? "" : "s"} skipped (already imported)</p>
               )}
             </div>
+            {/* Say what checked it. A verified import and an unverified one
+                looked identical before, which is how a half-read statement
+                becomes a client's cash position. */}
+            {result.verified ? (
+              <p className="text-xs text-green-700 text-center">
+                {result.totals_check?.agrees
+                  ? <>Checked against the statement&apos;s own &ldquo;{result.totals_check.label}&rdquo; row — every line was read.</>
+                  : <>Checked against the opening and closing balances — every line was read.</>}
+              </p>
+            ) : (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                {result.verification_gap
+                  ?? "Nothing confirmed that every line was read."}{" "}
+                Compare the totals against the statement before you rely on these figures.
+              </p>
+            )}
             <div className="flex justify-end">
               <button onClick={onImported} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Done</button>
             </div>
@@ -722,7 +763,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <label className="block text-xs font-medium text-[#475569] mb-1">
                   Statement balances
                   <span className="font-normal text-[#94A3B8]">
-                    {allowVision ? " — required for a scan" : " — optional, but we\u2019ll check the statement adds up"}
+                    {allowVision ? " — required for a scan" : " — optional; they say this file is the whole period"}
                   </span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -734,7 +775,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <p className="text-[10px] text-[#94A3B8] mt-1">
                   {balancesBad
                     ? "Enter plain amounts — 1,30,000.00"
-                    : "Give both and nothing imports unless the lines add up from one to the other."}
+                    : "If the statement prints its own totals we check against those automatically. Give both balances as well and nothing imports unless the lines also add up from one to the other."}
                 </p>
               </div>
 
@@ -834,6 +875,19 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
                         This statement has no balance column, so the mapping could not be
                         checked arithmetically. Read the rows below before importing.
+                      </p>
+                    )}
+                    {/* The statement's own totals — a second, independent check.
+                        The balance column says the rows agree with each other;
+                        this says they agree with what the bank printed. */}
+                    {preview.totals_check?.checked && preview.totals_check.agrees && (
+                      <p className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-3 py-2">
+                        ✓ Adds up to the statement&apos;s own &ldquo;{preview.totals_check.label}&rdquo; row.
+                      </p>
+                    )}
+                    {preview.totals_check?.checked && preview.totals_check.agrees === false && (
+                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                        {preview.totals_check.reason}
                       </p>
                     )}
 

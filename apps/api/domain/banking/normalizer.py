@@ -68,6 +68,13 @@ from typing import Optional
 _logger = logging.getLogger("caflow.banking.normalizer")
 
 
+#: What a statement's own totals row is labelled: "Grand Total" (Cosmos Co-op),
+#: "Total", "Totals". It sits where a date would be, with the figures beside it,
+#: which is why _rows_to_txns sees it as a dateless row and tie_out.printed_totals
+#: can find it — the two need the SAME answer, so there is one definition.
+_TOTAL_LABEL = re.compile(r"^\s*(grand\s+)?totals?\s*:?\s*$", re.IGNORECASE)
+
+
 class StatementParseError(ValueError):
     """Raised when a file cannot be parsed into transactions (malformed / unsupported)."""
 
@@ -90,6 +97,14 @@ class NormalizedTxn:
 _ADAPTERS: dict[str, dict[str, Optional[int]]] = {
     # Date, Narration, Value Dt, Ref No, Debit, Credit, Balance
     "hdfc":    {"date": 0, "desc": 1, "ref": 3, "debit": 4, "credit": 5, "balance": 6},
+    # Date, Particulars, Cheque No, Withdrawal, Deposit, Balance — the SIX-column
+    # cheque layout. Cosmos Co-op prints it, and it is common across
+    # co-operative and older PSU exports. It differs from HDFC only by the
+    # absence of a Value Date column, which is why detect_format has to look at
+    # POSITIONS and not just at the word "cheque": a real 33-page Cosmos
+    # statement was detected as HDFC on that shared signal and then refused,
+    # because HDFC wants a balance at index 6 and this has one at 5.
+    "generic_cheque": {"date": 0, "desc": 1, "ref": 2, "debit": 3, "credit": 4, "balance": 5},
     # Txn Date, Value Date, Description, Ref/Cheque No, Debit, Credit, Balance
     "sbi":     {"date": 0, "desc": 2, "ref": 3, "debit": 4, "credit": 5, "balance": 6},
     # Transaction Date, Value Date, Transaction Remarks, Ref No, Debit, Credit, Balance
@@ -148,9 +163,32 @@ def detect_format(headers: list[str]) -> str:
         return "sbi"
     if "tran date" in blob:                # Axis ("Tran Date"); note: distinct
         return "axis"                      # from SBI "txn date" and ICICI "transaction date"
+    # The six-column cheque layout, checked BEFORE the HDFC fallback below —
+    # which matches on the word "cheque" alone and would otherwise take it.
+    # Positions, not just words: this is the same shape as HDFC minus the Value
+    # Date column, so only the indices tell them apart.
+    if _looks_like(h, 6, ref=2, debit=3, credit=4):
+        return "generic_cheque"
     if "narration" in blob or "chq" in blob or "cheque" in blob:  # HDFC (shared cheque/narration signal, last)
         return "hdfc"
     return "generic"
+
+
+def _looks_like(h: list[str], width: int, *, ref: int, debit: int, credit: int) -> bool:
+    """Whether the header is `width` columns with a reference column at `ref` and
+    the two amount columns where this adapter expects them.
+
+    Deliberately checks all three positions rather than the count alone. A
+    six-column file whose amounts are somewhere else is NOT this layout, and
+    saying it is would put a debit in the credit column — the failure mode
+    detect_format's docstring already records from the Axis/HDFC mix-up.
+    """
+    if len(h) != width:
+        return False
+    if not any(t in h[ref] for t in ("chq", "cheque", "ref")):
+        return False
+    return (any(t in h[debit] for t in _DEBIT_TOKENS)
+            and any(t in h[credit] for t in _CREDIT_TOKENS))
 
 
 _DEBIT_TOKENS = ("debit", "withdrawal", "withdraw")
@@ -321,6 +359,21 @@ _INDICATOR_DEBIT_TOKENS = ("d", "dr", "debit", "withdrawal")
 _INDICATOR_CREDIT_TOKENS = ("c", "cr", "credit", "deposit")
 
 
+def adapter_for(headers: list[str], mapping: Optional[dict] = None) -> dict:
+    """The column layout in force: the CA's mapping, or the detected adapter.
+
+    Exposed because `printed_totals` needs the SAME answer `_rows_to_txns` used
+    — which of the two amount columns comes first decides how a totals row's two
+    figures are read, and getting that from a second guess would be a way for
+    the check to disagree with the parse it is checking.
+    """
+    if mapping is not None:
+        return validate_mapping(mapping, len(headers))
+    fmt = detect_format(headers)
+    _validate_adapter(fmt, headers)
+    return _ADAPTERS[fmt]
+
+
 def _rows_to_txns(rows: list[list], header_idx: int,
                   mapping: Optional[dict] = None) -> list[NormalizedTxn]:
     headers = [str(c) for c in rows[header_idx]]
@@ -363,7 +416,13 @@ def _rows_to_txns(rows: list[list], header_idx: int,
             # server log so a systematic date-format gap (e.g. a bank export
             # using a separator/format _to_iso_date doesn't recognise) is
             # diagnosable instead of silently vanishing transactions.
-            if not iso and desc:
+            # ...except the statement's OWN TOTALS row, which is exactly this
+            # shape — a label where the date goes and figures beside it — and is
+            # deliberately read, by tie_out.printed_totals, off this same pass.
+            # Warning about a row we consume on purpose sends somebody chasing a
+            # bug on every import of a statement that prints its totals, which
+            # is most of them.
+            if not iso and desc and not _TOTAL_LABEL.match(str(col("date") or "")):
                 _logger.warning(
                     "bank statement row skipped: description %r present but date %r unrecognised",
                     desc[:80], col("date"),
@@ -682,26 +741,51 @@ def _find_header_idx(rows: list[list]) -> int:
     return 0
 
 
-def parse_csv(text: str, mapping: Optional[dict] = None) -> list[NormalizedTxn]:
-    text = text.lstrip("﻿")  # strip BOM
-    reader = list(csv.reader(io.StringIO(text)))
-    rows = [r for r in reader if any(str(c).strip() for c in r)]
+_NO_TXNS = "No transactions found — check the file format/columns."
+
+
+def _finish(rows: list[list], mapping: Optional[dict], *,
+            empty: str, no_txns: str = _NO_TXNS) -> ParsedStatement:
+    """Rows → transactions, and the totals the statement printed about itself.
+
+    ONE PASS OVER THE ROWS, deliberately. A totals row carries no date, so
+    `_rows_to_txns` has already dropped it by the time any caller sees the
+    transactions — picking it up afterwards would mean parsing the file a second
+    time, which was measured at 1.6 seconds for the 33-page statement this was
+    built against.
+
+    Every extension funnels through here so there is ONE place that decides what
+    a parsed statement is. The messages differ per format because they tell the
+    CA what to do next, and what to do about an unreadable PDF is not what to do
+    about an empty workbook.
+    """
+    from .tie_out import printed_totals  # here: tie_out imports _to_paise from us
+
     if len(rows) < 2:
-        raise StatementParseError("File has no data rows.")
-    txns = _rows_to_txns(rows, _find_header_idx(rows), mapping)
+        raise StatementParseError(empty)
+    header_idx = _find_header_idx(rows)
+    txns = _rows_to_txns(rows, header_idx, mapping)
     if not txns:
-        raise StatementParseError("No transactions found — check the file format/columns.")
-    return txns
+        raise StatementParseError(no_txns)
+    headers = [str(c) for c in rows[header_idx]]
+    return ParsedStatement(
+        transactions=txns,
+        printed_totals=printed_totals(rows, adapter_for(headers, mapping)))
+
+
+def _csv_rows(text: str) -> list[list]:
+    text = text.lstrip("﻿")  # strip BOM
+    return [r for r in csv.reader(io.StringIO(text)) if any(str(c).strip() for c in r)]
+
+
+def parse_csv(text: str, mapping: Optional[dict] = None) -> list[NormalizedTxn]:
+    return _finish(_csv_rows(text), mapping,
+                   empty="File has no data rows.").transactions
 
 
 def parse_xlsx(content: bytes, mapping: Optional[dict] = None) -> list[NormalizedTxn]:
-    rows = _xlsx_rows(content)
-    if len(rows) < 2:
-        raise StatementParseError("Workbook has no data rows.")
-    txns = _rows_to_txns(rows, _find_header_idx(rows), mapping)
-    if not txns:
-        raise StatementParseError("No transactions found — check the file format/columns.")
-    return txns
+    return _finish(_xlsx_rows(content), mapping,
+                   empty="Workbook has no data rows.").transactions
 
 
 def _pdf_rows(content: bytes) -> list[list[str]]:
@@ -867,19 +951,49 @@ def _rows_by_position(page) -> list[list[str]]:
     return out
 
 
+_PDF_EMPTY = (
+    "No readable text in this PDF. A scanned or photographed statement "
+    "has no text to extract — ask the bank for the CSV or Excel export, "
+    "or for a PDF downloaded from net banking rather than a scan.")
+_PDF_NO_TXNS = (
+    "No transactions found in this PDF — check the file is a bank "
+    "statement, and map the columns if this bank's layout is new.")
+
+
 def parse_pdf(content: bytes, mapping: Optional[dict] = None) -> list[NormalizedTxn]:
-    rows = _pdf_rows(content)
-    if len(rows) < 2:
-        raise StatementParseError(
-            "No readable text in this PDF. A scanned or photographed statement "
-            "has no text to extract — ask the bank for the CSV or Excel export, "
-            "or for a PDF downloaded from net banking rather than a scan.")
-    txns = _rows_to_txns(rows, _find_header_idx(rows), mapping)
-    if not txns:
-        raise StatementParseError(
-            "No transactions found in this PDF — check the file is a bank "
-            "statement, and map the columns if this bank's layout is new.")
-    return txns
+    return _finish(_pdf_rows(content), mapping,
+                   empty=_PDF_EMPTY, no_txns=_PDF_NO_TXNS).transactions
+
+
+@dataclass(frozen=True)
+class ParsedStatement:
+    """What one uploaded file yielded: its transactions, and the totals the bank
+    printed on it if it printed any (domain/banking/tie_out.printed_totals)."""
+
+    transactions: list[NormalizedTxn]
+    printed_totals: Optional[dict]
+
+
+def parse_statement_detailed(filename: str, content: bytes,
+                             mapping: Optional[dict] = None) -> ParsedStatement:
+    """Dispatch by extension, keeping the statement's own printed totals.
+
+    `parse_statement` is this with the totals dropped. Callers that intend to
+    IMPORT should use this one: the totals row is the evidence, already in the
+    file, that every line was read — see domain/banking/tie_out.
+    """
+    name = (filename or "").lower().strip()
+    if name.endswith(".csv"):
+        return _finish(_csv_rows(_decode_csv(content)), mapping,
+                       empty="File has no data rows.")
+    if name.endswith(".xlsx"):
+        return _finish(_xlsx_rows(content), mapping,
+                       empty="Workbook has no data rows.")
+    if name.endswith(".pdf"):
+        return _finish(_pdf_rows(content), mapping,
+                       empty=_PDF_EMPTY, no_txns=_PDF_NO_TXNS)
+    raise StatementParseError(
+        "Unsupported file type — upload a .csv, .xlsx or .pdf bank statement.")
 
 
 def parse_statement(filename: str, content: bytes,
@@ -890,12 +1004,4 @@ def parse_statement(filename: str, content: bytes,
     detect_format when the CA has told us where this bank's columns are. None
     keeps the original behaviour exactly.
     """
-    name = (filename or "").lower().strip()
-    if name.endswith(".csv"):
-        return parse_csv(_decode_csv(content), mapping)
-    if name.endswith(".xlsx"):
-        return parse_xlsx(content, mapping)
-    if name.endswith(".pdf"):
-        return parse_pdf(content, mapping)
-    raise StatementParseError(
-        "Unsupported file type — upload a .csv, .xlsx or .pdf bank statement.")
+    return parse_statement_detailed(filename, content, mapping).transactions

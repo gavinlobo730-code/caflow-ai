@@ -65,8 +65,9 @@ from services.bank_transfer_service import bank_transfer_service
 from services.bank_batch_service import bank_batch_service
 from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
-from domain.banking import parse_statement, file_hash, StatementParseError
-from domain.banking.tie_out import tie_out
+from domain.banking import file_hash, StatementParseError
+from domain.banking.normalizer import parse_statement_detailed
+from domain.banking.tie_out import statement_check, totals_agreement
 from domain.banking import vision
 from services import statement_vision
 from domain.banking.normalizer import (
@@ -646,14 +647,21 @@ def bank_account_balance(
 # ─── Statements ───────────────────────────────────────────────────────────────
 
 # Image formats a photographed statement arrives as. A scan is usually a PDF;
-# a phone photo is not, and parse_statement has no extension to dispatch on.
+# a phone photo is not, and the parsers have no extension to dispatch on.
 _IMAGE_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                ".png": "image/png", ".webp": "image/webp"}
 
 
 def _read_statement_file(filename: str, content: bytes, mapping, *,
                          allow_vision: bool, has_balances: bool):
-    """(transactions, source_format, used_vision) for an uploaded statement.
+    """(transactions, source_format, used_vision, printed_totals) for an upload.
+
+    `printed_totals` is the "Grand Total" row the bank printed on the statement,
+    when it printed one — the evidence, already inside the file, that every line
+    was read. It comes off the SAME pass as the transactions; see
+    normalizer.parse_statement_detailed for why it cannot be picked up later.
+    A statement read by a vision model has none: what comes back is a model's
+    reading, so its own totals would be evidence for itself.
 
     THE ORDER MATTERS. The deterministic parsers are tried first and always: a
     text PDF must never be sent to a model just because a model is available,
@@ -673,9 +681,9 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
 
     if not is_image:
         try:
-            txns = parse_statement(filename or "", content, mapping)
+            parsed = parse_statement_detailed(filename or "", content, mapping)
             fmt = "pdf" if name.endswith(".pdf") else "xlsx" if name.endswith(".xlsx") else "csv"
-            return txns, fmt, False
+            return parsed.transactions, fmt, False, parsed.printed_totals
         except StatementParseError as e:
             # Only a PDF with no readable text is a candidate for the model. A
             # malformed CSV is a malformed CSV and a picture will not help.
@@ -709,7 +717,7 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
     txns = vision.read_statement(
         images, call_model=statement_vision.call,
         mime=_IMAGE_MIME.get(ext, "image/png"))
-    return txns, ("image" if is_image else "pdf-scan"), True
+    return txns, ("image" if is_image else "pdf-scan"), True, None
 
 
 @router.post("/statements/import")
@@ -749,15 +757,23 @@ async def upload_statement(
     SERVER-SIDE (Banking B.1) — the browser sends the raw file only. Returns the
     counts of imported and duplicate-skipped transactions.
 
-    THE TIE-OUT, AND WHY IT BLOCKS
+    THE STATEMENT'S OWN TOTALS, CHECKED WITHOUT BEING ASKED
+        Most Indian statements end with their own "Grand Total" of withdrawals
+        and deposits. Where one is found the parse is summed against it before
+        anything is written, so the strongest check in the import happens on
+        every upload of such a file with nothing typed in. `totals_check` in the
+        response says whether it ran and what it found.
+
+    THE TIE-OUT, AND WHY IT ALSO BLOCKS
         Give it the opening and closing balances PRINTED ON THE STATEMENT and it
-        checks `opening + credits - debits == closing` before importing
-        anything. A mismatch means lines were missed or a column is mapped to
-        the wrong thing, and it refuses — see domain/banking/tie_out.py for why
-        this is not the same check as balance_agreement and cannot be expressed
-        as one. They are optional because most existing callers do not send them
-        and an import that used to work must keep working; when they are absent
-        the response says so rather than reading as verified.
+        checks `opening + credits - debits == closing` too. The two are not
+        substitutes: the totals row cannot say whether this file is the whole
+        period, and the balances cannot be had for free. Either failing refuses
+        the import — see domain/banking/tie_out.py. The balances stay optional,
+        because most existing callers do not send them and a statement that
+        prints its own totals no longer needs them; `verified` says whether
+        anything at all confirmed the parse, so an unchecked import and a
+        checked one cannot read the same.
 
     EXCEPT ON A SCAN, WHERE THEY ARE REQUIRED
         `allow_vision` lets a scanned or photographed statement be read by a
@@ -776,7 +792,7 @@ async def upload_statement(
 
     # A mapping the CA supplied for THIS upload wins; otherwise a mapping saved
     # earlier for this account and this exact header layout; otherwise nothing,
-    # and parse_statement detects as it always has.
+    # and detect_format decides as it always has.
     mapping: Optional[dict] = None
     mapping_source = "detected"
     if column_mapping:
@@ -793,7 +809,7 @@ async def upload_statement(
             saved = column_mappings.find_mapping(
                 db, current_user["firm_id"], bank_account_id, header_fingerprint(headers))
         except StatementParseError:
-            saved = None            # unreadable file — parse_statement will say so
+            saved = None            # unreadable file — the parse will say so
         if saved:
             mapping = saved.get("mapping")
             mapping_source = "saved"
@@ -801,7 +817,7 @@ async def upload_statement(
     has_balances = (opening_balance_paise is not None
                     and closing_balance_paise is not None)
     try:
-        txns, fmt, used_vision = _read_statement_file(
+        txns, fmt, used_vision, printed = _read_statement_file(
             file.filename or "", content, mapping,
             allow_vision=allow_vision, has_balances=has_balances)
     except StatementParseError as e:
@@ -811,11 +827,11 @@ async def upload_statement(
     # and is advisory; this one decides whether the import happens at all, so it
     # has to run first — reporting "it does not add up" beside rows that are
     # already in the ledger would be a finding nobody can act on.
-    tie = tie_out(txns, opening_paise=opening_balance_paise,
-                  closing_paise=closing_balance_paise)
-    if tie["checked"] and not tie["agrees"]:
-        raise HTTPException(status_code=422, detail=tie["reason"])
-    if used_vision and not tie.get("agrees"):
+    check = statement_check(txns, opening_paise=opening_balance_paise,
+                            closing_paise=closing_balance_paise, printed=printed)
+    if check["refusal"]:
+        raise HTTPException(status_code=422, detail=check["refusal"])
+    if used_vision and not check["verified"]:
         # Belt and braces. _read_statement_file already refuses a vision upload
         # with no balances, so this cannot normally be reached — but the day
         # somebody adds a second way into that branch, the arithmetic must still
@@ -834,7 +850,10 @@ async def upload_statement(
                                    "duplicates_skipped": 0, "total_rows": len(txns),
                                    "column_source": mapping_source,
                                    "balance_check": balance_agreement(txns),
-                                   "tie_out": tie,
+                                   "tie_out": check["tie_out"],
+                                   "totals_check": check["totals_check"],
+                                   "verified": check["verified"],
+                                   "verification_gap": check["gap"],
                                    "read_with_ai": used_vision})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
@@ -875,9 +894,15 @@ async def upload_statement(
     # to see that the mapping is what was used.
     result["column_source"] = mapping_source
     result["balance_check"] = balance_agreement(txns)
-    # Always present, whether it verified anything or named itself a gap. An
-    # unchecked import and a checked one must not look the same to the caller.
-    result["tie_out"] = tie
+    # Always present, whether they verified anything or named themselves a gap.
+    # An unchecked import and a checked one must not look the same to the
+    # caller, and `verified` is the one field that says which this was without
+    # the caller having to reason about two checks that answer different
+    # questions.
+    result["tie_out"] = check["tie_out"]
+    result["totals_check"] = check["totals_check"]
+    result["verified"] = check["verified"]
+    result["verification_gap"] = check["gap"]
     # Say when a model read the statement. A CA reviewing these lines later is
     # entitled to know they came off a picture rather than a file, and the
     # source_format on the statement row records the same thing durably.
@@ -968,7 +993,8 @@ async def preview_statement_with_mapping(
     try:
         info = inspect_statement(file.filename or "", content)
         validate_mapping(mapping, len(info["headers"]))
-        txns = parse_statement(file.filename or "", content, mapping)
+        parsed = parse_statement_detailed(file.filename or "", content, mapping)
+        txns = parsed.transactions
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -990,6 +1016,11 @@ async def preview_statement_with_mapping(
             "balance_paise": t.balance_paise,
         } for t in txns[:20]],
         "balance_check": balance_agreement(txns),
+        # What the bank printed about itself, when it printed anything. The
+        # preview is where a CA judges a mapping before importing under it, and
+        # a mapping whose parse does not sum to the statement's own totals is
+        # wrong however plausible the twenty rows above look.
+        "totals_check": totals_agreement(txns, parsed.printed_totals),
     })
 
 

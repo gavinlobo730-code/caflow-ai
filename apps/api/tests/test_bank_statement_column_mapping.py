@@ -36,8 +36,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from domain.banking.normalizer import (
-    MAPPING_KEYS, StatementParseError, balance_agreement, header_fingerprint,
-    inspect_statement, parse_statement, validate_mapping,
+    MAPPING_KEYS, StatementParseError, balance_agreement, detect_format,
+    header_fingerprint, inspect_statement, parse_statement, validate_mapping,
 )
 from main import app
 from services import bank_column_mapping_service as svc
@@ -47,16 +47,29 @@ pytestmark = pytest.mark.usefixtures("dev_header_auth")
 client = TestClient(app)
 HEADERS = {"X-User-Role": "partner", "X-Firm-Id": "firm-001", "X-User-Id": "user-001"}
 
-# A layout none of the six adapters handles: "Withdrawal Amt"/"Deposit Amt"
-# rather than Debit/Credit, and a "Chq" column that makes detect_format guess
-# HDFC. This is the shape the whole feature exists for.
+# This layout — Date / Particulars / Chq / Withdrawal / Deposit / Balance — USED
+# to be the dead end this whole feature exists for, and is now DETECTED as
+# "generic_cheque". A real 33-page Cosmos Co-op statement has exactly this shape
+# and needed a hand-written mapping to import; the adapter was added so it does
+# not. It is kept here as the regression test for that.
 KOTAK_CSV = b"""Date,Particulars,Chq,Withdrawal Amt,Deposit Amt,Closing Bal
 01/04/2025,UPI/DR/1234/RAMESH K,,5000.00,,95000.00
 02/04/2025,NEFT SALARY CREDIT,,,20000.00,115000.00
 03/04/2025,BANK CHARGES GST,,590.00,,114410.00
 """
+
+# A layout none of the seven adapters handles: no cheque column at all, and
+# "Paid Out"/"Paid In"/"Running Total" instead of any word the token lists know.
+# The dead end has to be a file that IS one — using a detected layout would
+# leave the rest of this module testing a feature nobody needs.
+UNKNOWN_CSV = b"""Value Date,Details,Paid Out,Paid In,Running Total
+01/04/2025,UPI/DR/1234/RAMESH K,5000.00,,95000.00
+02/04/2025,NEFT SALARY CREDIT,,20000.00,115000.00
+03/04/2025,BANK CHARGES GST,590.00,,114410.00
+"""
 GOOD = {"date": 0, "desc": 1, "ref": 2, "debit": 3, "credit": 4, "balance": 5}
 SWAPPED = {"date": 0, "desc": 1, "ref": 2, "debit": 4, "credit": 3, "balance": 5}
+UNKNOWN_GOOD = {"date": 0, "desc": 1, "ref": None, "debit": 2, "credit": 3, "balance": 4}
 
 
 # ── The dead end, and the way past it ────────────────────────────────────────
@@ -65,13 +78,34 @@ def test_this_bank_is_a_dead_end_without_a_mapping():
     """The starting condition. If this ever stops raising, the rest of this
     module is testing a feature nobody needs."""
     with pytest.raises(StatementParseError) as e:
-        parse_statement("kotak.csv", KOTAK_CSV)
+        parse_statement("unknown.csv", UNKNOWN_CSV)
     # There are TWO dead-end messages — "Unsupported bank statement format" and
-    # the detected-adapter-does-not-fit one this file happens to hit. Asserting
-    # the exact sentence would pass for the wrong reason if detection shifted;
-    # what matters is that the CA is told only which banks work, with no way to
-    # say where THIS bank's columns are.
+    # the detected-adapter-does-not-fit one. Asserting the exact sentence would
+    # pass for the wrong reason if detection shifted; what matters is that the
+    # CA is told only which banks work, with no way to say where THIS bank's
+    # columns are.
     assert "Supported: HDFC, SBI, ICICI, Axis" in str(e.value)
+
+
+def test_the_six_column_cheque_layout_no_longer_needs_a_mapping():
+    """Cosmos Co-op prints this, and so do plenty of co-operative and older PSU
+    exports. A real 33-page statement needed a hand-written mapping before the
+    generic_cheque adapter; it must not again."""
+    assert detect_format(["Date", "Particulars", "Chq", "Withdrawal Amt",
+                          "Deposit Amt", "Closing Bal"]) == "generic_cheque"
+    txns = parse_statement("kotak.csv", KOTAK_CSV)
+    assert len(txns) == 3
+    assert (txns[0].debit_paise, txns[0].credit_paise) == (500_000, 0)
+    assert (txns[1].debit_paise, txns[1].credit_paise) == (0, 2_000_000)
+
+
+def test_the_six_column_adapter_does_not_steal_an_hdfc_file():
+    """HDFC is the same shape plus a Value Date column, and shares the word
+    "cheque" — the signal detect_format matches HDFC on. Positions are what
+    separate them, so a seven-column file must still be HDFC."""
+    assert detect_format(["Date", "Narration", "Value Dt", "Chq/Ref No",
+                          "Withdrawal Amt.", "Deposit Amt.",
+                          "Closing Balance"]) == "hdfc"
 
 
 def test_the_same_file_parses_once_the_columns_are_mapped():
@@ -230,11 +264,11 @@ def test_inspect_returns_the_header_and_real_rows():
 
 
 def test_inspect_does_not_offer_a_mapping_it_has_just_shown_to_be_wrong():
-    """detect_format guesses 'hdfc' off the shared cheque signal, and
+    """detect_format falls back to 'generic' for a layout it does not know, and
     _validate_adapter rejects it. Prefilling that guess would hand the CA the
     error to confirm."""
-    info = inspect_statement("kotak.csv", KOTAK_CSV)
-    assert info["detected_format"] == "hdfc"
+    info = inspect_statement("unknown.csv", UNKNOWN_CSV)
+    assert info["detected_format"] == "generic"
     assert info["detected_fits"] is False
     assert info["proposed_mapping"] is None
 
@@ -262,17 +296,20 @@ def test_inspect_refuses_a_corrupt_pdf_cleanly():
 
 # ── Through the API ──────────────────────────────────────────────────────────
 
-def _upload(path, **form):
-    files = {"file": ("kotak.csv", KOTAK_CSV, "text/csv")}
+def _upload(path, *, content=KOTAK_CSV, name="kotak.csv", **form):
+    files = {"file": (name, content, "text/csv")}
     return client.post(path, headers=HEADERS, files=files,
                        data={"client_id": "client-001", **form})
 
 
 def test_the_inspect_endpoint_gives_a_ca_something_to_map():
-    res = _upload("/api/banking/statements/inspect")
+    """Driven with the UNKNOWN layout: the six-column cheque one this used to
+    use is now detected, so asking the mapper about it would prove nothing."""
+    res = _upload("/api/banking/statements/inspect",
+                  content=UNKNOWN_CSV, name="unknown.csv")
     assert res.status_code == 200, res.text
     data = res.json()["data"]
-    assert data["headers"][3] == "Withdrawal Amt"
+    assert data["headers"][2] == "Paid Out"
     assert data["detected_fits"] is False
 
 

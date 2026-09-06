@@ -199,13 +199,38 @@ def test_detect_format_shared_cheque_signal_does_not_shadow_banks():
     assert detect_format(["Date", "Narration", "Value Dt", "Chq/Ref No", "Debit", "Credit", "Balance"]) == "hdfc"
 
 
-def test_unsupported_layout_fails_loud_not_silent():
-    """F8-class safety: an unknown bank whose layout doesn't fit the detected
-    adapter must raise StatementParseError, not silently mis-map debit/credit."""
-    # 6-column export with a Chq/Ref column trips the hdfc signal, but hdfc needs
-    # 7 columns — must fail loud rather than read balance out-of-range as 0.
+def test_the_six_column_cheque_layout_is_now_read_rather_than_refused():
+    """This file used to be the fail-loud example: six columns with a Chq/Ref
+    column trip HDFC's signal, and HDFC wants seven, so it was refused.
+
+    It is a real and common layout — Cosmos Co-op prints it, and so do plenty of
+    other co-operative and older PSU exports — so it now has an adapter of its
+    own and parses. What must NOT change is the reason the old test existed: it
+    has to parse CORRECTLY, and a wrong reading here is a debit filed as a
+    deposit. So the values are asserted, not just the absence of an exception.
+    """
     csv = ("Date,Description,Chq/Ref No,Debit,Credit,Balance\n"
            "05/04/2026,PURCHASE,REF1,500.00,,9500.00\n")
+    assert detect_format(["Date", "Description", "Chq/Ref No",
+                          "Debit", "Credit", "Balance"]) == "generic_cheque"
+    txns = parse_csv(csv)
+    assert len(txns) == 1
+    assert txns[0].debit_paise == 50000 and txns[0].credit_paise == 0
+    assert txns[0].balance_paise == 950000
+    assert txns[0].reference_no == "REF1"
+
+
+def test_unsupported_layout_fails_loud_not_silent():
+    """F8-class safety: an unknown bank whose layout doesn't fit the detected
+    adapter must raise StatementParseError, not silently mis-map debit/credit.
+
+    Six columns again, but the amounts are NOT where any adapter expects them —
+    which is the case the six-column adapter deliberately does not claim: it
+    checks the POSITIONS of the reference and both amount columns, not just the
+    column count (normalizer._looks_like).
+    """
+    csv = ("Date,Chq/Ref No,Debit,Credit,Balance,Description\n"
+           "05/04/2026,REF1,500.00,,9500.00,PURCHASE\n")
     with pytest.raises(StatementParseError):
         parse_csv(csv)
 
