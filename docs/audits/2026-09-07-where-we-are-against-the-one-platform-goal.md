@@ -12,26 +12,26 @@ market say?*
 
 This report has three tiers of confidence and they are not interchangeable.
 
-**Tier 1 — I ran it myself.** Fifteen of the nineteen critical defects below were
-reproduced in this session by executing the code or querying the production
+**Tier 1 — I ran it myself.** Seventeen of the twenty-one critical defects below
+were reproduced in this session by executing the code or querying the production
 database, and the numbers printed here are the numbers those runs produced. Where
 that is so, the finding says **verified**. Two claims I set out to confirm turned
 out to be **wrong and are recorded as corrected**, because a report that only
 confirms is not a check.
 
-**Tier 2 — a deep reader found it, I did not re-run it.** Eight subsystems were
+**Tier 2 — a deep reader found it, I did not re-run it.** Nine subsystems were
 each read end to end (routers, services, domain modules, migrations, screens,
-tests) and returned 248 findings. The adversarial verification pass that was
+tests) and returned 278 findings. The adversarial verification pass that was
 supposed to attack every one of them ran on 27 findings before the session's model
-allowance was exhausted. So **most of the ~130 high-severity findings in Appendix A
+allowance was exhausted. So **most of the ~140 high-severity findings in Appendix A
 are single-source**. They are specific and carry file references, and the ones I
 spot-checked held up — but treat them as *leads with evidence*, not as settled.
 
 **Tier 3 — lighter coverage.** Reporting and year-end, practice management, the AI
-layer, fixed assets and inventory, portals and identity, platform and security, the
-frontend as a whole, and the marketing site did **not** get a deep reader. What I
-say about them comes from my own inline reading and is thinner. **That is a real
-hole in this audit and the biggest single reason to commission a second pass.**
+layer, portals and identity, platform and security, the frontend as a whole, and
+the marketing site did **not** get a deep reader. What I say about them comes from
+my own inline reading and is thinner. **That is a real hole in this audit and the
+biggest single reason to commission a second pass.**
 
 Market facts carry a source link. Everything about the code carries a file path.
 
@@ -116,8 +116,8 @@ deduction, not one employee, not one task, not one filing record. The modules th
 audit found most broken are, without exception, the modules with zero rows.
 
 That is not a coincidence and it is the single most useful fact here: **the defects
-are concentrated exactly where nobody has walked yet.** Nine of the fifteen verified
-criticals sit in code paths that have never run against real data.
+are concentrated exactly where nobody has walked yet.** Eleven of the seventeen
+verified criticals sit in code paths that have never run against real data.
 
 ---
 
@@ -179,7 +179,7 @@ Ageing built twice on purpose because the two answers have different shapes.
 
 ---
 
-## 4. The fifteen verified critical defects
+## 4. The seventeen verified critical defects
 
 Each of these I reproduced myself in this session. The figures are from those runs.
 
@@ -381,7 +381,55 @@ posting kernel** and its balance assertion. The CA completes the whole year-end
 workflow — draft, submitted, approved — clicks Post, and gets a 500. Nothing reaches
 the ledger, so the signed Balance Sheet and P&L are the unadjusted ones.
 
-### 4.6 One security finding I confirmed against production
+### 4.6 Depreciation: the default rates are not Schedule II rates, and posting fails
+
+**The "Companies Act 2013 Schedule II" rate table is not Schedule II.**
+`routers/fixed_assets.py:41-51` ships `_DEFAULT_WDV_RATES`, duplicated verbatim in
+`app/clients/[id]/fixed-assets/page.tsx:64-74` and labelled on the form as *"Companies
+Act 2013 Sch II rate pre-filled for selected category"*. Schedule II Part C
+prescribes useful **lives**, from which the WDV rate is `R = 1 − (residual/cost)^(1/n)`
+at the 5% residual cap. I computed both columns:
+
+| Category | Shipped | Schedule II life | Correct rate |
+|---|--:|--:|--:|
+| Building | 5.00% | 60y (RCC) | 4.87% ✓ |
+| Plant & Machinery | 15.33% | 15y | **18.10%** |
+| Furniture & Fixtures | 10.00% | 10y | **25.89%** |
+| Office Equipment | 13.91% | 5y | **45.07%** |
+| Computer & IT | 31.67% | 3y end-user / 6y server | **63.16% / 39.30%** |
+| Vehicles | 25.89% | 8y | **31.23%** |
+
+Only Building is right. Office Equipment is understated more than threefold,
+Furniture and Computers more than twofold. And the origin of the wrong numbers is
+visible in them: **Furniture 10.00% and Intangibles 25.00% are the *Income Tax Act*
+rates**, and 25.89% — the correct 10-year figure — has been put against Vehicles,
+which Schedule II gives 8 years. The table is a mixture of two statutes under one
+statute's name.
+
+A ₹1,00,000 laptop charges ₹31,670 in year one instead of ₹63,160. Every asset
+created without the CA overriding the rate depreciates wrongly for its whole life,
+so profit and net block are overstated in the signed financial statements.
+
+**And the monthly depreciation post cannot complete.**
+`routers/fixed_assets.py:313` posts the journal, then line 318 updates the register
+with `"depreciation_posted_through": period`, where `period` is `YYYY-MM` by
+`_PERIOD_RE` at line 53. I checked the column in production — it is `date` — and ran
+the cast there:
+
+```
+select '2026-04'::date  →  ERROR 22007: invalid input syntax for type date
+```
+
+So the Dr Depreciation / Cr Accumulated Depreciation entry lands on the ledger and
+the register update then fails. **Accumulated depreciation stays ₹0 and WDV stays at
+cost, permanently**, no matter how many times the CA retries — and the kernel's
+dedupe stops the retry from at least being visible as a double post.
+
+That is the second of the four year-end operations that cannot complete in
+production, alongside §4.5's year-end adjustment. Both write columns that have never
+existed. Both would have been caught by one integration test against a real schema.
+
+### 4.7 One security finding I confirmed against production
 
 Twelve `SECURITY DEFINER` functions are executable by the **`anon`** role — the
 public key that is inlined into the static frontend bundle. The one that matters:
@@ -467,8 +515,10 @@ have never existed and nothing noticed.
 
 **What is missing is a statutory golden-case suite**: thirty or forty worked
 examples — a §194C ladder, an IGST set-off, an export with payment, an old-regime
-Annexure II, a company computation — each with the answer derived from the Act by a
-human and asserted end to end. That suite would have caught eleven of the fifteen.
+Annexure II, a company computation, a Schedule II WDV rate — each with the answer
+derived from the Act by a human and asserted end to end. That suite would have
+caught twelve of the seventeen. The remaining five write columns that do not exist,
+and **one integration test against a real schema** would have caught those.
 
 ---
 
@@ -491,7 +541,7 @@ its own merits?
 | Reporting / year-end *(light)* | **B−** | Not yet | Statements and Schedule III strong; year-end adjustments cannot post |
 | Practice management *(light)* | **C** | No | Zero tasks and zero compliance rows in production — untested in anger |
 | AI layer *(light)* | **D** | No | See §7.4 — it cannot read the books |
-| Fixed assets / inventory *(light)* | **?** | Unknown | Zero fixed assets in production; not audited this pass |
+| Fixed assets / inventory | **C** | Not yet | Inventory engine is good; depreciation rates wrong and posting fails (§4.6) |
 | Platform / security *(light)* | **B−** | n/a | Tenancy design is good; anon RPCs and dead backup tables in production |
 | Frontend / UX *(light)* | **C** | n/a | 27 pages over 800 lines; 4,537-line sales page; 297 direct DB calls from the browser |
 
@@ -627,10 +677,12 @@ Sequenced by what stops a CA trusting the product, not by effort.
 set-off and the RCM liability in GSTR-3B; zero-rated IGST; the four TDS threshold
 and computation bugs, *with the test that pins the wrong number corrected first*;
 the capital-loss floor, §80G's qualifying limit and the capital-gains transfer date;
-the ECR wage base and the Annexure II standard deduction; a separate invoice PDF
-builder that reads the **client** as supplier with real per-line rates; the year-end
-adjustment insert routed through the posting kernel; `REVOKE` on the anon RPCs.
-**Then the statutory golden-case suite from §5.4** — without it, Stage 1 will regress.
+the ECR wage base and the Annexure II standard deduction; the Schedule II rate table
+recomputed from useful lives and the `YYYY-MM`-into-a-`DATE` post; a separate invoice
+PDF builder that reads the **client** as supplier with real per-line rates; the
+year-end adjustment insert routed through the posting kernel; `REVOKE` on the anon
+RPCs. **Then the statutory golden-case suite from §5.4** — without it, Stage 1 will
+regress.
 
 **Stage 2 — the daily loop actually closes (6–8 weeks).** A real GSTR-2B
 reconciliation that reads the books from the database and parses the portal's own
@@ -735,13 +787,13 @@ These change what to build, and I have not assumed answers.
 
 ## Appendix A — the full finding set
 
-The 248 structured findings are committed alongside this report in
+The 278 structured findings are committed alongside this report in
 `2026-09-07-findings/` — one JSON per subsystem, each finding carrying kind,
 severity, file-and-line evidence, what a CA would experience, what the
 market-standard tool does, a suggested fix and an effort estimate. Load them into
 the issue tracker rather than re-deriving them; that directory's README explains the schema.
 
 **Coverage gap, stated plainly:** reporting and year-end, practice management, the AI
-layer, fixed assets and inventory, portals and identity, platform and security, the
-frontend as a whole, and the marketing site received only my own lighter pass. A
-second audit pass over those eight is the first thing I would do after Stage 1.
+layer, portals and identity, platform and security, the frontend as a whole, and the
+marketing site received only my own lighter pass. A second audit pass over those
+seven is the first thing I would do after Stage 1.
