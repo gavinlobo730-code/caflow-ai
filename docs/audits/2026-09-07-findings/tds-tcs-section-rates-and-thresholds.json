@@ -46,7 +46,16 @@
    "suggested_fix": "Switch compute26Q/compute24Q to the file's own `authedFetch`. Write `financial_year` in `sync_for_bill`'s upsert (fy_label(when) already exists in the module). Then delete the browser-side assembly entirely and point the screen at `POST /api/tds/26q/from-books` and `/24q/from-books`, which are already correct and already GL-reconciled \u2014 see TDS-05 and TDS-06 for what the browser path also gets wrong.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed on all three counts: the /tds/returns compute path sends no Authorization header (apps/web/lib/data/tds.ts:116-132 vs apps/api/routers/tds.py:130,214 and core/auth.py:171-175), the register never writes financial_year (apps/api/services/tds_register_service.py:218-252, and migration 263 backfills only), and the quarter string is spelled three incompatible ways (\"Q3 2025-26\" in tds_register_service.py:96, \"Q1 (Apr-Jun)\" in apps/web/app/tds/page.tsx:153, \"Q1\" in app/tds/returns/page.tsx:55). The screen therefore always reports 'No TDS deductions found'. Severity corrected to high rather than critical: no wrong money figure reaches the CA \u2014 the screen simply cannot produce anything \u2014 and a working from-books 26Q exists on the client compliance TDS screen (apps/web/app/clients/[id]/compliance/tds/page.tsx:382).",
+    "probe": "grep -n 'financial_year' apps/api/services/tds_register_service.py \u2192 no matches (the upsert at :218-252 writes quarter only). grep -rn 'financial_year' apps/api/migrations/*.sql | grep tds_deductions \u2192 only migration 263, no trigger, no default.",
+    "lens_notes": {
+     "literal": "All three breaks are literally present. (1) apps/web/lib/data/tds.ts:116-121 and :127-132 \u2014 compute26Q/compute24Q call bare fetch() with headers {\"Content-Type\"} only; API_BASE is the FastAPI origin (lib/data/tds.ts:17), so no proxy can inject a token. apps/api/routers/tds.py:130 and :214 both gate on Depends(rbac(\"tds\",\"compute\")); apps/api/core/auth.py:171-175 raises 401 when the Bearer header is absent, and the dev fallback (auth.py:154-169) is reachable only when SUPABASE_URL is unset AND APP_ENV=development. The same file's authedFetch (lib/data/tds.ts:141-152) does attach the token \u2014 it is used by listTdsSections/computeTdsAmount and not by the two compute calls. (2) apps/api/services/tds_register_service.py:218-252 writes 'quarter' and never 'financial_year' \u2014 grep for financial_year over that whole module returns nothing. (3) the register writes fy_quarter(when) = \"Q3 2025-26\" (tds_register_service.py:89-97), the /tds manual form writes \"Q1 (Apr-Jun)\" (apps/web/app/tds/page.tsx:153, :195) and the CSV import writes the same shape (page.tsx:776), while apps/web/app/tds/returns/page.tsx:55 holds quarter as TDSQuarter = \"Q1\"|... and lib/data/tds.ts:229-233 filters .eq(\"financial_year\", fy).eq(\"quarter\", quarter). Three different spellings of one value.",
+     "guards": "None. Migration 263 (apps/api/migrations/263_tds_deductions_financial_year.sql:44-78) adds the column, backfills existing rows once and creates an index \u2014 there is no trigger and no DEFAULT, and grep over migrations/*.sql shows 263 is the only file that mentions tds_deductions.financial_year. The column comment in migrations/014_complete_missing_tables.sql:187 documents quarter as 'Q1 2026-27' \u2014 i.e. the register's format is the documented one and both frontend spellings are wrong. Note the asymmetry the finding does not mention: tds_challans.quarter carries CHECK (quarter IN ('Q1','Q2','Q3','Q4')) (migrations/037_tds_engine.sql:62), so getTDSChallans(clientId,\"Q1\") DOES match \u2014 only the deductions half misses.",
+     "reach": "Reachable. /tds is in the deadlines nav (apps/web/components/panels/DeadlinesPanel.tsx:34) and /tds/returns is linked twice from it (apps/web/app/tds/page.tsx:678, :694). The router is mounted (apps/api/main.py includes routers.tds). What stops this being critical: a second, correct 26Q path already exists and is wired \u2014 apps/web/app/clients/[id]/compliance/tds/page.tsx:382 posts to /api/tds/26q/from-books, which reads posted purchase bills server-side and reconciles to the TDS Payable control. So a CA has a working route to a 26Q; the screen labelled 'Prepare a Return' is not it."
+    }
    }
   },
   {
@@ -61,7 +70,16 @@
    "suggested_fix": "Normalise at the router \u2014 map 'Form 16'\u2192'16', 'Form 16A'\u2192'16A' \u2014 or change the select values. Then stop swallowing DB errors into a 200: `create_certificate` should raise 422 on a constraint violation, and `saveNew` must check `r.success` and surface `r.error`. Add a real-Postgres test that posts the request model the UI actually sends.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed exactly as described. The UI can only send 'Form 16' or 'Form 16A' (apps/web/app/clients/[id]/compliance/tds/page.tsx:681,739-744), the router inserts the string unchanged (apps/api/routers/tds_workspace.py:561), the production CHECK accepts only '16'/'16A'/'16B'/'16C' (apps/api/migrations/037_tds_engine.sql:89, present in production per tests/fixtures/production_guards_2026-09-03.json:4367), and the failure is swallowed into a 200 the caller never inspects (routers/tds_workspace.py:586-588; saveNew at page.tsx:695-707). Certificate creation silently no-ops on any real database.",
+    "probe": "grep -rn 'certificate_type' apps/api/migrations/*.sql \u2192 one hit, migrations/037_tds_engine.sql:89. grep -rn \"Form 16A\\|'16A'\" apps/api/tests/*.py \u2192 mock tests all use 'Form 16A'; only tests/test_gst_tds_schema_drift_pg.py:291 (real Postgres) uses '16A'.",
+    "lens_notes": {
+     "literal": "Every cited line checks out. apps/api/migrations/037_tds_engine.sql:89 is `certificate_type TEXT NOT NULL CHECK (certificate_type IN ('16','16A','16B','16C'))`, and grep for certificate_type over migrations/*.sql returns that one line only \u2014 no later ALTER. apps/web/app/clients/[id]/compliance/tds/page.tsx:681 seeds certificate_type: \"Form 16A\" and :739-744 offers exactly <option>Form 16</option> / <option>Form 16A</option>. apps/api/routers/tds_workspace.py:561 puts body.certificate_type into the insert verbatim; the handler's `except Exception` at :586-588 returns api_response(False, None, str(e)) \u2014 HTTP 200 \u2014 and saveNew (page.tsx:695-707) awaits apiFetch, never reads r.success, then closes the panel and reloads.",
+     "guards": "None anywhere on the path. The Pydantic model does not constrain it: routers/tds_workspace.py:143 is `certificate_type: str = Field(..., description=\"Form 16 or Form 16A\")` \u2014 a description, not a validator. The constraint is real in production, not just in the migration: tests/fixtures/production_guards_2026-09-03.json:4367 carries tds_certificates.tds_certificates_certificate_type_check. Test coverage points the wrong way \u2014 every mock-mode test posts the UI's own string (tests/test_phase3_tds.py:111, tests/test_identifier_validators_wired.py:116,124, tests/test_r238_tax_workspace_tenant_ownership.py:93,104, tests/test_tds_client_scope.py:131) and the single real-Postgres insert uses '16A' (tests/test_gst_tds_schema_drift_pg.py:291), so nothing in CI can see the mismatch.",
+     "reach": "Reachable. The router is mounted at apps/api/main.py:326 (app.include_router(tds_workspace.router, dependencies=_CLIENT_GUARD)), and the screen is one click from the client compliance index \u2014 apps/web/app/clients/[id]/compliance/page.tsx:378 offers the 'TDS Workspace' card with path \"tds\", and Compliance itself is in the client nav (apps/web/lib/workspace/ClientNavContext.tsx:71)."
+    }
    }
   },
   {
@@ -76,7 +94,16 @@
    "suggested_fix": "Replace `TDS_SECTIONS` with a `listTdsSections(fy)` call (the endpoint exists \u2014 routers/tds.py:371, and apps/web/app/accounting/suppliers/page.tsx:186 already does exactly this) and the amount with `computeTdsAmount({section, payment_amount_paise, pan, fy})` (routers/tds.py:335). Move the insert behind a POST endpoint so rbac and the register's own rules apply. Add a lint/test that fails on any TDS rate literal under apps/web.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed, and the numbers are worse than a stale label: the page's 5% for \u00a7194D/\u00a7194H is double the engine's 2%, and the page deducts with no threshold at all where the engine refuses below one. Probed against the real registry \u2014 194H on \u20b91,00,000 gives \u20b92,000 (2%) and 194J on \u20b920,000 gives \u20b90 (below_threshold), while apps/web/app/tds/page.tsx:159-171 would produce \u20b95,000 and \u20b92,000 respectively. The write is a raw PostgREST insert (page.tsx:183-197, :764-777) with only firm-scoped RLS behind it (migrations/014:196-198), and the repo's own unguarded-direct-write tracker misses the table entirely.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.tds.tds_computer import TDSComputer; c=TDSComputer(); ...\" \u2192 194H applies=True tds_paise=200000 rate=2.0; 194J applies=False tds_paise=0 reason=below_threshold; 194D applies=True tds_paise=200000 rate=2.0. Also ran the guard test's own scanner: `tds_deductions in scan: False` (21 tables found), while pytest tests/test_direct_write_tables_are_role_guarded.py -q \u2192 5 passed.",
+    "lens_notes": {
+     "literal": "Confirmed by running the engine against the page's table. apps/web/app/tds/page.tsx:49-61 hardcodes TDS_SECTIONS with 194D and 194H at rate 5; apps/api/domain/tds/section_rates.py:125-131 carries both at 200 bps for non-companies (the comments name F(No.2)A 2024 from 1 Oct 2024 / 1 Apr 2025). :159-162 auto-fills tdsRate from that table and :171 computes Math.round((grossPaise * tdsRate) / 100) \u2014 no single/aggregate threshold, no \u00a7206AA floor, and Math.round where the engine floors (domain/tds/tds_computer.py:317, `taxable_paise * rate_bps // 10000`). :183-197 and :764-777 insert straight into tds_deductions over PostgREST. The file header at :3-16 does cite \u00a7194A '\u20b940,000 bank, \u20b95,000 others' \u2014 pre-FA-2025 figures against the registry's \u20b910,000 (section_rates.py:118).",
+     "guards": "None, and the test that is supposed to notice cannot see it. tds_deductions carries only a firm-scoped RLS policy (apps/api/migrations/014_complete_missing_tables.sql:196-198, FOR ALL USING firm_id = get_my_firm_id()) \u2014 no role rule, so rbac('tds','compute') genuinely never runs. tests/test_direct_write_tables_are_role_guarded.py declares AWAITING_DECISION empty and asserts 'every table the browser writes now carries a role rule', but its scanner's 400-character window (line 148, `(?:[^;]|\\n){0,400}?`) cannot reach the terminating `;` past the /tds page's insert payload, so tds_deductions never appears in its scan and the test passes green. There is no lint or test anywhere that would fail on a TDS rate literal in apps/web.",
+     "reach": "Reachable and is the primary TDS screen: /tds is in the deadlines nav (apps/web/components/panels/DeadlinesPanel.tsx:34) and in lib/auth/permissions.ts:59. The correct alternative already exists and is used elsewhere \u2014 apps/web/app/accounting/suppliers/page.tsx:183-186 fills its rate from listTdsSections (GET /api/tds/sections, routers/tds.py:371), so the /tds page is the outlier, not the pattern."
+    }
    }
   },
   {
@@ -91,7 +118,16 @@
    "suggested_fix": "Add a `challan_id` FK on `tds_deductions` (migration 037 already added `tds_return_id`; the challan link was the one it named and did not create) and a challan-mapping screen. Failing that, match a bill to the challan whose deposit period covers the bill's month \u2014 deduction month \u2192 deposit due 7th of the next month, March \u2192 30 April \u2014 and order the challan query deterministically.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. Every deductee row in a 26Q working paper is stamped with one challan per section (apps/api/services/tds_return_service.py:215, :224-226) regardless of which of the quarter's three monthly deposits actually covered that bill, and tds_deposited_paise is a largest-remainder share of the section's total deposit (:200-209), not the amount deposited for that deductee. The only correction: the challan order is by UUID via _paginate_all's `.order(\"id\")` (:74), not undefined \u2014 arbitrary with respect to month either way. No challan FK exists on tds_deductions (migrations/014:183-185; 037:41-45 names one and adds only tds_return_id).",
+    "probe": null,
+    "lens_notes": {
+     "literal": "apps/api/services/tds_return_service.py:215 is exactly `matching_challan = next((c for c in challans if (c.get(\"section\") or \"\") == section), None)`, and every deductee row for a section takes that same challan's challan_no, bsr_code and payment_date (:224-226). One correction to the evidence: the challan list is not strictly unordered \u2014 _deposited_challans (:150-153) issues no .order(), but _paginate_all (:60-79) adds `.order(key)` with key=\"id\", so 'first' is the lowest UUID. Deterministic, and still unrelated to the deposit month, which is the substance of the finding. The apportionment claim is also literal: :200-209 computes shares = apportion(min(deposited_total, sum(weights)), weights) over all of a section's bills, so a bill deposited in full in April is shown as part-deposited whenever the quarter's total deposit is short of the quarter's total deduction.",
+     "guards": "None. tds_deductions has challan_no/challan_date/bsr_code as loose TEXT (apps/api/migrations/014_complete_missing_tables.sql:183-185) and no challan FK \u2014 migration 037's own comment at :41-42 says 'Add challan_id FK to existing tds_deductions table' and line :45 then adds only tds_return_id. Nothing validates that a deductee row's challan covers its payment month, and the 26Q builder reads purchase_bills rather than tds_deductions anyway, so even a hand-tagged challan_no on the register would not reach this payload.",
+     "reach": "Reachable and in use: apps/web/app/clients/[id]/compliance/tds/page.tsx:382 posts to /api/tds/26q/from-books (apps/api/routers/tds.py:289), which is this service. This is the working 26Q path \u2014 the one a CA actually gets a working paper from."
+    }
    }
   },
   {
@@ -106,7 +142,16 @@
    "suggested_fix": "Either remove 194IA from the dropdown with a note that 26QB is not supported, or add it properly: registry entry, \u20b950 lakh threshold on the consideration or stamp-duty value (whichever is higher, from FY 2019-20), and a 26QB path separate from 26Q. Generate the frontend's section list from `GET /api/tds/sections` so the two can never diverge again.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. \u00a7194IA is selectable on the vendor form (apps/web/app/clients/[id]/purchases/page.tsx:233) and is absent from the FY registry (apps/api/domain/tds/section_rates.py:110-150), so the first purchase bill for such a vendor is refused with HTTP 422 'Unknown TDS section 194IA' (domain/tds/tds_computer.py:301 \u2192 routers/purchase_bills.py:343-344). The bill cannot be saved until the section is changed.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.tds.tds_computer import TDSComputer; TDSComputer().resolve_tds('194IA', 60_00_000_00, fy='2025-26')\" \u2192 ValueError: Unknown TDS section '194IA'.",
+    "lens_notes": {
+     "literal": "Confirmed by running the engine. apps/web/app/clients/[id]/purchases/page.tsx:233 offers `{ value: \"194IA\", label: \"194IA \u2014 Purchase of Immovable Property (1%)\" }` and :246 maps it to 100 bps; the Combobox at :1814-1816 writes it to tdsSection, which :1193 saves as the vendor's tds_section. apps/api/routers/purchase_bills.py:35 carries the same map with \"194IA\": 100. _SECTIONS_2025_26 (apps/api/domain/tds/section_rates.py:110-150) has 192, 193, 194, 194A, 194B, 194C, 194D, 194G, 194H, 194I, 194J, 194K, 194LA, 194Q and 206C \u2014 no 194IA. tds_computer.py:301 raises ValueError(f\"Unknown TDS section '{section}'\") and purchase_bills.py:343-344 converts it to HTTPException(422, str(ve)).",
+     "guards": "None. The vendor form imposes no constraint the engine agrees with, and the section reaches resolve_tds unconditionally once tds_applicable is set (purchase_bills.py:330-347). There is no test that pins the frontend's section list to GET /api/tds/sections \u2014 apps/web/app/accounting/suppliers/page.tsx:183-186 does source its list from the endpoint, so the two lists have already diverged in the codebase.",
+     "reach": "Reachable: the purchases screen is a client workspace page and the TDS section field is on the vendor form there (apps/web/app/clients/[id]/purchases/page.tsx:1803-1830). The bill create path is the ordinary one, not a flagged or unmounted route."
+    }
    }
   },
   {
@@ -121,7 +166,16 @@
    "suggested_fix": "Add a `domain/tds/interest.py` with two pure functions \u2014 `interest_201_1a(deducted_on, deposited_on, amount_paise, failure: 'not_deducted'|'not_deposited')` at 1%/1.5% per month or part, and `fee_234e(due_date, filed_on, tds_paise)` capped at the TDS \u2014 with unit tests, and surface both on the challan create screen and the return screen. Both are pure arithmetic over dates the system already holds.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed as a gap: there is no \u00a7201(1A) interest computation anywhere in the codebase, and \u00a7234E exists only inside the filing demo (apps/api/services/filing_demo/tds_return.py:198-216), reachable only through the /tds/returns flow that TDS-03 shows is broken. create_challan cannot even record interest \u2014 CreateChallanRequest has no interest or penalty field (apps/api/routers/tds_workspace.py:100-108) and the handler books the whole amount as tds_paise (:280-281), despite the columns existing since migration 037:64-67. Downgraded to medium: nothing here computes a wrong number, the CA can still deposit and file by hand, and the 26Q apportionment caps deposits at deductions (services/tds_return_service.py:207) so an interest-inclusive challan amount does not overstate the return. It is a market-standard feature absent, not a task a CA is blocked from completing.",
+    "probe": "grep -rn \"201(1A)\" apps/api --include=*.py \u2192 6 hits, all prose comments/strings. grep -rn '234E' apps/api --include=*.py \u2192 services/filing_demo/tds_return.py:32,33,198,212,216 and tests/test_filing_demo_tds.py only.",
+    "lens_notes": {
+     "literal": "Confirmed. grep for '201(1A)' over apps/api returns prose only \u2014 services/compliance_obligation_service.py:288, services/compliance_engine.py:272,297, routers/payroll.py:732, domain/ai_insight_service.py:270, domain/tds/residency.py:148. grep for '234E' returns only services/filing_demo/tds_return.py:32-33,198-216 and its test. tds_challans does carry interest_paise and penalty_paise (apps/api/migrations/037_tds_engine.sql:64-67), and create_challan (routers/tds_workspace.py:272-289) books `\"tds_paise\": body.amount_paise, \"total_paise\": body.amount_paise` with the interest and penalty columns left at their defaults \u2014 and CreateChallanRequest (:100-108) has no field for either, so the CA cannot supply them even if the router wanted them.",
+     "guards": "Partial and weak. The \u00a7234E fee IS computed and shown honestly in the filing walk-through (services/filing_demo/tds_return.py:198-216, min(days_late * \u20b9200, deducted)), but only after a return exists and is CA-approved on /tds/returns (apps/web/app/tds/returns/page.tsx:206-207, :459) \u2014 the path TDS-03 shows cannot produce a return in production. No \u00a7201(1A) computation exists at any tier: no domain module, no router, no SQL function, no frontend arithmetic.",
+     "reach": "The absence reaches every deductor. The compliance calendar generates the TDS deposit and return obligations (services/compliance_obligation_service.py:190-201) and services/compliance_engine.py:272,297 discuss \u00a7201(1A) in comments while computing nothing, so the platform schedules the duty it cannot price."
+    }
    }
   },
   {
@@ -136,7 +190,16 @@
    "suggested_fix": "Add `tds_27q_from_books` beside the existing 26Q builder, sourced from `tds_deductions` rows with `return_type='27Q'` (which already carry country_of_residence, deductee_tin, surcharge_paise, cess_paise and non_deduction_reason) rather than from purchase_bills, and reconcile it to the same TDS Payable control. Wire it to the existing return-type selector on the compliance TDS screen.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. Non-resident deductions are computed under \u00a7195, fully registered with country, TIN, surcharge, cess and non-deduction reason (apps/api/services/tds_register_service.py:237-251), excluded from 26Q by name (services/tds_return_service.py:181-187, :275-287) and given a calendar deadline (services/compliance_obligation_service.py:196-199) \u2014 and no 27Q builder exists in any router or service. The register rows are also reachable from no screen: nothing in apps/web calls /api/tds/deductions at all.",
+    "probe": "grep -n '@router' apps/api/routers/tds.py | grep -i 'q/' \u2192 only 26q/compute, 24q/compute, 26q/from-books, 24q/from-books. grep -rn 'return_type=27Q|/api/tds/deductions' apps/web \u2192 no matches.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/services/tds_return_service.py:181-187 drops non-resident bills before apportionment and :275-287 reports them as excluded_non_resident with exactly the quoted Rule 31A(4)(b) reason. The only @router decorators on the TDS return endpoints are /26q/compute (routers/tds.py:129), /24q/compute (:213), /26q/from-books (:289) and /24q/from-books (:312) \u2014 there is no 27Q builder. The only other 27Q references in routers/services are the return_type filter validation (routers/tds.py:469-473) and the register/obligation prose. The register does write the 27Q columns (services/tds_register_service.py:237-251: nature_of_payment, surcharge_paise, cess_paise, country_of_residence, deductee_tin, non_deduction_reason) and services/compliance_obligation_service.py:196-199 does emit the TDS27Q obligation when the client has a non-resident vendor. The finding's point about the stale docstring is right: tds_return_service.py:29-31 says s.195's rate 'is not modelled anywhere in this codebase' while domain/tds/section_195.py and section_195_rates.py both exist.",
+     "guards": "None, and nothing mitigates. GET /api/tds/deductions accepts return_type='27Q' (routers/tds.py:469-473) so the register rows are fetchable, but grep over apps/web for 'return_type=27Q' or '/api/tds/deductions' returns nothing \u2014 no screen reads them. Per the instructions this is the case that CONFIRMS a gap rather than refuting it: the data exists in the backend and is reachable from no screen.",
+     "reach": "The obligation is generated for real clients (services/compliance_obligation_service.py:196-199, gated on has_non_resident_vendors at :204) and apps/web/app/risks/page.tsx:117-120 scores TDS27Q alongside 24Q and 26Q, so a CA is shown a 27Q deadline with nothing behind it."
+    }
    }
   },
   {
@@ -151,7 +214,16 @@
    "suggested_fix": "Scope it as its own build: a TCS nature master (1H/1F/1G/scrap/timber), collection on the sales invoice at the point of receipt (206C(1H) is collection-on-receipt, not on invoice), a `tcs_collections` register mirroring `tds_deductions`, the 27EQ statement, and Form 27D. Note that \u00a7206C(1H) charges on the receipt EXCEEDING \u20b950 lakh \u2014 the same excess rule as TDS-02.",
    "effort": "months",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The code reading is confirmed \u2014 TCS is genuinely unimplemented end to end \u2014 but the finding's headline case is statutorily stale, and the repo's own research says so: docs/audits/2026-09-07-market-research/income-tax-tds-primary.md:564-582 records that \u00a7206C(1H) TCS on sale of goods CEASED TO OPERATE FROM 01-04-2025, with \u00a7194Q taking the ground. So 'an SME selling over \u20b950 lakh to one buyer must collect 0.1% TCS' has been wrong for the whole of FY 2025-26, and the suggested fix should not build 206C(1H) collection. The live gap is \u00a7206C(1) (scrap, timber and the rest), \u00a7206C(1F) motor vehicles over \u20b910 lakh and \u00a7206C(1G) LRS/overseas tour, plus Form 27EQ and Form 27D. Separately confirmed: section_rates.py:142 still comments '206C(1H) \u2014 unchanged, 0.1%' inside the FY 2025-26 verified table, which is exactly the stale-comment trap CLAUDE.md's annual-update section warns about. Downgraded to medium: a market-standard feature absent, documented as a deliberate unscoped build in three places (section_rates.py:143-149, domain/tds/residency.py:104, apps/web/app/risks/page.tsx:117-119).",
+    "probe": "grep -rni 'tcs|206C' apps/api/routers apps/api/services \u2192 no computation hits (only prose and the vocabulary/26AS labels); grep -rni 'tcs' apps/api/routers/sales_invoices.py apps/api/routers/receipts.py \u2192 no matches. grep -rn '206C' docs/ \u2192 docs/audits/2026-09-07-market-research/income-tax-tds-primary.md:566 '\u00a7206C(1H) TCS on sale of goods ceased to operate from 01-04-2025'.",
+    "lens_notes": {
+     "literal": "The code reading is exact. apps/api/domain/tds/section_rates.py:142-149 carries \"206C\": TDSSectionRule(0, 10, 10) with the quoted comment. grep for 'tcs' in routers/sales_invoices.py and routers/receipts.py returns nothing; the remaining backend hits are the vocabulary labels (domain/tds/vocabulary.py:90,96,100,147), the 26AS matcher's Part B mention, ITR schedule labels, and the return_type CHECKs allowing '27EQ' (migrations/014:188, 037:13,120) which nothing ever writes. The frontend is the same: apps/web/app/risks/page.tsx:117-119 says in terms '27EQ is TCS under \u00a7206C and is deliberately absent: nothing in this codebase generates it', and TCS_RETURN survives only as a task-type enum (lib/types/index.ts:52, app/deadlines/page.tsx:28).",
+     "guards": "The absence is documented as a deliberate scope decision in three places \u2014 section_rates.py:143-149 ('a distinct, unscoped feature build, not a data-registry gap'), domain/tds/residency.py:104, and apps/web/app/risks/page.tsx:117-119 \u2014 so this is a known, argued gap, not an oversight. CLAUDE.md's 'Not built yet' list does not name TCS, but its scope section warns not to infer scope from what exists.",
+     "reach": "Nothing to reach \u2014 there is no TCS surface at all. The one visible artefact is a stale TCS_RETURN task type in the deadlines filter (apps/web/app/deadlines/page.tsx:28)."
+    }
    }
   },
   {
@@ -166,7 +238,16 @@
    "suggested_fix": "Two fixes, both needed. Raise or remove the 400-character cap in the scan (or match `.from(\"x\")` and `.insert|upsert|update|delete` within the same statement by brace-balancing) and re-run it \u2014 expect several tables to appear. Then either move both writes behind API endpoints (POST /api/tds-workspace/deductions exists in spirit; the returns POST already exists at routers/tds_workspace.py:354) or add role-aware write policies for tds_deductions and tds_returns in the 260/261 style.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Exactly as claimed. tds_deductions, tds_returns (and tds_challans/tds_certificates) are writable by any authenticated firm member via PostgREST with no role check \u2014 apps/api/migrations/014_complete_missing_tables.sql:196-200 and migrations/037_tds_engine.sql:145-165 carry firm-only RLS, and migrations 260/261 never touch a tds table \u2014 while apps/api/tests/test_direct_write_tables_are_role_guarded.py:66 asserts `AWAITING_DECISION = {}` ('every table the browser writes now carries a role rule') because its 400-character regex cap at :90 cannot see writes 441-729 characters from their `.from(...)`.",
+    "probe": "cd apps/api && python -c \"import sys; sys.path.insert(0,'tests'); from test_direct_write_tables_are_role_guarded import _direct_write_tables, GUARDED, AWAITING_DECISION, CANNOT_SUCCEED; f=_direct_write_tables(); print(len(f)); print(sorted(t for t in f if t.startswith('tds'))); print(sorted(set(f)-GUARDED-set(AWAITING_DECISION)-set(CANNOT_SUCCEED)))\" -> 'tables found: 21', 'tds tables found: []', 'unaccounted: []'. A second probe measuring the gap from `.from(\"tds_deductions\")` to the next `;` in app/tds/page.tsx printed 441 and 561 (both inserts), and 729 for the tds_returns upsert in lib/data/tds.ts \u2014 all beyond the {0,400} cap.",
+    "lens_notes": {
+     "literal": "Both writes exist as described. apps/web/app/tds/page.tsx:183 `sb.from(\"tds_deductions\").insert({...})` (AddDeductionModal) and :764 (the CSV importer loop) write the statutory register straight over PostgREST; apps/web/lib/data/tds.ts:282-305 `saveTDSReturn` does `sb.from(\"tds_returns\").upsert({...})`. The regex claim holds too, though the auditor's character count is slightly off: measured distances from the closing paren of `.from(\"...\")` to the statement's `;` are 441 and 561 chars for the two tds_deductions inserts and 729 for the tds_returns upsert, all past the `{0,400}?` cap at tests/test_direct_write_tables_are_role_guarded.py:90, so the tail group can never reach `.insert(`/`.upsert(`.",
+     "guards": "No role predicate exists at any layer. migrations/014_complete_missing_tables.sql:196-200 is `FOR ALL USING (firm_id = get_my_firm_id())` with a blanket grant; migrations/037_tds_engine.sql:145-165 is the same shape for tds_returns/tds_challans/tds_certificates; migrations/053_hardening.sql:209-245 only adds a client_id-in-my-firm clause; migrations/321_converge_the_last_guard_differences.sql:520-532 re-creates the same firm-only policy. Migrations 260 and 261 (the role-aware write policies) contain no tds table at all \u2014 `grep -rn tds` over both returns nothing. migrations/074_internal_client_rls_guardrails.sql:53-80 is a RESTRICTIVE policy that only hides the firm's OWN internal-client rows from non-Partners; ordinary client rows are untouched. tests/test_role_write_policies_pg.py mentions no tds table. apps/web/lib/auth/permissions.ts:59 does hide /tds from Executive/Reviewer, but that file's own header says 'this is UX nav-gating only. Real authorization is enforced server-side' \u2014 and on the PostgREST path it is not, so it stops an accidental click, not a request.",
+     "reach": "/tds is linked from components/panels/DeadlinesPanel.tsx:34 and matched by lib/workspace/workspaceConfig.ts:167, so the screen is live. The writes are the ordinary save paths of that screen, not dead code. The test that is supposed to police this is in the mock suite and passes today."
+    }
    }
   },
   {
@@ -181,7 +262,16 @@
    "suggested_fix": "Add `TDS24Q` to `_tds_obligations`, conditional on the client having a payroll engagement or a client_statutory_identity TAN, and add a `TDS_VENDOR_DEPOSIT` monthly obligation driven by `compliance_engine.tds_deposit_due_date`, conditional on the client having any `tds_deductions` row (or any TDS-applicable vendor). Fix the docstring at :301 either way \u2014 it is currently load-bearing misinformation.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The facts hold: no TDS24Q obligation is ever generated (apps/api/services/compliance_obligation_service.py:193-200), the docstring at :301 asserting otherwise is false, and there is no vendor-side monthly TDS deposit obligation. But the practical sting is smaller than claimed \u2014 the TDS26Q obligation already lands on the identical statutory due date and services/workflow_service.py:82 labels it 'Form 24Q / 26Q', and apps/web/app/payroll/page.tsx:107-130 shows a correctly-dated 24Q deadline on the payroll screen. The genuinely unmitigated half is the monthly vendor deposit (\u00a7201(1A) at 1.5%/month), which nothing anywhere reminds on. Hence medium, not high.",
+    "probe": "grep -n '24Q' apps/api/services/compliance_obligation_service.py apps/api/services/compliance_engine.py -> one hit, the docstring at compliance_obligation_service.py:301. grep -rn 'tds_deposit_due_date' apps/api --include=*.py -> defined at compliance_engine.py:292, called only at compliance_engine.py:326 (inside payroll_deposit_due_dates) and from two tests.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/services/compliance_obligation_service.py:193-200 emits only `_spec(\"TDS26Q\", ...)` and, when has_non_resident_vendors, `_spec(\"TDS27Q\", ...)`. `grep -n 24Q` over compliance_obligation_service.py and compliance_engine.py returns exactly one line \u2014 the docstring at compliance_obligation_service.py:301 claiming 24Q 'is already emitted by _tds_obligations'. It is not; `TDS24Q` exists only as an unused enum member at apps/api/models/compliance.py:11. The deposit half is confirmed too: _PAYROLL_OBLIGATION_TYPE at :320-325 maps only EPF/ESI/'TDS on salary', and the gating at :383-404 routes TDS obligations off `_names(s, \"tds\")` and payroll deposits off `\"payroll\" in s or \"salary\" in s`, so a TDS-only engagement gets no monthly deposit obligation. compliance_engine.tds_deposit_due_date (services/compliance_engine.py:292-306) is called from exactly one place \u2014 payroll_deposit_due_dates at :326.",
+     "guards": "Two real mitigations the finding does not account for. (1) The due date is identical: CLAUDE.md and Rule 31A(2) give 24Q and 26Q the same quarterly date, the TDS26Q obligation carries it, and services/workflow_service.py:82 names that very workflow 'Quarterly TDS return (Form 24Q / 26Q)' \u2014 so a client on a TDS engagement is reminded on the correct day and the workflow treats the item as covering both. (2) apps/web/app/payroll/page.tsx:107-130 pushes a hardcoded 'TDS 24Q \u2014 <quarter>' deadline with the correct dates (31 Jul / 31 Oct / 31 Jan / 31 May), so a CA on the payroll screen does see a 24Q reminder. Neither mitigation covers the monthly vendor-side deposit, which has no analogue anywhere.",
+     "reach": "Live. apps/web/app/deadlines/page.tsx:77 lists 'TDS24Q' in ALL_TYPES, so the deadlines screen offers a filter for an obligation type nothing ever generates \u2014 it can only ever return empty."
+    }
    }
   },
   {
@@ -196,7 +286,16 @@
    "suggested_fix": "Add a certificate table (deductee, section, certificate no, rate_bps, valid_from, valid_to, ceiling_paise, consumed_paise) and have `resolve_tds` take an optional certificate and use `min(section_rate, certificate_rate)` while the certificate is live and unexhausted, populating `is_lower_deduction`/`lower_deduction_cert` on the register row. Until then, either make the backend honour `vendors.tds_rate_bps` or remove it from the vendor form and the importer so the CA is not shown a rate that does nothing.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Fully confirmed. There is no \u00a7197/\u00a7197A certificate model anywhere, and `vendors.tds_rate_bps` is captured (migrations/049:60), imported (apps/web/lib/imports/mappers.ts:146) and displayed (PurchaseBillEditor.tsx:592) but never read by the engine \u2014 apps/api/routers/purchase_bills.py:283-347 resolves the rate only from the section table. `_TDS_DEFAULT_BPS` at purchase_bills.py:30 is now dead code, corroborating that the vendor rate was cut out of the path. A vendor with a 2% \u00a7197 certificate is previewed at 2% and saved at the section's 10%.",
+    "probe": "grep -rn '_TDS_DEFAULT_BPS' apps/api --include=*.py -> a single hit, its own definition at routers/purchase_bills.py:30 (never used). grep -n 'ADD COLUMN' apps/api/migrations/308*.sql apps/api/migrations/309*.sql -> residency and \u00a7195 columns only; no certificate number, rate, validity or ceiling.",
+    "lens_notes": {
+     "literal": "Confirmed, and there is more evidence than the finding cites. apps/api/routers/purchase_bills.py:283-347 `_resolve_bill_resident_tds` never reads `vendor.get(\"tds_rate_bps\")` \u2014 the rate comes solely from `TDSComputer().resolve_tds(section=..., taxable_paise=..., is_company=..., fy=..., has_pan=...)` at :335-345, whose signature (domain/tds/tds_computer.py:258-266) has no rate or certificate parameter at all. The vendor column exists (migrations/049_customer_vendor_master.sql:60) and the frontend uses it: apps/web/components/purchases/PurchaseBillEditor.tsx:335-337 computes `estimateForeignTds(estBaseTaxable, selectedVendor.tds_rate_bps ?? 0)` and :592 renders `TDS \u00a7{tds_section} @ {(tds_rate_bps/100).toFixed(1)}%`; apps/web/lib/imports/mappers.ts:146 makes 'TDS Rate %' an import column hinted 'required if TDS applicable'. Additional evidence the auditor missed: `_TDS_DEFAULT_BPS` at apps/api/routers/purchase_bills.py:30-36, commented 'Default rates when vendor master tds_rate_bps is 0', is referenced nowhere in the codebase \u2014 dead code left from when the vendor rate was honoured.",
+     "guards": "None. No \u00a7197 table, column or constraint exists \u2014 migrations 308 and 309 added only residency (residential_status, country_of_residence, tax_identification_number) and \u00a7195 fields (trc_on_file, form_10f_on_file, no_pe_declaration_on_file, treaty_rate_bps). `is_lower_deduction`/`lower_deduction_cert` (migrations/037_tds_engine.sql:48-49, domain/tds/tds_computer.py:38-39, routers/tds.py:58-59) are pure pass-through: routers/tds.py:151-152 copies them from the request into the record and :201 echoes `is_lower_deduction` back; nothing validates, computes from, expires or ceilings them, and `lower_deduction_cert` is not even returned in the response.",
+     "reach": "Live on the main purchase-bill path \u2014 apps/api/routers/purchase_bills.py:558 is the resident branch of the bill compute used on every save, and PurchaseBillEditor is the bill entry screen."
+    }
    }
   },
   {
@@ -211,7 +310,16 @@
    "suggested_fix": "Replace the local estimate with a debounced call to `POST /api/tds/compute-amount` (routers/tds.py:335 \u2014 it already takes the PAN and derives is_company and \u00a7206AA), and for a non-resident vendor show the \u00a7195 resolution or its refusal rather than a resident-section rate. apps/web/app/accounting/suppliers/page.tsx:135-145 already does exactly this and is the pattern to copy.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. The bill editor's TDS figure and net payable are a browser-side rate \u00d7 base with no threshold, no \u00a7206AA floor and no \u00a7195 branch (apps/web/components/purchases/PurchaseBillEditor.tsx:335-340 via lib/services/currencyPreview.ts:27-29), while the server decides on residency and applies all three (apps/api/routers/purchase_bills.py:530-560). A sub-threshold \u00a7194J bill previews TDS and saves zero; a non-resident vendor previews a resident-section rate and saves base+surcharge+cess or 422s.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed line for line. apps/web/components/purchases/PurchaseBillEditor.tsx:335-337 sets `tdsPaise = selectedVendor?.tds_applicable && (tds_rate_bps ?? 0) > 0 ? estimateForeignTds(estBaseTaxable, tds_rate_bps) : 0`, and apps/web/lib/services/currencyPreview.ts:27-29 is a bare `Math.floor((baseTaxableMinor * tdsRateBps) / 10000)` \u2014 no threshold, no PAN, no residency. :338-340 subtracts it to show 'Net payable'. The backend at apps/api/routers/purchase_bills.py:530-560 branches on `is_non_resident(vendor.get(\"residential_status\"))`: the non-resident leg calls `_resolve_bill_section_195` (:349-397), which adds surcharge and cess and can `raise HTTPException(status_code=422, detail=res.refusal_detail)` at :398; the resident leg calls `_resolve_bill_resident_tds` (:558), which applies the section threshold, the \u00a7194C FY aggregate and the \u00a7206AA no-PAN floor. None of those inputs exists in the browser.",
+     "guards": "Only a disclaimer, not a guard: PurchaseBillEditor.tsx:597 renders 'Preview \u2014 GST and TDS are confirmed by the server on save.' That warns that the number may change; it does not stop the editor showing a net-payable figure a CA reads off the screen. No test pins the preview to the server result.",
+     "reach": "Live and it is the pattern's own counter-example: apps/web/app/accounting/suppliers/page.tsx:135-145 already debounces a call to the authoritative `computeTdsAmount` ('never re-derive rates or the individual/company/\u00a7206AA rules locally'), so the correct approach exists in the codebase and the bill editor does not use it."
+    }
    }
   },
   {
@@ -226,7 +334,16 @@
    "suggested_fix": "Point `AddChallanModal` at `POST /api/tds-workspace/challans` and load the list from `GET /api/tds-workspace/challans`. Fix the certificate and return field names against migration 037 and lower-case the status vocabulary (apps/web/app/clients/[id]/compliance/tds/page.tsx:36-43 already has the right map). Consider retiring /tds entirely in favour of the per-client compliance/tds screen, which is the one that calls the real API.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed with one correction. The Challans tab genuinely persists nothing (apps/web/app/tds/page.tsx:299-317, :739 \u2014 no tds_challans read or write in the file), the Certificates tab reads two columns that do not exist plus a capitalised status vocabulary (page :720-723 vs apps/api/migrations/037_tds_engine.sql:85-100), and the Returns counters compare against capitalised statuses the CHECK forbids so they are permanently 0/0/0 (page :685-688 vs migrations/037:23-24). The `form_type`/`fy`/`filed_date` mismatch at page :113-117 is real but latent \u2014 those fields are never rendered.",
+    "probe": "grep -n 'setChallans|tds_challans|tds_certificates|tds_returns' apps/web/app/tds/page.tsx -> tds_returns and tds_certificates are selected at :432-433; tds_challans appears nowhere; setChallans is only ever fed from the modal at :739.",
+    "lens_notes": {
+     "literal": "Three of the four sub-claims are exactly right; one is overstated. Challans: apps/web/app/tds/page.tsx:299-317 `AddChallanModal.handleAdd` only calls `onAdded({id: Date.now().toString(), ...})`, wired at :739 to `setChallans(prev => [c, ...prev])`; `challans` is initialised empty at :387 and `grep -n 'tds_challans' app/tds/page.tsx` returns nothing, so the list is never loaded and never written. Certificates: :720-723 render `c.period` and `formatPaise(c.amount_paise)` while migrations/037_tds_engine.sql:85-105 gives tds_certificates `financial_year`, `quarter`, `total_income_paise`, `tds_deducted_paise`, `tds_deposited_paise` \u2014 no `period`, no `amount_paise`; its status CHECK is ('pending','generated','issued','downloaded') while the page types it 'Pending'|'Issued' and indexes STATUS_STYLE by it. Returns: :685-688 filter on 'Pending'|'Filed'|'Overdue' against the CHECK ('pending','prepared','ca_approved','filed','revised') at migrations/037:23-24, so all three counters are always 0. OVERSTATED: `form_type`/`fy`/`filed_date` at :113-117 are a type-only mismatch \u2014 the Returns tab renders only the three counters and two links, so those fields are never displayed and nothing visibly breaks from them.",
+     "guards": "None reaches this. tests/test_frontend_columns_exist_pg.py parses select lists, and the page loads with `.select(\"*\")` at :432-433, so a wrong FIELD ACCESS is invisible to it. There is no error path \u2014 a missing key renders blank and formatPaise(undefined) renders NaN/blank rather than throwing.",
+     "reach": "Live: /tds is linked from components/panels/DeadlinesPanel.tsx:34. The working endpoints exist and are simply not called from this page \u2014 POST /api/tds-workspace/challans at apps/api/routers/tds_workspace.py:261 is used only by apps/web/app/clients/[id]/compliance/tds/page.tsx:226."
+    }
    }
   },
   {
@@ -241,7 +358,16 @@
    "suggested_fix": "Generate the NSDL file-format text (the record layout is published per FY and per form) from the existing payload, and validate against the CSI file. Model corrections as a return row carrying `original_prn` and a correction type. Both are large; the FVU writer is the one that decides whether a CA would buy this module.",
    "effort": "months",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The absence is real \u2014 no NSDL file-format writer exists anywhere, and nothing models a correction statement or an original PRN \u2014 but it is a documented, scheduled deferral (docs/architecture/10-payroll.md:388, echoed in apps/api/domain/payroll/form24q.py:288-291), and the code labels its own output honestly rather than passing it off as a return. One sub-claim is wrong: 'revised' can in fact be written, because apps/web/lib/data/tds.ts:276 upserts tds_returns directly over PostgREST and never passes through apps/api/routers/tds_workspace.py:432's allow-list. Market-standard feature absent, deliberately, so medium rather than high.",
+    "probe": "grep -rni 'fvu' apps/api --include=*.py | grep -v fvu_json -> 20 hits, all prose/demo/checklist text; no writer. grep -rni 'original_prn|correction statement' apps/api --include=*.py --include=*.sql -> only docstrings in services/filing_demo/tds_return.py and a test name.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/lib/data/tds.ts:308-316 `downloadTDSJSON` writes `JSON.stringify(payload, null, 2)` to a `.json` blob. A repo-wide search for FVU generation finds only prose: services/filing_demo/tds_return.py (walk-through text), services/workflow_service.py:87 (a checklist step telling the CA to use NSDL's own FVU software), and apps/api/domain/payroll/form24q.py:314, whose CSV banner says outright 'Not an FVU file; not filed'. `revised` is in the CHECK at migrations/037_tds_engine.sql:24 but apps/api/routers/tds_workspace.py:432 sets `allowed = {\"pending\",\"prepared\",\"ca_approved\",\"filed\"}`. No `original_prn` column or correction-type model exists anywhere (grep over *.py and *.sql).",
+     "guards": "This is a recorded, dated deferral rather than an oversight, which the finding does not mention. docs/architecture/10-payroll.md:383-394 'Deferred with reasons, not forgotten' names 'The FVU-validated 24Q file, due by July 2027 for a Q1 cohort', and the code says so in-band at apps/api/domain/payroll/form24q.py:288-291 and apps/api/routers/payroll.py:4254-4256, both pointing at that section. CLAUDE.md's own scope note ('what the software still cannot do is FILE anything, which is deliberate') is adjacent though not exactly on point, since an FVU file is a local artefact, not a portal submission. Correction to one sub-claim: 'revised' is NOT unreachable \u2014 apps/web/lib/data/tds.ts:21 types TDSReturnStatus including 'revised' and :276 lets saveTDSReturn take it, and that write goes over PostgREST (see TDS-11), bypassing the router's allow-list. No UI control passes it.",
+     "reach": "The JSON download is live on /tds/returns; the absence is real for any CA preparing a quarter."
+    }
    }
   },
   {
@@ -256,7 +382,16 @@
    "suggested_fix": "In `tds_26q_from_books` and in `routers/tds.py`'s two compute handlers, resolve one `Vocabulary` for the period and pass every deductee's section through `vocab.section(...)`, exactly as form24q.py:164-165 does. Add the parity assertion to the vocabulary test so a future emission point cannot skip it.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed: for FY 2026-27 the 26Q payload is headed Form 140 while every deductee line keeps its 1961-Act section, because apps/api/services/tds_return_service.py:247 translates the form and :263 does not translate the section (same split at apps/api/routers/tds.py:176 vs :194). The auditor's mitigating parenthetical is wrong \u2014 the \u00a7393 payment-code gap is returned at tds_return_service.py:249 but no TDS screen renders `statutory_gaps` (only apps/web/app/clients/[id]/payroll/page.tsx:591 does). Severity stays medium for the opposite reason: the live screen displays neither the form nor the sections, so the inconsistency reaches the stored `deductee_details` and the API payload rather than a CA's eyes.",
+    "probe": "cd apps/api && python -c \"from domain.tds import vocabulary as v; print(v.statement_form(v.RESIDENT_NON_SALARY, fy_label='2026-27')); vo=v.vocabulary_for('2026-27'); print(vo.section('194J'), vo.section('192'))\" -> '140' then '393(1) 392'. So statement_form gives 140 while the emitted deductee section stays '194J'.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/api/services/tds_return_service.py:247 emits `\"form\": _vocabulary.statement_form(_vocabulary.RESIDENT_NON_SALARY, fy_label=fy)` while :263 emits `\"section\": d.section`, and that section came off `b.get(\"tds_section\")` untouched at :212. apps/api/routers/tds.py does the same pair: the form is translated at :176-177, the deductee section echoed raw at :194. apps/api/domain/payroll/form24q.py:164-165 is the correct contrast (`vocab = vocabulary.vocabulary_for(financial_year); section = vocab.section(SECTION_192)`), and apps/api/domain/tds/vocabulary.py:308-311 names this precise failure.",
+     "guards": "The safety net the finding credits does not exist on this path. `statutory_gaps` IS in the payload (tds_return_service.py:249), but `grep -rn statutory_gaps apps/web` returns hits only in apps/web/app/clients/[id]/payroll/page.tsx:574-591 \u2014 no TDS screen renders it. So the CA is not 'blocked earlier by the s.393 payment-code gap'; nothing surfaces that gap on the TDS path at all. Working the other way, the mixed pair is also not displayed side by side: apps/web/app/clients/[id]/compliance/tds/page.tsx renders only deductee_count, the two totals and validation_errors (:504-511), never `form`, `act` or the per-deductee sections.",
+     "reach": "Live today \u2014 FY 2026-27 is the current FY, and apps/web/app/clients/[id]/compliance/tds/page.tsx:382 calls POST /api/tds/26q/from-books through the authenticated apiFetch, then :404 stores `deductee_details: d.deductees` into tds_returns. So the inconsistent pair is computed and persisted; it is the stored JSON and the API payload that carry it, not a rendered screen."
+    }
    }
   },
   {
@@ -271,7 +406,16 @@
    "suggested_fix": "Keep the stored `return_type` as the routing key ('26Q'/'24Q') \u2014 which is exactly the rule `tds_register_service.py:240-247` already articulates for `tds_deductions` \u2014 and derive the display form from the period. Widen the TypeScript type to `string` and stop treating the display name as an identifier.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The bug is genuine but latent: apps/web/lib/data/tds.ts:284 stores the API's display form into `tds_returns.return_type`, which migrations/037_tds_engine.sql:13 constrains to ('24Q','26Q','27Q','27EQ'), so a FY 2026-27 save would violate the CHECK. It can never be hit in production because the preceding compute call (lib/data/tds.ts:117, :129) sends no Authorization header to an rbac-guarded endpoint and 401s first \u2014 the whole /tds/returns compute-and-save flow is dead. The authenticated equivalent already does it correctly (apps/web/app/clients/[id]/compliance/tds/page.tsx:404, matching the rule stated at apps/api/services/filing_demo/tds_return.py:80-83).",
+    "probe": "grep -n 'await fetch(|authedFetch|Authorization' apps/web/lib/data/tds.ts -> :117 and :129 are bare fetch; :143-149 authedFetch adds `Authorization: Bearer ${session.access_token}` and every other call uses it. grep for a global fetch interceptor across apps/web/lib and apps/web/app returned nothing.",
+    "lens_notes": {
+     "literal": "The defect is real as written. apps/web/lib/data/tds.ts:284 writes `return_type: payload.form`; `TDSReturnPayload.form` is typed `\"24Q\" | \"26Q\"` at :79 but is populated from the API response (`return json.data as TDSReturnPayload` at :125), and the API returns `statement_form(...)` \u2014 '140' for a FY 2026-27 26Q (apps/api/routers/tds.py:176-177), '138' for a 24Q. migrations/037_tds_engine.sql:13 CHECKs `return_type IN ('24Q','26Q','27Q','27EQ')`, so the upsert would be rejected by Postgres.",
+     "guards": "The codebase's own rule is on record and the other save path already follows it: services/filing_demo/tds_return.py:80-83 states 'THE STORED return_type IS AN INTERNAL KEY... tds_returns.return_type holds \"24Q\"/\"26Q\" (and migration 037's CHECK constrains it to those)', and apps/web/app/clients/[id]/compliance/tds/page.tsx:404-406 saves `return_type: computeForm.return_type` \u2014 the routing key, not the display form. Only the legacy /tds/returns screen violates it.",
+     "reach": "It cannot fire. apps/web/lib/data/tds.ts:116-126 `compute26Q` (and :129 compute24Q) are the only two bare `fetch` calls in that module \u2014 no Authorization header, no interceptor anywhere in apps/web \u2014 while POST /api/tds/26q/compute is guarded by `rbac(\"tds\",\"compute\")` (apps/api/routers/tds.py:130) and apps/api/core/auth.py:170-175 raises 401 on a missing Bearer header whenever SUPABASE_URL is set. So in any real deployment the Compute button throws '26Q compute failed: Unauthorized' at lib/data/tds.ts:122 and saveTDSReturn is never reached. Per the REACH lens this is unreachable code, hence low."
+    }
    }
   },
   {
@@ -286,7 +430,16 @@
    "suggested_fix": "Correct the part\u2192record_type map (B\u2192tcs, D\u2192refund, and add A1 for 15G/15H, A2/F for 194-IA), and filter `_entries_from_records` to the TDS/TCS record types only, reporting the other parts separately. Confidence is medium only because the 26AS part layout is quoted from knowledge, not from a specimen in this repo \u2014 verify against a real statement before changing the map.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The part\u2192record_type map at apps/api/domain/income_tax/form26as_service.py:186-194 is wrong for B, D and F, and nothing between the parser and the totals filters on part or record_type (form26as_service.py:324-338, :558; form26as_matcher.py:431), so advance-tax and refund rows are matched as TDS credits, reported 'missing in books' and added into `total_26as_paise` and the variance that drives the AI insight.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.income_tax.form26as_service import parse_26as_text; ...\" on a four-part specimen printed:\nB tds_other 50000\nC advance_tax 20000000\nD self_assessment 3500000\ntotal tds paise sum: 23550000\n\u2014 i.e. a \u20b92,00,000 advance-tax row and a \u20b935,000 refund row both land in tds_deposited_paise. A second probe through the matcher itself: reconcile([tds row \u20b9100, Part-D refund row \u20b92,00,000], [one matching book credit]) printed `total_26as_paise: 20010000 total_books: 10000 variance: 20000000` and marked the refund row `missing_in_books`.",
+    "lens_notes": {
+     "literal": "Confirmed verbatim. apps/api/domain/income_tax/form26as_service.py:186-194 is `mapping = {\"A\": \"tds_salary\", \"B\": \"tds_other\", \"C\": \"advance_tax\", \"D\": \"self_assessment\", \"F\": \"tds_other\"}`. Part B of Form 26AS is TCS collected (not TDS), Part D is 'Details of Paid Refund' (not self-assessment tax), and Part F is TDS the taxpayer DEDUCTED as a buyer/tenant under 194IA/194IB/194M/194S \u2014 a liability, not a credit. `_entries_from_records` (:324-338) copies `part` and `record_type` onto the entry and filters on neither; `run_reconciliation` (:558) feeds all of them to `summarise`; `reconcile` in domain/income_tax/form26as_matcher.py:431 sums `total_26as_paise` over every entry with no record_type predicate.",
+     "guards": "None. `grep -n record_type domain/income_tax/form26as_matcher.py` shows the field is declared on the dataclass (:119) and never read anywhere else in the module. tests/test_form26as_reconciliation.py has no record_type or part assertion at all. `_ai_insight_due` (:454-464) keys off the same polluted variance.",
+     "reach": "Reachable. Router mounted at apps/api/main.py:296 (`app.include_router(form_26as.router, ...)`); the page is linked from apps/web/app/clients/[id]/tax/page.tsx:29 and app/clients/[id]/reports/page.tsx:110."
+    }
    }
   },
   {
@@ -301,7 +454,16 @@
    "suggested_fix": "Derive the FY list from the clock (there is already `currentFinancialYearLabel` in apps/web/lib/dateMath). For the parser, accept the actual TRACES text export (fixed-width and multi-line rows) and report unparsed lines back to the CA rather than logging at debug; AIS/TIS JSON import is the bigger prize and is a separate build.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The only 26AS ingest is a tab/pipe-delimited paste with columns in fixed positions (form26as_service.py:163-177), unparseable lines are dropped at debug level (:181-182), there is no PDF or TRACES-file path despite the unused `document_id` column (routers/form_26as.py:47, :99), and the FY dropdown is a three-element literal that excludes the current FY (apps/web/app/clients/[id]/tax/26as/page.tsx:9).",
+    "probe": "The same parse probe as TDS-19 also showed the Part A row silently dropped because the line contained 'Name of Deductor' (the header filter at form26as_service.py:159-161) \u2014 a real TRACES export repeats that header per part, so real data is discarded, not just reformatted.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/form26as_service.py:163-165 does `cols = re.split(r\"\\t|\\|\", line)` then `if len(cols) < 5: continue`; fields are read from fixed positions cols[1]..cols[6] (:172-177) and any row that throws is swallowed at :181-182 with `_logger.debug(\"Skipping unparseable line\")`. No PDF/document path exists: routers/form_26as.py:47 accepts `document_id` on CreateUploadRequest and passes it to create_upload (:73), but the only parse route reads `req.raw_text` (:51, :99). apps/web/app/clients/[id]/tax/26as/page.tsx:9 is `const FY_OPTIONS = [\"2025-26\", \"2024-25\", \"2023-24\"]`, used as the state default (:97) and the whole dropdown (:224); today is 2026-09-07 so FY 2026-27 is unselectable.",
+     "guards": "None. Nothing validates that parsing produced rows; the router returns `records_parsed: len(records)` (routers/form_26as.py:105) and 0 is a success response. The helper the fix would use already exists \u2014 apps/web/lib/dateMath.ts:69 `currentFinancialYearLabel`, already imported by lib/workspace/ClientNavContext.tsx:10 \u2014 so the hardcoded list is not a missing capability, just an unused one.",
+     "reach": "Reachable; same navigation path as TDS-19."
+    }
    }
   },
   {
@@ -316,7 +478,16 @@
    "suggested_fix": "Delete the inline matcher and route this endpoint through `domain/income_tax/form26as_matcher.reconcile`, which is already pure, one-to-one and tested (apps/api/tests/test_form26as_reconciliation.py). The two directions differ only in which side is which; the passes and the consumption rule are the same.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The collapse and the missing one-to-one consumption are real at apps/api/routers/tds_workspace.py:623-643, and it is a second, weaker matcher sitting beside domain/income_tax/form26as_matcher.py:312-433. But it is reached only by hand-authoring JSON containing BOTH sides pre-paired (apps/web/app/clients/[id]/compliance/tds/page.tsx:610-633), so the bigger defect is that the feature is unusable as shipped rather than that its dict collapses; downgraded to low on reach.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/api/routers/tds_workspace.py:623-625 is `form26as_keys = {(e.get(\"pan\", \"\"), e.get(\"section\", \"\")): e for e in form26as_entries}` \u2014 a dict comprehension, so duplicate (PAN, section) keys collapse to the last one. The loop at :627-643 iterates book_deductions and never consumes a matched 26AS entry, so N book rows can all match the same entry. The good matcher does exist beside it: domain/income_tax/form26as_matcher.py:312-433 is four-pass, identity-first, one-to-one and consumes matched credits.",
+     "guards": "No test covers this endpoint's matching. The docstring at :608-611 is candid that 'NOTHING is read from the database'.",
+     "reach": "Reachable but barely usable, which is what caps the severity. apps/web/app/clients/[id]/compliance/tds/page.tsx:613 posts to it from the '26AS Recon' tab (:802, :841), and the only input is a free-text textarea asking the CA to 'Paste 26AS JSON with \"tds_entries\" and \"book_deductions\" arrays' (:631-633). No CA has 26AS as JSON with the book side already paired, so the auditor's scenario ('uploads twelve monthly deductions and four quarterly 26AS rows') is not something the screen actually lets them do."
+    }
    }
   },
   {
@@ -331,7 +502,16 @@
    "suggested_fix": "Split the registry key by nature \u2014 '194I(a)'/'194I(b)' and '194J(a)'/'194J(ba)' \u2014 or add a `nature` dimension to TDSSectionRule, and put the choice on the vendor master beside the section. The FVU's own section codes already make this distinction, so it will be needed for TDS-16 anyway.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "\u00a7194J technical services (2%) and \u00a7194I(a) plant/machinery rent (2%) both compute at 10% (domain/tds/section_rates.py:133,135), the registry has no nature dimension to express either, and there is genuinely no override \u2014 the manual-rate option stores tds_section='other', which resolve_tds refuses. Raised to high: equipment/generator/vehicle rent and IT-support AMC are ordinary SME transactions, and the over-deduction is a real cash withholding on the vendor.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.tds.tds_computer import TDSComputer; ...\" printed:\n194J 10L: TDSResolution(applies=True, section='194J', tds_paise=10000000, rate_pct=10.0, rate_bps=1000, ...)\n194I 10L: TDSResolution(applies=True, section='194I', tds_paise=10000000, rate_pct=10.0, rate_bps=1000, ...)\n\u2014 \u20b91,00,000 withheld on \u20b910,00,000 where \u00a7194J(1)(ba)/\u00a7194I(a) give \u20b920,000. Same script: resolve_tds(section='194IA'/'194T') \u2192 ValueError \"Unknown TDS section\".",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/tds/section_rates.py:133 `\"194I\": TDSSectionRule(50_000_00, 1000, 1000)` and :135 `\"194J\": TDSSectionRule(50_000_00, 1000, 1000)` \u2014 10% for both payee classes, no nature dimension. The module docstring acknowledges only the 194J case, at :64-65 ('Fees for technical services / call centres are 2% \u2014 not separately modelled'); the 194I(a) plant-and-machinery 2% is not mentioned anywhere in the file.",
+     "guards": "None, and no override path. routers/purchase_bills.py:531 takes `tds_section` from the vendor master and :336 calls `TDSComputer().resolve_tds(...)` with the registry rate \u2014 `vendors.tds_rate_bps` is never read on the bill path (its only reads are display-only: apps/web/components/purchases/PurchaseBillEditor.tsx:592 and PurchaseBillViewDrawer.tsx:341). The supplier form's 'Other (manual rate)' escape hatch (apps/web/app/accounting/suppliers/page.tsx:57) stores `tds_section = \"other\"`, which resolve_tds rejects \u2014 see probe.",
+     "reach": "Fully reachable: the purchase-bill create/receive path, the mainline way a bill is booked."
+    }
    }
   },
   {
@@ -346,7 +526,16 @@
    "suggested_fix": "Add 194T (\u20b920,000, 10%), 194R (\u20b920,000, 10%), 194S, 194M (\u20b950 lakh, 5%), 194N (cash withdrawal), 194O (e-commerce, 0.1% since 01-10-2024), 194IB (\u20b950,000/month, 2% since 01-10-2024) and 194IA \u2014 with a note on each of which are challan-cum-statement forms (26QB/26QC/26QD) rather than 26Q rows, since those need a different return path. Verify each rate and threshold against the Finance Act before adding; the registry's `verified` flag exists for exactly this.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The registry holds fifteen sections (domain/tds/section_rates.py:110-150) and \u00a7194T, \u00a7194R, \u00a7194S, \u00a7194IB, \u00a7194M, \u00a7194N and \u00a7194O are absent everywhere in apps/api. A missing section is a 422, not a silent wrong rate. Additional defect the finding did not name: apps/web/app/clients/[id]/purchases/page.tsx:232 offers \u00a7194IA in the vendor's section picker and the backend rejects it \u2014 an offered option that breaks bill entry.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.tds.section_rates import tds_rates_for; print(sorted(tds_rates_for('2025-26').sections)); from domain.tds.tds_computer import TDSComputer; ...\" printed the fifteen-key list above, then `194IA -> ValueError Unknown TDS section '194IA'` and `194T -> ValueError Unknown TDS section '194T'`.",
+    "lens_notes": {
+     "literal": "Confirmed and the list is exact. `venv/bin/python -c \"print(sorted(tds_rates_for('2025-26').sections))\"` returns ['192','193','194','194A','194B','194C','194D','194G','194H','194I','194J','194K','194LA','194Q','206C'] \u2014 fifteen keys, one of which (206C) the file's own comment at section_rates.py:139-146 says has zero readers. grep across apps/api for 194T / 194R / 194S / 194IB / 194M / 194N / 194O returns no registry entry; the only hits are prose (domain/income_tax/capital_gains_engine.py:206 mentions \u00a7194S) and the dead `_TDS_DEFAULT_BPS` map at routers/purchase_bills.py:30-38, which grep shows is declared and never read.",
+     "guards": "None \u2014 and the absence is not soft. Unlike the rate registries CLAUDE.md describes, an unknown section does not fall back: TDSComputer.resolve_tds raises ValueError, which routers/purchase_bills.py:343-344 turns into an HTTP 422. So a missing section is a hard stop, not a wrong number.",
+     "reach": "The supplier form's section dropdown is built from GET /api/tds/sections (apps/web/app/accounting/suppliers/page.tsx:95-97, :189-196), which serves the registry itself (routers/tds.py:371-388) \u2014 so \u00a7194T simply cannot be picked. Worse, the vendor form inside the purchases page hardcodes its own list (apps/web/app/clients/[id]/purchases/page.tsx:225-235, used at :1814) that OFFERS '194IA \u2014 Purchase of Immovable Property (1%)', which the backend then 422s on when a bill is booked."
+    }
    }
   },
   {
@@ -361,7 +550,16 @@
    "suggested_fix": "Either delete the function and its three tests, or give it an `fy` parameter that returns `base_rate` unchanged for FY 2025-26 onward with the omission cited, and keep it for belated FY 2024-25 work. Confidence is medium because the omission is quoted from knowledge of the Finance Act 2025, not from a source in this repo \u2014 confirm before deleting, since \u00a7206AB does still govern periods up to 31-03-2025.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The \u00a7206AB doubling function exists, is FY-blind and is called by nothing but its own tests (domain/tds/tds_validator.py:40-48; tests/test_tds_engine.py:328-339). The statutory half of the claim \u2014 that Finance Act 2025 omitted \u00a7206AB w.e.f. 01-04-2025 \u2014 cannot be confirmed from anything in this repo, so the actionable, code-confirmed content is that a rule the codebase advertises as supported is unwired and unversioned.",
+    "probe": "grep -rn '206AB' apps/api apps/web docs \u2192 4 hits, all in tds_validator.py:43, tds_computer.py:7 and tests/test_tds_engine.py:5,329. Zero production call sites.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/tds/tds_validator.py:40-48 `is_higher_rate_applicable(pan, is_non_filer, base_rate)` returns `max(base_rate * 2, 5.0)` and is documented as \u00a7206AB. It takes no `fy`, unlike `applicable_rate` two lines above it (:26-38), which does. tds_computer.py:7 lists \u00a7206AB in the module header.",
+     "guards": "The three tests at tests/test_tds_engine.py:328-339 pin the repealed behaviour rather than guarding against it.",
+     "reach": "Dead. `grep -rn 206AB` across apps/api, apps/web and docs returns exactly four hits: the validator (:43), the computer's docstring (:7) and two lines in tests/test_tds_engine.py. No production caller, so no wrong number reaches a CA today. That is why this is polish, not a live defect \u2014 downgraded to low on the reach lens."
+    }
    }
   },
   {
@@ -376,7 +574,16 @@
    "suggested_fix": "Add a `form_15ca_ack_no` input to the purchase-bill editor, shown only when the vendor is a non-resident, and display it on the bill drawer. One field closes a gap the whole \u00a7195 pipeline currently reports on every row.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no UI anywhere in apps/web to record `form_15ca_ack_no`, so a gap the engine raises on every \u00a7195 bill (services/tds_register_service.py:213-214) can never be cleared. The finding's ca_experience is wrong in one respect and the reality is worse: the gap does not reach any screen at all \u2014 apps/web reads neither the `tds_register` key (routers/purchase_bills.py:1635) nor TDS statutory_gaps \u2014 so it is not gap-list fatigue, it is a statutory tracker computed and silently discarded.",
+    "probe": "grep -rn 'form_15ca' apps/web \u2192 no matches (only the prose 'Form 15CA/15CB' at app/clients/[id]/purchases/page.tsx:1795). grep -rn 'tds_register' apps/web \u2192 no matches. grep -rn 'statutory_gaps' apps/web \u2192 payroll page only.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/services/tds_register_service.py:213-214 appends GAP_FORM_15CA_NOT_RECORDED whenever the bill's tds_section is '195' and `form_15ca_ack_no` is blank. The backend accepts and persists it (routers/purchase_bills.py:780, :826; models/invoices.py:324-325). `grep -rn form_15ca apps/web` returns nothing \u2014 no input, no display. The gap message at domain/tds/residency.py:180-184 ends 'record the acknowledgement number on the bill'.",
+     "guards": "None \u2014 and the finding UNDERSTATES it. Grep shows apps/web reads neither `tds_register` (the key purchase_bills.py:1635 returns it under) nor a TDS `statutory_gaps` (the only frontend reader of statutory_gaps is apps/web/app/clients/[id]/payroll/page.tsx:574,591). So the gap is computed, returned in the API response and rendered nowhere.",
+     "reach": "The \u00a7195 vendor panel is live \u2014 apps/web/app/clients/[id]/purchases/page.tsx:1793-1798 even tells the CA to 'Complete Form 15CA/15CB under Rule 37BB before remitting' \u2014 but offers no field to record the acknowledgement. Backend capability with no screen, which per the brief confirms the gap rather than refuting it."
+    }
    }
   },
   {
@@ -391,7 +598,16 @@
    "suggested_fix": "Replace the `is_company` boolean with a payee-class enum derived from the PAN's 4th character (individual/HUF, firm/LLP, AOP/BOI, company, co-operative, trust) and hold one surcharge ladder per class, plus the correct 'other sums' rate per class. Confidence is medium because the FY 2025-26 Part II ladders are quoted from knowledge rather than from a source in this repo \u2014 and `section_195_rates.py:210-213` already records that every year is `verified=False`, so this belongs in the same line-by-line confirmation pass.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "A PAN 4th character of F (firm/LLP), A/B (AOP/BOI) or T (trust) is classified as a company (domain/tds/tds_computer.py:131-141), which selects the foreign-company surcharge ladder (2%/5%) and the 35% other-sums rate instead of the 12% firm ladder and 30%. The errors run in BOTH directions and do not cancel \u2014 over-withholding on other_sums, under-withholding on royalty/FTS above \u20b91 crore, which is the \u00a740(a)(i) direction the module's own docstring names. Raised to high: a wrong statutory withholding number reaches the CA and is posted.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.tds.tds_computer import is_company_pan; from domain.tds.section_195 import resolve_section_195; ...\" printed:\nAAAFA1234A (firm) is_company_pan=True; AAAAA1234A (AOP) True; AAATA1234A (trust) True\nother_sums, \u20b92 crore: AAAFA1234A \u2192 base_bps 3500, tds 742560000, sur 14000000 (2%) \u2014 identical to the foreign company AAACA1234A; correct Part II figures for a firm are 30% + 12% + 4% cess = 698880000, so it over-withholds \u20b94,36,800.\nroyalty, \u20b92 crore: AAAFA1234A \u2192 tds 424320000, sur 8000000 (2%); correct 20% \u00d7 1.12 \u00d7 1.04 = 465920000 \u2014 it UNDER-withholds \u20b94,16,000, which under \u00a740(a)(i) disallows the whole \u20b92 crore.",
+    "lens_notes": {
+     "literal": "Confirmed in every part. apps/api/domain/tds/section_195.py:105-121 `_surcharge_percent` picks `rates.surcharge_foreign_company if is_company else rates.surcharge_non_corporate` \u2014 exactly two ladders (section_195_rates.py:178-187: non-corporate 10/15/25/37, foreign company 2/5). The boolean comes from routers/purchase_bills.py:377 `is_company=is_company_pan(vendor.get(\"pan\"))`, and domain/tds/tds_computer.py:131-141 returns True for any PAN whose 4th character is not P or H. The same boolean selects `company_rate_bps=3500` for other_sums at section_195_rates.py:173-176.",
+     "guards": "None. section_195_rates.py:208-213 records that every year is verified=False, and services/tds_register_service.py:200-201 raises GAP_195_RATES_UNVERIFIED \u2014 but that gap reaches no screen either (see TDS-25), and it warns about the year's figures, not about payee class.",
+     "reach": "Live on the mainline purchase-bill path: routers/purchase_bills.py:540-556 routes any vendor whose residential_status is non-resident through _resolve_bill_section_195, and the resolution's tds_paise is persisted on the bill and posted."
+    }
    }
   },
   {

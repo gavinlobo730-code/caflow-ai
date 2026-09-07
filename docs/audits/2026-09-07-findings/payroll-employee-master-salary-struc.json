@@ -46,7 +46,16 @@
    "suggested_fix": "Load the client row (client_name/legal_name, address, and the client_statutory_identity EPF/ESIC/PT registrations added by migration 325) and render that as the employer block. Keep the firm only as an optional \"prepared by\" footer.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Every payslip PDF is titled with the CA practice's name (services/payslip_pdf_service.py:116, fed by _load_firm's read of `firms` at :372-379), and the client that actually employs the person is selected onto the row (:256, :315) and never used; migration 325's client_statutory_identity table, which holds the client's EPF/ESIC/PT/TAN registrations, is not read by the renderer at all.",
+    "probe": "grep -n 'firm_name = firm.get|table(\"firms\")' apps/api/services/payslip_pdf_service.py -> 116 and 377; grep -n 'client' same file -> only the select lists at 256/315. sed -n '7,24p' migrations/003_phase3a_foundation.sql -> firms(name, email, icai_mrn, plan) i.e. the practice.",
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines, with one line number corrected. services/payslip_pdf_service.py:116 renders `firm_name = firm.get(\"name\") or firm.get(\"firm_name\") or \"Employer\"` as the PDF Title paragraph (not :114). `firm` comes from _load_firm at :277 (single slip) and :329 (run zip); _load_firm at :372-379 reads `table(\"firms\").select(\"*\").eq(\"id\", firm_id)`. `firms` is unambiguously the CA practice \u2014 migrations/003_phase3a_foundation.sql:7-24 gives it `icai_mrn`, `plan` and `email`. `run[\"client_id\"]` IS selected on the same row (payslip_pdf_service.py:256 and :315) and is read nowhere in the render; grep for `client` in the module returns only those select lists. Nothing else in the PDF names the employer \u2014 the footer at :231-235 says only \"contact your employer\".",
+     "guards": "None. tests/test_r236_payroll_hardening.py:224-260 covers the PDF path but only for fail-closed firm scoping, not for what the header says. Migration 325 created public.client_statutory_identity + the per-state PT registrations precisely so a client's own TAN/EPF/ESIC/PT numbers exist; the payslip renderer does not read that table either. No test asserts any employer block.",
+     "reach": "Fully reached. GET /payroll/slips/{id}/pdf and GET /payroll/runs/{run_id}/payslips.zip are mounted (main.py:339 includes payroll.router); the employee portal downloads it directly (apps/web/app/portal/employee/page.tsx:120 `api.payroll.downloadPayslip`). Guardrail G4 (`assert_not_internal_for_payroll`, routers/payroll.py:1741) forbids payroll for the firm's own internal client, so the employing entity is ALWAYS a client and the firm name is always the wrong entity \u2014 there is no configuration in which this header is right."
+    }
    }
   },
   {
@@ -61,7 +70,16 @@
    "suggested_fix": "Add `.in_(\"status\", _PAYROLL_RELEASED)` to both reads, matching the 24Q/Annexure II/ECR/RLS line. Separately, add a way to discard or recompute a draft run.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Both reads genuinely lack the `status in ('finalized','paid')` filter that 24Q (routers/payroll.py:4142, :4345) and migration 323 apply, so a draft month is treated as paid by the s.192 projection and by ESI Rule 50 coverage, and the return and the withholding then disagree about which months exist. But the consequence is the opposite of the one claimed: measured through create_run on the FakeDB harness, an abandoned September draft leaves the year OVER-withheld by Rs 38,350 (Rs 6,07,750 taken against Rs 5,69,400 due on 11 months), and October's figure is unchanged to the paise. The genuine defects are the inconsistency itself and the absence of any way to discard or recompute a draft run.",
+    "probe": "python -m pytest scratchpad/probe_pay04b.py -s -> 'WITH abandoned Sept draft -> October TDS: 5525000' / 'WITHOUT the Sept draft -> October TDS: 5525000' (identical). probe_pay04c.py -> 'sum EXCLUDING abandoned Sep: 607750.0' vs 'true annual tax on 11 months = 33L: 569400.0'. probe_pay04.py -> 'YTD as seen by October (draft September still counted): {e-1: (0, 1, 10000000)}' with run status 'draft'.",
+    "lens_notes": {
+     "literal": "The code claim is exact. routers/payroll.py:715-717 (_tds_already_deducted_this_fy) and :442-444 (_members_contributing_earlier_this_period) both do `db.table(\"payroll_runs\").select(\"id, month\").eq(firm).eq(client)` with no status predicate, then sum tds_paise/gross_paise and count months off those runs' slips. The contrast is real: _assemble_24q_source filters `r.get(\"status\") in (\"finalized\",\"paid\")` at :4142, form_24q_annexure_ii at :4345, and migration 323 line 56 has `AND r.status IN ('finalized','paid')`. There is no DELETE /runs/{id} and no recompute endpoint \u2014 the full @router listing for routers/payroll.py contains no run delete, and create_run:1744 rejects a second run for the same (firm, client, month) with 409, so an abandoned draft is permanent. THE HARM CLAIM IS WRONG IN DIRECTION, though. I ran the real create_run against the FakeDB harness: October's TDS is IDENTICAL (Rs 55,250) with and without an abandoned September draft, because the shortened `_months_remaining_for_spread` and the credited draft TDS cancel exactly. Over a whole year with September abandoned, the employee actually has Rs 6,07,750 withheld across the 11 months paid, against a true tax of Rs 5,69,400 on 11 months of salary \u2014 Rs 38,350 OVER-withheld, not under. So there is no s.192(1) shortfall and no s.201(1A) interest; the phantom month's gross inflates the projection by more than the phantom month's TDS credit reduces it.",
+     "guards": "create_run's UNIQUE (firm, client, month) index (migration 237, translated to a 409 at :1744-1764) bounds the blast radius to at most one stale run per month. _tds_already_deducted_this_fy's own docstring notes the failure mode is deliberately biased to over-deduct. Nothing filters status, and no test covers a draft-vs-finalised distinction on either read.",
+     "reach": "Reached \u2014 create_run is the only way to make a run and both helpers are called from it (:1808, :1817-1818). But the scenario needs an abandoned run, and because the only way to pay September is to finalise the very draft in question, a permanently abandoned draft is an unusual rather than routine state."
+    }
    }
   },
   {
@@ -76,7 +94,16 @@
    "suggested_fix": "Two changes: (a) classify_state must report `is_gap=True` when pt_applicable is set and the state is blank \u2014 the caller already knows pt_applicable; (b) add pt_state to the client-workspace employee form and refuse pt_applicable without it in EmployeeIn.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "pt_applicable with a blank pt_state withholds zero and produces no gap and no exception, because classify_state treats 'no state' as a correct zero (domain/payroll/professional_tax.py:96-99) without knowing pt_applicable was set, and the client-workspace add-employee form (apps/web/app/clients/[id]/payroll/page.tsx:270, :459-465) is the one path that can create exactly that row. Severity is medium rather than high because the other creation path (components/payroll/AddEmployeeModal.tsx:109-110) makes pt_applicable derivative of a mandatory state and cannot produce it, and Article 276(2) caps the exposure at Rs 2,500 per employee per year.",
+    "probe": "python -c \"from domain.payroll.professional_tax import classify_state; from domain.payroll.lwf import classify_state as lwf; ...\" -> \"None | PT is_gap= False | No state set; no professional tax withheld. || LWF is_gap= False\"; 'GJ' -> PT is_gap=True. grep -rn pt_state apps/web -> no hit in app/clients/[id]/payroll/page.tsx.",
+    "lens_notes": {
+     "literal": "Confirmed on every limb. routers/payroll.py:298-326 (_compute_pt) returns 0 for an empty/unrecognised state. _statutory_gaps at :369-378 appends only when `pt.is_gap`, and I ran classify_state: for None and '' it returns is_gap=False with the note 'No state set; no professional tax withheld.' \u2014 a note that is then discarded because the branch is not taken. domain/payroll/lwf.classify_state(None) is is_gap=False too, so the LWF line at :379 does not catch it either. domain/payroll/exceptions.py:123-130 gates on the same classify_pt_state(...).is_gap, so the exception index misses it. apps/web/app/clients/[id]/payroll/page.tsx:270 initialises the add-employee form with `pt_applicable: false` and NO pt_state key at all; :459-465 renders the three checkboxes including PT; addEmployee at :357-370 spreads `...rest` straight into POST /api/payroll/employees. Grep for pt_state across apps/web returns nothing in that file.",
+     "guards": "One real guard, on the other screen. components/payroll/AddEmployeeModal.tsx:109-110 derives `pt_applicable: form.pt_state !== \"NONE\"` from a mandatory state dropdown (:206-211), so the firm-level /payroll/people path cannot create this row. models/payroll.py EmployeeIn (:61-62, :166-167, :261-262) accepts pt_applicable and pt_state independently with no cross-field validator, so the backend does not close it. The bulk importer (apps/web/lib/imports/mappers.ts:567) marks PT State `required: false`.",
+     "reach": "Reached. `/clients/{id}/payroll/` is a first-class workspace tab (lib/workspace/ClientNavContext.tsx:72). The employee table on that same page shows a 'PT Applicable: Yes' column (:261), so the CA is shown the setting as active while nothing is withheld and nothing is reported."
+    }
    }
   },
   {
@@ -91,7 +118,16 @@
    "suggested_fix": "Pass `(basic + da) * months_employed_in_fy` and `hra * months_employed_in_fy`, or better, accumulate actual paid basic/DA/HRA from the year's slips plus the projected remainder \u2014 the same shape annual_gross already uses.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The s.10(13A) salary and HRA bases are annualised as this month x 12 (routers/payroll.py:1046-1047) while the projected income the same call uses is months-employed aware (:1014, :1033-1035). For an employee joining 1 Oct 2026 on Rs 1,00,000 basic with 50% HRA and Rs 1,20,000 rent, the x12 base zeroes the exemption entirely; the correct 6-month base gives Rs 60,000. Run end-to-end through create_run that is annual tax of Rs 85,800 instead of Rs 73,320 \u2014 Rs 12,480 over-withheld across the year (the finding's ~Rs 18,700 is the right order but not the figure this codebase produces). professional_tax_paise = pt * 12 at :1048 has the same defect in the same direction.",
+    "probe": "python -c 'HRADetails(...)' -> 'code: x12 exemption = Rs 0' / 'correct: x6 for an Oct joiner exemption = Rs 60,000'. python -m pytest scratchpad/probe_pay06.py -s -> Oct joiner, October TDS Rs 7,150; 'annual tax with base x12: Rs 85,800' vs 'annual tax with base x6 : Rs 73,320'.",
+    "lens_notes": {
+     "literal": "Confirmed, at routers/payroll.py:1046-1048 (not ~1050): `basic_plus_da_paise=(basic + da) * 12`, `hra_received_paise=hra * 12`, `professional_tax_paise=pt * 12` \u2014 a flat twelve \u2014 while the income figure at :1033-1035 is `max(0, gross_already_paid_paise) + recurring * months_left + ot.taxable_paise` with `months_left = months_employed_in_fy - months_already_paid` (:1014) fed from _months_employed_in_fy at :1863. _monthly_tds then _replace()s those two onto the declaration (:1177-1181), so they, not anything the employee entered, are the s.10(13A) limbs. HRADetails.exemption_paise (domain/income_tax/itr_engine.py:141-148) takes the least of HRA received, 50/40% of that base, and rent minus 10% of that base. The worked figures reproduce: Rs 1,00,000 basic, 50% HRA, Rs 1,20,000 rent -> exemption Rs 0 with the x12 base, Rs 60,000 with the correct x6 base.",
+     "guards": "None found. No test in apps/api/tests references hra_basic_plus_da_paise or pins the multiplier (grep over tests/*.py returns only gratuity's unrelated basic_plus_da_paise). domain/payroll/annexure2.py:184-190 builds HRADetails from `decl.hra_basic_plus_da_paise` as stored, so it does not correct this either.",
+     "reach": "Reached by every mid-year joiner and every mid-year raise on the old regime with rent declared. Driven straight from create_run, which is what both the firm payroll screen and the client-workspace Payroll tab call."
+    }
    }
   },
   {
@@ -106,7 +142,16 @@
    "suggested_fix": "Read payroll_perquisites once per run (like _declarations_for_run) and add the year's value to annual_gross in _compute_slip, with the month's proportionate share shown on the payslip as a non-cash perquisite.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The inconsistency is real \u2014 payroll_perquisites is read by form_24q_annexure_ii (routers/payroll.py:4381, :4413) and by nothing in _compute_slip \u2014 but the whole s.17(2) subsystem is reachable from no screen: `grep -rni perquisit apps/web` returns nothing, so the table is never written and Annexure II always reports nil. The accurate finding today is a missing-UI gap that will become the described withholding bug the moment a screen is added; it is not a wrong number reaching a CA now.",
+    "probe": "grep -rni 'perquisit' /home/user/caflow-ai/apps/web -> no output (exit 1). grep -n 'payroll_perquisites' apps/api/routers/payroll.py -> 4381, 5674, 5687 only. grep -n 'perquisite' in _compute_slip's body -> none.",
+    "lens_notes": {
+     "literal": "Confirmed. grep for 'payroll_perquisites' in routers/payroll.py returns exactly three sites: :4381 (read, inside form_24q_annexure_ii), :5674 (delete) and :5687 (insert, inside record_perquisites). _compute_slip's annual_gross at :1033-1035 is gross_already_paid + recurring*months_left + ot.taxable_paise and has no perquisite parameter at all (signature :887-889). So a stored s.17(2) value reaches Annexure II (:4413 perquisites_by_employee) and Form 16 and never reaches the month's withholding. domain/payroll/perquisites.py does value accommodation, car, concessional loan, meals and gifts under Rule 3.",
+     "guards": "None in the code. The concessional-loan path (routers/payroll.py:5842-5861) only tells the caller the loan is a perquisite; it records nothing.",
+     "reach": "THIS IS THE CORRECTION. `grep -rni perquisit apps/web` returns ZERO hits \u2014 no page, no lib/api wrapper, no direct PostgREST read or write. PUT /payroll/employees/{id}/perquisites and POST .../perquisites/value are mounted and RBAC-guarded but are called by nothing in the product. So public.payroll_perquisites is never populated through any screen, Annexure II always shows nil perquisites, and the described experience (a perquisite on Form 16 with no tax withheld) cannot be produced by a CA using the UI \u2014 only by an API client."
+    }
    }
   },
   {
@@ -121,7 +166,16 @@
    "suggested_fix": "Add the inverse write to reverse_run (add the recovered amount back and clear closed_on), or make the write-down idempotent by recording the run_id against each loan repayment rather than mutating a running balance.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "reverse_run (routers/payroll.py:2431-2517) reverses both journals, including the Employee Loans credit posted by phase2_journal_service.py:883-884, but never restores payroll_loans.outstanding_paise, and finalize_run:2322 re-applies the same slips' recoveries on a re-finalise \u2014 a genuine double write-down, partly bounded by the `closed_on IS NULL` filter at :596-598. Severity is medium rather than high only because payroll employee loans have no UI at all (no caller in apps/web for /payroll/employees/{id}/loans), so no row exists to be written down twice today.",
+    "probe": "grep -n '_apply_loan_recoveries|payroll_loans' apps/api/routers/payroll.py -> 552, 568, 596, 611, 2322, 5870, 5899; nothing in reverse_run's 2431-2517 range. grep -rni 'loan' apps/web (excluding home-loan) -> only banking categories, the 80C hint and relationships/intelligence; no payroll loan caller.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. finalize_run calls _apply_loan_recoveries(db, firm_id, client_id, run_id) at routers/payroll.py:2322, after the journal posts; that function (:568-619) reads each slip's loan_recovery_paise, subtracts it from payroll_loans.outstanding_paise and sets closed_on when the balance hits zero. reverse_run (:2431-2517) reverses the disbursement and accrual journals and nulls status/journal_entry_id/disbursement_journal_entry_id/finalized_at/paid_at \u2014 it never mentions payroll_loans. The slips are not deleted and are not recomputed by finalize_run, so a second finalize re-reads the same loan_recovery_paise and applies it again. The docstring's own idempotency argument ('Finalisation is guarded against running twice', :573-575) is exactly what reverse_run removes. The GL side IS reversed \u2014 services/phase2_journal_service.py:883-884 credits the Employee Loans account with total_loan_recovery_paise \u2014 so even without a re-finalize, one reversal alone leaves the subsidiary balance and the GL disagreeing.",
+     "guards": "One partial: _apply_loan_recoveries filters `.is_(\"closed_on\", \"null\")` (:596-598), so a loan the first pass closed at zero is skipped on the second. A loan with a balance left over is written down twice. No test covers reverse-then-refinalize (tests/test_salary_revisions_and_loans.py:240-277 only exercises _apply_loan_recoveries directly).",
+     "reach": "Split. reverse_run IS wired up \u2014 api.payroll.reverseRun (apps/web/lib/api/index.ts:1291) is called from apps/web/app/clients/[id]/payroll/page.tsx:1008. But the LOAN half is not: grep across apps/web finds no caller for POST/GET /payroll/employees/{id}/loans and no `payroll_loans` PostgREST access, and grep across apps/api shows only routers/payroll.py:5870 inserting into it. So no payroll_loans row can be created from any screen, and the double write-down cannot be produced through the product UI."
+    }
    }
   },
   {
@@ -136,7 +190,16 @@
    "suggested_fix": "Read pf_employer_paise, esi_employer_paise, edli_paise and pf_admin_paise off the slip; delete buildCtcRows' arithmetic. Extend statutory-files-are-server-built.test.ts to cover app/payroll/reports/page.tsx.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The CTC tab re-derives employer PF and ESI in the browser from basic and a current-month ceiling test, ignoring the s.2(y) wage base migration 334 introduced, eps_eligible, ESI Rule 50, and EDLI and admin charges entirely, while the correct figures sit unread on the same rows. Measured: an employee on Rs 10,000 basic + Rs 8,000 special allowance + Rs 4,000 HRA has employer PF of Rs 1,800 plus EDLI Rs 75 and admin Rs 75 on the stored slip, and the CTC screen and CSV show Rs 1,200 \u2014 Rs 750 a month understated, about Rs 9,000 a year per employee, for an employee with no DA at all.",
+    "probe": "python -c 'wage_base.compute(wage_components_paise=1800000, excluded_components_paise=400000, fy_label=\"2026-27\", month=8); _compute_pf(...)' -> 's.2(y) PF wages: 1800000 | rule: True'; 'backend employer PF: 180000 | edli: 7500 | admin: 7500'; 'frontend buildCtcRows 12% of basic: 120000'; '=> delta on employer PF alone: 60000 paise/month'.",
+    "lens_notes": {
+     "literal": "Confirmed verbatim. apps/web/app/payroll/reports/page.tsx:616-630 buildCtcRows: `employerPf = emp?.pf_applicable ? Math.min(Math.round((emp.basic_paise * 12) / 100), 180000) : 0` and `employerEsi = emp?.esi_applicable && s.gross_paise <= 2100000 ? Math.round((s.gross_paise * 325) / 10000) : 0`. The CSV header at :650 is 'Employee,PAN,Gross Salary,Employer PF (12%),Employer ESI (3.25%),Total CTC'. The page fetches slips with `sb.from(\"payroll_slips\").select(\"*\")` (:1232), so pf_employer_paise, esi_employer_paise, edli_paise and pf_admin_paise ARE on the wire \u2014 the PayrollSlip type at :61-71 simply does not declare them and nothing reads them. The backend stores all four at routers/payroll.py:1094, :1099-1100, :1102.",
+     "guards": "None covering this file. apps/web/scripts/statutory-files-are-server-built.test.ts reads only app/payroll/page.tsx (PAYROLL const at :34) and lib/api/index.ts; app/payroll/reports/page.tsx is never opened by it. apps/web/app/payroll/statutory/page.tsx:3-27 documents these four drifts (PF on basic alone, the flat 3.67/8.33 split ignoring eps_eligible, ESI ignoring Rule 50, and the missing employer heads) as removed from that page \u2014 and they are alive here.",
+     "reach": "Reached. /payroll/reports is linked from apps/web/app/payroll/page.tsx:943, and the Cost to Company tab renders and exports for whatever month is selected."
+    }
    }
   },
   {
@@ -151,7 +214,16 @@
    "suggested_fix": "Replace with a server endpoint that returns the projection from _monthly_tds / decl_domain.withholding_tax_paise for the selected employee and month, then delete payrollTdsEstimate.ts.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The TDS Projection tab does compute s.192 in the browser from hardcoded FY 2025-26 new-regime constants with no old-regime ladder and no declarations (apps/web/lib/services/payrollTdsEstimate.ts:30-38, :95-110; consumed at app/payroll/reports/page.tsx:761, :787), so an old-regime employee with HRA and a home loan is projected as if on the new regime with nothing declared. It is a display-only planning screen \u2014 nothing it computes is persisted, withheld or filed \u2014 the s.192(3) spread IS implemented (reports/page.tsx:795-798), the three-component gross only applies to an employee with no slip yet, and for FY 2026-27 the hardcoded new-regime figures still match statutory_rates.py field for field, so the FY-drift is latent.",
+    "probe": "python -c 'diff statutory_rates.rates_for(2025-26) vs (2026-27) field by field' -> every field SAME except fy and verified (2026-27 verified=False). grep -rn 'payrollTdsEstimate|monthlyTdsPaiseNewRegime' apps/web -> only app/payroll/reports/page.tsx:32,761,787 (app/payroll/page.tsx has no import and no payroll_slips insert).",
+    "lens_notes": {
+     "literal": "Mostly confirmed, with two corrections. apps/web/lib/services/payrollTdsEstimate.ts:30-38 hardcodes the FY2025-26 new-regime ladder, :96-97 the Rs 75,000 standard deduction and the Rs 12,00,000 s.87A ceiling, and its header (:8-23) does describe itself as a standing CLAUDE.md violation tracked as R2.10 and 'deliberately NOT FY-versioned'. reports/page.tsx:32 imports monthlyTdsPaiseNewRegime and uses it at :761 and :787. CORRECTION 1: the gross fallback at :751-758 (basic + hra% + da% + other_allowances, omitting lta_paise/medical_paise/special_allowance_paise, none of which the local Employee type at :37-50 even declares) is only used when the employee has NO slip in the year \u2014 :751-752 prefers `recentSlip.gross_paise`. CORRECTION 2: 's.192(3)' is not absent \u2014 :795-798 spreads (estimatedAnnualTds - cumulativeActual) over the months with no slip, which is the same shape. CORRECTION 3: the module header's claim that payroll/page.tsx 'still PERSISTS slips computed here via direct browser-side Supabase inserts' is now STALE \u2014 grep shows monthlyTdsPaiseNewRegime is imported by reports/page.tsx alone, and app/payroll/page.tsx neither imports it nor inserts payroll_slips.",
+     "guards": "For the current year the numbers coincide: I diffed statutory_rates.rates_for('2025-26') against ('2026-27') field by field and every new-regime slab, the Rs 75,000 deduction, the Rs 12,00,000 / Rs 60,000 s.87A rebate, the surcharge ladder, the 25% cap and the 4% cess are identical (2026-27 is carried forward with verified=False). So the FY-versioning defect is latent, not live. Nothing computed here is persisted or filed.",
+     "reach": "Reached \u2014 /payroll/reports is linked from app/payroll/page.tsx:943 and the TDS Projection tab renders for any selected employee. But it is display only: no write, no slip, no challan, no return."
+    }
    }
   },
   {
@@ -166,7 +238,16 @@
    "suggested_fix": "Prioritise by what a year needs: (1) Annexure II on the client Outputs shelf (it is the year-end deliverable), (2) settlement on the employee drawer, (3) salary revisions + apply-structure on Inputs, (4) loans, (5) perquisites, (6) \u00a789.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Seven finished payroll capabilities are backend-only. The two that matter most are record_settlement (apps/api/routers/payroll.py:5233 \u2014 computes gratuity/leave encashment/notice pay, withholds under s.192, posts to the GL and closes the employee) and form_24q_annexure_ii (apps/api/routers/payroll.py:4308 \u2014 the year-end deliverable that feeds Form 16). Neither is reachable from any screen; apps/web/lib/api/index.ts exposes no client method for either.",
+    "probe": "grep -rn 'settlement|arrears-relief|perquisites|salary-revisions|24q-annexure-ii' over apps/web/{app,components,lib} \u2192 no payroll hits; grep -no 'api\\.payroll\\.[a-zA-Z]*' | sort -u \u2192 30 distinct methods, none of the seven.",
+    "lens_notes": {
+     "literal": "Every endpoint named exists and is orphaned. routers/payroll.py:5179 preview_settlement, :5233 record_settlement, :5457 arrears-relief, :5561/:5649 perquisites, :5733/:5798 salary-revisions, :5827/:5889 loans, :4308 24q-annexure-ii, :1551 salary-structures/{id}/apply. A grep of apps/web/{app,components,lib} for 'settlement', 'arrears-relief', 'perquisites', 'salary-revisions', 'payroll/.../loans', '24q-annexure-ii' and 'Annexure' returns ZERO payroll hits (the 'settlement' hits are all banking/FX; the 'loans' hits are all accounting). apps/web/lib/api/index.ts:1194-1460 defines 30 api.payroll.* methods and none of them is any of these; apps/web/app/clients/[id]/payroll/page.tsx:1796,1820 calls salary-structures list+create by raw apiFetch but never /apply.",
+     "guards": "No guard makes this moot. There is no alternate screen: apps/web/app/clients/[id]/payroll/page.tsx has no edit or drawer for an employee at all (the roster table at :480-500 renders seven read-only cells and no row action), and apps/web/app/payroll/people/page.tsx only mounts AddEmployeeModal. The only Form-16-adjacent thing in the UI is a YTD spreadsheet labelled 'Form 16 prep' at apps/web/app/payroll/reports/page.tsx:535 \u2014 not the Annexure II the backend builds.",
+     "reach": "The router IS mounted (apps/api/main.py:339, app.include_router(payroll.router, ...)), so these are finished, reachable-by-HTTP capabilities with no screen. Per the instructions that CONFIRMS the gap rather than refuting it."
+    }
    }
   },
   {
@@ -181,7 +262,16 @@
    "suggested_fix": "Add joining_date, eps_eligible and gratuity_act_covered to EmployeeUpdateIn. Separately, consider `model_config = ConfigDict(extra='forbid')` on the payroll input models so a dropped field is a 422 rather than silence.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "PATCH /employees silently discards joining_date: EmployeeUpdateIn (apps/api/models/payroll.py:147) has no such field and Pydantic ignores the extra key, so update_employee (apps/api/routers/payroll.py:1431) writes nothing for it and still returns success. The CA sees 'saved' and the date is unchanged, which then drives the wrong s.192 projection and gratuity. Correction is only possible through the CSV re-import path, not the edit form. eps_eligible and gratuity_act_covered are worse than the finding says: they are real columns (migrations 295, 298) read at routers/payroll.py:986, 4954, 5082, and they are absent from EmployeeIn as well as EmployeeUpdateIn \u2014 settable from NO API model at all, and from no CSV column either.",
+    "probe": "venv/bin/python -c \"from models.payroll import EmployeeUpdateIn, EmployeeIn; print(EmployeeUpdateIn(name='A', joining_date='2026-10-01', eps_eligible=False, gratuity_act_covered=False).model_dump(exclude_none=True)); print('joining_date in EmployeeIn', 'joining_date' in EmployeeIn.model_fields, 'eps_eligible', 'eps_eligible' in EmployeeIn.model_fields)\" \u2192 {'name': 'A'} / joining_date in EmployeeIn True eps_eligible False",
+    "lens_notes": {
+     "literal": "Confirmed by running it. apps/api/models/payroll.py:147-173 EmployeeUpdateIn lists date_of_birth but not joining_date, eps_eligible or gratuity_act_covered, and its model_config is {} (Pydantic v2 default = ignore extras). apps/web/components/payroll/AddEmployeeModal.tsx:113 puts joining_date in the payload and :121 calls api.payroll.updateEmployee on edit. apps/api/routers/payroll.py:1424-1436 does data.model_dump(exclude_none=True) and writes only what survived \u2014 then returns api_response(True, row), so the UI shows success.",
+     "guards": "The only guard is a source-text assertion, apps/web/scripts/employee-form-captures-what-filing-needs.test.ts:47,67, which asserts the string `joining_date: form.joining_date || null` is present \u2014 it passes while the PATCH is a no-op, so it manufactures false confidence rather than catching this. There IS one real workaround the finding misses: the CSV importer maps joining_date (apps/api/domain/payroll/employee_import.py:86,305,351) and re-importing a row whose employee_code already exists UPDATES that employee (apps/api/routers/payroll.py:1355-1387). So 'can never be corrected' is an overstatement \u2014 it can, only via export/edit/re-import.",
+     "reach": "Live. The edit path is apps/web/app/payroll/people/page.tsx:392 \u2192 AddEmployeeModal; the PATCH route is mounted (main.py:339)."
+    }
    }
   },
   {
@@ -196,7 +286,16 @@
    "suggested_fix": "One employee form, used by both surfaces \u2014 the design doc already says \"one employee form\". Fold AddEmployeeModal into the client workspace and add DOB, employee code, LTA/medical/special.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The client-workspace single-employee form really does collect only 8 fields plus three checkboxes (apps/web/app/clients/[id]/payroll/page.tsx:433-470), and the two forms are disjoint in both directions. It is worse than the finding says in one respect \u2014 the client workspace has NO employee edit path at all (the roster at :488-497 has no row action), so a record created there can only be amended by CSV re-import or by switching to /payroll/people. It is better in another: the CSV Import on that same screen carries the full 26-column set including lta/medical/special_allowance, so 'no form anywhere can set them except a CSV import' is true but the import is one button away, not on another screen. Downgraded to medium: clumsy and duplicated, not task-blocking.",
+    "probe": "grep -n 'lta|medical|special_allowance|date_of_birth|employee_code' components/payroll/AddEmployeeModal.tsx \u2192 no output; sed -n '545,571p' lib/imports/mappers.ts \u2192 26 columns incl. lta/medical/special_allowance/joining_date/uan/esi_number/bank_*.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/web/app/clients/[id]/payroll/page.tsx:433-470 \u2014 the New Employee form is Name, Employee Code, Date of Birth, Designation, Department, Basic, HRA %, Aadhaar, plus PF/ESI/PT checkboxes. Nothing else. apps/web/components/payroll/AddEmployeeModal.tsx:97-117 sends the complementary set (pan, gender, da_percent, other_allowances, pt_state, uan, esi_number, joining_date, bank_*) and a grep of that file for date_of_birth|employee_code|lta|medical|special_allowance returns nothing. lta/medical/special_allowance are real and paid \u2014 apps/api/routers/payroll.py:936-938 prorates them into gross and apps/api/domain/payroll/register.py:43-45 prints them.",
+     "guards": "Two guards the finding does not weigh. (1) The SAME screen carries a CSV Import button (apps/web/app/clients/[id]/payroll/page.tsx:410, 422-429) using lib/imports/mappers.ts:545-571, whose 26 columns include pan, joining_date, da_percent, lta, medical, special_allowance, uan, esi_number, pt_state and all three bank fields \u2014 and a repeated employee_code updates rather than duplicates. So the CA does NOT have to leave the client workspace to complete a record. (2) GET /employee-exceptions (routers/payroll.py:3397) names every employee whose missing UAN/IP/PAN/bank/DOB blocks a filing, so the incomplete record is flagged rather than silently wrong.",
+     "reach": "Both forms are live and both are linked from navigation."
+    }
    }
   },
   {
@@ -211,7 +310,16 @@
    "suggested_fix": "In _assemble_24q_source, read payroll_settlements for the quarter's months and emit a deductee row per settlement (payment_date = leaving/payment date, amount = taxable_paise, tds = tds_paise), joined to the same PAN checks.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "A recorded settlement's s.192 withholding is deposited and posted to the ledger but is absent from the quarter's 24Q Annexure I, because _assemble_24q_source (apps/api/routers/payroll.py:4136-4148) reads only payroll_slips. The annual Annexure II does include it (apps/api/domain/payroll/annexure2.py:267), so the two annexures disagree by exactly the settlement TDS, and the quarter's deductee rows will not tie to the challan.",
+    "probe": "grep -n 'payroll_settlements' apps/api/routers/payroll.py \u2192 4391, 5297, 5333, 5393 only; grep -n 'settlement' apps/api/domain/payroll/form24q.py \u2192 no output.",
+    "lens_notes": {
+     "literal": "Confirmed line by line. apps/api/routers/payroll.py:4120-4192 _assemble_24q_source builds slips_by_month only from payroll_runs \u2192 payroll_slips (:4137-4148) and never touches payroll_settlements; grep for 'payroll_settlements' in routers/payroll.py returns exactly four hits \u2014 4391 (Annexure II), 5297, 5333, 5393 (record_settlement) \u2014 and none in the Annexure I assembly. apps/api/domain/payroll/form24q.py has ZERO occurrences of 'settlement'. Annexure II does add it: routers/payroll.py:4391-4404 reads payroll_settlements and apps/api/domain/payroll/annexure2.py:263-267 does `tds += int(settled.get('tds_paise') or 0)`. record_settlement computes the s.192 withholding at routers/payroll.py:5313-5330, stores it as tds_paise at :5342, and posts it via journal_for_settlement at :5382.",
+     "guards": "None. build_24q_from_payroll appends problems for unfinalised months (routers/payroll.py:4174-4178) but nothing warns that settlements are excluded, and no test covers it (no 'settlement' in domain/payroll/form24q.py or its tests).",
+     "reach": "Annexure I IS reachable \u2014 apps/web/lib/api/index.ts:1360 downloads /api/payroll/24q-source.csv, used from apps/web/app/payroll/page.tsx. So the short figure is the one a CA actually gets. Annexure II is unreachable (see PAY-11), which means the CA cannot even see the disagreement \u2014 they just get an Annexure I that is short."
+    }
    }
   },
   {
@@ -226,7 +334,16 @@
    "suggested_fix": "Move the attendance editor (and one-time earnings, which is on the same page) into the client workspace Inputs tab, scoped to that client-month; keep a firm-wide view if wanted, but not as the only door.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is genuinely no attendance/LOP control anywhere in the client Payroll tab, and the only editor is /payroll/attendance, linked solely from TeamPanel.tsx:33 \u2014 a rail about the firm's own staff, not clients. The task is completable, so this is an information-architecture defect rather than a blocker: downgraded from high to medium ('clumsy' per the rubric).",
+    "probe": "grep -rn 'payroll/attendance' apps/web/{app,components,lib} \u2192 components/panels/TeamPanel.tsx:33 is the only href.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/clients/[id]/payroll/page.tsx:1724-1730 declares exactly five tabs (inputs/register/release/outputs/setup); grep for 'attendance' in that file returns only comments (:522, :1443, :1926) and the run-gap banner plumbing (:574, :591) \u2014 no editor and no link. The one editor is apps/web/app/payroll/attendance/page.tsx, and grep -rn 'payroll/attendance' over apps/web finds exactly one href: components/panels/TeamPanel.tsx:33, in the TEAM rail (alongside /team, /approvals, /team/login-history). apps/web/app/payroll/page.tsx links only /payroll/people (:933), /payroll/declarations (:938), /payroll/reports (:943).",
+     "guards": "Partial mitigation: the run-creation response carries attendance_gaps and the client screen renders them verbatim (apps/web/app/clients/[id]/payroll/page.tsx:574, 591), so the CA is told what is missing \u2014 just not given a control. There is also a CSV import on the attendance page. Nothing routes them there.",
+     "reach": "The editor is live and works; it loads every payroll employee of the whole firm (apps/web/app/payroll/attendance/page.tsx:227 selects payroll_employees for the firm with no client filter) and fans the save out one request per client (:547-569). So the task IS completable, on a firm-grain screen filed under Team."
+    }
    }
   },
   {
@@ -241,7 +358,16 @@
    "suggested_fix": "Server-side aggregates: a `/reports/*` endpoint per tab returning finished rows for one client-month or one FY, and lazy-load the Statutory Returns tab's data only when that tab is opened.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Both firm-level payroll screens fetch every payslip of every run in the firm on mount, in violation of the reporting rule in CLAUDE.md. /payroll (apps/web/app/payroll/page.tsx:873-876) issues one request per run concurrently \u2014 not sequentially, which is the finding's one factual slip \u2014 and does so for a tab that is not even the default. /payroll/reports (apps/web/app/payroll/reports/page.tsx:1231) puts every run UUID into one PostgREST `in.()` query string. Both scale with payroll volume rather than with the size of the answer.",
+    "probe": "sed -n '873,877p' apps/web/app/payroll/page.tsx and sed -n '1230,1234p' apps/web/app/payroll/reports/page.tsx; grep -n 'defaultValue' apps/web/app/payroll/page.tsx \u2192 951: <Tabs defaultValue=\"month\">",
+    "lens_notes": {
+     "literal": "Both sites confirmed, with one correction. apps/web/app/payroll/page.tsx:873-876 \u2014 `await Promise.all(runList.map(r => api.payroll.getRunSlips(r.id)))` where runList is api.payroll.listRuns() with NO client filter, i.e. every run of every client. That is CONCURRENT, not sequential as the finding says \u2014 but it is still one HTTP request per run, bounded by the browser's per-origin connection limit. apps/web/app/payroll/reports/page.tsx:1230-1233 \u2014 `sb.from('payroll_slips').select('*').in('run_id', runIds)` with runIds = every run in the firm, which supabase-js encodes into the GET query string. The 'default tab does not need slips' claim is right: apps/web/app/payroll/page.tsx:951 is `<Tabs defaultValue=\"month\">`, MonthQueueTab takes no slips prop (:966), and slips is passed only to StatutoryReturnsTab (:988).",
+     "guards": "None. There is no lazy load, no pagination, no server-side aggregate. The 45s abort is real (apps/web/lib/api/index.ts:361-362, and the comment at :396-399 records a previous 45.00s abort on a 12,836-entry ledger) but it is a failure mode, not a guard. /payroll/reports bypasses lib/api entirely via the PostgREST client, so it does not even get the abort.",
+     "reach": "Both live: /payroll is in AccountingPanel.tsx:44 and /payroll/reports is linked from apps/web/app/payroll/page.tsx:943."
+    }
    }
   },
   {
@@ -256,7 +382,16 @@
    "suggested_fix": "Compute the year's PT by summing _compute_pt over the twelve months of the FY for that employee's state (cheap, pure) and pass that, rather than the month \u00d7 12.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The s.16(iii) annual PT fed to the s.192 projection is this month's PT x 12 (apps/api/routers/payroll.py:1051), which for Tamil Nadu is 6x the year's real liability in September and March and zero in the other ten months. Measured on an old-regime TN employee at Rs.50,000: Aug/Oct TDS Rs.1,950/month, Sep/Mar Rs.1,690/month, against Rs.1,906.66 at the true annual Rs.2,500 \u2014 a swing of about Rs.260. The consequence is worse than the month-to-month wobble the finding describes: because March is the s.192(3) true-up month and March is a TN levy month, the YEAR closes on a projection claiming Rs.15,000 of s.16(iii) instead of Rs.2,500, so the year's withholding ends up short by roughly Rs.1,700-2,600 for that employee. Maharashtra is nearly self-correcting (its March figure, Rs.2,400, is close to the true Rs.2,500) and only wobbles in February.",
+    "probe": "venv/bin/python -c \"import routers.payroll as P; print(P._compute_pt(5000000,'TN',9), P._compute_pt(5000000,'TN',10))\" \u2192 125000 0. Then _monthly_tds with an old-regime verified Declaration on Rs.6,00,000 annual: Aug 1950.0, Sep 1690.0, Oct 1950.0, Mar 1690.0 vs 1906.66 at the correct annual PT of Rs.2,500.",
+    "lens_notes": {
+     "literal": "Confirmed and measured. apps/api/routers/payroll.py:1051 passes `professional_tax_paise=pt * 12` into _monthly_tds, where pt is THIS month's PT. _compute_pt_tn (routers/payroll.py:283-287) returns the whole half-yearly levy in months 9 and 3 and 0 otherwise; _compute_pt_mh (:262-280) returns the February differential. I ran _compute_pt: TN on Rs.50,000 gross gives 125000 paise (Rs.1,250) in Sep and Mar and 0 elsewhere, so pt*12 = Rs.15,000 against a true annual PT of Rs.2,500 \u2014 6x. MH gives Rs.300 in Feb (x12 = Rs.3,600) and Rs.200 otherwise (x12 = Rs.2,400) against a true Rs.2,500.",
+     "guards": "One real bound: under the new regime s.115BAC(2) disallows s.16(iii) entirely, and the new regime is the default, so this only reaches employees with an old-regime declaration on file. No test pins the annual PT projection.",
+     "reach": "_compute_slip is the monthly run path (POST /runs), reached from the client workspace Register tab \u2014 fully live."
+    }
    }
   },
   {
@@ -271,7 +406,16 @@
    "suggested_fix": "`_logger.exception(...)`. Add a lint rule or a test that forces this read to fail, as the earlier fix did for the other five branches.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "routers/payroll.py:3478 references an undefined name; the module's logger is `_logger` (line 74). The designed graceful degradation ('nobody intimated the old regime', the s.115BAC(1A) default) never happens \u2014 the except handler raises NameError and the endpoint 500s. The finding's severity of medium is right: it is a rare-path defect, and it is the only such instance in apps/api.",
+    "probe": "venv/bin/python -c \"import routers.payroll as P; print(hasattr(P,'logger'), hasattr(P,'_logger'))\" \u2192 False True. AST scan of every non-test .py in apps/api for `logger.*` with no `logger` binding \u2192 routers/payroll.py:3478 only.",
+    "lens_notes": {
+     "literal": "Confirmed by import. apps/api/routers/payroll.py:3478 is `logger.exception(\"could not read declarations for the exception index\")`, inside `except Exception:` at :3474 guarding the payroll_it_declarations read at :3468-3473. The module defines only `_logger = logging.getLogger(\"caflow.payroll\")` at line 74. `import routers.payroll as P; hasattr(P,'logger')` \u2192 False, `hasattr(P,'_logger')` \u2192 True. A NameError raised inside the handler propagates, so the endpoint 500s instead of degrading.",
+     "guards": "None. tests/test_the_exception_index.py has 23 tests and none forces the declarations read to fail (no 'raise', no fault injection in the file). I also ASTed the whole of apps/api for `logger.<attr>` in modules with no `logger` binding: routers/payroll.py:3478 is the ONLY instance in the codebase, so this is an isolated regression rather than a spreading pattern.",
+     "reach": "Live but defensive-only. GET /employee-exceptions is called from the frontend (apps/web/lib/api/index.ts:1262 payrollEmployeeExceptions), and the router is mounted (main.py:339). The branch fires only when the declarations query raises."
+    }
    }
   },
   {
@@ -286,7 +430,16 @@
    "suggested_fix": "Delete both TypeScript calendars and render compliance_engine.payroll_deposit_due_dates plus the 24Q dates through an endpoint. Keep PT's absence visible as a named refusal, the way statutory_gaps does \u2014 not as an invented date.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Two browser-side statutory calendars invent a professional-tax due date the backend deliberately refuses to state (apps/web/app/payroll/reports/page.tsx:222-236, apps/web/app/payroll/page.tsx:96-97 vs services/compliance_engine.py:309-317 and tests/test_payroll_deposit_due_dates.py:63), omit the ESI and salary-TDS deposit dates that services/compliance_engine.py:285-306 computes and that reach /deadlines via services/compliance_obligation_service.py:307-315, and in January show only the 24Q Q4 deadline while omitting Q3, due that same month (apps/web/app/payroll/page.tsx:108-127). The EPF deposit limb of the finding is wrong: it is present and correct as 'PF ECR', due the 15th of the following month.",
+    "probe": "grep -n on both .tsx files plus `sed -n '260,335p' services/compliance_engine.py`; the PT row's date expression is `new Date(year, month, 0)` (last day of the period month) against a backend docstring that says inventing one 'would put a wrong date in a CA's calendar'. No test file under apps/web/scripts or apps/api/tests references buildStatutoryCalendar.",
+    "lens_notes": {
+     "literal": "Both TypeScript calendars exist and say what the finding says, with one correction. apps/web/app/payroll/reports/page.tsx:222-236 loops the twelve FY months and pushes a `PT Challan` row whose due date is `new Date(year, month, 0)` \u2014 the LAST DAY OF THE PERIOD MONTH ITSELF \u2014 described as 'Maharashtra: \u20b9200 if > \u20b910,000', for every client regardless of state. apps/web/app/payroll/page.tsx:96-97 carries the same invention for the current month. The 24Q branch at apps/web/app/payroll/page.tsx:108-127 is a single if/else chain: m>=9&&m<=11 gives Q3 due 31 Jan, and January (m=0) falls to the final `else`, which emits 'Q4 Jan\u2013Mar, due 31 May' \u2014 so in January the Q3 return actually due that month is not shown. CORRECTION to one limb: the EPF deposit IS on the reports calendar \u2014 apps/web/app/payroll/reports/page.tsx:179-195 emits 'PF ECR \u2014 <month>' due the 15th of the following month, which is the same act and the same date as compliance_engine.epf_deposit_due_date (services/compliance_engine.py:279-283). What is genuinely absent from BOTH calendars is the ESI deposit (15th, services/compliance_engine.py:285-290) and the monthly salary-TDS deposit (7th, 30 April for March, services/compliance_engine.py:292-306). The ESI rows that are present are half-yearly RETURNS (11 Nov / 11 May), not the deposit.",
+     "guards": "Nothing guards these two files. The backend refusal is pinned twice \u2014 tests/test_payroll_deposit_due_dates.py:63 test_professional_tax_is_deliberately_absent and tests/test_payroll_owes_three_deposits_a_month.py:93 \u2014 but both assert only on services/compliance_engine.payroll_deposit_due_dates and services/compliance_obligation_service.obligations_for_service; neither reads any .tsx. apps/web/scripts/ has 30 guard tests including statutory-files-are-server-built.test.ts, which exists because the ECR and ESIC files were previously computed in app/payroll/page.tsx and had drifted five ways \u2014 the identical failure mode, in the identical file, and the calendar was not covered by it.",
+     "reach": "Both pages are live. components/panels/AccountingPanel.tsx:44 links '/payroll'; app/payroll/page.tsx:933-943 links on to '/payroll/reports', whose section 6 (apps/web/app/payroll/reports/page.tsx:1092-1126) renders buildStatutoryCalendar. The correct backend dates reach a different screen: services/compliance_obligation_service.py:307-315 emits EPF_DEPOSIT/ESI_DEPOSIT/TDS_SALARY_DEPOSIT specs for every FY month, so /deadlines and the payroll calendar disagree inside one product."
+    }
    }
   },
   {
@@ -301,7 +454,16 @@
    "suggested_fix": "Call wage_base.compute in statutory_position with the same components and month, and surface pf_wages_addback_paise so a CA can see why the base differs from basic+DA.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The Statutory Deductions screen projects PF on basic+DA (routers/payroll.py:4941) while the payslip computes it on the s.2(y) wage base (routers/payroll.py:971-986), so the two disagree for any below-ceiling employee whose HRA+LTA exceed half of remuneration \u2014 exactly the worked example in domain/payroll/wage_base.py's own docstring. It is a projection screen, not a filing or a posting, so no wrong figure is remitted; what breaks is that the PF-liability screen will not tie to the payslip, the ledger or the ECR.",
+    "probe": "cd apps/api && venv/bin/python: for basic=10,000, HRA=18,000, FY 2026-27 month 8 \u2014 wage_base.compute \u2192 WageBase(wages_paise=1400000, deemed_addback_paise=400000, rule_applied=True); _compute_pf(wages) = employee 1,680 / employer 1,680 (EPS 1,166 + EPF 514, EDLI 70, admin 70) whereas _compute_pf(basic+da) = employee 1,200 / employer 1,200 (EPS 833 + EPF 367, EDLI 50, admin 50). Same inputs, FY 2025-26 month 6 (pre-Code) agree exactly.",
+    "lens_notes": {
+     "literal": "Exact and verified by execution. routers/payroll.py:4941 is `pf = (_compute_pf(basic + da, fy, eps_eligible=...)` inside statutory_position; the payslip path at routers/payroll.py:971-986 builds `_wb = wage_base.compute(wage_components_paise=basic+da+medical+special+other, excluded_components_paise=hra+lta, fy_label=fy, month=pt_month)` and passes `_wb.wages_paise + ot.pf_wages_paise`. domain/payroll/wage_base.py:109 sets WAGE_RULE_EFFECTIVE_FROM = 2025-11-21 and rule_in_force() is true for every month ending on or after it, so all of FY 2026-27 is governed. The two also diverge BEFORE the Code, because the slip's wage_components include medical/special/other while statutory_position uses basic+da alone.",
+     "guards": "None. _compute_pf's own docstring (routers/payroll.py:754-770) still asserts 'pf_wages_paise is Basic + DA', which is the pre-Code rule, so nothing in the function objects to the wrong base. No test compares statutory_position against _compute_slip; grep of tests/ for statutory_position returns only callability checks (tests/test_new_payroll_endpoints_are_callable.py). statutory_position does emit a `gaps` list, but only for missing joining dates and PT/identity gaps \u2014 nothing names the PF base.",
+     "reach": "Live and on a linked screen. components/panels/AccountingPanel.tsx:46 links '/payroll/statutory'; apps/web/app/payroll/statutory/page.tsx:97 calls api.payroll.statutoryPosition (apps/web/lib/api/index.ts:1445-1448) \u2192 GET /api/payroll/statutory-position. The endpoint's own docstring (routers/payroll.py:4861-4880) says it exists because the TypeScript version of this screen had drifted in four ways \u2014 and it has now drifted again, in a fifth."
+    }
    }
   },
   {
@@ -316,7 +478,16 @@
    "suggested_fix": "Add POST /runs/{id}/recompute (draft/review only) that deletes and rebuilds the slips through the same path create_run uses, and DELETE /runs/{id} for an unfinalised run.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no recompute and no delete for a payroll run: create_run 409s on a duplicate (routers/payroll.py:1744), slips are written once at routers/payroll.py:1899, and reverse_run reopens the run at 'review' without touching a single slip (routers/payroll.py:2496-2506). A draft created before attendance arrives can never be made to reflect that attendance from inside the app; the release gap even instructs the CA to 'Regenerate the run' (routers/payroll.py:2124), an action no endpoint provides.",
+    "probe": "grep -n '^@router' routers/payroll.py (full index \u2014 no DELETE /runs and no /recompute) and grep -n 'table(\"payroll_slips\")' across routers/ and services/ \u2014 exactly one write, the INSERT at routers/payroll.py:1899.",
+    "lens_notes": {
+     "literal": "Confirmed by reading the whole @router index of routers/payroll.py: the run endpoints are POST /runs (1723), GET /runs (1701), GET /runs/{id}/slips (1958), PATCH /runs/{id}/status (2185), POST /runs/{id}/finalize (2232), /disburse (2343), /reverse (2430) \u2014 there is no DELETE /runs/{id} and no recompute. routers/payroll.py:1744-1746 raises 409 when a run exists for (firm, client, month), backed by the UNIQUE index of migration 237. reverse_run (2430-2521) updates only payroll_runs \u2014 status, the two journal ids, finalized_at/paid_at/paid_from_account_id/payment_reference \u2014 and never touches payroll_slips; the only INSERT into payroll_slips in the entire backend is routers/payroll.py:1899, inside create_run. _release_gaps at routers/payroll.py:2122-2126 does tell the CA to 'Regenerate the run to find out'.",
+     "guards": "Partial, and they cut the other way. _attendance_is_locked (routers/payroll.py:2984-2997) refuses an attendance edit only when the run is finalized/paid, so under a draft/review run attendance CAN be edited \u2014 and nothing re-reads it, which is the trap. PATCH /runs/{id}/status can move a run back to draft but that changes no slip. The release path does warn: _release_gaps reads payroll_slips.attendance_entered and finalize refuses without a written override reason (routers/payroll.py:2160-2183), so a CA is told the figures were computed without attendance \u2014 they simply cannot fix it in the product. No frontend PostgREST escape hatch either: apps/web only SELECTs payroll_runs (app/payroll/reports/page.tsx:1213, app/clients/[id]/payroll/page.tsx:165) and payroll_slips (reports/page.tsx:1232, portal/employee/page.tsx:181).",
+     "reach": "The whole payroll run lifecycle is the product's main payroll screen (app/clients/[id]/payroll/page.tsx and app/payroll/*), all mounted and linked."
+    }
    }
   },
   {
@@ -331,7 +502,16 @@
    "suggested_fix": "Pass `salary_for_80ccd2_paise=(basic + da) * months_employed_in_fy` from _compute_slip through _monthly_tds into the declaration request.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "In the payroll \u00a7192 path the \u00a780CCD(2) cap is computed on projected annual GROSS salary, not on basic+DA, because nothing passes salary_for_80ccd2_paise (itr_engine.py:328; the only \u00a7192 call site is routers/payroll.py:1184). A large declared employer-NPS figure is therefore allowed up to 10% of gross instead of the statutory percentage of salary, under-withholding for that month onwards. The ITR path is unaffected \u2014 routers/income_tax.py:148 does pass the base.",
+    "probe": "cd apps/api && venv/bin/python -c ITREngine on gross \u20b920,00,000, employer NPS \u20b92,80,000, FY 2026-27, new regime: with no base supplied \u2192 deduction_80ccd2 \u20b92,00,000, tax \u20b91,50,800; with salary_for_80ccd2_paise = \u20b98,00,000 (40% basic) \u2192 deduction \u20b980,000, tax \u20b91,75,760. A \u20b924,960 under-withholding on one employee.",
+    "lens_notes": {
+     "literal": "domain/income_tax/itr_engine.py:328-330 reads `salary_base_80ccd2 = req.salary_for_80ccd2_paise if ... is not None else req.gross_salary_paise`, then caps at `salary_base_80ccd2 * cap_percent // 100`; the field's own comment at :191-193 says the base is 'salary (basic + DA)' and that gross is 'an approximation (exact only when allowances are a small share of gross)'. domain/payroll/declarations.py:355 and :389 accept and forward salary_for_80ccd2_paise, but routers/payroll.py never supplies it: the only \u00a7192 call site, routers/payroll.py:1184-1197 (decl_domain.withholding_tax_paise), passes decl, projected_annual_salary_paise, fy, verified_only, professional_tax_paise and date_of_birth \u2014 no employer_nps_paise and no salary_for_80ccd2_paise. Grep across apps/api confirms salary_for_80ccd2 appears only in routers/income_tax.py:98/148, declarations.py:355/389, itr_engine.py:192/197/328 and tests. The employer-NPS amount still reaches the computation from the employee's declaration line at declarations.py:426-427.",
+     "guards": "None on the base. domain/payroll/declarations.py validate()/notices() say nothing about 80CCD(2) beyond allowing it under the new regime (SECTIONS_ALLOWED_UNDER_NEW_REGIME, line 125). The one thing pulling the other way is the percentage: LIMIT_80CCD2_OTHER_PERCENT is 10 (itr_engine.py:53), deliberately conservative \u2014 but 10% of gross still exceeds 14% of basic+DA on any structure where basic+DA is under ~70% of gross, so the base error dominates and the net effect is over-allowance.",
+     "reach": "Reachable by an employee without a CA in the loop: apps/web/components/portal/TaxDeclarationTab.tsx:77 offers '80CCD(2) \u2014 Your employer's NPS contribution' as a declarable code, written straight to payroll_it_declaration_items over PostgREST (lines 195-211), and apps/web/app/payroll/declarations/page.tsx:67 shows the same section to the firm."
+    }
    }
   },
   {
@@ -346,7 +526,16 @@
    "suggested_fix": "An annual bonus run: compute bonus_domain over the eligible roster for an accounting year, produce Form C, and pay it through the one-time-earnings path (kind='bonus') so it lands correctly for PF/ESI/\u00a717(1).",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The Payment of Bonus Act engine is complete and has exactly one caller \u2014 the leaver settlement (routers/payroll.py:5112, inside _compose_settlement at 5065). There is no annual bonus run over the roster and no Form C/D register, so the one statutory annual payment the module can already compute cannot be computed for anyone still employed; the one-time-earnings path (domain/payroll/one_time_earnings.py:69) can pay a bonus but not work out what it should be.",
+    "probe": "grep -rn 'bonus_domain\\.|domain.payroll.bonus' apps/api --include=*.py excluding tests \u2192 routers/payroll.py:59 (import) and routers/payroll.py:5112 (the only call). grep for 'Form C'/'Form D' across apps/api and apps/web \u2192 no hits.",
+    "lens_notes": {
+     "literal": "Confirmed. domain/payroll/bonus.py implements \u00a72(13), \u00a72(21), \u00a78, \u00a710, \u00a711, \u00a712 and \u00a79 with the minimum-wage refusal CLAUDE.md records. grep -rn for bonus_domain / 'domain.payroll.bonus' across apps/api excluding tests returns exactly two lines: the import at routers/payroll.py:59 and the single call at routers/payroll.py:5112, inside _compose_settlement (defined at routers/payroll.py:5065), gated on body.bonus_accounting_year from the leaver-settlement request.",
+     "guards": "Nothing supplies the capability elsewhere. domain/payroll/one_time_earnings.py:69 does include 'bonus' in KINDS, so a CA can PAY a bonus through the run and have it treated correctly for PF (excluded per EPF Act \u00a72(b), _PF_WAGE_KINDS at line 79), ESI and \u00a717(1) \u2014 but the amount is typed in, never computed. No Form C or Form D register exists anywhere in apps/api or apps/web (grep returns nothing).",
+     "reach": "The settlement path is live (POST /employees/{id}/settlement, routers/payroll.py:5179), so the computation exists and is reachable only for leavers. This is the case the instructions call a CONFIRMED gap: the backend capability exists and no screen reaches it for a continuing employee."
+    }
    }
   },
   {
@@ -361,7 +550,16 @@
    "suggested_fix": "Either remove the invented defaults and the portal leave tab until a policy model exists (the honest option, matching the module's own gap discipline), or build a per-client leave policy with accrual server-side.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The firm attendance screen fabricates a 12/12/15 leave entitlement for every employee with no leave_balances row (apps/web/app/payroll/attendance/page.tsx:314-316) and persists it verbatim if a CA saves that row (line 604), while no backend code accrues, carries forward or validates any of it. The portal limb is overstated: apps/web/app/portal/employee/page.tsx:224-231 renders only rows that exist, so an employee sees the invented number only once a CA has saved it. Leave management itself is a documented deferral (docs/architecture/10-payroll.md:387); the invented default is not.",
+    "probe": "grep -rn leave_balances across apps/api \u2192 migrations and schema tests only, no logic module; across apps/web \u2192 attendance/page.tsx:290,604 and portal/employee/page.tsx:226. Read of portal/employee/page.tsx:400-440 shows the empty state rather than a default.",
+    "lens_notes": {
+     "literal": "Mostly right, one limb corrected. apps/web/app/payroll/attendance/page.tsx:308-322 maps every employee to a LeaveBalance whose allotments fall back to `existing?.casual_leave_balance ?? 12`, `?? 12`, `?? 15` \u2014 three literals with no policy row behind them \u2014 and saveLeaveBalance at line 601-612 upserts exactly those fields into leave_balances. CORRECTION: the employee portal does NOT invent anything. apps/web/app/portal/employee/page.tsx:224-231 selects leave_balances for the employee and year and renders only what comes back; with no row it shows 'No leave records found for current year' (line 408-413). So 12/12/15 reaches an employee only after a CA opens the row editor (which is pre-filled with the invented figures) and presses Save. The rest holds: no backend module reads or writes leave_balances (the grep across apps/api returns only migrations 027/041/044/074/260/261/262/297 and schema tests), nothing accrues or carries forward, and the portal comment at line 424-426 concedes 'Days taken are not recorded anywhere'.",
+     "guards": "Real but narrow. attendance/page.tsx:297 refuses to fall through to the defaults when the query errors ('A failed query must NOT fall through to the employees.map below, which would fabricate default 12/12/15 allocations as if they were real records'), and the portal has the same guard at page.tsx:231-238. Neither guard covers the ordinary success path, which is where the fabrication happens. No migration puts a DEFAULT on the leave_balances columns, and no test pins the literals.",
+     "reach": "Live: components/panels/TeamPanel.tsx:33 links '/payroll/attendance'; the employee portal leave tab is one of four tabs (app/portal/employee/page.tsx:61,277). docs/architecture/10-payroll.md:387 lists 'Leave management' among the deliberate deferrals, so the absence of a policy model is known \u2014 the invented 12/12/15 is not part of that deferral."
+    }
    }
   },
   {
@@ -376,7 +574,16 @@
    "suggested_fix": "Split into Salaries and Wages / Contribution to PF and Other Funds (employer PF + EPS + EDLI + admin) / Contribution to ESI, compute the debit independently from the slip components, and let the kernel's balance assertion catch a disagreement.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The payroll accrual posts employer PF, EPS, EDLI, the admin charge and employer ESI inside a single Salaries Expense debit defined as the sum of the credits (services/phase2_journal_service.py:888,908-910), and no report re-splits them, so the Schedule III employee-benefits sub-classification needs manual analysis. The finding's 'undetectable by construction' limb is refuted: services/phase2_journal_service.py:900-906 carries an explicit range invariant that fails a run whose credits do not add up, though its tolerance is the employer-contribution band rather than an exact identity.",
+    "probe": "Read of services/phase2_journal_service.py:813-915 (single salary_exp debit; the ValueError guard at 902-906) and domain/reporting/schedule_iii.py:344-372 (one 'Employee Benefit Expense' line, no sub-note). grep -rn 'Contribution to PF' across apps/api \u2192 only the docstring at phase2_journal_service.py:827.",
+    "lens_notes": {
+     "literal": "The main claim is exact: services/phase2_journal_service.py:813-915 builds ONE debit to '%Salaries Expense%' whose amount is `total_cost = sum(amount for _, amount, _ in credits)` (line 888) \u2014 net + PF (with EDLI and the admin charge) + ESI + PT + TDS + loan recovery \u2014 and the docstring at :826-829 concedes the Schedule III split is 'a future enhancement'. There is no employee-benefits sub-classification anywhere downstream either: domain/reporting/schedule_iii.py:349,367 emits a single 'Employee Benefit Expense' line with no note breaking it into salaries and wages / contribution to provident and other funds / staff welfare.",
+     "guards": "One limb of the finding is WRONG. 'A missing credit leg is undetectable by construction' is refuted by services/phase2_journal_service.py:900-906, an explicit invariant that raises ValueError('Payroll journal identity violated ... a deduction is missing a credit leg') unless gross <= total_cost <= gross + pf + esi + edli + pf_admin. It is a band rather than an equality, so a missing credit leg smaller than the employer's own contributions would still pass \u2014 but the case the finding says is undetectable is in fact detected for anything larger than that. Staff welfare is also already a separate ledger in the seeded chart (services/coa_seed_service.py:108, account 5013 'Staff Welfare'), so the conflation is confined to employer PF/EPS/EDLI/admin and employer ESI being inside Salaries Expense.",
+     "reach": "Every finalised run posts through this path (journal_for_payroll, services/phase2_journal_service.py:837+), and the resulting trial balance feeds domain/reporting/schedule_iii.py, so it reaches the year-end statements a CA files."
+    }
    }
   },
   {
@@ -391,7 +598,16 @@
    "suggested_fix": "Start with the TDS working (the server already has every input in _monthly_tds) and proof upload against a declaration item \u2014 the two that remove the most WhatsApp.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The employee portal has four tabs and nothing else (apps/web/app/portal/employee/page.tsx:61): payslip list + PDF, leave balances, a Form 12BB-shaped declaration form, and a profile. No TDS working, no 12BB or Form 16 document, no proof upload \u2014 proof_reference is free text (migration 296:143) \u2014 and no leave apply/approve. The gap is real against the module's own spec at docs/architecture/10-payroll.md:150, but docs/architecture/10-payroll.md:392 records portal depth as a deliberate deferral rather than an oversight.",
+    "probe": "wc -l apps/web/app/portal/employee/page.tsx \u2192 482; grep -n 'TabId' \u2192 the four-tab union at line 61; grep -rn '12BB|Form 16' across apps/api and apps/web \u2192 model/docstring references only, no generator; grep -rn proof_reference \u2192 a TEXT column and a string field, no document table.",
+    "lens_notes": {
+     "literal": "Confirmed line by line. apps/web/app/portal/employee/page.tsx is 482 lines with exactly four tabs \u2014 `type TabId = \"payslips\" | \"leave\" | \"declaration\" | \"profile\"` (line 61, rendered at 277-320). Payslips list with PDF download, the leave-balance table, TaxDeclarationTab (components/portal/TaxDeclarationTab.tsx, 428 lines, writing payroll_it_declarations and _items straight over PostgREST at lines 126-211), and a profile card. No TDS working, no Form 12BB output, no Form 16, no reimbursement claim, no leave apply/approve. proof_reference is a plain TEXT column with no attachment (migration 296_employee_income_tax_declarations.sql:143; domain/payroll/declarations.py:136; models/payroll.py:344). docs/architecture/10-payroll.md:150 does specify 'Employee portal \u2192 Pay: Payslip, how your TDS was arrived at, Form 12BB, Form 16'.",
+     "guards": "Nothing exists server-side that a screen simply fails to reach: grep for Form 16 across apps/api returns no generator, and Form 12BB appears only as the SHAPE of the declaration model (routers/payroll.py:4551-4557, domain/payroll/declarations.py:38-45), never as a produced document. The one input the finding is right that the server already holds is the \u00a7192 working \u2014 every figure is inside _monthly_tds (routers/payroll.py:1150-1203) and is discarded after producing one number on the slip.",
+     "reach": "The portal is live and invitable (POST /employees/{id}/portal-invite, routers/payroll.py:4509). Balancing context the finding omits: docs/architecture/10-payroll.md:392 lists 'Employee-portal depth and bulk invites' among the deliberate deferrals, with a commercial reason ('scales support by employee count against zero marginal revenue'), and line 389 dates Form 16 distribution to June 2028. So this is a known deferral, not an oversight \u2014 the capability is genuinely absent either way."
+    }
    }
   },
   {

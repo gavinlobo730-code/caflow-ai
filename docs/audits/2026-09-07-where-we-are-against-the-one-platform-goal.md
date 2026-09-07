@@ -19,13 +19,14 @@ that is so, the finding says **verified**. Two claims I set out to confirm turne
 out to be **wrong and are recorded as corrected**, because a report that only
 confirms is not a check.
 
-**Tier 2 — a deep reader found it, I did not re-run it.** Nine subsystems were
-each read end to end (routers, services, domain modules, migrations, screens,
-tests) and returned 278 findings. The adversarial verification pass that was
-supposed to attack every one of them ran on 27 findings before the session's model
-allowance was exhausted. So **most of the ~140 high-severity findings in Appendix A
-are single-source**. They are specific and carry file references, and the ones I
-spot-checked held up — but treat them as *leads with evidence*, not as settled.
+**Tier 2 — a deep reader found it and an adversarial verifier attacked it.** Nine
+subsystems were each read end to end (routers, services, domain modules,
+migrations, screens, tests) and returned 278 findings. On the owner's instruction
+every remaining finding was then re-read by an independent verifier under three
+lenses, told to *refute* rather than confirm. **Three were refuted.** Thirty-five
+were corrected downward, four upward, and many were sharpened with a measured
+probe. §13 reports what that pass was worth — including that my own estimate of
+how many would fall was wrong by an order of magnitude.
 
 **Tier 3 — lighter coverage.** Reporting and year-end, practice management, the AI
 layer, portals and identity, platform and security, the frontend as a whole, and
@@ -931,7 +932,174 @@ rendering job rather than a rebuild.
 
 ---
 
-## 13. The primary-source re-run (answer 5) — and why it could not be done
+## 13. The verification pass (answer 6) — and what it was actually worth
+
+Every finding that had not already been checked was re-read by an independent
+verifier under three lenses — **literal** (does the code do this?), **guards** (is
+something else already preventing it?) and **reach** (does it get to a user?) —
+told to try to *refute* rather than confirm, and to default to refuted where the
+code could not be made to say it. Where a probe would settle it, they ran one.
+
+### 13.1 I predicted 15–25% would fall. About 1% did.
+
+| | |
+|---|--:|
+| Findings | **278** |
+| Verified by hand, by me | 20 |
+| Verified by an independent adversarial reader | 256 |
+| **Refuted** | **3** |
+| Severity corrected downward | 45 |
+| Severity corrected upward | 6 |
+| Unverified | **0** |
+
+**That prediction was wrong and the direction matters.** The readers were far more
+accurate than I gave them credit for, which raises confidence in the whole set —
+including the parts nobody has re-read. What the pass mostly did was not *delete*
+findings but **sharpen** them: correct a line number, name a guard that bounds the
+blast radius, replace a hand-waved consequence with a measured one.
+
+The three refutations, in fairness to them:
+
+- **SALES-07** — customer-deducted TDS on a receipt *can* be recorded, through
+  `components/banking/SettleDocumentsModal.tsx:194` → `bank_posting_service.py:1022`
+  → `create_receipt_core`, reachable from the bank Entries tab. The auditor's grep
+  missed it. A narrower gap survives: the standalone receipt form has no TDS field.
+  **Two verifiers disagreed on this one** — a re-run confirmed what the first had
+  refuted — and I settled it by hand. It is the only such disagreement, and it is
+  the argument for keeping the probe in the record rather than only the verdict.
+- **PUR-29** — RCM and §17(5) on the purchase path *are* tested
+  (`tests/test_accounting_audit_fixes.py:56-88`). The auditor misread its own grep.
+- **GST-23** — the GSTR-1 ARN modal *does* exist and mirrors the GSTR-3B one.
+
+### 13.2 The refutation that found something worse
+
+**GST-23 was wrong about the missing feature and right that something was broken.**
+Chasing it down, the verifier found that *both* mark-filed paths write the return
+row **directly over PostgREST** (`apps/web/lib/data/gst.ts:657-697`) instead of
+calling the backend `PATCH …/status`. I confirmed this myself:
+
+- only the backend's `record_filing` writes `public.filings`
+  (`gst_filing_record_service.py:120`, called from `gst_workspace.py:526` and `:747`);
+- `journal_period_lock_reason` reads `public.filings` to decide whether a filed
+  return freezes its period (migrations `266:316`, `267:65`);
+- `apps/web/lib/api/index.ts` exposes no GST status endpoint at all.
+
+**So a CA marks a GST return as filed and the period does not lock.** The books stay
+editable behind a filed return — precisely what the immutability design exists to
+prevent, and what CLAUDE.md describes as the genuine path. Production fits: one
+`gstr3b_returns` row sitting at `ca_approved` with no ARN, and `filings` empty.
+
+### 13.3 Three tests that hide or encode the defect
+
+This is the sharpest systemic result of the pass, and it upgrades §5.4 from a
+recommendation to a finding.
+
+1. **`tests/test_tds_bill_engine.py:59-70`** asserts `b5["tds_paise"] == 500_00` —
+   the §194C figure that ignores the aggregate. The wrong number is pinned as
+   correct.
+2. **`tests/test_tds_section_rates.py:117-122`** asserts ₹6,000 on a ₹60 lakh
+   §194Q purchase, commented "0.1% of ₹60L". The statute charges 0.1% of the
+   amount *exceeding* ₹50 lakh — ₹1,000. A second wrong number pinned as correct.
+3. **`tests/test_direct_write_tables_are_role_guarded.py`** — the security test
+   that enumerates every table the browser writes directly. I ran its own scanner:
+   it finds 21 tables and **`tds_deductions` is not among them**, though
+   `app/tds/page.tsx` inserts into it twice. Its regex allows 400 characters
+   between `.from("…")` and the write verb; those call sites sit 441, 561 and 729
+   characters away. **The test passes green while asserting a falsehood**, so
+   `tds_deductions` and `tds_returns` are neither guarded nor flagged as open.
+
+A fourth, `tests/test_capital_gains_engine.py:98-101`, pins the §50AA debt-fund
+bug with a 2020 acquisition date.
+
+Two tests encode a wrong statutory number, one pins a third, and one gives false
+security assurance. **Fix the tests before the code**, or the fixes will not hold.
+
+One more of the same family, found while checking a payroll finding: the
+September audit reported that `_logger` was referenced five times and never
+defined, fixed it, and said it was "pinned by tests that force a read to fail".
+`routers/payroll.py:3478` still calls **`logger`** — the module defines `_logger`
+at line 74 — inside an `except Exception:` block, so the first real read failure
+raises `NameError` *from within the handler* and a graceful degradation becomes a
+500. It is the only bare `logger.` in the file. The fix went one direction and this
+site was the other.
+
+### 13.4 What the probes measured
+
+Verifiers were told to run something where running would settle it. Several did,
+and the numbers are better than any argument:
+
+- **`services/bank_register_service.py:212-215`** does
+  `min(filtered, key=lambda l: all_lines.index(l))` — O(n²). Measured:
+  **29.185 seconds of CPU** on 12,836 rows, against 0.071s for the register build
+  itself. The Bank Book's default view is unfiltered, which is the worst case.
+- **`routers/inventory.py:42-59`** read **all 5,000 ledger rows in 6 round trips**
+  for a single item that had never moved; the loop breaks only on a short page,
+  so `remaining` never empties. Its own docstring claims the opposite.
+- **§195 on a recorded 10% treaty rate** returns 10.40% for a foreign company and
+  11.44% for a non-corporate payee — surcharge and cess stacked on top of a treaty
+  rate that is already the whole liability.
+- **Rule 37 reversal** returned ₹18,000 where ₹9,000 is right on a half-debit-noted
+  bill: `journal_for_debit_note` already credits GST Input, so it double-reverses.
+- **`/statutory-position` computes PF on basic + DA** while the run uses the
+  s.2(88) base — ₹1,200 against ₹1,680 a month on CLAUDE.md's own worked example.
+  Two screens, two PF figures, same employee.
+- **A ₹1,00,000 computer at the shipped 31.67% WDV** is worth **₹330.64 after
+  fifteen years** — there is no useful-life terminal condition on the WDV path.
+
+### 13.5 A wrong statutory due date for every company client
+
+`AUDIT_ENTITY_TYPES` in `apps/web/app/income-tax/page.tsx:81-89` holds
+`"private_limited"`, `"public_limited"`, `"llp"`, … in snake_case. The database
+CHECK constraint (`migrations/001_initial_schema.sql:23-26`) and the client form
+(`ClientFormModal.tsx:8-11`) both store `'Private Limited'` — title case, with a
+space. `isAuditCase` lowercases but never substitutes the space, so:
+
+| Stored | Lowercased | In the set? |
+|---|---|:--:|
+| `LLP`, `Partnership`, `Trust` | `llp`, `partnership`, `trust` | yes |
+| **`Private Limited`** | `private limited` | **no** |
+| **`Public Limited`** | `public limited` | **no** |
+
+It fails on exactly the two multi-word types — which are exactly the companies. So
+every Private Limited and Public Limited client is given a **31 July** ITR
+deadline where Explanation 2(a) to §139(1) fixes **31 October** unconditionally.
+Four of the seven clients in production are Private Limited.
+
+It is worse than a display bug: the verifier found that *three* implementations of
+this date exist (`compliance.py:152`, `:209` and
+`compliance_obligation_service.py:398`) and none of them receives an audit flag
+either — so fixing the string alone would not fix the date.
+
+### 13.6 Four findings the pass made *more* serious
+
+`PAY-20` and `PAY-21` were raised to high — the first for the two-PF-figures split
+above, the second because **a payroll run cannot be recomputed or discarded**: no
+DELETE, no recompute, one insert path, and `create_run` 409s on a second run for
+the same month, so a wrong draft is uncorrectable through the product. `PAY-29`
+was raised because the payslip omits UAN, PF/ESIC numbers and bank details.
+`ACC-27` was raised: two lock checks parse `entry_date` differently, so `2025-4-1`
+passes the firm-level check, is rejected by the kernel's parser, and Postgres
+accepts it as a DATE — a shape that posts into a locked year.
+
+### 13.7 Where it stands
+
+**275 findings survive.** After verification:
+
+| Severity | Count |
+|---|--:|
+| critical | 20 |
+| high | 89 |
+| medium | 130 |
+| low | 36 |
+
+By kind: 99 bugs, 81 gaps, 30 missing features, 21 glitches, 20 data-integrity,
+9 fine-tune, 6 performance, 5 UX, 4 security. Every finding in
+`2026-09-07-findings/` now carries a `verification` block recording status, the
+corrected severity, what is actually true, and the probe where one was run.
+
+---
+
+## 14. The primary-source re-run (answer 5) — and why it could not be done
 
 **The environment blocks it, and I proved that rather than assuming it.** Every
 government host refuses at the proxy:
@@ -954,7 +1122,7 @@ official URL*, with the URL recorded — plus ordinary `[S]` secondary sources.
 Full write-ups and the list of URLs to fetch first are in the session working
 files; the ranked re-verify lists are the most useful part.
 
-### 13.1 The one live wrong number the re-run found
+### 14.1 The one live wrong number the re-run found
 
 **`CII_BY_FY["2025-26"] = 380` (`capital_gains_engine.py:63`) should be 376**, and
 an index for FY 2026-27 has since been notified at **384** (Notification 85/2026,
@@ -974,7 +1142,7 @@ say in the commit that the verification is secondary-source — moving the
 human-verified marker without a human read is exactly the failure CLAUDE.md warns
 about.
 
-### 13.2 What the re-run confirmed, and it matters that it did
+### 14.2 What the re-run confirmed, and it matters that it did
 
 **The Income-tax Act 2025 / Rules 2026 renumbering is corroborated in full** —
 24Q→138, 26Q→140, 27Q→144, 27EQ→143, and the section moves — by multiple
@@ -986,7 +1154,7 @@ exists and could not be read, so any *specific* form number carries that caveat.
 **Form 16 Part B must come from TRACES** — confirmed, which vindicates the
 decision not to generate it.
 
-### 13.3 Four things nobody has told this codebase about
+### 14.3 Four things nobody has told this codebase about
 
 Each is `[S]` or `[S-gov]` and each needs a human with a browser before it is
 acted on — but all four are live and none appears anywhere in the repo.
@@ -1016,7 +1184,7 @@ acted on — but all four are live and none appears anywhere in the repo.
    deemed *rejection* in April 2026 is loose in the wild and, on this evidence, is
    wrong. Re-verify before building.
 
-### 13.4 Payroll — five claims that touch CLAUDE.md directly
+### 14.4 Payroll — five claims that touch CLAUDE.md directly
 
 All `[S]`, none confirmable here, all worth a human hour:
 
@@ -1038,7 +1206,7 @@ All `[S]`, none confirmable here, all worth a human hour:
 - **Fixed-term employees earn gratuity pro rata after one year**, not five. The
   gratuity module assumes five.
 
-### 13.5 What to do about the sourcing problem itself
+### 14.5 What to do about the sourcing problem itself
 
 The honest position is that this codebase has now had **two** research passes that
 could not read a single primary source, and `docs/compliance/00-how-to-read-this.md`

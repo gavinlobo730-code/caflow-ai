@@ -29,7 +29,14 @@
    "suggested_fix": "Add a `payment_account_id` (FK to chart_of_accounts, or bank_accounts.coa_account_id) to receipts and purchase_payments, default it from payment_mode ('cash'/'petty cash' \u2192 system_account_key 'cash'), and make the journal use it. Backfill is not needed for correctness of new entries; existing rows keep the generic bank leg and should be listed for the CA rather than silently re-pointed.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed as written, with the fix scope slightly larger than claimed.\n\nEvery automated receipt and vendor-payment journal \u2014 INR and foreign, mock and atomic-RPC production paths \u2014 debits/credits the single firm-wide account resolved by `system_account_key='bank'` (or `account_name ILIKE '%Bank%'`). `payment_mode` is validated, stored and CHECK-constrained (migration 050, widened by 161) but never consulted when choosing the GL account, and `routers/purchase_payments.py:455-463` demonstrably strips it out of the dict handed to the journal builder. So a receipt or payment marked \"cash\" moves the Bank ledger and leaves Cash in Hand at nil.\n\nThree consequences, in increasing order of how hard they are to notice:\n- the bank ledger drifts from the passbook by every cash transaction and bank reconciliation cannot close;\n- the Balance Sheet's Cash & Cash Equivalents total is right but its composition is wrong, and the cash-flow statement inherits the same ledger;\n- \u00a740A(3) auto-detection (`public.get_cash_payments_above_threshold`, migration 288) reads credits on cash-named Asset accounts, so cash payments recorded through this flow are never surfaced as disallowable expenditure \u2014 the CA sees a clean run that means nothing.\n\nCorrection to the suggested fix: the schema and the request models are further along than the finding assumes. `bank_accounts.coa_account_id` already exists (migration 093:135), and both `ReceiptIn` and `PurchasePaymentIn` already carry an unused `bank_account_id` field. The work is therefore mostly to make the journal builders take an explicit settlement-account argument (defaulted from `payment_mode` for 'cash'/'petty cash', and from `bank_account_id \u2192 coa_account_id` where supplied) rather than to add new columns from scratch \u2014 and, per CLAUDE.md, the posting still goes through `_create_journal` only. Existing rows should be listed for the CA, not silently re-pointed: a posted entry's correction is an append-only reversal.\n\nNot refuted, and not downgraded \u2014 severity stays high.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -44,7 +51,14 @@
    "suggested_fix": "Same fix as ACC-02 \u2014 one `payment_account_id` on receipts/purchase_payments resolved from the chosen bank account's coa_account_id. Then make bank_posting_service and the receipt/payment paths share one resolver so they cannot diverge again.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Receipts and vendor payments never resolve the bank the money actually moved through \u2014 receipts/purchase_payments have no bank_account_id column and the UI sends none \u2014 so every one of them posts its cash leg to whatever single row _find_account(\"%Bank%\", system_key=\"bank\") happens to return, while bank-statement postings (bank_posting_service.py:87-91) and bank opening balances (opening_balance_service.py:243-252) post to the correct per-bank coa_account_id. Two clarifications sharpen rather than soften the finding: (a) the destination is not a stable \"generic Bank Account\" \u2014 the system_key lookup is firm-wide, unordered, .limit(1), migration 092 stamped key 'bank' onto Cash accounts too, and coa_seed_service sets no keys at all, so newly seeded firms fall through to an unordered ILIKE '%Bank%' that can match a real per-bank ledger or even the \"Bank Charges\" expense account; (b) the same generic resolution is used by fixed-asset acquisition and disposal (phase2_journal_service.py:1191, :1296), so the mismatch is broader than receipts and vendor payments. Net effect is as described: no per-bank GL ledger ties to its passbook, the Balance Sheet shows a bank line the client does not have, and per-account BRS cannot be tied to the GL.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -59,7 +73,14 @@
    "suggested_fix": "Add the same `source_type = 'manual'` guard to edit_posted_journal that discard_posted_journal already has (and mirror it in manual_journal_service.update so the CA gets the sentence rather than a SQLSTATE). Reuse migration 275's wording verbatim.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The gap is genuine: nothing on the edit path \u2014 router, service, or `edit_posted_journal` \u2014 restricts the correction to `source_type = 'manual'`, while `discard_posted_journal` (275/276) explicitly does. An authenticated staff member with accounting:write and access to the client can rewrite the lines, amounts, accounts, date and narration of the GL entry behind a sales invoice, purchase bill, receipt, payment, bank posting, depreciation run, opening balance or trial-balance import, provided the period is open and the entry is not reversed. Two corrections to the finding, both of which lower the practical severity rather than the technical one. First, reach is API-shaped, not click-shaped: the journal list deliberately filters to `e.source_type === \"manual\"` (apps/web/app/clients/[id]/accounting/page.tsx:648-651) and `journalEditorHref` (line 606) is only ever called from that filtered table (line 867) or with \"new\" (851); the Recent Entries block on the overview tab does load unfiltered rows (page.tsx:383-388) but renders them as non-clickable <tr>s (489-511). So the \"opens it by URL\" scenario needs a UUID obtained out-of-band (PostgREST from the browser, devtools, a script) or a direct API call \u2014 it is not a mis-click an executive stumbles into, which is why I put this at medium rather than high. Second, a detail of the evidence: the sales-invoice journal is created with source_type NULL, not a tag \u2014 services/phase2_journal_service.py:159-169 passes no `source_type` to `_create_journal` (receipts, purchase payments, bank postings, opening balances and TB imports do, at 269, 796, 561, 360, 232). That does not weaken the fix, since migration 275's `COALESCE(source_type,'') <> 'manual'` already treats NULL as non-manual, but it does mean an untagged auto entry is invisible to any guard written as `source_type <> 'manual'` without the COALESCE. Mitigations that keep this below \"silent corruption\": the edit is fully audit-logged (audit_capture_journal_line trigger, 266:78-127, plus log_event at accounting.py:487), it is atomic, it re-asserts Dr=Cr, and it rebuilds the passbook with apb_assert_no_drift (266:430-431). What it does not do is keep the GL tied to client_sales_invoices \u2014 the source document is left saying something different, with nothing recording why. The suggested fix (mirror 275's guard into edit_posted_journal and into manual_journal_service.update so the CA gets the sentence rather than a SQLSTATE) is the right shape.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -146,7 +167,14 @@
    "suggested_fix": "Add `start_date` to ReportingService.trial_balance and the endpoint, pass `period.start` from the screen, and present balance-sheet accounts as opening + movement + closing while P&L accounts show the period's movement only. The passbook (account_period_balances) is already monthly, so the fast path needs no new data.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The mechanism is exactly as claimed: `ReportingService.trial_balance` accepts only an as-of date, passes `None` as the window start on both the legacy and passbook paths, and no year-end closing journal is ever posted (the balance sheet synthesises retained earnings instead, by explicit design). So from year two onwards the Trial Balance's income and expense rows are inception-to-date, and picking an FY only moves the as-at date. It reaches real users \u2014 router mounted at main.py:243, tab linked from ClientNavContext.tsx:63, no feature flag \u2014 and it is worse in the export hub than the auditor noticed: `buildReportSheet(\"trial\")` (page.tsx:3178) is written to a file named `Trial-Balance-FY2026-27.xlsx` and shared to the client portal as \"Trial Balance (Accrual) \u2014 FY 2026-27\", while the P&L exported by the same function IS FY-windowed, so the two disagree by every prior year's revenue. What is overstated is the consequence. No statutory output is computed from this report: the year-end Schedule III path strikes P&L lines from FY-windowed totals and only the balance sheet cumulatively (year_end_financial_service.py:556-566), and profit_loss / schedule_iii / cash_flow_statement all take start and end dates. The damage is therefore a misleading management report and a misleadingly-labelled shared file that will not tie to the P&L \u2014 a real defect a CA would hit and could not explain, but not a wrong return, wrong ledger or wrong filing. Medium rather than high; the suggested fix (add `start_date`, show balance-sheet accounts as opening + movement + closing and P&L accounts as period movement) is the right shape, and the FY-labelled XLSX/portal export should be fixed in the same change.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -185,7 +213,14 @@
    "suggested_fix": "Pick one classification source. The most defensible is chart_of_accounts.schedule_iii_mapping (an explicit CA decision) with account_subtype as the fallback: make bs_bucket/pl_bucket read the mapping first, make the mapping screen writable, and reconcile account_group_mappings into it so the year-end statements and the live Balance Sheet cannot disagree.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "`chart_of_accounts.schedule_iii_mapping` exists (migration 057), is writable only by the COA CSV import page, is displayed by the Schedule III Mapping screen and the COA export, and is read by no computation anywhere in apps/api. The screen is entirely read-only \u2014 it has no control to set a mapping at all \u2014 and its \"N of M mapped\" counter and unmapped-accounts banner report on a column that changes no number.\n\nStatutory presentation is instead decided by substring scans of the free-text `account_subtype`, in FOUR places: domain/reporting/schedule_iii.py (live BS/P&L, ratios, trend), apps/web/lib/accounting/scheduleIiiCaptions.ts (the client Balance Sheet page, live \u2014 the backend caption covers P&L only), routers/year_end_mappings.py (which reuses the Python buckets to auto-seed account_group_mappings), and that seeded `account_group_mappings` table itself, which the year-end statements read and which can be edited away from the live rules afterwards. Their caption vocabularies do not match each other, and none matches the caption list the mapping screen shows.\n\nNothing guards any of this: no CHECK constraint or vocabulary table on account_subtype or schedule_iii_mapping, no parity test between the Python and TypeScript bucket functions, and the one test that appears to cover the mapping (tests/test_coa_architecture.py:239-256) groups a dict it builds itself and never touches production code. The only real bound is migration 197, which normalises the seeded default chart's subtypes so a stock install buckets correctly \u2014 it does nothing for an imported chart of accounts, which is exactly the population the dead column was built for. The consequence is a wrong caption in a statutory Schedule III presentation, silently, with a green counter suggesting the CA has controlled it.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "GUARDS"
+    }
    }
   },
   {
@@ -200,7 +235,14 @@
    "suggested_fix": "Add account_subtype (and parent_id) to AccountIn/AccountUpdateIn and to the router's write payloads, validated against the vocabulary bs_bucket/pl_bucket actually recognises. That vocabulary should become a shared constant so the two cannot drift.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed, with two precision corrections and one severity-relevant mitigation.\n\n(1) \"Every account lands in a generic 'Other \u2026' caption\" is an overstatement. With subtype NULL, schedule_iii.py routes by type: Asset \u2192 \"Other Current Assets\" (:79), Liability \u2192 \"Other Current Liabilities\" (:57), Expense \u2192 \"Other Expenses\" (:110) \u2014 but Equity \u2192 \"Reserves & Surplus\" (:32) and Revenue \u2192 \"Revenue from Operations\" (:91), which are real captions, not catch-alls. So it is asset/liability/expense accounts that mis-present, which is still the substance of the finding. A related wrinkle the finding did not spot: `AccountType` (models/accounting.py:11-16) offers `INCOME = \"Income\"` while pl_bucket tests `typ == \"revenue\"` (:90), so an \"Income\"-typed account created here gets caption None and is dropped from the Schedule III P&L entirely rather than mis-bucketed.\n\n(2) The suggested_fix's \"(and parent_id)\" is wrong for creation \u2014 `parent_id` is already on AccountIn (:23) and is written by the router (:125). It is only the PATCH that cannot change it.\n\n(3) Mitigation on reach: no frontend screen calls this endpoint. `apps/web/lib/api/index.ts:728-729` defines createAccount/updateAccount wrappers, and grep across apps/web finds no caller for either; the only UI write path to chart_of_accounts is the CSV importer, which does set account_subtype (and skips existing codes, so it cannot correct one either). There is no single-account create/edit UI at all. So today the defect bites API integrations and any future screen built on this endpoint, not a live CA click-path \u2014 which keeps it at medium rather than high.\n\nUnrelated defect noticed in the same lines (not part of this finding): in mock mode (`_prod_db()` is None, routers/accounting.py:106-107) the router passes `data.model_dump()` \u2014 keys `name`/`code` \u2014 into `domain/accounting_service.create_account`, which reads `data[\"account_code\"]` and `data[\"account_name\"]` (accounting_service.py:199-200). That raises KeyError, which the `except ValidationError` does not catch, so POST /api/accounting/accounts appears to 500 in dev/demo mode; no test covers that branch.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {
@@ -287,7 +329,14 @@
    "suggested_fix": "Add `deleted_at, client_id` to _SELECT (one-line change) \u2014 the guard and the timeline call then work as written. A regression test that discards a draft and then calls post_draft would have caught it.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Exactly as claimed. `post_draft` neither filters out soft-deleted rows nor selects `deleted_at`, so its 409 \"has been deleted\" guard is dead code; a discarded draft can be re-approved (stale approval-queue tab, retried request, or any direct call), the DB trigger permits the draft\u2192posted flip because OLD.is_posted is false, and the result is is_posted=true with deleted_at set \u2014 invisible to account_period_balances (migration 228) and to every report (sources.py:382). Independently and on every single draft approval, `client_id` is also missing from the projection, so `timeline_service.log(None, ...)` writes the \"Journal Posted\" event with a null client and it never appears on the client's timeline. The one-line fix (add `deleted_at, client_id` to _SELECT) is correct; a `.is_(\"deleted_at\",\"null\")` filter in `_assert_draft_scope` would also close the resurrection half. Caveat on verification: the in-memory fake DB used by tests/test_journal_draft_workflow.py does not honour column projection, so the missing columns are invisible to the mock suite \u2014 which is why this survived.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {
@@ -302,7 +351,14 @@
    "suggested_fix": "Add `line_no INT NOT NULL` to journal_lines, populate it in post_journal_atomic and edit_posted_journal from the array index, backfill existing rows by created_at then id, and order every read by it.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "journal_lines genuinely has no ordering column and no read path orders the lines, so a voucher's line order is whatever the query plan yields \u2014 unspecified by contract, not preserved as the order the CA typed. Impact is presentational only: no figure changes (totals and the double-entry assertion in phase2_journal_service._create_journal are order-independent, and the reporting sources at domain/reporting/sources.py:429-445 only sum). In practice Postgres returns lines in physical/insertion order, so a five-line salary accrual usually reads in the order it was entered and reads the same way twice; what is missing is any guarantee of that, and there is nothing that would keep the order stable across a rewrite or a plan change. So the defect is real but its lived symptom (\"interleaved, different every time\") is stronger than the code produces \u2014 hence low, not medium. The suggested fix is sound except for the backfill: created_at is NOW() and identical for all lines of one entry, so it cannot order a backfill; existing rows can only be given an arbitrary stable line_no (e.g. by ctid or id).",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {
@@ -317,7 +373,14 @@
    "suggested_fix": "Thread effective_client_ids through ReportingService (ledger/trial_balance/profit_loss/balance_sheet/schedule_iii/cash_flow) and both its Supabase and mock sources \u2014 the router comment already scopes the work. As an interim, refuse an omitted client_id for non-firm-wide roles, which is a guard rather than a rewrite.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed as written, with three corrections. (1) Line numbers have drifted: the comment is at accounting.py:876-885 and /cash-flow is at :1233-1252, not :869-881/:1197. (2) The finding understates the surface by one endpoint \u2014 /statement-analysis (accounting.py:1255-1272) has the identical `if client_id: assert_client_access` shape and feeds the same reporting engine, so seven endpoints are affected, not six; the router's own test note (tests/test_router_client_scope.py:504) lists all seven. (3) It also understates who is affected: under the M3 decision `_FIRMWIDE_ROLES = {Role.PARTNER}` (core/authz.py:42), MANAGERs are assignment-scoped too, so a Manager omitting client_id likewise gets the whole practice's consolidated books, not just an Executive. Scope of the exposure is intra-firm only \u2014 firm_id is always applied, so there is no cross-tenant leak \u2014 and it requires a hand-made request since no frontend caller omits client_id, which keeps it at medium. The gap is deliberate and documented rather than accidental, but it is live behaviour, not a mischaracterisation.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {
@@ -332,7 +395,14 @@
    "suggested_fix": "Derive the list from the current FY (core/ist_clock.ist_fy_label's frontend twin already exists in lib/workspace/ClientNavContext.getCurrentFinancialYear) \u2014 the current year plus the previous six \u2014 or read the client's ledger span from GET /api/accounting/ledger-span, which exists for exactly this problem.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed as written, with two clarifications to the narrative.\n\n(1) The core defect is exact: the Lock Financial Year screen renders four hardcoded rows topping out at 2025-26, so a Partner cannot lock (or even see) FY 2026-27, and the list silently loses relevance every 1 April. Practical impact today is somewhat softened \u2014 the year a CA would normally finalise and lock during 2026-27 is 2025-26, which IS in the list \u2014 so the blocked case right now is locking the in-progress current year. The real bite lands on 2027-04-01, when the just-closed FY 2026-27 becomes unlockable from the UI. That, plus the fact that the same hardcoded pattern is duplicated in the client year-end screen (clients/[id]/year-end/page.tsx:14), keeps this at medium rather than low.\n\n(2) The ca_experience's second sentence is imprecise about mechanism. A year \"locked by a client-level workflow\" is not stored in firms.locked_financial_years at all \u2014 services/year_end_workflow_service.py:36 records that it deliberately stopped calling set_lock, and client locks now live in client_year_locks (migration 289), managed from the client's Year End section. So this screen not unlocking them is by design, not a symptom of FY_LIST. What FY_LIST genuinely does hide is a FIRM lock on any year outside the four (e.g. one written directly through POST /api/accounting/year-lock, which accepts any FYLabel): it would be stored, would be enforced on posting, and would be invisible and un-unlockable on the only screen that manages firm locks.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {
@@ -371,7 +441,14 @@
    "suggested_fix": "Delete the route and its `_assert_journal_scope` helper. POST /api/accounting/journals/{id}/post (:718-733) is the real path and is what the frontend calls.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The route is real, mounted, Partner-permissioned and backed by the in-memory demo engine \u2014 the mechanics are correct. What is overstated is the harm, hence severity low: in a production deployment this endpoint cannot report a false success. `_assert_journal_scope` (routers/accounting.py:720-732) first calls `accounting_service.get_journal_entry`, which only knows `JOURNAL_INDEX` \u2014 the ~12 hardcoded `je-00N` demo entries \u2014 so any real journal id raises NotFoundError \u2192 404, with no audit or timeline row written. The demo ids that ARE in the index fail the second gate: with SUPABASE_URL set, `can_access_client` has `_USE_MOCK = False` (core/authz.py:34) and calls `_client_belongs_to_firm`, a real `clients` table lookup that cannot match the seeded `c-001`/`c-005` ids \u2014 404 again. And all but one seed is already `status: \"posted\"` (only domain/accounting_service.py:152 is a draft), so even a hypothetical hit mostly yields 422 \"Entry already posted\". The false-success path exists only in mock/dev mode, where there is no ledger and no real audit_log to lie to. So it is dead code that should be removed, not a live integrity risk to a CA's books; tests/test_accounting_client_scope.py:10,213,480 and tests/test_accounting_completion.py:13 exercise it in mock mode and would go with it. The suggested fix is right; the effort is smaller than the ca_experience implies.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {
@@ -386,7 +463,14 @@
    "suggested_fix": "In post_journal_atomic and edit_posted_journal, assert every account_id exists in chart_of_accounts with firm_id = the entry's firm and (client_id = the entry's client OR client_id IS NULL). One EXISTS check per statement; it also closes the case of posting to a different client's account within the same firm.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The claim holds literally, with the live definition being migration 274 rather than 271 (identical guard, identical omission), and with the same omission present in edit_posted_journal (266:416-424) \u2014 which the suggested fix already names. post_journal_atomic validates firm_id, client access and the internal-client Partner rule on the entry header only; account_id on each line is cast and inserted with no check that the account belongs to the entry's firm, or to its client, at any layer \u2014 not in the RPC, not in journal_lines' constraints (only a global FK to chart_of_accounts(id)), not in JournalLineIn, not in manual_journal_service.create, not in the router. Severity stays medium and not higher because there is no cross-tenant READ: the victim firm's ledger, trial balance and account_period_balances are all keyed by the ENTRY's firm/client, so the stray line never appears in the other firm's reports, and builders._acc shows the raw uuid rather than leaking the foreign account's name. The damage is confined to the caller's own books \u2014 an orphaned line, a mis-named ledger row, and an account_period_balances bucket pointing at a chart row the firm does not own. It requires a crafted API call (the UI's AccountLookup is firm-scoped) plus knowledge of another firm's account uuid, which makes the cross-firm case unlikely; the more reachable half of the same hole is the intra-firm one \u2014 nothing stops a line posting to another CLIENT's account within the caller's own firm, and that needs no malice at all.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {

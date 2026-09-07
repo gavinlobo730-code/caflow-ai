@@ -97,7 +97,14 @@
    "suggested_fix": "Add an `outward_non_gst` accumulator for `supply_type == \"non_gst\"` and emit it in `osup_nongst.txval`. Add a parity test asserting GSTR-1 Table 8 `ngsup_amt` equals GSTR-3B 3.1(e) for the same period.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "A sale classified `non_gst` in the invoice editor is accumulated nowhere in compute_gstr3b and `osup_nongst.txval` is a hardcoded 0, so GSTR-3B Table 3.1(e) is always nil while GSTR-1 Table 8 `ngsup_amt` declares the same turnover \u2014 the two returns disagree on the same invoice and the portal's GSTR-1-vs-3B turnover comparison will flag it. Severity corrected high \u2192 medium, not high: 3.1(e) is a disclosure line only. Non-GST supplies bear no output tax and no ITC, so no tax, liability, set-off or ITC figure is wrong \u2014 nothing is under-paid; nil-rated and exempt supplies are still correctly reported in 3.1(c). The defect needs a client with actual non-GST turnover (petrol/diesel/alcohol/electricity) and is a wrong disclosure plus a reconciliation mismatch rather than a wrong tax computation. The suggested fix is right in shape: add an `outward_non_gst` accumulator, emit it in `osup_nongst.txval`, surface it in the `working.outward` dict (services/gst_return_service.py:862 area) and the 3.1(e) row in both apps/web/app/gst/gstr3b/page.tsx and services/filing_demo/gstr3b.py (whose \"not tracked upstream\" comment must be corrected at the same time), with a GSTR-1 Table 8 \u2194 3B 3.1(e) parity test.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -112,7 +119,14 @@
    "suggested_fix": "Split the export category: EXP_WP/EXP_WOP for `place_of_supply == \"96\"` only (WPAY when igst_paise > 0), and route SEZ_with_payment/SEZ_without_payment/Deemed_export into the b2b section with inv_typ SEWP/SEWOP/DE. Add shipping-bill columns to the sales invoice and require them on 6A rows.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "SEZ supplies (with and without payment) and deemed exports are all routed to GSTR-1 Table 6A's `exp` section, which has no `ctin`, so the recipient's GSTIN is dropped \u2014 GSTN puts 6B (SEZ) and 6C (deemed export) inside the `b2b` section with `inv_typ` SEWP/SEWOP/DE and the recipient GSTIN, and reserves 6A for physical exports. WPAY vs WOPAY is decided purely from `invoice_type == \"SEZ_with_payment\"`; the classifier's input dataclass carries no IGST amount, so a genuine export (or a deemed export) on which IGST was paid is declared WOPAY. Shipping bill code/number/date are hardcoded empty strings in both `_build_exp` and the `expa` amendment node, and no column anywhere stores them. All of it is reachable: a CA picks the invoice type in the invoice editor, and the same value drives the JSON produced by /api/gst/gstr1/from-books that they upload to the portal. The one part of the finding that is only prospective is the `_build_b2b` `inv_typ` literal \u2014 with today's classifier no SEZ/deemed-export invoice ever reaches b2b, so that raw \"SEZ_with_payment\" string is dead until the routing is fixed (and tests/e2e_gst_verification.py:584 currently asserts the wrong enum). The current routing is deliberate and pinned by tests/test_gstr1_classification_from_invoice.py:94-105 and tests/test_gst_engine.py:196-201, so the fix is a behaviour change those tests must be rewritten for.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -127,7 +141,14 @@
    "suggested_fix": "Rewrite `_build_b2cs` to iterate `inv.lines` and key on (line rate, place of supply, is_interstate), falling back to `_infer_rate` only for a header-only invoice with no lines. Add a test with a two-rate B2C invoice.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The finding is accurate as written. `_build_b2cs` (apps/api/domain/gst/gstr1_builder.py:295-341) is the only GSTR-1 table builder that ignores `inv.lines` and keys its grouping on `_infer_rate(inv)` (:284-290), a blended invoice-level rate. A two-rate B2C counter sale (5% + 18%, \u20b91,000 each) files as one row at `rt: 11.5` \u2014 a rate that does not exist \u2014 while the same invoice through B2B/B2CL/CDNUR splits correctly via `_build_invoice_items`.\n\nPrecisions worth carrying into the write-up, none of which reduce severity:\n\n1. Scope is B2CS only. B2B (:230), B2CL (:361), CDNR and CDNUR (:517) all call `_build_invoice_items` and are correct. So the defect is a single function, and the suggested fix (iterate `inv.lines`, key on (line rate, POS, is_interstate), keep `_infer_rate` only for the header-only fallback) is the right shape and genuinely hours of work.\n\n2. Tax and taxable totals are preserved \u2014 camt+samt equals the true tax. So GSTR-3B tie-up and the tax actually paid are unaffected; what is wrong is the rate-wise attribution GSTN reads, plus the upload validity of `rt`.\n\n3. Single-rate B2C invoices are unaffected (the blend equals the line rate), and a header-only invoice with no lines legitimately falls back. So the blast radius is exactly multi-rate B2C invoices \u2014 which is the entire retail/restaurant/pharmacy segment the finding names.\n\n4. Two smaller wrinkles in `_infer_rate` that ride along on the same fix: it floor-divides (`//`), so a blend truncates rather than rounds, and it excludes cess from the numerator (correct for `rt`, but it means a cess-bearing B2CS invoice gets its cess pooled under the blended rate row too).\n\n5. The builder's module docstring maps B2CS to \"4B\" while the finding calls it Table 7. Table 7 is the current GSTR-1 form layout and the finding's label is the right one; the docstring at gstr1_builder.py:9 is stale prose, not a second bug \u2014 worth a one-line correction alongside the fix.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "GUARDS"
+    }
    }
   },
   {
@@ -142,7 +163,14 @@
    "suggested_fix": "Resolve the GSTR-9 filing date server-side (gstr1_returns where return_type='gstr9' and status='submitted', or the `filings` row) and pass it into `outstanding_amendments`. Add a test where an August GSTR-9 closes an amendment the November cutoff would have left open.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The \"or the annual return, whichever is earlier\" limb is implemented and unit-tested but never supplied by any production caller, so every window returned by outstanding_amendments reports the 30 November outer limit and shortened_by_annual_return is permanently False. That is a real gap and the suggested fix (resolve the GSTR-9 filing date from gstr1_returns where return_type='gstr9' \u2014 routers/gst_workspace.py:933-1000 shows those rows exist \u2014 and pass it in) is right. What is not true is the CA-facing narrative: no screen in apps/web calls either endpoint or displays this window, so no CA is currently shown \"open until 30 November\" for an amendment. It is a latent defect on an API-only surface, plus the same omission in the filing demo's _correction_window (services/filing_demo/gstr3b.py:98-103), which is mitigated because the demo spells the earlier-of rule out in words. Severity medium, not high: correct to fix, but it does not reach a user through the deployed product today.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -205,7 +233,14 @@
    "suggested_fix": "Make MONTH_OPTIONS carry a machine value (`YYYY-MM`) separate from the display label, and have `getDueDate` and `handleSave` both read the machine value. Add a component test that saves a filing.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Every \"Save Filing\" click in the Add GST Filing modal on /gst fails with \"Invalid time value\" before any database write, because the period select's value is the display label (\"May 2026\") while handleSave parses it as \"YYYY-MM\" via split(\"-\"). Two same-file functions disagree on the format: getDueDate uses split(\" \") and works; handleSave uses split(\"-\") and does not. The row is never inserted (the RangeError precedes the insert), so nothing is half-written \u2014 the CA simply cannot add a GST filing row manually from the tracker; rows can only come from elsewhere. The page is mounted, linked from the Deadlines panel's filing-workspace nav, permitted in lib/auth/permissions.ts, and behind no feature flag, so this reaches a real user. A second latent defect sits in the same two lines: even if the Date call did not throw, period_start would be written as the garbage string \"NaN-undefined-01\".",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -244,7 +279,14 @@
    "suggested_fix": "Route the tracker's mark-filed through `PATCH /api/gst-workspace/{gstr1,gstr3b}/{id}/status` so `record_filing` runs, or have the tracker read filing state from the returns tables rather than maintaining a second one in `compliance_calendar`.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "There are three UI paths that mark a GST return filed and none writes the `filings` row the period lock reads: /gst writes filing_status/filed_date/arn_number to compliance_calendar (apps/web/app/gst/page.tsx:644-655 and :379-388); /gst/gstr1 and /gst/gstr3b write status='submitted' + arn + submitted_at directly to gstr1_returns/gstr3b_returns (apps/web/lib/data/gst.ts:657-696); the client workspace at apps/web/app/clients/[id]/compliance/gst/page.tsx offers no mark-filed control at all and stops at ca_approved. All three go over PostgREST, so rbac() runs on none of them. record_filing (apps/api/services/gst_filing_record_service.py:139-149) is reached only by PATCH /api/gst-workspace/{gstr1,gstr3b}/{id}/status with status='submitted' (apps/api/routers/gst_workspace.py:526, :747), and no frontend code sends that status. Consequence: the filed-return branch of journal_period_lock_reason (migrations/266_...:316-327) can never fire in the deployed product \u2014 journals inside a filed period stay editable \u2014 and up to three screens can disagree about whether the same return is filed. The finding's high severity and its suggested fix both stand, but the fix must also cover /gst/gstr1 and /gst/gstr3b, not just the compliance_calendar tracker.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "REACH"
+    }
    }
   },
   {
@@ -259,7 +301,14 @@
    "suggested_fix": "Either wire advances into GSTR-3B 3.1(a) and correct the report text and the docstring, or stop merging `at`/`txpd` into the payload. The two must agree; today they contradict each other in the same request.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The mechanism is exactly as claimed and I reproduced it: with `clients.gst_advance_tax_applicable` true and a receipt carrying a rate and place of supply, GSTR-1's filed payload gains a Table 11A `at` section with real tax, the advances endpoint in the same codebase still answers `table_11_computed: False` with \"PracticeSync does not compute GSTR-1 Table 11\", and GSTR-3B 3.1(a) stays zero \u2014 so GSTR-1 would declare a liability 3B never pays, and the portal's GSTR-1-vs-3B comparison would flag it. Two things the finding gets wrong, both about reach rather than mechanism. (1) There is no advances screen \u2014 no frontend file references the endpoint, `table_11_computed`, or `unadjusted_advances` \u2014 so the \"screen tells the CA it is not computed\" framing is really an API/docstring contradiction, not something a CA reads today. (2) The enabling data is unreachable from the product: no endpoint, service or web code writes `clients.gst_advance_tax_applicable` or the three receipt columns migration 286 added, so today the `at`/`txpd` merge can only fire if someone sets those columns straight in Postgres. It is a live latent contradiction (the code, the response text, the docstring and migration 286's header all disagree, and the tests pin both halves), and it becomes exactly the high-severity filing defect described the moment anyone wires up the switch \u2014 but nothing files a wrong return through the product as it stands. One extra wrinkle in the same direction, not in the finding: even when the merge fires, `gstr1_from_books`' own `tax_total_paise` and `total_cgst_paise` stayed 0 in my run, so the saved GSTR-1 record's totals and its GL reconciliation also exclude the advance tax that the uploaded JSON declares. Correct fix is still the finding's: make 3B carry it and fix the text, or stop merging.",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "GUARDS"
+    }
    }
   },
   {
@@ -298,7 +347,14 @@
    "suggested_fix": "Update the thresholds to Notification 78/2020, turn `_required_hsn_digits` into a VALIDATION (report every line whose code is shorter than required) rather than an unused truncation, and split Table 12 into B2B and B2C.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed, with two corrections. (1) The slice is at gstr1_builder.py:594, not 587 (the constants/function are 560-570, not 558-568) \u2014 same code, drifted numbers. (2) \"The thresholds are the pre-2021 ones\" is imprecise. The pre-2021 table (Notification 12/2017) was nil below \u20b91.5 crore, 2 digits \u20b91.5\u20135 crore, 4 digits above \u20b95 crore. The code's \u20b95 crore \u2192 6 digits is the CURRENT rule under Notification 78/2020 and is right; what is stale is only the bottom of the ladder \u2014 under 78/2020 there is no \u20b91.5 crore tier and a taxpayer below it still needs 4 digits on B2B, where the code returns 0 (\"optional\"). So the code is a hybrid, not the old table. What is squarely true and is the live defect: `_required_hsn_digits` feeds nothing but a `max(required, len(code))` slice that can never shorten a string, so the number is computed and discarded \u2014 at \u20b910 crore turnover a 2-digit \"99\" is emitted verbatim as `hsn_sc: \"99\"`, which I reproduced. There is no HSN digit validation, warning or exception-report row anywhere in the backend or frontend, and no check that a code is a real HSN at all. The wrong-threshold half therefore has zero live effect today (the value is never applied), which is what keeps this medium rather than high; it also means fixing the thresholds alone would change no output. Worth adding: apps/web/lib/data/gst.ts:503 sends `aggregate_turnover_paise: 0` hardcoded (\"CA can override on the client GST screen\"), and routers/gst.py:341 defaults it to 0, so on the normal web path `_required_hsn_digits` returns 0 regardless of the client's actual turnover \u2014 the input to the dead computation is itself usually unset. Table 12 is a single flat list with no B2B/B2C split (gstr1_builder.py:163-165).",
+    "probe": null,
+    "lens_notes": {
+     "first_pass_lens": "LITERAL"
+    }
    }
   },
   {

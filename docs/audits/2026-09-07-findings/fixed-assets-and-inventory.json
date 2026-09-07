@@ -46,7 +46,16 @@
    "suggested_fix": "Delete `annualDepn` and render `/api/fixed-assets/depreciation-schedule`, which already returns annual_depreciation_paise and monthly_depreciation_paise per asset. This also satisfies the house rule 'zero business logic in the frontend', which this function and the WDV_RATES table both break.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The Depreciation tab's Annual/Monthly Depn figures and the Total Annual Depreciation tile are recomputed in TypeScript from the live accumulated depreciation, so they shrink every month while the amount the Post button actually posts stays fixed for the FY (apps/web/app/clients/[id]/fixed-assets/page.tsx:517-528 vs apps/api/routers/fixed_assets.py:99-136). The frontend WDV branch also omits the salvage cap the backend applies at routers/fixed_assets.py:96, and treats a null wdv_rate_percent as a 0% rate, which hides the asset from 'Post All for Period' entirely.",
+    "probe": "cd apps/api && python -c \"from routers.fixed_assets import _annual_depreciation_for_period; ...\" simulating a Rs 2,00,000 Plant & Machinery asset at WDV 15.33% bought 2026-04-01, posting monthly and comparing the backend annual charge with a faithful port of annualDepn(). Printed: 2026-04 backend Rs 30,660.00 / frontend Rs 30,660.00; 2026-05 Rs 30,660.00 / Rs 30,268.31; 2026-08 Rs 30,660.00 / Rs 29,093.27; 2026-12 Rs 30,660.00 / Rs 27,526.54 (diff Rs 3,133.46, ~10% and still growing). Separately `grep -rn 'depreciation-schedule' apps/web` returned no hits.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/web/app/clients/[id]/fixed-assets/page.tsx:517-528 `annualDepn()` does `const wdv = a.purchase_cost_paise - a.accumulated_depreciation_paise` then, for WDV, `Math.floor(wdv * (a.wdv_rate_percent ?? 0) / 100)` \u2014 the LIVE accumulated depreciation, recomputed on every render. routers/fixed_assets.py:99-136 `_annual_depreciation_for_period` deliberately does the opposite: it reuses `depreciation_fy_start_accum_paise` (migration 239, apps/api/migrations/239_fixed_assets_fy_depreciation_base.sql) so the annual figure is fixed for the FY. The salvage cap at routers/fixed_assets.py:96 (`return min(annual, wdv_now - salvage)`) is applied to BOTH branches server-side; the frontend applies it only in the SL branch (page.tsx:523-526) and not in the WDV branch (page.tsx:521). Two extra defects the finding did not name: `?? 0` means an asset row whose `wdv_rate_percent` is null renders an annual charge of 0 and is silently skipped by `postAllDepreciation`'s `filter(a => annualDepn(a) > 0)` (page.tsx:511) and shows 'Fully depreciated' (page.tsx:611), while the backend would have posted at the `_DEFAULT_WDV_RATES` category rate (routers/fixed_assets.py:40-50); and the tile also uses plain float `Math.floor(wdv * rate / 100)` where the backend uses Decimal.",
+     "guards": "None. No test anywhere asserts the frontend figure against the backend's \u2014 tests/test_r232_fixed_asset_depreciation.py covers only the Python side, and apps/web/scripts/*.test.ts has nothing on fixed assets. The one correct server-side source, GET /api/fixed-assets/depreciation-schedule (routers/fixed_assets.py:438-487), which returns `annual_depreciation_paise` and `monthly_depreciation_paise` computed through `_annual_depreciation_for_period`, is called by nothing: `grep -rn 'depreciation-schedule' apps/web` returns zero hits (verified). The only mitigating fact is that the POSTED number is the backend's \u2014 the ledger is not corrupted, only the screen.",
+     "reach": "Fully reachable. Router mounted at apps/api/main.py:340. The page is a first-class client-workspace tab: apps/web/lib/workspace/ClientNavContext.tsx:73 `{ id: 'fixed-assets', label: 'Fixed Assets', href: (id) => /clients/${id}/fixed-assets/ }`. The wrong figure appears in three places a CA reads: the 'Total Annual Depreciation' tile (page.tsx:530, 558), the 'Annual Depn' column (page.tsx:591, 600) and the 'Monthly Depn' column (page.tsx:592, 601) shown immediately left of the Post button."
+    }
    }
   },
   {
@@ -61,7 +70,16 @@
    "suggested_fix": "Add `POST /api/fixed-assets/run-depreciation` taking client_id and a from/to period range, iterating each asset's unposted months server-side in one transaction and returning a per-asset result; make the 409 apply per-period rather than as a high-water mark so gaps can be filled. Keep the per-asset endpoint for corrections.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Depreciation posts exactly one month per call, with no range/annual mode and no catch-up, and routers/fixed_assets.py:279 makes depreciation_posted_through a permanent high-water mark: posting October after August silently charges one month rather than two, and September is then refused with a 409 forever. The bulk path is a browser for-loop (apps/web/app/clients/[id]/fixed-assets/page.tsx:507-513) whose per-asset errors are discarded at page.tsx:503.",
+    "probe": "Drove routers.fixed_assets.post_depreciation against the FakeDB from tests/test_r232_fixed_asset_depreciation.py (Rs 1,00,000 asset, WDV 24%, bought 2026-04-10), posting 2026-04..08, then 2026-10, then 2026-09. Printed: 2026-04 Rs 1,400.00 (pro-rated 21/30 days); 2026-05..08 Rs 2,000.00 each; 2026-10 Rs 2,000.00 (ONE month, September silently skipped, no warning); 2026-09 -> HTTP 409 'Depreciation already posted through 2026-10'. Final register state: accum Rs 11,400, posted_through 2026-10 \u2014 one month permanently missing.",
+    "lens_notes": {
+     "literal": "Confirmed, and demonstrated by running it. routers/fixed_assets.py:302 `monthly = math.floor(Decimal(annual) / Decimal(12))` charges exactly one month per call; the only loop over periods is absent. routers/fixed_assets.py:279 is the high-water-mark guard `if asset.get('depreciation_posted_through') and asset['depreciation_posted_through'] >= period: raise HTTPException(409, ...)` \u2014 a lexicographic 'YYYY-MM' compare, so once a later month is posted every earlier one is refused permanently. The route table confirms there is no range/annual endpoint: the module exposes only GET '' (164), POST '' (187), POST /{asset_id}/depreciate (245), PATCH /{asset_id}/dispose (340), GET /depreciation-schedule (438). `grep -rn 'deprec' apps/api/jobs/` returns nothing, so no scheduler sweep. The browser loop is apps/web/app/clients/[id]/fixed-assets/page.tsx:507-513 (`postAllDepreciation`), one fetch per asset for one month, and `postDepreciation`'s error handler at page.tsx:503 is literally `} catch { /* ignore */ }` \u2014 a 409 or 422 for any asset is swallowed with no toast and no counter.",
+     "guards": "None that closes it. A Partner could post a manual journal for the missed month via POST /api/accounting/journal, but that touches the GL only \u2014 it never updates fixed_assets.accumulated_depreciation_paise or depreciation_posted_through, so the register and the ledger then disagree (and the year-end note's tie-out at routers/year_end_notes.py:337-373 would report the difference without saying which side is right). There is no CHECK constraint, trigger or test covering month coverage; tests/test_r232_fixed_asset_depreciation.py tests the per-month math and the FY-lock, never continuity.",
+     "reach": "Fully reachable \u2014 same mounted router and same navigation-linked tab as FA-03 (main.py:340, ClientNavContext.tsx:73). 'Post All for Period' is the primary button on the tab (page.tsx:509-513, rendered at 549-554)."
+    }
    }
   },
   {
@@ -76,7 +94,16 @@
    "suggested_fix": "Compute the charge from the GL (the depreciation journals whose entry_date falls in the FY) rather than re-deriving it, include disposed-in-year assets as deductions, and emit the five-column movement table per asset class.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The auto-generated Fixed Assets note's depreciation charge is the theoretical full-year figure summed from the register (routers/year_end_notes.py:97-100), not what was posted to the P&L: it ignores missed months (FA-04) and applies no pro-rata in the year of purchase, and it is printed into the Notes and Complete Pack PDFs by services/year_end_pdf_service.py:510-522. The note also produces no Schedule III movement table (only four closing figures at routers/year_end_notes.py:104-108). The net block IS tied out to the balance sheet (routers/year_end_notes.py:337-391); the depreciation charge is tied to nothing.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Mostly confirmed, with one sub-claim corrected. routers/year_end_notes.py:76-111 `_compute_fixed_assets_note_data` sums `gross_block` and `accumulated_dep` from the register rows (lines 101-102) but computes `dep_charge` by calling `_annual_depreciation_for_period(a, period)` per asset (lines 97-100) \u2014 the FULL theoretical annual charge, with no reference to how many months were actually posted and no pro-rata for a mid-year purchase (the pro-rata at routers/fixed_assets.py:148-156 is applied only to the monthly figure inside post_depreciation at line 305, never inside _annual_depreciation_for_period). The `.eq('is_disposed', False)` filter is at line 92 (cited as 93). There are indeed no additions/deductions columns \u2014 `note_data` carries only gross_block_paise, accumulated_dep_paise, net_block_paise and depreciation_charge_paise (lines 104-108). CORRECTION to one half of the evidence: excluding a disposed asset from CLOSING gross block is the correct Schedule III treatment, and it also keeps the note tying to the ledger (the disposal journal credits the asset account by cost, services/phase2_journal_service.py:1307-1309). What is genuinely missing is the movement disclosure \u2014 opening + additions \u2212 deductions = closing, and the same four for depreciation \u2014 not the presence of disposed assets in the closing column.",
+     "guards": "A partial one the finding did not mention, and it does not cover the defect. routers/year_end_notes.py:337-373 `_tie_to_balance_sheet` checks the note's NET BLOCK against tangible_assets + intangible_assets + capital_wip on the face of the Balance Sheet and, on a mismatch, `_tie_out_sentence` (375-391) writes 'THIS NOTE DOES NOT AGREE WITH THE BALANCE SHEET' into the note text. So an unposted or double-posted asset is caught. The DEPRECIATION CHARGE is tied to nothing \u2014 it is never compared with the Depreciation Expense line in the P&L \u2014 so the exact defect the finding names passes silently.",
+     "reach": "Reachable and it reaches paper. Router mounted at main.py:348; the frontend calls the correct path `/api/year-end/${engagementId}/notes/generate` (apps/web/lib/api/yearEnd.ts:351-354) from the 'Auto-Generate All Notes' button (apps/web/app/clients/[id]/year-end/[engagementId]/notes/_page.tsx:87). The notes SCREEN renders only note.content, not note_data \u2014 but services/year_end_pdf_service.py:510-522 renders every `*_paise` int in note_data as a 'Particulars / Rs (Rupees)' table, so 'Depreciation Charge \u2014 Rs X' is printed in the Notes PDF and in the Complete Pack PDF (routers/year_end_exports.py:236-265, 282-323)."
+    }
    }
   },
   {
@@ -91,7 +118,16 @@
    "suggested_fix": "Build a block register (block key = rate class), driven by the same fixed_assets rows plus a block mapping, computing \u00a732 depreciation per FY; then wire `build_bridge` behind an endpoint and a screen. This is the highest-leverage single item in the whole subsystem.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "There is no IT Act \u00a732 block-of-assets depreciation anywhere in apps/api \u2014 no block register, no 180-day rule, no additional depreciation, no \u00a750 adjustment, no 3CD chart \u2014 and domain/income_tax/book_to_tax_bridge.py, the module whose docstring (lines 18-38) says so and which would mark the computation incomplete, is imported only by tests/test_book_to_tax_bridge.py and exposed by no router.",
+    "probe": "grep -rn 'build_bridge|depreciation_under_section_32' apps/api --include=*.py -> hits only in domain/income_tax/book_to_tax_bridge.py and tests/test_book_to_tax_bridge.py; grep -rni 'block.of.assets|block_of_assets' -> 1 hit (the docstring); grep -rn '3CD' -> 1 hit (routers/engagement_letters.py:224).",
+    "lens_notes": {
+     "literal": "Confirmed on every limb. domain/income_tax/book_to_tax_bridge.py:18-38 states in its own module docstring that \u00a732 is 'per BLOCK OF ASSETS' and that 'NOTHING IN THIS CODEBASE IMPLEMENTS THE SECOND ONE'. `grep -rn 'build_bridge|depreciation_under_section_32' apps/api --include=*.py` returns hits only inside domain/income_tax/book_to_tax_bridge.py itself and tests/test_book_to_tax_bridge.py \u2014 no router, no service, no workspace imports it. `grep -rni 'block.of.assets|block_of_assets' apps/api --include=*.py` returns exactly one hit, the docstring line above. `grep -rni 'section_32|\u00a732' apps/api --include=*.py` outside the bridge returns only routers/fixed_assets.py:149 and :304, both comments on the Schedule II pro-rata. `grep -rni 'deprec' routers/income_tax.py routers/itr_workspace.py domain/income_tax/` returns one hit, the XBRL tag name at domain/income_tax/xbrl_service.py:58. `grep -rn '3CD' apps/api --include=*.py` returns one hit, routers/engagement_letters.py:224, which is engagement-letter prose. ls domain/income_tax/ shows no block-register module. So: no block table, no 180-day half-rate split, no \u00a732(1)(iia) additional depreciation, no \u00a750 short-term gain on a block, no Form 3CD clause-18 chart.",
+     "guards": "The only guard is the bridge's own refusal: build_bridge marks itself incomplete when depreciation_under_section_32_paise is absent rather than defaulting it to the book figure (book_to_tax_bridge.py:31-38 explains why). That is the right refusal, but it protects nobody here because nothing calls build_bridge. CLAUDE.md's 'Not built yet \u2014 known, deliberate' section lists exactly two items (portal filing, Account Aggregator); \u00a732 block depreciation is not one of them, so this is not a decision CLAUDE.md records as deliberate.",
+     "reach": "This CONFIRMS the gap rather than refuting it: the backend capability that would at least flag the hole honestly (build_bridge) is reachable from no endpoint and therefore no screen \u2014 it exists only in tests. There is no route anywhere whose path or handler mentions depreciation under the IT Act."
+    }
    }
   },
   {
@@ -106,7 +142,16 @@
    "suggested_fix": "Make the FA register capitalise FROM a purchase bill line (mirroring `apply_purchase_to_inventory`), or at minimum let `FixedAssetIn` carry a vendor/creditor or bill_id and an ITC-eligible tax split, and add a reconciliation check for 'asset in the register with no acquisition journal' and 'capitalised twice'.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Asset acquisition posts only Dr <category account> / Cr Bank (services/phase2_journal_service.py:1192-1207), FixedAssetIn has no vendor, bill or tax field (models/accounting.py:149-160), and routers/purchase_bills.py never capitalises into the register. A credit purchase entered as a bill against a fixed-asset expense_account_id and then also added to the register capitalises the asset twice with the creditor left standing, and no reconciliation check looks for it (services/reconciliation_service.py:518-527).",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. services/phase2_journal_service.py:1164-1215 `journal_for_asset_acquisition` builds exactly two lines: Dr the category account resolved from `cat_map` (1180-1191) for the full `asset['purchase_cost_paise']`, Cr `self._find_account(db, firm_id, client_id, '%Bank%', system_key='bank')` (1192) for the same amount, narrated 'Bank payment for asset acquisition' (1205). There is no vendor, creditor, payment-mode or tax branch \u2014 the docstring's 'Cr Bank / Creditor' is aspirational; only Bank is ever resolved. models/accounting.py:149-160 `FixedAssetIn` carries client_id, asset_name, asset_category, purchase_date, purchase_cost_paise, salvage_value_paise, useful_life_years, depreciation_method, wdv_rate_percent, location, notes \u2014 no vendor_id, bill_id, GST or ITC field. `grep -n 'fixed_asset|capitalis|capitaliz' routers/purchase_bills.py` returns nothing; the receive path routes goods lines only to `apply_purchase_to_inventory` (routers/purchase_bills.py:1619-1625). The double-count is real and easy to reach: a purchase bill LINE carries its own `expense_account_id` which is debited directly (services/phase2_journal_service.py:641-652), so a CA who points the line at 'Plant & Machinery' gets Dr P&M / Cr Trade Payables from the bill, and then a second Dr P&M / Cr Bank from the register.",
+     "guards": "None. services/reconciliation_service.py's `_CHECKS` list (lines 518-527) is trial balance, missing COGS journals, missing inventory receipt journals, inventory cache drift, AR vs GL, AP vs GL, bank reconciliation and orphan money journals \u2014 nothing about fixed assets. `check_orphan_money_journals` (451-514) filters on `entry_type in ('Payment','Receipt')`, and the acquisition journal is entry_type='Journal' (phase2_journal_service.py:1200), so it is not caught there either. The one thing that would surface the double-count after the fact is the year-end note's net-block tie-out (routers/year_end_notes.py:337-391), which reports a difference without saying which side is wrong \u2014 and only if the CA generates notes.",
+     "reach": "Fully reachable. POST /api/fixed-assets is mounted (main.py:340) and is the 'Add Asset' drawer on the navigation-linked Fixed Assets tab (apps/web/app/clients/[id]/fixed-assets/page.tsx:308, 313, 445; ClientNavContext.tsx:73). Purchase bills are a separate live module with its own screens."
+    }
    }
   },
   {
@@ -121,7 +166,16 @@
    "suggested_fix": "Inside `dispose_asset`, post the outstanding depreciation from `depreciation_posted_through` to the disposal month (pro-rated on days for the part month, reusing `_prorate_purchase_month`'s shape) BEFORE computing gain/loss, and show both figures in the confirmation panel. Add a GST-on-disposal path or, at minimum, refuse silently posting a disposal with proceeds and no tax treatment recorded.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "dispose_asset computes gain/loss from whatever depreciation happens to have been POSTED (routers/fixed_assets.py:421), never charging the months between depreciation_posted_through and the disposal date, so a mid-year sale overstates WDV and misstates the gain/loss and the year's depreciation expense; services/phase2_journal_service.py:1302-1320 uses the same stale figure and emits no output-GST line on the proceeds.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. routers/fixed_assets.py:341-437 `dispose_asset` validates the period lock (line 383), claims the row (399-410), posts the journal (415) and only then computes `wdv = asset['purchase_cost_paise'] - asset.get('accumulated_depreciation_paise', 0)` at line 421 and `gain_loss = sale_proceeds - wdv` at 422. Nowhere between the read and the journal is depreciation brought up to the disposal date \u2014 `depreciation_posted_through` is not even read in this function. services/phase2_journal_service.py:1298-1327 uses the same stale `accum_depn = asset.get('accumulated_depreciation_paise', 0)` and builds four lines (Dr Accumulated Depreciation, Dr Bank for the whole proceeds, Cr asset account at cost, and Dr/Cr the gain or loss) \u2014 no output CGST/SGST/IGST line of any kind. The frontend shows the CA the same stale WDV and the resulting P&L on disposal before they confirm (apps/web/app/clients/[id]/fixed-assets/page.tsx:774-786).",
+     "guards": "None for the depreciation half. The disposal path is well guarded for atomicity (the conditional claim at routers/fixed_assets.py:399-410, the rollback at 391-397, and tests/test_fixed_asset_disposal.py's six tests), but every one of those tests is about journals not being orphaned or duplicated \u2014 `grep -i gst tests/test_fixed_asset_disposal.py` returns nothing and no test asserts a depreciation-to-date step. GST on the disposal is not raised anywhere else either: the CA would have to remember to raise a separate sales invoice, and nothing prompts them.",
+     "reach": "Fully reachable. PATCH /api/fixed-assets/{asset_id}/dispose is mounted (main.py:340) and is the Dispose button and confirmation panel on the navigation-linked Fixed Assets tab (page.tsx:748-752, 761-795)."
+    }
    }
   },
   {
@@ -136,7 +190,16 @@
    "suggested_fix": "For balance-sheet schedule types, sum all posted lines up to fy_end (or read account_period_balances, which the reporting rule in CLAUDE.md already requires) rather than only lines inside the FY window; and make the mock shape identical to the live one.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "routers/year_end_statements.py:396-403 really does compute every balance-sheet schedule (not just fixed assets) as the FY movement with no opening balance, and the mock and live shapes really do differ (288-296 vs 405-419). But no CA can see that output: the only frontend caller, apps/web/.../schedules/_page.tsx:49, requests /api/year-end/engagements/{id}/schedules/{type}, which is not a mounted route, so the whole Schedules stage 404s for all seven tabs \u2014 a more immediate defect than the one the finding describes, and it means the stated CA experience (an empty Rs 0 fixed-asset schedule) never occurs.",
+    "probe": "cd apps/api && python -c \"from fastapi.testclient import TestClient; import main; c=TestClient(main.app); ...\" printed: /api/year-end/engagements/E1/schedules/fixed_assets -> 404 (no such route); /api/year-end/E1/schedules/fixed_assets -> 503 (route exists, dependency short-circuits in mock mode). A dump of app.routes matching '/year-end' shows no engagements/{id}/schedules path.",
+    "lens_notes": {
+     "literal": "The backend claim is confirmed and is in fact broader than stated. routers/year_end_statements.py:356 maps 'fixed_assets' to ['tangible_assets','intangible_assets','capital_wip'], and `_fetch_schedule_from_db` (343-420) fetches journal_lines per account with `.gte('journal_entries.entry_date', fy_start).lte('journal_entries.entry_date', fy_end)` (396-397) and sets `balance = debit - credit` from that window alone (400-403), with no opening balance. That is the FY movement, not the closing balance \u2014 and it applies identically to cash_bank, receivables, payables, loans, gst and tds, every one of which is also a balance-sheet caption, so this is not fixed-asset-specific. The mock/live shape mismatch is also real: the mock fixed_assets branch (lines 288-296) returns gross_block_paise/accumulated_dep_paise/net_block_paise plus total_net_block_paise, while the live path returns account_code/description/amount_paise plus total_paise (405-419). As a side note the per-account raw-line fetch also breaks CLAUDE.md's reporting rule (rows proportional to transaction volume, not to the answer).",
+     "guards": "No test touches it \u2014 `grep -rn '_fetch_schedule_from_db' apps/api/tests` returns nothing, and no test hits the schedules route. No trigger or constraint is relevant.",
+     "reach": "This is where the finding breaks down. The ONLY caller is apps/web/app/clients/[id]/year-end/[engagementId]/schedules/_page.tsx:49, which fetches `/api/year-end/engagements/${engagementId}/schedules/${type}` \u2014 six path segments. The mounted route is `/api/year-end/{engagement_id}/schedules/{schedule_type}` \u2014 five. There is no /engagements/ variant anywhere in the route table. So the Schedules stage never reaches this code at all; it renders the red error box at _page.tsx:157-160 with 'API error 404'. Even if the URL were corrected, the page expects `{columns, rows, totals}` (_page.tsx:24-28, 168) and the backend returns `{line_items, total_paise}`, so it would still render nothing. The stage IS wired into the workspace (apps/web/app/clients/[id]/year-end/[engagementId]/_workspace.tsx:49, 63), so a CA can click it \u2014 they just get an error, never a wrong number."
+    }
    }
   },
   {
@@ -151,7 +214,16 @@
    "suggested_fix": "Add PATCH /{asset_id} that (a) refuses changes to cost/date/category once depreciation is posted unless the period is open, (b) reverses and re-posts the acquisition journal through the one kernel, and (c) resets `depreciation_fy_start_accum_paise`. Also add a depreciation-reversal path for a wrongly posted month.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "There is genuinely no way to correct an asset: routers/fixed_assets.py exposes only list/create/depreciate/dispose/schedule (lines 164, 187, 245, 340, 438), the UI offers only Add and Dispose (page.tsx:223, 751), and migration 245_fix_194_grant_regression.sql:40 revokes UPDATE/DELETE on public.fixed_assets from `authenticated` so the frontend's direct PostgREST path cannot patch it either. The generic Partner reversal at routers/accounting.py:765 can undo the GL entry but leaves the register row untouched, so it desynchronises the two rather than correcting the asset.",
+    "probe": "cd apps/api && python -c \"import main; [print(sorted(r.methods), r.path) for r in main.app.routes if 'fixed-asset' in r.path]\" printed exactly five routes: GET /api/fixed-assets, POST /api/fixed-assets, POST /api/fixed-assets/{asset_id}/depreciate, PATCH /api/fixed-assets/{asset_id}/dispose, GET /api/fixed-assets/depreciation-schedule.",
+    "lens_notes": {
+     "literal": "Confirmed by enumerating the mounted route table, not just by grep. The only fixed-asset routes are GET /api/fixed-assets, POST /api/fixed-assets, POST /api/fixed-assets/{asset_id}/depreciate, PATCH /api/fixed-assets/{asset_id}/dispose and GET /api/fixed-assets/depreciation-schedule (decorators at routers/fixed_assets.py:164, 187, 245, 340, 438). No PUT, no PATCH on the asset itself, no DELETE. On the frontend, apps/web/app/clients/[id]/fixed-assets/page.tsx has one Add drawer (313-448, opened at 223 and 240) and no edit affordance at all; the only Trash2 icon is the Dispose button (line 751) and the only mutating fetch besides create/depreciate is the dispose PATCH at line 685.",
+     "guards": "The second data path does not rescue it. The page reads fixed_assets directly over PostgREST (page.tsx:162-163), but migration 245_fix_194_grant_regression.sql:40 `REVOKE INSERT, UPDATE, DELETE ON public.fixed_assets FROM authenticated` (re-asserting migration 166), so no direct client-side write is possible either. There is a generic Partner-only POST /api/accounting/journal/{entry_id}/reverse (routers/accounting.py:765) which is NOT blocked for entry_type 'Journal' (only Receipt/Payment are diverted, routers/accounting.py:806-810), so a depreciation or acquisition journal can be reversed in the GL \u2014 but that endpoint never touches fixed_assets.accumulated_depreciation_paise, depreciation_posted_through or depreciation_fy, so using it leaves the register and the ledger disagreeing rather than fixing anything.",
+     "reach": "Fully reachable \u2014 the Fixed Assets tab is navigation-linked (apps/web/lib/workspace/ClientNavContext.tsx:73) and the router is mounted (main.py:340). The absence is what a CA meets."
+    }
    }
   },
   {
@@ -166,7 +238,16 @@
    "suggested_fix": "Sequence: CWIP + capitalisation-on-commissioning first (it blocks a whole client type), then shift working (a rate multiplier, cheap), then component accounting (a parent/child on the same table), then revaluation/impairment as value-only movements posted through the kernel.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The register genuinely has no CWIP, revaluation, impairment, component-grouping, shift-factor, transfer or verification columns (migrations/025 + 054:85-90 + 239 are the whole schema; routers/fixed_assets.py:64-95 is the whole depreciation computation), but 'nothing to put its CWIP in' and 'component accounting is impossible' overstate it \u2014 capital_wip is a mappable Schedule III schedule_line (routers/year_end_mappings.py:132) and components can be registered as separate asset rows. The one place a wrong figure actually results is after an impairment or revaluation journal: the register keeps depreciating the unimpaired purchase_cost_paise.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "The table is as described. migrations/025_fixed_assets.sql:1-19 is the whole of fixed_assets; 054_v13_payroll_assets_banking.sql:85-90 (repeated in 093:114-119) adds only depreciation_posted_through, current_wdv_paise, asset_code, location and journal_entry_id; 239 adds depreciation_fy + depreciation_fy_start_accum_paise. No CWIP flag, no revalued-cost column, no impairment column, no component parent/child, no shift factor, no transfer or verification history. routers/fixed_assets.py exposes exactly five endpoints (list 164, create 187, depreciate 245, dispose 340, depreciation-schedule 438) and _compute_annual_depreciation (routers/fixed_assets.py:64-95) reads only cost, salvage, method, rate/life and accumulated depreciation. The repo-wide grep is as reported: revaluation hits are FX only (services/fx_reporting_service.py, migrations/149), impairment is one CA-input placeholder string (routers/year_end_notes.py:152), CWIP is a Schedule III caption (services/year_end_pdf_service.py:313, routers/year_end_mappings.py:132). apps/web/app/clients/[id]/fixed-assets/page.tsx:28,163,294,394 confirms location is one free-text box with no history.",
+     "guards": "Three partial workarounds the finding does not allow for, and they are why the severity drops. (1) CWIP is NOT homeless: capital_wip is a live year-end schedule_line (routers/year_end_mappings.py:132, services/year_end_pdf_service.py:313) and any GL account can be mapped to it (routers/year_end_mappings.py:224-234), so construction cost has a ledger and a Schedule III caption \u2014 what is missing is the register-side capitalisation-on-commissioning, not the presentation. (2) Component accounting under Schedule II Part A para 4 is normally done in practice by registering each significant component as its own asset row with its own life, which this table supports; what is absent is a parent/child grouping for the note, not the computation. (3) Shift working can be approximated by entering a higher wdv_rate_percent or shorter useful_life_years per asset (routers/fixed_assets.py:88-93), though the row cannot record a shift factor that changes mid-year. Revaluation and impairment can be POSTED as manual journals through the kernel, but the register keeps depreciating the original purchase_cost_paise \u2014 that is the one place a wrong number results, and it needs the CA to have booked an impairment.",
+     "reach": "Real. fixed_assets router is mounted at apps/api/main.py:340 and the Fixed Assets tab exists at apps/web/app/clients/[id]/fixed-assets/page.tsx (948 lines, reads the table directly over PostgREST at :163)."
+    }
    }
   },
   {
@@ -181,7 +262,16 @@
    "suggested_fix": "Add an as-of-date valuation: either recompute the running columns for display in the requested order, or add a period-bucketed stock balance table maintained by trigger (the `account_period_balances` pattern CLAUDE.md already blesses). Surface it as a Stock Summary report with a date, and use it for the year-end tie-out to the Inventory GL account.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Exactly as claimed, and reproducible: with a July-1 purchase entered after a July-10 sale, the ledger drill-down shows +20 -> balance 110 above -10 -> balance 90, so neither row foots. There is also no as-of-date stock figure anywhere \u2014 routers/inventory.py:65-107 takes no date, and the balance-sheet Inventories line is a GL caption, not a stock statement.",
+    "probe": "scratchpad/probe/inv01.py, driving domain/inventory_service.record_stock_in/out and get_stock_ledger against the suite's own _FakeDB. Printed: '2026-07-01 purchase delta +20 balance 110 DOES NOT FOOT: 100+20 = 120, shown 110' then '2026-07-10 sale delta -10 balance 90 DOES NOT FOOT: 110-10 = 100, shown 90'.",
+    "lens_notes": {
+     "literal": "Both halves check out. _last_ledger_row (domain/inventory_service.py:153-176) chains from .order(\"created_at\", desc=True).limit(1) \u2014 insertion order \u2014 with a long docstring defending that choice for backdated documents. get_stock_ledger (domain/inventory_service.py:617-643) returns .order(\"movement_date\").order(\"created_at\"), and apps/web/app/clients/[id]/inventory/page.tsx:340-357 renders the STORED running_qty_units / running_value_paise as the 'Balance Qty' and 'Balance Value' columns in that order. So the two orderings disagree by construction. On the as-of-date half: list_stock_items (routers/inventory.py:65-107) takes only client_id, and nothing anywhere computes stock as at a date \u2014 the year-end 'Inventories' and 'Changes in Inventories' captions (services/year_end_financial_service.py:57, year_end_pdf_service.py:395) come from mapped GL accounts, not from inventory_stock_ledger.",
+     "guards": "None; and the ordering conflict is worse than the finding says. migrations/250_repair_stock_ledger_running_totals.sql found the running totals drifted on 303 of 315 items in production and REBUILT them 'ordered the way the service chains movements (movement_date, created_at, id)' (250:22-25) \u2014 which is the DISPLAY order, not the created_at order _last_ledger_row actually uses. So repaired history foots in display order while every new movement chains from max(created_at); for an item whose newest-inserted row is backdated, the two now disagree about the current position as well. The only real mitigation is that SUM(value_delta_paise) still ties to the Inventory control account (250:18-21), so the Balance Sheet stays right while the drill-down does not.",
+     "reach": "Real. /api/inventory/items and /items/{id}/ledger are mounted (apps/api/main.py:306) and the Inventory tab is in the client nav (apps/web/lib/workspace/ClientNavContext.tsx:70); the drill-down with its start/end date pair is at apps/web/app/clients/[id]/inventory/page.tsx:257,307-312."
+    }
    }
   },
   {
@@ -196,7 +286,16 @@
    "suggested_fix": "Add a per-item `valuation_method` and a FIFO cost-layer table consumed by `_compute_stock_out`; keep the existing moving-average path as the default and pin both with the same style of pure-math unit tests already in tests/test_inventory_service.py.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Moving average is the only method and there is no per-item override (domain/inventory_service.py:50-151; migration 188 adds no method column). But the consequence is friction for a client whose disclosed policy is FIFO, not a wrong number: weighted average is permitted by AS-2/ICDS-II and the year-end policy note states the basis truthfully from the engine (routers/year_end_notes.py:222-223, 291-294). That is an absent market-standard option, i.e. medium, not high.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. domain/inventory_service.py:1-10 states moving average 'versus FIFO/LIFO, which track cost by batch instead'; _compute_stock_in (50-114) and _compute_stock_out (117-151) are the only costing paths and both are unconditional. migrations/188_inventory_costing.sql:31-35 adds only opening_qty_units/opening_cost_paise/stock_qty_units/avg_cost_paise. Repo-wide grep for 'fifo|lifo|standard cost|valuation_method' over apps/api and apps/web returns no costing code at all (only 'BOM' as byte-order-mark and 'reorder' as list-reordering).",
+     "guards": "One real guard the finding misses, and it is what drops the severity: the basis is DISCLOSED honestly rather than misstated. routers/year_end_notes.py:132-134 explains that moving-average is 'a property of the engine', :222-223 sets inventory_valuation_basis = 'moving average' from the engine rather than from a CA-entered policy, and :291-294 writes the note as 'Inventories - valued on the moving average cost basis, which is how stock movements are costed in these books.' So the software never certifies a policy it does not follow. AS-2 para 21 and ICDS-II both permit weighted average, so the figure produced is a permitted figure, not a wrong one.",
+     "reach": "Real - it is the only costing engine behind every sale, purchase, credit/debit note and opening balance."
+    }
    }
   },
   {
@@ -211,7 +310,16 @@
    "suggested_fix": "Pick the two that unlock client types rather than all of them: godowns (with a transfer movement type) and batches with expiry. Both are additive to the existing ledger \u2014 a godown_id and batch_id on inventory_stock_ledger with the running chain keyed per (item, godown) \u2014 and neither disturbs the costing engine.",
    "effort": "months",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Batches/expiry, godowns and transfers, alternate units, reorder levels and BOM are all absent, and inventory_stock_ledger's movement_type CHECK (migrations/191:10-16) forbids a transfer or a manufacture row outright. The 'no group/category' part is refuted - service_catalogue.category exists (migrations/180:31-32). Severity corrected to medium: this is an absent market-standard feature set on a deliberately narrow module (migrations/176:7-11, 188:1-8), not a wrong figure or a blocked statutory task.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Mostly right, with ONE factual error. Batches/expiry, godowns/warehouses, a second UOM or conversion, reorder_level and BOM are all genuinely absent - repo-wide grep over apps/api and apps/web finds no such table, column or code (the 'BOM' hits are byte-order-mark comments, the 'reorder' hits are list re-ordering). movement_type is capped at ('opening','purchase','sale','sale_reversal','purchase_reversal','adjustment','sale_return','purchase_return','nrv_writedown') by migrations/191_nrv_writedown.sql:10-16 - no transfer, no manufacture/consume, and it is a DB CHECK so nothing can slip one in. BUT the claim 'no group/category' is wrong: migrations/180_product_service_master.sql:31-32 adds `category TEXT` ('optional, free-text grouping') to service_catalogue.",
+     "guards": "The narrowness is deliberate and recorded, which is context rather than refutation. migrations/176_service_catalogue.sql:7-11 and 180:41-45 lock the table as 'NOT an inventory/items master ... no stock, valuation, quantity-on-hand, SKU, barcode, or warehouse linkage'; 188:1-8 is an explicit, scoped supersession that adds quantity and moving-average cost and nothing else. CLAUDE.md's Scope section says not to infer a licence to extend from the shipped list.",
+     "reach": "Real - the Inventory tab (apps/web/lib/workspace/ClientNavContext.tsx:70) is the whole of the stock UI and offers items, ledger, adjust and write-down only."
+    }
    }
   },
   {
@@ -226,7 +334,16 @@
    "suggested_fix": "An ageing report keyed off inventory_stock_ledger stock-in rows net of consumption, plus a 'days since last movement' column on the stock register. The answer is one row per item, so it may be a row set, but it must aggregate server-side per the reporting rule.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no inventory ageing, movement-analysis or slow/non-moving report anywhere - routers/inventory.py stops at four endpoints and domain/reporting/ageing.py is receivables and payables only. The write-down endpoint the CA would act on is routers/inventory.py:208, not :203.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed, with one line-number slip. routers/inventory.py has exactly four endpoints: /items (65), /items/{id}/ledger (110), /items/{id}/adjust (147) and /items/{id}/writedown (208 - the finding says 203). domain/reporting/ageing.py has only receivable_bucket (210) / payable_bucket (215) / receivable_row_key (222) / payable_row_key (228) and build() over Receivable and Payable; migration 303's schedule_iii_ageing is the same two tables. Repo-wide grep for 'stock ageing|slow moving|non-moving|last_movement|days_since|obsolete' finds nothing in either app.",
+     "guards": "None. The nearest thing a CA has is the per-item drill-down (apps/web/app/clients/[id]/inventory/page.tsx:257) with a manual date range, one item at a time - which is not a report and cannot rank items by inactivity.",
+     "reach": "Real, and it is the shape that confirms the gap rather than refuting it: the NRV write-down endpoint is mounted and wired to a UI button, so the CA is asked to name the items to write down on a screen that offers no evidence for choosing them."
+    }
    }
   },
   {
@@ -241,7 +358,16 @@
    "suggested_fix": "Let a purchase bill carry apportionable additional costs (by value or by quantity) that feed `total_cost_paise` in `record_stock_in`; and where the bill's ITC is not eligible, add the tax to the stock cost rather than to GST Input.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Stock is valued at the purchase line's taxable value only (domain/inventory_service.py:1000). There is no landed-cost or apportionment mechanism anywhere, so inward freight, insurance and customs duty stay in expense and closing stock is understated against AS-2 para 6; and because all GST including itc_eligible=false tax is debited to GST Input (services/phase2_journal_service.py:656-676), blocked credit never joins stock cost either. Medium stands: material for an importer or a freight-heavy trader, and only crudely workaroundable by grossing up the line rate, which distorts the line's GST.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed at the line cited. domain/inventory_service.py:1000 is exactly `cost_paise = int(line.get(\"taxable_amount_paise\") or 0)`, and that is the only value passed to record_stock_in (:1002-1006), so stock cost is the line's taxable value and nothing else. The non-creditable-GST half is confirmed one level down: services/phase2_journal_service.py:656-676 debits GST Input with the bill's WHOLE cgst/sgst/igst regardless of purchase_bill_lines.itc_eligible (migration 240:29-30), so blocked s.17(5) tax never reaches the expense account either, let alone stock. Repo-wide grep for 'landed|freight|carriage|additional cost' over apps/api and apps/web returns nothing.",
+     "guards": "One partial workaround, and it is not clean: a CA can gross the item's rate up to include inward freight, but that inflates taxable_amount_paise and therefore the GST on the line, and freight billed by a different transporter cannot go on the vendor's bill at all. Nothing validates or flags the omission. No test asserts AS-2 para 6 cost composition.",
+     "reach": "Real - apply_purchase_to_inventory is the ordinary posting path for every purchase bill carrying a service_catalogue_id line."
+    }
    }
   },
   {
@@ -256,7 +382,16 @@
    "suggested_fix": "Extend the register's reason_code CHECK to permanent grounds (17_5_h at minimum), let the register hold `reclaimable=false` rows, and have `apply_stock_adjustment` record its reversal there so it flows into 4(B)(1). Note the code already warns (domain/inventory_service.py:1499-1505) that the amount is an approximation from the item's own gst_rate_bps \u2014 the register row should carry that caveat to the CA.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "A CA who ticks 'reverse ITC' on a damage/theft/destruction write-down gets the s.17(5)(h) reversal on the GL (domain/inventory_service.py:1526-1531) and nothing in GSTR-3B Table 4(B)(1), because 4(B)(1) is built from cancelled bills and blocked-credit bill columns only (services/gst_return_service.py:741-751; domain/gst/gstr3b_computer.py:668-671) and the reversal register refuses permanent grounds (migrations/285:55-58, services/itc_register_service.py:138-141). Raised to high: the prepared return over-claims credit the books have already given back, which is a wrong statutory figure on a return the CA files - mitigated only in that the books-vs-ledger comparator at gst_return_service.py:826-833 will show an unexplained difference.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed, with one refinement to the evidence. post_stock_writeoff_journal_entry (domain/inventory_service.py:1494-1533) posts Dr write-off / Cr GST Input citing s.17(5)(h) at :1526-1531. On the return side the non-reclaimable list is NOT built only from _bills_cancelled_in: services/gst_return_service.py:741-751 builds it from cancelled bills, and blocked s.17(5) credit on live bills reaches 4(B)(1) separately through the computer (domain/gst/gstr3b_computer.py:668-671, 486-489, detail rows at gst_return_service.py:554-580). Either way neither route can see a stock write-off. The register is closed to it: migrations/285:55-58 CHECKs reason_code IN ('rule_37','rule_37a','section_16_2b','section_16_2c','other') and services/itc_register_service.py:138-141 raises ITCRegisterError for any non-reclaimable ground, by design ('a permanent reversal ... is Table 4(B)(1) and is derived from the documents, not registered'). A write-off is not a document, so it falls through the gap between the two.",
+     "guards": "One real guard, and the finding already predicts it: services/gst_return_service.py:807-833 nets only itc_rev_perm_* + itc_rev_temp_* off books_itc and compares against gl['itc_paise'], the actual net debit movement on GST Input - which the write-off's credit HAS reduced. So itc_matched goes false and the CA sees an unexplained books-vs-ledger difference of exactly the reversed amount. It surfaces the problem; it cannot fix it, and there is no override or manual 4(B) entry anywhere in gst_return_service.",
+     "reach": "Real end to end. The adjustment path is mounted (apps/api/main.py:306), routers/inventory.py:147-205 takes reverse_itc, and the UI offers it with a suggested default per reason (apps/web/app/clients/[id]/inventory/page.tsx:74-82)."
+    }
    }
   },
   {
@@ -271,7 +406,16 @@
    "suggested_fix": "Replace with a SQL function returning one latest row per item (DISTINCT ON (service_catalogue_id) ... ORDER BY created_at DESC), or break the loop once a full page has yielded no new item. The answer is one row per item; the read should be too.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The loop does scan the entire client stock ledger whenever any catalogue good has no ledger row, which is the ordinary state of a just-created product - 26 cross-region round trips over 25,000 rows in the probe below, versus 1 when every item has history. It breaks CLAUDE.md's rule that no report may fetch rows proportional to transaction volume, and it contradicts its own docstring at routers/inventory.py:35-37. Medium is right: it degrades with ledger size toward the 45s abort but produces no wrong figure.",
+    "probe": "scratchpad/probe/inv07.py, calling routers.inventory._last_ledger_rows against a stub PostgREST client that counts round trips. Printed: 'items asked for: 6, found: 5 / PostgREST round trips: 26 (rows scanned: 25000 of 25000)' and 'same client, no brand-new item: round trips 1'.",
+    "lens_notes": {
+     "literal": "Confirmed, and the function's own docstring is what it contradicts. routers/inventory.py:30-62: `while remaining:` with breaks only on an empty page (:52-53) or a short page (:59-60). remaining is seeded from every kind='good' catalogue row (:95) with no is_active filter, so one item that has never had a ledger row - a newly created product, an archived one that never transacted - keeps the loop going to the end of the table. The docstring at :35-37 claims it 'stops as soon as every item has been seen, rather than scanning the client's entire movement history', which is exactly what it fails to do in that case. The query is also not restricted to the item ids being sought, so every page is a full-width read of the client's ledger.",
+     "guards": "None found. No test references _last_ledger_rows (grep over apps/api/tests is empty), there is no LIMIT or row cap, and the frontend has no pagination - apps/web/app/clients/[id]/inventory/page.tsx:110-125 loads the whole register on mount with no arguments but client_id. apps/web/lib/api/index.ts:358-362 confirms the 45-second abort, and :396-399 confirms retries were removed.",
+     "reach": "Real. Router mounted at apps/api/main.py:306; the Inventory tab is in the client nav (apps/web/lib/workspace/ClientNavContext.tsx:70) and calls it in a useEffect on every visit."
+    }
    }
   },
   {
@@ -286,7 +430,16 @@
    "suggested_fix": "Route all three reads through core/db_paging.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Three fixed-asset reads \u2014 routers/fixed_assets.py:179, routers/fixed_assets.py:456-463 and routers/year_end_notes.py:89-94 \u2014 plus a fourth at routers/year_end_notes.py:199-201, all call `.execute()` with no keyset paging, while the Register tab pages via selectAll (apps/web/app/clients/[id]/fixed-assets/page.tsx:159). Above PostgREST's db-max-rows the Depreciation tab, the Reports tab and the Schedule III Fixed Assets note silently truncate and the balance-sheet tie-out at year_end_notes.py:411 fires with no explicable cause.",
+    "probe": "grep -rn 'db_paging' apps/api/routers/ \u2192 no hits; only services/bank_*.py import core.db_paging.fetch_all. grep -n 'execute()' apps/api/routers/fixed_assets.py \u2192 179, 456-463 unpaged.",
+    "lens_notes": {
+     "literal": "Confirmed, with line numbers shifted by ~10. list_assets ends `res = q.order(\"purchase_date\", desc=True).execute()` at routers/fixed_assets.py:179 (not 166-170); depreciation_schedule's read is routers/fixed_assets.py:456-463 (`.execute().data or []`, not 452-458); the year-end note's read is routers/year_end_notes.py:89-94 (`.execute().data or []`). None of the three pages. `grep -n 'db_paging' routers/fixed_assets.py routers/year_end_notes.py` returns nothing \u2014 the only importers of core/db_paging.fetch_all are services/bank_register_service.py:28, bank_matching_service.py:18 and bank_reconciliation_service.py:21. core/db_paging.py:5-21 is quoted accurately, and services/itc_reversal_service.py:44-47 does say 'the failure this codebase has now hit six times'. A FOURTH instance the finding missed: routers/year_end_notes.py:199-201 reads `fixed_assets.select(\"depreciation_method\")` unpaged too \u2014 that one drives the depreciation-basis sentence in the Significant Accounting Policies note.",
+     "guards": "None. migrations/025_fixed_assets.sql has no row cap or view; there is no test asserting fixed-asset reads are complete (tests/test_bank_reads_are_complete.py covers only the bank surface, and greps clean for 'fixed_assets'). The tie-out at routers/year_end_notes.py:411-414 (`_tie_to_balance_sheet(_fa.get(\"net_block_paise\"), gl, \"tangible_assets\", \"intangible_assets\", \"capital_wip\")`) would FIRE on a truncated register \u2014 so the CA is warned that something disagrees, but the reason is invisible. That is a detector, not a guard.",
+     "reach": "All three paths are live. fixed_assets.router is mounted at apps/api/main.py:340, year_end_notes at main.py:348. The Depreciation tab fetches the unpaged endpoint at apps/web/app/clients/[id]/fixed-assets/page.tsx:475 and the Reports tab at :817, while the Register tab uses selectAll (lib/supabase/selectAll.ts, wave-paged) at page.tsx:159-168 \u2014 so the two views genuinely diverge above the cap. Realistic only for a client with >1000 asset rows (manufacturer, hotel, school); not the median SME."
+    }
    }
   },
   {
@@ -301,7 +454,16 @@
    "suggested_fix": "Make useful life and residual % the inputs for BOTH methods (see FA-02), derive the WDV rate, and write off the residual balance in the last year of life. At minimum, collect useful_life_years for WDV too and stop charging once it is exhausted.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "WDV depreciation has no useful-life terminal condition: routers/fixed_assets.py:91 uses only the rate, and the sole stop is `wdv_now <= salvage` (line 81) with salvage defaulting to 0 everywhere (models/accounting.py:155, page.tsx:325). The Add-Asset form does not even collect a life for WDV (page.tsx:363, 426-437), so Schedule II's requirement to write the asset down to residual over its useful life cannot be met. Corrected figure: \u20b9330.64 remains after 15 years on a \u20b91,00,000 computer at 31.67%, not \u20b91,244. Adjacent and corroborating (belongs to a different finding, flagged not claimed): the `_DEFAULT_WDV_RATES` table at routers/fixed_assets.py:40-50 is not a consistent Schedule II WDV set \u2014 31.67% for computers is the 3-year STRAIGHT-LINE rate (95/3), while 5.00% for Building is a genuine 60-year WDV rate.",
+    "probe": "cd apps/api && venv/bin/python \u2014 simulated 20 years of _compute_annual_depreciation on a \u20b91,00,000 WDV/31.67%/salvage-0 computer with monthly=floor(annual/12) posting: closing WDV Rs 31903.36 (yr 3), 2218.84 (yr 10), 330.64 (yr 15), 49.48 (yr 20). Never reaches 0.",
+    "lens_notes": {
+     "literal": "Confirmed except for one arithmetic claim. routers/fixed_assets.py:85-93: the SL branch reads `useful_life_years`, the WDV branch (line 91) reads only `wdv_rate_percent` / `_DEFAULT_WDV_RATES` and never touches useful_life_years; the only terminal condition is `if wdv_now <= salvage: return 0` at line 81-82 with `salvage = asset.get(\"salvage_value_paise\", 0)` at line 78. models/accounting.py:155 is `salvage_value_paise: int = 0`; apps/web/app/clients/[id]/fixed-assets/page.tsx:325 defaults the form field to \"0\"; page.tsx:426-437 shows the Useful Life input ONLY when the method is SL and page.tsx:363 sends `useful_life_years: form.depreciation_method === \"SL\" ? ... : undefined`, so a WDV asset can never carry a life at all. WRONG NUMBER IN THE FINDING: a \u20b91,00,000 computer at 31.67% WDV with nil salvage carries \u20b9330.64 after fifteen years, not \u20b91,244 (\u20b91,036 at year 12). The mechanism \u2014 an asymptote that never terminates \u2014 is exactly as described.",
+     "guards": "None. migrations/025_fixed_assets.sql has no CHECK tying useful_life_years to WDV and no residual floor. tests/test_depreciation_engine.py tests salvage capping (test_wdv_stops_at_salvage, test_wdv_with_salvage_value) but nothing about useful life under WDV or a 5% residual floor. The only practical stop is that once the annual charge falls below 12 paise, `monthly = floor(annual/12)` is 0 and post_depreciation returns 'No depreciation to post' (routers/fixed_assets.py:311-312) \u2014 the asset just sits there below its notional residual forever.",
+     "reach": "Live and default. depreciation_method defaults to WDV in models/accounting.py:157, in migration 025 (`DEFAULT 'WDV'`) and in the Add-Asset form (page.tsx:323), and the WDV radio is preselected. Every WDV asset created through the UI has salvage 0 and no life."
+    }
    }
   },
   {
@@ -316,7 +478,16 @@
    "suggested_fix": "Use `is None` checks rather than `or`, and refuse (or force zero) for Land regardless of method.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "`or` is used instead of `is None` at routers/fixed_assets.py:89, :91 and :224, so an explicitly entered 0% rate is replaced by the category default both at compute time and at INSERT time; and _compute_annual_depreciation's SL branch (lines 88-90) ignores asset_category entirely, so a Land asset on the SL method depreciates. The 0-year-life sub-claim is technically true but not a realistic CA input (it also guards a division by zero).",
+    "probe": "cd apps/api && venv/bin/python -c ... \u2192 explicit 0% on a \u20b91,00,000 computer: annual 3167000 paise (\u20b931,670); create_asset would store 31.67; \u20b95,00,000 of Land on SL/5yr: annual 10000000 paise (\u20b91,00,000 of depreciation on land); SL life=0 silently uses life 5.",
+    "lens_notes": {
+     "literal": "Confirmed; line numbers shift by ~9. routers/fixed_assets.py:91 is `rate_value = asset.get(\"wdv_rate_percent\") or _DEFAULT_WDV_RATES.get(asset.get(\"asset_category\", \"Other\"), _DEFAULT_WDV_RATES[\"Other\"])` and line 89 is `life = asset.get(\"useful_life_years\") or 5`. The same `or` is at routers/fixed_assets.py:224 in create_asset, which means the DB ROW ITSELF is written with the default \u2014 the explicit zero is destroyed at insert, not just at compute. `_DEFAULT_WDV_RATES[\"Land\"] = 0.00` is at line 47 (not 48), which is why Land is accidentally safe on the WDV path. The SL branch (lines 88-90) never looks at asset_category, so nothing refuses to depreciate Land on SL.",
+     "guards": "None. migrations/025_fixed_assets.sql declares `wdv_rate_percent NUMERIC(5,2)` with no CHECK and no category constraint; models/accounting.py:159 is `wdv_rate_percent: Optional[float] = None` with a validator only on cost/salvage (lines 161-166). The frontend's handleCategoryChange (page.tsx:331-333) prefills the rate from WDV_RATES but does not restrict the method, and Land + SL is selectable. No test in tests/test_depreciation_engine.py covers an explicit zero or a non-depreciable class.",
+     "reach": "Live. The 0-year-life half is weaker than stated \u2014 a 0 life would otherwise be a ZeroDivisionError and no CA enters one \u2014 but the 0% half is real and reachable through the form's WDV Rate input (page.tsx:429), and the Land+SL half is reachable through the method radio (page.tsx:415-423)."
+    }
    }
   },
   {
@@ -331,7 +502,16 @@
    "suggested_fix": "Either make the endpoint FY-aware (additions in the year, disposals in the year, closing block) or drop the FY picker from this page. The former is the same work as FA-05's movement table.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The Reports tab prints the selected financial year in two labels (page.tsx:872, :886) and one caption implies a period ('No disposals this year.', :928), but its single fetch (page.tsx:817) is the unfiltered current-state register \u2014 routers/fixed_assets.py:164-171 accepts no FY. Changing the picker changes only the words. There is no additions/disposals-in-the-year report anywhere in the product, despite reports/page.tsx:126-127 promising one.",
+    "probe": "grep -n 'financialYear' apps/web/app/clients/[id]/fixed-assets/page.tsx \u2192 89-91, 103, 132, 802, 872, 886 only; no occurrence inside the fetch URL. grep -n '@router' apps/api/routers/fixed_assets.py \u2192 164, 187, 245, 340, 438; none takes fy.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/web/app/clients/[id]/fixed-assets/page.tsx:802 `function ReportsTab({ clientId, financialYear })`, fed from the page-level FinancialYearPicker at :103; the only fetch is line 817 `GET ${API}/api/fixed-assets/?client_id=${clientId}&include_disposed=true` \u2014 routers/fixed_assets.py:164-171 declares only client_id and include_disposed, no FY parameter exists. financialYear appears solely as the Net Block tile subtitle (`sub: \\`FY ${financialYear}\\`` at :872) and the 'Assets by Category \u2014 FY {financialYear}' heading at :886. 'No disposals this year.' is at :928 while `disposed` (:835) is every disposed asset ever. apps/web/app/clients/[id]/reports/page.tsx:126-127 does advertise it as 'Additions, disposals and depreciation'.",
+     "guards": "None \u2014 there is no FY filter anywhere on this path to fall back on. The backend has no FY-aware fixed-asset report at all (routers/fixed_assets.py has only 5 routes: GET '', POST '', POST /{id}/depreciate, PATCH /{id}/dispose, GET /depreciation-schedule \u2014 none takes an FY).",
+     "reach": "Live. Reached from ClientNavContext.tsx:73 ({ id: 'fixed-assets', href: /clients/{id}/fixed-assets/ }) and from the Reports index card at reports/page.tsx:126-127. The FY picker is rendered at page.tsx:103 on every tab."
+    }
    }
   },
   {
@@ -346,7 +526,16 @@
    "suggested_fix": "Fold this into the server-side run of FA-04 and render its per-asset result list.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "'Post All for Period' is an unbatched sequential loop (page.tsx:506-513) whose per-asset call swallows every failure (`catch { /* ignore */ }`, page.tsx:504). A locked FY makes all N calls 422 (routers/fixed_assets.py:293) and the screen is indistinguishable from a clean run; already-posted (409, :280) and purchased-later (422, :286) are equally silent. Aggravating detail the finding got right: the loop's filter uses the frontend's own annualDepn (page.tsx:515-526), which recomputes WDV off the LIVE accumulated balance rather than the FY-opening one the backend uses.",
+    "probe": "grep -n 'exception_handler' apps/api/main.py \u2192 201 (PermissionDeniedError), 209 (Exception) only; no HTTPException handler, so a 409/422 body is {\"detail\": ...} and j.success is undefined.",
+    "lens_notes": {
+     "literal": "Confirmed; line numbers shift by ~1. apps/web/app/clients/[id]/fixed-assets/page.tsx:506-513 is `async function postAllDepreciation() { for (const a of assets.filter(a => annualDepn(a) > 0)) { await postDepreciation(a.id); } }` and postDepreciation (:492-505) ends `} catch { /* ignore */ }` with no error state and no per-asset result. Because FastAPI has no HTTPException handler in main.py (only PermissionDeniedError at :201 and a bare Exception handler at :209), a 4xx returns `{\"detail\": ...}` with no `success` key \u2014 so `if (!j.success) throw` at :500 fires and the throw is swallowed. The three error paths are real: 409 at routers/fixed_assets.py:280 (already posted through), 422 at :286-288 (period before purchase month), and 422 from period_validation_service.validate_posting_date at :293 for a locked FY (services/period_validation_service.py:53-72, fail-closed).",
+     "guards": "None on the client. The only feedback is that a SUCCESSFUL post calls `await load()` (:501), so accumulated depreciation moves on the rows that worked \u2014 the CA can infer partial success by eye, which is what the finding says. No toast, no banner, no aggregate count. The `loadFailed` flag (:461) covers the LIST load only, not the posts.",
+     "reach": "Live: 'Post All for Period' button at page.tsx:551-556 on the Depreciation tab, which is one of the four tabs on a nav-linked page (ClientNavContext.tsx:73). fixed_assets.router is mounted (main.py:340)."
+    }
    }
   },
   {
@@ -361,7 +550,16 @@
    "suggested_fix": "Add `asset_code: Optional[str]` to the model, use it when supplied, and put a unique index on (client_id, asset_code).",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The Asset Code the CA types is discarded silently: the frontend sends it (apps/web/app/clients/[id]/fixed-assets/page.tsx:353) but FixedAssetIn does not declare it (models/accounting.py:149-160) and Pydantic v2 ignores the extra, then routers/fixed_assets.py:209-211 overwrites it with FA-{count:04d} from an unfiltered, non-atomic COUNT. No unique constraint on asset_code exists in any migration (it is declared bare TEXT in 054:88 and 093:117, not 025).",
+    "probe": "cd apps/api && python -c \"from models.accounting import FixedAssetIn; m=FixedAssetIn(client_id='c',asset_name='X',purchase_date='2026-01-01',purchase_cost_paise=100,asset_code='MYTAG-1'); print('has asset_code:', 'asset_code' in m.model_dump())\" -> has asset_code: False (no error raised)",
+    "lens_notes": {
+     "literal": "Confirmed on every limb. apps/web/app/clients/[id]/fixed-assets/page.tsx:390 renders a `Field label=\"Asset Code\"` input (placeholder 'FA-001') and line 353 puts `asset_code: form.asset_code || undefined` in the POST body. models/accounting.py:149-160 FixedAssetIn declares client_id, asset_name, asset_category, purchase_date, purchase_cost_paise, salvage_value_paise, useful_life_years, depreciation_method, wdv_rate_percent, location, notes \u2014 no asset_code, and no model_config, so Pydantic v2's default `extra='ignore'` drops it with no error. routers/fixed_assets.py:209-211 then does a COUNT of that client's fixed_assets rows and writes `asset_code = f\"FA-{count:04d}\"` unconditionally (inserted at line 217). The count query at line 209 filters only firm_id and client_id \u2014 no is_disposed filter \u2014 so disposed assets are counted, and the read-then-write is not atomic. One correction to the evidence: asset_code is not in migrations/025_fixed_assets.sql at all; it was added by 054_v13_payroll_assets_banking.sql:88 and re-added by 093_payroll_assets_banking_modernized.sql:117, in both cases as bare `TEXT` \u2014 grep over migrations/*.sql finds no unique index or constraint on it anywhere, so the finding's conclusion holds even though the file it names is wrong.",
+     "guards": "None. No Pydantic validator, no CHECK, no unique index, no frontend warning; the CA gets a success response and the register then shows the generated code (page.tsx:270 renders `a.asset_code ?? '\u2014'`), so the typed value is simply gone. There is no PATCH/PUT on the router (only POST '', POST /{id}/depreciate, PATCH /{id}/dispose, GET '', GET /depreciation-schedule) and no direct PostgREST write to fixed_assets from the frontend (the only `.from(\"fixed_assets\")` is the read at page.tsx:162), so there is no second way to set the code either.",
+     "reach": "Reachable. Router mounted at main.py:340, page in the client nav (ClientNavContext.tsx:73). What bounds severity is the duplicate-code half: because there is no delete path for assets anywhere (backend or PostgREST), the per-client COUNT only ever grows, so two assets share a code only under genuinely concurrent POSTs. That case is worse than the finding says when it happens \u2014 the acquisition journal reference is `FA-ACQ-{asset_code}` (services/phase2_journal_service.py:1197) and _create_journal dedupes on (firm, client, reference_no, entry_date) at lines 1608-1622, so a same-day duplicate code means the second asset's acquisition journal is silently skipped \u2014 but it needs a real race to occur."
+    }
    }
   },
   {
@@ -376,7 +574,16 @@
    "suggested_fix": "Render it on the Depreciation tab in place of `annualDepn`; extend it with a projection over remaining useful life so it is a real schedule rather than one year.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "GET /api/fixed-assets/depreciation-schedule (routers/fixed_assets.py:438-487) is the only server-side depreciation projection and no screen calls it; the Depreciation tab instead recomputes in the browser (page.tsx:515-526) off the live accumulated balance, which diverges from the backend's fixed FY-opening figure as soon as one month is posted. Per the instructions this is a confirmed gap (backend capability reachable from no screen), not a dead-code refutation.",
+    "probe": "cd apps/api && venv/bin/python \u2014 same WDV asset, 3 months posted in FY 2026-27: backend _annual_depreciation_for_period \u2192 3167000 paise (\u20b931,670); frontend annualDepn \u2192 2916253 paise (\u20b929,162.53); divergence \u20b92,507.47 on one asset, growing every month of the year.",
+    "lens_notes": {
+     "literal": "Confirmed; line numbers shift by ~1. routers/fixed_assets.py:438-487 is `@router.get(\"/depreciation-schedule\")`, calling _annual_depreciation_for_period (the #232-corrected, FY-opening-balance path) at :471 with assert_client_access at :447 and firm_id+client_id scoping at :456-462.",
+     "guards": "n/a \u2014 this is unreached correct code, not a hazard. tests/test_r241_fixed_assets_idor.py exercises it directly (imports the function, lines 13, 70-88), which is why it stays green while being dead in the product.",
+     "reach": "CONFIRMS the gap. `grep -rn 'depreciation-schedule' apps/web --include=*.ts --include=*.tsx` (node_modules excluded) returns zero hits. The only apps/web references to this router are page.tsx:365 (POST create), :475 and :658 (GET list), :495 (POST depreciate), :684 (PATCH dispose), :817 (GET list). apps/web/lib/api/index.ts has no fixed-assets entry at all. apps/web/app/accounting/fixed-assets/page.tsx is a 5-line `<MovedToClientWorkspace/>` stub. No backend consumer either \u2014 grep across apps/api finds only the definition and the IDOR test."
+    }
    }
   },
   {
@@ -391,7 +598,16 @@
    "suggested_fix": "Once assets carry their tax split (FA-07), a Rule 43 monthly schedule is derivable: 1/60th of the common credit apportioned by exempt turnover. It belongs beside the ITC reversal register, not in the FA router.",
    "effort": "weeks",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Neither Rule 43 (capital goods, 1/60th over 60 months) nor Rule 42 (common inputs) is computed or enterable. The only \u00a717 reversal machinery is Rule 37/37A (services/itc_reversal_service.py, the register in migration 285), and services/itc_register_service.py:138-142 explicitly REFUSES a rule 42/43 row, pointing at a document path (gst_return_service.py:741-750) that has no field for one. Medium is right: correct for the mixed-supply subset, silent for everyone else.",
+    "probe": "grep -rni 'rule 43|rule_43|capital goods|capital_goods' apps/api --include=*.py \u2192 4 hits, all comments in domain/gst/gstr3b_computer.py. Same grep over apps/web, migrations, docs \u2192 0 hits.",
+    "lens_notes": {
+     "literal": "Confirmed and then some. `grep -rni 'rule 43|rule_43|capital goods|capital_goods'` over apps/api returns only domain/gst/gstr3b_computer.py:83, :85, :457, :458 \u2014 all inside comments quoting Circular 170. The same grep over apps/web, apps/api/migrations and docs returns nothing. There is no 60-month schedule, no capital-goods flag on fixed_assets (migrations/025_fixed_assets.sql has no tax columns at all), and no reference to fixed_assets from any GST module.",
+     "guards": "The opposite of a guard \u2014 there is an explicit dead end. services/itc_register_service.py:36-37 restricts the ITC reversal register to RECLAIMABLE_REASONS = ('rule_37','rule_37a','section_16_2b','section_16_2c','other') and :138-142 raises ITCRegisterError with the message 'Rules 38, 42, 43 and section 17(5) are permanent reversals \u2014 Table 4(B)(1) \u2014 and are taken from the documents, not registered here.' But the document path is only cancelled purchase bills (services/gst_return_service.py:741-750) plus per-bill `ineligible_*_paise`; neither can express a 1/60th monthly apportionment. So a Rule 43 reversal cannot be entered anywhere, and a manually posted GL journal will not reach Table 4(B)(1) because 4(B) is deliberately sourced 'From the DOCUMENTS, never from the GL' (gst_return_service.py:725-728).",
+     "reach": "Only bites a client with both taxable and exempt/non-business supplies who buys capital goods \u2014 a real but minority population. Rule 42 (common inputs/input services) is equally absent, which the finding understates when it says Rule 42 is 'gestured at'."
+    }
    }
   },
   {
@@ -406,7 +622,16 @@
    "suggested_fix": "A count session: export the register as a count sheet, accept the counted quantities back, show the variance list for CA confirmation (with the ITC decision per line), then post one batch under one reference.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Stock adjustment is genuinely one item per API call and per modal, with no count session, no variance import and no batch posting \u2014 routers/inventory.py exposes only four routes and none is bulk. But the finding overstates it twice: a CSV export of the stock register exists (apps/web/app/clients/[id]/inventory/page.tsx:213 with components/ui/data-table.tsx:309-316) and can serve as the count sheet, and a common batch reference exists as `reference_no` (models/inventory.py:40; input at page.tsx:504-506, placeholder 'e.g. count sheet #'). The residual gap is the round trip \u2014 accepting counted quantities back, showing the variance list, and posting one batch \u2014 which is a market-standard feature (Tally's Physical Stock voucher) that is absent. Medium stands.",
+    "probe": "grep -n '@router' apps/api/routers/inventory.py \u2192 65, 110, 147, 208 (no bulk endpoint). grep -n 'exportFilename\\|referenceNo' apps/web/app/clients/[id]/inventory/page.tsx \u2192 213, 402, 439, 505 (export and reference input both present).",
+    "lens_notes": {
+     "literal": "The core claim holds; two of the three sub-claims are wrong. routers/inventory.py:147-205 `adjust_stock(service_catalogue_id, data: StockAdjustmentIn, ...)` is one item per call, and routers/inventory.py has exactly four routes (:65 GET /items, :110 GET /items/{id}/ledger, :147 POST /items/{id}/adjust, :208 POST /items/{id}/writedown) \u2014 no bulk, no session, no import. The reasons are at models/inventory.py:20-28 including physical_count_shortage/surplus. The modal is opened only from the ledger drill-down (apps/web/app/clients/[id]/inventory/page.tsx:222, 292-294, 367-372). WRONG SUB-CLAIM 1 \u2014 'no count-sheet export': the stock register IS exportable to CSV. page.tsx:213 passes `exportFilename=\"inventory-stock-register\"` to DataTable, and components/ui/data-table.tsx:309-316 renders an Export button that writes the filtered view (Product, HSN, Unit, On Hand, Avg Cost, Stock Value \u2014 columns at page.tsx:143-181) via toCsv/downloadCsv (:166-176). WRONG SUB-CLAIM 2 \u2014 'no grouping under a single verification reference': `reference_no` is on the model (models/inventory.py:40), is honoured by the router (routers/inventory.py:184-190) and is a visible input in the modal at page.tsx:504-506 whose placeholder is literally 'e.g. count sheet #'.",
+     "guards": "The optional reference_no is the partial mitigation \u2014 a CA can type the same count-sheet number on every adjustment and the ledger shows it (page.tsx:337, :351). Nothing enforces or suggests it, and it is retyped per item. period_validation_service.validate_posting_date at routers/inventory.py:183 applies per call, so a locked FY blocks each adjustment individually.",
+     "reach": "Live: inventory.router mounted at apps/api/main.py:306; the Inventory page is nav-linked and the adjust modal is two clicks in (row \u2192 drill-down \u2192 Adjust Stock). The pain is real at a 31 March count."
+    }
    }
   },
   {
@@ -421,7 +646,16 @@
    "suggested_fix": "Validate the request quantity to three decimals at the boundary (apps/web/lib/money/rupeeInput.ts already exports `parseQuantity` for exactly this, per CLAUDE.md), and revisit the column width alongside the alternate-units work in INV-03.",
    "effort": "hours",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The schema really is NUMERIC(10,3) with no alternate/compound units (migrations/188_inventory_costing.sql:32,34,56,59) and the boundary really does not validate decimal places (models/inventory.py:34,44-49; the frontend's step=\"0.001\" at inventory/page.tsx:474 is inert because there is no form submit). But the specific drift claimed is wrong: running_qty_units is the same NUMERIC(10,3) column and is re-read from the DB on every movement (domain/inventory_service.py:502,544), so the stored running total and the stored deltas do not disagree \u2014 what is inconsistent is only that value_delta_paise/unit_cost_paise are computed on the unrounded quantity (domain/inventory_service.py:80).",
+    "probe": "cd apps/api && python -c \"from decimal import Decimal, ROUND_HALF_UP; q=Decimal(str(1.23456)); print('stored delta', q.quantize(Decimal('0.001'),rounding=ROUND_HALF_UP)); print('stored running', (Decimal('0.000')+q).quantize(Decimal('0.001'),rounding=ROUND_HALF_UP)); print('max', Decimal(10)**7-Decimal('0.001'))\" -> stored delta 1.235 / stored running 1.235 (they agree) / max 9999999.999. No local Postgres was available (connection refused on 127.0.0.1:5432) to run the cast directly.",
+    "lens_notes": {
+     "literal": "Half confirmed, half wrong. Confirmed: migrations/188_inventory_costing.sql:32,34,56,59 declare opening_qty_units, stock_qty_units, quantity_delta and running_qty_units all NUMERIC(10,3) \u2014 max 9,999,999.999; models/inventory.py:34 types `quantity: float` and its only validator (lines 44-49) is `v > 0`; there is no alternate/compound-unit support anywhere (grep for alternate_unit/conversion_factor/secondary_unit over migrations, domain and models returns nothing \u2014 service_catalogue carries one free-text `unit`). REFUTED: the claimed running-total divergence does not occur. running_qty_units is stored in the SAME NUMERIC(10,3) column as quantity_delta, and every movement re-reads the previous total FROM THE DATABASE \u2014 `prev_qty = Decimal(str(prev['running_qty_units']))` at domain/inventory_service.py:502 (stock-in) and :544 (stock-out) \u2014 so the Python figure never 'keeps the full precision' across movements. Since the previous total is already exactly 3dp, round(prev + q) == prev + round(q) under Postgres's half-away-from-zero numeric rounding, so the stored chain stays internally consistent and check_inventory_cache_drift (services/reconciliation_service.py:228-287) compares two values that both came back from the same rounded columns.",
+     "guards": "Weak but non-zero. The Adjust Stock input carries `min=\"0.001\" step=\"0.001\"` (apps/web/app/clients/[id]/inventory/page.tsx:474) \u2014 but there is no <form> wrapper and submission is a plain `onClick={submit}` (line 520), so native constraint validation never runs and `parseFloat(quantity)` (line 427) passes 1.23456 through unchanged. So the UI is not a real guard. Overflow past 9,999,999.999 is a hard Postgres 'numeric field overflow' error on insert, i.e. a loud failure rather than a silent wrong number.",
+     "reach": "Reachable but narrow. The register and its adjust form are in the client nav (ClientNavContext.tsx:70) and the API path is /api/inventory/items/{id}/adjust (apps/web/lib/api/index.ts:891). The residual real defect is small: unit_cost_paise and value_delta_paise are computed from the UNROUNDED Decimal quantity (domain/inventory_service.py:80, _compute_stock_in) while the quantity actually stored is rounded to 3dp, so the money posted corresponds to a quantity the ledger did not keep \u2014 sub-0.001-unit, i.e. paise at most."
+    }
    }
   },
   {
@@ -436,7 +670,16 @@
    "suggested_fix": "Mirror the inventory checks: asset with no acquisition journal; acquisition journal with no asset; depreciation posted in the GL that the register does not reflect (and vice versa); disposed asset with no disposal journal.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The standing books-integrity engine has no fixed-asset check at all \u2014 services/reconciliation_service.py:518-527 lists eight checks, three of them inventory-specific and none asset-related \u2014 so the only register-vs-GL control is the once-a-year note tie at routers/year_end_notes.py:412-414, which by its own design (lines 352-375) reports a single difference_paise with no breakdown and no indication of which side is wrong.",
+    "probe": "cd apps/api && python -c \"from services import reconciliation_service as r; print([c.__name__ for c in r._CHECKS]); print('any fixed asset check:', any('asset' in c.__name__ for c in r._CHECKS))\" -> ['check_trial_balance', 'check_missing_cogs_journals', 'check_missing_inventory_receipt_journals', 'check_inventory_cache_drift', 'check_ar_subledger_vs_gl', 'check_ap_subledger_vs_gl', 'check_bank_reconciliation_discrepancies', 'check_orphan_money_journals'] / any fixed asset check: False",
+    "lens_notes": {
+     "literal": "Confirmed. services/reconciliation_service.py:518-527 registers exactly eight checks (_CHECKS): trial_balance, missing_cogs_journals, missing_inventory_receipt_journals, inventory_cache_drift, ar_subledger_vs_gl, ap_subledger_vs_gl, bank_reconciliation_discrepancies, orphan_money_journals. `grep -n fixed_asset services/reconciliation_service.py` returns nothing. The three inventory checks are at lines 132, 178 and 228 as cited, and each names the offending row: check_missing_cogs_journals emits `Sales invoice {invoice_no} sold inventory ... but no matching COGS journal was ever posted` (lines 165-173) and check_inventory_cache_drift emits a per-item list with cached vs ledger qty/avg (lines 272-281). The only fixed-asset control is routers/year_end_notes.py:412-414 `_tie_to_balance_sheet(_fa['net_block_paise'], gl, 'tangible_assets','intangible_assets','capital_wip')`, whose return (lines 358-375) is `{checked, ties, note_total_paise, balance_sheet_paise, difference_paise}` \u2014 a single rupee difference and nothing else. Its own docstring at lines 352-356 says so explicitly: 'Reported, never reconciled. Nothing here knows WHICH side is right.'",
+     "guards": "The tie check is a real guard and it is not softened \u2014 _tie_out_sentence (lines 376-390) prints 'THIS NOTE DOES NOT AGREE WITH THE BALANCE SHEET ... must be resolved before these statements are issued', and tests/test_notes_tie_to_the_balance_sheet.py:126-137,155-175 pins it. But it only fires when the year-end note pack is generated, it compares one aggregate to three GL lines together (deliberately, per the comment at routers/year_end_notes.py:405-411), and it identifies no asset. No other guard exists: fixed_assets appears in the backend only in phase2_journal_service.py, routers/fixed_assets.py, the four year_end_* routers and domain/income_tax/book_to_tax_bridge.py. No DB trigger, no constraint, no scheduled sweep touches the register-vs-GL question.",
+     "reach": "Both halves reach users. routers/fixed_assets.py is mounted (main.py:340) and 'Fixed Assets' is in the client nav (apps/web/lib/workspace/ClientNavContext.tsx:73). reconciliation is mounted (main.py:284) and runs both nightly (jobs/scheduler.py) and on demand via 'Verify Books' (services/reconciliation_service.py:6-11), so the inventory side genuinely has a standing control the fixed-asset side does not."
+    }
    }
   },
   {
@@ -451,7 +694,16 @@
    "suggested_fix": "Surface both actions from the register row, and add an NRV review screen listing every item with its cost and a field for NRV.",
    "effort": "days",
    "verification": {
-    "status": "unverified"
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The stock register's only row interaction is opening the drill-down (apps/web/app/clients/[id]/inventory/page.tsx:217); Adjust Stock and Write Down to NRV live only in that drill-down's header (lines 288-296), there is no row action, no bulk selection, and no cross-item NRV review anywhere in the frontend or backend.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/clients/[id]/inventory/page.tsx:143-182 defines the register's columns \u2014 name, HSN, unit, on-hand, avg cost, stock value, status \u2014 with no action column and no render of any button. The DataTable at lines 203-218 gets `onRowClick={(item) => setDrillDown(item)}` (line 217) and no selection prop. The Adjust Stock and Write Down to NRV buttons are inside StockLedgerDrillDown's header at lines 288-296, so both are two interactions deep and per-item only. No cross-item NRV screen exists: the only writedown call site in the whole frontend is api.inventory.writedown (lib/api/index.ts:892) invoked from this one modal (page.tsx:376).",
+     "guards": "Nothing mitigates it \u2014 there is no second entry point to either action anywhere in apps/web, and no bulk endpoint on the backend either (routers/inventory.py exposes POST /items/{id}/adjust and POST /items/{id}/writedown, both single-item).",
+     "reach": "Reachable: Inventory is in the client nav (ClientNavContext.tsx:70). This is genuinely a workflow-ergonomics gap rather than a wrong number \u2014 the actions work, they are just per-item and buried, so a whole-register AS-2 lower-of-cost-or-NRV review is done one modal at a time."
+    }
    }
   }
  ],
