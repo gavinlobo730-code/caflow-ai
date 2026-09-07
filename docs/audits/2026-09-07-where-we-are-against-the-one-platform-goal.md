@@ -105,19 +105,32 @@ Read 7 September 2026, 11:32 IST:
 | journal_lines | 33,080 | | purchase_payments | **0** |
 | client_sales_invoices | 5,662 | | tds_deductions | **0** |
 | purchase_bills | 759 | | payroll_employees | **0** |
-| audit_log | 47,367 | | tasks / compliance_tasks | **0** |
-| inventory_stock_ledger | 12,107 | | fixed_assets | **0** |
+| audit_log | 47,367 | | fixed_assets | **0** |
+| inventory_stock_ledger | 12,107 | | fee_invoices / time_entries | **0** |
 | bank_transactions | 488 | | gstr1_returns / itr_filings | **0** |
+| compliance_records | 133 | | scheduler_runs | 452 |
+| service_catalogue | 399 | | engagements | 2 |
 | clients | 7 | | firms / users | 2 / 2 |
 
-Read that table twice. **The books have been hammered. Nothing downstream of the
-books has ever been used.** Not one receipt, not one payment, not one TDS
-deduction, not one employee, not one task, not one filing record. The modules this
-audit found most broken are, without exception, the modules with zero rows.
+Read that table twice. **The books have been hammered. Most of what sits
+downstream of the books has never been used** — not one receipt, not one payment,
+not one TDS deduction, not one employee, not one filing record. The modules this
+audit found most broken are, with one exception, the modules with zero rows.
 
 That is not a coincidence and it is the single most useful fact here: **the defects
 are concentrated exactly where nobody has walked yet.** Eleven of the seventeen
 verified criticals sit in code paths that have never run against real data.
+
+**The exception is worth naming, because it is the good news.** `compliance_records`
+holds 133 rows and `scheduler_runs` holds 452 across fourteen job types — obligation
+generation, escalations, collections, recurring invoices and journals, the balance-cache
+and reconciliation audits, the bank trusted-rules pass and the memory pipeline — every
+one of them with a successful run on 7 September 2026 at 09:32 IST. The handful of
+failures are all old (17–18 August, 3 September) and have since succeeded. **The daily
+sweep genuinely works, unattended, and has done for six weeks.** It is the one part of
+the product that has been operating rather than merely existing. (It ran at 09:32 IST
+against a nominal 06:00 — the GitHub-cron lateness CLAUDE.md's catch-up logic exists to
+absorb, working as designed.)
 
 ---
 
@@ -539,7 +552,7 @@ its own merits?
 | Income tax / ITR | **C** | No | Cannot compute a company, firm or LLP at all |
 | Payroll | **C** | Not yet | Engine ahead of the market; ECR won't reconcile; half the engine has no screen |
 | Reporting / year-end *(light)* | **B−** | Not yet | Statements and Schedule III strong; year-end adjustments cannot post |
-| Practice management *(light)* | **C** | No | Zero tasks and zero compliance rows in production — untested in anger |
+| Practice management *(light)* | **B−** | Not yet | Obligation generation and the daily sweep genuinely run in production; billing and time are unexercised |
 | AI layer *(light)* | **D** | No | See §7.4 — it cannot read the books |
 | Fixed assets / inventory | **C** | Not yet | Inventory engine is good; depreciation rates wrong and posting fails (§4.6) |
 | Platform / security *(light)* | **B−** | n/a | Tenancy design is good; anon RPCs and dead backup tables in production |
