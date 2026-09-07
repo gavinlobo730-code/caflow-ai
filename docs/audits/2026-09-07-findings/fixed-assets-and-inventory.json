@@ -10,7 +10,12 @@
    "market_standard": "Any FA module (Zoho Books' fixed assets, Winman, Tally add-ons) records the period a depreciation run covers and shows the updated WDV immediately; a failed run is rolled back, not left half-applied.",
    "confidence": "high",
    "suggested_fix": "Write `month_end_date(period)` (the helper already imported at routers/fixed_assets.py:10 and used at line 300 for the journal date) into `depreciation_posted_through`, and change the `>=` comparison at line 279 to compare month-ends consistently. Add a real-Postgres test (`test_fixed_assets_depreciation_pg.py`) that actually posts a month, since the whole class of bug is invisible in mock mode.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran select '2026-04'::date on production: ERROR 22007; column is DATE"
+   }
   },
   {
    "id": "FA-02",
@@ -22,7 +27,12 @@
    "market_standard": "Dedicated Schedule II tools (and every Companies Act depreciation utility a CA uses) ask for the USEFUL LIFE and the residual %, derive the WDV rate, and fully write the asset down to residual at the end of that life. Rates are never typed as a free number labelled Schedule II.",
    "confidence": "high",
    "suggested_fix": "Replace the rate table with a Schedule II Part C useful-life table (a real statutory table, versioned like the other registries in domain/), store `useful_life_years` + `residual_percent` per asset, and DERIVE the WDV rate. Put it in a domain module so the frontend reads it from the backend instead of holding a second copy. Until then, remove the 'Schedule II' label from both the code comment and the UI, because it is the label that stops anyone checking.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "computed 1-(0.05)^(1/n) for every Schedule II life against _DEFAULT_WDV_RATES"
+   }
   },
   {
    "id": "FA-03",
@@ -34,7 +44,10 @@
    "market_standard": "A depreciation schedule is computed once, server-side, per financial year and displayed identically wherever it appears.",
    "confidence": "high",
    "suggested_fix": "Delete `annualDepn` and render `/api/fixed-assets/depreciation-schedule`, which already returns annual_depreciation_paise and monthly_depreciation_paise per asset. This also satisfies the house rule 'zero business logic in the frontend', which this function and the WDV_RATES table both break.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-04",
@@ -46,7 +59,10 @@
    "market_standard": "Every FA module has a depreciation RUN for a period range that computes the charge for all assets from the last posted date to the run date, and reports what it posted per asset. Winman and Zoho both run it annually or for a chosen range; none requires twelve clicks per asset per year.",
    "confidence": "high",
    "suggested_fix": "Add `POST /api/fixed-assets/run-depreciation` taking client_id and a from/to period range, iterating each asset's unposted months server-side in one transaction and returning a per-asset result; make the 409 apply per-period rather than as a high-water mark so gaps can be filled. Keep the per-asset endpoint for corrections.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-05",
@@ -58,7 +74,10 @@
    "market_standard": "The Schedule III fixed-asset note is the standard output of any FA register: gross block opening/additions/deductions/closing and the same four for depreciation, per class, with the charge equal to what was posted.",
    "confidence": "high",
    "suggested_fix": "Compute the charge from the GL (the depreciation journals whose entry_date falls in the FY) rather than re-deriving it, include disposed-in-year assets as deductions, and emit the five-column movement table per asset class.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-06",
@@ -70,7 +89,10 @@
    "market_standard": "Winman and ClearTax both maintain the IT-Act block register alongside the Companies Act register: opening WDV per block, additions split by 180 days, additional depreciation, sale proceeds reduced from the block, \u00a750 STCG when the block is exhausted, and the 3CD chart printed from it.",
    "confidence": "high",
    "suggested_fix": "Build a block register (block key = rate class), driven by the same fixed_assets rows plus a block mapping, computing \u00a732 depreciation per FY; then wire `build_bridge` behind an endpoint and a screen. This is the highest-leverage single item in the whole subsystem.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-07",
@@ -82,7 +104,10 @@
    "market_standard": "Zoho Books capitalises directly from the bill; Tally posts the asset ledger from the purchase voucher with the ITC split out. The register is a view of the ledger, never a second entry point that re-posts the same purchase.",
    "confidence": "high",
    "suggested_fix": "Make the FA register capitalise FROM a purchase bill line (mirroring `apply_purchase_to_inventory`), or at minimum let `FixedAssetIn` carry a vendor/creditor or bill_id and an ITC-eligible tax split, and add a reconciliation check for 'asset in the register with no acquisition journal' and 'capitalised twice'.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-08",
@@ -94,7 +119,10 @@
    "market_standard": "Every FA module runs depreciation to the disposal date as part of the disposal and shows the CA the split (charge to date, then gain/loss on the resulting WDV). GST on sale of a capital asset is raised as a tax invoice from the same action.",
    "confidence": "high",
    "suggested_fix": "Inside `dispose_asset`, post the outstanding depreciation from `depreciation_posted_through` to the disposal month (pro-rated on days for the part month, reusing `_prorate_purchase_month`'s shape) BEFORE computing gain/loss, and show both figures in the confirmation panel. Add a GST-on-disposal path or, at minimum, refuse silently posting a disposal with proceeds and no tax treatment recorded.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-09",
@@ -106,7 +134,10 @@
    "market_standard": "A schedule to a balance-sheet caption is always the closing balance (opening + movement), and its line shape is identical whether it comes from demo data or the ledger.",
    "confidence": "high",
    "suggested_fix": "For balance-sheet schedule types, sum all posted lines up to fy_end (or read account_period_balances, which the reporting rule in CLAUDE.md already requires) rather than only lines inside the FY window; and make the mock shape identical to the live one.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-10",
@@ -118,7 +149,10 @@
    "market_standard": "Zoho Books and every FA tool allow editing an asset before/after depreciation with an automatic recompute-and-reverse of the affected postings, or an explicit 'revise' entry.",
    "confidence": "high",
    "suggested_fix": "Add PATCH /{asset_id} that (a) refuses changes to cost/date/category once depreciation is posted unless the period is open, (b) reverses and re-posts the acquisition journal through the one kernel, and (c) resets `depreciation_fy_start_accum_paise`. Also add a depreciation-reversal path for a wrongly posted month.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-11",
@@ -130,7 +164,10 @@
    "market_standard": "Tally famously has NO fixed-asset register, which is the opportunity the owner should be attacking. But the dedicated Schedule II tools CAs buy alongside Tally all do CWIP, revaluation, impairment, component split and shift working, because those are exactly why they are bought.",
    "confidence": "high",
    "suggested_fix": "Sequence: CWIP + capitalisation-on-commissioning first (it blocks a whole client type), then shift working (a rate multiplier, cheap), then component accounting (a parent/child on the same table), then revaluation/impairment as value-only movements posted through the kernel.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-01",
@@ -142,7 +179,10 @@
    "market_standard": "Tally's Stock Summary is as-at-a-date by definition and is the report an SME's accountant lives in; Zoho Books' inventory valuation summary takes a date. Both re-derive the running balance in the display order shown.",
    "confidence": "high",
    "suggested_fix": "Add an as-of-date valuation: either recompute the running columns for display in the requested order, or add a period-bucketed stock balance table maintained by trigger (the `account_period_balances` pattern CLAUDE.md already blesses). Surface it as a Stock Summary report with a date, and use it for the year-end tie-out to the Inventory GL account.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-02",
@@ -154,7 +194,10 @@
    "market_standard": "Tally Prime offers Avg Cost, FIFO, LIFO, Last Purchase Cost, Standard Cost and more, selectable per stock item. Zoho Books offers FIFO and weighted average.",
    "confidence": "high",
    "suggested_fix": "Add a per-item `valuation_method` and a FIFO cost-layer table consumed by `_compute_stock_out`; keep the existing moving-average path as the default and pin both with the same style of pure-math unit tests already in tests/test_inventory_service.py.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-03",
@@ -166,7 +209,10 @@
    "market_standard": "Tally Prime: stock groups, categories, multiple godowns with transfers, batches with expiry and manufacturing date, alternate and compound units, price lists, BOM and job work, physical stock vouchers, movement analysis. Zoho Books: warehouses, serial/batch tracking, reorder points, composite items, price lists.",
    "confidence": "high",
    "suggested_fix": "Pick the two that unlock client types rather than all of them: godowns (with a transfer movement type) and batches with expiry. Both are additive to the existing ledger \u2014 a godown_id and batch_id on inventory_stock_ledger with the running chain keyed per (item, godown) \u2014 and neither disturbs the costing engine.",
-   "effort": "months"
+   "effort": "months",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-04",
@@ -178,7 +224,10 @@
    "market_standard": "Tally has Stock Ageing Analysis and Movement Analysis as standard reports; Zoho Books has an inventory ageing summary. This is also the kind of report that makes analytics addictive, which is the owner's stated aim.",
    "confidence": "high",
    "suggested_fix": "An ageing report keyed off inventory_stock_ledger stock-in rows net of consumption, plus a 'days since last movement' column on the stock register. The answer is one row per item, so it may be a row set, but it must aggregate server-side per the reporting rule.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-05",
@@ -190,7 +239,10 @@
    "market_standard": "Tally's 'additional cost of purchase' apportions freight and other costs across the stock items on the voucher; Zoho Books has landed cost. Both are standard, not premium features.",
    "confidence": "high",
    "suggested_fix": "Let a purchase bill carry apportionable additional costs (by value or by quantity) that feed `total_cost_paise` in `record_stock_in`; and where the bill's ITC is not eligible, add the tax to the stock cost rather than to GST Input.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-06",
@@ -202,7 +254,10 @@
    "market_standard": "ClearTax and the GST-focused tools carry a reversal register covering the \u00a717(5) grounds and feed 4(B)(1) from it.",
    "confidence": "high",
    "suggested_fix": "Extend the register's reason_code CHECK to permanent grounds (17_5_h at minimum), let the register hold `reclaimable=false` rows, and have `apply_stock_adjustment` record its reversal there so it flows into 4(B)(1). Note the code already warns (domain/inventory_service.py:1499-1505) that the amount is an approximation from the item's own gst_rate_bps \u2014 the register row should carry that caveat to the CA.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-07",
@@ -214,7 +269,10 @@
    "market_standard": "n/a \u2014 this is an internal performance rule the codebase sets for itself and this call site breaks.",
    "confidence": "high",
    "suggested_fix": "Replace with a SQL function returning one latest row per item (DISTINCT ON (service_catalogue_id) ... ORDER BY created_at DESC), or break the loop once a full page has yielded no new item. The answer is one row per item; the read should be too.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-12",
@@ -226,7 +284,10 @@
    "market_standard": "n/a \u2014 internal correctness.",
    "confidence": "high",
    "suggested_fix": "Route all three reads through core/db_paging.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-13",
@@ -238,7 +299,10 @@
    "market_standard": "Schedule II tools take life + residual, derive the rate, and write off the remaining balance in the final year of the useful life.",
    "confidence": "high",
    "suggested_fix": "Make useful life and residual % the inputs for BOTH methods (see FA-02), derive the WDV rate, and write off the residual balance in the last year of life. At minimum, collect useful_life_years for WDV too and stop charging once it is exhausted.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-14",
@@ -250,7 +314,10 @@
    "market_standard": "Non-depreciable classes are non-depreciable by construction; an explicit zero is honoured.",
    "confidence": "high",
    "suggested_fix": "Use `is None` checks rather than `or`, and refuse (or force zero) for Land regardless of method.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-15",
@@ -262,7 +329,10 @@
    "market_standard": "An FY selector on a report either filters it or is not shown.",
    "confidence": "high",
    "suggested_fix": "Either make the endpoint FY-aware (additions in the year, disposals in the year, closing block) or drop the FY picker from this page. The former is the same work as FA-05's movement table.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-16",
@@ -274,7 +344,10 @@
    "market_standard": "A depreciation run reports per-asset results: posted, skipped (already posted), skipped (acquired later), failed with a reason.",
    "confidence": "high",
    "suggested_fix": "Fold this into the server-side run of FA-04 and render its per-asset result list.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-17",
@@ -286,7 +359,10 @@
    "market_standard": "Every FA register lets you set your own asset code/tag and enforces uniqueness.",
    "confidence": "high",
    "suggested_fix": "Add `asset_code: Optional[str]` to the model, use it when supplied, and put a unique index on (client_id, asset_code).",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-18",
@@ -298,7 +374,10 @@
    "market_standard": "n/a \u2014 this is dead correct code alongside live wrong code.",
    "confidence": "high",
    "suggested_fix": "Render it on the Depreciation tab in place of `annualDepn`; extend it with a projection over remaining useful life so it is a real schedule rather than one year.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-19",
@@ -310,7 +389,10 @@
    "market_standard": "ClearTax and the GST-first tools carry a Rule 42/43 common-credit working. Rule 42 (inputs) is at least gestured at in this codebase's reversal vocabulary; Rule 43 is not.",
    "confidence": "medium",
    "suggested_fix": "Once assets carry their tax split (FA-07), a Rule 43 monthly schedule is derivable: 1/60th of the common credit apportioned by exempt turnover. It belongs beside the ITC reversal register, not in the FA router.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-08",
@@ -322,7 +404,10 @@
    "market_standard": "Tally's Physical Stock voucher records the whole count in one voucher and derives the variances; Zoho Books has inventory adjustments in bulk.",
    "confidence": "high",
    "suggested_fix": "A count session: export the register as a count sheet, accept the counted quantities back, show the variance list for CA confirmation (with the ITC decision per line), then post one batch under one reference.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-09",
@@ -334,7 +419,10 @@
    "market_standard": "Tally supports compound units (box of 12 pieces) and decimal places per unit, which is how this is normally solved rather than by widening one column.",
    "confidence": "medium",
    "suggested_fix": "Validate the request quantity to three decimals at the boundary (apps/web/lib/money/rupeeInput.ts already exports `parseQuantity` for exactly this, per CLAUDE.md), and revisit the column width alongside the alternate-units work in INV-03.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "FA-20",
@@ -346,7 +434,10 @@
    "market_standard": "n/a \u2014 the product has already set the standard for itself on the inventory side and not met it here.",
    "confidence": "high",
    "suggested_fix": "Mirror the inventory checks: asset with no acquisition journal; acquisition journal with no asset; depreciation posted in the GL that the register does not reflect (and vice versa); disposed asset with no disposal journal.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "INV-10",
@@ -358,7 +449,10 @@
    "market_standard": "Zoho Books exposes inventory adjustments as a document type you create directly, listing the items on it.",
    "confidence": "high",
    "suggested_fix": "Surface both actions from the register row, and add an NRV review screen listing every item with its cost and a field for NRV.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   }
  ],
  "maturity": {

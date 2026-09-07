@@ -29,7 +29,12 @@
    "market_standard": "TallyPrime tracks a running FY aggregate per party per nature-of-payment and deducts the moment the exemption limit is crossed; ClearTDS and Winman TDS do the same. No Indian product treats the \u00a7194J limit as per-invoice.",
    "confidence": "high",
    "suggested_fix": "Add `aggregate_threshold_paise` to 194J/194H/194A/194D/194G/193/194 (equal to the single threshold, since the statute states one annual limit), and change the ONE section that genuinely is per-payment \u2014 194I, \u20b950,000 per month or part after FA 2025 \u2014 to say so in its own comment. `_resolve_bill_resident_tds` already computes `fy_prior` correctly, so only the registry and the `applies` test move.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "same probe as TDS-01; s.194H three Rs 15,000 commissions withheld Rs 0 against Rs 900"
+   }
   },
   {
    "id": "PUR-02",
@@ -41,7 +46,12 @@
    "market_standard": "TallyPrime's TDS deducts on the cumulative value at the moment the exemption limit is crossed \u2014 the standard 'threshold crossed, deduct on aggregate' behaviour every Indian package implements.",
    "confidence": "high",
    "suggested_fix": "When `applies` is true only because the aggregate clause fired, compute TDS on `fy_total` less TDS already deducted in the FY under that section for that payee, rather than on the current bill alone. The FY-prior figure is already fetched at routers/purchase_bills.py:317-332; it needs a companion sum of prior `tds_paise`. Rewrite tests/test_tds_bill_engine.py:59-70 as the negative control.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran five Rs 25,000 s.194C bills: Rs 500 total withheld against Rs 2,500 on the aggregate"
+   }
   },
   {
    "id": "PUR-03",
@@ -53,7 +63,10 @@
    "market_standard": "The settled and mainstream Indian practice \u2014 supported by a consistent line of ITAT decisions (e.g. DIC Asia Pacific Pte Ltd v ADIT) \u2014 is that a DTAA rate is a ceiling on tax as defined in Article 2, which includes surcharge and cess, so neither is added on top. Winman TDS and ClearTDS cap at the treaty rate.",
    "confidence": "medium",
    "suggested_fix": "When `basis == \"treaty\"`, do not add surcharge or cess, and say so in the docstring beside the \u00a7206AA paragraph that already explains the opposite choice. If the owner wants to keep the conservative behaviour, make it an explicit recorded decision with a test naming it, because right now it is neither documented nor pinned.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-04",
@@ -65,7 +78,10 @@
    "market_standard": "TallyPrime posts blocked credit to the expense/purchase ledger at voucher entry (its 'Ineligible for input credit' classification), so the GST Input ledger only ever holds claimable credit. Zoho Books does the same via its ITC-ineligible flag.",
    "confidence": "high",
    "suggested_fix": "In `journal_for_purchase_bill`, debit GST Input for `cgst_paise - ineligible_itc_cgst_paise` (and the same for SGST/IGST) and add the ineligible remainder to the expense debit \u2014 that is what \u00a717(5) means economically. Add a parity test asserting the GL gst_input movement equals `books_itc` for a bill with a blocked line.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-05",
@@ -77,7 +93,10 @@
    "market_standard": "TallyPrime asks 'Is ineligible for input credit?' with a \u00a717(5) reason at voucher entry; Zoho Books has a per-line ITC-eligibility dropdown; ClearTax's purchase register carries an ineligibility column. It is a first-class field everywhere.",
    "confidence": "high",
    "suggested_fix": "Add a per-line 'ITC eligible' toggle plus a \u00a717(5) reason picker to PurchaseBillEditor (the reason codes are listed in migration 240's column comment), and show the blocked total on the bill view drawer. Backend needs no change.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-06",
@@ -89,7 +108,10 @@
    "market_standard": "In TallyPrime the party's TDS rate (including a lower/nil \u00a7197 rate with certificate number and validity) is what the voucher deducts at. A rate field that is displayed and ignored does not exist in any comparable product.",
    "confidence": "high",
    "suggested_fix": "Either make the vendor rate an override the engine honours (with a bound so it can never exceed the section rate silently), or remove the input and the list column and replace them with a read-only display of the section rate the registry will apply. The first is the honest fix and is the natural home for PUR-07.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-07",
@@ -101,7 +123,10 @@
    "market_standard": "TallyPrime, ClearTDS, Winman TDS and Saral TDS all hold a \u00a7197 certificate per deductee: certificate number, section, rate, the amount up to which it applies, and validity dates, with the rate reverting to the section rate once the certificate limit is exhausted.",
    "confidence": "high",
    "suggested_fix": "Add `tds_certificate_no`, `tds_certificate_rate_bps`, `tds_certificate_limit_paise`, `tds_certificate_valid_from/to` to vendors; pass them into `resolve_tds` so the certificate rate applies to bills dated in the validity window up to the limit and the section rate applies beyond it; carry the flag and number onto the `tds_deductions` row for 26Q.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-08",
@@ -113,7 +138,10 @@
    "market_standard": "TallyPrime blocks entry into a GST-return-locked period and prompts to move the voucher to the current period; ClearTax's books flag out-of-period ITC. A recipient who genuinely wants that credit takes it in the current 3B under \u00a716(4), which is exactly what the refusal message should say.",
    "confidence": "high",
    "suggested_fix": "Call `period_lock_service.assert_open(db, firm_id, client_id, bill_date)` in `_create_purchase_bill_core` (mirroring sales_invoices.py:824) and in `receive_purchase_bill` before the status flip. Extend tests/test_documents_locked_by_filed_return.py with a create case and a receive case.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-09",
@@ -125,7 +153,10 @@
    "market_standard": "ClearTax's and Cygnet's Rule 37 / 180-day reports run off the net outstanding in the purchase ledger, which already reflects debit and credit notes.",
    "confidence": "high",
    "suggested_fix": "Add `debited_paise, credit_note_paise` to the select and pass them into `reversal_for_bill`, or read `outstanding_paise` directly. The proportion should also be taken against the CURRENT value of the supply, not the original `total_paise`. Add a case to tests/test_rule37_itc_reversal.py with a debit-noted bill as the negative control.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-10",
@@ -137,7 +168,10 @@
    "market_standard": "TallyPrime deducts TDS on an advance payment voucher and adjusts it against the bill when the bill is later booked; ClearTDS and Saral both model advance-payment deductions as first-class 26Q rows.",
    "confidence": "high",
    "suggested_fix": "Add `tds_paise`/`tds_section`/`tds_rate_bps` to purchase_payments; when a payment has no bill allocation (or exceeds the allocated bills), run the same `_resolve_bill_resident_tds` / \u00a7195 path over the unallocated amount, post the TDS credit in `journal_for_purchase_payment`, and call `sync_for_bill`'s equivalent for payments so the register carries the row. The adjustment against a later bill needs its own rule so the same sum is not deducted twice.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-11",
@@ -149,7 +183,10 @@
    "market_standard": "This is the core of the ITC products CAs actually pay for. ClearTax GST, Cygnet, IRIS Sapphire and TaxGenie all pull 2A/2B, match invoice-by-invoice against the books with fuzzy invoice-number handling, persist a status per invoice, and produce a supplier-wise 'not filed' follow-up list. TallyPrime 5.0 downloads GSTR-2B and reconciles inside the ledger.",
    "confidence": "high",
    "suggested_fix": "Move `reconcile()` to a backend service that reads `purchase_bills` for the period, add `gstr2a_records.purchase_bill_id` plus a match status, persist the result, and surface the status as a column on the Purchases \u2192 Bills tab and as a supplier-wise defaulter list. Keep the CSV upload for the 2B side only.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-12",
@@ -161,7 +198,10 @@
    "market_standard": "Every current Indian GST product states the post-2022 position \u2014 ITC only to the extent reflected in GSTR-2B, no cushion.",
    "confidence": "high",
    "suggested_fix": "Replace all four strings with the \u00a716(2)(aa) / Rule 36(4)-as-substituted position and cite Notification 40/2021-CT. Worth grepping for other '105' / '110' / '120' Rule 36(4) survivals across apps/web at the same time.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-13",
@@ -173,7 +213,10 @@
    "market_standard": "TallyPrime tracks 194Q per party cumulatively and deducts on the incremental value above \u20b950 lakh, and also handles the \u00a7194Q vs \u00a7206C(1H) precedence (if the buyer deducts under 194Q, the seller does not collect under 206C(1H)).",
    "confidence": "high",
    "suggested_fix": "Give 194Q an excess-only computation: `tds = max(0, fy_total - 50L) * rate - tds_already_deducted_in_fy`, with the aggregate as the trigger. Note that \u00a7206C(1H) TCS is separately unimplemented \u2014 section_rates.py:143-149 says so explicitly for 206C \u2014 so the precedence rule cannot be modelled until TCS exists.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-14",
@@ -185,7 +228,10 @@
    "market_standard": "Not a market comparison \u2014 this is the product's own established pattern (payroll) not being applied to the purchase side.",
    "confidence": "high",
    "suggested_fix": "Read `res.data.tds_register` in the receive handler and render `gap_details` the way the payroll page renders `statutory_gaps`; treat `synced: false` as a warning banner, not a success. Add the mirror of scripts/payroll-gaps-reach-the-screen.test.ts.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-15",
@@ -197,7 +243,10 @@
    "market_standard": "TallyPrime 4.1+ ships MSME tracking off the actual party ledger with an ageing report against the \u00a715 due date; Zoho Books flags MSME vendors on the bill; ClearTax's 43B(h) report is generated from the purchase register, not re-keyed.",
    "confidence": "high",
    "suggested_fix": "Delete the manual table and derive \u00a743B(h) on the backend from `purchase_bills` + `purchase_payments` for vendors whose `msme_status` is micro or small, with the agreed credit period read from `purchase_bills.credit_days` (already snapshotted) capped at 45 days, defaulting to 15 where no agreement is recorded. Report the year-of-accrual disallowance and the \u00a716 interest, and surface the vendor's MSME classification on the vendor master where the CA already is.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-16",
@@ -209,7 +258,10 @@
    "market_standard": "Not applicable \u2014 no product ships two disconnected supplier masters. This is a leftover from an earlier schema (migration 030 predates 049).",
    "confidence": "high",
    "suggested_fix": "Remove the route and the page, or make it a redirect to the client's Purchases \u2192 Vendors tab. If any production data exists in `suppliers`, write a one-off backfill into `vendors` first. Same treatment for the `msme_vendors` table, which has no readers at all.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-17",
@@ -221,7 +273,10 @@
    "market_standard": "Zoho Books' Autoscan and Dext create the vendor inline from the extracted GSTIN/name when no match is found, rather than failing.",
    "confidence": "high",
    "suggested_fix": "Either delete the endpoint (the editor path already does the right thing) or route it through `_create_purchase_bill_core` with an explicit 422 'No vendor matches this GSTIN/name \u2014 create the vendor first' when the match fails.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-18",
@@ -233,7 +288,10 @@
    "market_standard": "TallyPrime has a dedicated Bill of Entry / import purchase voucher class; Zoho Books India has an 'Import' transaction type that splits the customs IGST from the supplier invoice; ClearTax reconciles BoE data from ICEGATE into 4(A)(1).",
    "confidence": "high",
    "suggested_fix": "A Bill of Entry document type carrying BoE number, port code, date and the customs IGST + cess, posting Dr GST Input / Cr Bank (or Cr Customs Duty Payable) without touching the vendor's AP, and feeding `IMPG`. Import of services is the \u00a7195/RCM combination that already half-exists and needs the `IMPS` row wired.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-19",
@@ -245,7 +303,10 @@
    "market_standard": "TallyPrime auto-generates the RCM self-invoice with its own voucher series; Zoho Books India issues a 'Bill of Supply / self-invoice' for reverse-charge purchases from unregistered vendors.",
    "confidence": "high",
    "suggested_fix": "Generate a numbered self-invoice document (own series, own numbering under services/numbering.py) when a bill is received with `is_reverse_charge` and the vendor has no GSTIN, and a payment voucher when the RCM vendor is paid. A print/PDF is enough; nothing needs to be filed.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-20",
@@ -257,7 +318,10 @@
    "market_standard": "Cess is a standard rate field on the purchase line in TallyPrime, Busy, Marg and Zoho Books India, and flows to 3B Table 4 cess automatically.",
    "confidence": "high",
    "suggested_fix": "Add `cess_rate_bps` and `cess_paise` to purchase_bill_lines and `cess_paise` to purchase_bills, compute it alongside the other heads in `_compute_line_gst`, include it in the payable and the journal, and expose a cess column on the bill editor. The GST computer and the ineligible-cess column are already waiting for it.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-21",
@@ -269,7 +333,10 @@
    "market_standard": "Dext, Zoho Books Autoscan and Vyapar all show the original document side by side with the extracted fields and flag when the line total does not equal the header total before allowing a save.",
    "confidence": "high",
    "suggested_fix": "Validate the arithmetic server-side in `_parse_extraction_json` and return an explicit `arithmetic_ok` flag plus the extracted total; in the editor, show the extracted invoice total against the running line total and block the save (or warn hard) when they differ. Also show the stored `document_url` beside the form so the CA can check against the original.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-22",
@@ -281,7 +348,10 @@
    "market_standard": "In TallyPrime a payment voucher shows the party's pending bills for Agst Ref selection; Zoho Books' vendor payment lets you tick multiple bills and shows the unapplied remainder as an advance. This is table stakes.",
    "confidence": "high",
    "suggested_fix": "Point the Payments tab's form at the multi-bill engine \u2014 list the vendor's open bills with allocation boxes, an auto-apply-oldest-first button and a visible unallocated remainder. The backend is done; this is UI plus an endpoint that reaches `create_payment_core`.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-23",
@@ -293,7 +363,10 @@
    "market_standard": "TallyPrime adjusts the TDS on a purchase return against the party's deduction so the 26Q figures track the net credit.",
    "confidence": "high",
    "suggested_fix": "Call `sync_for_bill` after a debit note or purchase credit note is issued against a bill, with the bill's post-note taxable amount. Note this also raises a genuine statutory question the owner should decide: whether the TDS itself is adjusted or only the reported gross.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-24",
@@ -305,7 +378,10 @@
    "market_standard": "Tally's Bills Payable report shows 'On Account' amounts as a separate line; Zoho Books shows unapplied vendor advances in the payables ageing summary.",
    "confidence": "high",
    "suggested_fix": "Add an 'advances / on account' section to `ap_aging` sourced from `purchase_payments.unallocated_paise` (net of reversed payments) and report the reconciling total, so the ageing agrees with the AP control account.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-25",
@@ -317,7 +393,10 @@
    "market_standard": "TallyPrime, Busy and Marg all ship Purchase Order \u2192 Receipt Note \u2192 Purchase Bill with quantity and rate matching; Zoho Books has PO \u2192 Bill conversion with a match indicator. For an SME's own staff using the platform this is a standard expectation.",
    "confidence": "high",
    "suggested_fix": "If the target user is the CA rather than the client's purchase clerk, this may be deliberately out of scope \u2014 it is worth an explicit owner decision rather than a build. If built, a lightweight PO with a bill-conversion path and a quantity-variance flag covers most of the value.",
-   "effort": "months"
+   "effort": "months",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-26",
@@ -329,7 +408,10 @@
    "market_standard": "Zoho Books has recurring bills; TallyPrime has voucher templates and repeat entry; Busy has recurring vouchers.",
    "confidence": "high",
    "suggested_fix": "Mirror the recurring-invoice tables and service for purchase bills, creating DRAFTS (never auto-receiving, per the house rule) so a human still posts them.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-27",
@@ -341,7 +423,10 @@
    "market_standard": "Zoho Books has Expenses with receipt attachment, mileage and employee reimbursement; Zoho Expense and Keka do full claim workflows; Tally handles it as payment vouchers but with a proper cash-book. The banking module here does cover the bank-line case, so this is a partial gap rather than a total one.",
    "confidence": "high",
    "suggested_fix": "A lightweight expense document (payee optional, receipt attachment, expense account, GST optional) posting through the same kernel would cover it. Worth checking with the owner whether the banking module's voucher path is considered sufficient before building.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-28",
@@ -353,7 +438,10 @@
    "market_standard": "Jamku and Zoho Practice scope client visibility to the assigned team. Note this is the codebase-wide second data path CLAUDE.md documents rather than something specific to this subsystem \u2014 I am recording it here because vendor PANs and supplier pricing are among the more sensitive things it exposes.",
    "confidence": "high",
    "suggested_fix": "Either add assignment-aware RLS SELECT policies for the purchase tables (mirroring the 260/261 write policies), or route these five reads through the API where `assert_client_access` already runs. The first scales better across the ~320 direct reads.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-29",
@@ -365,7 +453,10 @@
    "market_standard": "Not applicable \u2014 this is an internal coverage gap measured against the codebase's own standard (CLAUDE.md: 'Every financial calculation must have a corresponding unit test').",
    "confidence": "high",
    "suggested_fix": "Add tests asserting: an RCM bill's `total_paise` and `net_payable_paise` exclude GST while `cgst/sgst/igst` are still populated; the receive journal balances with the output-liability legs; and a bill with one blocked line produces the right `ineligible_itc_*_paise` header totals.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-30",
@@ -377,7 +468,10 @@
    "market_standard": "Not applicable \u2014 code hygiene.",
    "confidence": "high",
    "suggested_fix": "Delete the constant.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-31",
@@ -389,7 +483,10 @@
    "market_standard": "Tally and Zoho use a monotonic sequence that never reuses a number, so a voided voucher leaves a gap rather than causing a collision.",
    "confidence": "high",
    "suggested_fix": "Take the max existing suffix rather than the count, or move numbering into services/numbering.py with a DB sequence, as the sales side's document numbering already contemplates.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PUR-32",
@@ -401,7 +498,10 @@
    "market_standard": "Dext and Zoho Books flag a possible duplicate on same-vendor + same-amount + same-date regardless of the reference; Tally warns on a repeated supplier invoice number per party per year.",
    "confidence": "high",
    "suggested_fix": "Add a soft warning (not a refusal) when a live bill exists for the same vendor with the same `bill_date` and `total_paise` but a different number, and tighten the vendor duplicate guard to include a normalised-name match for vendors with no GSTIN or PAN.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   }
  ],
  "test_coverage_notes": "What is tested, and well: the \u00a7195 engine has 165 passing tests across tests/test_section_195_rates.py and tests/test_vendor_residency_and_27q.py covering chargeability, the treaty comparison, the two surcharge ladders, the capital-gains cap, cess on tax-plus-surcharge, and every refusal path. tests/test_no_duplicate_purchase_bill.py holds the API guard and migration 313's index together. tests/test_rule37_itc_reversal.py covers proportionate reversal, the ceiling rounding and the reversal period. tests/test_vendor_payment_concurrency.py, tests/test_purchase_payment_allocate.py and tests/test_r227_draft_bill_payment_guard.py cover the CAS and the draft-bill guard. tests/test_e2e_purchase_cycle.py walks a full lifecycle including cross-firm refusals. tests/test_itc_reversal_register.py covers the ledger-support refusal.\n\nTwo tests assert WRONG statutory behaviour, and both should be rewritten as negative controls for PUR-01 and PUR-02. tests/test_tds_bill_engine.py:59-70 (`test_h5_194c_aggregate_threshold_across_bills`) asserts `b5[\"tds_paise\"] == 500_00` \u2014 TDS on the crossing bill alone \u2014 which under \u00a7194C(5) should be \u20b92,500 on the \u20b91,25,000 aggregate. tests/test_tds_bill_engine.py:43-47 (`test_h5_below_threshold_no_tds`) is correct for one \u20b940,000 \u00a7194J bill in isolation, but it is the only \u00a7194J threshold test and it therefore pins a model that has no annual aggregate at all, which is where the statute puts the limit.\n\nWhat has no coverage where it is computed: `is_reverse_charge` never appears in any purchase-cycle test file (grep across tests/*.py matches only GST-side files), so the branch that decides whether Trade Payables includes GST the vendor never charged is untested. `itc_eligible` never appears in a test of `_compute_bill_lines_and_totals` \u2014 only in the schema guard and the GST computer's own tests. There is no test at all for `POST /purchase-bills/from-document` (grep finds it only in tests/test_r237_ar_ap_hardening.py, which is about ageing). No test asserts that the TDS register's `statutory_gaps` reach the frontend \u2014 the payroll equivalent has one (apps/web/scripts/payroll-gaps-reach-the-screen.test.ts) and could be copied. tests/test_documents_locked_by_filed_return.py covers the purchase-bill EDIT path only (line 189), not create and not receive, which is exactly where the lock is missing. \u00a7194Q has no test anywhere. And nothing pins the GL `gst_input` movement against the GSTR-3B `books_itc` for a bill with a blocked line \u2014 that parity test would have caught PUR-04 the day it was written.",

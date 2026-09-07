@@ -10,7 +10,12 @@
    "market_standard": "In TallyPrime year-end adjusting entries are ordinary journal vouchers and post like any other. Zoho Books posts manual journals with the same engine as invoices. Winman/CompuTax take the finalised trial balance and expect the adjustments to already be in the books.",
    "confidence": "high",
    "suggested_fix": "Delete the direct inserts and call phase2_journal_service._create_journal(db, firm_id, existing['client_id'], existing['adjustment_date'], f'YEA-{adjustment_id[:8].upper()}', existing['description'], 'Journal', lines, is_posted=True, source_type='year_end_adjustment', source_id=adjustment_id, created_by=current_user['id']). Then add a real-Postgres test that posts an adjustment against the migration-built schema, because the FakeDB test cannot catch this class.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "checked journal_entries columns in production: no source/source_ref_id; client_id and entry_type are NOT NULL"
+   }
   },
   {
    "id": "ACC-02",
@@ -22,7 +27,10 @@
    "market_standard": "Tally's Payment/Receipt voucher makes you pick the exact cash or bank ledger \u2014 it is the credit leg of the voucher, not a metadata field. Zoho Books, Busy and Marg all require you to name the deposit-to / paid-through account and refuse to save without it.",
    "confidence": "high",
    "suggested_fix": "Add a `payment_account_id` (FK to chart_of_accounts, or bank_accounts.coa_account_id) to receipts and purchase_payments, default it from payment_mode ('cash'/'petty cash' \u2192 system_account_key 'cash'), and make the journal use it. Backfill is not needed for correctness of new entries; existing rows keep the generic bank leg and should be listed for the CA rather than silently re-pointed.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-03",
@@ -34,7 +42,10 @@
    "market_standard": "Tally, Zoho Books and Busy all make the bank ledger the actual credit/debit leg of the voucher, so the ledger balance IS the bank balance and BRS runs per account.",
    "confidence": "high",
    "suggested_fix": "Same fix as ACC-02 \u2014 one `payment_account_id` on receipts/purchase_payments resolved from the chosen bank account's coa_account_id. Then make bank_posting_service and the receipt/payment paths share one resolver so they cannot diverge again.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-04",
@@ -46,7 +57,10 @@
    "market_standard": "Tally will not let you alter the accounting entry of a voucher independently of the voucher \u2014 you alter the voucher and the entry follows. Zoho Books makes system-generated journals read-only entirely.",
    "confidence": "high",
    "suggested_fix": "Add the same `source_type = 'manual'` guard to edit_posted_journal that discard_posted_journal already has (and mirror it in manual_journal_service.update so the CA gets the sentence rather than a SQLSTATE). Reuse migration 275's wording verbatim.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-05",
@@ -58,7 +72,19 @@
    "market_standard": "Tally's period lock is set and cleared by an authorised user at will. Zoho Books lets an admin unlock a closed period with a reason. Every Indian practice reopens a closed year at least once a season \u2014 revised returns, audit adjustments, ITR filing findings.",
    "confidence": "high",
    "suggested_fix": "Add a Partner-gated, audited `DELETE /api/year-end/{engagement_id}/lock` (or a `locked \u2192 approved` transition) that calls set_client_lock(lock=False) with a mandatory reason, and surface it on the year-end dashboard. The audit row already exists in set_client_lock; only the entry point is missing.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Exactly as claimed: finalising a year-end engagement writes an irreversible client_year_locks row (year_end_workflow_service.py:61-66), the kernel then refuses every posting for that client-year (phase2_journal_service.py:1569-1579), and neither the API surface nor any screen exposes set_client_lock(lock=False) \u2014 routers/year_end.py:91-96 makes 'locked' terminal and the route table has no unlock endpoint. Only the FIRM-level lock has an unlock (routers/accounting.py:626).",
+    "probe": "cd apps/api && python -c \"import main; [print(sorted(r.methods), r.path) for r in main.app.routes if hasattr(r,'methods') and 'year-end' in r.path]\" \u2192 25 routes printed; the only status route is ['PATCH'] /api/year-end/engagements/{engagement_id}/status. No DELETE, no /lock, no /unlock. Also: grep -rn 'set_client_lock' apps/api apps/web \u2192 3 hits (definition at year_lock_service.py:125, import at year_end_workflow_service.py:61, call at :62 with lock=True).",
+    "lens_notes": {
+     "literal": "Confirmed at the exact lines. apps/api/services/phase2_journal_service.py:1569-1579 imports is_client_year_locked and raises 'FY {fy} is closed for this client \u2014 its year-end has been finalised. Reopen the year before posting to it.' The lock row is written only by apps/api/services/year_end_workflow_service.py:61-66 (set_client_lock(..., lock=True, reason='Year-end engagement finalised')). apps/api/services/year_lock_service.py:125-158 does support lock=False (the DELETE branch at :144-147 plus the 'unlock' audit event at :150-156), but a repo-wide grep for set_client_lock returns exactly two hits: the definition and that one lock=True call. apps/api/routers/year_end.py:91-96 has _STATUS_TRANSITIONS['locked'] = [], and grep for delete/DELETE/unlock/reopen across routers/year_end.py returns nothing at all.",
+     "guards": "No guard rescues this. Migration 289 GRANTs SELECT/INSERT/UPDATE/DELETE on public.client_year_locks to `authenticated` (289_client_scoped_year_locks.sql:105), so a direct PostgREST delete is theoretically possible \u2014 but grep across apps/web finds no reference to client_year_locks except a comment at apps/web/app/clients/[id]/accounting/page.tsx:3413 describing where the lock is written. There is no test asserting an unlock path exists; apps/api/tests/test_year_lock_management.py only pins that finalising locks ONE client (:89-113) and that a missing client_id locks nothing (:117-127). The FIRM-level lock does have a working unlock \u2014 routers/accounting.py:626 POST /year-lock with lock=false, via set_lock's else-branch at year_lock_service.py:81-82 \u2014 but that is a different table and does not clear client_year_locks.",
+     "reach": "Fully reachable. year_end.router is mounted at apps/api/main.py:344 and the engagement screens exist at apps/web/app/clients/[id]/year-end/. A route dump of the live app confirms the omission directly: /api/year-end/engagements/{engagement_id}/status is the only status route and there is no DELETE or unlock route anywhere under /api/year-end."
+    }
+   }
   },
   {
    "id": "ACC-06",
@@ -70,7 +96,19 @@
    "market_standard": "Tally has memorandum and recurring vouchers in the company data file. Zoho Books has recurring journals with a real schedule and auto-post. Busy and Marg both store recurring entries server-side. Budgets in Tally are per-company data, visible to every user.",
    "confidence": "high",
    "suggested_fix": "Give recurring templates, budgets and retainers real firm-scoped tables with RLS, move the CRUD behind API endpoints with rbac(), and post due templates from jobs/scheduler.py as DRAFTS (the scheduler already refuses to auto-post \u2014 apps/api/jobs/scheduler.py:228 \u2014 so drafts into the approval queue is the shape that fits). Until then the hub cards should say 'this device only'.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed without qualification. Recurring journal templates, budgets and retainers are per-browser localStorage with no table, no endpoint, no RLS and no scheduler \u2014 apps/web/app/accounting/recurring/page.tsx:41-54, budget/page.tsx:35-51, retainer/page.tsx:52-115 \u2014 while the hub card at apps/web/app/accounting/page.tsx:19 promises 'Automate monthly, quarterly & yearly entries'. Post Now (recurring/page.tsx:255,266) also stamps today's date rather than the occurrence's due date, so even the manual path posts to the wrong period.",
+    "probe": "grep -rln 'budget' apps/api/migrations apps/api/services apps/api/routers \u2192 ageing_schedule_service.py, bank_column_mapping_service.py, document_intelligence_v1.py only (no budget table or endpoint). grep -rn 'localStorage' on the three pages confirms every read and write of templates/budgets/retainers goes to the browser.",
+    "lens_notes": {
+     "literal": "All three cited files confirmed. apps/web/app/accounting/recurring/page.tsx:41 `const LS_KEY = \"practicesync_recurring_templates\"`, loadTemplates at :43-51 and saveTemplates at :52-54 both hitting localStorage; deleteTemplate at :242-248 filters the local array only; postNow at :252-285 sets `const today = todayISO()` (:255) and sends `entry_date: today` (:266), so a template due on the 1st posted on the 20th is dated the 20th. apps/web/app/accounting/budget/page.tsx:35-51 keys every budget figure under `practicesync_budget_${fy}` in localStorage. apps/web/app/accounting/retainer/page.tsx:52-54 defines three keys (practicesync_retainers / practicesync_invoices / practicesync_retainer_work) with load/save helpers at :83-115. The hub cards at apps/web/app/accounting/page.tsx:19-21 do say 'Recurring Transactions \u2014 Automate monthly, quarterly & yearly entries', 'Budget vs Actuals' and 'Retainer Tracker'.",
+     "guards": "No server-side equivalent exists for any of the three. Backend 'recurring' code is recurring INVOICES (services/recurring_invoice_service.py, routers/recurring_invoices.py) and recurring TASKS (services/recurring_task_service.py) \u2014 neither is a recurring journal template. Grep for 'budget' across apps/api/migrations, services and routers returns only ageing_schedule_service, bank_column_mapping_service and document_intelligence_v1 \u2014 no budget table, no budget endpoint. Nothing sweeps or backs up localStorage. The one accurate part of the suggested fix is verified: the scheduler's recurring-invoice job is drafts-only by locked decision (apps/api/jobs/scheduler.py:225-227, 'Drafts only: never auto-issue, auto-post a journal, or auto-email').",
+     "reach": "Reachable and advertised. /accounting is a workspace defaultRoute (apps/web/lib/workspace/workspaceConfig.ts:77,126) and the hub renders all three cards. Post Now does reach the real kernel \u2014 api.accounting.createJournalEntry \u2192 manual_journal_service \u2192 phase2_journal_service._create_journal \u2014 so posted entries are real; it is only the templates, budgets, retainers and schedule that live in the browser."
+    }
+   }
   },
   {
    "id": "ACC-07",
@@ -82,7 +120,19 @@
    "market_standard": "TallyPrime's Edit Log is per-voucher: open a voucher and see every version with the before/after of each field, plus a whole-company Edit Log report filterable by date, user and voucher type. That is the control the Companies (Accounts) Rules proviso is written for, and it is the parity target.",
    "confidence": "high",
    "suggested_fix": "Add server-side date/entity/actor filtering and keyset pagination to GET /api/audit, then add a 'History' tab on the journal entry page that calls it with entity_type=journal_entry&entity_id={id} and renders the journal_line create/update/delete rows as a before/after diff. The data is already there; only the query and the screen are missing.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. The audit endpoint caps at 200 rows with no date range and no pagination (apps/api/routers/audit.py:14-19); the only frontend caller fetches 200 firm-wide rows and filters them in the browser (apps/web/app/settings/audit-log/page.tsx:205,225,251-260). Per-entry history is impossible from any screen even though the trigger already keys journal_line rows to the parent entry id (migration 266:111-117) and the endpoint already accepts entity_id \u2014 a backend capability reachable from no screen, which confirms the gap rather than refuting it.",
+    "probe": "grep -rn 'api\\.audit' apps/web --include=*.tsx --include=*.ts \u2192 1 hit: apps/web/app/settings/audit-log/page.tsx:225 `api.audit.list({ limit: FETCH_LIMIT })`. grep -n 'entity_id' on that page \u2192 0 hits.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/routers/audit.py:18 is `limit: int = Query(50, le=200)` \u2014 200 is a hard ceiling, and there is no cursor, offset, date_from or date_to parameter (the whole signature is entity_type, entity_id, actor_id, limit at :14-19). apps/web/app/settings/audit-log/page.tsx:205 `const FETCH_LIMIT = 200` and :225 `api.audit.list({ limit: FETCH_LIMIT })` \u2014 one call, no params. Filtering at :251-260 is `rows.filter(...)` over what loaded, with the comment at :250 admitting 'client-side over the most recent FETCH_LIMIT events'. The endpoint does accept entity_id (audit.py:16) and the API client does expose it (apps/web/lib/api/index.ts:1966), but the sole caller in the whole frontend passes only limit.",
+     "guards": "None. The volume claim checks out: migration 266 lines 125-128 attach trg_audit_capture_line AFTER INSERT OR UPDATE OR DELETE on public.journal_lines FOR EACH ROW, so every posting writes one audit row per line; and services/audit_service.py:26 records '46,311 rows' measured in production on 2026-09-05. The trigger writes entity_type='journal_line' with entity_id set to the PARENT entry id (migration 266:111-117, with a comment explaining exactly that an auditor asks 'what changed on this entry') \u2014 so the data needed for a per-entry history is already shaped for the query nobody makes. The misleading copy is real: apps/web/app/clients/[id]/accounting/page.tsx:808 tells the CA deleted entries 'stay in Settings \u2192 Audit Log with their lines'.",
+     "reach": "Reachable. audit.router is mounted at apps/api/main.py:280 and the page is Partner-gated (rbac('accounting','approve')). No journal screen links to it: grep for api.audit across apps/web returns exactly one hit, the audit-log page itself."
+    }
+   }
   },
   {
    "id": "ACC-08",
@@ -94,7 +144,10 @@
    "market_standard": "Tally's Trial Balance is period-scoped (F2 sets the period; balance-sheet accounts carry opening + period movement, P&L accounts show only the period). Zoho Books' Trial Balance takes a date range. Winman and CompuTax expect a year's trial balance as input.",
    "confidence": "high",
    "suggested_fix": "Add `start_date` to ReportingService.trial_balance and the endpoint, pass `period.start` from the screen, and present balance-sheet accounts as opening + movement + closing while P&L accounts show the period's movement only. The passbook (account_period_balances) is already monthly, so the fast path needs no new data.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-09",
@@ -106,7 +159,19 @@
    "market_standard": "Tally's whole model is 28 primary groups with user sub-groups, and Alt+C creates a ledger inline from any voucher field without leaving the entry. Zoho Books, Busy and Marg all have a Chart of Accounts screen with New/Edit and a parent-account picker.",
    "confidence": "high",
    "suggested_fix": "Two separate pieces of work: (a) a Chart of Accounts screen with create/edit wired to the existing POST/PATCH /api/accounting/accounts (and an inline 'create account' in AccountLookup, which is where a CA actually needs it); (b) decide whether groups are `parent_id` (self-referencing, Tally-shaped) or `parent_group`/`sub_group` (text, import-shaped) and make ONE of them authoritative \u2014 today both exist and neither is used.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed on both counts. (a) POST/PATCH /api/accounting/accounts exist and work (apps/api/routers/accounting.py:90-136) and apps/web/lib/api/index.ts:728-729 wraps them, but no component in apps/web calls either \u2014 the only way to add a ledger is the whole-chart CSV import at apps/web/app/accounting/coa-import/page.tsx:160. (b) The chart really is flat: the seeder writes no parent_id and no parent_group/sub_group (coa_seed_service.py:133-137), nothing in apps/api ever writes those columns, so account-groups/page.tsx:68-69 renders a seeded firm as one 'Ungrouped \u2192 General' block.",
+    "probe": "cd apps/api && python -c \"import main; [print(sorted(r.methods), r.path) for r in main.app.routes if '/accounting/accounts' in r.path]\" \u2192 ['GET'], ['POST'] /api/accounting/accounts and ['PATCH'] /api/accounting/accounts/{account_id}. grep -rn 'createAccount|updateAccount' apps/web excluding node_modules \u2192 2 hits, both the definitions at lib/api/index.ts:728-729. grep -rn 'parent_group|sub_group' apps/api --include=*.py \u2192 2 hits, both in tests/test_coa_architecture.py.",
+    "lens_notes": {
+     "literal": "Both halves confirmed. apps/api/services/coa_seed_service.py:49-112 defines STANDARD_COA as 4-tuples (code, name, type, subtype) \u2014 68 rows, not 53, but the shape is the point \u2014 and seed_firm_coa at :133-137 inserts exactly firm_id, client_id, account_code, account_name, account_type, account_subtype, is_active. No parent_id, no parent_group, no sub_group. Migration 057_coa_architecture_correction.sql:4-8 added parent_group/sub_group/tax_category/schedule_iii_mapping; grep for parent_group|sub_group across apps/api returns ONLY apps/api/tests/test_coa_architecture.py:35-36 \u2014 no service, router or migration writes them. In apps/web the only writer is the CSV importer at apps/web/app/accounting/coa-import/page.tsx:160-169. apps/web/app/accounting/account-groups/page.tsx:68-69 is verbatim `const pg = acc.parent_group ?? \"Ungrouped\"` / `const sg = acc.sub_group ?? \"General\"`. parent_id is accepted by create_account (routers/accounting.py:126 inserts data.parent_id) and returned by the list select (:82-83) but nothing consumes it.",
+     "guards": "The endpoints are real and correct \u2014 POST /api/accounting/accounts and PATCH /api/accounting/accounts/{account_id} both write the live chart_of_accounts table (routers/accounting.py:90-136 and :157+), with rbac('accounting','write'), a required account_code (:113-118) and firm-scoped writes. That is what makes this a reach problem rather than a backend gap. apps/web/lib/api/index.ts:728-729 defines createAccount/updateAccount; grep across apps/web (excluding node_modules) finds no caller of either. The only frontend path that inserts into chart_of_accounts is the CSV importer at coa-import/page.tsx:160.",
+     "reach": "A capability that exists in the backend and is reachable from no screen \u2014 which the instructions say CONFIRMS the gap. There is no /accounting/chart-of-accounts page (ls apps/web/app/accounting shows account-groups, budget, coa-export, coa-import, fixed-assets, invoices, loans, lock-year, msme-tracker, receivables, recurring, retainer, schedule-iii, schedule-iii-mapping, suppliers, trial-balance-import \u2014 no CoA CRUD screen). The client workspace's 'Accounts' tab (clients/[id]/accounting/page.tsx:43) is read-only: it selects from chart_of_accounts at :224 and never inserts."
+    }
+   }
   },
   {
    "id": "ACC-10",
@@ -118,7 +183,10 @@
    "market_standard": "Tally maps to Schedule III through the group hierarchy, which is one structure the user actually controls. Winman and CompuTax import a trial balance and ask the CA to map each ledger to a Schedule III line once, and that mapping is what drives the statements.",
    "confidence": "high",
    "suggested_fix": "Pick one classification source. The most defensible is chart_of_accounts.schedule_iii_mapping (an explicit CA decision) with account_subtype as the fallback: make bs_bucket/pl_bucket read the mapping first, make the mapping screen writable, and reconcile account_group_mappings into it so the year-end statements and the live Balance Sheet cannot disagree.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-11",
@@ -130,7 +198,10 @@
    "market_standard": "Tally makes you choose the group at creation and lets you regroup later. Zoho Books asks for the account type and sub-type at creation and both are editable.",
    "confidence": "high",
    "suggested_fix": "Add account_subtype (and parent_id) to AccountIn/AccountUpdateIn and to the router's write payloads, validated against the vocabulary bs_bucket/pl_bucket actually recognises. That vocabulary should become a shared constant so the two cannot drift.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-12",
@@ -142,7 +213,19 @@
    "market_standard": "Tally's period lock blocks both new vouchers and alterations in the locked range. Zoho Books' closing date blocks all transactions dated on or before it.",
    "confidence": "high",
    "suggested_fix": "Move the filed-return check into phase2_journal_service._create_journal beside the client year-lock check, so one gate covers every posting path exactly as the year-lock comment argues. Make it a warning-with-override for postings (a CA legitimately posts a July correction into June before amending) but keep it a hard refusal for edits. Separately, record ITR and TDS filings in `filings` so the lock covers what its message claims.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed, medium is right. The filed-return lock is enforced on edits and deletes (manual_journal_service.py:214-215,238-241; migrations 266:380-383, 275:104) and on sales-invoice/purchase-bill writes (the only four assert_open callers), but not on the create path: manual_journal_service.py:92 checks the firm FY only, and the kernel at phase2_journal_service.py:1569-1579 checks only the client year lock. Separately, services/gst_filing_record_service.py:139-149 is the sole writer of `filings`, called only from gst_workspace.py:526,747 \u2014 so ITR (itr_workflow.py:234, table itr_filings) and TDS/ECR filings lock nothing, despite migration 266's comment naming them.",
+    "probe": "grep -rn 'period_lock_service' apps/api --include=*.py (excluding tests) \u2192 the module itself plus imports/calls in purchase_bills.py (25,1345,1347) and sales_invoices.py (22,825,1252,1254) only. grep -rn '\"filings\"' apps/api --include=*.py (excluding tests) \u2192 gst_filing_record_service.py:139,146,149 only (the payroll.py hits are dict keys in a response body, not table names).",
+    "lens_notes": {
+     "literal": "Confirmed. services/period_lock_service.assert_open (:66-77) is called from exactly four places, all in two files: routers/purchase_bills.py:1345,1347 and routers/sales_invoices.py:825,1252,1254 \u2014 nothing else imports the module. manual_journal_service.create calls only period_validation_service.validate_posting_date(firm_id, entry_date) at :92, which is firm-FY-only. The kernel checks only the client year lock: grep for period_lock|lock_reason|filings|validate_posting_date in phase2_journal_service.py returns a single hit, and it is a COMMENT at :1560 \u2014 the file makes no lock call other than is_client_year_locked at :1575. So the filed-return half of migration 267's rule reaches only two document types. The second claim also holds: grep for db.table(\"filings\") across apps/api returns only services/gst_filing_record_service.py:139,146,149, and its callers are routers/gst_workspace.py:526,747 (GSTR-1 and GSTR-3B). ITR files a different table \u2014 domain/income_tax/itr_workflow.py:234-241 updates itr_filings \u2014 and payroll's ecr_filings.record_filing (routers/payroll.py:3948) is a different service entirely (services/epfo_ecr_filing_service.py:134).",
+     "guards": "Partial, and only on the edit side. manual_journal_service._lock_reason (:167-181) does call the journal_period_lock_reason RPC, and update() refuses on it at :214-215 and again for a date move at :238-241; migration 266:380-383 re-checks inside edit_posted_journal, and migration 275:104 does the same for discard. So EDITING and DELETING inside a filed period are properly blocked in SQL, inside the transaction. CREATING is not \u2014 nothing on the create path consults either RPC. Both RPCs fail closed on error, so the asymmetry is a genuine coverage gap and not a fail-open bug.",
+     "reach": "Reachable on every posting path \u2014 bank posting, payroll, depreciation, receipts, payments, credit/debit notes, opening balances, trial-balance import and reversals all enter through _create_journal, which has no filed-return check. Note the FY-lock half is still enforced on many of those via validate_posting_date, so this is specifically the filed-return half."
+    }
+   }
   },
   {
    "id": "ACC-13",
@@ -154,7 +237,19 @@
    "market_standard": "Day Book (D in Tally's Display menu) is Tally's most-used report. Cost centres and cost categories are core Tally and present in Busy and Marg. Bill-wise details (New Ref / Agst Ref / Advance / On Account) is how every Indian practice ages a party balance and is the reason CAs trust Tally's outstandings.",
    "confidence": "high",
    "suggested_fix": "Day book is cheap and high-value: one screen over journal_entries with no source_type filter, grouped by date, with entry_type as the voucher-type column \u2014 the data and the paging helper already exist. Cost centres and bill-wise references are structural (a dimension column on journal_lines; a reference table keyed to documents) and belong in a planned phase, not a side effect of another task.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed. No day book, no cost-centre dimension and no bill-wise reference anywhere in either app (single unrelated grep hit at apps/api/domain/banking/splits.py:7), and the Journal tab is filtered to source_type === 'manual' (apps/web/app/clients/[id]/accounting/page.tsx:647-650). Worth adding: that filter is a deliberate, argued decision (comment at :618-633) which routes auto-postings to Trial Balance, the ledger drill-down and the Audit Log \u2014 so the finding's day-book gap survives, but it should be framed as 'no chronological register exists anywhere' rather than 'the Journal tab hides entries by mistake'.",
+    "probe": "grep -rni 'day.?book|cost cent|cost_cent|bill.?wise|bill_wise' apps/api apps/web/app apps/web/components apps/web/lib \u2192 1 line: apps/api/domain/banking/splits.py:7. ls apps/web/app/clients/[id]/reports/ \u2192 ageing, bank-book, ratios, trend.",
+    "lens_notes": {
+     "literal": "Confirmed. `grep -rni 'day.?book|cost cent|cost_cent|bill.?wise|bill_wise'` across apps/api and apps/web (app, components, lib) returns exactly one hit, apps/api/domain/banking/splits.py:7, and it is prose about a vendor payment covering two cost centres \u2014 no feature. The Journal tab filter is verbatim at apps/web/app/clients/[id]/accounting/page.tsx:647-650. The party-as-control-account claim holds: phase2_journal_service.py:78-80 resolves '%Trade Receivable%' via _find_account(system_key='ar') for every sales invoice, and coa_seed_service.py:58 seeds exactly one '1201 Trade Receivables'.",
+     "guards": "There is a deliberate, documented design decision behind the Journal filter \u2014 a 12-line comment at apps/web/app/clients/[id]/accounting/page.tsx:618-633 argues the tab is the AUTHORED list, that a 'Show system-generated entries' toggle was deliberately removed, and that auto-postings live 'per account in Trial Balance and the Ledger drill-down' and in the Audit Log. That defends the FILTER but does not supply a day book: a per-account drill-down is not a chronological all-voucher register, and (see ACC-07) the Audit Log screen shows only 200 rows. The tab list at :42-52 has no Day Book entry, and apps/web/app/clients/[id]/reports/ holds only ageing, bank-book, ratios and trend. Party ledgers do exist as a separate artefact \u2014 services/customer_statement_service.py and vendor_statement_service.py, exposed at routers/customer_statements.py \u2014 which is what the finding already says.",
+     "reach": "The client accounting workspace is the main screen a CA lives in, so the absence is front-and-centre."
+    }
+   }
   },
   {
    "id": "ACC-14",
@@ -166,7 +261,19 @@
    "market_standard": "Tally takes opening balances per ledger and, for parties, bill-by-bill with dates \u2014 which is what makes day-one ageing correct. Zoho Books' migration wizard takes opening balances for every account plus open invoices and bills individually.",
    "confidence": "high",
    "suggested_fix": "Make the trial-balance import the single opening-balance path (it already handles any account), and have the master opening_balance_paise fields feed party-level opening DOCUMENTS (open invoices/bills with dates) rather than a control-account total \u2014 that is what gives day-one ageing. Add a reconciliation screen that shows the TB import and the master totals side by side before either posts.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed. opening_balance_service only ever plans three legs \u2014 aggregate AR, aggregate AP and per-bank (opening_balance_service.py:155, 219-260) \u2014 with no party- or bill-level opening and nothing for fixed assets, depreciation, inventory, loans, capital, reserves, statutory dues or prepayments; those exist only via trial_balance_import_service, which by explicit design (its docstring at :17-28) posts into a separate journal family that never reconciles against the master figures, so a bank balance present in both is posted twice.",
+    "probe": "grep -n 'AR, AP, BANK|def _plan_opening|ar_total = |ap_total = |bank_total = ' apps/api/services/opening_balance_service.py \u2192 155, 219, 228, 229, 230. grep -n 'TB_SOURCE' apps/api/services/trial_balance_import_service.py \u2192 :68 TB_SOURCE = \"TrialBalance\".",
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines. apps/api/services/opening_balance_service.py:155 is exactly `AR, AP, BANK = \"ar\", \"ap\", \"bank\"`; _plan_opening at :219-260 computes ar_total (:228) \u2192 one '%Trade Receivable%' account, ap_total (:229) \u2192 one '%Trade Payable%', and per-bank amounts to each bank's coa_account_id with a '%Bank%' fallback (:241-253), contra'd to Opening Balance Equity. There is no third leg. Everything else comes from services/trial_balance_import_service.py, whose TB_SOURCE = 'TrialBalance' is at :68 (TB_ENTRY_TYPE='Opening' at :65) and which creates accounts from CSV names (_resolve_or_create_accounts at :90+, _slug_code at :76-85).",
+     "guards": "The separation is deliberate and documented, and that documentation confirms the double-count exposure rather than closing it: trial_balance_import_service.py:17-28 states the two services 'must not share a journal family' because opening_balance_service reverses anything in source_type='Opening' the masters do not justify, so the TB import posts under a different family and 'neither touches the other's entries'. There is therefore no cross-check between them by design \u2014 a bank opening entered on the master AND present in the imported TB posts twice, once in each family. tests/test_trial_balance_import_service.py pins the separation, not any reconciliation.",
+     "reach": "Both paths are live: /accounting/trial-balance-import is a hub card (apps/web/app/accounting/page.tsx:26) and the master opening-balance fields are on the customer/vendor/bank masters."
+    }
+   }
   },
   {
    "id": "ACC-15",
@@ -178,7 +285,10 @@
    "market_standard": "Any workflow tool refuses to approve a deleted item. Tally has no draft/approve split, but Zoho Books will not publish a deleted draft journal.",
    "confidence": "high",
    "suggested_fix": "Add `deleted_at, client_id` to _SELECT (one-line change) \u2014 the guard and the timeline call then work as written. A regression test that discards a draft and then calls post_draft would have caught it.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-16",
@@ -190,7 +300,10 @@
    "market_standard": "Tally preserves voucher line order exactly as entered, and prints it that way. Zoho Books keeps journal line order.",
    "confidence": "high",
    "suggested_fix": "Add `line_no INT NOT NULL` to journal_lines, populate it in post_journal_atomic and edit_posted_journal from the array index, backfill existing rows by created_at then id, and order every read by it.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-17",
@@ -202,7 +315,10 @@
    "market_standard": "Any multi-client practice tool scopes reports to the user's assigned client list. Zoho Practice and Jamku both enforce per-client staff assignment on every report.",
    "confidence": "high",
    "suggested_fix": "Thread effective_client_ids through ReportingService (ledger/trial_balance/profit_loss/balance_sheet/schedule_iii/cash_flow) and both its Supabase and mock sources \u2014 the router comment already scopes the work. As an interim, refuse an omitted client_id for non-firm-wide roles, which is a guard rather than a rewrite.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-18",
@@ -214,7 +330,10 @@
    "market_standard": "Tally's period lock takes any date. Zoho Books' closing date is a date picker.",
    "confidence": "high",
    "suggested_fix": "Derive the list from the current FY (core/ist_clock.ist_fy_label's frontend twin already exists in lib/workspace/ClientNavContext.getCurrentFinancialYear) \u2014 the current year plus the previous six \u2014 or read the client's ledger span from GET /api/accounting/ledger-span, which exists for exactly this problem.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-19",
@@ -226,7 +345,19 @@
    "market_standard": "Zoho Books enables multi-currency from Settings with one toggle. Tally's 'Enable multi-currency' is an F11 feature. Both are self-service.",
    "confidence": "high",
    "suggested_fix": "Add a Partner-gated PATCH to set firms.multi_currency_entitled and clients.multi_currency_enabled, surfaced in firm settings and the client profile, and document that MULTI_CURRENCY_ENABLED must also be true in the environment. Nothing in the accounting logic needs to change.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed. All three gates default off (feature_flags.py:14-21; migration 146:122,129 NOT NULL DEFAULT FALSE), the firm and client flags are read in nine places across apps/api and written in none, and apps/web never mentions them \u2014 so the built multi-currency subsystem (domain/currency, fx_revaluation_service, routers/fx_reports.py, the gated FX section at apps/web/app/clients/[id]/accounting/page.tsx:3374) cannot be turned on for any firm or client without direct SQL.",
+    "probe": "cd apps/api && python -c \"import main; [print(sorted(r.methods), r.path) for r in main.app.routes if 'currenc' in r.path or 'fx-' in r.path]\" \u2192 ['GET'] /api/currencies, ['GET'] /api/currencies/policy, ['GET'] /api/fx-reports/rate-audit \u2014 no write route. grep -rn 'multi_currency' apps/api/migrations/*.sql \u2192 146:122 and 146:129, both NOT NULL DEFAULT FALSE.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/currency/policy.py:47-49 is `l1 = multi_currency_platform_enabled()`, `l2 = bool(firm.get(\"multi_currency_entitled\"))`, `l3 = bool(client.get(\"multi_currency_enabled\"))`, and active = l1 and l2 and l3 and capability_a (:56). core/feature_flags.py:14-21 reads MULTI_CURRENCY_ENABLED with default 'false' and its own docstring says 'OFF (the default)'. Migration 146_multi_currency_phase1_foundation.sql:122 and :129 add both columns NOT NULL DEFAULT FALSE. Grep across all of apps/api for multi_currency_entitled / multi_currency_enabled / functional_currency returns only SELECT lists and the policy resolver \u2014 no UPDATE, no PATCH, no seed. Grep across apps/web/app, apps/web/lib and apps/web/components returns zero hits for any of the three names.",
+     "guards": "None that helps. The kernel refusal is real \u2014 phase2_journal_service.py:1597-1602 raises 'Multi-currency posting requires an active currency policy; only INR postings are permitted while the feature is dormant.' GET /api/currencies/policy exists (routers/currencies.py:45-77) and the client accounting page consumes it (apps/web/app/clients/[id]/accounting/page.tsx:242-253 \u2192 setMcActive), gating the FX section at :3374 \u2014 but it is read-only. render.yaml:205 declares MULTI_CURRENCY_ENABLED with sync:false (value set in the Render dashboard), so even L1 is not visibly on, and L2/L3 have no writer at any layer.",
+     "reach": "Confirmed by route dump: the only currency endpoints are GET /api/currencies and GET /api/currencies/policy, plus GET /api/fx-reports/rate-audit. There is no write endpoint for either entitlement flag, so 'the only route is direct SQL' is literally true."
+    }
+   }
   },
   {
    "id": "ACC-20",
@@ -238,7 +369,10 @@
    "market_standard": "Not applicable \u2014 this is dead code, and the standard is that it should not be reachable.",
    "confidence": "high",
    "suggested_fix": "Delete the route and its `_assert_journal_scope` helper. POST /api/accounting/journals/{id}/post (:718-733) is the real path and is what the frontend calls.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-21",
@@ -250,7 +384,10 @@
    "market_standard": "Every ledger engine validates that a voucher's ledgers belong to the company being posted to; it is a foreign-key within the tenant, not across tenants.",
    "confidence": "medium",
    "suggested_fix": "In post_journal_atomic and edit_posted_journal, assert every account_id exists in chart_of_accounts with firm_id = the entry's firm and (client_id = the entry's client OR client_id IS NULL). One EXISTS check per statement; it also closes the case of posting to a different client's account within the same firm.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "ACC-22",
@@ -262,7 +399,19 @@
    "market_standard": "Tally: Enter on a ledger-vouchers line opens the voucher; Enter again drills to the entry. QuickBooks and Zoho Books both make every report amount a link to its source transaction.",
    "confidence": "high",
    "suggested_fix": "Make the ledger row clickable, routing to the journal entry page for a manual entry and to the source document (source_type/source_id are already stamped on the entry) for an auto-posted one.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The ledger drawer has entry_id on every row and a ready-made href builder 24 lines above it, and uses neither \u2014 apps/web/app/clients/[id]/accounting/page.tsx:1071 vs :601-608 \u2014 so a ledger line is a dead end for exactly the auto-posted entries the Journal tab deliberately excludes (page.tsx:646-649).",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/clients/[id]/accounting/page.tsx:1071 passes `getRowId={(l) => l.entry_id}` and nothing else. The six ledger columns at :991-1012 (Date/Particulars/Ref/Debit/Credit/Balance) render plain spans with no href and no click handler, and the DataTable call at :1067-1090 never passes `onRowClick` \u2014 a prop the component does support (apps/web/components/ui/data-table.tsx:115,221,492-493, used by apps/web/components/banking/EntriesTab.tsx:742). The id is genuinely available: apps/api/domain/reporting/builders.py:57 emits `\"entry_id\": e.id`, and apps/web/app/clients/[id]/accounting/page.tsx:601-608 already has a `journalEditorHref(clientId, entryId)` helper producing exactly `/clients/{id}/accounting/journal/{entryId}/edit`, used only by the Journal tab.",
+     "guards": "No other layer supplies the drill-through. The Journal tab is explicitly manual-only \u2014 page.tsx:646-649 `entries.filter((e) => e.source_type === \"manual\")`, with a long comment at :610-641 saying auto-posted entries are deliberately not listed there and are 'moved to where they belong: per account in Trial Balance and the Ledger drill-down'. So the ledger IS the designated place to meet an auto-posted entry, and it is the one place with no next step. Drill-through does exist in the opposite direction (InvoiceViewDrawer.tsx:159, PurchaseBillViewDrawer.tsx:147 etc. fetch the journal behind a document), which is document\u2192journal, not ledger\u2192document.",
+     "reach": "Reaches real users. Accounting is a first-class client workspace tab (apps/web/lib/workspace/ClientNavContext.tsx:63, workspaceConfig.ts:74-77); the ledger drawer is opened from the Trial Balance / CoA screens on that page."
+    }
+   }
   },
   {
    "id": "ACC-23",
@@ -274,7 +423,19 @@
    "market_standard": "Tally computes the P&L account balance the same way (no closing entry) but exposes it as a real ledger you can drill and appropriate against. Zoho Books posts a closing entry to Retained Earnings at year end. Every Indian firm expects to allocate profit to partners' capital.",
    "confidence": "high",
    "suggested_fix": "Add an optional year-end closing/appropriation step to the year-end engagement that posts a real balanced journal (Dr revenue, Cr expenses, Cr/Dr Retained Earnings, then appropriations to capital or reserves) through the kernel, dated the FY end, and make the Balance Sheet stop synthesising the line once a closing entry exists for the year \u2014 otherwise it would double count.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "There is no automated year-end closing/appropriation journal and FY close is only a lock (year_end_workflow_service.py:24-66) \u2014 but that is a documented, tested design choice, not a defect: the surplus is derived and provably self-correcting if a CA posts their own close (year_end_financial_service.py:634-645, tests/test_year_end_financial_service.py:614-647), the Schedule III reserves movement IS split (year_end_financial_service.py:761-762), and appropriations can be posted as manual journals. The one real residue is that a hand-posted close nils that year's P&L; the engine computes `closing_entry_dates` to explain it (year_end_financial_service.py:774) and the frontend types the field but never renders it (apps/web/lib/api/yearEnd.ts:149 is the only web reference).",
+    "probe": null,
+    "lens_notes": {
+     "literal": "The narrow claim holds: apps/api/services/year_end_workflow_service.py:24-66 is the whole of 'close the year' and only calls set_client_lock(..., lock=True); no closing journal is posted anywhere. The synthetic line is real \u2014 apps/api/domain/reporting/builders.py:506-517 computes net_profit and appends account_id '__retained__' 'Retained Earnings / Net Profit'. But the evidence's grep is incomplete: 'Retained Earnings' also appears at apps/api/domain/accounting_service.py:31,503 and apps/api/migrations/011_seed_chart_of_accounts.sql:40, and the year-end engine is a third, different implementation.",
+     "guards": "Three of the finding's stated consequences are wrong. (1) The suggested fix's premise \u2014 'otherwise it would double count' \u2014 is false and is pinned by a test: apps/api/services/year_end_financial_service.py:634-645 explains that deriving is exactly self-correcting when a CA posts their own close (the close reduces cumulative PAT by P at the moment it credits equity by P), and apps/api/tests/test_year_end_financial_service.py:614-647 test_a_manually_posted_closing_entry_is_not_double_counted asserts a closed and an unclosed ledger produce identical balance sheets. (2) 'cannot be split between reserves and current-year profit as Schedule III requires' is refuted for the statutory statements: year_end_financial_service.py:761-762 and :805-806 emit surplus_brought_forward_paise / profit_for_the_year_paise / surplus_carried_forward_paise, and tests/test_year_end_financial_service.py:600-612 asserts opening + profit = closing. (3) Appropriations and partner-capital allocation are postable today as ordinary manual journals through the kernel; the code even distinguishes them from a close deliberately (year_end_financial_service.py:238-247 keeps 'Dr Partners' Remuneration / Cr Partner's Current Account' out of the closing-entry heuristic).",
+     "reach": "The year-end statements engine is mounted (apps/api/main.py:347 year_end_statements). The synthetic single-line Retained Earnings the finding objects to is what the day-to-day Accounting > Balance Sheet screen shows (builders.py:506-517); the Schedule III statements do not use it."
+    }
+   }
   },
   {
    "id": "ACC-24",
@@ -286,7 +447,19 @@
    "market_standard": "Tally's group tree IS the chart of accounts. Busy and Marg both present a group hierarchy as the primary CoA view.",
    "confidence": "high",
    "suggested_fix": "Either populate parent_group/sub_group in coa_seed_service.STANDARD_COA (a fourth tuple element, cheap and immediately useful), or fold this screen into the Chart of Accounts screen ACC-09 asks for. Do not leave both.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "parent_group/sub_group are never populated by either seed path (coa_seed_service.py:117-140; migration 011:9-10), so a firm that did not import a CSV sees all 57 seeded accounts under a single 'Ungrouped \u2192 General' block on a screen linked from the Accounting panel (AccountingPanel.tsx:37). The screen still lists every account with type and subtype, so it is a degraded flat list rather than an empty one.",
+    "probe": "cd apps/api && python -c \"from services.coa_seed_service import STANDARD_COA; print(len(STANDARD_COA))\" \u2192 57",
+    "lens_notes": {
+     "literal": "Confirmed with one correction. apps/web/app/accounting/account-groups/page.tsx:66-71 groups by `acc.parent_group ?? \"Ungrouped\"` then `acc.sub_group ?? \"General\"`; the columns are added by apps/api/migrations/057_coa_architecture_correction.sql:5-6 with no default and no backfill; apps/api/services/coa_seed_service.py:117-140 writes only firm_id, client_id, account_code, account_name, account_type, account_subtype, is_active, and apps/api/migrations/011_seed_chart_of_accounts.sql:9-10 seeds the same seven columns. A repo-wide grep finds exactly one writer, apps/web/app/accounting/coa-import/page.tsx:168-169. Correction: STANDARD_COA holds 57 entries, not 53 (probe below), so the header reads '1 parent groups \u00b7 57 active accounts'. The title also overstates: the page does render every account with code, name, type and subtype (page.tsx:110-116) \u2014 it is a flat CoA list under one bogus heading, not a blank screen.",
+     "guards": "None. No migration backfills the columns, no API endpoint sets them, and no test covers the seeded shape (apps/api/tests/test_coa_architecture.py:35-36 only exercises hand-built rows that already carry the values).",
+     "reach": "Reachable and prominently linked: apps/web/components/panels/AccountingPanel.tsx:37 ('Account Groups'), apps/web/app/DashboardContent.tsx:53, plus links from schedule-iii-mapping/page.tsx:85, coa-import/page.tsx:300 and trial-balance-import/page.tsx:387."
+    }
+   }
   },
   {
    "id": "ACC-25",
@@ -298,7 +471,19 @@
    "market_standard": "Tally attaches supporting files to a voucher. Zoho Books attaches up to five files per journal entry and shows them on the voucher.",
    "confidence": "high",
    "suggested_fix": "Add an attachment control to JournalEditor that uploads to the existing Documents bucket and sends [{name, url}] in the create/update payload; render the list read-only on a posted entry.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The whole backend chain accepts attachments (models/accounting.py:102 \u2192 manual_journal_service.py:117 \u2192 phase2_journal_service.py:1660-1661) and no frontend ever sends them: JournalEditor.tsx:141-160 has no upload control and omits the key. Backend capability with no screen \u2014 a confirmed gap, not a refuted one.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed end to end. apps/api/models/accounting.py:102 `attachments: list[dict] = []`; apps/api/services/manual_journal_service.py:117 passes `attachments=data.get(\"attachments\") or []` into the kernel; apps/api/services/phase2_journal_service.py:1660-1661 writes it onto the entry payload only when supplied. apps/web/components/journal/JournalEditor.tsx:141-160 buildPayload() returns exactly {entry_date, entry_type, reference_no, narration, lines} and a case-insensitive grep for 'attach' in that file returns nothing.",
+     "guards": "None, and the gap is one-directional rather than destructive: manual_journal_service.update (services/manual_journal_service.py:242-292) never touches the attachments column and models.accounting.JournalEntryUpdateIn (:79-83) has no attachments field, so an edit cannot wipe attachments either \u2014 it simply can never set them. Attachments with a real UI exist elsewhere in the product (apps/web/components/banking/EntryDetailModal.tsx:103-121 uploads via api.banking.attachments.add), which is what makes the journal omission an inconsistency rather than an unbuilt subsystem.",
+     "reach": "JournalEditor is the only journal create/edit surface (apps/web/app/clients/[id]/accounting/journal/[entryId]/edit/page.tsx), so no screen can populate the field; a CA cannot attach a working paper to a voucher from anywhere."
+    }
+   }
   },
   {
    "id": "ACC-26",
@@ -310,7 +495,19 @@
    "market_standard": "n/a \u2014 internal consistency defect.",
    "confidence": "high",
    "suggested_fix": "`db = _prod_db(); if db is None: return api_response(True, {\"first_entry_date\": None, \"last_entry_date\": None})` \u2014 the service already treats that pair as 'no span' and callers fall back to the FY.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The missing guard is real (routers/accounting.py:914-935 vs the _prod_db pattern at :307-312), and the endpoint raises RuntimeError in mock/dev while trial-balance returns a clean empty payload \u2014 but the consequence claimed for the CA is wrong: useLedgerSpan.ts:38-42 catches the failure and the period picker falls back to the FY, so nothing visible breaks.",
+    "probe": "cd apps/api && env -u SUPABASE_URL python -c \"from routers.accounting import get_ledger_span, get_trial_balance; ...\" \u2192 'ledger-span RAISED: RuntimeError SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.' while 'trial-balance OK, success= True'",
+    "lens_notes": {
+     "literal": "Confirmed and reproduced. apps/api/routers/accounting.py:914-935 get_ledger_span imports get_supabase and calls ledger_span(get_supabase(), ...) with no _prod_db() None check, while _prod_db (routers/accounting.py:307-312) exists precisely to return None without SUPABASE_URL and the neighbours use it (:533-535 raise 404, :605-611 and :617-622 return an empty success payload). core/supabase_client.py:92-101 _service_client raises RuntimeError when SUPABASE_URL/SERVICE_ROLE_KEY are unset.",
+     "guards": "The stated user impact is refuted by the frontend. apps/web/lib/accounting/useLedgerSpan.ts:20-50 wraps the call in try/catch and sets span to null on any failure, and every caller (apps/web/app/clients/[id]/accounting/page.tsx:1152-1155, 1348-1351, 1684-1691, 2007-2014, 2496-2503) passes that null into splitPeriodColumns, which falls back to the financial year. So 'All Time' does not break the reports tab; the only effect is an unnecessary 500 in the API log.",
+     "reach": "No production reach at all \u2014 Render sets SUPABASE_URL, so _prod_db() is never None there. It fires only in mock/dev, where the sibling reports do degrade (probe below)."
+    }
+   }
   },
   {
    "id": "ACC-27",
@@ -322,7 +519,19 @@
    "market_standard": "n/a \u2014 input validation.",
    "confidence": "high",
    "suggested_fix": "Give entry_date a field_validator that parses ISO YYYY-MM-DD (or a datetime.date type), and change the kernel's except branch to raise rather than skip the lock check \u2014 an unparseable date should never be the reason a lock is not applied.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "entry_date is an unvalidated str (models/accounting.py:79,97) and the kernel treats an unparseable date as 'no year lock' rather than an error (phase2_journal_service.py:1568-1578). Because the firm-level check uses strptime (period_validation_service.py:34) and the kernel uses date.fromisoformat, a date like '2025-4-1' passes the first, fails the second and is a valid Postgres DATE \u2014 so it posts into a client year that year-end finalisation has locked. Raised from low to medium: this is a demonstrated lock bypass, not just missing input validation, though it needs a non-UI caller.",
+    "probe": "cd apps/api && python -c \"from datetime import datetime, date; ...\" \u2192 \"'2025-4-1' | strptime -> 2025-04-01 | fromisoformat -> RAISED ValueError\" (same for '2025-04-1' and '2025-4-01'); '2025/04/01' and '01-04-2025' raise in both.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/models/accounting.py:97 `entry_date: str  # YYYY-MM-DD` and :79 the Optional twin, with field_validators present for entry_type/status but none for entry_date. apps/api/services/manual_journal_service.py:63-65 checks only truthiness. apps/api/services/phase2_journal_service.py:1568-1578: `try: _d = _date.fromisoformat(str(entry_date)[:10]) except (TypeError, ValueError): _d = None` then `fy = ist_fy_label(_d) if _d else None` and `if fy and is_client_year_locked(...)` \u2014 so an unparseable date skips the client-scoped year-lock check rather than refusing, and the raw string is then written straight into entry_payload['entry_date'] at :1641.",
+     "guards": "One guard exists and it is the reason this is narrow rather than wide \u2014 but it does not close the hole, it opens the exact crack. For a POSTED entry, manual_journal_service.py:90-92 calls period_validation_service.validate_posting_date, whose get_fy_for_date (services/period_validation_service.py:34-36) uses datetime.strptime('%Y-%m-%d'), which ACCEPTS non-zero-padded dates that date.fromisoformat REJECTS. So '2025-4-1' passes the firm-level lock check (and is a valid Postgres DATE literal), while the kernel's fromisoformat fails and the CLIENT-scoped year lock \u2014 the one a year-end finalisation actually writes (migration 289, year_end_workflow_service.py:60-66) \u2014 is silently skipped. Genuinely malformed shapes ('2025/04/01', '01-04-2025') are caught by strptime and become a 500 from routers/accounting.py:280-287. A DRAFT skips validate_posting_date entirely (the `if is_posted:` at :90), so nothing but the Postgres DATE column stands between a garbage date and the row. No test covers any of this.",
+     "reach": "Not reachable from the UI: JournalEditor's date field is an <input type=\"date\"> which always emits YYYY-MM-DD. It needs a non-browser caller of POST /api/accounting/journal (mounted at apps/api/main.py:243) \u2014 an integration, script or import \u2014 with accounting:write."
+    }
+   }
   }
  ],
  "maturity": {

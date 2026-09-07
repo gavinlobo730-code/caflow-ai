@@ -10,7 +10,12 @@
    "market_standard": "Tally Prime, Zoho Books and Saral TDS all track the per-deductee per-section FY cumulative and trigger the deduction \u2014 and retrospectively deduct on the crossing bill \u2014 because that is the only way the proviso can be honoured. Tally's 'TDS Nature of Payment' master carries both the single and the exemption-limit figures.",
    "confidence": "high",
    "suggested_fix": "Add `aggregate_threshold_paise` to every section whose proviso is an FY aggregate (194A 10_000_00, 194D/194G/194H 20_000_00, 194J 50_000_00, 194Q 50_00_000_00) and keep the single-payment figure only where the statute genuinely is per-payment (194C \u20b930,000, 194I \u20b950,000 per month, 194B per transaction). `_resolve_bill_resident_tds` already computes `fy_prior` for every section, so the plumbing exists. Decide and encode what happens on the crossing bill: the statute requires TDS on the whole aggregate, so the crossing bill must withhold on `fy_total`, not just on itself.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran TDSComputer.resolve_tds: four Rs 30,000 s.194J bills withheld Rs 0 against Rs 12,000 due"
+   }
   },
   {
    "id": "TDS-02",
@@ -22,7 +27,12 @@
    "market_standard": "Tally Prime and Zoho Books both compute \u00a7194Q on the excess over the \u20b950 lakh threshold and carry the running cumulative per supplier per FY; ClearTax's TDS module does the same. The identical 'on the excess' rule applies to TCS \u00a7206C(1H), which this codebase does not implement at all.",
    "confidence": "high",
    "suggested_fix": "Give TDSSectionRule a `charges_on_excess: bool` (true for 194Q, and for 206C(1H) when TCS is built) and compute `max(0, fy_total - threshold) * rate_bps // 10000` less what has already been withheld this FY. Add the \u00a7194Q(1) proviso's \u20b910-crore-turnover precondition on the buyer as a named gap rather than assuming it.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran resolve_tds(\"194Q\", 60_00_000_00): Rs 6,000 withheld against Rs 1,000 (0.1% of the excess)"
+   }
   },
   {
    "id": "TDS-03",
@@ -34,7 +44,10 @@
    "market_standard": "Saral TDS, Winman TDS and ClearTDS all assemble the quarter from the deduction register with no re-keying, and every one of them ships a working FVU output. This is the core task of a TDS module.",
    "confidence": "high",
    "suggested_fix": "Switch compute26Q/compute24Q to the file's own `authedFetch`. Write `financial_year` in `sync_for_bill`'s upsert (fy_label(when) already exists in the module). Then delete the browser-side assembly entirely and point the screen at `POST /api/tds/26q/from-books` and `/24q/from-books`, which are already correct and already GL-reconciled \u2014 see TDS-05 and TDS-06 for what the browser path also gets wrong.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-04",
@@ -46,7 +59,10 @@
    "market_standard": "Form 16A is generated on TRACES, but Saral TDS, ClearTDS and Winman all maintain the request/download/issue register and bulk-merge the TRACES PDFs per deductee. Here even the register row cannot be created.",
    "confidence": "high",
    "suggested_fix": "Normalise at the router \u2014 map 'Form 16'\u2192'16', 'Form 16A'\u2192'16A' \u2014 or change the select values. Then stop swallowing DB errors into a 200: `create_certificate` should raise 422 on a constraint violation, and `saveNew` must check `r.success` and surface `r.error`. Add a real-Postgres test that posts the request model the UI actually sends.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-05",
@@ -58,7 +74,10 @@
    "market_standard": "Every one of Tally, Zoho Books, ClearTax and Saral holds one rate master, updates it by patch each Finance Act, and computes centrally. None of them lets a UI carry its own copy.",
    "confidence": "high",
    "suggested_fix": "Replace `TDS_SECTIONS` with a `listTdsSections(fy)` call (the endpoint exists \u2014 routers/tds.py:371, and apps/web/app/accounting/suppliers/page.tsx:186 already does exactly this) and the amount with `computeTdsAmount({section, payment_amount_paise, pan, fy})` (routers/tds.py:335). Move the insert behind a POST endpoint so rbac and the register's own rules apply. Add a lint/test that fails on any TDS rate literal under apps/web.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-06",
@@ -70,7 +89,10 @@
    "market_standard": "In the NSDL RPU the deductee annexure is physically nested under its challan; Saral TDS, Winman and ClearTDS all require the deduction to be tagged to a specific challan, and refuse to build the file until every deduction is mapped. Tally's 'TDS Challan Reconciliation' does the same.",
    "confidence": "high",
    "suggested_fix": "Add a `challan_id` FK on `tds_deductions` (migration 037 already added `tds_return_id`; the challan link was the one it named and did not create) and a challan-mapping screen. Failing that, match a bill to the challan whose deposit period covers the bill's month \u2014 deduction month \u2192 deposit due 7th of the next month, March \u2192 30 April \u2014 and order the challan query deterministically.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-07",
@@ -82,7 +104,10 @@
    "market_standard": "\u00a7194IA (1% on immovable property over \u20b950 lakh, Form 26QB, Form 16B) is a standard section in every Indian TDS product. It also files on a challan-cum-statement (26QB) rather than 26Q, which is why it needs its own treatment rather than a registry row.",
    "confidence": "high",
    "suggested_fix": "Either remove 194IA from the dropdown with a note that 26QB is not supported, or add it properly: registry entry, \u20b950 lakh threshold on the consideration or stamp-duty value (whichever is higher, from FY 2019-20), and a 26QB path separate from 26Q. Generate the frontend's section list from `GET /api/tds/sections` so the two can never diverge again.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-08",
@@ -94,7 +119,10 @@
    "market_standard": "Saral TDS, Winman TDS, ClearTDS and TaxCloud all compute \u00a7201(1A) interest per deduction from the deduction date and \u00a7234E from the Rule 31A due date, and print both onto the challan 281 worksheet. Tally Prime shows interest on its 'TDS Outstanding' report.",
    "confidence": "high",
    "suggested_fix": "Add a `domain/tds/interest.py` with two pure functions \u2014 `interest_201_1a(deducted_on, deposited_on, amount_paise, failure: 'not_deducted'|'not_deposited')` at 1%/1.5% per month or part, and `fee_234e(due_date, filed_on, tds_paise)` capped at the TDS \u2014 with unit tests, and surface both on the challan create screen and the return screen. Both are pure arithmetic over dates the system already holds.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-09",
@@ -106,7 +134,10 @@
    "market_standard": "27Q is a standard output of Saral TDS, Winman TDS and ClearTDS, including the deductee country, TIN, nature-of-remittance code, rate, surcharge, cess and the 15CA/15CB cross-reference.",
    "confidence": "high",
    "suggested_fix": "Add `tds_27q_from_books` beside the existing 26Q builder, sourced from `tds_deductions` rows with `return_type='27Q'` (which already carry country_of_residence, deductee_tin, surcharge_paise, cess_paise and non_deduction_reason) rather than from purchase_bills, and reconcile it to the same TDS Payable control. Wire it to the existing return-type selector on the compliance TDS screen.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-10",
@@ -118,7 +149,10 @@
    "market_standard": "Tally Prime computes TCS on the invoice line and files 27EQ; Zoho Books supports 206C(1H); Saral and Winman both ship 27EQ and Form 27D. TCS is table stakes for any product claiming to replace Tally for a trading SME.",
    "confidence": "high",
    "suggested_fix": "Scope it as its own build: a TCS nature master (1H/1F/1G/scrap/timber), collection on the sales invoice at the point of receipt (206C(1H) is collection-on-receipt, not on invoice), a `tcs_collections` register mirroring `tds_deductions`, the 27EQ statement, and Form 27D. Note that \u00a7206C(1H) charges on the receipt EXCEEDING \u20b950 lakh \u2014 the same excess rule as TDS-02.",
-   "effort": "months"
+   "effort": "months",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-11",
@@ -130,7 +164,10 @@
    "market_standard": "Not a market-comparison point \u2014 it is an internal control question. Tally's user roles and Zoho's roles both gate voucher and return edits by role.",
    "confidence": "high",
    "suggested_fix": "Two fixes, both needed. Raise or remove the 400-character cap in the scan (or match `.from(\"x\")` and `.insert|upsert|update|delete` within the same statement by brace-balancing) and re-run it \u2014 expect several tables to appear. Then either move both writes behind API endpoints (POST /api/tds-workspace/deductions exists in spirit; the returns POST already exists at routers/tds_workspace.py:354) or add role-aware write policies for tds_deductions and tds_returns in the 260/261 style.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-12",
@@ -142,7 +179,10 @@
    "market_standard": "Every Indian practice-management tool (Winman, Saral, CompuOffice, and Zoho Practice) puts the monthly TDS deposit and the quarterly 24Q/26Q/27Q/27EQ filing on the compliance calendar as separate items \u2014 that calendar is the reason CAs buy the tool.",
    "confidence": "high",
    "suggested_fix": "Add `TDS24Q` to `_tds_obligations`, conditional on the client having a payroll engagement or a client_statutory_identity TAN, and add a `TDS_VENDOR_DEPOSIT` monthly obligation driven by `compliance_engine.tds_deposit_due_date`, conditional on the client having any `tds_deductions` row (or any TDS-applicable vendor). Fix the docstring at :301 either way \u2014 it is currently load-bearing misinformation.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-13",
@@ -154,7 +194,10 @@
    "market_standard": "Saral TDS, Winman and ClearTDS all hold a \u00a7197/\u00a7197A certificate master per deductee with number, rate, validity period and the certified ceiling, apply it automatically, stop applying it when the ceiling is consumed, and report the certificate number in the 26Q deductee annexure (which the FVU requires when a below-normal rate is used). Tally Prime has the same in its 'Lower Deduction' TDS master.",
    "confidence": "high",
    "suggested_fix": "Add a certificate table (deductee, section, certificate no, rate_bps, valid_from, valid_to, ceiling_paise, consumed_paise) and have `resolve_tds` take an optional certificate and use `min(section_rate, certificate_rate)` while the certificate is live and unexhausted, populating `is_lower_deduction`/`lower_deduction_cert` on the register row. Until then, either make the backend honour `vendors.tds_rate_bps` or remove it from the vendor form and the importer so the CA is not shown a rate that does nothing.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-14",
@@ -166,7 +209,10 @@
    "market_standard": "Tally and Zoho compute the withheld amount server-side and show the same number in the voucher preview and after saving. A preview that disagrees with the saved document is the thing a CA loses trust in first.",
    "confidence": "high",
    "suggested_fix": "Replace the local estimate with a debounced call to `POST /api/tds/compute-amount` (routers/tds.py:335 \u2014 it already takes the PAN and derives is_company and \u00a7206AA), and for a non-resident vendor show the \u00a7195 resolution or its refusal rather than a resident-section rate. apps/web/app/accounting/suppliers/page.tsx:135-145 already does exactly this and is the pattern to copy.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-15",
@@ -178,7 +224,10 @@
    "market_standard": "Challan entry and challan-to-deduction mapping is the daily work in Saral TDS and ClearTDS; nothing there is ephemeral.",
    "confidence": "high",
    "suggested_fix": "Point `AddChallanModal` at `POST /api/tds-workspace/challans` and load the list from `GET /api/tds-workspace/challans`. Fix the certificate and return field names against migration 037 and lower-case the status vocabulary (apps/web/app/clients/[id]/compliance/tds/page.tsx:36-43 already has the right map). Consider retiring /tds entirely in favour of the per-client compliance/tds screen, which is the one that calls the real API.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-16",
@@ -190,7 +239,10 @@
    "market_standard": "Saral TDS, Winman TDS, ClearTDS and TaxCloud all produce the FVU-ready text file directly and all handle correction statements against the original PRN, including consolidated-file import from TRACES. This is the single feature that makes a TDS product purchasable.",
    "confidence": "high",
    "suggested_fix": "Generate the NSDL file-format text (the record layout is published per FY and per form) from the existing payload, and validate against the CSI file. Model corrections as a return row carrying `original_prn` and a correction type. Both are large; the FVU writer is the one that decides whether a CA would buy this module.",
-   "effort": "months"
+   "effort": "months",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-17",
@@ -202,7 +254,10 @@
    "market_standard": "Not yet a market comparison \u2014 the 2025-Act renumbering is new to everyone. What is comparable is that the 24Q path here already does it correctly, so the 26Q path is inconsistent with its own codebase.",
    "confidence": "high",
    "suggested_fix": "In `tds_26q_from_books` and in `routers/tds.py`'s two compute handlers, resolve one `Vocabulary` for the period and pass every deductee's section through `vocab.section(...)`, exactly as form24q.py:164-165 does. Add the parity assertion to the vocabulary test so a future emission point cannot skip it.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-18",
@@ -214,7 +269,10 @@
    "market_standard": "n/a \u2014 an internal consistency defect introduced by the vocabulary fork.",
    "confidence": "high",
    "suggested_fix": "Keep the stored `return_type` as the routing key ('26Q'/'24Q') \u2014 which is exactly the rule `tds_register_service.py:240-247` already articulates for `tds_deductions` \u2014 and derive the display form from the period. Widen the TypeScript type to `string` and stop treating the display name as an identifier.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-19",
@@ -226,7 +284,10 @@
    "market_standard": "ClearTax's 26AS/AIS import and TaxCloud both parse 26AS by part and keep TDS, TCS, advance tax, self-assessment tax and refunds in separate buckets, because they feed different schedules of the ITR.",
    "confidence": "medium",
    "suggested_fix": "Correct the part\u2192record_type map (B\u2192tcs, D\u2192refund, and add A1 for 15G/15H, A2/F for 194-IA), and filter `_entries_from_records` to the TDS/TCS record types only, reporting the other parts separately. Confidence is medium only because the 26AS part layout is quoted from knowledge, not from a specimen in this repo \u2014 verify against a real statement before changing the map.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-20",
@@ -238,7 +299,10 @@
    "market_standard": "ClearTax and TaxCloud both ingest the TRACES 26AS text file and the AIS/TIS JSON directly, handling the password and the column layout; Winman imports 26AS into the ITR. Nobody asks the CA to reformat the statement into tab-delimited text first.",
    "confidence": "high",
    "suggested_fix": "Derive the FY list from the clock (there is already `currentFinancialYearLabel` in apps/web/lib/dateMath). For the parser, accept the actual TRACES text export (fixed-width and multi-line rows) and report unparsed lines back to the CA rather than logging at debug; AIS/TIS JSON import is the bigger prize and is a separate build.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-21",
@@ -250,7 +314,10 @@
    "market_standard": "Tally's TDS reconciliation and ClearTDS both match at challan/deductee-row granularity, not by collapsing a PAN+section key.",
    "confidence": "high",
    "suggested_fix": "Delete the inline matcher and route this endpoint through `domain/income_tax/form26as_matcher.reconcile`, which is already pure, one-to-one and tested (apps/api/tests/test_form26as_reconciliation.py). The two directions differ only in which side is which; the passes and the consumption rule are the same.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-22",
@@ -262,7 +329,10 @@
    "market_standard": "Tally Prime's 'Nature of Payment' master distinguishes 194J-professional from 194J-technical and 194I-land/building from 194I-plant/machinery, as do Saral and Winman \u2014 the FVU itself requires the sub-section code on the deductee row.",
    "confidence": "high",
    "suggested_fix": "Split the registry key by nature \u2014 '194I(a)'/'194I(b)' and '194J(a)'/'194J(ba)' \u2014 or add a `nature` dimension to TDSSectionRule, and put the choice on the vendor master beside the section. The FVU's own section codes already make this distinction, so it will be needed for TDS-16 anyway.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-23",
@@ -274,7 +344,10 @@
    "market_standard": "Tally Prime added \u00a7194T in its FY 2025-26 release; Saral, Winman and ClearTDS all ship the full Chapter XVII-B section list. A section master that stops at fifteen sections is the first thing a CA notices.",
    "confidence": "high",
    "suggested_fix": "Add 194T (\u20b920,000, 10%), 194R (\u20b920,000, 10%), 194S, 194M (\u20b950 lakh, 5%), 194N (cash withdrawal), 194O (e-commerce, 0.1% since 01-10-2024), 194IB (\u20b950,000/month, 2% since 01-10-2024) and 194IA \u2014 with a note on each of which are challan-cum-statement forms (26QB/26QC/26QD) rather than 26Q rows, since those need a different return path. Verify each rate and threshold against the Finance Act before adding; the registry's `verified` flag exists for exactly this.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-24",
@@ -286,7 +359,10 @@
    "market_standard": "Compliance Check for \u00a7206AB was withdrawn on the income-tax portal after the omission; Tally, Saral and ClearTDS all removed the non-filer higher-rate logic for FY 2025-26 onwards.",
    "confidence": "medium",
    "suggested_fix": "Either delete the function and its three tests, or give it an `fy` parameter that returns `base_rate` unchanged for FY 2025-26 onward with the omission cited, and keep it for belated FY 2024-25 work. Confidence is medium because the omission is quoted from knowledge of the Finance Act 2025, not from a source in this repo \u2014 confirm before deleting, since \u00a7206AB does still govern periods up to 31-03-2025.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-25",
@@ -298,7 +374,10 @@
    "market_standard": "15CA/15CB is filed on the e-filing portal; but ClearTax and the foreign-remittance modules of the larger practice suites track the acknowledgement number per remittance and flag the ones that left without it. A tracker, not a filer, is the right scope here and matches this codebase's own never-auto-submit rule.",
    "confidence": "high",
    "suggested_fix": "Add a `form_15ca_ack_no` input to the purchase-bill editor, shown only when the vendor is a non-resident, and display it on the bill drawer. One field closes a gap the whole \u00a7195 pipeline currently reports on every row.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-26",
@@ -310,7 +389,10 @@
    "market_standard": "Not a comparison point \u2014 no mass-market Indian product computes \u00a7195 well; this module is already ahead of them. The defect is internal.",
    "confidence": "medium",
    "suggested_fix": "Replace the `is_company` boolean with a payee-class enum derived from the PAN's 4th character (individual/HUF, firm/LLP, AOP/BOI, company, co-operative, trust) and hold one surcharge ladder per class, plus the correct 'other sums' rate per class. Confidence is medium because the FY 2025-26 Part II ladders are quoted from knowledge rather than from a source in this repo \u2014 and `section_195_rates.py:210-213` already records that every year is `verified=False`, so this belongs in the same line-by-line confirmation pass.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "TDS-27",
@@ -322,7 +404,19 @@
    "market_standard": "n/a \u2014 internal data hygiene.",
    "confidence": "high",
    "suggested_fix": "Drop the table in a migration, or add a comment on it pointing at `domain/tds/section_rates.py` as the authority and a test that asserts it has no readers. Do not update the figures in place \u2014 that creates the second source of truth CLAUDE.md's posting-kernel rule exists to prevent.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "public.tds_section_limits (apps/api/migrations/037_tds_engine.sql:114-141) is a real, production-resident table seeded with pre-Finance-Act-2025 thresholds and pre-2024 rates that contradict domain/tds/section_rates.py (194H 5% vs 200 bps at :130; 194J \u20b930,000 vs \u20b950,000 at :135; 194I \u20b92,40,000 vs \u20b950,000 at :133), and its aggregate \u00a7194C \u20b91,00,000 row at :131 never lands because `ON CONFLICT (section) DO NOTHING` at :141 skips the second row with the same primary key. Nothing reads it, so no CA sees a wrong number today; the RLS half of the claim overstates the exposure, since the only policy is SELECT on tenant-free reference rows.",
+    "probe": "Live Postgres 16 (started the local cluster, scratch DB, dropped after): `CREATE TABLE t (section TEXT PRIMARY KEY, description TEXT, threshold_paise BIGINT); INSERT INTO t VALUES ('194C','single',30000_00),('194C','aggregate',100000_00) ON CONFLICT (section) DO NOTHING;` printed `INSERT 0 1` and the SELECT returned one row, `194C | single | 3000000` \u2014 the aggregate \u20b91,00,000 row is dropped with no error. Also `python -c \"from domain.tds.section_rates import tds_rates_for; print(tds_rates_for('2025-26').sections['194H'])\"` printed `TDSSectionRule(single_threshold_paise=2000000, individual_rate_bps=200, company_rate_bps=200, aggregate_threshold_paise=None)` against the seed's 15000_00 / 5 / 5. `grep -rn 'tds_section_limits' apps/api apps/web` \u2192 migrations and fixtures only, no code.",
+    "lens_notes": {
+     "literal": "Confirmed with one line-number correction. apps/api/migrations/037_tds_engine.sql:114-122 creates public.tds_section_limits with `section TEXT PRIMARY KEY` at :115 (the finding says :113). The seed INSERT runs :124-141 and every figure the finding names is there and is superseded by domain/tds/section_rates.py: '194J' 30000_00 at :136 vs 50_000_00 at section_rates.py:135; '194I' 240000_00 at :135 vs 50_000_00 at :133; '194H' 15000_00 / 5% at :134 vs 20_000_00 / 200 bps at :130 (probe printed TDSSectionRule(single_threshold_paise=2000000, individual_rate_bps=200, company_rate_bps=200)); '194D' 15000_00 / 5 / 10 at :132 vs 20_000_00 / 200 / 1000 at :126; '194A' 4000_00 at :128. The two '194C' rows are at :130-131 (the finding says :127-128) under `ON CONFLICT (section) DO NOTHING` at :141, and the aggregate row really is silently dropped \u2014 proven on a live Postgres 16, below. RLS `FOR SELECT TO authenticated USING (true)` is at :166-169 exactly as cited.",
+     "guards": "No guard. `grep -rn tds_section_limits apps/api apps/web` returns only migrations/037, the GRANTs in migrations/041_grant_all_tables_to_authenticated.sql:51 and migrations/095_grant_reconciliation.sql:10, and the two production fixtures (tests/fixtures/production_schema_2026-09-03.json:18214, production_guards_2026-09-03.json:8283) \u2014 no Python, no TypeScript, no test asserting it has no readers. The table exists in production. The 'exposes it firm-wide' half is overstated: the only permissive policy is FOR SELECT, so the migration-041 INSERT/UPDATE/DELETE grants are dead under RLS, and the rows are static statutory reference data carrying no firm or client identifier \u2014 reading them leaks nothing about a tenant.",
+     "reach": "Zero reach today. Nothing in apps/api or apps/web selects from the table, and the finding's own ca_experience says so. Per the verification rules a finding on unreachable code is downgraded, so this drops from medium to low: it is latent-trap hygiene, not something a CA can see."
+    }
+   }
   },
   {
    "id": "TDS-28",
@@ -334,7 +428,19 @@
    "market_standard": "Every TDS product holds the deductor master \u2014 TAN, name, address, responsible person, designation, PAN \u2014 once per client and never asks again. Saral and Winman also validate the TAN check-format on entry.",
    "confidence": "high",
    "suggested_fix": "Default the four fields from `client_statutory_identity` (adding deductor address and responsible-person columns there if absent) and let the CA override. Call `TDSValidator.validate_tan` in `_validate_26q`/`_validate_24q` instead of the length check.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The four deductor fields are request-body inputs the CA retypes each quarter (apps/api/routers/tds.py:98-105; apps/web/app/clients/[id]/compliance/tds/page.tsx:331,:461) even though migration 325 created client_statutory_identity.tan with the real format CHECK at :90 for exactly this purpose and says so at :20-25, and that table is read only by payroll (apps/api/routers/payroll.py:3609,:3698). The TAN check really is length-only (apps/api/domain/tds/tds_computer.py:331-332) while the regex validator at apps/api/domain/tds/tds_validator.py:21-23 is dead outside tests, so '1234567890' is accepted.",
+    "probe": "`python -c` against domain.tds.tds_computer: `compute_26q(tan='1234567890', ...)` returned `validation_errors = ['TDS deducted (\u20b950000) exceeds deposited \u2014 Challan 281 deposit required']` and NO TAN error \u2014 the ten-digit non-TAN passed. `grep -rn validate_tan apps/api apps/web` \u2192 only tds_validator.py:22, tests/test_tds_engine.py:314,317, and the unrelated core/validators.py path in models/parties.py.",
+    "lens_notes": {
+     "literal": "Confirmed, and the migration that created the missing column says the same thing in its own header. apps/api/routers/tds.py:98-105 `class FromBooksRequest` requires `tan`, `deductor_name`, `deductor_pan`, `deductor_address` (and :85-94 `Compute24QRequest` the same four). apps/web/app/clients/[id]/compliance/tds/page.tsx:331 initialises all four to `\"\"` and :461 is the `placeholder=\"TAN (10 chars)\"` input the CA types into (the finding says :462, off by one). apps/api/domain/tds/tds_computer.py:331-332 is `if not payload.tan or len(payload.tan) != 10: errors.append(\"TAN must be 10 characters\")` \u2014 exactly as cited \u2014 and `_validate_24q` repeats it at :353-354. `TDSValidator.validate_tan` with `TAN_REGEX = ^[A-Z]{4}[0-9]{5}[A-Z]$` exists at apps/api/domain/tds/tds_validator.py:11 and :21-23 and is called from nothing but tests/test_tds_engine.py:314,:317. Migration 325 line 90 is `tan text CHECK (tan IS NULL OR tan ~ '^[A-Z]{4}[0-9]{5}[A-Z]$')` and its header at :20-25 says 'The visible consequence is routers/tds.py: Compute24QRequest takes `tan` ... A TAN keyed one character wrong files the quarter against somebody else's account.'",
+     "guards": "None on this path. `client_statutory_identity` is read only by apps/api/routers/payroll.py:3609 and :3698 \u2014 the TDS routers never touch it. `core/validators.py:61 validate_tan` is a different function, wired only into models/parties.py:168,:227 (customer/vendor TAN), not the deductor block. Nothing on the 26Q/24Q path re-checks the TAN shape.",
+     "reach": "Reachable. apps/web/lib/workspace/ClientNavContext.tsx:71 routes Compliance to /clients/{id}/compliance/, and apps/web/app/clients/[id]/compliance/page.tsx:378 offers the 'TDS Workspace' card that opens the tds sub-page, which posts to /api/tds/{24q,26q}/from-books at :382. routers/tds is mounted at apps/api/main.py:266."
+    }
+   }
   },
   {
    "id": "TDS-29",
@@ -346,7 +452,19 @@
    "market_standard": "Every TDS product refuses to build the statement until deductions are mapped to challans and the totals tie; the FVU enforces it too.",
    "confidence": "high",
    "suggested_fix": "Falls out of TDS-03's fix \u2014 delete the browser-side assembly and use `/26q/from-books`, which reads real challans. If the screen must survive in the interim, set `tds_deposited_paise` from the matched challan or leave it at 0.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "apps/web/app/tds/returns/page.tsx:124 sets every deductee's `tds_deposited_paise` equal to its `tds_paise`, so `total_tds_deposited_paise` always equals `total_tds_deducted_paise` (apps/api/domain/tds/tds_computer.py:189-190) and the 'TDS deducted exceeds deposited \u2014 Challan 281 deposit required' error at :348-352 is unreachable from that screen; the same screen shows both totals as identical. The server-side /26q/from-books path is correct (apps/api/services/tds_return_service.py:194-209). Severity stays medium rather than high because the same page also ships a placeholder TAN and deductor PAN (:144,:151), so its output is a misleading summary, not a filable statement.",
+    "probe": "`python -c` against TDSComputer.compute_26q with one \u20b95,00,000 \u00a7194J deductee and no challans: browser shape (deposited := deducted) printed `deducted 5000000 deposited 5000000 errors [] warnings []`; the honest shape (deposited = 0) printed `errors ['TDS deducted (\u20b950000) exceeds deposited \u2014 Challan 281 deposit required']`. The validation fires only when the payload is built the way the browser never builds it.",
+    "lens_notes": {
+     "literal": "Confirmed; the cited line is :124, not :121. apps/web/app/tds/returns/page.tsx:123-124 builds each deductee with `tds_deducted_paise: Number(d.tds_paise ?? 0)` immediately followed by `tds_deposited_paise: Number(d.tds_paise ?? 0)` \u2014 the same source value, unconditionally, with no reference to any challan. apps/api/domain/tds/tds_computer.py:189-190 sums those two fields into the payload totals, so the totals are equal by construction, and :348-352 raises the 'exceeds deposited' error only when `gap > 0`. The challan list the page also sends (:130-141) is stored on the payload at :186 (`payload.challans = challans`) and never enters the deposited total. The server-side from-books path does it properly at apps/api/services/tds_return_service.py:194-209, apportioning the real deposited challan total per section via `apportion` and capping it at what was deducted.",
+     "guards": "None. `_validate_26q` is the only deducted-vs-deposited check and it is exactly the one disabled. There is no DB constraint, no trigger and no test covering the browser assembly. Worth noting as context, not as a guard: the same page hardcodes `const tan = \"MUMB00000A\"` at :144 and `deductor_pan: \"AAAAA0000A\"` at :151 with the comment 'placeholder \u2014 must be configured per client', so the statement it produces is not filable anyway \u2014 which caps the harm at a misleading on-screen summary rather than a wrong statutory upload.",
+     "reach": "Reachable and signposted. apps/web/app/tds/page.tsx:678 and :694 link to /tds/returns, the second labelled 'Prepare a Return'; /tds itself is in apps/web/components/panels/DeadlinesPanel.tsx:34 and apps/web/lib/auth/permissions.ts:59, and apps/web/lib/workspace/workspaceConfig.ts:167 treats /tds as a workspace route."
+    }
+   }
   },
   {
    "id": "TDS-30",
@@ -358,7 +476,19 @@
    "market_standard": "Tally Prime's 'TDS Outstanding' and Saral's challan worksheet both group deductions by deposit month and section, add \u00a7201(1A) interest where late, and print the challan 281 values (section code, minor head, TDS/surcharge/education cess/interest/fee split) ready for e-Pay Tax.",
    "confidence": "high",
    "suggested_fix": "Add `GET /api/tds-workspace/deposit-due?client_id&month` that groups `tds_deductions` by (section, deduction month) into a challan-281 worksheet with the due date from `compliance_engine.tds_deposit_due_date` and interest from TDS-08's new module, then let the CA create the challan from that worksheet with the split pre-filled rather than typing one number.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Nothing in the product aggregates tds_deductions by deduction month into a challan-281 worksheet: no such endpoint exists on routers/tds.py or routers/tds_workspace.py, `compliance_engine.tds_deposit_due_date` (services/compliance_engine.py:292-306) is wired only into payroll (:326), the quick-create challan at routers/tds_workspace.py:261-310 books one typed number as pure TDS with minor_head pinned to '200' by migrations/037_tds_engine.sql:71, and no \u00a7201(1A) interest module exists. The one tile that looks like an answer, apps/web/app/tds/page.tsx:456,:551, counts challans with a blank BSR code instead. This is a real gap, and the backend-exists-but-unreachable escape does not apply \u2014 the backend does not have it either.",
+    "probe": "`grep -n '@router\\.' routers/tds_workspace.py routers/tds.py` \u2014 24 endpoints, none month-grouped; `grep -rn 'tds_deposit_due_date' --include=*.py .` \u2192 definition at compliance_engine.py:292, one app caller at :326, rest tests; `grep -rn '201(1A)' apps/api --include=*.py` \u2192 comments and tests only, no computation.",
+    "lens_notes": {
+     "literal": "Confirmed. public.tds_deductions (apps/api/migrations/014_complete_missing_tables.sql:172-192, plus challan_id at 037:44 and financial_year at 263:44) carries transaction_date, quarter, status and challan_no/challan_date/bsr_code, and no deposit-period column; no later migration adds one. Listing the twelve endpoints on routers/tds_workspace.py and the twelve on routers/tds.py shows nothing that groups by deduction month \u2014 the nearest is the dashboard at tds_workspace.py:157-192, which sums `total_paise` over ALL challans and returns raw row lists. `POST /challans` at :261-310 books `tds_paise = total_paise = body.amount_paise` with interest_paise/penalty_paise left at their column defaults, as its own comment at :277-281 admits, and minor_head is fixed at '200' by the DEFAULT at migrations/037_tds_engine.sql:71 (the finding says :72) with no field on CreateChallanRequest to set 400. `compliance_engine.tds_deposit_due_date` is defined at services/compliance_engine.py:292-306 and called from exactly one place in the app, `payroll_deposit_due_dates` at :326 (the only other references are two test modules).",
+     "guards": "No compensating feature. There is no \u00a7201(1A) interest computation anywhere in apps/api \u2014 grep for '201(1A)' returns only prose comments (compliance_engine.py:297, compliance_obligation_service.py:288, payroll.py:732, residency.py:148, ai_insight_service.py:270) and tests, no module. `tds_deductions.status` has a 'deducted'/'deposited' CHECK (014:186) that could in principle drive a pending-deposit list, but nothing computes off it.",
+     "reach": "The gap is what a CA sees. apps/web/app/tds/page.tsx:551 offers a 'Pending Challans / Undeposited' tile, but :456 computes it as `challans.filter(c => !c.bsr_code).length` \u2014 the count of already-recorded challans missing a BSR code, not the tax due for deposit \u2014 and the other tile is 'Total TDS Deducted / All time' (:550). Nothing on any screen answers 'how much is due by the 7th'."
+    }
+   }
   },
   {
    "id": "TDS-31",
@@ -370,7 +500,19 @@
    "market_standard": "n/a",
    "confidence": "high",
    "suggested_fix": "Delete it. The registry is the single source; `resolve_tds` already raises on an unknown section rather than falling back to a default.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "`_TDS_DEFAULT_BPS` at apps/api/routers/purchase_bills.py:30-37 is dead \u2014 grep for DEFAULT_BPS across apps/api and apps/web finds only its declaration \u2014 and it carries a \u00a7194H rate of 500 bps that the registry cut to 200 bps from 01-10-2024 (apps/api/domain/tds/section_rates.py:129-130), plus a '194IA' key for a section the registry does not hold at all. Harmless today, wrong as a reference.",
+    "probe": "`grep -rn 'DEFAULT_BPS' apps/api apps/web --include=*.py --include=*.ts --include=*.tsx` \u2192 single hit, `apps/api/routers/purchase_bills.py:30`. `python -c \"from domain.tds.section_rates import tds_rates_for; r=tds_rates_for('2025-26'); print('194IA' in r.sections, sorted(r.sections))\"` \u2192 `False ['192','193','194','194A','194B','194C','194D','194G','194H','194I','194J','194K','194LA','194Q','206C']`.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/routers/purchase_bills.py:30-37 declares `_TDS_DEFAULT_BPS` with `\"194H\": 500` at :35, `\"194A\": 1000` at :36 and `\"194IA\": 100` at :33 (the finding cites 29-38, which includes the two comment lines at :27-28). `grep -rn DEFAULT_BPS apps/api apps/web` over .py/.ts/.tsx returns the declaration and nothing else \u2014 the constant is read nowhere. \u00a7194H is 200 bps in the registry (apps/api/domain/tds/section_rates.py:130), cut from 5% with effect from 01-10-2024 per the comment at :129. '194IA' is genuinely absent from the registry, so `resolve_tds` would raise on it rather than use this map (docstring rule at domain/tds/tds_computer.py:270, 'unknown section \u2192 ValueError').",
+     "guards": "Not needed \u2014 the constant is unreachable, and `resolve_tds` refuses an unknown section rather than falling back, so nothing can quietly route through it.",
+     "reach": "No reach. Unreferenced module-level dict in a mounted router (main.py imports purchase_bills), so it is loaded but never read. The finding's own ca_experience already says 'None directly'; severity moves from the stated low\u2026 it was already low, and low is right."
+    }
+   }
   },
   {
    "id": "TDS-32",
@@ -382,7 +524,19 @@
    "market_standard": "Tally Prime reverses the TDS on a purchase return through its 'TDS Adjustment' voucher and carries the adjustment into the quarterly return; Zoho Books nets the credit note against the deduction.",
    "confidence": "high",
    "suggested_fix": "Decide the policy first \u2014 a credit note in the same quarter reduces the deduction, one after deposit becomes an excess-deposit adjustment carried to the next quarter \u2014 then implement it in the register and the 26Q builder. It is an accounting decision as much as a coding one.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Purchase debit and credit notes carry no TDS handling at all \u2014 apps/api/routers/debit_notes.py and apps/api/routers/purchase_credit_notes.py contain no occurrence of 'tds' in any case \u2014 and the 26Q builder reads only posted purchase_bills with tds_paise > 0 (apps/api/services/tds_return_service.py:132-137), while the register syncs per purchase_bill_id only (apps/api/services/tds_register_service.py:128,:163,:218). A purchase return after deduction leaves both the register and the 26Q overstated, and the books-vs-GL reconciliation at :289-296 still reports 'matched' because neither side moved.",
+    "probe": "`grep -in tds apps/api/routers/debit_notes.py apps/api/routers/purchase_credit_notes.py` \u2192 no output (files present, 32,976 and 32,883 bytes). `grep -rn 'credit_note\\|debit_note' apps/api/services/tds_register_service.py apps/api/services/tds_return_service.py` \u2192 only the docstring lines 34-35, no code.",
+    "lens_notes": {
+     "literal": "Confirmed on every limb. The docstring is at apps/api/services/tds_return_service.py:33-38 and says what the finding quotes. Independently verified rather than taken from the docstring: `grep -in tds apps/api/routers/debit_notes.py apps/api/routers/purchase_credit_notes.py` returns NOTHING at all in either file (both exist, ~33 KB each) \u2014 case-insensitive, so not a naming miss. The 26Q builder's population is `_posted_vendor_tds_bills` at :132-137, a single `purchase_bills` query filtered on `tds_paise > 0` and bill_date; no note table appears anywhere in the module. `sync_for_bill` (services/tds_register_service.py:128) keys its register row on `purchase_bill_id` (the delete at :163, the upsert at :218) and there is no note-shaped counterpart in the file.",
+     "guards": "None, and the reconciliation the finding names does behave as described: services/tds_return_service.py:289-296 reports `books_paise` (from the same purchase_bills population) against `ledger_paise` and a `matched` flag, so with neither side adjusted for a credit note the return reports 'matched' on an overstated figure. No test asserts note-to-TDS behaviour.",
+     "reach": "Reachable \u2014 /api/tds/26q/from-books (routers/tds.py:289, mounted at main.py:266) is what apps/web/app/clients/[id]/compliance/tds/page.tsx:382 calls, and the compliance hub links to that page (apps/web/app/clients/[id]/compliance/page.tsx:378)."
+    }
+   }
   }
  ],
  "maturity": {

@@ -10,7 +10,12 @@
    "market_standard": "Tally Prime, Zoho Books, Busy and Marg all print the COMPANY whose books are open as the supplier. In Zoho Books Practice the accountant's own branding never appears on the client's outward invoice.",
    "confidence": "high",
    "suggested_fix": "In `get_sales_invoice_pdf`, load `public.clients` by `invoice.client_id` (firm-scoped) and pass THAT as the supplier; keep `_load_firm` only for the `fee_invoices` path in `get_invoice_pdf`. Rename `build_invoice_pdf(invoice, supplier, recipient)` so the two callers cannot be confused again, and change the test stub so it fails on the old behaviour. Same change in `statement_pdf_service.get_customer_statement_pdf`.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "read invoice_pdf_service.py:355 _load_firm(firm_id) rendered as the supplier block at :148-160"
+   }
   },
   {
    "id": "SALES-02",
@@ -22,7 +27,12 @@
    "market_standard": "Every tool in the market (Tally Prime, Zoho Books, Busy, Marg) prints a rate-wise tax summary derived from the lines, plus quantity, UQC and per-line rate/tax columns, because Rule 46 requires them.",
    "confidence": "high",
    "suggested_fix": "Delete `GST_RATE_PCT`. Group the invoice's lines by `gst_rate_bps` and emit one CGST/SGST or IGST row per rate band, labelled from the band. Add Qty, Unit, Rate and per-line tax columns to the line table. Add a regression test that renders a 5% invoice and asserts \"9%\" does not appear.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "read invoice_pdf_service.py:30 GST_RATE_PCT = 18 emitted at :223-226"
+   }
   },
   {
    "id": "SALES-03",
@@ -34,7 +44,10 @@
    "market_standard": "Tally Prime and Zoho Books print the reverse-charge declaration from the voucher's own flag, print Place of Supply on every invoice, and stamp the IRN + signed QR onto the PDF once the IRN is returned.",
    "confidence": "high",
    "suggested_fix": "Read `is_reverse_charge` into `invoice_dict` and render Yes/No from it; add a Place of Supply line (state code + name); when a `generated` einvoice_record exists for the invoice, render the IRN, Ack No/date and the QR from `qr_data`.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-04",
@@ -46,7 +59,10 @@
    "market_standard": "Tally Prime and Zoho Books derive the next voucher number from the highest number in the series (or a dedicated sequence), so a deleted voucher leaves a gap and never blocks the next one.",
    "confidence": "high",
    "suggested_fix": "Derive the sequence from the MAX numeric suffix in the series for (firm, client, FY) rather than a row count \u2014 or move to a Postgres sequence per (firm, client, series, FY) as `next_invoice_number` (migration 124) already does for fee invoices. Add a test that creates three notes, deletes the second, and asserts the fourth is created successfully.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-05",
@@ -58,7 +74,10 @@
    "market_standard": "Zoho Books' Invoices dashboard shows Total Outstanding as balance due (invoice total less payments and credits applied); Tally's Bills Outstanding report is pending-amount based.",
    "confidence": "high",
    "suggested_fix": "Call `GET /api/sales-invoices/outstanding?client_id=\u2026` for the tile (the endpoint exists and is correct), or select `outstanding_paise` (migration 278) and sum it. Do not recompute the formula in TypeScript \u2014 that is what let it drift.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-06",
@@ -70,7 +89,10 @@
    "market_standard": "Every Indian accounting product ships the full 38-entry GST state/UT master plus 96/97 (Other Territory / Other Country) and derives the state from the GSTIN prefix as a fallback.",
    "confidence": "high",
    "suggested_fix": "Delete the duplicate list in lib/invoices/gst.ts and re-export `lib/constants/indianStates`; add 31 (Lakshadweep), 35 (Andaman & Nicobar), 97 (Other Territory) and 96 (Other Country) to the canonical list; drop the explicit `states={INDIAN_STATES}` props so StateLookup's default is used. Separately, default `customers.state_code` from `gstin[:2]` server-side when it is blank.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-07",
@@ -82,7 +104,10 @@
    "market_standard": "Tally Prime's receipt voucher takes a TDS deduction line against the bill; Zoho Books has an explicit \"TDS deducted\" field on Record Payment that closes the invoice and books TDS receivable. This is table stakes for an Indian receivables module.",
    "confidence": "high",
    "suggested_fix": "Add a TDS Deducted (\u20b9) field to ReceiptForm, parsed with `paiseFromRupeeInput`, sent as `tds_paise`; change the Unallocated display to `amount + tds - allocated` to match `create_receipt_core`; show the settlement value beside the cash amount so the CA can see the invoice will close.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-08",
@@ -94,7 +119,10 @@
    "market_standard": "Tally Prime's Receipt voucher requires the cash/bank ledger to be selected and posts to it. Zoho Books requires \"Deposit To\" on every payment received.",
    "confidence": "high",
    "suggested_fix": "Store `bank_account_id` on the receipt, resolve the debit ledger from it, and fall back to the Cash-in-Hand ledger when `payment_mode == \"cash\"`. Make the Deposit To / Cash account a required field on the receipt form.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-09",
@@ -106,7 +134,10 @@
    "market_standard": "Tally Prime's \"Enable tax liability on advance receipts\" prompts for the rate and place of supply on the receipt voucher and fills Table 11A/11B; ClearTax GST picks it up from the advance ledger.",
    "confidence": "high",
    "suggested_fix": "Add `gst_rate_bps`, `place_of_supply`, `is_interstate` to `ReceiptIn` and to the receipt payload, defaulting place of supply from the customer's state; show the three fields on the receipt form only when the client's `gst_advance_tax_applicable` is true (the migration's own stated design). Then make `advances_report` report `table_11_computed: true` for those clients.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-10",
@@ -118,7 +149,10 @@
    "market_standard": "Tally Prime captures shipping bill no/date/port code on the export invoice and fills 6A; ClearTax and Zoho Books both separate 6A (Exports), 6B (SEZ) and 6C (Deemed exports).",
    "confidence": "high",
    "suggested_fix": "Add `shipping_bill_no`, `shipping_bill_date`, `port_code` columns and editor fields (shown when supply_type is zero_rated), feed them into `_build_exp`, and add `_build_sez` / `_build_deemed_export` with their own GSTInvoiceCategory values so 6B and 6C are emitted instead of being folded into 6A.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-11",
@@ -130,7 +164,10 @@
    "market_standard": "Tally Prime has a Discount column (percentage or amount) on every invoice line plus ledger-level discounts; Zoho Books has line discounts, document-level discount and \"discount before/after tax\"; Busy and Marg both have scheme/trade/cash discount slabs.",
    "confidence": "high",
    "suggested_fix": "Add `discount_percent_bps` and `discount_paise` to the line (with an invoice-level discount that allocates pro-rata to lines), make `taxable_amount_paise = qty \u00d7 rate \u2212 discount` in `_create_invoice_core` and in `lib/money/gstLine.ts`, regenerate `shared/gst-parity-vectors.json`, and print the discount column on the PDF.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-12",
@@ -142,7 +179,10 @@
    "market_standard": "Tally Prime has automatic voucher numbering with per-FY reset, prefix/suffix and a duplicate/gap warning; Zoho Books, Busy and Marg all auto-number with a configurable series per document type and per branch.",
    "confidence": "high",
    "suggested_fix": "Give `client_sales_invoices` a per-(firm, client, series, FY) sequence (the pattern `next_invoice_number`, migration 124, already uses for fee invoices), pre-fill the editor's Invoice Number from it while leaving it editable when `manual_override_allowed`, and use it for recurring generation instead of `DRAFT-\u2026`. Until then, either wire Invoice Settings to this path or remove the Settings page so it does not promise something it cannot do.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-13",
@@ -154,7 +194,10 @@
    "market_standard": "Zoho Books ships 16 invoice templates with logo, colour and font control plus bank details and a UPI QR block; Tally Prime has configurable print with company logo and bank details; Marg and Busy both have designer templates.",
    "confidence": "high",
    "suggested_fix": "Either wire it up \u2014 load `firm_branding` + `invoice_settings` in `get_sales_invoice_pdf`, draw the logo and accent colour, and add a Bank Details / UPI QR / footer block \u2014 or take the Settings pages down until it is. Add a test asserting the configured footer text appears in the rendered PDF, so it cannot silently detach again.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-14",
@@ -166,7 +209,10 @@
    "market_standard": "Tally's bill-wise details let you settle a new bill against an existing On-Account/Advance reference; Zoho Books shows \"Use this advance payment\" / \"Apply credits\" directly on the invoice.",
    "confidence": "high",
    "suggested_fix": "Add an \"Allocate\" action on a receipt row that opens the open-invoice list and calls `PUT /api/receipts/{id}/allocations`, and surface `unallocated_paise` as an advance on the customer statement beside the party-credit balance (or unify the two by granting a party credit when a receipt is left unallocated).",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-15",
@@ -178,7 +224,10 @@
    "market_standard": "ClearTax and Zoho Books both lock a GST period once the return is marked filed and force corrections into an amendment. Tally Prime warns on altering a voucher in a period marked as returns-filed.",
    "confidence": "high",
    "suggested_fix": "Call `period_lock_service.assert_open(db, firm_id, client_id, date)` on credit-note create/update/issue, sales-debit-note create/update/issue, receipt create, and in `issue_invoice` (re-checking at issue, not just at create).",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-16",
@@ -190,7 +239,10 @@
    "market_standard": "Tally Prime refuses to save a voucher whose GST classification and tax ledgers conflict and shows it under \"Incomplete/Mismatch in information\"; ClearTax's GSTR-1 validation flags a nil/exempt row carrying tax.",
    "confidence": "high",
    "suggested_fix": "In `_create_invoice_core` and the credit/debit-note equivalents, reject (or require an explicit override on) an invoice where `supply_type in (nil_rated, exempt, non_gst)` or `is_reverse_charge` is true and any line's `gst_rate_bps > 0`. Add the same check to `GSTValidator.validate_invoice` so a legacy row is caught before the return is built.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-17",
@@ -202,7 +254,10 @@
    "market_standard": "Tally Prime and Zoho Books both test the invoice total (value including tax) against \u20b950,000 and prompt for e-way bill details at that point.",
    "confidence": "high",
    "suggested_fix": "Compare `total_paise` (or taxable + all tax heads, excluding exempt lines) against the threshold, and cite Rule 138(1) Explanation 2 in the message. Move the rule to the backend \u2014 see SALES-18.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-18",
@@ -214,7 +269,10 @@
    "market_standard": "Not a market comparison \u2014 this is the repo's own stated rule (CLAUDE.md, \"Code rules\": computation, validation and statutory rules live in apps/api), which the money layer (lib/money/gstLine.ts pinned by shared/gst-parity-vectors.json) already honours properly.",
    "confidence": "high",
    "suggested_fix": "Move `irnEligibility` / `ewayEligibility` / `validatePlaceOfSupply` into `apps/api/domain/gst/` behind an endpoint the panel calls, or \u2014 if a live preview is wanted \u2014 keep the mirror but pin it with a generated fixture the way `shared/gst-parity-vectors.json` pins the GST arithmetic. Collapse the third GSTIN regex onto lib/gst/gstin.ts.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-19",
@@ -226,7 +284,10 @@
    "market_standard": "Tally Prime holds one \"Nature of transaction\" per voucher that drives the return, the e-invoice JSON and the print alike; there is no second, independent classification.",
    "confidence": "high",
    "suggested_fix": "Derive `gst_treatment` from the invoice's `supply_type` + `invoice_type` when preparing an IRN record (pre-fill and disable the picker), and pass `invoice.is_reverse_charge` into `compInv` instead of `null`. Longer term, drop `einvoice_records.gst_treatment` as an independent field.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-20",
@@ -238,7 +299,10 @@
    "market_standard": "Tally Prime, Zoho Books, Busy and Marg all support compensation cess (ad valorem and per-unit) as a separate head on the line.",
    "confidence": "high",
    "suggested_fix": "Add `cess_rate_bps` and `cess_paise` to the line and `cess_paise` to the header, include it in `_compute_line_gst`, in `journal_for_sales_invoice` (a Cess Output ledger), in the mirror `lib/money/gstLine.ts` and in the parity vectors. The GSTR-1 builder already reads `inv.cess_paise` / `line.cess_paise`.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-21",
@@ -250,7 +314,10 @@
    "market_standard": "Tally Prime: Quotation, Sales Order, Delivery Note, Rejections In. Zoho Books: Estimates, Retainer Invoices, Sales Orders, Delivery Challans (with the GST delivery-challan format under Rule 55). Busy and Marg both have the full order-to-invoice chain.",
    "confidence": "high",
    "suggested_fix": "Start with the delivery challan (Rule 55 \u2014 it is a statutory document with a prescribed format and it feeds e-way bills for movement without an invoice) and the quotation/estimate with a one-click convert-to-invoice. Sales orders can follow once inventory commitment is wanted.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-22",
@@ -262,7 +329,10 @@
    "market_standard": "Tally Prime, Zoho Books, Busy and Marg all ship the full HSN/SAC master with GST rates and let you search it while typing a line; ClearTax has an HSN/rate finder. None asks the user to build the list.",
    "confidence": "high",
    "suggested_fix": "Load the full CBIC HSN leaf catalogue and the SAC annexure into `hsn_master` (both are Government of India publications in the public domain, as migration 175 itself notes) and let the firm library's search offer them as \"add from master\" \u2014 keeping the firm's own curated list as the billing source, but seeding it in one click instead of one code at a time.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-23",
@@ -274,7 +344,10 @@
    "market_standard": "Zoho Books has configurable automated payment reminders (before due, on due, and repeating after due) with per-customer opt-out; Zoho and Refrens both offer WhatsApp reminder delivery in India.",
    "confidence": "high",
    "suggested_fix": "Rebuild the cadence bounded and resumable \u2014 a per-firm daily batch with a row cap and a cursor (the pattern `_paginate_all` and the bank \"Pass N ready\" chunking already use), keyed on `last_reminded_at` + `REMINDER_INTERVAL_DAYS`, sending the customer-facing reminder rather than a timeline entry. Add bulk Remind over the DataTable selection as an interim step (bulk Issue already exists at page.tsx:1607).",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-24",
@@ -286,7 +359,10 @@
    "market_standard": "Tally Prime numbers a voucher from the voucher date's financial year, not the entry date; so do Zoho Books and Busy.",
    "confidence": "high",
    "suggested_fix": "Derive the FY label from the document's own date (`core.ist_clock` already has the helpers) in all three `_current_fy()` call sites. Note this changes numbering for back-dated documents going forward only \u2014 existing numbers stay as issued.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-25",
@@ -298,7 +374,10 @@
    "market_standard": "ClearTax and Zoho Books both warn when a credit note falls outside the amendment window. Tally Prime enforces a per-ledger Credit Limit and blocks or warns on a sales voucher that breaches it; Zoho Books shows a credit-limit warning on invoice creation.",
    "confidence": "high",
    "suggested_fix": "(a) On credit-note issue, compare the note date with `correction_window_closes(fy_end_of_original_invoice)` and warn (not block \u2014 the commercial credit is still valid, only the tax adjustment is not), recording that the GST reduction is unavailable. (b) Add `customers.credit_limit_paise` and check it in `_create_invoice_core` against the customer's live outstanding, as a warning by default and a block when the firm turns that on.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-26",
@@ -310,7 +389,10 @@
    "market_standard": "Tally's Bills Outstanding shows pending amount per bill and auto-adjusts against the oldest; Zoho Books' invoice list has a Balance Due column and Record Payment pre-fills the balance per invoice with an \"apply to oldest\" option.",
    "confidence": "high",
    "suggested_fix": "Select `outstanding_paise` (migration 278) and add a Balance column to the list, sortable. In the receipt allocator show the outstanding per invoice, pre-fill down to the receipt amount oldest-first with a one-click \"Auto-allocate\", and base the Unallocated line on amount + TDS \u2212 allocated.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-27",
@@ -322,7 +404,10 @@
    "market_standard": "Tally Prime blocks the voucher (\"HSN/SAC not specified\") and lists it under Incomplete/Mismatch; Zoho Books warns before saving. None substitutes a default code.",
    "confidence": "high",
    "suggested_fix": "Delete the fallback in the sales path \u2014 print the cell blank so the omission is visible \u2014 and require `hsn_sac` on a line at issue time (a draft may still be incomplete). Keep `SAC_CODE` only for the legacy engagement-based fee invoice, which genuinely has no lines.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-28",
@@ -334,7 +419,10 @@
    "market_standard": "Tally Prime and Zoho Books generate the e-invoice JSON and the EWB JSON from the voucher for offline bulk upload even without a GSP, compute EWB validity from distance, and flag e-invoice applicability from the client's AATO. The bulk-generation tools on the government portals need no registration.",
    "confidence": "high",
    "suggested_fix": "Two steps that need no GSP and break no rule in CLAUDE.md: (1) build the IRP e-invoice JSON and the EWB JSON from the invoice for download and manual upload, which is a pure prepare-only path exactly like the existing GSTR-1 JSON; (2) compute `ewb_valid_upto` from `distance_km` per Rule 138(10) and surface expiring bills on the deadlines view. Applicability from AATO is a separate, larger piece.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-29",
@@ -346,7 +434,10 @@
    "market_standard": "Tally Prime will not accept a GST sales voucher without Place of Supply; Zoho Books requires it on every invoice for a GST-registered organisation.",
    "confidence": "high",
    "suggested_fix": "Require a valid 2-digit place of supply at issue time (not at draft), server-side in `issue_invoice` and mirrored in `validateInvoiceEditor` so the CA is stopped at the point of entry; default it from `customer.state_code` and, failing that, from `customer.gstin[:2]`.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-30",
@@ -358,7 +449,10 @@
    "market_standard": "Not a market-comparison item \u2014 it is an internal scoping inconsistency against the same router's own later check.",
    "confidence": "high",
    "suggested_fix": "Add `.eq(\"client_id\", client_id)` to the create-path invoice lookup and 422 when it misses, matching the issue path.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-31",
@@ -370,7 +464,10 @@
    "market_standard": "n/a \u2014 API hygiene.",
    "confidence": "high",
    "suggested_fix": "Either fold `place_of_supply` into the real-branch resolution (`supply_state_code or place_of_supply or customer.state_code`) or delete the field from the model so it cannot be relied on. Aligning the mock branch's rule with the real one would also stop the two paths testing different logic.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "SALES-32",
@@ -382,7 +479,10 @@
    "market_standard": "Tally Prime, Busy and Marg all support TCS on sales with the per-buyer threshold tracking and 27EQ data; Zoho Books supports TCS on invoices.",
    "confidence": "medium",
    "suggested_fix": "Leave TCS unbuilt until it is scoped (the comment is right that it is a feature, not a data gap). Do verify the \u00a7206C(1H) status against the Finance (No. 2) Act 2024 and correct the comment either way \u2014 a wrong \"unchanged\" note in a rate registry is exactly the trap CLAUDE.md's annual-update section is written to prevent.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   }
  ],
  "maturity": {

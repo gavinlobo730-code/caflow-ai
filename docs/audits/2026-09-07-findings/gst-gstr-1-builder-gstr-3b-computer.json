@@ -10,7 +10,12 @@
    "market_standard": "TallyPrime, Zoho Books and ClearTax all carry the 3.1(d) RCM liability into the Table 6.1 payment working as a cash-only row, and ClearTax flags an RCM self-invoice that has no matching cash payment.",
    "confidence": "high",
    "suggested_fix": "Add `rcm_*` to the liability side of the Table 6 set-off as a CASH-ONLY head (never discharged from ITC), expose it in `working.net_payable` as a separate `cash_only_rcm_paise`, and render Table 3.1(d) and the cash total on both GSTR-3B screens. Add a unit test asserting that one RCM purchase with no sales yields net payable equal to the RCM tax, not zero.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran compute_gstr3b with one RCM inward: rcm_igst 5,000 credited but never added to net tax"
+   }
   },
   {
    "id": "GST-02",
@@ -22,7 +27,12 @@
    "market_standard": "Every GST product separates 3.1(b) into taxable value AND IGST, because export-with-payment is one of the two statutory routes under \u00a716(3).",
    "confidence": "high",
    "suggested_fix": "Accumulate igst/cess on `zero_rated` supplies into a dedicated `outward_zero_rated_igst`/`_cess` pair and emit them in `osup_zero`. Pin with a test using an export-with-payment invoice.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran compute_gstr3b zero_rated with IGST 1,80,000: outward_taxable_igst 0, net_igst 0"
+   }
   },
   {
    "id": "GST-03",
@@ -34,7 +44,12 @@
    "market_standard": "ClearTax, IRIS and Cygnet all removed the 105%/110%/120% language when Rule 36(4) was substituted and \u00a716(2)(aa) came in; their recon screens now show strict invoice-level 2B matching.",
    "confidence": "high",
    "suggested_fix": "Replace all five occurrences with the current rule: \u00a716(2)(aa) with Rule 36(4) as substituted by Notification 40/2021-CT \u2014 credit only on invoices communicated in GSTR-2B, no percentage buffer. Add a lint/test that greps the web tree for \"105%\" near \"36(4)\".",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "read app/gst/reconciliation/page.tsx:628 against gstr3b_computer.py:539-541 (_RULE_36_4_NUMERATOR = 100)"
+   }
   },
   {
    "id": "GST-04",
@@ -46,7 +61,12 @@
    "market_standard": "ClearTax, IRIS Sapphire, Cygnet and Zoho Books ingest the portal 2B JSON/Excel directly, match against the purchase register already in the product, persist the match state per invoice, support fuzzy matching on invoice number, carry unmatched items forward month to month, and produce a supplier follow-up list.",
    "confidence": "high",
    "suggested_fix": "Parse the real GSTR-2B envelope (`data.docdata.b2b/b2ba/cdnr/cdnra/impg`), persist each row to `gstr2a_records` with its `itcavl`/`rsn` flags, read the books side server-side from `purchase_bills`, persist per-invoice match state, and expose an exact\u2192fuzzy\u2192manual matching workflow. Then Rule 36(4)/\u00a716(2)(aa) can be applied invoice-wise rather than as an aggregate cap.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "read routers/gst_workspace.py:850 book_invoices = raw.get(\"book_invoices\", []); grep: zero writers of gstr2a_records"
+   }
   },
   {
    "id": "GST-05",
@@ -58,7 +78,12 @@
    "market_standard": "TallyPrime and ClearTax implement \u00a749(5) with \u00a749A/49B and Rule 88A in full, and offer the taxpayer the same set-off preference the portal offers on the 6.1 screen.",
    "confidence": "high",
    "suggested_fix": "Implement the full \u00a749(5) ladder: IGST credit \u2192 IGST, then CGST/SGST in any proportion (Rule 88A); CGST credit \u2192 CGST, then IGST; SGST credit \u2192 SGST, then IGST; never CGST\u2194SGST (\u00a749(5)(e)/(f)). Pin with tests for each of the four directions.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran compute_gstr3b: IGST 1,80,000 demanded in cash with 2,00,000 of CGST+SGST credit unused"
+   }
   },
   {
    "id": "GST-06",
@@ -70,7 +95,10 @@
    "market_standard": "Tally and Zoho both carry non-GST supplies to 3.1(e) and to GSTR-1 Table 8, and reconcile the two.",
    "confidence": "high",
    "suggested_fix": "Add an `outward_non_gst` accumulator for `supply_type == \"non_gst\"` and emit it in `osup_nongst.txval`. Add a parity test asserting GSTR-1 Table 8 `ngsup_amt` equals GSTR-3B 3.1(e) for the same period.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-07",
@@ -82,7 +110,10 @@
    "market_standard": "TallyPrime and ClearTax keep SEZ (6B) and deemed export (6C) in the b2b section with inv_typ SEWP/SEWOP/DE and the recipient GSTIN, keep 6A for exports only, decide WPAY vs WOPAY from whether IGST was charged, and require shipping bill details on 6A rows.",
    "confidence": "high",
    "suggested_fix": "Split the export category: EXP_WP/EXP_WOP for `place_of_supply == \"96\"` only (WPAY when igst_paise > 0), and route SEZ_with_payment/SEZ_without_payment/Deemed_export into the b2b section with inv_typ SEWP/SEWOP/DE. Add shipping-bill columns to the sales invoice and require them on 6A rows.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-08",
@@ -94,7 +125,10 @@
    "market_standard": "Every product splits Table 7 one row per (rate, place of supply, supply type), taken from the invoice lines.",
    "confidence": "high",
    "suggested_fix": "Rewrite `_build_b2cs` to iterate `inv.lines` and key on (line rate, place of supply, is_interstate), falling back to `_infer_rate` only for a header-only invoice with no lines. Add a test with a two-rate B2C invoice.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-09",
@@ -106,7 +140,10 @@
    "market_standard": "ClearTax and IRIS both key the amendment deadline off the earlier of 30 November and the actual GSTR-9 filing date recorded for the client.",
    "confidence": "high",
    "suggested_fix": "Resolve the GSTR-9 filing date server-side (gstr1_returns where return_type='gstr9' and status='submitted', or the `filings` row) and pass it into `outstanding_amendments`. Add a test where an August GSTR-9 closes an amendment the November cutoff would have left open.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-10",
@@ -118,7 +155,19 @@
    "market_standard": "ClearTax, IRIS and Winman all auto-populate GSTR-9 from the year's filed GSTR-1/3B plus GSTR-2A, show the Table 8 differences, and produce the GSTR-9 JSON. GSTR-9C (reconciliation statement, \u00a744(2)) is absent here too.",
    "confidence": "high",
    "suggested_fix": "Build `domain/gst/gstr9_builder.py` deriving Tables 4-8 and 17 from the year's filed returns plus the books, with the Table 6 ITC bifurcation as an explicit CA input where the books cannot supply it. Add a \"Compute from filed returns\" button on the GSTR-9 tab that calls the existing save endpoint. Until then, hide the tab rather than showing a dead one.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Exactly as claimed: there is no GSTR-9 computation anywhere (apps/api/services/gst_return_service.py:1145 says so in the code), and the only writer of a GSTR-9 draft is POST /api/gst-workspace/gstr9 (apps/api/routers/gst_workspace.py:933), which no frontend file calls. The live GSTR-9 tab (apps/web/app/clients/[id]/compliance/gst/page.tsx:1502) can therefore only ever show 'No GSTR-9 draft for FY \u2026 yet' (line 1450). This is a backend capability reachable from no screen AND a missing computation \u2014 it confirms the gap twice over.",
+    "probe": "grep -rn 'gst-workspace/gstr9' apps/web --include=*.ts --include=*.tsx -> 3 hits, all in app/clients/[id]/compliance/gst/page.tsx (1386 = GET, 1493 and 1496 = comments). No POST caller. `grep -rn gstr9 apps/api --include=*.py | grep -v tests/` -> only due-date helpers, the filing-demo flow and the save/get pair; no builder.",
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines (numbers drift a few rows). apps/api/services/gst_return_service.py:1145 carries the comment verbatim: 'There is no gstr9 computation builder in domain/gst yet: nothing derives the annual return's tables from the books.' gstr9_summary_from_returns (line 1181-1256) only counts which months have status=='submitted' GSTR-1/GSTR-3B rows and sums the FILED GSTR-1 HEADER totals (total_taxable_paise / total_igst_paise / ...). No Table 4, 6, 8, 9, 10-13, 17 or 18 exists anywhere. `ls apps/api/domain/gst` has no gstr9 module; the only other gstr9 code is services/filing_demo/gstr9.py, which needs an already-saved draft (line 46: 'gstr9 demo needs ref.return_id') and refuses a row whose return_type is not 'gstr9' (line 57). POST /gst-workspace/gstr9 is at routers/gst_workspace.py:933 (finding said 944).",
+     "guards": "No guard makes this moot. The GSTR-9 draft row is written only by save_gstr9, and nothing in apps/web calls it: `grep -rn 'gst-workspace/gstr9' apps/web` returns exactly three hits, all in app/clients/[id]/compliance/gst/page.tsx, and only line 1386 is a call \u2014 a GET. The other two are comments, one of which (line 1496) admits it: 'drafts are saved via POST /gst-workspace/gstr9, not derived here.' The separate /gst page writes compliance_calendar rows (app/gst/page.tsx:191-201), which is a deadline tracker, not a return.",
+     "reach": "Reaches a real user. gst_workspace.router is mounted (apps/api/main.py:321) and the tab is live: TABS includes { id: 'gstr9', label: 'GSTR-9' } at app/clients/[id]/compliance/gst/page.tsx:1502, and the workspace itself is linked from the client compliance page (app/clients/[id]/compliance/page.tsx:377, 'GST Workspace'). The 'File (demo)' button at line 1478 is inside the `draft` branch, so with no draft it never renders. The empty state at line 1450-1452 says drafts 'are saved from the year's reviewed GSTR-1 and GSTR-3B returns' \u2014 nothing does that."
+    }
+   }
   },
   {
    "id": "GST-11",
@@ -130,7 +179,19 @@
    "market_standard": "ClearTax, Zoho Books and TallyPrime all support quarterly GSTR-1/3B periods and generate IFF for months 1 and 2.",
    "confidence": "high",
    "suggested_fix": "Make the period a (start, end) range derived from the client's `gst_filing_frequency` rather than a MMYYYY month, thread it through both from-books builders, the filing record and the screens, and add an IFF builder that emits b2b/b2ba/cdnr/cdnur only.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Every period in the GST return engine is one calendar month and cannot be anything else: apps/api/services/gst_return_service.py:66-75 and apps/api/services/gst_filing_record_service.py:60-75 both reject a non-MMYYYY period outright. The due-date layer is fully QRMP-aware (apps/api/services/compliance_engine.py:117-168) and reads clients.gst_filing_frequency; the compute, save and period-lock layers never read it. There is no IFF builder anywhere \u2014 only iff_due_date.",
+    "probe": "cd apps/api && python -c \"from services.gst_return_service import _period_bounds; from services.gst_filing_record_service import period_bounds; print(_period_bounds('062025'), period_bounds('062025')); _period_bounds('Q12025')\" -> ('2025-06-01','2025-06-30') ('2025-06-01','2025-06-30') then ValueError: period must be MMYYYY. And `grep -rn gst_filing_frequency apps/api --include=*.py | grep -v tests/` -> only compliance_engine/compliance_obligation_service/routers.compliance/routers.gst_workspace plus seed and mock data.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/services/gst_return_service.py:66-75 `_period_bounds(period)` raises ValueError('period must be MMYYYY') on anything else and returns the first/last day of ONE calendar month; gstr1_from_books (line 962) opens with `start, end = _period_bounds(period)` and gstr3b_from_books does the same. apps/api/services/gst_filing_record_service.py:60-75 duplicates it deliberately (its own docstring says so), so the `filings` row a submitted return writes \u2014 and therefore journal_period_lock_reason \u2014 covers one month. Frontend period inputs are monthly everywhere: apps/web/app/gst/gstr3b/page.tsx:50-63 builds 12 YYYY-MM options; the client workspace takes a raw MMYYYY string (app/clients/[id]/compliance/gst/page.tsx:586 and 1059, placeholder 'Period (MMYYYY e.g. 042025)').",
+     "guards": "Nothing bridges the gap. `gst_filing_frequency` is read in exactly four non-test places \u2014 services/compliance_engine.py:46 (comment), services/compliance_obligation_service.py:144, routers/compliance.py:86 and routers/gst_workspace.py:88 (_gst_regime) \u2014 all of them DUE-DATE / obligation code. No return builder, no filing-record writer and no screen reads it. IFF has a due date (services/compliance_engine.py:158 iff_due_date, surfaced at routers/gst_workspace.py:293) and no builder at all: a repo-wide grep for 'Invoice Furnishing' outside compliance_engine returns nothing.",
+     "reach": "Reaches a real user. The QRMP due dates are computed and shown \u2014 compliance_engine.gstr1_due_date/gstr3b_due_date take a `frequency` arg (lines 117-146) and pmt06_due_date/iff_due_date exist \u2014 and _gst_regime (routers/gst_workspace.py:68-95) is used by the mounted dashboard endpoint. So a quarterly filer is quoted the 13th/22nd/24th and PMT-06/IFF dates on a screen, and then given only monthly compute and monthly period-lock."
+    }
+   }
   },
   {
    "id": "GST-12",
@@ -142,7 +203,10 @@
    "market_standard": "Not applicable \u2014 this is a straightforward defect in a primary create path.",
    "confidence": "high",
    "suggested_fix": "Make MONTH_OPTIONS carry a machine value (`YYYY-MM`) separate from the display label, and have `getDueDate` and `handleSave` both read the machine value. Add a component test that saves a filing.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-13",
@@ -154,7 +218,19 @@
    "market_standard": "ClearTax and IRIS surface an amendment worklist and a books-vs-filed exception report as first-class screens; the ITC reversal/reclaim register is a standard ledger in IRIS and Cygnet.",
    "confidence": "high",
    "suggested_fix": "Add tabs to the client GST workspace for Amendments (with a \"Compute with amendments\" action that calls /gstr1/with-amendments), Exceptions, ITC Register and Advances. The API shapes are stable and tested; this is UI work.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Eight GST endpoints \u2014 amendments (gst_workspace.py:1085), exception report (1128), ITC register + reversal + reclaim (1187, 1205, 1236), advances (1261), POST gstr9 (933), gstr1/with-amendments (gst.py:434) \u2014 plus the whole 165-line routers/gst_portal.py are mounted and have no caller anywhere in apps/web. Only /itc/rule37 is wired (apps/web/lib/data/gst.ts:382). Backend-exists-but-no-screen: a confirmed gap.",
+    "probe": "for p in gstr1/amendments gstr1/exceptions with-amendments itc/register itc/reversal itc/reclaim gstr1/advances gst-portal; do grep -rn \"$p\" apps/web --include=*.ts --include=*.tsx; done -> no output for any of the eight.",
+    "lens_notes": {
+     "literal": "Confirmed, with the route line numbers corrected: /gstr1/amendments is routers/gst_workspace.py:1085 (not 1082), /gstr1/exceptions 1128 (not 1120), /itc/register 1187, /itc/register/reversal 1205, /itc/register/reclaim 1236, /gstr1/advances 1261, POST /gstr9 933, and /gst/gstr1/with-amendments routers/gst.py:434. routers/gst_portal.py is 165 lines. The self-indicting comment is real: routers/gst.py:443-446 'NOTHING CONNECTED THE TWO: there was no route that produced the merged payload'.",
+     "guards": "None \u2014 this is the guard question inverted. A grep of apps/web for each of the eight paths ('gstr1/amendments', 'gstr1/exceptions', 'with-amendments', 'itc/register', 'itc/reversal', 'itc/reclaim', 'gstr1/advances', 'gst-portal') returns ZERO hits for all eight. Only itc/rule37 is wired (apps/web/lib/data/gst.ts:382). The GSTR-3B screen does display an `itc_reversal` block (app/clients/[id]/compliance/gst/page.tsx:977-1026), but that is the from-books working's own summary, not the reversal REGISTER \u2014 the register's POST endpoints that would classify a journal as Rule 37/37A/16(2)(b)/16(2)(c) have no caller, so 4(B)(2) can only ever be non-nil if somebody POSTs the API by hand.",
+     "reach": "All the routers are mounted (apps/api/main.py:265 gst, 300 gst_portal, 321 gst_workspace), so these are live, tested backend capabilities with no screen. Per the verification rules that CONFIRMS the gap rather than refuting it. The product also advertises the missing capability: apps/web/app/clients/[id]/reports/page.tsx:97 describes the GST area as 'GSTR-1, GSTR-3B, 2A/2B matching, ITC reversal register'."
+    }
+   }
   },
   {
    "id": "GST-14",
@@ -166,7 +242,10 @@
    "market_standard": "Tally's Edit Log and ClearTax both freeze a period once a return is marked filed, from whichever screen records it.",
    "confidence": "high",
    "suggested_fix": "Route the tracker's mark-filed through `PATCH /api/gst-workspace/{gstr1,gstr3b}/{id}/status` so `record_filing` runs, or have the tracker read filing state from the returns tables rather than maintaining a second one in `compliance_calendar`.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-15",
@@ -178,7 +257,10 @@
    "market_standard": "Zoho Books and ClearTax carry advance receipts into GSTR-1 Table 11A and into GSTR-3B 3.1(a) together, and reverse them in 11B when the invoice is raised.",
    "confidence": "high",
    "suggested_fix": "Either wire advances into GSTR-3B 3.1(a) and correct the report text and the docstring, or stop merging `at`/`txpd` into the payload. The two must agree; today they contradict each other in the same request.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-16",
@@ -190,7 +272,19 @@
    "market_standard": "ClearTax and IRIS run 40-60 pre-filing validations on the prepared return and list the offending invoices before the JSON is produced.",
    "confidence": "high",
    "suggested_fix": "Call `validate_gstr1` inside `gstr1_from_books` over the invoices it built and return the errors/warnings alongside the payload, and render them on both GSTR-1 screens. Use `domain/gst/gstin.py`'s check-digit validator for counterparty GSTINs rather than the shape regex.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "validate_gstr1 (apps/api/domain/gst/validator.py:186) has only two callers, both routes no screen uses (apps/api/routers/gst.py:520, :557). The path a CA actually uses \u2014 POST /api/gst/gstr1/from-books \u2014 runs no invoice-level validation at all, and apps/web/lib/data/gst.ts:516 then hardcodes validation_warnings to [] and stamps the saved return 'validated'. The GSTIN and duplicate-number sub-claims are partly guarded upstream (routers/customers.py:274 check digit; migration 209 unique index), but an empty place of supply is not guarded anywhere and is a hard portal rejection with no line number to point at.",
+    "probe": "grep -rn 'validate_gstr1' apps/api --include=*.py | grep -v tests/ -> domain/gst/validator.py:186 (def), routers/gst.py:520, routers/gst.py:557. Nothing in services/gst_return_service.py. grep -n 'validation_warnings' apps/web/lib/data/gst.ts -> lines 410 and 516 both `validation_warnings: []`.",
+    "lens_notes": {
+     "literal": "Confirmed. `grep -rn validate_gstr1 apps/api --include=*.py | grep -v tests/` returns exactly three non-test hits: the definition at domain/gst/validator.py:186 and two callers, routers/gst.py:520 (POST /gst/gstr1/build) and :557 (POST /gst/validate/gstr1). gstr1_from_books (services/gst_return_service.py:962-1136) never calls it \u2014 I read the whole function; its only cross-check is the GL reconciliation block at the end. The from-books route validates only the FILER's own GSTIN and the period (routers/gst.py:423); /gstr1/with-amendments does the same (line 462). apps/web/lib/data/gst.ts:500 posts to /api/gst/gstr1/from-books and then hardcodes `validation_warnings: []` at line 516, and saveGSTR1Return writes status 'validated' unconditionally (line 540 area) \u2014 the comment there says 'a result in hand is a validated one'.",
+     "guards": "Partly guarded, which lowers some sub-claims but not the finding. (a) Counterparty GSTIN: routers/customers.py:274 runs domain/gst/gstin.py's check-digit `problem_with` on customer create, and apps/web never inserts customers over PostgREST (only selects/updates), so a malformed customer GSTIN is largely stopped upstream. (b) Duplicate invoice numbers: migration 209 adds a live UNIQUE index on (firm_id, client_id, invoice_no), so duplicates within sales invoices are DB-blocked (a credit note whose number equals an invoice number is still undetected, but lands in a different table of the return). (c) The out-of-period invoice-date warning is moot on this path \u2014 from-books selects by invoice_date BETWEEN the period bounds. What is NOT guarded: place of supply (services/gst_return_service.py:1012 `pos = r.get('supply_state_code') or cust.get('state_code') or ''` \u2014 customers.state_code is nullable, migration 049:11, so an empty POS goes straight into the payload), the CGST=SGST intra-state test, the IGST-on-intra-state test and the tax-arithmetic tolerance check.",
+     "reach": "Reaches a real user on both GST screens. apps/web/app/gst/gstr1/page.tsx calls buildGSTR1 (which is from-books) and renders `result.validation_warnings` in two places (lines 272-277 and 383-397) \u2014 an area that is structurally always empty because lib/data/gst.ts:516 sets it to []. The client workspace calls /api/gst/gstr1/from-books directly (app/clients/[id]/compliance/gst/page.tsx:473). Neither screen ever calls /gstr1/build or /validate/gstr1."
+    }
+   }
   },
   {
    "id": "GST-17",
@@ -202,7 +296,10 @@
    "market_standard": "Tally and ClearTax validate HSN length against AATO before the return is generated and list every invoice line that fails; GSTN's own Table 12 Phase-3 validation (from the Jan-2025 return period) rejects free-text HSN and splits Table 12 into separate B2B and B2C tabs \u2014 this builder emits one flat list.",
    "confidence": "high",
    "suggested_fix": "Update the thresholds to Notification 78/2020, turn `_required_hsn_digits` into a VALIDATION (report every line whose code is shorter than required) rather than an unused truncation, and split Table 12 into B2B and B2C.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "GST-18",
@@ -214,7 +311,19 @@
    "market_standard": "Tally and ClearTax derive the From/To serial range and the cancelled count directly from the document numbering series.",
    "confidence": "medium",
    "suggested_fix": "Emit `{num: <row index>, from: <first serial>, to: <last serial>, totnum: <count>, cancel: <cancelled count>, net_issue: totnum - cancel}` per nature, taken from the document series. Verify the key names against the current GSTN offline tool before shipping.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "True as to the payload shape: apps/api/domain/gst/gstr1_builder.py:701 emits `{'num': count, 'cancel': 0, 'net_issue': count}` with no from/to/totnum, and `num` carries the document COUNT where the GSTN docs array wants the row index. One sub-claim is wrong and should be dropped: the builder canNOT 'see cancelled documents' \u2014 gstr1_from_books feeds it only posted invoices and issued notes (services/gst_return_service.py:172-183 filter on status), so a cancelled series is invisible to it rather than ignored by it, which makes the fix bigger than the finding implies (the serial range and cancelled count have to come from the document tables, not from the builder's input).",
+    "probe": "cd apps/api && python -c \"from domain.gst.gstr1_builder import _build_doc_summary,...; print(json.dumps(_build_doc_summary(five_invoices)))\" -> [{\"doc_num\": 1, \"doc_typ\": \"Invoices for outward supply\", \"docs\": [{\"num\": 5, \"cancel\": 0, \"net_issue\": 5}]}] \u2014 num is 5 (the count) where the utility expects 1 (the row index), and from/to/totnum are absent. grep -rn totnum apps/api -> no hits.",
+    "lens_notes": {
+     "literal": "Confirmed at apps/api/domain/gst/gstr1_builder.py:695-702 (the finding said 698-702; the docs line itself is 701): `\"docs\": [{\"num\": count, \"cancel\": 0, \"net_issue\": count}]`. No `from`, no `to`, no `totnum`. The module's own comment at lines 651-654 states that doc_num is the form's fixed 1-based position 'not a running count of the rows being filed' \u2014 the same distinction it then fails to make for `num` inside the docs array, which in the GSTN Returns Offline Tool is the row index within that array. The payload embeds it as `payload['doc_issue'] = {'doc_det': doc_issue}` (line 168-170).",
+     "guards": "None. tests/test_gstr1_payload_matches_gstn_utility.py has five doc_issue tests (lines 116-160) and every one of them asserts only doc_num / doc_typ / row order / nature spelling; the helper `_docs` at line 117 literally projects `{d['doc_typ']: d['doc_num']}` and throws the docs array away. A repo-wide grep for 'totnum' in apps/api returns nothing.",
+     "reach": "Reaches the produced JSON. build_gstr1 is called by gstr1_from_books (services/gst_return_service.py:1085), which is what both GST screens use, and the GSTR-1 page offers Download JSON (apps/web/app/gst/gstr1/page.tsx:282-287)."
+    }
+   }
   },
   {
    "id": "GST-19",
@@ -226,7 +335,19 @@
    "market_standard": "ClearTax, IRIS and Cygnet compute eligible ITC invoice by invoice against 2B, keep RCM and import IGST outside the matching set, and show the disallowed invoices.",
    "confidence": "high",
    "suggested_fix": "After GST-04 lands, replace the aggregate cap with per-invoice eligibility (matched in 2B, `itcavl == 'Y'`), exclude RCM and IMPG from the matched set, and report the unmatched invoices as the reason for the difference.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Both halves are true. Rule 36(4) is applied as an aggregate per-head truncation (apps/api/domain/gst/gstr3b_computer.py:545-559, called at 677-679) rather than the invoice-level GSTR-2B test \u00a716(2)(aa) requires, and the book figure it caps (line 663) includes reverse-charge self-assessed tax that never appears in 2B's b2b section \u2014 so the cap eats genuine credit. It is dormant only because nothing writes gstr2a_records (the sole reader is services/gst_return_service.py:383). Medium is right: latent, not live.",
+    "probe": "cd apps/api && python -c \"from domain.gst.gstr3b_computer import compute_gstr3b, PurchaseTransaction, GSTR2ARecord; b2b=PurchaseTransaction(100000,0,0,18000,0,False); rcm=PurchaseTransaction(277778,0,0,50000,0,True); r=compute_gstr3b([],[b2b,rcm],[GSTR2ARecord(0,0,18000)]); print(r.itc_book_igst, r.itc_2a_igst, r.itc_igst, r.itc_capped_by_2a)\" -> 68000 18000 18000 True. Rs 500 of legitimate RCM credit is trimmed away by the aggregate cap. Also: GSTR2ARecord's fields are only ['cgst_paise','sgst_paise','igst_paise'] \u2014 no invoice identity at all.",
+    "lens_notes": {
+     "literal": "Confirmed, line numbers corrected: _apply_rule_36_4_cap is apps/api/domain/gst/gstr3b_computer.py:545-559 (not 554-565) and compares SUMS per head; book_igst is line 663 (not 660) and sums over ALL purchases with only the \u00a717(5) ineligible amounts subtracted; the three cap calls are lines 677-679. Stronger than the finding says: the GSTR2ARecord dataclass carries only cgst_paise/sgst_paise/igst_paise \u2014 no GSTIN, no invoice number, no date \u2014 so invoice-level matching is not merely unimplemented, it is structurally impossible with the type the computer takes. `cap_applied` is the only signal (services/gst_return_service.py:919); no invoice list is produced.",
+     "guards": "The cap cannot fire today, which is the finding's own second point and it holds: nothing writes public.gstr2a_records anywhere. `grep -rn gstr2a_records apps/api --include=*.py --include=*.sql | grep -v tests/` returns one READ (services/gst_return_service.py:383), one request-body field on POST /gst/gstr3b/compute (routers/gst.py:71, 286) and only DDL/GRANT/RLS lines in migrations. The GSTR-2B upload endpoint writes gstr2b_uploads (routers/gst_workspace.py:899), a different table. The /gst/reconciliation screen parses a 2A file in the browser and persists nothing (apps/web/app/gst/reconciliation/page.tsx:225-282).",
+     "reach": "gstr3b_from_books is what both GST screens call, so the code path is live \u2014 but with two_a_rows always empty, _apply_rule_36_4_cap takes its `if gstr2a == 0: return book, False` branch (line 553-555) and the working always reports gstr2a_record_count: 0. So no wrong number reaches a CA today; this is a latent defect that becomes live the moment 2A/2B data is ingested."
+    }
+   }
   },
   {
    "id": "GST-20",
@@ -238,7 +359,19 @@
    "market_standard": "TallyPrime supports multi-GSTIN per company; Zoho Books supports GST branches; ClearTax and IRIS model a client as a PAN with many GSTINs and give a PAN-level dashboard across them.",
    "confidence": "high",
    "suggested_fix": "Introduce a `client_gst_registrations` table (client_id, gstin, state_code, filing_frequency, registration_type, effective dates), key the returns tables on registration_id rather than client_id, and add a GSTIN selector to every GST screen. This is the largest structural change in the module and should be sequenced before more return-level work.",
-   "effort": "months"
+   "effort": "months",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "One GSTIN per client, exactly as claimed: apps/api/migrations/001_initial_schema.sql:28 is the only client-level GSTIN column and no registrations table exists; apps/api/migrations/036_gst_engine.sql:60 and :116 make (client_id, period) unique on both return tables, so a second registration cannot hold its own return. Migration 325 adds per-client statutory registrations but only TAN/EPF/ESIC/LIN/PT \u2014 deliberately not GSTIN.",
+    "probe": "grep -rn '^\\s*gstin' apps/api/migrations/*.sql -> 9 hits, none a registrations table. grep -rn 'UNIQUE' apps/api/migrations/036_gst_engine.sql -> lines 60 and 116, both 'UNIQUE (client_id, period)'. ls apps/api/migrations | grep -i 'gstin\\|registration' -> only 325_a_client_has_its_own_statutory_registrations.sql (TAN/EPF/ESIC/LIN/PT).",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/migrations/001_initial_schema.sql:28 is a single `gstin TEXT CHECK (...)` column on `clients`. A grep of every migration for a gstin column returns nine hits across clients, vendors/customers (049), gstr1_returns (036:47), and a few intelligence/mock tables \u2014 none is a per-client registration table. There is no client_gstins / client_gst_registrations table anywhere. _client_gstin (apps/api/routers/gst.py:344-350) selects that one column and every from-books route uses it. migrations/036_gst_engine.sql:60 and :116 both declare UNIQUE (client_id, period) on gstr1_returns and gstr3b_returns, so a second GSTIN for the same client cannot have its own return row for the same month.",
+     "guards": "The nearest thing to a refutation is migration 325_a_client_has_its_own_statutory_registrations.sql, which DOES add per-client registrations \u2014 but I read it: it holds TAN, EPF establishment code, ESIC employer code, LIN and a per-(client, state) professional-tax table. No GSTIN, and its own header says why the PT one is per-state. It does not touch GST.",
+     "reach": "Reaches every GST screen: the single clients.gstin is what routers/gst.py:344 hands to gstr1_from_books/gstr3b_from_books, and save_gstr1/save_gstr3b/save_gstr9 all key on (client_id, period). A multi-state client has no representation at any layer."
+    }
+   }
   },
   {
    "id": "GST-21",
@@ -250,7 +383,19 @@
    "market_standard": "ClearTax and IRIS compute \u00a750 interest and the \u00a747 late fee (\u20b950/day, \u20b920/day for nil, capped) and show them in Table 5.1 before filing. Tally computes interest on delayed payment.",
    "confidence": "high",
    "suggested_fix": "Build `domain/gst/interest.py` for \u00a750(1) with its proviso (net cash liability only) and \u00a750(3) for wrongly-availed credit, plus \u00a747 late fee with the nil-return and cap variants, and surface both in Table 5.1 and on the Rule 37 report. The refusal is currently honest but the feature is table stakes.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no \u00a750 interest and no \u00a747 late fee computation anywhere in apps/api: apps/api/domain/gst/gstr3b_computer.py:531-534 emits Table 5.1 as zeros, and apps/api/services/filing_demo/gstr3b.py:259-267 states the refusal in the code. Every other hit is prose or fixed demo copy (domain/ai_insight_service.py:23, domain/risk_engine.py:40, domain/notification_service.py:28 all sit in mock lists). Medium is right \u2014 the return is prepared with a nil 5.1 and the CA computes it by hand; nothing wrong is asserted, but a market-standard figure is absent.",
+    "probe": "grep -rni 'late.fee|\u00a747|\u00a750' apps/api/domain apps/api/services --include=*.py -> only prose in itc_reversal.py:12,90, the explicit refusal in filing_demo/gstr3b.py:259-277, and mock strings. grep -n intr_ltfee apps/api/domain/gst/gstr3b_computer.py -> 531, the dict on 531-534 being all zeros. No domain/gst/interest.py exists.",
+    "lens_notes": {
+     "literal": "Confirmed, one line number corrected: intr_ltfee is hardcoded to zeros at apps/api/domain/gst/gstr3b_computer.py:531-534 (not 511-514). services/filing_demo/gstr3b.py:259-277 says outright 'PracticeSync does not compute \u00a750 interest or \u00a747 late fee' and emits Table 5.1 as two zero rows. domain/gst/itc_reversal.py:12 and :90 mention \u00a750 interest only in prose. A repo-wide grep for late-fee/interest computation in apps/api/domain and apps/api/services finds no \u00a747 or \u00a750 arithmetic at all \u2014 there is no domain/gst/interest.py and no late_fee_paise field anywhere.",
+     "guards": "The refusal is explicit and honest rather than silent, which is a mitigation but not a guard: the demo prints a note beside the zeros (services/filing_demo/gstr3b.py:261-267). The from-books path has no such note \u2014 gstr3b_computer.py:531 simply emits zeros into the payload. Note the contrast with income tax, where \u00a7234A/B/C interest IS computed (domain/income_tax/advance_tax_interest_engine.py), so the absence is specific to GST.",
+     "reach": "Reaches a real user: the zeros are in the GSTR-3B payload every from-books compute produces, and the GSTR-3B screens render/download it. The '\u20b9500 so far' string the finding cites (domain/ai_insight_service.py:23) is a fixed entry in MOCK_AI_INSIGHTS_V2 \u2014 its module docstring (line 5) says so \u2014 served by routers/ai_insights.py, i.e. demo copy, not a computation. Same for domain/risk_engine.py:40 and domain/notification_service.py:28."
+    }
+   }
   },
   {
    "id": "GST-22",
@@ -262,7 +407,19 @@
    "market_standard": "Every product renders GSTR-3B as the form: 3.1(a)-(e), 3.1.1, 3.2, 4, 5, 5.1 and 6.1, with taxable value and each tax head in their own columns.",
    "confidence": "high",
    "suggested_fix": "Give Table 3.1 a \"Taxable value\" column of its own, add the 3.1(d) and 3.1(e) rows, add 3.2 from `inter_sup_*`, and add a Table 5.1 row that states the interest/late-fee position honestly (see GST-21).",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The screen genuinely prints two taxable values under a column headed IGST (apps/web/app/gst/gstr3b/page.tsx:306, 321, 327), calls a total that excludes reverse charge 'Total Output Tax' (line 332), and omits 3.1(d), 3.1.1, 3.2, 5 and 5.1 \u2014 while the same repo's filing demo renders the form correctly at apps/api/services/filing_demo/gstr3b.py:202-218. It is a display defect only: the filed JSON puts both under \"txval\" (gstr3b_computer.py:415, 419), so medium is right.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/web/app/gst/gstr3b/page.tsx:304-309 declares the Table 3.1 header row as Supply Type | IGST | CGST | SGST \u2014 there is no taxable-value column. Line 321 puts {r(w.outward.zero_rated_paise)} and line 327 puts {r(w.outward.nil_exempt_paise)} in the first numeric cell (the IGST column), with em-dashes under CGST and SGST. Both are taxable VALUES, not tax: apps/api/domain/gst/gstr3b_computer.py:137-138 comments them 'zero-rated (export) taxable value' / 'nil-rated + exempt taxable value', and the GSTN payload correctly emits them as \"txval\" at gstr3b_computer.py:415 and 419. Line 332-335 labels the sum of the taxable_* heads 'Total Output Tax' and omits reverse charge. rcm_inward is returned by the endpoint (apps/api/services/gst_return_service.py:864) and typed at apps/web/lib/data/gst.ts:96-100, but a case-insensitive grep for rcm/reverse charge over the page returns nothing. Table 3.2 is computed server-side at gstr3b_computer.py:629-642 into inter_sup_unreg/comp/uin (declared at 144-146, emitted at 441-444) and is neither returned by /from-books nor rendered. No 3.1.1, no Table 5, no Table 5.1 on the page.",
+     "guards": "None that bite. apps/api/tests/test_gstr3b_screen_contract.py only checks that every w.a.b binding the screen reads is a field the endpoint returns \u2014 it says nothing about which column a value lands in. The filing-demo framework gets this RIGHT and is the negative control: apps/api/services/filing_demo/gstr3b.py:202 declares headers [\"\", \"Taxable value\", \"IGST\", \"CGST\", \"SGST\"], puts zero_rated/nil_exempt under Taxable value with dashes across the three tax heads (lines 211-213), and adds the missing 3.1(d) RCM row at 214-218. So the correct layout already exists in this repo \u2014 the working screen just does not use it. The GSTN JSON is unaffected, so nothing wrong is FILED.",
+     "reach": "Live. /gst/gstr3b is linked from apps/web/app/gst/page.tsx:802, and /gst is in the workspace nav (apps/web/lib/workspace/workspaceConfig.ts:165, apps/web/components/panels/DeadlinesPanel.tsx:31). The page carries no FilingDemoWizard, so the CA on this screen never sees the correct layout."
+    }
+   }
   },
   {
    "id": "GST-23",
@@ -274,7 +431,19 @@
    "market_standard": "Every product records the ARN and filing date per return and uses it to freeze the period.",
    "confidence": "high",
    "suggested_fix": "Add a \"Mark as Filed\" action with ARN and filed-date inputs to the GSTR-1 tab, calling the existing PATCH with `status=submitted, ca_approved=true, arn, filed_date`.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "refuted",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "SEPARATE, REAL DEFECT the finding half-stumbled onto and mis-attributed: BOTH mark-filed paths write the return row directly over PostgREST (apps/web/lib/data/gst.ts:657-676 for GSTR-3B, 678-697 for GSTR-1) instead of calling PATCH /api/gst-workspace/gstr{1,3b}/{id}/status. Only the backend calls record_filing (apps/api/routers/gst_workspace.py:523-541 and :747), which is the sole writer of public.filings \u2014 and public.journal_period_lock_reason reads exactly that table, requiring a non-null filed_date (apps/api/migrations/266_editable_journals_until_locked_or_filed.sql:315-326). The direct write sets only status/arn/submitted_at, never filed_date and never a filings row, so the \u00a737 period lock never engages for GSTR-1 OR GSTR-3B from any screen, and the backend record_filing capability is reachable from no screen. RLS permits the direct write (firm-scoped policy only, migrations 053:168-170 and 095:40), so the button works and silently skips the lock. The client-workspace GST tab lacking a mark-filed shortcut is real but is polish (low).",
+    "probe": null,
+    "lens_notes": {
+     "literal": "The central claim is false. A GSTR-1 Mark-as-Filed control WITH an ARN field exists: apps/web/app/gst/gstr1/page.tsx:148-158 handleMarkFiled \u2192 markGSTR1Filed, with the 'Mark GSTR-1 as Filed' modal and ARN input at lines 688-729. It is the exact mirror of the GSTR-3B one the finding says is unmatched (apps/web/app/gst/gstr3b/page.tsx:153-162). So 'GSTR-3B has one, GSTR-1 does not' is wrong, and 'the return stays ca_approved for ever' is wrong \u2014 markGSTR1Filed sets status='submitted' (apps/web/lib/data/gst.ts:686-694). 'The exception report can never run' is also wrong: payload_json is frozen at SAVE time, not at submit (apps/api/routers/gst_workspace.py:385), so a saved-then-marked-filed return reaches services/gst_exception_service.py:61-67 with both status='submitted' and a payload.",
+     "guards": "Not needed \u2014 the claimed-missing feature exists and is reachable.",
+     "reach": "/gst/gstr1 is linked from apps/web/app/gst/page.tsx:795, the same panel that links /gst/gstr3b at 802. Only the client-workspace TAB (apps/web/app/clients/[id]/compliance/gst/page.tsx:626-641) lacks the action, and its GSTR-3B tab lacks it identically (lines 1104-1142 offer only Validate / CA Approve / File (demo) / Recheck / Delete). There is no GSTR-1-vs-GSTR-3B asymmetry anywhere."
+    }
+   }
   },
   {
    "id": "GST-24",
@@ -286,7 +455,19 @@
    "market_standard": "ClearTax and IRIS both read the IMPG section of GSTR-2B and populate 4(A)(1); IRIS and Cygnet both offer ISD distribution with GSTR-6.",
    "confidence": "medium",
    "suggested_fix": "Add an import flag plus bill-of-entry number/date to purchase bills so IMPG/IMPS can be populated (and matched against 2B's impg section). Treat ISD as a separate roadmap item \u2014 it needs its own registration, GSTR-6 and a distribution engine. I could not establish from the repo whether any client is affected today.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Exactly as stated. Note the bound: total 4(A) is still right in AMOUNT \u2014 import and ISD credit is not lost, it lands in OTH (gstr3b_computer.py:300-304) \u2014 so what breaks is the row-wise tie-up against GSTR-2B's ICEGATE-populated IMPG section, not the credit claimed. That is what keeps it medium rather than high. The '01-04-2025 ISD compulsory' statutory point could not be verified from the repo (no external fetch available here); the code gap is verified.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/gst/gstr3b_computer.py:293-305 returns ('IMPG', 0,0,0,0), ('IMPS', 0,0,0,0) and ('ISD', 0,0,0,0) unconditionally; only ISRC (capped reverse charge) and OTH carry figures. The docstring at 280-282 states the reason: 'IMPG, IMPS and ISD are zero because nothing upstream distinguishes an import or an ISD distribution from any other purchase yet.' A migration scan for is_import / bill_of_entry / boe_ / icegate / impg over apps/api/migrations finds nothing on purchase_bills (the only 'customs' hit is the exchange-rate-type enum). A case-insensitive grep for \\bISD\\b across apps/api returns only this row label, its docstring and test assertions \u2014 there is no ISD model, no GSTR-6, no distribution engine.",
+     "guards": "None. The tests pin the SHAPE, not the content: apps/api/tests/test_gstr3b_payload_matches_gstn_utility.py:83 and tests/e2e_gst_verification.py:530 assert the five row types are present in order, which the hard zeros satisfy. Nothing in docs/ records import or ISD as a deliberate exclusion \u2014 the only record is the code comment.",
+     "reach": "Real. itc_avl_rows feeds the GSTN JSON the CA downloads and uploads to the portal, and the same gap was independently found from the purchase side (docs/audits/2026-09-07-findings/purchase-cycle-vendors-purchase-bill.json:230-235), which corroborates rather than duplicates."
+    }
+   }
   },
   {
    "id": "GST-25",
@@ -298,7 +479,19 @@
    "market_standard": "ClearTax, Zoho Books and TallyPrime all support composition (CMP-08, GSTR-4), and ClearTax/IRIS support GSTR-8 TCS reconciliation and GSTR-9C.",
    "confidence": "high",
    "suggested_fix": "Sequence by book share: composition first (it is a whole client class the product cannot serve), then \u00a79(5)/TCS marking on sales invoices feeding 3.1.1 and GSTR-1 tables 14/15, then GSTR-9C after GSTR-9 exists.",
-   "effort": "months"
+   "effort": "months",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "All four capabilities are genuinely absent and the client record cannot even represent a composition dealer (no scheme column on clients, verified by scanning every ALTER TABLE clients ADD COLUMN in apps/api/migrations). Medium is the right band under the rubric \u2014 market-standard features absent, and a client class the product does not claim to serve \u2014 not a wrong figure on a return it does produce.",
+    "probe": "python scan of ALTER TABLE clients ADD COLUMN across apps/api/migrations/*.sql \u2192 18 columns total; GST-related names = ['gst_advance_tax_applicable'] only.",
+    "lens_notes": {
+     "literal": "Confirmed on every limb. apps/api/domain/gst/gstr3b_computer.py:375-384 builds eco_dtls from a literal eco_zero dict with the comment 'nothing marks a supply as made through an ECO, and neither side of \u00a79(5) is modelled'. apps/api/domain/gst/gstr1_builder.py:327-331 hardcodes \"typ\": \"OE\" for b2cs because 'Nothing here is marked as made through an operator', and apps/api/tests/test_gstr1_payload_matches_gstn_utility.py:186-187 lists supeco among the sections this builder does not produce. Greps for CMP-08, GSTR-4, GSTR-8 and GSTR-9C across apps/api return nothing. The 'composition' token that does appear (gstr3b_computer.py:37, 144-146, 634-636) is the RECIPIENT type for Table 3.2 \u2014 a supply made TO a composition dealer \u2014 not the client being one.",
+     "guards": "None. A programmatic scan of every ALTER TABLE clients ADD COLUMN across all migrations returns 18 columns, of which the only GST-related one is gst_advance_tax_applicable \u2014 there is no composition/scheme/registration-type flag anywhere, so nothing downstream could branch on it even if it wanted to.",
+     "reach": "Confirms the gap: there is no screen and no endpoint for any of these, so no partial capability exists that the finding overlooked. docs/compliance/02-gst.md:138 already records GSTR-9C as '[U] \u2014 assume portal-only', and docs/audits/2026-09-07-where-we-are-against-the-one-platform-goal.md:564-565 independently lists GSTR-9C and composition returns as absent."
+    }
+   }
   },
   {
    "id": "GST-26",
@@ -310,7 +503,19 @@
    "market_standard": "TallyPrime, Zoho Books and ClearTax all ship the full HSN/SAC master with notified rates and update it with each rate notification; that is the whole reason a user never types an HSN description.",
    "confidence": "high",
    "suggested_fix": "Ship a seeded HSN/SAC master (chapter, heading, 6-digit and 8-digit, description, notified rate, UQC) as read-only reference merged into search behind the firm's own library, with the firm's entry always winning. The deliberate refusal is defensible for RATES, which move by notification \u2014 but the CODES and descriptions do not, and shipping them costs the CA nothing to correct.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The facts hold \u2014 a new firm's HSN lookup is empty and every code must be typed or imported \u2014 but the framing is wrong. This is a documented, deliberate architectural decision taken on liability grounds, not an unfinished feature: docs/FIRM_HSN_LIBRARY.md:36-51 records it as 'Decision A', accepting the cold-start cost 'in exchange for a cleaner liability posture: Caflow asserts no classification content of any kind, anywhere a user can see it', and names the two mitigations (onboarding import, inline quick-add) that the finding's 'most visible this-product-is-not-finished moment' framing ignores. The seeded hsn_master is retained deliberately so the decision can be reversed without a schema rebuild (docs/HSN_SAC_MASTER_MAINTENANCE.md:5-15).",
+    "probe": "python count of value tuples in the hsn_master INSERTs \u2192 036: 38 rows, 175: 166 rows (~204 total, retained but exposed nowhere).",
+    "lens_notes": {
+     "literal": "Confirmed, with one correction. apps/api/routers/hsn.py:4-10 states the design verbatim and _fetch_library_rows at line 153-164 selects only from firm_hsn_library scoped by firm_id. But public.hsn_master is NOT absent \u2014 it exists (migration 036:29), carries ~204 seeded rows (38 in 036, 166 in 175, mostly 2-digit chapters with NULL rates), has a public-read RLS policy (036:147-148) and a SELECT grant (095:9). It is simply read by nothing: the API refuses it and a grep for hsn_master across apps/web returns zero hits. Migration 175:20-23 concedes 'The full 8-digit HSN leaf catalogue (~12k rows)' was never loaded.",
+     "guards": "Two mitigations the finding does not mention, both real. Onboarding has a dedicated third step, 'HSN/SAC Library' (apps/web/app/onboarding/page.tsx:105-131), with an import template and an outbound link to the GST portal's own search page. And apps/web/components/lookups/HsnLookup.tsx:50-56 offers an inline '+' that opens FirmHsnLibraryQuickAddModal, adding the code to the library without leaving the transaction. So an empty library is friction, not a hard stop \u2014 though HsnLookup.tsx:50 is explicit that 'There is no free-text escape hatch', so a code must be library-added before a line can carry it.",
+     "reach": "Confirms the gap rather than refuting it: the seeded hsn_master data exists in the database and is reachable from no screen and no endpoint. /settings/firm-hsn-library is linked from apps/web/app/settings/page.tsx:695."
+    }
+   }
   },
   {
    "id": "GST-27",
@@ -322,7 +527,19 @@
    "market_standard": "Not applicable \u2014 this is a house-rule violation. But every competitor's matching runs server-side and is persisted.",
    "confidence": "high",
    "suggested_fix": "Move `reconcile` into `apps/api/domain/gst/` beside a persisted match state (see GST-04), and replace `toPaise` with `lib/money/rupeeInput.ts` for the interim CSV path.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The house-rule violation is real and the parseFloat form is exactly as cited (page.tsx:119-127, tolerance at :258, matching engine at :210-289), unguarded by any test. One correction to the impact: the page writes nothing and the ITC actually claimed comes from the backend's Rule 36(4) cap over gstr2a_records (apps/api/domain/gst/gstr3b_computer.py:674-680), not from this screen \u2014 so a mis-parsed CSV amount misleads the CA in a throwaway worksheet rather than changing a filed figure. Medium is right.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed and, if anything, understated. apps/web/app/gst/reconciliation/page.tsx:119-127 is toPaise: strip commas, parseFloat, Math.round(f * 100) \u2014 the exact discarded form, returning 0 for NaN rather than refusing. lib/money/rupeeInput.ts is not imported (verified by grep over the file's import block, lines 14-30). reconcile() at lines 210-289 does the whole matching: key = supplier_gstin|invoice_number, per-head differences, and the classification matched/mismatch on `totalDiff <= 3` at line 258 \u2014 where the comment one line above says 'within 1 paise per head tolerance', so the stated rule and the coded rule are not even written the same way. It is not one of the three parity-pinned exceptions, which live in lib/gst/gstLine.ts.",
+     "guards": "None reach it. The only frontend money-parser guard tests are apps/web/scripts/payroll-money-is-exact.test.ts and statutory-values-record-what-was-read.test.ts, both scoped to a fixed FILES list of payroll screens (payroll-money-is-exact.test.ts:35-40). No test covers this page, and no backend parity vector pins reconcile().",
+     "reach": "Live but self-contained. /gst/reconciliation is linked from apps/web/app/gst/page.tsx:809. Both sides are CSV uploads (handleBooksFile / handleGstr2aFile at lines 549-563) \u2014 the books side is NOT read from purchase_bills \u2014 and the page performs no insert, update, upsert, apiPost or apiFetch at all, so nothing is persisted and nothing feeds the return builder."
+    }
+   }
   },
   {
    "id": "GST-28",
@@ -334,7 +551,19 @@
    "market_standard": "IRIS and ClearTax both run a Rule 37 180-day ageing and a Rule 37A supplier-non-filing check off 2B/2A data and produce the reversal entry.",
    "confidence": "high",
    "suggested_fix": "Add a \"Post this reversal\" action from the Rule 37 panel that creates the journal through the posting kernel and registers it in one step, and build the Rule 37A check once supplier GSTR-3B filing status is available from 2B data (GST-04 is a prerequisite).",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Exactly as stated. The workflow shows the Rule 37 amount and then stops: no \u00a750 interest is computed anywhere in rule37_report (services/itc_reversal_service.py:74-152), and the only way to get the reversal into Table 4(B)(2) is to hand-post a journal and then POST an endpoint no screen calls (routers/gst_workspace.py:1205). Rule 37A is a reason code with no detector behind it.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed on both halves. apps/api/services/itc_register_service.py:36-37 lists 'rule_37a' in RECLAIMABLE_REASONS and apps/api/routers/gst_workspace.py:1166 accepts it as a reason_code string, but a case-insensitive grep for rule.?37a across apps/api returns only that tuple, the field description, three prose comments (gstr3b_computer.py:98, 182, 462; filing_demo/gstr3b.py:33, 246) and test labels \u2014 nothing computes it. services/itc_reversal_service.py:74-152 rule37_report returns bills, per-head reversal, days_outstanding, payment_due_by and reverse_in_period, and no interest field of any kind; \u00a750 appears only in a sort-order comment at line 127.",
+     "guards": "None. The frontend text at apps/web/app/gst/gstr3b/page.tsx:543-547 is honest about the consequence \u2014 'Not included in Table 4(B) above\u2026 Post the reversal journal, then recompute' \u2014 which documents the gap rather than closing it.",
+     "reach": "Confirms the gap precisely. GET /api/gst-workspace/itc/rule37 IS wired to the screen (apps/web/lib/data/gst.ts:382 \u2192 fetchRule37Report \u2192 apps/web/app/gst/gstr3b/page.tsx:128), so the CA sees the amount. But POST /api/gst-workspace/itc/register/reversal (apps/api/routers/gst_workspace.py:1205) and .../reclaim (:1236) are called from nowhere in apps/web \u2014 a grep for 'gst-workspace/itc' across the frontend returns only the rule37 GET. So the register endpoint exists in the backend and is reachable from no screen."
+    }
+   }
   },
   {
    "id": "GST-29",
@@ -346,7 +575,19 @@
    "market_standard": "Every product check-digit-validates a GSTIN, and most also validate it live against the GSTN taxpayer-search API before filing.",
    "confidence": "high",
    "suggested_fix": "Have `GSTValidator.validate_gstin` delegate to `domain/gst/gstin.py`, and run counterparty GSTIN validation as part of the from-books build (GST-16), reporting failures as errors rather than rejecting the whole return.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed and strengthened. Not only is the check-digit module absent from every return path \u2014 it is also absent from the customer/vendor BULK IMPORT and EDIT paths, so a bad GSTIN has a live route into the books and then into GSTR-1 Table 4A. This is not the carve-out CLAUDE.md and tests/test_gstin_check_digit.py:240 record as deliberate (that one is models.client.validate_gstin only); it is a genuine mismatch between what CLAUDE.md claims is enforced and what routers/customers.py:375, :640 and routers/vendors.py:413, :584 actually do.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.gst.gstin import problem_with; from core.validators import validate_gstin; from models.parties import CustomerIn; ...\" printed: 27AAPFU0399F1ZV | check-digit module: 'The check digit does not match: this GSTIN ends in V, and the first 14 characters compute to P\u2026' | core.validators: None \u2014 and CustomerIn ACCEPTED bad-check-digit GSTIN -> 27AAPFU0399F1ZV.",
+    "lens_notes": {
+     "literal": "Confirmed, and the entry route is worse than the finding says. apps/api/domain/gst/validator.py:14 defines a bare GSTIN_RE and line 102 validates the counterparty with `if inv.party_gstin and not GSTIN_RE.match(...)` \u2014 shape only. apps/api/core/validators.py:36-48 validate_gstin checks shape plus state code and is what routers/gst_workspace.py:373, 566 and 962 call. domain/gst/gstin.py is imported by exactly three routers \u2014 vendors.py:12, onboarding.py:10, customers.py:11 \u2014 and by no return path.",
+     "guards": "The recorded deliberate carve-out does NOT cover this. apps/api/tests/test_gstin_check_digit.py:240-245 pins only models.client.validate_gstin as deliberately left loose (the 512 invented fixtures), and its route tests (lines 210-238) cover only the SINGLE-create endpoints. CLAUDE.md says the check digit is enforced on 'the customer and vendor create paths' \u2014 it is not: gstin_problem appears exactly twice in routers/customers.py (line 274, in POST /) and once in routers/vendors.py (line 243, in POST /). POST /customers/bulk (customers.py:375) validates via CustomerIn only, and PATCH /customers/{id} (customers.py:640-695) does not validate the GSTIN at all; models/parties.py:144-157 (CustomerIn) and :205-213 (CustomerUpdateIn) both call the shape-only core validate_gstin. Vendors are identical: POST /bulk (vendors.py:413) and PATCH (vendors.py:584) are unguarded.",
+     "reach": "Live and CSV-shaped. apps/web/app/clients/[id]/sales/page.tsx:2731 bulk-imports customers through POST /api/customers/bulk, and apps/web/components/customers/CustomerFormModal.tsx:137 edits them through PATCH /api/customers/{id} \u2014 both unguarded. So a transposed GSTIN enters by import or by edit, lands on a B2B invoice, and reaches Table 4A with no check-digit test on the way (domain/gst/gstr1_builder.py validates no counterparty GSTIN)."
+    }
+   }
   },
   {
    "id": "GST-30",
@@ -358,7 +599,19 @@
    "market_standard": "Not applicable.",
    "confidence": "high",
    "suggested_fix": "Add a small table of end-to-end 3B scenarios asserting the FILED numbers \u2014 RCM-only, export-with-payment, non-GST turnover, intra-state purchase with inter-state sale \u2014 rather than asserting the intermediate fields each computation happens to produce.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed. apps/api/tests/test_gst_rcm_gstr3b.py:40-45 asserts only that two intermediate fields cancel, and no collected test in the repo asserts any `net_*` figure with reverse charge present, nor covers CGST/SGST credit against residual IGST, export-with-payment IGST, or non-GST outward supplies. All four are genuinely wrong in apps/api/domain/gst/gstr3b_computer.py:617-623 and 730-745, and one is internally self-contradicting: services/gst_return_service.py:805-806 puts `books_rcm` INTO `tax_liability_paise` while line 847's `net_tax_paise` omits it, so the same screen shows a liability that includes RCM and a net payable that does not.",
+    "probe": "cd apps/api && venv/bin/python -c \"...compute_gstr3b scenarios...\" printed: 'sale+RCM: rcm_igst 1800000 net_igst 0 net_cgst 0 net_sgst 0' (Rs 18,000 RCM cash liability vanishes); 'exp w/ pay: outward_zero_rated 10000000 outward_taxable_igst 0 net_igst 0'; 'non_gst: osup_nongst {txval: 0}'; 'IGST liab + CGST/SGST credit: net_igst 1800000 itc_cgst 900000 itc_sgst 900000' (Rs 18,000 of credit left unused against IGST). Also `pytest tests/ --collect-only | grep -c e2e_gst_verification` -> 0, and `pytest` on the six GST computer test files -> 154 passed (the finding says 130; a count quibble that changes nothing).",
+    "lens_notes": {
+     "literal": "apps/api/tests/test_gst_rcm_gstr3b.py:40-45 is exactly as described: `test_c4_c5_rcm_net_liability_offsets_itc` builds one RCM purchase, binds `net_liability = r.rcm_igst` and `itc = r.itc_igst`, and asserts `net_liability - itc == 0`. It never touches `result.net_igst/net_cgst/net_sgst`. The name says 'net liability' but the assertion is on two intermediate fields that trivially cancel because compute_gstr3b builds them from the SAME purchase rows (apps/api/domain/gst/gstr3b_computer.py:648-651 and 662-668). Grepping every test that calls compute_gstr3b (tests/test_gst_rcm_gstr3b.py, test_gst_engine.py, test_gstr3b_itc_carried_forward.py, test_gstr3b_table4_reversals.py, test_gstr3b_payload_matches_gstn_utility.py, test_r239_gst_computation_gaps.py, test_unfiled_returns_can_be_deleted_and_rechecked.py): only test_gst_rcm_gstr3b.py passes `rc=True` into compute_gstr3b, and no assertion in it mentions `net_`. The four gaps named are all real in the code: net_* is computed at gstr3b_computer.py:730-745 solely from `outward_taxable_*` minus `itc_net_*`, so (a) rcm_* never enters net_*, (b) there is no s.49(5)(c)/(d) CGST->IGST or SGST->IGST cross-utilisation, (c) a zero_rated sale's igst_paise is dropped at line 619-620 (only taxable_amount is accumulated), (d) supply_type 'non_gst' matches no branch at lines 617-623 and osup_nongst is hard-coded {'txval': 0} at line 428.",
+     "guards": "No guard. tests/test_r239_gst_computation_gaps.py covers s.17(5), HSN cess, Decimal parsing and portal sync status \u2014 none of the four. test_gstr3b_table4_reversals.py:315-318 tests the OPPOSITE direction (excess IGST credit against CGST/SGST), which the code does implement. test_gstr3b_screen_contract.py and test_gstr3b_detail_matches_the_summary.py contain no reverse-charge or net_* case. tests/e2e_gst_verification.py DOES assert `gstr3b.net_igst == expected_outward_igst - expected_itc_igst` with a reverse-charge txn present (line 129, 488), but it is not a pytest module: `pytest tests/ --collect-only | grep -c e2e_gst_verification` returns 0, so it never runs in CI. No frontend, migration or Pydantic guard applies \u2014 this is pure-domain arithmetic.",
+     "reach": "The untested figures reach a CA. `result.net_igst/net_cgst/net_sgst` are returned as `working.net_payable` by routers/gst.py:322-328 and services/gst_return_service.py:927-930, and `net_tax_paise` (services/gst_return_service.py:847) is the stored 'Net Tax' on the gst_returns row. Both routers are mounted (apps/api/main.py:265, 321). The GSTN payload itself has no Table 6.1 block (probe: payload keys are eco_dtls, gstin, inter_sup, intr_ltfee, inward_sup, itc_elg, ret_period, sup_details), so these are screen/DB figures rather than filed ones \u2014 which caps the blast radius at 'the CA is told the wrong amount to pay', not 'a wrong number is transmitted'."
+    }
+   }
   },
   {
    "id": "GST-31",
@@ -370,7 +623,19 @@
    "market_standard": "n/a \u2014 this is pre-work for a commercial step CLAUDE.md correctly puts out of scope.",
    "confidence": "high",
    "suggested_fix": "Leave it. When a GSP is contracted, wire `get_provider`'s switch in the same commit that adds the provider, as the marker says.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Confirmed, and correctly graded low. apps/api/routers/gst_portal.py is a 165-line, five-endpoint, properly client-scoped router mounted at apps/api/main.py:300 that no screen and no direct PostgREST call in apps/web ever touches; apps/api/domain/gst/portal_service.py:73-79 honestly documents both the GSP gate and the ignored-parameter trap in get_provider. Nothing is lost today because every provider method returns a 'manual' stub (portal_service.py:47-69).",
+    "probe": "wc -l apps/api/routers/gst_portal.py -> 165. grep -rn 'gst-portal|gst_portal|gstPortal' apps/web --exclude-dir=node_modules -> no output. grep -rn 'gst_sync_jobs|gst_portal_snapshots' apps/web --exclude-dir=node_modules -> no output. pytest tests/test_r239_gst_computation_gaps.py (among six files) -> 154 passed.",
+    "lens_notes": {
+     "literal": "Exact on all three counts. `wc -l apps/api/routers/gst_portal.py` -> 165. It declares five endpoints: POST /sync-jobs (:58), POST /sync-jobs/{job_id}/run (:82), GET /sync-jobs (:124), POST /snapshots (:134), GET /snapshots (:157). The TODO(compliance) sits at apps/api/domain/gst/portal_service.py:73-79 (the finding cites 72-80, which is the `def get_provider` line through `return ManualGSTProvider()`), and it does say exactly what the finding reports: the parameter 'takes a name and IGNORES it', and reading GST returns needs an empanelled GSP with no direct-to-GSTN route at any turnover. That is accurate against the body at line 80, which returns ManualGSTProvider() unconditionally.",
+     "guards": "The marker convention is itself guarded: tests/test_compliance_markers_point_somewhere_real.py requires a doc path that exists, and docs/compliance/02-gst.md does. Handler-level scope is guarded too (_assert_job_scope at gst_portal.py:32-38, plus main.py's _CLIENT_GUARD mount), so the unreachable router is not an unguarded surface. run_sync_job's honesty about partial failure is pinned by tests/test_r239_gst_computation_gaps.py:390-420 (three tests: completed / partial_failure / error), which pass.",
+     "reach": "Backend-reachable, screen-unreachable. apps/api/main.py:300 mounts the router with _CLIENT_GUARD, so the endpoints are live over HTTP. But `grep -rn 'gst-portal|gst_portal|gstPortal' apps/web --exclude-dir=node_modules` returns nothing, and `grep -rn 'gst_sync_jobs|gst_portal_snapshots' apps/web --exclude-dir=node_modules` returns nothing too \u2014 so there is no second (PostgREST) data path to it either. Per the verification rules, a backend capability reachable from no screen confirms rather than refutes; and since the only provider is ManualGSTProvider returning {'status': 'manual'} stubs (portal_service.py:47-69), no CA is deprived of anything real. `low` is the right severity and the finding already assigns it."
+    }
+   }
   },
   {
    "id": "GST-32",
@@ -382,7 +647,19 @@
    "market_standard": "ClearTax, IRIS and TallyPrime generate the INV-01 JSON (Tally and ClearTax push it to the IRP directly), warn on the 30-day window, and reconcile e-invoiced documents against the auto-populated GSTR-1.",
    "confidence": "high",
    "suggested_fix": "Build the INV-01 payload from `client_sales_invoices` as a prepare-only download (the same posture as the GSTR-1 JSON), add a 30-day ageing warning for AATO \u2265 \u20b910 crore clients, and add an e-invoice vs GSTR-1 B2B comparison once IRNs are recorded. NIC's sandbox is self-service, so the rails can be tested before any GSP conversation.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Confirmed as stated. E-invoicing is record-only end to end: apps/api/domain/income_tax/einvoice_service.py:44-53 returns nulls for IRN generation, no INV-01 payload builder exists in the repo, apps/web/lib/invoices/compliance.ts:146-162 has no 30-day document-age check, and nothing joins einvoice records to the GSTR-1 B2B table. docs/compliance/02-gst.md:186-197 records that the NIC sandbox is self-service at any turnover, so the usual GSP gate does not block this work.",
+    "probe": "grep -rn 'INV-01|INV01|SellerDtls|BuyerDtls|ItemList|DocDtls|ValDtls' apps/api --include=*.py --include=*.sql -> no output; same pattern over apps/web excluding node_modules -> no output. grep -rni einvoice over apps/api/domain/gst/ services/gst_return_service.py routers/gst_workspace.py -> no output.",
+    "lens_notes": {
+     "literal": "Confirmed on every limb. apps/api/routers/einvoice.py:8-16 carries the TODO(compliance) marker quoted verbatim, including the 30-day AATO >= Rs 10 crore note being 'an IRP VALIDATION'. The router exposes exactly four routes (einvoice.py:91 create_record, :114 list_records, :127 record_irn_generated, :167 cancel_irn) and all four only write rows: apps/api/domain/income_tax/einvoice_service.py:44-53 ManualProvider.generate_irn returns {'irn': None, 'ack_number': None, 'ack_date': None, 'qr_data': None}. There is no INV-01 builder: `grep -rn 'INV-01|INV01|SellerDtls|BuyerDtls|ItemList|DocDtls|ValDtls' apps/api --include=*.py --include=*.sql` and the same over apps/web (excluding node_modules) both return nothing. No 30-day check exists anywhere: apps/web/lib/invoices/compliance.ts:146-162 `irnEligibility` checks posted status, duplicate IRN, B2C, and mandatory GST fields, plus one turnover-threshold advisory \u2014 no document-date age test; grep for '30-day|30 day|AATO' in apps/api finds only the einvoice.py comment itself and unrelated AOC-4/ITR-e-verify text. No e-invoice-vs-GSTR-1 comparison: `grep -rni einvoice apps/api/domain/gst/ services/gst_return_service.py routers/gst_workspace.py` returns nothing.",
+     "guards": "None. docs/compliance/02-gst.md:167-197 documents the threshold, the six IRPs, the self-service sandbox and the 30-day limit as knowledge, not as a decision to skip the work \u2014 and it explicitly calls the sandbox asymmetry 'the most actionable finding in this file' and says 'GSP is a hard gate for returns. It is not a gate for building and testing e-invoice rails.' So the doc argues FOR the work rather than deferring it. CLAUDE.md's Scope line claims 'prepare-only e-invoice/e-way/XBRL rails' are shipped; for e-invoice that overstates what exists \u2014 the rail records an IRN a human already obtained, it prepares no payload.",
+     "reach": "The e-invoice surface is live and linked: apps/web/app/einvoice/page.tsx exists, apps/web/components/panels/DeadlinesPanel.tsx:32 puts '/einvoice' in the nav, apps/web/lib/workspace/workspaceConfig.ts:169 maps it to the deadlines workspace, and the router is mounted at apps/api/main.py:297. So a CA on an e-invoicing client reaches a screen that can only record an IRN they keyed into the IRP themselves. This is a capability reachable from a screen but doing less than the market standard, which confirms the gap rather than refuting it."
+    }
+   }
   }
  ],
  "maturity": {

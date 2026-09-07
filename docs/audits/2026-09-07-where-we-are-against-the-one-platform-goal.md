@@ -753,35 +753,294 @@ defect.
 
 ---
 
-## 11. What I need from you
+## 11. The six questions, and the owner's answers
 
-These change what to build, and I have not assumed answers.
+Asked and answered on 7 September 2026. The answers are recorded here because three
+of them change the plan, and §12 is written to them.
 
-1. **Who is the customer — the CA firm, or the SME directly?** Everything about
-   filing, pricing and the client portal turns on this, and the code currently
-   assumes the firm.
+| # | Question | Answer |
+|---|---|---|
+| 1 | CA firm or SME as the customer? | **The CA firm.** |
+| 2 | Breadth or depth? | **Both.** Every module strong enough to buy alone. |
+| 3 | Anyone using it? | **No — dummy data only.** |
+| 4 | Does `10-payroll.md` still stand? | **Ignore it; work from the fresh scope.** |
+| 5 | Re-run market research on primary sources? | **Yes.** |
+| 6 | Verify the remaining findings? | **Yes, verify them.** |
 
-2. **Breadth or depth from here?** Fix fourteen modules to a good standard, or take
-   three to excellent and drop the rest from the pitch? I lean towards three —
-   accounting + GST + TDS, which share one ledger and one client — but it is your
-   call and it is the biggest one.
+**Answer 1 settles three open tensions.** Not filing is defensible for a CA audience,
+who want the confirmation click anyway; the client portal is a collection-and-approval
+surface for the CA's client, not a product the SME buys; pricing is per firm.
 
-3. **Is anyone using this besides you?** Production has 2 users and 7 clients, and
-   the answer changes everything about sequencing: with live firms, Stage 1 is an
-   emergency; without, it is ordinary work.
+**Answer 3 is the biggest sequencing change in this report** — see §12.1.
 
-4. **Payroll: is the plan in `docs/architecture/10-payroll.md` still the plan?** It
-   commits to 1 April 2027 and to not building mid-year migration. Parts are already
-   delivered. If it stands, payroll is sequenced and I should not re-plan it.
+**Answer 4 leaves `docs/architecture/10-payroll.md` in an odd position.** CLAUDE.md
+treats `docs/architecture/` as authoritative, so a doc the owner has set aside must be
+marked superseded rather than quietly ignored, or the next reader will follow it. What
+survives from it and what does not is set out in §12.3.
 
-5. **How much of the market comparison do you want re-run against primary sources?**
-   Prices and features here come from vendor and trade pages read today; I have not
-   opened a GSTN or CBDT page directly, and `docs/compliance/00-how-to-read-this.md`
-   records why that matters.
+---
 
-6. **Do you want the unverified findings verified before or after Stage 1 starts?**
-   Roughly 230 findings are single-source. Verifying them is maybe two days and would
-   likely eliminate 15–25% as wrong or already-guarded.
+## 12. The plan under the fresh scope
+
+### 12.1 Nobody is using it, so build the machinery first
+
+§9 was written to "stop wrong numbers reaching a CA". With no CA using it, nothing is
+reaching anyone, and the order inverts: **make correctness provable first, so the
+fixes stay fixed.**
+
+That is not an academic preference. 9,931 tests pass and every defect in §4 survives
+them — and `tests/test_tds_bill_engine.py:59-70` **pins the wrong §194C figure as
+correct**. Fix §194C without fixing that test first and the next change re-breaks it
+in silence. Likewise, the two "writes a column that has never existed" defects
+(§4.5 year-end adjustment, §4.6 depreciation) are not two bugs; they are the absence
+of any integration test against a real schema. With no users, that harness — a
+disposable Postgres, migrations applied, every write path exercised — can be built
+properly now instead of retrofitted under pressure later.
+
+Two smaller consequences: production is dummy data, so the dead `_backup_247_*`
+tables and `_mig247_targets` can be dropped and the `anon` RPC grants revoked with no
+migration window; and schemas can still change freely, which will not be true for
+long.
+
+### 12.2 "Both" is right as a destination and wrong as a simultaneous instruction
+
+Taking fourteen modules to buy-it-alone quality is a materially bigger programme than
+§9 was sized for. On top of everything in §4 it means, at minimum: IMS, GSTR-9C,
+composition returns, GSTR-1A and multi-GSTIN in GST; FVU output, correction
+statements, §201(1A), §234E, 27Q, TCS and §197 certificates in TDS; entity
+computation, Form 3CD, §32 block depreciation, loss carry-forward and the §54 family
+in income tax; a hierarchical chart of accounts with a ledger screen, cost centres,
+bill-wise references and an FY-scoped trial balance in accounting; a real BRS, a cash
+book and import undo in banking; opening positions, an attendance contract and the
+month-end pack in payroll; closing stock as at a date, FIFO and batches in inventory.
+
+**That is about a year for a small team, not two quarters.** The modules still have to
+be ordered, and the order that fits a CA's own calendar is: **monthly before quarterly
+before annual** — GST, bank and invoices first, then TDS, then ITR, audit and
+year-end. That way every quarter of work lands on something the firm uses that month.
+
+### 12.3 Payroll, rebuilt from the fresh scope
+
+**Keep** from `10-payroll.md`, because it follows directly from answer 1:
+
+- **The bureau model.** greytHR, Keka, Zoho Payroll and factoHR all assume one
+  employer running its own payroll. A CA firm runs payroll *for* many client
+  companies. So the firm screen is a **client-month** queue and the client screen is
+  an **employee-slip** queue.
+- **Two-axis grading** — *defensible* (is every input present and in force?) and
+  *changed* (what moved since last month, and why?) — because grading only on change
+  lets a stable error stay green for ever.
+- **Named gaps** instead of silent zeros.
+- **The three refusals**: never hold client funds or initiate payouts; never generate
+  Form 16 Part B (CBDT Notification 09/2019 requires it from TRACES); never
+  auto-submit to EPFO, ESIC or TRACES.
+
+**Drop its calendar device.** The doc set a 1 April 2027 cutover and deliberately did
+*not* build mid-year migration, using the calendar to dodge the opening-position
+problem — `_tds_already_deducted_this_fy` reads only slips this platform produced, so
+a mid-year client has no prior withholding on file and §192 withholds from a fiction.
+With no live users and no April deadline to hit, **build `payroll_opening_positions`
+properly** — YTD salary, YTD TDS, lifetime §10(10) and §10(10AA) used. A CA firm wins
+clients year-round, and a payroll module that can only onboard in April will not be
+adopted.
+
+**Bring its deferrals back**, because "depth" requires them: the FVU-validated 24Q,
+Form 16 Part A/B distribution, and bank advice. On bank advice the doc's objection —
+a per-bank format zoo growing per client — is fair, and the answer is not the whole
+zoo: a generic NEFT/RTGS CSV plus SBI, HDFC and ICICI covers most of the market, and
+the payment stays the client's own act.
+
+### 12.4 The analytics layer — "something they get addicted to"
+
+This was the weakest part of my first report and it deserves a real answer, because it
+is the only part of the brief about *winning* rather than *not losing*.
+
+**The asset nobody else has.** ClearTax sees returns but not books. Tally sees books,
+one client at a time, on a desktop. Jamku sees tasks but no numbers. greytHR sees
+payroll but no ledger. **PracticeSync holds every client's ledger of one firm in one
+schema**, and `account_period_balances` (migrations 227/228) already pre-aggregates it
+to 132 monthly buckets per client — so firm-wide cross-client analysis reads buckets,
+not 33,080 journal lines. It is cheap here and architecturally impossible for a
+competitor to bolt on.
+
+**Why the intelligence surfaces do not bite today.** They read the wrong things.
+`domain/ai_insight_service.py:140` generates insights from *compliance-record status*.
+`services/intelligence_service.py` computes risk from client metadata.
+`domain/ai_copilot_service.py:195-260` sends Groq client counts, health scores and
+lifecycle stage — no trial balance, no GST figure, no TDS.
+`get_cross_client_patterns` is a hardcoded stub returning invented names, honestly
+labelled as such in its own docstring and reachable from no screen (`api.aiInsights`
+does not expose it, and no page calls that surface at all). **The screens exist, the
+ledger exists, and nothing connects them** — the same wiring-on-finished-parts shape
+as every other finding here.
+
+**What to build, most addictive first:**
+
+1. **The firm's morning queue.** One row per client-obligation, graded, with a reason
+   sentence — a queue, not charts. This replaces the Excel tracker every firm keeps.
+   The bank module already proved the shape (`draft_*` columns, graded rows, "Pass N
+   ready") and `compliance_engine` already derives every due date by rule; apply one
+   to the other.
+
+2. **Ledger-grounded exceptions, computed nightly, each with its statutory
+   consequence and a rupee amount.** Things a CA cannot see by eye: an expense
+   approaching a TDS threshold with nothing withheld — *which directly prevents the
+   §40(a)(ia) disallowance the engine currently causes*; ITC against 2B once §4.2(d)
+   is real; GST output falling while bank credits rise (unbilled sales); cash payments
+   over ₹10,000, where `get_cash_payments_above_threshold` **already exists** and needs
+   only a `REVOKE` and a screen; MSME creditors past 45 days under §43B(h), where
+   `schedule_iii_ageing` already computes the ageing; round-number journals, weekend
+   postings, entries by a departed user.
+
+3. **Cross-client — the part only this architecture can do.** The same vendor GSTIN
+   treated differently across two clients. One supplier's late GSTR-1 blocking ITC for
+   six clients at once. Shared directors. Benchmarks: *"this client's gross margin is
+   12 points below your six other trading clients."* The `relationships` and
+   `ownership-map` screens already exist to hang it on.
+
+4. **Practice economics.** Fee against hours against client; which client is
+   unprofitable; which staff member is behind. This is what makes the **partner**
+   addicted rather than the article clerk, and `time_tracking`, `billing` and
+   `fee_billing_service` already hold the inputs.
+
+5. **The artefact the CA sends their client.** A branded monthly one-pager — GST
+   filed, TDS deposited, top five expenses, receivables ageing, three things to fix.
+   The CA looks good; the client asks for it again; the CA keeps paying. The reporting
+   engine already produces every number on it.
+
+**The sequencing rule.** None of this ships before the numbers underneath are right.
+An anomaly detector running on a set-off that ignores §49(5) produces confident
+nonsense — worse than no analytics, because it teaches the CA to distrust the
+product's judgement, and judgement is what they are being asked to buy. So analytics
+is Stage 3 work; but its **data model** — nightly exception rows, per client, per
+firm, each carrying a citation and an amount — belongs in Stage 2, so Stage 3 is a
+rendering job rather than a rebuild.
+
+---
+
+## 13. The primary-source re-run (answer 5) — and why it could not be done
+
+**The environment blocks it, and I proved that rather than assuming it.** Every
+government host refuses at the proxy:
+
+```
+curl https://example.com   →  CONNECT tunnel failed, response 403
+$HTTPS_PROXY/__agentproxy/status  →  connect_rejected: "gateway answered 403 to
+CONNECT (policy denial)" for en.wikipedia.org, tin-nsdl.com, tdscpc.gov.in, …
+```
+
+The block is not a gov.in policy — Wikipedia and anthropic.com fail the same way,
+while `github.com` and the package registries succeed. It is this remote
+environment's **network policy**, chosen when the environment was created and
+changeable by you (see the Claude Code on the web docs). `WebSearch` works
+because it runs server-side; `WebFetch` and `curl` do not.
+
+**So no `[P]` grade was earned anywhere.** What the three researchers produced is
+a best-effort `[S-gov]` tier — the search engine's summary of a document *at an
+official URL*, with the URL recorded — plus ordinary `[S]` secondary sources.
+Full write-ups and the list of URLs to fetch first are in the session working
+files; the ranked re-verify lists are the most useful part.
+
+### 13.1 The one live wrong number the re-run found
+
+**`CII_BY_FY["2025-26"] = 380` (`capital_gains_engine.py:63`) should be 376**, and
+an index for FY 2026-27 has since been notified at **384** (Notification 85/2026,
+15 July 2026). Six independent professional publishers — RSM, Taxmann, Mondaq,
+DPNC, CAclubindia and Business Standard — agree on 376 for FY 2025-26, and the
+researcher found **no source anywhere saying 380**. Every other value in the table
+cross-checks correctly; only the newest entry is off, which is the signature of a
+figure typed in before the notification landed.
+
+Because `cii_for()` falls back to `LATEST_CII_FY`, **every indexed computation
+today uses 380** — wrong year *and* wrong value. Blast radius is bounded to the
+grandfathered §112 option on immovable property, but within it the indexed cost is
+overstated by ~1.06%, understating the gain and the tax, silently.
+
+**Do not move `LATEST_CII_FY` on this evidence alone.** Correct 376, add 384, and
+say in the commit that the verification is secondary-source — moving the
+human-verified marker without a human read is exactly the failure CLAUDE.md warns
+about.
+
+### 13.2 What the re-run confirmed, and it matters that it did
+
+**The Income-tax Act 2025 / Rules 2026 renumbering is corroborated in full** —
+24Q→138, 26Q→140, 27Q→144, 27EQ→143, and the section moves — by multiple
+independent professional sources, with nothing contradicting it. CLAUDE.md and
+`domain/tds/vocabulary.py` are right, which is worth knowing given how much rests
+on them. One residual risk: a **corrigendum, G.S.R. 286(E) dated 16 April 2026**,
+exists and could not be read, so any *specific* form number carries that caveat.
+
+**Form 16 Part B must come from TRACES** — confirmed, which vindicates the
+decision not to generate it.
+
+### 13.3 Four things nobody has told this codebase about
+
+Each is `[S]` or `[S-gov]` and each needs a human with a browser before it is
+acted on — but all four are live and none appears anywhere in the repo.
+
+1. **GST 2.0 rate rationalisation, in force 22 September 2025.** The 56th Council
+   collapsed the slabs to **5% and 18%**, with a **40% demerit rate** and cess
+   merged into the rates. `apps/web/lib/invoices/gst.ts:16` offers
+   `[0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28]` — **no 40%**, so a
+   demerit-goods invoice cannot be raised from the UI at all. (The backend takes
+   any rate, and 12% and 28% must stay for historical periods, so this is an
+   additive fix.)
+
+2. **The three-year filing bar is live and rolling.** CGST §§37(5), 39(11), 44(2)
+   and 52(15) bar a return more than three years past its due date; GSTN
+   implemented it from the **July 2025 tax period**, so the window closes monthly.
+   For a firm with 50 clients this is a standing risk nobody can track by hand —
+   and it is the single best argument for the exception engine in §12.4.
+
+3. **The e-invoice 30-day reporting limit** now applies at **AATO ≥ ₹10 crore**
+   (from 01-04-2025), to invoices, credit notes and debit notes. Miss the window
+   and the IRP refuses the IRN, which strands the customer's ITC.
+
+4. **IMS: the operative deadline is the GSTR-3B filing, not the 14th** — and the
+   trap is the **recompute**. An action taken after the draft 2B is cut on the
+   14th does not reach the return unless GSTR-2B is explicitly recomputed. Deemed
+   acceptance (silence = accepted) is confirmed; a blog claim that this flipped to
+   deemed *rejection* in April 2026 is loose in the wild and, on this evidence, is
+   wrong. Re-verify before building.
+
+### 13.4 Payroll — five claims that touch CLAUDE.md directly
+
+All `[S]`, none confirmable here, all worth a human hour:
+
+- **The EPF, EPS and EDLI Schemes were replaced by 2026 versions**, notified
+  29 June 2026 under the Social Security Code, with the old schemes reportedly
+  valid only to a transition **ending 20 November 2026**. Rates carried forward
+  unchanged; the instrument did not. If true, this is ten weeks away.
+- **The wage provision is Social Security Code s.2(88), not Code on Wages
+  s.2(y).** Both EPFO and ESIC cite 2(88). The substance is identical, so nothing
+  computes differently — but `wage_base.py` and CLAUDE.md cite it imprecisely.
+- **The 50% rule may reach ESI, gratuity and bonus**, which CLAUDE.md deliberately
+  decided it does not. Sources contradict each other on ESI, so the researcher
+  graded it `[U]` and recommended changing nothing: gross is the direction that
+  cannot under-deduct. **Agreed — leave `_compute_esi` alone until someone reads
+  the FAQ.**
+- **CLAUDE.md's "twenty-two states levy PT" looks wrong** — sources say 20–21,
+  Odisha reportedly repealed it from 01-04-2026, and Punjab's levy is a
+  Development Tax, not PT. Maharashtra's due date moved to the 15th from March 2026.
+- **Fixed-term employees earn gratuity pro rata after one year**, not five. The
+  gratuity module assumes five.
+
+### 13.5 What to do about the sourcing problem itself
+
+The honest position is that this codebase has now had **two** research passes that
+could not read a single primary source, and `docs/compliance/00-how-to-read-this.md`
+already says why that is a materially weaker guarantee. Three options, in order of
+cost:
+
+1. **Change this environment's network policy** to allow the gov.in hosts. Cheapest
+   by far, and it makes every future pass better.
+2. **Fetch the ranked list by hand** — the researchers each produced one, ordered
+   by (how load-bearing) × (how weakly sourced). The top items are the IMS advisory,
+   Notification 22/2026 with its corrigendum, the two CII notifications, and the
+   MoLE wage-definition FAQs.
+3. **Accept `[S-gov]` for planning and require `[P]` before shipping** any figure
+   into a computation. This is what the codebase already does for rate registries
+   via `LATEST_VERIFIED_FY`, and it works.
 
 ---
 

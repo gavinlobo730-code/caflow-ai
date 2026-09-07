@@ -10,7 +10,12 @@
    "market_standard": "greytHR, Keka and Zoho Payroll generate the ECR from the same wage figure the contribution was computed on; the EPFO portal reconciles wages against contributions on upload and rejects the batch on a mismatch.",
    "confidence": "high",
    "suggested_fix": "In build_ecr, read `slip['pf_wages_paise'] + slip['one_time_pf_wages_paise']` (falling back to basic+da for pre-migration-334 slips where pf_wages_rule_applied is false/absent) instead of re-deriving. Add a test that asserts epf_contribution \u2248 12% of epf_wages for every member in the file.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran wage_base.compute + _compute_pf: base 14,000, EPS 1,166 remitted, ECR declares 10,000"
+   }
   },
   {
    "id": "PAY-02",
@@ -22,7 +27,12 @@
    "market_standard": "Winman, ClearTax TDS and Saral TDS pick the \u00a716(ia) figure from the regime flag carried on the Annexure II record, because the annexure has a 115BAC column and every deduction must be consistent with it.",
    "confidence": "high",
    "suggested_fix": "Pass both figures into build_annexure_ii (or the FYTaxRates object) and select per row: `min(new if row.uses_new_regime else old, salary)`. Add a regime-parametrised test.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "read routers/payroll.py:4410 passing new_regime_standard_deduction_paise unconditionally"
+   }
   },
   {
    "id": "PAY-03",
@@ -34,7 +44,10 @@
    "market_standard": "BrightPay (the owner's own reference bureau product), greytHR and Zoho Payroll all print the EMPLOYER entity \u2014 name, address, PF/ESI registration numbers \u2014 on the payslip; the bureau's own branding appears nowhere.",
    "confidence": "high",
    "suggested_fix": "Load the client row (client_name/legal_name, address, and the client_statutory_identity EPF/ESIC/PT registrations added by migration 325) and render that as the employer block. Keep the firm only as an optional \"prepared by\" footer.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-04",
@@ -46,7 +59,10 @@
    "market_standard": "greytHR and Zoho Payroll compute YTD tax credits from PROCESSED/approved payroll only; an unapproved run contributes nothing.",
    "confidence": "high",
    "suggested_fix": "Add `.in_(\"status\", _PAYROLL_RELEASED)` to both reads, matching the 24Q/Annexure II/ECR/RLS line. Separately, add a way to discard or recompute a draft run.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-05",
@@ -58,7 +74,10 @@
    "market_standard": "greytHR and Zoho Payroll make the PT work-location mandatory before PT can be enabled on an employee.",
    "confidence": "high",
    "suggested_fix": "Two changes: (a) classify_state must report `is_gap=True` when pt_applicable is set and the state is blank \u2014 the caller already knows pt_applicable; (b) add pt_state to the client-workspace employee form and refuse pt_applicable without it in EmployeeIn.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-06",
@@ -70,7 +89,10 @@
    "market_standard": "greytHR, Keka and Zoho Payroll compute the \u00a710(13A) limbs on the salary and HRA for the period the rent relates to, per Rule 2A.",
    "confidence": "high",
    "suggested_fix": "Pass `(basic + da) * months_employed_in_fy` and `hra * months_employed_in_fy`, or better, accumulate actual paid basic/DA/HRA from the year's slips plus the projected remainder \u2014 the same shape annual_gross already uses.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-07",
@@ -82,7 +104,10 @@
    "market_standard": "Zoho Payroll, greytHR and Keka add the monthly perquisite value into the projected annual salary for \u00a7192 and show it as a separate non-cash earning line on the payslip.",
    "confidence": "high",
    "suggested_fix": "Read payroll_perquisites once per run (like _declarations_for_run) and add the year's value to annual_gross in _compute_slip, with the month's proportionate share shown on the payslip as a non-cash perquisite.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-08",
@@ -94,7 +119,10 @@
    "market_standard": "Zoho Payroll and greytHR reverse loan/advance amortisation entries when a payroll run is rolled back.",
    "confidence": "high",
    "suggested_fix": "Add the inverse write to reverse_run (add the recovered amount back and clear closed_on), or make the write-down idempotent by recording the run_id against each loan repayment rather than mutating a running balance.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-09",
@@ -106,7 +134,10 @@
    "market_standard": "Every payroll product derives CTC from the stored employer contribution on the processed payslip, not from a re-derivation in the reporting layer.",
    "confidence": "high",
    "suggested_fix": "Read pf_employer_paise, esi_employer_paise, edli_paise and pf_admin_paise off the slip; delete buildCtcRows' arithmetic. Extend statutory-files-are-server-built.test.ts to cover app/payroll/reports/page.tsx.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-10",
@@ -118,7 +149,10 @@
    "market_standard": "greytHR and Zoho Payroll show a tax-projection worksheet generated by the same engine that computes the payslip, per regime, with the employee's declarations in it.",
    "confidence": "high",
    "suggested_fix": "Replace with a server endpoint that returns the projection from _monthly_tds / decl_domain.withholding_tax_paise for the selected employee and month, then delete payrollTdsEstimate.ts.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-11",
@@ -130,7 +164,10 @@
    "market_standard": "greytHR, Keka and Zoho Payroll all ship exit/F&F, salary revision with arrears, loans with EMI, and a Form 16 / Annexure II export as first-class screens.",
    "confidence": "high",
    "suggested_fix": "Prioritise by what a year needs: (1) Annexure II on the client Outputs shelf (it is the year-end deliverable), (2) settlement on the employee drawer, (3) salary revisions + apply-structure on Inputs, (4) loans, (5) perquisites, (6) \u00a789.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-12",
@@ -142,7 +179,10 @@
    "market_standard": "Every payroll product allows date-of-joining correction with an audit trail.",
    "confidence": "high",
    "suggested_fix": "Add joining_date, eps_eligible and gratuity_act_covered to EmployeeUpdateIn. Separately, consider `model_config = ConfigDict(extra='forbid')` on the payroll input models so a dropped field is a 422 rather than silence.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-13",
@@ -154,7 +194,10 @@
    "market_standard": "greytHR/Keka/Zoho onboarding wizards collect statutory identity, bank and the full CTC breakup in one flow, and refuse to activate an employee whose statutory fields are blank.",
    "confidence": "high",
    "suggested_fix": "One employee form, used by both surfaces \u2014 the design doc already says \"one employee form\". Fold AddEmployeeModal into the client workspace and add DOB, employee code, LTA/medical/special.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-14",
@@ -166,7 +209,10 @@
    "market_standard": "Winman TDS, ClearTax and Saral build Annexure I from every deduction in the quarter, terminal payments included.",
    "confidence": "high",
    "suggested_fix": "In _assemble_24q_source, read payroll_settlements for the quarter's months and emit a deductee row per settlement (payment_date = leaving/payment date, amount = taxable_paise, tds = tds_paise), joined to the same PAN checks.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-15",
@@ -178,7 +224,10 @@
    "market_standard": "In greytHR/Keka/Zoho the LOP/attendance input sits inside the payroll month, immediately before Process.",
    "confidence": "high",
    "suggested_fix": "Move the attendance editor (and one-time earnings, which is on the same page) into the client workspace Inputs tab, scoped to that client-month; keep a firm-wide view if wanted, but not as the only door.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-16",
@@ -190,7 +239,10 @@
    "market_standard": "N/A \u2014 this is an architectural rule the codebase already states and enforces elsewhere (account_period_balances, public.cash_flow_report).",
    "confidence": "high",
    "suggested_fix": "Server-side aggregates: a `/reports/*` endpoint per tab returning finished rows for one client-month or one FY, and lazy-load the Statutory Returns tab's data only when that tab is opened.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-17",
@@ -202,7 +254,10 @@
    "market_standard": "greytHR and Zoho project the ANNUAL PT liability for the state (\u20b92,500 MH, \u20b92,500 TN, \u20b92,400 KA/WB) and hold it constant across the year's projection.",
    "confidence": "high",
    "suggested_fix": "Compute the year's PT by summing _compute_pt over the twelve months of the FY for that employee's state (cheap, pure) and pass that, rather than the month \u00d7 12.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-18",
@@ -214,7 +269,10 @@
    "market_standard": "N/A \u2014 a defensive-path defect.",
    "confidence": "high",
    "suggested_fix": "`_logger.exception(...)`. Add a lint rule or a test that forces this read to fail, as the earlier fix did for the other five branches.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-19",
@@ -226,7 +284,10 @@
    "market_standard": "Every Indian compliance product derives the calendar from one rules table; Saral and ClearTax hold state-wise PT due dates explicitly rather than assuming one.",
    "confidence": "high",
    "suggested_fix": "Delete both TypeScript calendars and render compliance_engine.payroll_deposit_due_dates plus the 24Q dates through an endpoint. Keep PT's absence visible as a named refusal, the way statutory_gaps does \u2014 not as an invented date.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-20",
@@ -238,7 +299,10 @@
    "market_standard": "N/A \u2014 internal consistency.",
    "confidence": "high",
    "suggested_fix": "Call wage_base.compute in statutory_position with the same components and month, and surface pf_wages_addback_paise so a CA can see why the base differs from basic+DA.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-21",
@@ -250,7 +314,10 @@
    "market_standard": "greytHR, Keka and Zoho all allow a payroll to be un-processed and re-run before it is locked, and support an off-cycle correction run after.",
    "confidence": "high",
    "suggested_fix": "Add POST /runs/{id}/recompute (draft/review only) that deletes and rebuilds the slips through the same path create_run uses, and DELETE /runs/{id} for an unfinalised run.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-22",
@@ -262,7 +329,10 @@
    "market_standard": "greytHR and Zoho compute the \u00a780CCD(2) cap on basic+DA per the Explanation to \u00a780CCD.",
    "confidence": "high",
    "suggested_fix": "Pass `salary_for_80ccd2_paise=(basic + da) * months_employed_in_fy` from _compute_slip through _monthly_tds into the declaration request.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-23",
@@ -274,7 +344,10 @@
    "market_standard": "greytHR, Keka and Zoho Payroll all run an annual statutory-bonus computation across the roster with a Form C / Form D register.",
    "confidence": "high",
    "suggested_fix": "An annual bonus run: compute bonus_domain over the eligible roster for an accounting year, produce Form C, and pay it through the one-time-earnings path (kind='bonus') so it lands correctly for PF/ESI/\u00a717(1).",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-24",
@@ -286,7 +359,10 @@
    "market_standard": "greytHR/Keka/Zoho hold a leave policy per client with accrual rules, carry-forward caps, encashment and apply/approve \u2014 or, if not built, show nothing.",
    "confidence": "high",
    "suggested_fix": "Either remove the invented defaults and the portal leave tab until a policy model exists (the honest option, matching the module's own gap discipline), or build a per-client leave policy with accrual server-side.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-25",
@@ -298,7 +374,10 @@
    "market_standard": "Tally Prime and Zoho Books post salaries, employer PF, employer ESI and staff welfare to separate ledgers so Schedule III maps directly.",
    "confidence": "high",
    "suggested_fix": "Split into Salaries and Wages / Contribution to PF and Other Funds (employer PF + EPS + EDLI + admin) / Contribution to ESI, compute the debit independently from the slip components, and let the kernel's balance assertion catch a disagreement.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-26",
@@ -310,7 +389,10 @@
    "market_standard": "greytHR, Keka and Zoho ESS: payslip, tax worksheet showing the projection line by line, IT declaration with a proof-upload window and CA verification, Form 16 download, reimbursement claims, leave apply/approve.",
    "confidence": "high",
    "suggested_fix": "Start with the TDS working (the server already has every input in _monthly_tds) and proof upload against a declaration item \u2014 the two that remove the most WhatsApp.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "PAY-27",
@@ -322,7 +404,19 @@
    "market_standard": "greytHR/Keka/Zoho ship per-bank advice templates, payslip email/WhatsApp, reimbursement and FBP modules, overtime and shift, and a payroll register with month-on-month variance and department-wise cost as standard.",
    "confidence": "high",
    "suggested_fix": "Highest value per unit of work, in order: (1) month-on-month variance on the Register tab (data already stored), (2) payslip email from the zip path, (3) a generic NEFT CSV plus two or three bank formats, (4) department-wise cost from the register. Keep bank advice as prepare-only, consistent with the never-move-client-money rule.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Bank advice, month-on-month variance, department cost/headcount analytics and overtime/shift are genuinely absent (domain/payroll/register.py:59-60 has the bank columns with no consumer; apps/web/app/payroll/reports/page.tsx has six tabs and no occurrence of 'department'; payroll_runs.total_one_time_paise at migration 331:217 is returned at routers/payroll.py:4492 and never differenced). But reimbursements ARE modelled \u2014 models/payroll.py:509 plus domain/payroll/one_time_earnings.py:81-111 give a reimbursement kind the correct non-salary \u00a717(1) treatment \u2014 and payslip DELIVERY exists as employee self-service (apps/web/app/portal/employee/page.tsx:116-123, invited by services/employee_portal_service.py:144-199); what is missing there is emailing the PDF and bulk invites, not a route to the employee. Severity stays medium: these are market-standard absences, not wrong numbers.",
+    "probe": "grep -rni 'neft|bank advice|bank_advice' over apps/api --include=*.py/*.sql printed only payment_mode enums, migration 161 prose and bank-narration tests \u2014 no advice-file builder. grep -rn 'TabsTrigger' apps/web/app/payroll/reports/page.tsx printed six triggers (payslip-summary, ytd, ctc, tds-projection, year-end, statutory-calendar). grep -rn 'department' on the same file printed nothing. grep -rli overtime apps/api/migrations/ printed nothing.",
+    "lens_notes": {
+     "literal": "Four of the six sub-claims hold. Bank advice: no generator anywhere \u2014 grep for neft/bank advice across apps/api returns only payment_mode enums and bank-narration parsing; domain/payroll/register.py:59-60 carries 'Bank Account'/'Bank IFSC' columns in the salary-register CSV and nothing consumes them. Month-on-month variance: absent \u2014 the only 'variance' in apps/web/app/payroll/reports/page.tsx:873-896 is projected-vs-actual TDS, a different comparison; grep 'variance' over routers/payroll.py and domain/payroll/*.py returns nothing. Department analytics: 'department' reaches register.py:36 and the slip selects at routers/payroll.py:1978,2538,2576, and there is zero occurrence of 'department' in apps/web/app/payroll/reports/page.tsx. Overtime/shift: no column, no kind, no migration (grep -rli overtime over apps/api/migrations returns nothing; the four hits in domain/payroll are prose in bonus.py/wage_base.py/gratuity.py explaining what is EXCLUDED). Reports tabs: exactly six TabsTrigger at reports/page.tsx:1312-1329. TWO sub-claims are wrong. (a) 'no reimbursements' \u2014 reimbursement is a modelled OneTimeEarningsIn kind (models/payroll.py:509) with correct \u00a717(1) treatment in domain/payroll/one_time_earnings.py:70,81-111 (_NON_SALARY_KINDS = {'reimbursement'}, not PF/ESI/taxable). What is missing is a CLAIM workflow and an FBP declaration, not the earning type. (b) 'no payslip delivery' overstates it: apps/web/app/portal/employee/page.tsx:61,101-123 is an employee self-service portal whose default tab is payslips and which downloads the PDF, provisioned by services/employee_portal_service.py:144-199 (invite_employee sends 'Your payslip portal access'). What is absent is emailing/WhatsApping the PDF itself and bulk invites.",
+     "guards": "None that close the gaps. docs/architecture/10-payroll.md:389-391 defers bank advice explicitly ('a per-bank format zoo that grows per client... the payment is the client's act anyway') and :398 puts 'shift rostering' under 'Deliberately not built' \u2014 but the same document's own current-status header at :22 says the bank-advice deferral is 'no longer current' and 'comes back into scope under depth'. CLAUDE.md records no decision on any of these six, so the architecture doc is the only authority and it is self-contradictory on bank advice. Design doc :168 specifies 'variance against the last approved month' on the Register tab as intended, which makes the variance gap a shortfall against the product's own spec rather than a deliberate omission.",
+     "reach": "All reachable and live. /payroll/reports is a real page linked from app/payroll/page.tsx:942, the register CSV endpoint is wired at lib/api/index.ts:1315-1318, and payroll_runs.total_one_time_paise exists (migration 331_a_month_is_not_a_pure_repeat.sql:217) and is already returned to the client at routers/payroll.py:4492 \u2014 so the variance the finding wants is one subtraction away from data already on the wire."
+    }
+   }
   },
   {
    "id": "PAY-28",
@@ -334,7 +428,19 @@
    "market_standard": "Payroll is a top-level module in every product in this category.",
    "confidence": "high",
    "suggested_fix": "Promote /payroll to its own workspace with Month \u00b7 People \u00b7 Declarations \u00b7 Statutory \u00b7 Reports \u00b7 Setup, move Attendance out of Team, and build the Setup screen over the statutory-values endpoints that already exist.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The navigation is split as described (AccountingPanel.tsx:44-46, TeamPanel.tsx:33, workspaceConfig.ts:175) and /payroll/setup does not exist, but the consequence the finding rests on is wrong: the firm-level PT state-coverage screen IS built, at apps/web/app/settings/statutory-values/page.tsx, linked from app/settings/page.tsx:711 and pinned by apps/web/scripts/statutory-values-record-what-was-read.test.ts. It lives under Settings rather than under /payroll/setup. What remains is that three payroll screens sit in no side panel and attendance sits under Team \u2014 an information-architecture shortfall against docs/architecture/10-payroll.md:131-147, with nothing unreachable and no capability missing. Downgraded to low.",
+    "probe": "grep -rn 'statutoryValues|statutory-values' over apps/web printed app/settings/statutory-values/page.tsx:84,143,185, app/settings/page.tsx:711 and scripts/statutory-values-record-what-was-read.test.ts \u2014 refuting 'no page calling them'. grep -n payroll lib/workspace/knownRoutes.generated.ts printed all six /payroll routes as known.",
+    "lens_notes": {
+     "literal": "The navigation facts hold: apps/web/components/panels/AccountingPanel.tsx:44-46 lists Payroll -> /payroll and Payroll Statutory -> /payroll/statutory; components/panels/TeamPanel.tsx:33 puts /payroll/attendance under Team; lib/workspace/workspaceConfig.ts:175 folds /payroll into the 'accounting' workspace; and a repo-wide grep for the three sub-routes outside app/payroll returns no panel entry, so /payroll/people, /payroll/declarations and /payroll/reports are reached only from the header buttons at app/payroll/page.tsx:933-946. app/payroll/ has no setup/ directory. BUT THE LOAD-BEARING CLAIM IS FALSE. 'GET /statutory-values and PUT /statutory-values/pt exist in lib/api (index.ts:622-636) with no page calling them, so the firm-recorded-PT-slabs mechanism ... cannot be used' \u2014 the page exists: apps/web/app/settings/statutory-values/page.tsx:84,143,185 calls api.statutoryValues.list/savePtSlabs/removePtSlabs, and its header comment describes exactly the state-coverage function the finding says is unbuilt. It is linked from apps/web/app/settings/page.tsx:711 with copy naming the twenty-two/four split.",
+     "guards": "apps/web/scripts/statutory-values-record-what-was-read.test.ts:44,63,100-101 asserts the settings link and the savePtSlabs call exist \u2014 a regression test pinning precisely the capability the finding calls missing. All six payroll routes are in lib/workspace/knownRoutes.generated.ts:108-113, so none is an orphan route. docs/architecture/10-payroll.md:131,147 does specify the 13th workspace and /payroll/setup, but the same document's status header (:12-32) declares the phase list stale and several items shipped since.",
+     "reach": "Every screen the finding names is reachable by a real user: the three unpanelled ones from buttons on /payroll, state coverage from Settings, and the client-grain payroll workspace from lib/workspace/ClientNavContext.tsx:72. The design doc itself (:139) calls the client-scoped screen canonical for a payroll month, so the firm rail being a link rather than a rail costs navigation depth, not capability."
+    }
+   }
   },
   {
    "id": "PAY-29",
@@ -346,7 +452,19 @@
    "market_standard": "greytHR, Keka and Zoho payslips carry UAN, PF number, ESIC IP, bank account (masked), employer PF/ESI, YTD earnings and deductions, and net pay in words.",
    "confidence": "high",
    "suggested_fix": "Add an employer block (from client + client_statutory_identity), an employee statutory block (UAN/ESIC/bank), an employer-contribution section and a YTD column. All the data is already on the slip and the master.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed and understated. services/payslip_pdf_service.py:116-238 omits UAN, ESIC number, bank account, employer contributions, YTD and net-in-words, and :256/:324 do not even select those columns. Beyond the finding: :116 with _load_firm at :372-381 prints the CA FIRM's name as the employer while run['client_id'] (selected at :256) is discarded, and _paise_to_rupee_str at :67-75 makes every amount render in ZapfDingbats as a black square because U+20B9 is absent from WinAnsiEncoding and no TTF is registered anywhere in apps/api. The same \u20b9-in-Helvetica pattern is in services/invoice_pdf_service.py:204,227, so it is not payslip-local. A document naming the wrong employer with unreadable currency is not a fine_tune \u2014 raised to high.",
+    "probe": "venv/bin/python with rl_config.useA85=0, pageCompression=0, then build_payslip_pdf(slip, emp, run, {'name':'Lobo and Co Chartered Accountants'}) with uan/esi_number/bank_account_no/bank_ifsc populated. Extracted Tj tokens: 'Lobo and Co Chartered Accountants | Payslip for August 2026 | Asha Rao | Analyst | Dept: Audit | PAN: ABCDE1234F | Pay Period: | August 2026 | Working Days: | 30 | Days Present: | 30 | Earnings | Amount \\( | n | \\) | Basic | n | 25,000.00 | HRA | n | 10,000.00 | Gross Salary | n | 50,000.00 | Deductions | ... | Net Pay | n | 45,000.00 | This is a computer-generated payslip...'. '100200300400', '3100123456', '0011223344', 'HDFC0001234', 'UAN', 'YTD', 'Employer' all absent. Font objects in the PDF: 2 Helvetica/WinAnsi (F1), 3 Helvetica-Bold/WinAnsi (F2), 4 ZapfDingbats (F3) \u2014 and the 'n' beside every amount is drawn under /F3.",
+    "lens_notes": {
+     "literal": "Confirmed by rendering the document. services/payslip_pdf_service.py:116-238 emits exactly: employer name, 'Payslip for <Month Year>', employee name/designation/department/PAN, pay period + working days/days present/LOP, the earnings table, the deductions table (DEDUCTION_DEFS at :38-49 \u2014 PF employee, ESI employee, PT, TDS, loan recovery), Net Pay, and a boilerplate footer. No UAN, no ESIC number, no bank account, no employer contribution block, no YTD, no amount in words. The data is not merely unrendered \u2014 it is never LOADED: the employee join at :256 and :324 selects only (name, pan, designation, department), so uan/esi_number/bank_account_no/bank_ifsc from models/payroll.py:63-67 cannot reach the renderer even if a line were added. TWO DEFECTS THE FINDING MISSED, both worse than what it lists. (1) THE EMPLOYER NAMED IS THE WRONG ENTITY. :116 reads firm.get('name'), and firm comes from _load_firm(run['firm_id']) at :277/:329, which reads public.firms (:372-381) \u2014 the CA PRACTICE, the tenant. The employer is the CLIENT; run['client_id'] is selected at :256 and :315 and never used. Every payslip a bureau hands an employee is headed with the accountant's name. (2) THE RUPEE SIGN RENDERS AS A BLACK SQUARE. _paise_to_rupee_str (:67-75) embeds U+20B9, which is not in WinAnsiEncoding, so reportlab falls back per character to ZapfDingbats: the content stream is '/F3 10 Tf (n) Tj /F1 10 Tf (25,000.00) Tj' with /F3 resolving to '<< /BaseFont /ZapfDingbats /Name /F3 >>'. ZapfDingbats 'n' is a filled square, so every amount prints as squares and the column head reads 'Amount (square)'.",
+     "guards": "None. No test renders or asserts payslip CONTENT \u2014 the only payslip tests are tests/test_r236_payroll_hardening.py:225,245 (tenant scoping), tests/test_salary_revisions_and_loans.py:284,300 (deduction_lines arithmetic only) and tests/test_the_month_end_pack.py:153,163 (_payslip_filename). Nothing pins the employer name or the currency glyph, which is why both survived. client_statutory_identity (migration 325_a_client_has_its_own_statutory_registrations.sql:82-111) already holds TAN, EPF establishment code, ESIC employer code and LIN per client, so the employer block the finding asks for has a table waiting for it.",
+     "reach": "Live on both paths a real person uses: GET /api/payroll/slips/{id}/payslip.pdf (routers/payroll.py:1988-2003) and the run zip (routers/payroll.py:2016-2043), and the employee downloads it themselves from apps/web/app/portal/employee/page.tsx:116-123. Every payslip issued by this product goes through build_payslip_pdf."
+    }
+   }
   },
   {
    "id": "PAY-30",
@@ -358,7 +476,19 @@
    "market_standard": "Field-level validation at capture is universal.",
    "confidence": "high",
    "suggested_fix": "Move UAN_RE / IFSC_RE (and a 10-digit ESIC check) into models/payroll.py as field validators shared with the importer, so one definition guards both doors.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Literally correct \u2014 one door validates UAN and IFSC (domain/payroll/employee_import.py:72-74, 279-287) and the other does not (models/payroll.py:63-67 with no field_validator for them; bound at routers/payroll.py:1292,1427), and ESIC number is unchecked on every path. The stated harm is overstated: domain/payroll/ecr.py:209-214 refuses a bad UAN at file build, so the failure surfaces locally rather than as an EPFO rejection, and domain/payroll/exceptions.py:73-122 already indexes it. Low is right, and the suggested fix (share the regexes into models/payroll.py) would give one definition for three doors.",
+    "probe": "sed over models/payroll.py:40-200 \u2014 EmployeeIn/EmployeeUpdateIn declare uan, esi_number, bank_account_no, bank_ifsc with no @field_validator naming any of them. grep -n 'UAN_RE|uan' domain/payroll/ecr.py printed :92 UAN_RE and :213-214 the build-time refusal.",
+    "lens_notes": {
+     "literal": "Exact. domain/payroll/employee_import.py:72-74 defines UAN_RE ^\\d{12}$ and IFSC_RE ^[A-Z]{4}0[A-Z0-9]{6}$, and :279-287 appends a per-row problem for either, which the whole-file contract turns into a refusal. models/payroll.py EmployeeIn carries uan/esi_number/bank_account_no/bank_ifsc at :63-67 and its only validators are name_not_empty (:68-73), aadhaar_last4_format (:75-88), pan_format (:95-104), non_negative_paise (:106-112), percent_in_range (:121-127) and normalize_gender (:125-128) \u2014 nothing touches those three. EmployeeUpdateIn (:147-200) is the same, plus name_not_blank. Both are what the live endpoints bind: routers/payroll.py:1292 (create) and :1427 (update). No ESIC number check exists on any path, import included.",
+     "guards": "Three, and they blunt the stated consequence. (1) domain/payroll/ecr.py:92,209-214 re-checks UAN_RE at ECR BUILD time and reports 'UAN ... is not 12 digits' as a problem \u2014 so the round trip is caught locally, not by an EPFO rejection on the 15th as the finding claims. (2) domain/payroll/exceptions.py:73-122 indexes the same gaps (uan blocks 'EPFO ECR', esic_ip blocks the ESIC return, bank blocks 'Salary payment'), served by GET /api/payroll/employee-exceptions (routers/payroll.py:3397-3491). (3) The form applies maxLength={12} + inputMode='numeric' on UAN and maxLength={11} on IFSC (apps/web/components/payroll/AddEmployeeModal.tsx:226,256) \u2014 a length ceiling only, so an 11-digit UAN or 'HDFC1001234' still posts and stores.",
+     "reach": "Real: the create/update endpoints are the single-employee form's targets, and the exception index is behind a tab (apps/web/app/payroll/people/page.tsx:324,385) rather than on the run path, so nothing forces the CA past it before a run."
+    }
+   }
   }
  ],
  "maturity": {

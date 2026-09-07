@@ -1,5 +1,36 @@
 # 10 — Payroll
 
+> **STATUS, 7 September 2026: PARTLY SUPERSEDED — read this box before the rest.**
+>
+> The owner set this document aside on 7 September 2026 and directed that payroll be
+> planned from the scope given that day: the customer is the **CA firm**, every module
+> must be strong enough to buy on its own (breadth *and* depth), and there are no live
+> users. See `docs/audits/2026-09-07-where-we-are-against-the-one-platform-goal.md`
+> §12.3 for what replaces what.
+>
+> **Still current — the model, and it follows from the customer being the firm:** the
+> bureau shape (firm screen = client-month queue, client screen = employee-slip
+> queue); two-axis grading, *defensible* and *changed*; named gaps instead of silent
+> zeros; and the three refusals — never hold client funds or initiate payouts, never
+> generate Form 16 Part B (CBDT Notification 09/2019 requires it from TRACES), never
+> auto-submit to EPFO, ESIC or TRACES.
+>
+> **No longer current — the sequencing.** The 1 April 2027 cutover and the deliberate
+> non-building of mid-year migration were a calendar device to dodge the
+> opening-position problem. `payroll_opening_positions` is to be built properly
+> instead: a CA firm wins clients year-round. The deferrals — FVU-validated 24Q, Form
+> 16 distribution, bank advice — come back into scope under "depth".
+>
+> **Also stale in detail:** the phase list marks items as to-do that have since
+> shipped — salary structures are wired (`domain/payroll/salary_structure.py`),
+> per-client statutory registrations exist (migration 325), and `statutory_gaps` now
+> reaches the screen (`apps/web/app/clients/[id]/payroll/page.tsx:574-591`). And the
+> module carries two defects this document does not know about: the ECR declares EPF
+> wages of basic+DA while remitting on the s.2(y) base, and 24Q Annexure II gives
+> every employee the new regime's ₹75,000 standard deduction. Audit §4.4.
+>
+> The reasoning below is kept because it is the record of why the model is what it is.
+
 The payroll module, redesigned 2026-09-04. This is the design the code follows;
 where they disagree, fix one of them the same day.
 

@@ -10,7 +10,19 @@
    "market_standard": "Tally Prime cannot import a PDF statement at all and its Excel import simply skips rows it cannot parse. Zoho Books and QuickBooks skip non-transaction rows silently and never block an import on a totals row. No competitor refuses an import because it read a subtotal.",
    "confidence": "high",
    "suggested_fix": "Take the LAST matching totals row rather than the first, and prefer a row whose label literally contains \"grand\". Better: collect every candidate totals row and only use one if exactly one of them equals the parsed sums, or if it is the last row of the file. Also add a `skip_totals_check` acknowledgement path so a CA who has compared the figures by eye is never stuck \u2014 the refusal should be a stop, not a wall.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Exactly as claimed: the first row labelled Total/Totals/Grand Total with two numeric cells wins, and if it is a page or period subtotal the import is refused outright with a message that blames the column mapping (domain/banking/tie_out.py:188-206, tie_out.py:302-319, routers/banking.py:853-855). There is no override anywhere in the request surface.",
+    "probe": "PYTHONPATH=apps/api python - (a 6-column generic_cheque CSV with a page 'Total,,,0.00,500.00,' row before the real 'Grand Total,,,200.00,1200.00,'): printed txns: 3 (all three parsed correctly, debits 20000 paise, credits 120000 paise); printed_totals -> {'label': 'Total', 'total_debits_paise': 0, 'total_credits_paise': 50000}; statement_check -> verified: False, refusal: 'This statement does not match its own \"Total\" row: withdrawals came to \u20b9200.00 against the statement's \u20b90.00 and deposits came to \u20b91,200.00 against the statement's \u20b9500.00. Either some lines were not read, or a column is mapped to the wrong thing. Nothing has been imported.'",
+    "lens_notes": {
+     "literal": "Verified line by line and reproduced. domain/banking/tie_out.py:188-206 loops `for row in rows` and RETURNS on the FIRST row whose cells[0] matches `_TOTAL_LABEL` (normalizer.py:75, `^\\s*(grand\\s+)?totals?\\s*:?\\s*$`) and that carries exactly two numeric cells after column 0 \u2014 there is no 'keep looking for a later/grand one' branch. domain/banking/normalizer.py:762-773 `_finish` passes the WHOLE row list (header rows included) to printed_totals. tie_out.py:302-319 `statement_check` sets refusal from tot_bad FIRST, and routers/banking.py:853-855 raises HTTPException(422) with that refusal before any write (the comment at :850-852 says so explicitly).",
+     "guards": "None. tests/test_statement_printed_totals.py has 20 tests and not one puts two totals-shaped rows in a file (test names cover the label variants, three-numbers refusal, adapter ordering, a date not being mistaken for a total \u2014 never a second Total row). The only relaxations in the module are the opposite direction: three numbers in the row => None, no debit/credit columns => None. No DB constraint, no migration, no scheduler, no flag bears on this.",
+     "reach": "Fully reachable. routers/banking.py:761 POST /banking/statements/upload, router mounted at main.py:341. The frontend calls it via apps/web/lib/api/index.ts:917-928 `uploadStatement` from components/banking/AccountsPanel.tsx. There is no server-side bypass: the upload form fields are file/client_id/bank_name/account_number/bank_account_id/column_mapping/save_mapping/opening_balance_paise/closing_balance_paise/allow_vision (routers/banking.py:762-773) \u2014 nothing skips the totals check. `overrideBalance` (AccountsPanel.tsx:583, 910, 992) only relaxes the CLIENT-side preview gate on balance_check; it is never sent to the server."
+    }
+   }
   },
   {
    "id": "BANK-02",
@@ -22,7 +34,19 @@
    "market_standard": "Tally requires a Bank OD/CC account to be created under the \"Bank OD A/c\" group, which is a Loans (Liability) group, and reports it under short-term borrowings. Zoho Books and Busy both classify an OD/CC ledger as a liability.",
    "confidence": "high",
    "suggested_fix": "Make `_ensure_bank_ledger` read the account_type: create a Liability / 'Bank OD' subtype ledger for 'Cash Credit' and 'Overdraft', an Asset / 'Bank' one otherwise. Widen the ledger picker's filter to Asset OR Liability-with-a-bank-subtype. Add a Schedule III mapping so the balance lands under short-term borrowings, and a migration to re-classify existing OD/CC ledgers with a report of what moved.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. A 'Cash Credit' or 'Overdraft' bank account gets an Asset/Bank ledger (routers/banking.py:250) and the picker will not offer anything else (AccountsPanel.tsx:339-341), so the utilised limit sits as a negative Cash & Cash Equivalents figure (domain/reporting/schedule_iii.py:74-75) instead of Schedule III Short Term Borrowings (:53). Nothing in the banking backend ever reads bank_accounts.account_type except to display it.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed at every cited line. migrations/054_v13_payroll_assets_banking.sql:100-101 \u2014 `account_type TEXT NOT NULL DEFAULT 'Current' CHECK (account_type IN ('Current','Savings','Cash Credit','Overdraft'))`. apps/web/components/banking/AccountsPanel.tsx:416 offers all four. routers/banking.py:250 hardcodes `\"account_type\": \"Asset\", \"account_subtype\": \"Bank\"` in `_ensure_bank_ledger`, with no reference to the bank account's own type (the function signature at :222 does not even receive it). AccountsPanel.tsx:339-341 filters the manual picker `.eq(\"account_type\", \"Asset\")` with the comment 'Only Asset accounts can be a bank's GL account'.",
+     "guards": "None, and the downstream consequence is real. domain/reporting/schedule_iii.py:53 routes 'overdraft'/'cc limit' to 'Short Term Borrowings' only when account_type is LIABILITY; the asset branch (:74-75) sends any subtype containing 'bank' to 'Cash & Cash Equivalents', and there is no negative-balance reclassification anywhere in the module (the only sign handling is at :498, a display helper). domain/banking/account_category.py:161 additionally hard-requires account_type == 'Asset' for a ledger to count as a bank/cash account, so even a hand-linked Liability ledger would break Transfer derivation. The only banking-backend read of `account_type` is services/bank_register_service.py:221, which echoes the bank account's type into the register header for display.",
+     "reach": "Fully reachable \u2014 the account-type dropdown is on the live Add/Edit Bank Account form (AccountsPanel.tsx:414-417) and the ledger is auto-created on POST /banking/accounts (routers/banking.py:445-447). The API would accept a Liability coa_account_id (create_bank_account does no type check, :448-457 only checks for a conflicting bank), but no screen can supply one because the picker query filters to Asset."
+    }
+   }
   },
   {
    "id": "BANK-03",
@@ -34,7 +58,19 @@
    "market_standard": "Zoho Books holds a base and a foreign amount per bank line and revalues foreign bank accounts at period close. Tally Prime records a forex bank ledger with rate-wise entries and produces a Forex Gain/Loss adjustment at year end.",
    "confidence": "high",
    "suggested_fix": "Either (a) refuse a statement import for a non-INR bank account until the FX path exists \u2014 one line in `upload_statement`, and honest; or (b) carry the account's currency onto the parsed rows, ask for the rate per statement or per line, and pass `txn_currency`/`exchange_rate` into `_create_journal` the way the sales/purchase FX paths already do. (a) today, (b) when a client needs it.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The bank statement import and posting path genuinely ignores bank_accounts.currency and books minor units as paise at 1:1 (services/banking_service.py:126-138; services/bank_posting_service.py:555-563 passes no txn_currency to phase2_journal_service._create_journal, which then defaults rate=1 at phase2_journal_service.py:1589-1590). But it is latent, not live: no UI can create a foreign-currency bank account (AccountsPanel.tsx has no currency field) and the feature needs three flags that all default off (domain/currency/policy.py:48-56, core/feature_flags.py:15-21). The claim that year-end FX revaluation of a bank balance does not exist is wrong \u2014 domain/currency/fx_revaluation_service.py:178 does it, tested at tests/test_multi_currency_phase5.py:442.",
+    "probe": "grep -rn \"currency\" apps/web/components/banking/AccountsPanel.tsx -> no matches (no currency field on the bank account form). grep -n \"currency|fx|exchange\" apps/api/services/bank_posting_service.py services/banking_service.py domain/banking/*.py -> hits only in match_and_settle_multi (:926, :1026-1043); the _plan/post path has none.",
+    "lens_notes": {
+     "literal": "The core claim is true. routers/banking.py:166-179 `_guard_foreign_bank_currency` permits a non-INR bank account when the policy is active and the code is in the ISO master, and :440-446 stores it. The import path never reads it: services/banking_service.py:126-138 `import_normalized` copies debit_paise/credit_paise/balance_paise verbatim, and services/bank_posting_service.py:555-563 calls `phase2_journal_service._create_journal` with no `txn_currency` and no `exchange_rate`, so the kernel defaults `entry_ccy = base` and `rate = Decimal(1)` (phase2_journal_service.py:1589-1590). Grepping services/bank_posting_service.py, services/banking_service.py and domain/banking/*.py for currency/fx/exchange returns hits only inside `match_and_settle_multi` (:926, 1026-1043), which is a different path and takes the currency from the CALLER, not from the bank account.",
+     "guards": "Two the finding missed. (1) FX revaluation of a foreign bank balance DOES exist \u2014 domain/currency/fx_revaluation_service.py:178 `revalue` emits item_type 'bank' adjustments keyed on the bank's GL account, proven by tests/test_multi_currency_phase5.py:442-464 and :468-476 (idempotent) and :478-485 (currency_exposure includes the bank). So the sub-claim 'There is no FX revaluation of the bank balance at year end either' is FALSE. (2) The whole surface is triple-gated: domain/currency/policy.py:48-56 needs MULTI_CURRENCY_ENABLED (core/feature_flags.py:15-21, default OFF; declared `sync: false` in render.yaml:205, i.e. unset in the manifest) AND firms.multi_currency_entitled AND clients.multi_currency_enabled.",
+     "reach": "Much narrower than claimed. apps/web/components/banking/AccountsPanel.tsx contains no 'currency' string at all \u2014 the Add/Edit Bank Account form has no currency field, so no screen can create a non-INR bank account. The only frontend mention of a bank account's currency is a read-only FX exposure row (apps/web/app/clients/[id]/accounting/page.tsx:1313). Reaching this bug needs the platform flag on, the firm entitled, the client enabled, and a hand-crafted POST to /api/banking/accounts."
+    }
+   }
   },
   {
    "id": "BANK-04",
@@ -46,7 +82,19 @@
    "market_standard": "Tally Prime's BRS is the reference implementation: it lists \"Amounts not reflected in Bank\" from the COMPANY BOOKS with instrument number and date, plus \"Amounts not reflected in Company Books\", and reconciles Balance as per Company Books to Balance as per Bank. Zoho Books, Busy and Marg all produce the two-sided statement.",
    "confidence": "high",
    "suggested_fix": "Add the book side. Read the bank ledger's journal_lines for the period, subtract the lines that came from a posted bank_transaction, and what remains is the reconciling set: cheques issued not presented (credits to bank with no statement line) and deposits in transit (debits to bank with no statement line). Render the classic two-sided statement in the PDF, with the instrument number from `reference_no`. The existing tie-out stays as the internal check.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed as a gap, not a bug. Every row the reconciliation and its PDF know about is a bank_transactions statement line (services/bank_reconciliation_service.py:60-72, 84-100); neither the service, the domain module nor the PDF reads journal_entries/journal_lines at all, so cheques issued but not presented and deposits in transit have no representation, and the PDF titled 'Bank Reconciliation Statement' (services/bank_reconciliation_pdf_service.py:81-92) is a one-sided tie-out.",
+    "probe": "grep -n 'journal_entries\\|journal_lines' apps/api/services/bank_reconciliation_service.py apps/api/services/bank_reconciliation_pdf_service.py apps/api/domain/banking/reconciliation.py -> no output. grep -rn -i 'unpresented|not presented|in transit|cheques issued' apps/ -> only unrelated hits (a payroll test string, the register's 'uncleared' filter).",
+    "lens_notes": {
+     "literal": "Confirmed. domain/banking/reconciliation.py:19-50 `tie_out` is exactly `opening + deposits - withdrawals + adjustments` vs statement closing. Every input comes from services/bank_reconciliation_service.py:60-72 `_posted_account_txns`, which reads bank_statements for the account and then bank_transactions on those statement ids, keeping rows with a posted_journal_id. `_classify` (:84-100) buckets those same statement rows into reconciled/unreconciled/exceptions. `grep -n 'journal_entries|journal_lines'` over services/bank_reconciliation_service.py, services/bank_reconciliation_pdf_service.py and domain/banking/reconciliation.py returns NOTHING. services/bank_reconciliation_pdf_service.py:81-92 prints exactly the seven tie-out rows under the report title.",
+     "guards": "None, and the near-miss does not help: the 'uncleared' status in the Bank Book (services/bank_register_service.py:41, 107) is also a STATEMENT-line concept \u2014 services/bank_register_service.py:59-85 `_txns` reads bank_transactions only \u2014 so nothing anywhere in the module lists a book entry with no statement line. A repo-wide grep for 'unpresented', 'not presented', 'in transit', 'cheques issued' across apps/ finds no such feature.",
+     "reach": "Fully reachable and this IS the accountant-facing artefact: routers/banking.py:1962 GET /reconciliations/{id}/report.pdf, plus :2007 /report and :2021 /report.csv; the Reconcile tab is apps/web/components/banking/ReconcileTab.tsx and 'Bank reconciliation' is linked from apps/web/app/clients/[id]/reports/page.tsx:122-123. Book-side entries with no statement line genuinely exist \u2014 a Receipt or Payment voucher posts to the bank ledger independently of any statement import."
+    }
+   }
   },
   {
    "id": "BANK-05",
@@ -58,7 +106,19 @@
    "market_standard": "Tally's BRS has no plug field at all; every difference must be an actual voucher or a bank date. Zoho Books requires you to either match a transaction or create one for the difference, and QuickBooks forces an explicit \"reconciliation discrepancy\" journal that posts to the ledger. None of them lets a number reconcile by assertion.",
    "confidence": "high",
    "suggested_fix": "Require a substantive reason for any non-zero adjustment (mirror `ReconciliationReopenIn.substantive` and back it with a DB CHECK), write an audit_log row when it changes, print the reason on the PDF beside the figure, and gate a non-zero adjustment on `banking.approve` (Manager+). Better still, make an adjustment an actual posted journal so the books and the reconciliation agree.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed, and slightly worse than described: the adjustment is an unvalidated, unaudited, un-narrated plug written by any Executive (services/bank_reconciliation_service.py:294-304) that satisfies the completion gate (domain/banking/reconciliation.py:39 with bank_reconciliation_service.py:403-405), and the `banking.approve` Manager tier that core/permissions.py:183 defines for signing off a reconciliation is referenced by no router at all.",
+    "probe": "grep -rn 'rbac(\"banking\", \"approve\")' apps/api/routers/ -> no output. grep -rn 'adjustments_paise|adjustment_reason' apps/api/migrations/*.sql -> only migration 102 lines 20 and 33; no reason column, no CHECK.",
+    "lens_notes": {
+     "literal": "Confirmed at every line. migrations/102_bank_reconciliation_b4.sql:20 adds `adjustments_paise bigint NOT NULL DEFAULT 0` and :33-34 comments it 'documented adjustments' \u2014 with no reason/narration/itemisation column anywhere (grep of migrations/*.sql for adjustment_reason returns nothing). models/banking.py:352-358 `ReconciliationUpdateIn` takes it as a bare Optional[int] with no validator. services/bank_reconciliation_service.py:294-304 `update_session` int()s it into the row with no validation, no audit_service call and no `_log` activity entry. domain/banking/reconciliation.py:39 folds it into book_balance, so `complete` (:403-405) passes its `summary['reconciles']` gate.",
+     "guards": "The opposite \u2014 the module shows it knows how to demand a reason and does not here. models/banking.py:312-329 `ReconciliationReopenIn.substantive` requires >=10 characters and says a DB CHECK (migration 253) backs it. Nothing equivalent exists for the adjustment. Stronger still: core/permissions.py:181-185 defines `banking.approve` = Manager+ with the comment 'sign off a reconciliation', and `grep -rn 'rbac(\"banking\", \"approve\")' routers/` returns NOTHING \u2014 POST /reconciliations/{id}/complete uses rbac('banking','write') (routers/banking.py:1909-1912), which is _AT_LEAST_EXECUTIVE. So the Manager gate the permission table was written for is not wired up.",
+     "reach": "Fully reachable. PATCH /banking/reconciliations/{recon_id} (routers/banking.py:1846-1859, rbac banking.write) is called from apps/web/components/banking/ReconcileTab.tsx:420-431 \u2014 a free 'Adjustment (\u20b9)' number box with an Apply button that PATCHes adjustments_paise. Complete then freezes a snapshot (bank_reconciliation_service.py:407-414) which services/bank_reconciliation_pdf_service.py renders as a certified statement, printing 'Adjustments' with the figure and no explanation (:87)."
+    }
+   }
   },
   {
    "id": "BANK-06",
@@ -70,7 +130,19 @@
    "market_standard": "Zoho Books lets you delete an uploaded statement and all its unreconciled transactions in one action. QuickBooks has \"Undo\" on a bank import batch. Tally's bank statement import can be reverted by deleting the imported vouchers as a set.",
    "confidence": "high",
    "suggested_fix": "Add DELETE /statements/{id}, permitted only while every line on it is unposted and unreconciled, cascading to bank_transactions (the FK is already ON DELETE CASCADE), writing the whole statement header to audit_log first, and refusing with a named reason otherwise. Surface it as a Delete action on the statements table beside View.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed as a gap. No endpoint or UI can delete or undo an imported statement (routers/banking.py has no DELETE /statements; apps/web never writes bank_statements). A statement imported against the wrong bank account is permanent, keeps that account undeletable (routers/banking.py:268-269), and the only partial remedy is per-line batch-exclude (:1385), which leaves the statement row and its totals in place.",
+    "probe": "grep -n '@router\\.' apps/api/routers/banking.py -> 64 routes; the four DELETEs are /accounts/{id}, /statements/column-mappings/{id}, /transactions/{id}/transfer-pair, /rules/{rule_id}. grep -rn 'bank_statements' apps/web --include=*.ts --include=*.tsx -> no output.",
+    "lens_notes": {
+     "literal": "Confirmed by enumerating the router. The only DELETE verbs in routers/banking.py are :548 /accounts/{id}, :1071 /statements/column-mappings/{id}, :1496 /transactions/{id}/transfer-pair and :2166 /rules/{id}. There is no DELETE on /statements and none on /transactions. On the frontend, grep for `from(\"bank_statements\")` across apps/web returns nothing, and the only banking DELETE in the api client is deleteColumnMapping (apps/web/lib/api/index.ts:953-954) plus deleteBankAccount (:911).",
+     "guards": "The remedies that exist do not reach it. POST /transactions/{id}/undo (:1286) reverses a POSTING, not the import; batch-exclude (:1385) only marks lines ignored and leaves the statement and its totals; services/bank_erasure.py is a DPDP retention path for deleting a whole bank ACCOUNT and is itself blocked by _DELETE_BLOCKERS (routers/banking.py:268-273, first entry 'bank statements have been imported for it'). The dedup fingerprint at domain/banking/dedup.py:30-40 includes bank_account_id, so a re-import to the correct account is allowed and the wrong-account copy is permanent.",
+     "reach": "Fully reachable, and easy to hit. apps/web/components/banking/AccountsPanel.tsx:565 defaults the import modal's account to `accounts[0]?.id`, and the statements table (:233-252) has one action per row: a View/Hide toggle. There is no Delete."
+    }
+   }
   },
   {
    "id": "BANK-07",
@@ -82,7 +154,19 @@
    "market_standard": "Tally computes a bank ledger's running balance in its own engine over a memory-mapped company file \u2014 instant. Zoho Books pages the register server-side with the balance carried in the query.",
    "confidence": "high",
    "suggested_fix": "Move the running balance into SQL, the way public.cash_flow_report (migration 277) and public.schedule_iii_ageing (migration 303) were moved: a SQL function returning finished register rows with a window-function running balance, plus the first-divergence probe. Keep domain/banking/register.py as the mock-mode twin and pin the two with a parity test, exactly as tests/test_cash_flow_sql_parity_pg.py does.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed, and the dominant cost is not the round trips: on 12,836 rows the pure-Python `view_opening` step at services/bank_register_service.py:212-215 alone takes 29.2 seconds of CPU, on top of paging every bank_transaction on the account (services/bank_register_service.py:59-85) and building the whole register in Python (domain/banking/register.py:146-206). That is the exact pattern CLAUDE.md's 'Reporting performance' rule forbids, on a route listed as a report.",
+    "probe": "PYTHONPATH=apps/api python - with 12,836 synthetic rows: 'build_register over 12836 rows: 0.071s' then 'min(filtered, key=lines.index) over 12836: 29.185s' \u2014 i.e. the unfiltered Bank Book spends ~29s of CPU inside one request before any network, well past lib/api's 45s abort once the thirteen Singapore->Mumbai pages are added.",
+    "lens_notes": {
+     "literal": "Confirmed, and the cost is larger than the finding says. services/bank_register_service.py:59-85 `_txns` uses `fetch_all` to page EVERY bank_transaction on the account (its own docstring: 'ALL of them \u2014 not just posted ones'); :87-98 reads the reconciliation statuses; domain/banking/register.py:146-206 `build_register` sorts the whole set and accumulates the balance row by row in Python; the service then filters, sorts and slices in Python (:193-205). On top of that, services/bank_register_service.py:212-215 computes the view opening as `min(filtered, key=lambda l: all_lines.index(l))` \u2014 `all_lines.index` is O(n) over a frozen dataclass with 16 fields (domain/banking/register.py:75-76), so the default unfiltered view is O(n^2) field-wise comparisons.",
+     "guards": "None. There is no SQL function for the register (grep of migrations for a register/bank-book function finds nothing \u2014 the SQL-side reports are public.cash_flow_report, migration 277, and public.schedule_iii_ageing, migration 303). The route is not behind a flag. `fetch_all` makes the read CORRECT (the docstring records the PostgREST 1000-row truncation it fixed) but that is exactly what makes it proportional to volume.",
+     "reach": "Fully reachable and default-heavy. routers/banking.py:1139-1151 GET /banking/register, mounted at main.py:341; apps/web/app/clients/[id]/reports/bank-book/page.tsx renders components/banking/BankBook.tsx, linked as 'Bank Book' under Operational at apps/web/app/clients/[id]/reports/page.tsx:119-121. BankBook.tsx:92-95 defaults dateFrom/dateTo empty and status 'all', so the first render is the worst case. The same read shape is in services/bank_reconciliation_service.py:60-72 and is re-run by `opening_suggestion` (:165) on every session create."
+    }
+   }
   },
   {
    "id": "BANK-08",
@@ -94,7 +178,19 @@
    "market_standard": "Zoho Books and QuickBooks both process a statement upload asynchronously and show an import job with progress; neither holds an HTTP request open across an OCR run.",
    "confidence": "high",
    "suggested_fix": "Cheapest correct fix: make the three routes plain `def` so Starlette runs them in the threadpool \u2014 the file read is the only genuinely async part and can be handled with `file.file.read()`. Then chunk the vision path: rasterise and read pages in batches with the client looping, the way Entries already loops redraft and pass-ready, so a long scan reports progress instead of occupying one request.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Confirmed. The three multipart routes are the router's only `async def`s (routers/banking.py:762, 956, 994) and their bodies are entirely synchronous \u2014 pdfplumber, then a 150-dpi rasterisation of up to 20 pages, then one blocking Gemini call per page (domain/banking/vision.py:70-133, 212-246; services/statement_vision.py:32-42) \u2014 so they run on the event loop of a single gunicorn worker (apps/api/Dockerfile:22), stalling every other request, and the 120s worker timeout drops those requests rather than only the upload.",
+    "probe": "grep -n 'async def' apps/api/routers/banking.py -> 762, 956, 994 only (64 routes total). grep -rn 'run_in_threadpool|anyio.to_thread|asyncio.to_thread' routers/banking.py domain/banking/*.py services/statement_vision.py -> no output. grep -n 'workers' apps/api/Dockerfile -> `--workers 1 ... --timeout 120`.",
+    "lens_notes": {
+     "literal": "Confirmed. `grep -n 'async def' apps/api/routers/banking.py` returns exactly three: :762 upload_statement, :956 inspect_statement_file, :994 preview_statement_with_mapping \u2014 out of 64 routes; every other handler is a plain `def` that Starlette runs in the threadpool. Their bodies await only `file.read()`: routers/banking.py:655-741 `_read_statement_file` calls parse_statement_detailed -> _pdf_rows -> pdfplumber synchronously, then vision.page_images (domain/banking/vision.py:70-133, rasterising up to MAX_PAGES = 20 at 150 dpi, vision.py:75), then vision.read_statement (vision.py:212-246), which loops the pages calling services/statement_vision.py:32-42 `call` \u2014 a synchronous `client.models.generate_content`. `grep -rn 'run_in_threadpool|anyio.to_thread|asyncio.to_thread'` over routers/banking.py, domain/banking/*.py and services/statement_vision.py returns nothing.",
+     "guards": "Nothing bounds it, and the deployment makes it worse than the finding says. apps/api/Dockerfile:22 runs `gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 120`: ONE worker, so a blocked event loop is the whole API, and the 120s gunicorn timeout kills the worker (dropping every other in-flight request) rather than just failing the upload. `allow_vision` defaults False (routers/banking.py:772), which limits the 20-call path to opt-in uploads, but the deterministic pdfplumber parse still runs on the loop for every PDF upload, inspect and preview.",
+     "reach": "Fully reachable. All three routes are called from the import modal: apps/web/lib/api/index.ts:917-928 uploadStatement and :930-944 postStatementForm (used by inspectStatement :946-947 and previewStatement :949-950). Both use a bare `fetch` with no AbortController, unlike `request` at lib/api/index.ts:358-374, which arms a 45-second abort \u2014 so the browser has no client-side ceiling either."
+    }
+   }
   },
   {
    "id": "BANK-09",
@@ -106,7 +202,19 @@
    "market_standard": "Zoho Books and QuickBooks dedupe on the bank's own transaction id from the feed, and on manual import they flag a possible duplicate for the user to accept or reject rather than dropping it. Tally's Excel import does not dedupe at all \u2014 it imports both and lets the user see them.",
    "confidence": "high",
    "suggested_fix": "Add the row's ordinal position within the file to the hash, so two identical rows are two rows. Then move the WITHIN-FILE duplicate drop from silent to reported: if two rows in one file hash identically, keep both and let the cross-file check (which is what idempotent re-import actually needs) do the deduping. At minimum, run statement_check on the deduped set so a merged row breaks the totals.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Exactly as described: with no balance column every row's balance_paise is 0 (domain/banking/normalizer.py:458), so transaction_hash collapses two genuinely identical rows (domain/banking/dedup.py:29-39), services/banking_service.py:171-183 keeps only the first, and the verification that would have caught it ran on the pre-dedup list (routers/banking.py:852-855 vs :896-900). The one correction is that the fix is bigger than 'hours': migration 224's UNIQUE index on (client_id, import_hash) makes keeping both rows a schema change, not just a service change.",
+    "probe": "cd apps/api && python -c \"from domain.banking.dedup import transaction_hash; ...\" printed 'identical hashes: True 950030cb41b728ab' for transaction_hash('c1','a1','2026-04-10',50000,0,0,'UPI/DR/RAMESH KUMAR',None) computed twice.",
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines. domain/banking/dedup.py:18-40 hashes (client, bank_account, date[:10], debit, credit, BALANCE, whitespace/case-normalised description, reference). normalizer.py:458 sets balance_paise=_to_paise(col(\"balance\")), which is 0 when the layout has no balance column, so the balance term stops discriminating exactly as claimed. services/banking_service.py:171-187 builds `seen`/`deduped` and keeps only the first row per hash; the loss is reported only as the aggregate `duplicates_skipped` (:186-190). The order claim also holds: routers/banking.py:852-855 runs statement_check(txns, ...) on the PARSED list before banking_service.import_normalized is called at :896-900, so the tie-out and the printed-totals check both see the un-deduped rows and agree while one row is dropped.",
+     "guards": "Every guard I could find either misses this or makes it worse. (1) tie_out/statement_check runs pre-dedup (above), so `verified: true` is returned for an import that stored one row fewer. (2) balance_agreement is also computed on `txns` (routers/banking.py:882) and in any case returns checked:false when there is no balance column \u2014 domain/banking/tie_out.py:13-15 says so in the module's own words. (3) Migration 224 (uq_bank_txns_client_import_hash, a UNIQUE index on (client_id, import_hash)) does not catch it \u2014 it ENFORCES the collapse at the DB level, so the suggested fix of \"keep both rows\" needs a migration, not just a service change. (4) tests/test_bank_feed_import.py:335-344 (test_import_dedups_duplicate_rows_within_file) asserts imported==1 / duplicates_skipped==1 for two identical rows, and :378-385 (test_distinct_same_day_same_amount_kept) shows the design relies on a DIFFERENT RUNNING BALANCE to tell two real transactions apart \u2014 the very column this case lacks. Nothing in CLAUDE.md records the no-balance case as a deliberate decision.",
+     "reach": "Real. routers/banking.py's router is mounted at apps/api/main.py:341, the import endpoint is the only way statement data enters the product (CLAUDE.md, 'Bank data'), and the PDF/vision paths that most often lack a balance column go through the same _import_core."
+    }
+   }
   },
   {
    "id": "BANK-10",
@@ -118,7 +226,19 @@
    "market_standard": "Zoho Books offers an invoice whose BALANCE DUE matches the deposit and lets you apply a partial payment. Tally's bill-wise details are built entirely around Against Ref / On Account allocation across part payments. QuickBooks matches on open balance, not on invoice total.",
    "confidence": "high",
    "suggested_fix": "Band and score on OUTSTANDING, not on the document total: use `total_paise - paid_paise` for invoices and the equivalent for bills in both the pool query and `_in_band`, set `Candidate.amount_paise` to the outstanding figure, and keep the total for the label only. `difference_paise` then means what the row says it means, and the TDS shape is detected against the right base.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "A part-payment against a partly-paid invoice or bill is never auto-suggested, because both the SQL band and the in-memory re-filter use the document TOTAL (bank_matching_service.py:299-336) and matcher.py:173-179 drops anything short by more than 25%. Find Match does surface the document but describes and ranks the shortfall against the total (candidate_search.py:142,158,176-186), so the difference and any TDS label are computed on the wrong base. Settlement itself is right (bank_posting_service.py:498-511).",
+    "probe": "cd apps/api && python -c \"from domain.banking.matcher import rank_suggestions, Candidate; c=Candidate('sales_invoice','i1','INV-1',30000000,'2026-04-01',outstanding_paise=20000000); print(rank_suggestions(20000000,'2026-04-01','NEFT ACME',[c]))\" printed '[]' \u2014 a \u20b92,00,000 receipt that exactly clears the \u20b92,00,000 outstanding on a \u20b93,00,000 invoice yields no suggestion at all.",
+    "lens_notes": {
+     "literal": "Confirmed line by line. services/bank_matching_service.py:299-306 bands the invoice query on total_paise; :315-336 (_invoices_from) re-applies _in_band on total_paise, skips fully-paid rows, and sets Candidate.amount_paise = total with outstanding_paise = total - paid as a side field only. _in_band (:214-218) is `amount <= value <= _near_match_ceiling(amount)`, so a document larger than the bank line by more than the near-match band is out. Bills band on net_payable_paise (:338-385), which is TDS/note-net but NOT paid-net, so a part-paid bill fails the same way. domain/banking/matcher.py:167-182 computes difference = c.amount_paise - txn_amount and `continue`s when the line is short by more than NEAR_MATCH_BAND_BPS = 2500 (matcher.py:46).",
+     "guards": "Find Match does list the document \u2014 services/bank_candidate_search_service.py:73-94 and :121-144 fetch by DATE with no amount band and carry outstanding_paise \u2014 but domain/banking/candidate_search.py:142 computes difference_paise against c.amount_paise (the TOTAL) and :158-168 ranks on abs(difference_paise), and describe() (:176-186) prints 'Bank line is short by <total shortfall>'. The TDS label at :153 fires whenever total_shortfall/total lands on one of matcher.TDS_RATES_BPS (0.1/1/2/5/10/20%) within \u00b1\u20b91, so a \u20b91,00,000 invoice with \u20b910,000 already paid and a \u20b990,000 second instalment is described as '10% TDS'. The auditor's own \u20b93,00,000/\u20b91,00,000 example is 33%, which is not in the table, so that specific quoted sentence would not appear \u2014 the mechanism is real, the illustration is off. Settlement is correct, as claimed: services/bank_posting_service.py:498-511 (_invoice_outstanding/_bill_outstanding) and _settle_doc (:637) allocate against true outstanding.",
+     "reach": "Live. The suggestion path feeds the Entries drafts (services/bank_entry_service.py:371-373 -> suggestions_for_many, then E.from_documents), and the Find Match search is mounted at routers/banking.py:1197-1221."
+    }
+   }
   },
   {
    "id": "BANK-11",
@@ -130,7 +250,19 @@
    "market_standard": "Zoho Books bank rules support multiple criteria with AND/OR over description, payee, reference number and amount, with contains / starts with / is operators, and actions that set the category, the payee and the tax. QuickBooks bank rules do the same plus rule priority and split lines by percentage or amount. This is the single biggest gap against both.",
    "confidence": "high",
    "suggested_fix": "Three increments, in value order: (1) add a `priority` integer and order by it \u2014 one column, one migration; (2) let a rule carry several conditions over description/reference/amount with contains/starts-with/equals; (3) let a rule name split legs (percentage or fixed) reusing domain/banking/splits.build_split_lines, which already exists and is tested. Keep the trusted-rule CHECK in step.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The rule engine is exactly one substring + amount range + direction (domain/banking/rules.py:52-69), the payload cannot name a party, a TDS treatment or split legs (rules.py:31-49), and precedence is created_at with no priority column and no reorder control (bank_entry_service.py:365-367, RulesTab.tsx:226-252). One nuance the finding omits: a rule can also carry a GST rate and an interstate flag (migration 254), which QuickBooks/Zoho rules do not.",
+    "probe": "grep -rn 'priority' apps/api/migrations/*.sql | grep -i rule returned only migration 045 (assignment_rules) \u2014 bank_matching_rules has no priority column.",
+    "lens_notes": {
+     "literal": "Confirmed. domain/banking/rules.py:52-69 rule_matches is exactly is_active + one case-insensitive substring on description_pattern + amount_min/max + txn_type debit|credit|any \u2014 no regex, no second condition, no reference/payee field. RuleSuggestion (:31-49) carries rule_id, rule_name, category, ONE account_id, narration, gst_rate_bps, is_interstate; there is no party, no TDS and no split leg. Precedence is creation order: services/bank_entry_service.py:365-367 orders active rules by created_at, routers/banking.py:2064-2066 does the same for the list, and match_rule (rules.py:71-100) returns the FIRST non-empty match. No priority column exists \u2014 the only 'priority' in apps/api/migrations is migration 045 on assignment_rules; bank_matching_rules has none (054:150-163, plus 093/096/254/322 additions). The UI matches: apps/web/components/banking/RulesTab.tsx:226-252 offers narration-contains ('Plain text, not case-sensitive. No wildcards.'), min, max, direction only.",
+     "guards": "None that closes the gap. domain/banking/splits.py exists and is tested, but splits are a manual per-line action, not a rule action. GST rate and interstate are extra rule payload (migration 254), which is more than the finding credits but is not a second condition. There is no reorder endpoint or drag handle in RulesTab.tsx; the only workaround for shadowing is turning a rule off (RulesTab.tsx:355-358) and recreating it.",
+     "reach": "The Rules tab is one of the three live bank tabs (docs/architecture/09-bank-entries.md:210-215), and trusted rules post unattended (services/bank_entry_service.py:536-551), so the expressiveness limit reaches every client."
+    }
+   }
   },
   {
    "id": "BANK-12",
@@ -142,7 +274,19 @@
    "market_standard": "Zoho Books keeps the rule name on the transaction's audit trail after the rule is deleted. QuickBooks records \"Added by rule <name>\" in the audit log independently of the rule row.",
    "confidence": "high",
    "suggested_fix": "Refuse to delete a rule that has posted anything (`posted_by_rule_id` references exist) \u2014 deactivate it instead, which the endpoint already supports; require `banking.approve` to delete a rule that is or has been trusted; and write the whole rule row to audit_log in the same transaction, the way the journal deletes do.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Deleting a rule is a hard DELETE on banking.write with no application-level audit write (routers/banking.py:2166-2181), while trusting it needs banking.approve (:2116-2129) \u2014 a real permission asymmetry, and the docstring's 'it has never written anything to the ledger' is stale since migration 322:62. But the authorisation trail is NOT erased: the per-entry audit row carrying rule_name and trusted_by is written at pass time and survives (bank_entry_service.py:540-548), and migration 111's trg_audit_capture logs the DELETE with the full old row under the production USE_USER_JWT posture (render.yaml:174-197). The only real loss is the ' \u00b7 rule' badge on the entry row (EntriesTab.tsx:503) \u2014 the register sentence and the 'what it has passed' count the finding says disappear were never built (docs/architecture/09-bank-entries.md:195 vs RulesTab.tsx:210).",
+    "probe": "sed -n '98,143p' apps/api/migrations/111_audit_capture_triggers.sql showed the generic trigger loop over every firm-scoped table with an id, exclusion array printed in full \u2014 bank_matching_rules is not in it; grep -n 'passed|count' apps/web/components/banking/RulesTab.tsx showed line 210 counting rules and trusted rules only.",
+    "lens_notes": {
+     "literal": "The mechanism is real but the consequences are not. routers/banking.py:2166-2181 delete_rule is rbac('banking','write') (Executive+), hard-DELETEs the row, writes no audit row in application code, and its docstring still says 'it has never written anything to the ledger' \u2014 stale since migration 322:62 added posted_by_rule_id UUID REFERENCES bank_matching_rules(id) ON DELETE SET NULL, stamped by services/bank_entry_service.py:536-539. Promotion to trusted does require banking.approve (routers/banking.py:2116-2129), so the permission asymmetry is genuine.",
+     "guards": "Two guards refute the damage claim. (1) The pass-time audit row survives the delete: services/bank_entry_service.py:540-548 calls audit_service.log_event with rule_id, rule_name AND trusted_by in new_data and source='bank_trusted_rule' \u2014 that record is in audit_log independently of the rule row, and the journal's created_by is trusted_by regardless. (2) Migration 111:98-143 attaches trg_audit_capture AFTER INSERT OR UPDATE OR DELETE to every firm-scoped table with an id that is not in its exclusion list; bank_matching_rules qualifies (migration 054:150-163 has firm_id and id) and is not excluded, so the DELETE writes an audit_log row whose old_data is the whole rule. That trigger only fires when auth.uid() is non-null (111:41-45), and in production it is: render.yaml:174-197 records that USE_USER_JWT is true, and routers/banking.py:84-89 -> core/supabase_client.py:134-138 then returns the caller-JWT client. So 'there is no audit_log row saying the rule ever existed' is wrong for the live deployment.",
+     "reach": "Two of the three named consequences do not exist to lose. The register sentence 'Passed by rule Bank charges, trusted by Priya on 3 Sep' (docs/architecture/09-bank-entries.md:195) is not implemented anywhere \u2014 the UI only ever renders a flag, ' \u00b7 rule' (apps/web/components/banking/EntriesTab.tsx:502-503) and ' \u00b7 by a trusted rule' (EntryDetailModal.tsx:354). The Rules tab has no 'what it has passed' count: RulesTab.tsx:210 shows the rule count and trusted count only, and there is no rule filter on the Entries list either. So what actually goes blank on delete is a two-word badge."
+    }
+   }
   },
   {
    "id": "BANK-13",
@@ -154,7 +298,19 @@
    "market_standard": "This is where the product could beat everyone \u2014 Tally, Zoho and QuickBooks all lack a risk-based partner review over the bank feed; it is exactly the kind of analytics the owner wants CAs addicted to. The work is already done and unreachable.",
    "confidence": "high",
    "suggested_fix": "Write the missing `bank_exception_service` (gather the payee/account context the pure module wants), store the flags on the row or compute them per page, and surface them as a fourth Entries filter or a partner dashboard card. Until then, remove the \"Needs review\" option from the Bank Book so it does not lie, and mark the module's tests as covering an unwired feature.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "domain/banking/exceptions.py and its 25 tests are complete and imported by nothing but the tests; the service its own docstring names (services/bank_exception_service.py:20-23) was never written. needs_review is never set True anywhere, yet the Bank Book's 'Needs review' filter is a live, selectable option (bank_register_service.py:41,115; BankBook.tsx:80) that always returns an empty table.",
+    "probe": "ls apps/api/services/bank_exception_service.py -> 'No such file or directory'; grep -rn 'needs_review.*True' across apps/api and apps/web returned only the read filter (bank_matching_service.py:509) and one test fixture (test_bank_matching.py:526).",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/banking/exceptions.py is 315 lines of pure rules and its docstring at :20-23 points at services/bank_exception_service.py, which does not exist (`ls` returns 'No such file or directory'). A repo-wide grep for 'domain.banking.exceptions' / 'bank_exception' returns exactly two hits: the module and tests/test_bank_exception_rules.py (295 lines). The module is not re-exported from domain/banking/__init__.py either. needs_review is written only False in application code \u2014 services/bank_matching_service.py:816 and services/bank_posting_service.py:1060 \u2014 and bank_entry_service.py:570 only restores a prior value; the only True in the whole repo is the READ filter at bank_matching_service.py:508-509 and a test fixture at tests/test_bank_matching.py:526.",
+     "guards": "None. Migration 096:24 defaults needs_review to false and nothing sets it. There is no endpoint or model field that accepts needs_review (routers/banking.py has it only in the register status pattern at :1145; models/banking.py has none), so a CA cannot even flag a line by hand.",
+     "reach": "Both halves reach a user, which is what makes it worth fixing. The dead filter is live: services/bank_register_service.py:41 lists needs_review among STATUS_FILTERS, :115 filters on the column, routers/banking.py:1145 accepts it, and apps/web/components/banking/BankBook.tsx:80 renders 'Needs review' as an option on the Bank Book report page (apps/web/app/clients/[id]/reports/bank-book/page.tsx), which is linked from the reports index (apps/web/app/clients/[id]/reports/page.tsx:119-121). The exception engine reaches nobody. A backend capability reachable from no screen CONFIRMS the gap."
+    }
+   }
   },
   {
    "id": "BANK-14",
@@ -166,7 +322,19 @@
    "market_standard": "Dedicated PDF-to-Tally converters (the small industry this feature exists to replace) handle mixed-ruling documents by falling back per page. Zoho Books does not accept PDF at all, so the feature itself is ahead of the market \u2014 the per-page fallback is what makes it trustworthy.",
    "confidence": "high",
    "suggested_fix": "Decide the strategy per page, not per document: for each page, take `extract_tables()` if it yields rows, otherwise `_rows_by_position(page)`. Carry the header line found on the first page forward to pages that do not repeat it. Both are small changes inside `_pdf_rows`.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Exactly as described. normalizer.py:855-856 chooses the extraction strategy per DOCUMENT, not per page, so a mixed-ruling PDF silently keeps only the ruled pages; and _rows_by_position returns [] for any page that does not repeat its column headings (normalizer.py:924-925). The tie-out cannot rescue it because printed_totals reads the same truncated row set (tie_out.py:144-175), so the outcome is a short, well-formed import reported as verified:false rather than refused.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines. domain/banking/normalizer.py:791 _pdf_rows opens the PDF, loops EVERY page appending page.extract_tables() rows into one list (:848-854), and then at :855-856 does `if rows: return rows`. The geometric fallback loop at :858-860 is reached only when the whole document produced no ruled table. So a document whose first page is ruled returns page 1's rows and never looks at the unruled continuation pages. Separately _rows_by_position (:908-951) finds a header line per page and returns [] at :924-925 when none is found, and again at :927 when the header has fewer than 3 columns \u2014 a continuation page that does not repeat its headings contributes nothing. Neither path raises.",
+     "guards": "tie_out is the intended backstop and it fails in exactly this case. tie_out.printed_totals (domain/banking/tie_out.py:144-175) reads the bank's own 'Grand Total' line out of the SAME rows list, so if the totals row is on a page that was dropped there are no printed totals and totals_agreement reports checked:false. balance_agreement (normalizer.py:631-664) is a consecutive-delta check whose own module docstring (tie_out.py:17-21) records that truncating from either end leaves the chain self-consistent. statement_check (tie_out.py:272-302) then returns verified:false with a gap rather than a refusal unless the CA typed the opening/closing balances or a vision read was used (routers/banking.py:854-866). So the import proceeds with an amber note.",
+     "reach": "Live: _pdf_rows is reached from parse_statement's extension dispatch (normalizer.py:979+) on the same POST /banking/statements/import path that is mounted at main.py:341."
+    }
+   }
   },
   {
    "id": "BANK-15",
@@ -178,7 +346,19 @@
    "market_standard": "Zoho Books and QuickBooks both detect transfers across the whole account history, and neither recomputes the candidate set per page of the review queue.",
    "confidence": "high",
    "suggested_fix": "Compute the pair index ONCE per redraft run and pass it into each chunk (it is already a parameterised argument \u2014 `detect_pairs(..., txns=...)`). Replace the flat 1,000-row cap with a date window anchored on the chunk's own lines (\u00b1 DEFAULT_WINDOW_DAYS), which is both complete and far smaller.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Both halves hold. detect_pairs reads the newest 1,000 rows for the whole client with no date window (bank_transfer_service.py:54-58), and because _eligible filters AFTER that cap (transfers.py:113-129) the effective horizon is shorter than 1,000 lines \u2014 a client with two accounts at ~300 lines a month crosses it in under two months, not 'about a year'. And _pairs_by_txn (bank_entry_service.py:417-424) re-runs the fetch and the quadratic out x in scan (transfers.py:158-171) once per 100-line redraft chunk, even though detect_pairs already accepts a pre-fetched txns list.",
+    "probe": "grep -n 'transfer' apps/api/tests/test_bank_reads_are_complete.py returned nothing, confirming bank_transfer_service is the one bank read that test does not cover.",
+    "lens_notes": {
+     "literal": "Confirmed, and slightly understated. services/bank_transfer_service.py:29 SCAN_LIMIT = 1000 and :54-58 order by transaction_date desc and .limit(SCAN_LIMIT) \u2014 a flat cap, not core.db_paging.fetch_all. The cap is applied in SQL BEFORE eligibility, and domain/banking/transfers.py:113-129 (_eligible) then discards posted, ignored, already-paired and document-matched lines, so on a worked client most of the 1,000-row budget is spent on lines that cannot pair at all. services/bank_entry_service.py:417-431 _pairs_by_txn calls detect_pairs for the whole client and is invoked at :372 inside redraft, which is capped at REDRAFT_CHUNK = 100 (:48) / MAX_CHUNK = 200 (:50,:360) and driven chunk-by-chunk from the browser (apps/web/components/banking/EntriesTab.tsx:134,295). domain/banking/transfers.py:158-171 builds every out x in candidate pairing before any greedy choice \u2014 quadratic in the eligible set.",
+     "guards": "None. tests/test_bank_reads_are_complete.py exercises bank_register_service, bank_matching_service and bank_reconciliation_service (lines 334, 356, 366, 387, 400) and never touches bank_transfer_service, so the finding is right that this is the uncovered read. detect_pairs already takes an optional txns= argument (bank_transfer_service.py:48-50), so the per-chunk recomputation is avoidable today; nothing calls it that way. There is no date-window narrowing on the fetch.",
+     "reach": "Live on the Entries tab: every redraft chunk pays for a full 1,000-row fetch plus the quadratic scan, and the transfer draft is one of the four sources E.choose ranks (bank_entry_service.py:400-415)."
+    }
+   }
   },
   {
    "id": "BANK-16",
@@ -190,7 +370,10 @@
    "market_standard": "Zoho Books auto-categorisation rules apply only to uncategorised feed transactions and never act on a transaction a user has touched. QuickBooks rules likewise stop at the first manual edit.",
    "confidence": "high",
    "suggested_fix": "In `pass_ready`, when `only_trusted` is set, skip any row where `E.coded_by_a_human(row)` is true \u2014 the rule's authority covers the rule's proposal, not a human's different answer. Cheap and exactly matches the design's own reasoning in docs/architecture/09-bank-entries.md.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-17",
@@ -202,7 +385,10 @@
    "market_standard": "QuickBooks warns explicitly (\"this transaction is reconciled \u2014 changing it will affect your reconciliation\") and marks the period. Tally refuses to alter the bank date of a reconciled voucher without re-opening the reconciliation. Zoho Books requires you to un-reconcile first.",
    "confidence": "high",
    "suggested_fix": "In `undo` (and in `unmatch`), read the line's `reconciliation_id` and its session status. If the session is completed, either refuse with \"this line is part of a completed reconciliation for <period> \u2014 reopen it first\" (the reopen path with its mandatory reason already exists), or require an explicit acknowledgement and clear `reconciliation_id` so the register stops claiming 'R'.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-18",
@@ -214,7 +400,10 @@
    "market_standard": "Every competitor shows a plain-language import error. This is not a market gap, it is a one-line regression against the codebase's own standard two functions below.",
    "confidence": "high",
    "suggested_fix": "Use `errorMessage(res)` in `uploadStatement`, exactly as `postStatementForm` does. One line. Keep `looksLikeAFormatProblem` working by matching on the unwrapped sentence.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-19",
@@ -226,7 +415,10 @@
    "market_standard": "Not a market issue \u2014 an internal consistency issue with a documented failure history in this repo.",
    "confidence": "high",
    "suggested_fix": "Replace both with `paiseFromRupeeInput` and handle its null as a refusal, the way ReconcileTab already does with its NOT_AN_AMOUNT message. Delete `rsToP` from components/banking/shared.ts so it cannot come back.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-20",
@@ -238,7 +430,19 @@
    "market_standard": "The Cash Book is one of Tally's headline reports and cash Receipt/Payment/Contra vouchers are its most-used entry screens; Busy and Marg are the same. Zoho Books has Cash accounts with the same register as bank accounts. Every one of them has a negative-cash warning.",
    "confidence": "high",
    "suggested_fix": "The kernel already supports it \u2014 Receipt/Payment/Contra, the posting map, the register and the running-balance code are all account-agnostic. Add a Cash account type alongside bank_accounts (or reuse it with a Cash subtype), a voucher entry screen, and reuse domain/banking/register.py for the Cash Book report. Add a negative-balance warning, which is the one cash-specific rule.",
-   "effort": "weeks"
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The gap is real: no cash voucher entry, no Cash Book report, no negative-cash check (apps/web/app/clients/[id]/reports/ has none; no cash-voucher route in apps/api/routers/). Two corrections: cash entries CAN be recorded as manual journals and a running cash balance IS available through the per-account ledger (apps/api/routers/accounting.py:857), so 'no running cash balance' is overstated; and the sharper defect is that payment_mode='cash' is accepted on receipts and purchase payments while the posting always resolves the Bank account (services/receipt_service.py:178, services/purchase_payment_service.py:443), which puts cash movements in the bank ledger.",
+    "probe": "grep -rni 'cash book|cashbook|petty cash' over apps/api and apps/web returned 6 files, all incidental; grep -n '_find_account.*%Bank%' apps/api/services/receipt_service.py apps/api/services/purchase_payment_service.py returned lines 178 and 443 with no cash alternative.",
+    "lens_notes": {
+     "literal": "The grep result holds. Repo-wide, 'cash book'/'cashbook'/'petty cash' hits only services/coa_seed_service.py:52 (the seeded '1002 Petty Cash' ledger), migrations 011 and 288, tests/test_bank_account_first_coding.py, domain/dpdp/retention.py:111 and apps/web/components/banking/EntryDetailModal.tsx:514 \u2014 no feature. apps/web/app/clients/[id]/reports/ contains only ageing, bank-book, ratios and trend. There is no cash voucher screen, no cash register, no negative-cash check anywhere.",
+     "guards": "Two partial workarounds exist and the finding overstates their absence. (a) Manual journal entries are a live screen (apps/web/app/clients/[id]/accounting/page.tsx:854 'New Journal Entry'), so cash CAN reach the GL. (b) A running cash balance IS obtainable: GET /accounting/ledger (apps/api/routers/accounting.py:857-891) returns opening, per-line running and closing balances server-side for any account, and the frontend drill-down renders it (accounting/page.tsx:924-1064) \u2014 pointing it at '1002 Petty Cash' is a cash book in all but name and column headings. Migration 288 also reads cash accounts out of the GL for \u00a740A(3), so cash in the ledger is an expected state. What genuinely does not exist: cash Receipt/Payment/Contra vouchers, a labelled Cash Book report, and any negative-cash warning. Worse, and not mentioned by the finding: receipts and purchase payments ACCEPT payment_mode='cash' (migration 050:101-102, widened by 161; models/invoices.py:399) but the journal always debits/credits the BANK account \u2014 services/receipt_service.py:178 and services/purchase_payment_service.py:443 both call _find_account(..., '%Bank%', system_key='bank') with no cash branch (phase2_journal_service.py:213-220, :1404-1445). A receipt recorded as cash therefore lands in the bank ledger and overstates the bank balance.",
+     "reach": "Confirms the gap rather than refuting it \u2014 there is no backend cash-voucher capability hidden behind a missing screen either. The mispost above is reachable from the live receipts and purchase-payments screens."
+    }
+   }
   },
   {
    "id": "BANK-21",
@@ -250,7 +454,10 @@
    "market_standard": "QuickBooks and Zoho Books both have first-class credit-card accounts (a liability, with the payment recorded as a transfer from bank to card). Tally handles it as a liability ledger with a card statement imported like any other.",
    "confidence": "high",
    "suggested_fix": "Add 'Credit Card' to the account_type CHECK and the picker, give it a Liability ledger (same change as BANK-02), and make the card-payment line a Contra between the bank and the card ledger \u2014 the transfer machinery already handles that shape.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-22",
@@ -262,7 +469,10 @@
    "market_standard": "Zoho Books and QuickBooks make the account mandatory on a statement import \u2014 there is no unassigned state.",
    "confidence": "high",
    "suggested_fix": "Make `bank_account_id` required on both import endpoints (it is already validated for ownership at banking_service.py:164-169 when supplied), and make `_resolve_bank`'s generic fallback raise rather than post to a master Bank account \u2014 an unattributable bank line should refuse, not guess. Longer term, denormalise bank_account_id onto bank_transactions so every scoped read is one filter instead of a statement-id round trip.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-23",
@@ -274,7 +484,10 @@
    "market_standard": "Zoho Books shows uncategorised statement lines inside the reconciliation with a \"categorise\" action. QuickBooks blocks reconciliation and names the count of unreviewed transactions in the period.",
    "confidence": "high",
    "suggested_fix": "Add a fourth bucket \u2014 in-period statement lines with no journal \u2014 computed from the same fetch (drop the `posted_journal_id` filter and split), show it as a \"Not yet passed (N)\" view with a link into Entries filtered to that account and period, and name it in the completion refusal.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-24",
@@ -286,7 +499,10 @@
    "market_standard": "Zoho Books requires a vendor on a GST-bearing expense so it flows into the purchase register and the 2B match. Tally requires a party ledger with a GSTIN on any voucher claiming input credit \u2014 you cannot claim ITC on a bank charge without one.",
    "confidence": "medium",
    "suggested_fix": "Let a bank account (or the rule) carry the bank's GSTIN and state, stamp it onto the charge journal and onto a purchase-register row, so bank-charge ITC joins the same 2A/2B reconciliation as every other input credit. At minimum, tag these journals so the GST reconciliation can report them as a named category rather than an unexplained difference.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-25",
@@ -298,7 +514,10 @@
    "market_standard": "Zoho Books shows a per-statement progress (\"312 of 312 categorised\"). QuickBooks shows the count still in For Review per import.",
    "confidence": "high",
    "suggested_fix": "Either drive it from the lines (pending \u2192 reviewed once every line has left needs_you, posted once every line is passed or set aside \u2014 a cheap SQL count on the existing entry_state index), or drop the column from the table and show \"N of M passed\" instead, which is what the CA actually wants to know.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-26",
@@ -310,7 +529,10 @@
    "market_standard": "Perfios, Setu and the PDF-to-Tally converters ship hundreds of bank templates. Zoho Books remembers a CSV mapping per organisation and offers it for any account. Tally has no mapping at all \u2014 you must reshape the file.",
    "confidence": "high",
    "suggested_fix": "Fall back from the account-scoped mapping to a firm-scoped one on the same header fingerprint before asking again \u2014 the fingerprint already makes reuse safe, which is the whole argument in normalizer.py:591-607. Add a Settings screen listing the firm's learned layouts with the bank name, so a CA can see and correct them. Adding real adapters, if ever, should come from real files the firm has already mapped.",
-   "effort": "days"
+   "effort": "days",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-27",
@@ -322,7 +544,10 @@
    "market_standard": "Tally requires an opening balance to be entered against the books-beginning date; there is no undated opening balance. Zoho Books requires an \"as of\" date on a bank opening balance.",
    "confidence": "high",
    "suggested_fix": "Require `opening_balance_date` whenever `opening_balance_paise` is non-zero, in `BankAccountIn`/`BankAccountUpdateIn` and in the form. Default it to the client's books-beginning date. Where existing rows have a balance and no date, surface it as a named setup gap on the account row rather than silently mis-computing.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-28",
@@ -334,7 +559,10 @@
    "market_standard": "Tally's BRS lists the instrument number against every reconciling item, and its bank-statement import maps a cheque-number column explicitly.",
    "confidence": "high",
    "suggested_fix": "Add a `cheque_no` field to ParsedNarration, populated when the channel is CHEQUE/CLG and a 6-digit token is present, and fall back to it when `reference_no` is empty. Small, and it becomes load-bearing the moment BANK-04 is built.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   },
   {
    "id": "BANK-29",
@@ -346,7 +574,10 @@
    "market_standard": "Zoho Books and QuickBooks both drop zero-amount rows on import. Tally's Excel import ignores rows with no debit and no credit.",
    "confidence": "high",
    "suggested_fix": "Skip a row with no debit and no credit in the two-column branch of `_rows_to_txns`, matching what the amount/drcr branch already does. Zero-amount rows carry no money and no information the balance column does not already give.",
-   "effort": "hours"
+   "effort": "hours",
+   "verification": {
+    "status": "unverified"
+   }
   }
  ],
  "maturity": {
