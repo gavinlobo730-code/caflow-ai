@@ -4,7 +4,13 @@
  * GSTR-2A vs Purchase Register ITC Reconciliation
  *
  * CGST Act Section 16 — ITC eligibility conditions
- * CGST Rule 36(4) — ITC restricted to 105% of eligible ITC appearing in GSTR-2A/2B
+ * CGST Rule 36(4) — ITC restricted to 100% of the eligible ITC in GSTR-2B.
+ *   The 105% provisional buffer (and the 110%/120% before it) was WITHDRAWN by
+ *   Notification 40/2021-Central Tax with effect from 1 January 2022. This file
+ *   told the CA 105% in three places while the engine
+ *   (domain/gst/gstr3b_computer._RULE_36_4_NUMERATOR = 100) had it right — a
+ *   wrong statement of law on the screen the CA reads before deciding how much
+ *   credit to claim.
  * Reconciliation mandatory for accurate ITC claims
  *
  * All monetary values stored and computed in integer paise (never floating point).
@@ -242,7 +248,8 @@ function parseCsv(text: string): { rows: InvoiceRow[]; error: string | null } {
  * Match Purchase Register vs GSTR-2A by supplier_gstin + invoice_number.
  *
  * CGST Act Section 16 — ITC eligibility conditions
- * CGST Rule 36(4) — ITC restricted to 105% of eligible ITC in GSTR-2A/2B
+ * CGST Rule 36(4) — ITC restricted to 100% of eligible ITC in GSTR-2B (the
+ *   105% buffer was withdrawn w.e.f. 01-01-2022 by Notification 40/2021-CT)
  *
  * Sections:
  *   matched        — invoice in both, amounts match (green)
@@ -653,8 +660,11 @@ export default function GstReconciliationPage() {
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-2.5 text-xs text-blue-700">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
         <span>
-          <strong>CGST Rule 36(4):</strong> ITC is restricted to 105% of eligible credit appearing in GSTR-2A/2B.
-          Reconcile every period before filing GSTR-3B to avoid ITC reversal notices.{" "}
+          <strong>CGST Rule 36(4):</strong> ITC is restricted to the eligible credit appearing in
+          GSTR-2B — 100%, with no provisional buffer. The 105% grace (110% and 120% before that)
+          was withdrawn by Notification 40/2021-Central Tax with effect from 1 January 2022, so an
+          invoice your supplier has not filed carries no claimable credit at all. Reconcile every
+          period before filing GSTR-3B.{" "}
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
         </span>
       </div>
@@ -919,7 +929,8 @@ export default function GstReconciliationPage() {
               <div className="px-5 py-3 border-t border-gray-50 bg-[#F8FAFC]/30">
                 <p className="text-[10px] text-[#94A3B8]">
                   {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-                  CGST Act Section 16 · Rule 36(4) — ITC subject to 105% cap of GSTR-2A eligible credit ·
+                  CGST Act Section 16 · Rule 36(4) — ITC capped at 100% of the GSTR-2B eligible credit,
+                  no provisional buffer since 01-01-2022 ·
                   PracticeSync does not auto-submit anything to the GST portal — CA must review and file manually.
                 </p>
               </div>

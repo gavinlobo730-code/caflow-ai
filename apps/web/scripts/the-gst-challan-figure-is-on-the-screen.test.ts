@@ -68,3 +68,28 @@ test("a zero-rated supply prints the IGST it actually carries", () => {
   assert.match(src, /outward\.zero_rated_igst_paise/,
     "the zero-rated row must print the tax on the supply, not always a dash");
 });
+
+test("no GST screen states the withdrawn Rule 36(4) buffer", () => {
+  // Rule 36(4)'s provisional buffer — 120%, then 110%, then 105% — was
+  // WITHDRAWN by Notification 40/2021-Central Tax with effect from
+  // 1 January 2022. Credit is now strictly matched to GSTR-2B.
+  //
+  // The reconciliation screen told the CA "restricted to 105%" in three
+  // places, including the blue banner above the run button, while the engine
+  // (domain/gst/gstr3b_computer._RULE_36_4_NUMERATOR = 100) had it right all
+  // along. That is a wrong statement of law on the screen a CA reads BEFORE
+  // deciding how much credit to claim — the cushion it promises does not
+  // exist, and claiming into it is what draws the reversal notice the same
+  // banner warns about.
+  for (const rel of ["app/gst/reconciliation/page.tsx", "app/gst/gstr3b/page.tsx"]) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    // Comments are NOT stripped here: the header comments are what a developer
+    // reads to learn the rule, and both stated the superseded figure.
+    const claims = src.split("\n").filter((line) =>
+      /10[05]\s*%|1[12]0\s*%/.test(line) && /36\(4\)|restricted|cap(ped)?\b/i.test(line));
+    for (const line of claims) {
+      assert.doesNotMatch(line, /(105|110|120)\s*%/,
+        `${rel} states a Rule 36(4) buffer that was withdrawn on 01-01-2022: ${line.trim()}`);
+    }
+  }
+});

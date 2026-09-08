@@ -4,8 +4,13 @@
  * GSTR-3B Review UI — CA review, approval, and JSON download for portal upload.
  *
  * CGST Act Section 39 — Monthly summary return, due 20th of following month.
- * CGST Rule 36(4) — ITC restricted to 105% of eligible GSTR-2A credit.
- * CGST Act Section 49(5) — IGST ITC cross-utilisation sequence.
+ * CGST Rule 36(4) — ITC restricted to 100% of the eligible GSTR-2B credit. The
+ *   105% provisional buffer was withdrawn by Notification 40/2021-Central Tax
+ *   w.e.f. 01-01-2022; domain/gst/gstr3b_computer._RULE_36_4_NUMERATOR is the
+ *   authority and has said 100 all along.
+ * CGST Act Section 49(5) — the four-step set-off: IGST credit to IGST then, with
+ *   Rule 88A, to CGST and SGST; then CGST credit to CGST and to IGST (s.49(5)(b));
+ *   then SGST credit to SGST and to IGST (s.49(5)(c)). Never CGST against SGST.
  *
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to any government portal.
  * The Download JSON button produces a file for manual upload to gst.gov.in.
