@@ -458,8 +458,19 @@ what moved, not as a plan.
 | The copilot quoting TDS thresholds FA 2025 had raised — now generated from the registry | `routers/assistant.py` | 3 of 4 |
 | Filing-demo fidelity for the CA trials, with the not-filed signal made structural and the OTP field removed | `services/filing_demo/`, the wizard | 38 backend, 4 of 5 web |
 | The registration playbook for GSP, ERI and the rest | `docs/compliance/07-…` | n/a |
+| Migration 337 — `anon` could EXECUTE seven SECURITY DEFINER functions, one of them returning a client's cash payments given a firm id and a client id | `migrations/337_…` | 7 of 17 |
+| Which ITR due date applies, decided from Explanation 2 to §139(1) and REFUSED everywhere the facts are not held | `compliance_obligation_service`, `app/income-tax/page.tsx` | 37 of 37 |
+| Every mock-mode write now checked against production's column types, wired into the shared harness | `tests/production_types.py`, `tests/e2e_harness.py` | 16 of 16, and it found two live defects on the first run |
+| The §44AB report dated on the **specified date** (30 September), one month before the return, derived from it | `compliance_engine.tax_audit_report_due_date` | 2 |
+| The customer statement of account headed by the **client**, not the practice — in the PDF and its covering email | `statement_pdf_service`, `routers/customer_statements.py` | 3 of 10 |
+| Rule 36(4)'s withdrawn 105% ITC buffer, still promised on two GST screens | `app/gst/reconciliation`, `app/gst/gstr3b` | 1 |
 
-**Two things learned that are worth carrying into Stage 2.**
+**Where that leaves the twenty confirmed criticals: nineteen are fixed.** The
+one that remains is **GST-04** — the 2A/2B reconciliation never reads the books,
+does not parse a real GSTR-2B JSON, and persists nothing. It is a feature build,
+not a correction, and it is Stage 2 below.
+
+**Three things learned that are worth carrying into Stage 2.**
 
 First, *fixing the engine is half the job*. Four of these — the GSTR-3B cash
 figure, the §80G fields, the capital-gains assessee type, the filing demo's
@@ -471,6 +482,12 @@ Second, *the prose was never the guard*. Three of the defects above were things
 CLAUDE.md asserted were already true: every money site converted, the
 pre-commencement PF base reproducing `basic + DA`, no statutory depreciation
 table in code. Each is now held by a test instead of a sentence.
+
+Third, *the engine being right does not make the product right*. Rule 36(4) is
+the cleanest case: `_RULE_36_4_NUMERATOR` has said 100 since the notification,
+and two screens told the CA 105% — so the app computed the correct credit while
+advising the CA to claim more than the law allows. The CA acts on the advice.
+Grep the SCREENS for a statutory figure whenever the engine holds one.
 
 ### The original list, as written on 7 September
 

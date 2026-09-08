@@ -197,9 +197,11 @@ Ageing built twice on purpose because the two answers have different shapes.
 
 Each of these I reproduced myself in this session. The figures are from those runs.
 
-> **STATUS, 8 September 2026 — every defect in this section is FIXED.** Nine
-> commits on `claude/ca-platform-audit-roadmap-yuoad3`, each carrying its own
-> negative control; `docs/audits/2026-09-07-a-plus-roadmap.md` §12 is the
+> **STATUS, 8 September 2026 — every defect in this section is FIXED**, and so
+> is every other confirmed critical bar one (GST-04, the 2A/2B reconciliation,
+> which is a feature build rather than a correction). Seventeen commits on
+> `claude/ca-platform-audit-roadmap-yuoad3`, each carrying its own negative
+> control; `docs/audits/2026-09-07-a-plus-roadmap.md` §12 is the
 > table of what landed where. **This section is left exactly as written**,
 > because the reproductions are the evidence the fixes were aimed at the right
 > thing, and a report rewritten after the fact cannot be checked against
