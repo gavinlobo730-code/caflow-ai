@@ -197,6 +197,33 @@ Ageing built twice on purpose because the two answers have different shapes.
 
 Each of these I reproduced myself in this session. The figures are from those runs.
 
+> **STATUS, 8 September 2026 — every defect in this section is FIXED.** Nine
+> commits on `claude/ca-platform-audit-roadmap-yuoad3`, each carrying its own
+> negative control; `docs/audits/2026-09-07-a-plus-roadmap.md` §12 is the
+> table of what landed where. **This section is left exactly as written**,
+> because the reproductions are the evidence the fixes were aimed at the right
+> thing, and a report rewritten after the fact cannot be checked against
+> anything. Read the figures below as "what it did on 7 September", not as
+> current behaviour.
+>
+> Three of them turned out to be bigger than this section says, and that is
+> worth knowing before trusting any other section's scoping:
+>
+> * §194Q's ₹50 lakh is an FY **aggregate** as well as a single-payment
+>   trigger, so two ₹30,00,000 bills to one seller withheld nothing at all —
+>   a case this section does not contain.
+> * The CII table did not merely stop at 2025-26; the 2025-26 value itself was
+>   wrong (380 against six sources saying 376).
+> * The capital-gains engine was not only missing the rate fork — the §2(42A)
+>   **holding periods** changed on the same date too, so a non-property asset
+>   held 30 months before 23-07-2024 was classified long-term where the statute
+>   needed 36.
+>
+> One correction to this section's own framing: it treats the engine as the
+> deliverable. For four of these defects the engine was fixed in one pass and
+> the screens in another, and in between the figure was correct and no CA
+> could see it. Scoping a statutory fix should include its callers.
+
 ### 4.1 Tax withheld: four defects, all confirmed by running the engine
 
 `TDSComputer.resolve_tds` (`domain/tds/tds_computer.py:258-318`) is the single
@@ -340,6 +367,11 @@ holding period and the CII lookup. Live for updated returns under §139(8A) and 
 reassessment.
 
 ### 4.4 Payroll: two wrong statutory outputs
+
+*(Both fixed 8 September 2026, along with three more the fix work surfaced: the
+pre-commencement EPF §6 wage base, a second PF implementation in
+`/statutory-position` that had drifted from the one that remits, and an unbound
+`logger`. See the a-plus roadmap §12.)*
 
 **The ECR cannot reconcile at the EPFO portal.** The slip stores
 `pf_wages_paise = _wb.wages_paise` — the Code on Social Security s.2(y) base with

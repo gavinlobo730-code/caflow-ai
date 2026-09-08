@@ -438,7 +438,41 @@ than merely complete.
 
 ---
 
-## 12. What is already in flight, 7 September 2026
+## 12. Stage 0 and Stage 1, landed 8 September 2026
+
+Everything listed below is **merged, tested and pushed**, each with a stated
+negative control — how many tests fail against the previous code. Nine commits
+on `claude/ca-platform-audit-roadmap-yuoad3`. Read this section as the record of
+what moved, not as a plan.
+
+| What | Where it landed | Negative control |
+|---|---|---|
+| TDS aggregate thresholds on §§194A/D/G/H/J; the charge on the FY aggregate with §200 credit; §194Q on the excess AND aggregating | `domain/tds/`, `routers/purchase_bills.py` | 12 tests, +2 for the §194Q aggregate limb, +3 existing tests that were pinning wrong numbers |
+| GSTR-3B §49(5)(b)/(c) cross-utilisation; reverse charge as cash under §49(4)/§2(82); zero-rated IGST — **and all nine callers, to the screen** | `domain/gst/gstr3b_computer.py`, both services, `routers/gst.py`, 5 web files | 24 + 5 + 10 |
+| Capital gains forked on 23-07-2024 with the holding-period change and the §112(1) fifth proviso; the CII 380→376 correction; §71(3)/§74 loss floor; §80G(4) ceiling and §80G(5D) cash bar | `domain/income_tax/`, `routers/income_tax.py`, 3 web files | 21 + 17 |
+| ECR wage base; Annexure II regime split; the pre-Code EPF §6 base; one PF implementation; HRA annualisation; an unbound `logger` | `domain/payroll/`, `routers/payroll.py` | 17 of 23 |
+| Schedule II lives replacing Income-tax Act block rates; `YYYY-MM` into a `date` column; the silent month skip | `routers/fixed_assets.py`, the web register | 6 / 39 / 15 / 7 / 2 / 7 |
+| The sales-invoice PDF naming the **client** as supplier, with the Rule 46 fields | `services/invoice_pdf_service.py` | 18 of 23 |
+| Year-end adjustments through the posting kernel; a filed GST return locking its period | `routers/year_end_adjustments.py`, `lib/data/gst.ts` | 8 of 11, 10 of 10 |
+| Nine money fields still reading "1,25,000" as ₹1, including the bank settlement that posts to the GL | 8 web files | 4 of 4, and a repo-wide sweep now guards it |
+| The copilot quoting TDS thresholds FA 2025 had raised — now generated from the registry | `routers/assistant.py` | 3 of 4 |
+| Filing-demo fidelity for the CA trials, with the not-filed signal made structural and the OTP field removed | `services/filing_demo/`, the wizard | 38 backend, 4 of 5 web |
+| The registration playbook for GSP, ERI and the rest | `docs/compliance/07-…` | n/a |
+
+**Two things learned that are worth carrying into Stage 2.**
+
+First, *fixing the engine is half the job*. Four of these — the GSTR-3B cash
+figure, the §80G fields, the capital-gains assessee type, the filing demo's
+payment table — were computed correctly and reached no screen, because the
+engine and its callers were changed in different passes. A figure no CA is
+shown is not a fixed bug, and "the computer is right" is not the test.
+
+Second, *the prose was never the guard*. Three of the defects above were things
+CLAUDE.md asserted were already true: every money site converted, the
+pre-commencement PF base reproducing `basic + DA`, no statutory depreciation
+table in code. Each is now held by a test instead of a sentence.
+
+### The original list, as written on 7 September
 
 Started the day this list was written:
 

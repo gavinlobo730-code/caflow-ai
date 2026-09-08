@@ -24,10 +24,30 @@
 > **Also stale in detail:** the phase list marks items as to-do that have since
 > shipped — salary structures are wired (`domain/payroll/salary_structure.py`),
 > per-client statutory registrations exist (migration 325), and `statutory_gaps` now
-> reaches the screen (`apps/web/app/clients/[id]/payroll/page.tsx:574-591`). And the
-> module carries two defects this document does not know about: the ECR declares EPF
-> wages of basic+DA while remitting on the s.2(y) base, and 24Q Annexure II gives
-> every employee the new regime's ₹75,000 standard deduction. Audit §4.4.
+> reaches the screen (`apps/web/app/clients/[id]/payroll/page.tsx:574-591`).
+>
+> **The two defects this box named on 7 September are FIXED (8 September 2026)**,
+> and three more that the fix work surfaced went with them. Recorded here because
+> each is a fact about the module this document still describes wrongly elsewhere:
+>
+> * the ECR declared EPF wages of `basic + DA` while the run remitted on the stored
+>   Code-on-Social-Security base — an internally inconsistent file, since EPFO
+>   validates EPS at 8.33% of the declared wages;
+> * 24Q Annexure II applied the new regime's ₹75,000 standard deduction to every
+>   employee, including old-regime rows entitled to ₹50,000;
+> * the **pre-commencement** PF base was the s.2(88) aggregate rather than EPF Act
+>   s.6's `basic + DA + retaining allowance`, so any historic month with a medical or
+>   special allowance over-deducted — and it recomputes on demand, so a reprinted
+>   payslip disagreed with the challan actually remitted;
+> * `/statutory-position` projected PF on `basic + DA` while `_compute_slip` deducted
+>   on the wage base, so one screen said ₹1,200 and the other ₹1,680 and only the
+>   second was remitted. One `_pf_wage_base` now serves both;
+> * an unbound `logger` (the module uses `_logger`) would have raised `NameError` on
+>   the path that reached it.
+>
+> Deliberately unchanged and now pinned by a test: **ESI still computes on gross.**
+> The Code's definition is narrower, so ESI may err the other way — unconfirmed, and
+> gross is the direction that cannot under-deduct.
 >
 > The reasoning below is kept because it is the record of why the model is what it is.
 
