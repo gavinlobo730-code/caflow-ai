@@ -98,6 +98,9 @@ class _Q:
 class FakeDB:
     def __init__(self): self.store = {}
     def table(self, n): return _Q(self.store, n)
+    # Deliberately NO .rpc: phase2_journal_service branches on hasattr(db,
+    # "rpc") and takes the atomic post_journal_atomic path when it exists.
+    # post_draft's period lock is silenced in the fixture instead — see there.
 
 
 @pytest.fixture
@@ -106,6 +109,13 @@ def db(monkeypatch):
     for mod in (jps, bps):
         monkeypatch.setattr(mod.timeline_service, "log", lambda *a, **k: None, raising=False)
     monkeypatch.setattr(jps.period_validation_service, "validate_posting_date", lambda *a, **k: None)
+    # ...and the CLIENT lock post_draft now consults. period_lock_service FAILS
+    # CLOSED, so leaving it wired to a double with no .rpc would 422 every post
+    # with "Could not confirm this period is open" — the guard working exactly
+    # as designed, and nothing at all about the draft→posted transition this
+    # module is here to assert. What the lock DOES is asserted against a double
+    # that implements it, in test_documents_locked_by_filed_return.py.
+    monkeypatch.setattr(jps.period_lock_service, "assert_open", lambda *a, **k: None)
     monkeypatch.setattr("services.audit_service.log_event", lambda *a, **k: None, raising=False)
     d = FakeDB()
     d.store["chart_of_accounts"] = [

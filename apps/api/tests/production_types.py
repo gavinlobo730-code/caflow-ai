@@ -70,8 +70,9 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    # Empty, and that is the goal state: the snapshot is current as of
-    # migration 343 and every entry it used to carry is now IN it.
+    ("year_end_engagements", "reopened_at"): "migration 344",
+    ("year_end_engagements", "reopened_by"): "migration 344",
+    ("year_end_engagements", "reopen_reason"): "migration 344",
 }
 
 

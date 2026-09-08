@@ -28,7 +28,9 @@ import routers.sales_invoices as si
 import routers.purchase_bills as pb
 import routers.credit_notes as cn
 import routers.sales_debit_notes as sdn
-from models.invoices import InvoiceLineIn
+import routers.purchase_credit_notes as pcn
+import routers.debit_notes as pdn
+from models.invoices import InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn
 from services import period_lock_service
 from tests.e2e_harness import FakeDB, wire_e2e
 
@@ -42,7 +44,7 @@ USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "u1",
 def db(monkeypatch):
     d = FakeDB()
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
-    wire_e2e(monkeypatch, d, [si, pb, cn, sdn, period_lock_service])
+    wire_e2e(monkeypatch, d, [si, pb, cn, sdn, pcn, pdn, period_lock_service])
     d.seed("firms", {"id": FIRM, "name": "F1", "locked_financial_years": []})
     return d
 
@@ -373,3 +375,184 @@ def test_a_receipt_is_deliberately_NOT_locked_by_a_filed_return():
     assert types == {"GSTR-1", "GSTR-3B"}, (
         f"public.filings now records {sorted(types)} — re-read the argument in "
         "receipt_service before leaving receipts unguarded")
+
+
+# ── the purchase side, which had almost none of this (PUR-08) ────────────────
+#
+# The finding named the purchase BILL's create and receive. Reading the four
+# note routers side by side found the same omission across the whole purchase
+# half — the sales documents assert the lock on create, on both dates of an
+# edit, and again at issue; purchase bills asserted it only on edit, and
+# purchase credit and debit notes not at all. Ten call sites, one rule.
+#
+# It matters MORE here than on the sales side. A sales document that slips into
+# a filed period overstates output tax the return already declared; a purchase
+# document claims INPUT CREDIT that return never took, and §16(4) says where
+# that credit actually belongs — the current period, not the closed one.
+
+def _file_gstr3b_for_june(db, filed_on="2026-07-20"):
+    db.seed("filings", {
+        "firm_id": FIRM, "client_id": CLIENT, "filing_type": "GSTR-3B",
+        "period_start": "2026-06-01", "period_end": "2026-06-30",
+        "filed_date": filed_on, "status": "filed", "deleted_at": None,
+    })
+
+
+def _seed_vendor(db):
+    db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": CLIENT,
+                        "name": "Supplier Co", "state_code": "27",
+                        "is_active": True, "residential_status": "Resident"})
+
+
+def _bill_line():
+    return PurchaseBillLineIn(description="raw material", quantity=1,
+                              rate_paise=1_000_00, gst_rate_percent=18.0,
+                              service_catalogue_id="SVC-1")
+
+
+def test_a_purchase_bill_dated_inside_a_filed_period_is_refused(db):
+    """THE FINDING. A late March bill booked in June carries ITC the filed
+    March GSTR-3B never claimed. The equivalent sales invoice has been refused
+    with a sentence naming the filing date since SALES-15; the bill was not."""
+    _seed_vendor(db)
+    _seed_party_and_catalogue(db)
+    _file_gstr3b_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        pb.create_purchase_bill(PurchaseBillIn(
+            client_id=CLIENT, vendor_id="VEND1", bill_date="2026-06-15",
+            bill_no="B-99", lines=[_bill_line()]), current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_a_purchase_bill_in_an_open_period_is_still_created(db):
+    """The control. A guard that refuses everything is an outage, not a rule."""
+    _seed_vendor(db)
+    _seed_party_and_catalogue(db)
+    _file_gstr3b_for_june(db)
+
+    resp = pb.create_purchase_bill(PurchaseBillIn(
+        client_id=CLIENT, vendor_id="VEND1", bill_date="2026-07-15",
+        bill_no="B-100", lines=[_bill_line()]), current_user=USER)
+
+    assert resp["success"] is True, resp.get("error")
+
+
+def test_receiving_a_purchase_bill_into_a_filed_period_is_refused(db):
+    """THE DEFERRED-POSTING HALF. Receiving is what posts the journal, and it
+    posts with the BILL's date — so a draft entered in March and received in
+    June claims credit in a return filed in April. Checking only at create is
+    checking at the moment nothing was posted."""
+    db.seed("purchase_bills", {
+        "id": "BILL9", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "bill_date": "2026-06-15", "bill_no": "B-9", "vendor_id": "VEND1",
+        "taxable_amount_paise": 1_00_000, "cgst_paise": 9_000,
+        "sgst_paise": 9_000, "igst_paise": 0, "total_paise": 1_18_000,
+    })
+    _file_gstr3b_for_june(db, filed_on="2026-09-20")
+
+    with pytest.raises(HTTPException) as e:
+        pb.receive_purchase_bill("BILL9", current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_a_purchase_credit_note_dated_inside_a_filed_period_is_refused(db):
+    """A purchase credit note REVERSES input credit (Rule 37 / §16(2) second
+    proviso), so dating one into a filed period leaves that return's 4(B)
+    reversal short — the direction that overstates credit."""
+    _seed_vendor(db)
+    _seed_party_and_catalogue(db)
+    _file_gstr3b_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        pcn.create_purchase_credit_note(pcn.PurchaseCreditNoteIn(
+            client_id=CLIENT, vendor_id="VEND1", credit_note_date="2026-06-15",
+            reason="short supply", lines=[_line()]), current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_issuing_a_purchase_credit_note_into_a_filed_period_is_refused(db):
+    db.seed("purchase_credit_notes", {
+        "id": "PCN1", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "credit_note_date": "2026-06-15", "credit_note_no": "PCN-1",
+        "vendor_id": "VEND1", "total_paise": 1_18_000, "deleted_at": None,
+    })
+    _file_gstr3b_for_june(db, filed_on="2026-09-20")
+
+    with pytest.raises(HTTPException) as e:
+        pcn.issue_purchase_credit_note("PCN1", current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_moving_a_purchase_credit_note_into_a_filed_period_is_refused(db):
+    _file_gstr3b_for_june(db)
+    db.seed("purchase_credit_notes", {
+        "id": "PCN2", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "credit_note_date": "2026-07-15", "credit_note_no": "PCN-2",
+        "vendor_id": "VEND1", "deleted_at": None,
+    })
+
+    with pytest.raises(HTTPException) as e:
+        pcn.update_purchase_credit_note(
+            "PCN2", pcn.PurchaseCreditNoteUpdateIn(credit_note_date="2026-06-15"),
+            current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_a_purchase_debit_note_dated_inside_a_filed_period_is_refused(db):
+    """A purchase debit note INCREASES what the vendor charged and the credit
+    taken with it, so dating one into a filed period claims ITC that return
+    never did."""
+    _seed_vendor(db)
+    _seed_party_and_catalogue(db)
+    _file_gstr3b_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        pdn.create_debit_note(pdn.DebitNoteIn(
+            client_id=CLIENT, vendor_id="VEND1", debit_note_date="2026-06-15",
+            reason="undercharged", lines=[_line()]), current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_issuing_a_purchase_debit_note_into_a_filed_period_is_refused(db):
+    db.seed("debit_notes", {
+        "id": "PDN1", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "debit_note_date": "2026-06-15", "debit_note_no": "PDN-1",
+        "vendor_id": "VEND1", "total_paise": 1_18_000, "deleted_at": None,
+    })
+    _file_gstr3b_for_june(db, filed_on="2026-09-20")
+
+    with pytest.raises(HTTPException) as e:
+        pdn.issue_debit_note("PDN1", current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+
+
+def test_moving_a_purchase_debit_note_into_a_filed_period_is_refused(db):
+    _file_gstr3b_for_june(db)
+    db.seed("debit_notes", {
+        "id": "PDN2", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "debit_note_date": "2026-07-15", "debit_note_no": "PDN-2",
+        "vendor_id": "VEND1", "deleted_at": None,
+    })
+
+    with pytest.raises(HTTPException) as e:
+        pdn.update_debit_note(
+            "PDN2", pdn.DebitNoteUpdateIn(debit_note_date="2026-06-15"),
+            current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail

@@ -16,6 +16,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from services import period_lock_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 
@@ -28,7 +29,15 @@ def _now() -> str:
 
 class JournalPostingService:
 
-    _SELECT = ("id, entry_date, reference_no, narration, entry_type, is_posted, status, "
+    # client_id and deleted_at are IN the projection, not added by one caller.
+    # post_draft tested `je.get("deleted_at")` and logged the timeline against
+    # `je.get("client_id")` while asking for neither, so both were always None:
+    # a soft-deleted draft (migrations 275/276) could be posted to the books,
+    # and every post_draft timeline entry was written with no client. The tests
+    # could not see it because FakeDB skips its column projection whenever the
+    # select carries an embed — and this one carries journal_lines(...).
+    _SELECT = ("id, client_id, entry_date, reference_no, narration, entry_type, "
+               "is_posted, status, deleted_at, "
                "source_type, source_id, created_by, created_at, posted_at, posted_by, "
                "journal_lines(account_id, debit_paise, credit_paise)")
 
@@ -43,7 +52,7 @@ class JournalPostingService:
         convention used elsewhere (task_extras_repository, ai_copilot_service) —
         an empty assigned set means "see nothing", which an empty `.in_()` list
         does not reliably express in PostgREST."""
-        q = db.table("journal_entries").select("client_id, " + self._SELECT).eq(
+        q = db.table("journal_entries").select(self._SELECT).eq(
             "firm_id", firm_id).is_("deleted_at", "null")
         if client_id:
             q = q.eq("client_id", client_id)
@@ -101,6 +110,14 @@ class JournalPostingService:
         entry_date = str(je["entry_date"])[:10]
         # FY lock (Companies Act §128 / firm policy) — never post into a closed period.
         period_validation_service.validate_posting_date(firm_id, entry_date)
+        # ...and the CLIENT's lock. validate_posting_date takes (firm_id, date)
+        # and knows only the firm's own switch; a FILED RETURN and a finalised
+        # year-end are facts about one client, and this is the moment the draft
+        # actually reaches the books. A draft raised in June and approved in
+        # September posts with its JUNE date, so checking at create was checking
+        # when nothing was posted — the same deferred-posting gap already closed
+        # on invoice issue and bill receive.
+        period_lock_service.assert_open(db, firm_id, je.get("client_id"), entry_date)
 
         now = _now()
         db.table("journal_entries").update({

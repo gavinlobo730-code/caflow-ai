@@ -29,6 +29,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
+import { api } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,13 +197,25 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           period_start: periodStart,
           period_end: periodEnd,
           due_date: dueDate,
-          filing_status: filedDate ? "filed" : "pending",
-          filed_date: filedDate,
+          // The row is created PENDING even when the CA says it is already
+          // filed. Creating it "filed" here would be a third path recording a
+          // filing that never reaches public.filings, so the period would not
+          // lock — the same defect the mark-filed buttons had. The filing is
+          // recorded a line below, through the API that writes both.
+          filing_status: "pending",
+          filed_date: null,
         })
         .select()
         .single();
 
       if (error) throw new Error(error.message);
+      if (filedDate) {
+        const marked = await api.compliance.markFiled((data as { id: string }).id,
+                                                      { filed_date: filedDate });
+        if (!marked.success) throw new Error(marked.error ?? "Failed to record the filing.");
+        (data as Record<string, unknown>).filing_status = "filed";
+        (data as Record<string, unknown>).filed_date = filedDate;
+      }
       const returnTypeMap: Record<string, ReturnType> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR9: "GSTR-9" };
       const r = data as Record<string, unknown>;
       const filing: GSTFiling = {
@@ -372,20 +385,18 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
     setFormError(null);
     setRowErrors({});
     try {
-      const sb = getSupabaseClient();
       const results = await Promise.all(
         rows.map(async (f) => {
           try {
-            // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-            const { error: dbErr } = await sb
-              .from("compliance_calendar")
-              .update({
-                filing_status: "filed",
-                filed_date: filedDate,
-                arn_number: arns[f.id].trim(),
-              })
-              .eq("id", f.id);
-            if (dbErr) throw new Error(dbErr.message);
+            // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Same route as the
+            // single-row path (GST-14): through the API, so rbac() runs and
+            // the filings row that locks the period is actually written.
+            // Bulk went straight to PostgREST too, and marking twelve months
+            // filed left twelve periods open.
+            const res = await api.compliance.markFiled(f.id, {
+              filed_date: filedDate, arn: arns[f.id].trim(),
+            });
+            if (!res.success) throw new Error(res.error ?? "Failed to update");
             return { id: f.id, ok: true as const };
           } catch (e) {
             return { id: f.id, ok: false as const, message: e instanceof Error ? e.message : "Failed to update" };
@@ -533,6 +544,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function GSTPage() {
+  const { toast } = useToast();
   const [filings, setFilings] = useState<GSTFiling[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [firmId, setFirmId] = useState("");
@@ -642,17 +654,23 @@ export default function GSTPage() {
     setFiledLoading(true);
     setFiledError(null);
     try {
-      const sb = getSupabaseClient();
-      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-      const { error: dbErr } = await sb
-        .from("compliance_calendar")
-        .update({
-          filing_status: "filed",
-          filed_date: filedForm.filed_date,
-          arn_number: filedForm.arn.trim(),
-        })
-        .eq("id", id);
-      if (dbErr) throw new Error(dbErr.message);
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This records what the CA has
+      // already filed on the portal; nothing here talks to GSTN.
+      //
+      // GST-14: this used to write filing_status / filed_date / arn_number
+      // straight into compliance_calendar over PostgREST. rbac() never ran,
+      // record_filing never ran, and public.filings — the only table the
+      // period lock reads — stayed empty, so a return marked filed here did
+      // not close its period and the client GST workspace still called it a
+      // draft. It goes through the API now, and the API writes both.
+      const res = await api.compliance.markFiled(id, {
+        filed_date: filedForm.filed_date,
+        arn: filedForm.arn.trim(),
+      });
+      // The GST workspace router answers refusals as HTTP 200 with
+      // {success:false}; an unchecked call would show "Filed" for a request
+      // the server declined.
+      if (!res.success) throw new Error(res.error ?? "Failed to update status");
 
       setFilings((prev) =>
         prev.map((f) =>
@@ -662,6 +680,21 @@ export default function GSTPage() {
         )
       );
       setFiledModal(null);
+      // Say what the tick did NOT do. A GSTR-9 tick is a real thing to record
+      // and still closes no month, and a prepared return left in draft in the
+      // client workspace is the disagreement this finding is about.
+      if (!res.data.filing_recorded && res.data.filing_not_recorded_reason) {
+        toast({ title: "Recorded — no period closed",
+                description: res.data.filing_not_recorded_reason });
+      } else if (res.data.workspace_return) {
+        toast({
+          title: "Still a draft in the client workspace",
+          description:
+            `The prepared return for ${res.data.workspace_return.period} is ` +
+            `"${res.data.workspace_return.status}". Approve and submit it there ` +
+            `so both screens agree.`,
+        });
+      }
     } catch (err) {
       setFiledError(err instanceof Error ? err.message : "Failed to update status");
     } finally {

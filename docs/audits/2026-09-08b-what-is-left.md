@@ -227,7 +227,7 @@ All still open. Probes, not assertions:
 
 | item | probe on `9fbe40d` |
 |---|---|
-| `post_draft` bypasses the client year lock | `journal_posting_service.post_draft` calls `period_validation_service.validate_posting_date(firm_id, entry_date)` — **firm-scoped only**. `period_lock_service.assert_open(db, firm_id, client_id, …)` exists and takes a `client_id`; this path does not use it. |
+| ~~`post_draft` bypasses the client year lock~~ **CLOSED in Phase 2** | It now calls `period_lock_service.assert_open(db, firm_id, je["client_id"], entry_date)` beside the FY check. Two things were found closing it, neither in the finding: `_SELECT` asked for neither `client_id` nor `deleted_at` while the code read both, so the soft-delete refusal never fired (a deleted draft could be posted) and every timeline row was written with no client. FakeDB skips its column projection when a select carries an embed, and that one carries `journal_lines(...)`, which is why ~10,000 tests passed over it. |
 | The capital-gains fork never reached `itr_engine` | `date_of_transfer`, `transfer_date`, `sale_date`, `fork` — **none** appears in `itr_engine.py`. `capital_gains_engine` knows the fork; the engine that calls it is still FY-keyed. |
 | The filing date is never collected | `gst_filing_record_service`: `filed_date=filed_date or ist_today().isoformat()`. `filings.filed_date` is the day the ARN was typed. |
 | `/gst`'s 32-second request | `services/bank_register_service.py:212-213` — `min(filtered, key=lambda l: all_lines.index(l))` then `all_lines.index(earliest)`. The O(n²) is still there and now has an address. |
@@ -256,7 +256,9 @@ them shrank:
    TDS-04, TDS-11, TDS-15, TDS-09 (no 27Q), TDS-22.
 5. **GSTR-1 cases the portal rejects.** GST-07, GST-08, SALES-10, SALES-06,
    SALES-09, GST-11 (no QRMP), GST-20.
-6. **Nothing can be corrected.** FA-10, ACC-05, PAY-12, SALES-04, ACC-09.
+6. **Nothing can be corrected.** FA-10, ~~ACC-05~~ (closed in Phase 2 — a
+   Partner can reopen a finalised year, with a reason, from the year-end review
+   screen), PAY-12, SALES-04, ACC-09.
 7. **State that is not in the database.** ACC-06 — recurring journals, budgets
    and retainers in one browser's `localStorage`.
 

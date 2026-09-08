@@ -36,9 +36,19 @@ def _parse_financial_year(financial_year: str) -> tuple[str, str]:
     return fy_start, fy_end
 
 
-def _check_engagement_locked(engagement: dict) -> None:
-    if engagement.get("status") == "locked":
-        raise HTTPException(status_code=403, detail="Engagement is locked. No further modifications are allowed.")
+def _check_engagement_locked(engagement: dict, *, new_status: Optional[str] = None) -> None:
+    """Refuse every modification of a locked engagement — except reopening it.
+
+    Without the exemption the reopen is unreachable no matter what the
+    transition table says: this runs first and 403s on the status alone. That
+    is how "locked" stayed terminal even though set_client_lock had supported
+    lock=False since migration 289.
+    """
+    if engagement.get("status") != "locked":
+        return
+    if new_status is not None and _is_reopen("locked", new_status):
+        return
+    raise HTTPException(status_code=403, detail="Engagement is locked. No further modifications are allowed.")
 
 
 def _assert_engagement_scope(current_user: dict, engagement_id: str) -> dict:
@@ -93,7 +103,13 @@ _STATUS_TRANSITIONS: dict[str, list[str]] = {
     "draft":     ["in_review"],
     "in_review": ["approved", "draft"],
     "approved":  ["locked"],
-    "locked":    [],
+    # ACC-05: "locked" used to be terminal, here and in the client_year_locks
+    # row it writes. Reopening a closed year is ordinary practice — a revised
+    # interest certificate, a §143(1) intimation, an audit adjustment found
+    # while filing the ITR — and the posting kernel's own refusal tells the CA
+    # to "Reopen the year before posting to it", which was an instruction to do
+    # something the product could not do.
+    "locked":    ["approved"],
 }
 
 # Roles allowed to transition to each target status
@@ -103,6 +119,23 @@ _TRANSITION_ROLE_GUARDS: dict[str, set[str]] = {
     "locked":    {"Partner"},
     "draft":     {"Partner", "Manager"},
 }
+
+# The ONE transition whose guard cannot be read off its target status. Going to
+# "approved" is a Manager's call in the ordinary review loop; going there FROM
+# "locked" reverses a Partner's finalisation and reopens the client's financial
+# year for posting, so it is Partner-only and must say why. Keyed on the PAIR
+# because the target alone is what made the two look like the same move.
+REOPEN_TRANSITION = ("locked", "approved")
+_REOPEN_ROLES: set[str] = {"Partner"}
+REOPEN_REASON_REQUIRED = (
+    "Reopening a finalised year needs a reason — it reverses a Partner's "
+    "final approval and lets postings back into a closed year. Send it as "
+    "`comment`."
+)
+
+
+def _is_reopen(current_status: str, new_status: str) -> bool:
+    return (current_status, new_status) == REOPEN_TRANSITION
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -321,6 +354,32 @@ def record_engagement_udin(
     return api_response(True, updated[0] if updated else {**eng, **patch})
 
 
+def _assert_transition_allowed(current_status: str, new_status: str,
+                               role: str, comment: Optional[str]) -> None:
+    """One place both the mock and the real branch ask the same three questions.
+
+    They used to ask them twice, in two copies, and a rule added to one would
+    silently not hold in the other — which is how the reopen's Partner-only
+    guard and its mandatory reason could have gone in on the real path only.
+    """
+    if new_status not in _STATUS_TRANSITIONS.get(current_status, []):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot transition from '{current_status}' to '{new_status}'",
+        )
+    reopening = _is_reopen(current_status, new_status)
+    allowed_roles = _REOPEN_ROLES if reopening else _TRANSITION_ROLE_GUARDS.get(new_status, set())
+    if role not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail=(f"Role '{role}' cannot reopen a finalised year-end. "
+                    "Only a Partner can." if reopening else
+                    f"Role '{role}' cannot set status to '{new_status}'"),
+        )
+    if reopening and not (comment or "").strip():
+        raise HTTPException(status_code=422, detail=REOPEN_REASON_REQUIRED)
+
+
 @router.patch("/engagements/{engagement_id}/status")
 def update_engagement_status(
     engagement_id: str,
@@ -340,58 +399,76 @@ def update_engagement_status(
     # another staff member's client's engagement.
     if _USE_MOCK:
         eng = _assert_engagement_scope(current_user, engagement_id)
-        _check_engagement_locked(eng)
-
-        allowed_transitions = _STATUS_TRANSITIONS.get(eng["status"], [])
-        if new_status not in allowed_transitions:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Cannot transition from '{eng['status']}' to '{new_status}'",
-            )
-        allowed_roles = _TRANSITION_ROLE_GUARDS.get(new_status, set())
-        if role not in allowed_roles:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Role '{role}' cannot set status to '{new_status}'",
-            )
+        _check_engagement_locked(eng, new_status=new_status)
+        _assert_transition_allowed(eng["status"], new_status, role, data.comment)
         eng["status"] = new_status
         eng["updated_at"] = datetime.now(timezone.utc).isoformat()
         return api_response(True, eng)
 
     row = _assert_engagement_scope(current_user, engagement_id)
-    _check_engagement_locked(row)
+    _check_engagement_locked(row, new_status=new_status)
 
     from core.supabase_client import get_supabase
     db = get_supabase()
 
-    allowed_transitions = _STATUS_TRANSITIONS.get(row["status"], [])
-    if new_status not in allowed_transitions:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot transition from '{row['status']}' to '{new_status}'",
+    _assert_transition_allowed(row["status"], new_status, role, data.comment)
+
+    now = datetime.now(timezone.utc).isoformat()
+    # Two literal payloads rather than one built up in a variable: only a
+    # literal dict has column names test_backend_columns_exist_pg.py can read
+    # and check against the real schema.
+    #
+    # The reopen branch writes the same columns routers/year_end_reviews.py's
+    # reopen writes. Two endpoints reaching one workflow must leave the same
+    # record behind, or which one the CA used becomes a fact you have to know
+    # to read the history — the two-screens-disagree shape this phase is
+    # about. final_approved_by/at are deliberately NOT cleared: they record
+    # that the approval happened.
+    if _is_reopen(row["status"], new_status):
+        updated = (
+            db.table("year_end_engagements")
+            .update({"status": new_status, "updated_at": now, "locked_at": None,
+                     "reopened_at": now, "reopened_by": current_user.get("id"),
+                     "reopen_reason": (data.comment or "").strip()})
+            .eq("id", engagement_id)
+            .execute()
+            .data[0]
         )
-    allowed_roles = _TRANSITION_ROLE_GUARDS.get(new_status, set())
-    if role not in allowed_roles:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Role '{role}' cannot set status to '{new_status}'",
+    else:
+        updated = (
+            db.table("year_end_engagements")
+            .update({"status": new_status, "updated_at": now})
+            .eq("id", engagement_id)
+            .execute()
+            .data[0]
         )
 
-    updated = (
-        db.table("year_end_engagements")
-        .update({"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()})
-        .eq("id", engagement_id)
-        .execute()
-        .data[0]
-    )
-
-    from services.year_end_workflow_service import lock_year_if_completing
+    from services.year_end_workflow_service import (
+        lock_year_if_completing, unlock_year_on_reopen)
     lock_year_if_completing(
         db, firm_id, row.get("financial_year"), new_status,
-        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        # public.users.id — the INTERNAL id. client_year_locks.locked_by FKs it
+        # (migration 289); auth_user_id was passed here and failed that FK,
+        # leaving the engagement locked and the year open.
+        actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
         # The engagement's own client — a year-end closes one entity's year,
         # never the whole practice's.
         client_id=row.get("client_id"),
     )
+    if _is_reopen(row["status"], new_status):
+        # After the status write, matching the lock's own ordering. If this
+        # fails the engagement reads "approved" with the year still locked,
+        # which is recoverable through the ordinary steps — final-approve is
+        # idempotent on an already-locked year, and the reopen can then be
+        # taken again.
+        unlock_year_on_reopen(
+            db, firm_id, row.get("financial_year"), (data.comment or "").strip(),
+            actor_id=current_user.get("id"),
+            actor_auth_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            client_id=row.get("client_id"),
+        )
 
     return api_response(True, updated)
