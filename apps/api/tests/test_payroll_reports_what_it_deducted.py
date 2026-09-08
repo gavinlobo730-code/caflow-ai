@@ -166,7 +166,13 @@ def test_gratuity_is_deliberately_left_on_basic_plus_da(monkeypatch):
 #     salary, and rent paid less 10% of salary — all for "the period during
 #     which the accommodation was occupied". A twelve-month salary doubles the
 #     10% subtracted from rent and can erase the third limb entirely.
-#   * §16(iii) professional tax is deductible as ACTUALLY PAID.
+#   * §16(iii) professional tax is deductible as ACTUALLY PAID — and "actually
+#     paid" is summed over the months, not multiplied. Making it months-employed
+#     aware was only half the correction: Maharashtra charges more in February
+#     and Tamil Nadu charges nothing in ten months of twelve, so ANY
+#     multiplication of one month's figure is wrong for them in both directions.
+#     See _annual_pt_paise and
+#     test_professional_tax_is_a_year_not_twelve_of_this_month.py.
 
 OCTOBER_JOINER = dict(basic_paise=1_00_000_00, hra_percent=50, da_percent=0,
                       pf_applicable=False, esi_applicable=False,
@@ -215,9 +221,21 @@ def test_a_whole_year_employee_is_completely_unaffected():
     assert pr._months_employed_in_fy(None, "2026-27") == 12
 
 
-def test_professional_tax_is_annualised_the_same_way():
-    """§16(iii) allows what was actually paid. The state slabs are monthly, so
-    a six-month employee pays six months of it."""
+def test_professional_tax_is_annualised_over_the_months_it_is_levied_in():
+    """§16(iii) allows what was ACTUALLY PAID, and that is not this month's
+    professional tax times the months employed.
+
+    This assertion used to read `== slip["pt_paise"] * 6`, and that was the
+    defect rather than the guard against it. Maharashtra (Act 1975, Sch. I)
+    charges ₹300 in February and ₹200 in the other eleven months, so that the
+    year meets the ₹2,500 cap Article 276(2) sets. An October joiner is here for
+    Oct-Mar, which contains exactly one February: ₹300 + 5 × ₹200 = ₹1,300, not
+    6 × ₹200 = ₹1,200. Tamil Nadu is worse — see
+    test_professional_tax_is_a_year_not_twelve_of_this_month.py, where the same
+    multiplication claimed ₹15,000 of deduction against a real ₹2,500.
+
+    HRA and basic+DA ARE monthly rates, so those two stay a multiplication.
+    """
     emp = dict(OCTOBER_JOINER, pt_applicable=True, pt_state="MH")
     captured = {}
 
@@ -233,8 +251,11 @@ def test_professional_tax_is_annualised_the_same_way():
     finally:
         pr._monthly_tds = original                    # type: ignore[assignment]
 
-    assert slip["pt_paise"] > 0
-    assert captured["professional_tax_paise"] == slip["pt_paise"] * 6
+    assert slip["pt_paise"] == 200_00, "October is an ordinary month at the top tier"
+    assert captured["professional_tax_paise"] == 300_00 + 200_00 * 5
+    assert captured["professional_tax_paise"] != slip["pt_paise"] * 6, (
+        "the February differential is the whole point — if these are equal the "
+        "projection is multiplying one month again")
     assert captured["hra_received_paise"] == slip["hra_paise"] * 6
     assert captured["basic_plus_da_paise"] == (
         slip["basic_paise"] + slip["da_paise"]) * 6

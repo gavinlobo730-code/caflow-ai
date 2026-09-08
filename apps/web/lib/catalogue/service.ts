@@ -12,6 +12,7 @@
  * preset can't change a past invoice. There is deliberately no
  * stock/quantity/valuation/SKU/barcode/warehouse concept here.
  */
+import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
 import type { InvoiceLine } from "../invoices/gst";
 
 export interface ServiceCatalogueItem {
@@ -122,27 +123,41 @@ export interface ServiceFormValidation {
   ok: boolean;
 }
 
+/** A typed rupee field on this form → integer paise, or null. Blank is 0,
+ *  which every caller here treats as "not given". */
+function fieldPaise(raw: string): number | null {
+  return paiseFromRupeeInput(raw.replace(/[,\s₹]/g, ""));
+}
+
+/** A typed quantity field → the number, or null. Blank is null. */
+function fieldQty(raw: string): number | null {
+  return parseQuantity(raw.replace(/[,\s]/g, ""));
+}
+
 export function validateServiceForm(input: ServiceFormInput): ServiceFormValidation {
   const errors: ServiceFormValidation["errors"] = {};
   if (!input.name.trim()) errors.name = "Name is required.";
-  const rate = parseFloat(input.rate);
-  if (input.rate.trim() !== "" && (!Number.isFinite(rate) || rate < 0)) {
+  // Through the one parser. parseFloat read "1,25,000" as 1 and it is FINITE,
+  // so the guard passed and the catalogue price — which is copied onto every
+  // invoice line the preset drops — was saved as ₹1.
+  const ratePaise = fieldPaise(input.rate);
+  if (input.rate.trim() !== "" && (ratePaise === null || ratePaise < 0)) {
     errors.rate = "Enter a valid non-negative price.";
   }
-  const purchasePrice = parseFloat(input.purchasePrice);
-  if (input.purchasePrice.trim() !== "" && (!Number.isFinite(purchasePrice) || purchasePrice < 0)) {
+  const purchasePaise = fieldPaise(input.purchasePrice);
+  if (input.purchasePrice.trim() !== "" && (purchasePaise === null || purchasePaise < 0)) {
     errors.purchasePrice = "Enter a valid non-negative price.";
   }
   if (!Number.isFinite(input.gstRate) || input.gstRate < 0 || input.gstRate > 100) {
     errors.gstRate = "GST rate must be between 0 and 100.";
   }
   if (input.kind === "good") {
-    const openingQty = parseFloat(input.openingQty);
-    if (input.openingQty.trim() !== "" && (!Number.isFinite(openingQty) || openingQty < 0)) {
+    const openingQty = fieldQty(input.openingQty);
+    if (input.openingQty.trim() !== "" && (openingQty === null || openingQty < 0)) {
       errors.openingQty = "Enter a valid non-negative quantity.";
     }
-    const openingCost = parseFloat(input.openingCost);
-    if (input.openingCost.trim() !== "" && (!Number.isFinite(openingCost) || openingCost < 0)) {
+    const openingCost = fieldPaise(input.openingCost);
+    if (input.openingCost.trim() !== "" && (openingCost === null || openingCost < 0)) {
       errors.openingCost = "Enter a valid non-negative cost.";
     }
   }
@@ -170,25 +185,30 @@ export interface ServicePayload {
  * Unit and opening balance are only sent for goods — a service line has no
  * UQC and can't carry stock, so these fields never leak onto a service payload. */
 export function serviceFormToPayload(input: ServiceFormInput, clientId: string): ServicePayload {
-  const rupees = parseFloat(input.rate);
-  const purchaseRupees = parseFloat(input.purchasePrice);
+  const ratePaise = fieldPaise(input.rate);
+  const purchasePaise = fieldPaise(input.purchasePrice);
   const isGood = input.kind === "good";
-  const openingQty = isGood ? parseFloat(input.openingQty) : NaN;
-  const openingCostRupees = isGood ? parseFloat(input.openingCost) : NaN;
+  const openingQty = isGood ? fieldQty(input.openingQty) : null;
+  const openingCostPaise = isGood ? fieldPaise(input.openingCost) : null;
+  // The rate comes off a fixed slab list rather than a text box, so it is a
+  // number already — but it goes through the exact converter anyway, because
+  // `Math.round(0.1 * 100)` and `bpsFromPercentInput("0.1")` disagreeing is
+  // exactly the class of difference this module exists to remove.
+  const gstBps = bpsFromPercentInput(String(input.gstRate || 0));
   return {
     client_id: clientId,
     name: input.name.trim(),
     description: input.description.trim() || undefined,
     kind: input.kind,
     hsn_sac: input.hsn_sac.trim() || undefined,
-    gst_rate_bps: Math.round((input.gstRate || 0) * 100),
-    default_rate_paise: Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : 0,
-    purchase_price_paise: Number.isFinite(purchaseRupees) && purchaseRupees > 0 ? Math.round(purchaseRupees * 100) : undefined,
+    gst_rate_bps: gstBps ?? 0,
+    default_rate_paise: ratePaise !== null && ratePaise > 0 ? ratePaise : 0,
+    purchase_price_paise: purchasePaise !== null && purchasePaise > 0 ? purchasePaise : undefined,
     category: input.category.trim() || undefined,
     notes: input.notes.trim() || undefined,
     unit: isGood && input.unit.trim() ? input.unit.trim() : undefined,
-    opening_qty_units: Number.isFinite(openingQty) && openingQty > 0 ? openingQty : undefined,
-    opening_cost_paise: Number.isFinite(openingCostRupees) && openingCostRupees >= 0 ? Math.round(openingCostRupees * 100) : undefined,
+    opening_qty_units: openingQty !== null && openingQty > 0 ? openingQty : undefined,
+    opening_cost_paise: openingCostPaise !== null && openingCostPaise >= 0 ? openingCostPaise : undefined,
     opening_balance_date: isGood && input.openingBalanceDate.trim() ? input.openingBalanceDate.trim() : undefined,
   };
 }

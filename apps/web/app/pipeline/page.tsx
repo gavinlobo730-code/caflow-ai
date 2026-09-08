@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -273,10 +274,12 @@ function formatRupees(paise: number): string {
   return `₹${rupees.toLocaleString("en-IN")}`;
 }
 
-function rupeesToPaise(rupees: string): number {
-  // Convert rupee string input to integer paise
-  const n = parseInt(rupees.replace(/[^0-9]/g, ""), 10);
-  return isNaN(n) ? 0 : n * 100;
+// The estimated monthly fee crosses the API as integer paise, through the one
+// parser. What was here stripped every non-digit and then multiplied by 100,
+// so "1234.56" became the digits "123456" and then ₹1,23,456 — a HUNDREDFOLD
+// overstatement, and it lands in the pipeline value the firm forecasts on.
+function rupeesToPaise(rupees: string): number | null {
+  return paiseFromRupeeInput(rupees.replace(/[,\s₹]/g, ""));
 }
 
 function paiseToDRupeeString(paise: number): string {
@@ -361,6 +364,11 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return; // guard against duplicate submissions (double-click / Enter)
+    const feePaise = rupeesToPaise(form.estimatedMonthlyFeeRupees);
+    if (feePaise === null) {
+      setErr("Estimated monthly fee isn't an amount — enter rupees, like 15000 or 15000.50.");
+      return;
+    }
     const lead: Lead = {
       id: initial?.id ?? `lead_${Date.now()}`,
       name: form.name.trim(),
@@ -369,7 +377,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
       businessName: form.businessName.trim(),
       entityType: form.entityType,
       // Integer paise arithmetic — never floating point
-      estimatedMonthlyFee: rupeesToPaise(form.estimatedMonthlyFeeRupees),
+      estimatedMonthlyFee: feePaise,
       source: form.source,
       notes: form.notes.trim(),
       stage: initial?.stage ?? "Lead",

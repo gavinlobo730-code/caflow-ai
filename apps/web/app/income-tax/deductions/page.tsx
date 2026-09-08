@@ -21,7 +21,7 @@
  * 115BAC). CLAUDE.md: zero business logic in the frontend.
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { useState, useCallback, useEffect } from "react";
 import { Save, ChevronDown, ChevronUp } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -109,16 +109,22 @@ function fmtP(paise: number): string {
   return (paise < 0 ? "-₹" : "₹") + s + "." + String(p).padStart(2, "0");
 }
 
-/** ₹ input → paise (integer) */
-function rsToPaise(rs: string): number {
-  const v = parseFloat(rs || "0");
-  if (isNaN(v) || v < 0) return 0;
-  return Math.round(v * 100);
+/** ₹ input → paise, or null when the text is not an amount.
+ *
+ *  Through the one parser. `Math.round(parseFloat(rs || "0") * 100)` read
+ *  "1,25,000" as ₹1 and — because the field was `type="number"`, which reports
+ *  an empty string for anything the browser cannot parse — read it as ₹0 in
+ *  practice. A deduction silently reading zero is the expensive direction: the
+ *  CA sees the section they filled in and the tax computed as though they had
+ *  not. */
+function rsToPaise(rs: string): number | null {
+  const p = paiseFromRupeeInput(rs.replace(/[,\s₹]/g, ""));
+  return p === null || p < 0 ? null : p;
 }
 
 /** paise → ₹ string for input */
 function paiseToRsStr(p: number): string {
-  return p === 0 ? "" : (p / 100).toFixed(2);
+  return p === 0 ? "" : rupeeInputFromPaise(p);
 }
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -126,18 +132,28 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
   label: string; valuePaise: number; onChange: (p: number) => void; note?: string;
 }) {
   const [raw, setRaw] = useState(paiseToRsStr(valuePaise));
+  // An unreadable amount is SHOWN, not swallowed. It does not reach onChange,
+  // so the figure the page computes on is the last one that was an amount —
+  // and the red field says which box disagrees with it.
+  const [bad, setBad] = useState(false);
   return (
     <div className="flex items-center justify-between gap-4 py-2 border-b border-[#F1F5F9] last:border-0">
       <div>
         <span className="text-sm text-[#334155]">{label}</span>
         {note && <span className="block text-xs text-[#94A3B8]">{note}</span>}
+        {bad && <span className="block text-xs text-red-600">Not an amount — enter rupees, like 150000 or 150000.50.</span>}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         <span className="text-sm text-[#94A3B8]">₹</span>
         <input
-          type="number" min="0" step="1" value={raw}
-          onChange={e => { setRaw(e.target.value); onChange(rsToPaise(e.target.value)); }}
-          className="w-28 border border-[#E2E8F0] rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500"
+          type="text" inputMode="decimal" value={raw}
+          onChange={e => {
+            setRaw(e.target.value);
+            const p = rsToPaise(e.target.value);
+            setBad(p === null);
+            if (p !== null) onChange(p);
+          }}
+          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-red-400 focus:border-red-500" : "border-[#E2E8F0] focus:border-blue-500"}`}
           placeholder="0"
         />
       </div>

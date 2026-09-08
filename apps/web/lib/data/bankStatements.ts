@@ -8,6 +8,7 @@
  * Ref: RBI guidelines on bank statement formats.
  */
 import { api, type ApiResp } from "@/lib/api";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 export interface ParsedTransaction {
   date: string;
@@ -47,13 +48,19 @@ export interface BankTransaction {
   account_id?: string;
 }
 
-/** Convert rupee string to paise integer — never float */
-function parsePaise(val: string): number {
-  if (!val || val.trim() === "" || val.trim() === "-") return 0;
-  const cleaned = val.replace(/[₹,\s]/g, "").trim();
-  const num = parseFloat(cleaned);
-  if (isNaN(num)) return 0;
-  return Math.round(num * 100);
+/**
+ * One statement cell → integer paise, or null when the cell is not an amount.
+ *
+ * A blank cell and an en-dash are how banks write "nothing in this column", so
+ * those are 0. Anything else that will not read is null: `Math.round(parseFloat
+ * (cleaned) * 100)` with `isNaN → 0` turned a garbled debit column into a row
+ * that says money moved and does not say how much, and the running balance
+ * then disagrees with the bank's own for every row after it.
+ */
+function parsePaise(val: string): number | null {
+  const t = (val ?? "").trim();
+  if (t === "" || t === "-" || t === "–" || t === "—") return 0;
+  return paiseFromRupeeInput(t.replace(/[₹,\s]/g, ""));
 }
 
 function parseDate(val: string): string {
@@ -133,12 +140,24 @@ export function parseCSV(csvText: string): ParsedTransaction[] {
     if (!parsedDate || parsedDate === date && !/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) continue;
     if (!desc.trim()) continue;
 
+    // An amount that will not read stops the import by name. Zeroing it would
+    // put a movement in the ledger with no figure attached, and every later
+    // balance would then disagree with the bank's own statement.
+    const debitPaise = parsePaise(debit);
+    const creditPaise = parsePaise(credit);
+    const balancePaise = parsePaise(balance);
+    if (debitPaise === null || creditPaise === null || balancePaise === null) {
+      throw new Error(
+        `Row ${i + 1} (${parsedDate}, ${desc.trim()}) carries an amount this file cannot read.`,
+      );
+    }
+
     results.push({
       date: parsedDate,
       description: desc.trim(),
-      debit_paise: parsePaise(debit),
-      credit_paise: parsePaise(credit),
-      balance_paise: parsePaise(balance),
+      debit_paise: debitPaise,
+      credit_paise: creditPaise,
+      balance_paise: balancePaise,
       reference_no: ref.trim(),
     });
   }

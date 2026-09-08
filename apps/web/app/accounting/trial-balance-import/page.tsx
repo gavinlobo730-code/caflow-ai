@@ -88,10 +88,23 @@ export default function TrialBalanceImportPage() {
   const totalDr = accounts.reduce((s, a) => s + a.dr_paise, 0);
   const totalCr = accounts.reduce((s, a) => s + a.cr_paise, 0);
   const diff = totalDr - totalCr;
+  // A cell the parser could not read is 0 in dr_paise/cr_paise, so it would
+  // otherwise arrive as "this account has no balance" — the one reading a
+  // trial balance must never silently take. It blocks the import by name.
+  const unreadable = accounts.filter((a) => a.dr_unreadable || a.cr_unreadable);
 
   async function runImport() {
     if (!selectedClientId) {
       setErr("Select the client this trial balance belongs to.");
+      return;
+    }
+    if (unreadable.length > 0) {
+      setErr(
+        `${unreadable.length} row${unreadable.length === 1 ? "" : "s"} carry an amount this importer cannot read — ` +
+        `${unreadable.slice(0, 3).map((a) => a.account_name).join(", ")}` +
+        `${unreadable.length > 3 ? ", and others" : ""}. Fix the figures in the file and re-upload; ` +
+        `importing them would post those accounts at zero.`,
+      );
       return;
     }
     setImporting(true);
@@ -293,6 +306,20 @@ export default function TrialBalanceImportPage() {
               </Card>
             </div>
 
+            {unreadable.length > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <p className="font-medium">
+                  {unreadable.length} row{unreadable.length === 1 ? "" : "s"} carry an amount this importer cannot read.
+                </p>
+                <p className="mt-1 text-xs">
+                  They are shown below as ₹0, which is not what the file says. Fix the figures and re-upload —
+                  importing now would post {unreadable.length === 1 ? "that account" : "those accounts"} at zero:{" "}
+                  {unreadable.slice(0, 5).map((a) => a.account_name).join(", ")}
+                  {unreadable.length > 5 ? ", and others" : ""}.
+                </p>
+              </div>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>{accounts.length} Accounts to Import</CardTitle>
@@ -343,7 +370,7 @@ export default function TrialBalanceImportPage() {
 
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-              <Button onClick={runImport} disabled={importing || accounts.length === 0}>
+              <Button onClick={runImport} disabled={importing || accounts.length === 0 || unreadable.length > 0}>
                 {importing ? "Importing..." : `Import ${accounts.length} Accounts`}
               </Button>
             </div>

@@ -12,6 +12,7 @@ import { ArrowLeft, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,9 +57,15 @@ export default function CashFlowForecastPage() {
       setError("Please select a client");
       return;
     }
-    // Parse opening balance from rupees input → paise (integer arithmetic)
-    const rupeesInput = parseFloat(openingBalanceInput) || 0;
-    const openingPaise = Math.round(rupeesInput * 100); // integer paise
+    // Opening balance through the one parser. parseFloat(x) || 0 read
+    // "1,25,000" as ₹1 and any typo as ₹0, and this figure is the base every
+    // closing balance in the statement is carried forward from — so one
+    // unreadable keystroke moved every month on the report, silently.
+    const openingPaise = paiseFromRupeeInput(openingBalanceInput.replace(/[,\s₹]/g, ""));
+    if (openingPaise === null) {
+      setError("Opening cash balance isn't an amount — enter rupees, like 125000 or 125000.50.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -216,7 +223,8 @@ export default function CashFlowForecastPage() {
         <div className="w-52">
           <label className="block text-xs font-medium text-[#475569] mb-1">Opening Cash Balance (₹)</label>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={openingBalanceInput}
             onChange={e => setOpeningBalanceInput(e.target.value)}
             placeholder="0"

@@ -45,6 +45,7 @@ import {
   parseInvoiceType, parseReverseCharge, parseSupplyType,
   type InvoiceType, type SupplyType,
 } from "./classification.ts";
+import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
 
 export interface CustomerRef { id: string; name: string; }
 
@@ -95,8 +96,32 @@ export interface BuildResult {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function num(v: string | undefined): number {
-  return parseFloat((v ?? "").trim());
+/** A spreadsheet cell with the marks a person puts in taken off. */
+function cell(v: string | undefined): string { return (v ?? "").trim().replace(/[,\s₹%]/g, ""); }
+
+/**
+ * Rupees cell → integer paise, or NaN when the cell is not an amount.
+ *
+ * NaN because the call site already gates on `Number.isFinite`; what changes is
+ * WHICH cells are finite. `Math.round(parseFloat(cell) * 100)` read "1,25,000"
+ * as **1** — finite, so the guard passed — and a sales invoice imported from a
+ * Tally export carried one rupee of taxable value onto GSTR-1.
+ */
+function toPaise(v: string | undefined): number {
+  const p = paiseFromRupeeInput(cell(v));
+  return p === null ? NaN : p;
+}
+
+/** Percent cell → basis points, or NaN. Same reasoning. */
+function toBps(v: string | undefined): number {
+  const b = bpsFromPercentInput(cell(v));
+  return b === null ? NaN : b;
+}
+
+/** Quantity cell → the number the line payload carries, or NaN. */
+function toQty(v: string | undefined): number {
+  const q = parseQuantity(cell(v));
+  return q === null ? NaN : q;
 }
 
 export interface ImportColumn { key: string; label: string; required: boolean; hint?: string; }
@@ -178,23 +203,23 @@ export function buildSalesInvoices(
     const description = (r.description ?? "").trim() || (service?.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
-    const qty = num(r.quantity);
+    const qty = toQty(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
 
     const rateRaw = (r.rate ?? "").trim();
-    const rate = rateRaw ? num(r.rate) : (service?.default_rate_paise != null ? service.default_rate_paise / 100 : NaN);
-    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a default price)`); return; }
+    const ratePaise = rateRaw ? toPaise(r.rate) : (service?.default_rate_paise ?? NaN);
+    if (!Number.isFinite(ratePaise) || ratePaise < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a default price)`); return; }
 
     const gstRaw = (r.gst_rate ?? "").trim();
-    const gst = gstRaw ? num(r.gst_rate) : (service?.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
-    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
+    const gstBps = gstRaw ? toBps(r.gst_rate) : (service?.gst_rate_bps ?? NaN);
+    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
 
     const line: BuiltLine = {
       description,
       hsn_sac: (r.hsn_sac ?? "").trim() || service?.hsn_sac?.trim() || undefined,
       quantity: qty,
-      rate_paise: Math.round(rate * 100),   // integer paise — never float
-      gst_rate_percent: gst,
+      rate_paise: ratePaise,   // integer paise — never float
+      gst_rate_percent: gstBps / 100,
       unit: service?.unit?.trim() || undefined,
       service_catalogue_id: service?.id,
     };

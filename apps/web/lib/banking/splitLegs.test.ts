@@ -29,12 +29,35 @@ test("rupeesToPaise: an Indian-formatted amount pasted in still works", () => {
   assert.equal(rupeesToPaise(" 47,200.00 "), 4_720_000);
 });
 
-test("rupeesToPaise: empty and nonsense are 0, not NaN", () => {
+test("rupeesToPaise: blank is 0 — a row not started yet", () => {
   // NaN would propagate into the total and make "unallocated" unprintable —
   // and `NaN === 0` is false, so Save would be dead with nothing explaining it.
-  for (const v of ["", "   ", "abc", "-"]) {
+  for (const v of ["", "   "]) {
     assert.equal(rupeesToPaise(v), 0, `rupeesToPaise(${JSON.stringify(v)})`);
   }
+});
+
+test("rupeesToPaise: text that is not an amount is null, not zero", () => {
+  // It used to be 0, which splitBlock then reported as a NON-POSITIVE leg.
+  // That is wrong advice about "1,00,00,0" — the reader is told to make the
+  // figure positive when the figure already is, and the actual fault is that
+  // nothing read it. null is a separate answer and gets a separate sentence.
+  for (const v of ["abc", "-", ".", "1.2.3", "12abc", "1,00,000x"]) {
+    assert.equal(rupeesToPaise(v), null, `rupeesToPaise(${JSON.stringify(v)})`);
+  }
+});
+
+test("rupeesToPaise: the shapes Number() accepted and a rupee amount is not", () => {
+  // THE REGRESSION THIS PINS. `Math.round(Number(cleaned) * 100)` read every
+  // one of these as a number, so each became a leg posted to the general
+  // ledger through the split-replace RPC — the legs summed, so nothing asked
+  // any further question.
+  assert.equal(rupeesToPaise("1e3"), null, "scientific notation is not ₹1,000");
+  assert.equal(rupeesToPaise("0x10"), null, "hex is not ₹16");
+  assert.equal(rupeesToPaise("Infinity"), null);
+  assert.equal(rupeesToPaise("1_000"), null);
+  // And a third decimal is refused rather than silently rounded to ₹33.33.
+  assert.equal(rupeesToPaise("33.333"), null);
 });
 
 test("rupeesToPaise: the float that would otherwise lose a paisa", () => {
@@ -86,6 +109,15 @@ test("a negative leg cannot buy a correct total", () => {
   const legs = [leg("acc-rent", "600"), leg("acc-maint", "-128")];
   assert.equal(unallocatedPaise(legs, 47_200), 0, "the total does tie — that is the trap");
   assert.deepEqual(splitBlock(legs, 47_200), { code: "non-positive" });
+});
+
+test("an unreadable leg is refused by its own name, not as non-positive", () => {
+  // The sum ties on the readable legs alone, which is exactly why this has to
+  // be checked BEFORE the arithmetic: "1e3" used to allocate ₹1,000 nobody
+  // typed, and "abc" used to be reported as a leg needing a positive figure.
+  const legs = [leg("acc-rent", "472"), leg("acc-maint", "abc")];
+  assert.deepEqual(splitBlock(legs, 47_200), { code: "unreadable" });
+  assert.deepEqual(splitBlock([leg("a", "100"), leg("b", "1e3")], 110_000), { code: "unreadable" });
 });
 
 test("a zero leg is refused too", () => {

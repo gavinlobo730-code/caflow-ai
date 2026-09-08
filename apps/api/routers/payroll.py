@@ -326,6 +326,66 @@ def _compute_pt(gross_paise: int, state: Optional[str] = None,
     return 0
 
 
+#: The financial year's calendar months in order — April (4) to March (3).
+_FY_MONTH_ORDER = (4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3)
+
+
+def _annual_pt_paise(*, monthly_gross_paise: int, run_month_gross_paise: int,
+                     state: Optional[str], gender: Optional[str],
+                     firm_slabs: Optional[list[dict]], on: Optional[date],
+                     run_month: Optional[int], months_employed_in_fy: int) -> int:
+    """The YEAR's professional tax, for the §16(iii) deduction in the §192
+    projection. Summed MONTH BY MONTH, because two of the four modelled states
+    do not levy the same amount every month.
+
+    What this replaced was `pt * months_in_year` — this month's professional tax
+    times the months employed — and for a full-year employee that is bit-for-bit
+    `pt * 12`, which is why the earlier change from `* 12` to `* months_in_year`
+    looked like a fix and was not. It is only right where the levy is a flat
+    monthly slab, which is Karnataka and West Bengal. It is wrong for the other
+    two, in both directions:
+
+      * TAMIL NADU is a HALF-YEARLY levy, deducted in September and March and
+        nil in the other ten months (_compute_pt_tn). So `pt * 12` in September
+        claimed **₹15,000** of §16(iii) against a real annual ₹2,500 for an
+        employee on ₹50,000 — six times the deduction, understating the tax —
+        and **₹0** in each of the ten months either side, which overstates it.
+        The same employee's withholding therefore moved between ₹1,690 and
+        ₹1,950 a month with nothing about their pay having changed.
+      * MAHARASHTRA charges ₹300 in February and ₹200 in the other eleven
+        months, so that the year totals the ₹2,500 cap (_compute_pt_mh).
+        `pt * 12` gives ₹3,600 in February and ₹2,400 in every other month.
+        Neither is ₹2,500.
+
+    WHICH months: `months_employed_in_fy` counts inclusively from the joining
+    month to March, so the months employed are the LAST n of the April-to-March
+    order — which is what makes an October joiner's Tamil Nadu liability the
+    March half-year alone, and not the September one they were not here for.
+
+    WHICH gross: the run month is taken at its actual gross (one-time earnings
+    included, as the state Acts levy on "salary or wage" without the EPF and
+    ESI exclusions), and every other month at the RECURRING gross. Projecting
+    a bonus month's slab across the year would overstate the deduction, and a
+    §16(iii) overstatement under-withholds — which §192(1) makes the employer
+    answerable for.
+
+    `on` picks the version of a firm-recorded slab in force. The same date is
+    used for all twelve months: a mid-year notification is not modelled here,
+    and it cannot be without the run month's own end date for each month. That
+    is a smaller error than the one this fixes and it is recorded rather than
+    hidden.
+    """
+    if months_employed_in_fy <= 0:
+        return 0
+    n = min(12, months_employed_in_fy)
+    total = 0
+    for m in _FY_MONTH_ORDER[12 - n:]:
+        gross = run_month_gross_paise if m == run_month else monthly_gross_paise
+        total += _compute_pt(gross, state, month=m, gender=gender,
+                             firm_slabs=firm_slabs, on=on)
+    return total
+
+
 def _attendance_gap(emp: dict, attendance_entered: bool) -> list[str]:
     """The gap when NOBODY entered attendance for this employee this month.
 
@@ -1100,7 +1160,19 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         # domain/payroll/arrears.py — which is where the earlier year belongs.
         basic_plus_da_paise=(basic + da) * months_in_year,
         hra_received_paise=hra * months_in_year,
-        professional_tax_paise=pt * months_in_year,
+        # NOT `pt * months_in_year`. Professional tax is not the same amount in
+        # every month of the year in two of the four states this file models —
+        # see _annual_pt_paise, which is where the whole argument is written.
+        professional_tax_paise=_annual_pt_paise(
+            monthly_gross_paise=recurring,
+            run_month_gross_paise=gross,
+            state=emp.get("pt_state"),
+            gender=emp.get("gender"),
+            firm_slabs=firm_pt_slabs,
+            on=pt_on,
+            run_month=pt_month,
+            months_employed_in_fy=months_in_year,
+        ) if emp.get("pt_applicable") else 0,
         fy=fy,
         month=pt_month,
         tds_already_deducted_paise=tds_already_deducted_paise,

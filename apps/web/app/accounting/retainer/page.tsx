@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { getClients } from "@/lib/data/clients";
 import { formatPaise } from "@/lib/services/formatting";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Client } from "@/lib/types";
 
@@ -149,8 +150,9 @@ interface SetRetainerModalProps {
 
 function SetRetainerModal({ client, existing, onSave, onClose }: SetRetainerModalProps) {
   const [feeRupees, setFeeRupees] = useState(
-    existing ? String(Math.round(existing.feePaise / 100)) : ""
+    existing ? rupeeInputFromPaise(existing.feePaise) : ""
   );
+  const [feeError, setFeeError] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<Service[]>(existing?.services ?? []);
   const [invoiceDay, setInvoiceDay] = useState(existing?.invoiceDay ?? 1);
 
@@ -161,10 +163,20 @@ function SetRetainerModal({ client, existing, onSave, onClose }: SetRetainerModa
   }
 
   function handleSave() {
-    const rupees = parseInt(feeRupees, 10);
-    if (isNaN(rupees) || rupees <= 0) return;
-    // Store as paise — integer arithmetic only
-    onSave({ feePaise: rupees * 100, services: selectedServices, invoiceDay });
+    // Through the one parser. parseInt(feeRupees, 10) * 100 read "1,25,000" as
+    // ₹1 and silently threw away the paise of "15000.50"; a retainer is billed
+    // every month unattended, so a fee read wrong is wrong twelve times.
+    const feePaise = paiseFromRupeeInput(feeRupees.replace(/[,\s₹]/g, ""));
+    if (feePaise === null) {
+      setFeeError("That isn't an amount — enter rupees, like 15000 or 15000.50.");
+      return;
+    }
+    if (feePaise <= 0) {
+      setFeeError("Monthly fee must be more than zero.");
+      return;
+    }
+    setFeeError(null);
+    onSave({ feePaise, services: selectedServices, invoiceDay });
     onClose();
   }
 
@@ -184,16 +196,17 @@ function SetRetainerModal({ client, existing, onSave, onClose }: SetRetainerModa
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8] text-sm">₹</span>
             <input
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="decimal"
               className="w-full border border-[#E2E8F0] rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="15000"
               value={feeRupees}
-              onChange={e => setFeeRupees(e.target.value)}
+              onChange={e => { setFeeRupees(e.target.value); setFeeError(null); }}
             />
           </div>
-          <p className="text-[10px] text-[#94A3B8] mt-1">Stored as paise internally — integer arithmetic</p>
+          {feeError
+            ? <p className="text-[10px] text-red-600 mt-1">{feeError}</p>
+            : <p className="text-[10px] text-[#94A3B8] mt-1">Stored as paise internally — integer arithmetic</p>}
         </div>
 
         {/* Services */}

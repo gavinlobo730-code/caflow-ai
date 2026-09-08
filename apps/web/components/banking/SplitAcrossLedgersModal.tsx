@@ -35,6 +35,7 @@ import * as React from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
 import { formatPaise } from "@/lib/services/formatting";
+import { rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { api } from "@/lib/api";
 import {
   rupeesToPaise, filledLegs, unallocatedPaise, splitBlock, takeTheRestPaise,
@@ -54,6 +55,7 @@ function reasonText(b: SplitBlock): string {
     case "no-amount":    return "This line has no amount to split.";
     case "too-few":      return "A split needs at least two ledgers.";
     case "no-ledger":    return "Every line needs a ledger.";
+    case "unreadable":   return "One line's amount isn't a rupee figure — enter it like 47200 or 47200.50.";
     case "non-positive": return "Every line needs a positive amount — they all move the same way as the bank line.";
     case "short":        return `${formatPaise(b.paise)} still unallocated.`;
     case "over":         return `${formatPaise(b.paise)} more than the bank moved.`;
@@ -127,7 +129,7 @@ export function SplitAcrossLedgersModal({
   const takeTheRest = (key: string) => {
     const rest = takeTheRestPaise(legs, key, amountPaise);
     if (rest === null) return;
-    update(key, { amount: (rest / 100).toFixed(2) });
+    update(key, { amount: rupeeInputFromPaise(rest) });
   };
 
   async function save() {
@@ -137,7 +139,9 @@ export function SplitAcrossLedgersModal({
     try {
       await api.banking.splits.replace(txnId, filled.map((l) => ({
         account_id: l.account_id,
-        amount_paise: rupeesToPaise(l.amount),
+        // `blocked` is splitBlock's verdict, and it refuses an unreadable leg
+        // before this runs — so every amount here has already parsed.
+        amount_paise: rupeesToPaise(l.amount) ?? 0,
         narration: l.narration.trim() || null,
       })));
       onDone();

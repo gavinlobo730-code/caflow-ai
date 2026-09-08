@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import {
   ArrowDown,
   ArrowUp,
@@ -661,10 +662,18 @@ function FilterControl<T>({
       </span>
     );
   }
-  // amountRange — UI in rupees, stored in paise
+  // amountRange — UI in rupees, stored in paise. Through the one parser:
+  // Math.round(Number(s) * 100) made "1,25,000" a NaN bound, and a NaN
+  // compares false against everything, so the filter silently returned no rows
+  // rather than saying it could not read the figure. Text it cannot read is
+  // left as "no bound" instead.
   const v = (value as { min?: number; max?: number }) ?? {};
-  const toPaise = (s: string) => (s === "" ? undefined : Math.round(Number(s) * 100));
-  const toRupees = (p?: number) => (p == null ? "" : String(p / 100));
+  const toPaise = (s: string) => {
+    if (s.trim() === "") return undefined;
+    const p = paiseFromRupeeInput(s.replace(/[,\s₹]/g, ""));
+    return p === null ? undefined : p;
+  };
+  const toRupees = (p?: number) => (p == null ? "" : rupeeInputFromPaise(p));
   return (
     <span className="inline-flex items-center gap-1" title={`${def.label} (₹)`}>
       <input type="number" inputMode="decimal" placeholder={`${def.label} min ₹`} aria-label={`${def.label} minimum`} className={num} value={toRupees(v.min)} onChange={(e) => onChange({ ...v, min: toPaise(e.target.value) })} />

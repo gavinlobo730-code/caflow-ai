@@ -13,6 +13,7 @@ import { useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
 import { todayLocalISO } from "@/lib/dateMath";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import {
   Upload,
   ArrowLeft,
@@ -89,13 +90,25 @@ interface AISRoot {
   };
 }
 
-/** Convert rupees (possibly float from external JSON) to paise using integer arithmetic */
-function rupeesToPaise(val: number | string | undefined): number {
+/**
+ * Rupees → integer paise, or null when the value is not an amount.
+ *
+ * Two sources reach this: a number out of the portal's AIS JSON, and text a CA
+ * types into the manual-entry and "amount in books" boxes. It used to be
+ * `Math.round(parseFloat(val) * 100)` with `isNaN → 0` for both, so a typed
+ * "1,25,000" became ₹1 and an unreadable AIS field became ₹0 — and a ₹0 here
+ * is not a missing figure, it is a claim the payer reported nothing, which is
+ * exactly the reconciliation this screen exists to do.
+ *
+ * The JSON branch keeps a number's own rounding at the paise (toFixed(2)); the
+ * text branch goes through the one parser, which refuses rather than guessing.
+ */
+function rupeesToPaise(val: number | string | undefined): number | null {
   if (val === undefined || val === null || val === "") return 0;
-  const n = typeof val === "string" ? parseFloat(val) : val;
-  if (isNaN(n)) return 0;
-  // Multiply by 100 and round to avoid floating point issues
-  return Math.round(n * 100);
+  if (typeof val === "number") {
+    return Number.isFinite(val) ? paiseFromRupeeInput(val.toFixed(2)) : null;
+  }
+  return paiseFromRupeeInput(val.replace(/[,\s₹]/g, ""));
 }
 
 function formatRupees(paise: number): string {
@@ -132,8 +145,15 @@ function parseAISJSON(raw: string): AISTransaction[] {
     const labelEntry = descArr.find((d) => d.label?.toLowerCase().includes("nature") || d.label?.toLowerCase().includes("type"));
     const label = labelEntry?.value ?? cat.informationSource ?? "Other";
     const type = guessTransactionType(label);
+    // An AIS row whose amount cannot be read is not a zero — a zero here reads
+    // as "the payer reported nothing", which is the opposite conclusion.
     const amountPaise = rupeesToPaise(cat.amount ?? cat.informationValue);
     const tdsDeductedPaise = rupeesToPaise(cat.tdsAmount);
+    if (amountPaise === null || tdsDeductedPaise === null) {
+      throw new Error(
+        `Row ${idx + 1} (${cat.informationSource ?? "unknown source"}) carries an amount this file cannot read.`,
+      );
+    }
     const payer =
       descArr.find((d) => d.label?.toLowerCase().includes("deductor") || d.label?.toLowerCase().includes("payer") || d.label?.toLowerCase().includes("source"))
         ?.value ?? cat.informationSource ?? "Unknown";
@@ -211,6 +231,11 @@ export default function AISPage() {
     if (!manualForm.payer.trim() || !manualForm.amount.trim()) return;
     const amountPaise = rupeesToPaise(manualForm.amount);
     const tdsDeductedPaise = rupeesToPaise(manualForm.tds || "0");
+    if (amountPaise === null || tdsDeductedPaise === null) {
+      setParseError("Amount and TDS must be rupee amounts, like 125000 or 125000.50.");
+      return;
+    }
+    setParseError(null);
     setTransactions((prev) => [
       ...prev,
       {
@@ -240,7 +265,11 @@ export default function AISPage() {
 
   const comparisonRows: ComparisonRow[] = transactions.map((t) => {
     const booksStr = booksAmounts[t.id] ?? "";
-    const booksAmountPaise = booksStr.trim() === "" ? -1 : rupeesToPaise(booksStr);
+    // null (unreadable) is kept distinct from blank: blank means the CA has not
+    // said what the books hold, and -1 already carries that. Text that is not
+    // an amount must not become a match or a mismatch — it is neither.
+    const booksParsed = booksStr.trim() === "" ? -1 : rupeesToPaise(booksStr);
+    const booksAmountPaise = booksParsed === null ? -1 : booksParsed;
     let status: ComparisonRow["status"];
     if (booksAmountPaise < 0) {
       status = "not_in_books";
