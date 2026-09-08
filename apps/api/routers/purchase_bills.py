@@ -326,6 +326,25 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
         # bills withheld ₹10,000, ₹20,000 and ₹30,000 instead of ₹10,000 each.
         # IT Act §200 — tax already deducted and paid to the credit of the
         # Central Government is not deducted a second time.
+        #
+        # BOTH LIMBS MUST COUNT THE SAME BILLS, and that is why drafts are in
+        # both. It was argued on 8 September that §200 reaches only tax
+        # "deducted and paid to the credit of the Central Government", so a
+        # DRAFT — which has no journal, no challan and no register row — should
+        # be excluded from the credit. Read alone that is right about §200 and
+        # wrong about this code, because `fy_total` above is the CHARGE BASE
+        # and it counts drafts too.
+        #
+        # Worked through: bill A received (₹1,00,000, withheld ₹10,000), bill B
+        # a live draft (₹1,00,000), bill C now being created (₹1,00,000).
+        # Charging C on the ₹3,00,000 aggregate and crediting A+B withholds
+        # ₹10,000, so the ledger holds ₹20,000 against the ₹2,00,000 actually
+        # credited — correct. Crediting A alone withholds ₹20,000 and the
+        # ledger holds ₹30,000 against the same ₹2,00,000 — an OVER-deduction
+        # of ₹10,000, recoverable from the payee only by a refund claim.
+        #
+        # The draft appears on both sides and cancels. Excluding it from one
+        # side only is what breaks it.
         fy_prior_tds = sum(int(b.get("tds_paise") or 0) for b in _earlier)
     # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
     # a bill entered late for a prior FY must use that year's law.
@@ -566,6 +585,31 @@ def _compute_bill_lines_and_totals(
             tds_paise, tds_rate_bps = _resolve_bill_resident_tds(
                 vendor, tds_section, total_taxable, bill_date, firm_id, db,
                 exclude_bill_id)
+    # ── The deduction is bounded by the payment ────────────────────────────
+    # TDS is withheld FROM a sum paid or credited, so it cannot exceed that
+    # sum. That was academic while the charge fell on the marginal bill —
+    # tds was at most 20% of the taxable value — and became real the moment the
+    # charge moved to the FY AGGREGATE: the bill that crosses a threshold
+    # carries the whole year's tax, which can be many times its own value.
+    #
+    # A §194J vendor billing ₹49,000 (nil, under the ₹50,000 limit) and then
+    # ₹2,000 owes ₹5,100 on the ₹51,000 aggregate against a ₹2,360 bill. Left
+    # unbounded this produced net_payable_paise = -₹3,100, and the kernel
+    # credits Trade Payables with exactly that figure — against
+    # `journal_lines CHECK (credit_paise >= 0)` (migration 003). The entry
+    # still BALANCES, so _create_journal's own assertion passed and mock mode
+    # wrote it happily; production answered 23514, receive_purchase_bill rolled
+    # the status back, and the bill was stuck as a draft for ever. Migration
+    # 278's generated outstanding_paise went negative with it.
+    #
+    # THE SHORTFALL IS NOT LOST. fy_prior_tds_paise sums what earlier bills
+    # ACTUALLY withheld, so the next bill to this payee re-charges the
+    # difference automatically — the same §200 credit that stops the aggregate
+    # being taxed twice carries an under-deduction forward. No state is needed
+    # for it and nothing has to remember.
+    deductible_paise = min(tds_paise, total_paise)
+    tds_shortfall_paise = tds_paise - deductible_paise
+    tds_paise = deductible_paise
     net_payable_paise = total_paise - tds_paise
     total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
 
@@ -599,6 +643,13 @@ def _compute_bill_lines_and_totals(
         # the computed dict so the register can record it against a nil.
         "_tds_citation":        tds_citation,
         "net_payable_paise":    net_payable_paise,
+        # What the FY aggregate demanded that this bill was too small to
+        # withhold. Not persisted and not a column: it is a fact about this
+        # bill's arithmetic, and the next bill to the same payee recovers it.
+        # Reported so a CA is told the year's liability is not yet fully
+        # deducted rather than inferring it from a net payable of nil — an
+        # under-deduction carries §201(1A) interest at 1% a month until it is.
+        "_tds_shortfall_paise": tds_shortfall_paise,
         # Currency columns (INR identity leaves them inert).
         "txn_taxable":          txn_taxable,
         "txn_total_gst":        txn_total_gst,

@@ -67,6 +67,7 @@ from typing import Optional
 from domain.tds.residency import (
     GAP_195_RATES_UNVERIFIED, GAP_27Q_IDENTIFIERS_MISSING,
     GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
+    GAP_TDS_IS_A_FY_CATCH_UP,
     GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
     describe_gaps, is_classified, missing_27q_identifiers, return_type_for,
 )
@@ -212,6 +213,21 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         # leaving and the form existing should not be invisible.
         if is_195 and not (bill.get("form_15ca_ack_no") or "").strip():
             gaps.append(GAP_FORM_15CA_NOT_RECORDED)
+        # THE THREE MONEY COLUMNS DO NOT MULTIPLY OUT ON A CATCH-UP BILL, and
+        # each of them is still right. Form 26Q's deductee annexure asks for the
+        # amount paid or credited on this date, the rate the deduction was made
+        # under, and the tax deducted — so payment_amount_paise stays this
+        # bill's taxable value and tds_rate_pct stays the section rate, while
+        # tds_paise is the year's aggregate liability less what earlier bills
+        # withheld. On the bill that crosses a threshold that reads, correctly,
+        # as ₹2,000 paid at 10% with ₹5,100 deducted.
+        #
+        # Restating any one of the three to make the arithmetic close would put
+        # a figure in the return that is not what happened. Naming it is the
+        # honest option and the one the rest of this module already takes.
+        _expected = int(bill.get("taxable_amount_paise") or 0) * int(bill.get("tds_rate_bps") or 0) // 10000
+        if deducted != _expected:
+            gaps.append(GAP_TDS_IS_A_FY_CATCH_UP)
         # Payload written INLINE with literal keys — tests/test_backend_columns_
         # exist_pg.py can only read a query whose table name and payload keys
         # are both string constants.
