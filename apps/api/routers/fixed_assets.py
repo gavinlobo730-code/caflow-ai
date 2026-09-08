@@ -32,6 +32,57 @@ from services.period_validation_service import period_validation_service, get_fy
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 
+
+def capitalised_cost_paise(cost_paise: int, igst_paise: int, cgst_paise: int,
+                           sgst_paise: int, itc_eligible: Optional[bool]) -> int:
+    """The asset's DEPRECIABLE cost, after CGST Act §17(5).
+
+    Tax on an acquisition goes one of two ways and there is no third:
+
+      * credit is available   -> it is an ASSET (input tax credit), claimed in
+        the return, and no part of the machine's cost;
+      * credit is BLOCKED     -> §17(5) bars it (a motor vehicle for personal
+        carriage is the everyday case). The money was still paid and it bought
+        the asset, so it is part of the cost — which means it DEPRECIATES.
+
+    That second limb is why `itc_eligible` cannot be defaulted: leaving blocked
+    tax out of the cost is not a presentational slip, it is depreciation the
+    client never claims for the life of the asset.
+
+    `None` — not stated — is treated as NOT capitalising, which matches every
+    row created before migration 343 and keeps their cost unchanged.
+    """
+    tax = int(igst_paise or 0) + int(cgst_paise or 0) + int(sgst_paise or 0)
+    return int(cost_paise) + (tax if (tax and itc_eligible is False) else 0)
+
+
+def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
+    """Fetch EVERY row via keyset paging on `key`.
+
+    The same helper eleven services carry. An un-paged `.execute()` is silently
+    capped at PostgREST's ~1000 rows, and a register-integrity report that
+    stopped at 1000 assets would answer "clean" for the client most likely to
+    have a problem. FA-12 records that the other fixed-asset reads have the same
+    gap; this closes it only where the new report needs it, rather than widening
+    the change.
+    """
+    first = make_query()
+    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
+        return first.execute().data or []
+    out: list = []
+    cursor = None
+    while True:
+        q = make_query()
+        if cursor is not None:
+            q = q.gt(key, cursor)
+        rows = q.order(key).limit(page).execute().data or []
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        cursor = rows[-1][key]
+    return out
+
+
 _journal_svc = Phase2JournalService()
 
 # ─── Companies Act 2013, Schedule II — the LIVES, and the rate derived ───────
@@ -442,8 +493,37 @@ def create_asset(
     # (inventory, sales, purchases, GST...) already enforces this.
     period_validation_service.validate_posting_date(current_user["firm_id"], data.purchase_date)
 
-    # Generate asset code
     client_id = data.client_id
+
+    # ── FA-07: the facts that decide the credit leg ─────────────────────────
+    # A bill may be capitalised ONCE. Migration 343's partial unique index is
+    # the real guarantee; this check exists so the CA gets a sentence rather
+    # than a constraint-violation message, and so the reason is stated where
+    # somebody reading the router can see it.
+    if data.purchase_bill_id:
+        clash = (db.table("fixed_assets").select("id, asset_code")
+                 .eq("firm_id", current_user["firm_id"])
+                 .eq("purchase_bill_id", data.purchase_bill_id)
+                 .limit(1).execute().data) or []
+        if clash:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"That purchase bill is already capitalised as "
+                        f"{clash[0].get('asset_code') or 'an existing asset'}. "
+                        f"Capitalising it twice would put the cost in Fixed "
+                        f"Assets twice and leave the payable unchanged."))
+
+    # BLOCKED TAX IS PART OF THE COST, not an expense and not a credit.
+    # CGST Act §17(5) bars input credit on, among others, a motor vehicle for
+    # personal carriage. The tax is still paid, so it is capitalised — which
+    # means it DEPRECIATES, and which is why itc_eligible has to be answered
+    # rather than defaulted. This is the only place the cost is adjusted; the
+    # journal reads purchase_cost_paise as already-capitalised.
+    capitalised_cost = capitalised_cost_paise(
+        data.purchase_cost_paise, data.igst_paise, data.cgst_paise,
+        data.sgst_paise, data.itc_eligible)
+
+    # Generate asset code
     count_res = db.table("fixed_assets").select("id", count="exact").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).execute()
     count = (count_res.count or 0) + 1
     asset_code = f"FA-{count:04d}"
@@ -455,8 +535,18 @@ def create_asset(
         "asset_name":                  data.asset_name,
         "asset_category":              data.asset_category,
         "purchase_date":               data.purchase_date,
-        "purchase_cost_paise":         data.purchase_cost_paise,
+        "purchase_cost_paise":         capitalised_cost,
         "salvage_value_paise":         data.salvage_value_paise,
+        "acquisition_mode":            data.acquisition_mode,
+        "vendor_id":                   data.vendor_id,
+        "purchase_bill_id":            data.purchase_bill_id,
+        "bank_account_id":             data.bank_account_id,
+        "payment_mode":                data.payment_mode,
+        "igst_paise":                  data.igst_paise,
+        "cgst_paise":                  data.cgst_paise,
+        "sgst_paise":                  data.sgst_paise,
+        "itc_eligible":                data.itc_eligible,
+        "itc_blocked_reason":          data.itc_blocked_reason,
         # The LIFE is stored too, not just the rate — it is what Schedule II
         # actually prescribes, it is what a SL asset depreciates by, and it is
         # what a reviewer needs to see to check the rate beside it.
@@ -478,7 +568,7 @@ def create_asset(
         asset["journal_entry_id"] = journal_id
 
     timeline_service.log(client_id, "accounting", "Asset Created",
-        f"{asset_code}: {data.asset_name} added — ₹{data.purchase_cost_paise//100:,}", "info")
+        f"{asset_code}: {data.asset_name} added — ₹{capitalised_cost//100:,}", "info")
 
     return api_response(True, asset)
 
@@ -856,3 +946,95 @@ def asset_categories(
         }
         for category, classes in SCHEDULE_II_CATEGORIES.items()
     ])
+
+
+@router.get("/register-integrity")
+def register_integrity(
+    client_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Where the fixed-asset register and the general ledger disagree (FA-07).
+
+    THE THREE WAYS THEY COME APART, and each is silent today:
+
+      * AN ASSET WITH NO ACQUISITION JOURNAL. The register says the client owns
+        a machine and no entry ever put it on the balance sheet. It arises when
+        journal posting failed after the row was inserted — the router updates
+        `journal_entry_id` in a SECOND statement, so a failure between them
+        leaves exactly this.
+      * A BILL CAPITALISED TWICE. Migration 343's unique index stops it now, but
+        rows created before it are unprotected, and the same bill's cost then
+        sits in Fixed Assets twice while its payable is recorded once.
+      * AN ASSET FROM A BILL WITH NO BILL. `acquisition_mode = 'from_bill'`
+        means the entry only RECLASSIFIED cost out of purchases; if the bill has
+        since been deleted, nothing supports the asset.
+
+    This REPORTS. It repairs nothing and posts nothing: every remedy is a
+    judgement — repost, delete a duplicate, re-link a bill — and which one is
+    right depends on facts the ledger does not hold.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"checked": 0, "findings": []})
+    firm_id = current_user["firm_id"]
+    assert_client_access(current_user, client_id)
+
+    rows = _paginate_all(lambda: db.table("fixed_assets")
+                         .select("id, asset_code, asset_name, purchase_cost_paise, "
+                                 "journal_entry_id, acquisition_mode, purchase_bill_id, "
+                                 "is_disposed")
+                         .eq("firm_id", firm_id).eq("client_id", client_id))
+
+    findings: list[dict] = []
+    by_bill: dict[str, list[dict]] = {}
+    for a in rows:
+        if not a.get("journal_entry_id"):
+            findings.append({
+                "kind": "no_acquisition_journal",
+                "asset_code": a.get("asset_code"),
+                "asset_name": a.get("asset_name"),
+                "amount_paise": int(a.get("purchase_cost_paise") or 0),
+                "what_it_means": (
+                    "This asset is in the register and no journal entry ever put "
+                    "it on the balance sheet."),
+            })
+        if a.get("purchase_bill_id"):
+            by_bill.setdefault(a["purchase_bill_id"], []).append(a)
+
+    for bill_id, assets in by_bill.items():
+        if len(assets) > 1:
+            findings.append({
+                "kind": "bill_capitalised_more_than_once",
+                "purchase_bill_id": bill_id,
+                "asset_codes": [a.get("asset_code") for a in assets],
+                "amount_paise": sum(int(a.get("purchase_cost_paise") or 0) for a in assets),
+                "what_it_means": (
+                    "One purchase bill is capitalised as several assets, so its "
+                    "cost is in Fixed Assets more than once."),
+            })
+
+    bill_ids = sorted(by_bill)
+    live: set[str] = set()
+    for i in range(0, len(bill_ids), 200):
+        got = (db.table("purchase_bills").select("id")
+               .eq("firm_id", firm_id).in_("id", bill_ids[i:i + 200])
+               .execute().data) or []
+        live.update(str(b["id"]) for b in got)
+    for bill_id, assets in by_bill.items():
+        if bill_id not in live:
+            findings.append({
+                "kind": "capitalised_from_a_bill_that_is_gone",
+                "purchase_bill_id": bill_id,
+                "asset_codes": [a.get("asset_code") for a in assets],
+                "what_it_means": (
+                    "The entry only moved cost out of purchases; with the bill "
+                    "deleted, nothing supports the asset."),
+            })
+
+    return api_response(True, {
+        "checked": len(rows),
+        "findings": findings,
+        # An empty list is an ANSWER, and the count is what makes it one — "no
+        # findings" over nothing checked is not the same statement.
+        "clean": not findings,
+    })
