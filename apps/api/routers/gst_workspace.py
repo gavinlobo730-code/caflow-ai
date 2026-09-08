@@ -25,6 +25,8 @@ from core.ist_clock import ist_today
 from core.validators import validate_gstin
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+from services import gst_2b_reconciliation_service
+from domain.gst.gstr2b import parse_gstr2b, paise as gstr2b_paise
 from services.period_validation_service import period_validation_service
 from services.compliance_engine import (
     gstr1_due_date, gstr3b_due_date, pmt06_due_date, iff_due_date,
@@ -861,11 +863,13 @@ def _txval_to_paise(txval) -> int:
     """GSTR-2B JSON txval is portal-supplied rupees (a JSON number, often with
     a fractional part) -- Decimal(str(...)) never float(...) * 100, per
     project rule (a raw float multiply is not guaranteed to round-trip
-    exactly through IEEE-754 binary imprecision)."""
-    try:
-        return int((Decimal(str(txval or 0)) * 100).to_integral_value(rounding=ROUND_HALF_UP))
-    except InvalidOperation:
-        return 0
+    exactly through IEEE-754 binary imprecision).
+
+    DELEGATES to domain.gst.gstr2b.paise, which is the one that runs on every
+    document the parser reads. Kept as a name here because it is what this
+    module's callers and tests know it as, and two implementations of one
+    conversion is how the two drift."""
+    return gstr2b_paise(txval)
 
 
 @router.post("/gstr2b/upload")
@@ -874,88 +878,111 @@ def upload_gstr2b(
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """
-    Save GSTR-2B JSON and reconcile against books.
-    Matches invoices by invoice_no + GSTIN. CGST Act §38.
+    Reconcile a GSTR-2B download against the client's own purchase bills.
+    CGST Act §38 with §16(2)(aa).
+
+    WHAT THIS USED TO DO, AND WHY IT ANSWERED NOTHING
+        It looked for `data.docDetails[]` keyed on `sgstin` — neither key
+        exists in a GSTR-2B — and it took the BOOKS side out of the same pasted
+        JSON, `raw["book_invoices"]`. So a CA who pasted a genuine portal
+        download got "Matched 0, Mismatched 0, Missing 0": a clean result from
+        comparing nothing against nothing. Nothing was written to
+        `gstr2a_records` either, so every GSTR-3B printed
+        `gstr2a_record_count: 0` in its Rule 36(4) working.
+
+    THE BOOKS ARE READ HERE. The caller sends the portal file and nothing else.
+    Asking a screen to supply the purchase register it is reconciling is asking
+    it to supply the answer.
     """
     try:
         firm_id = current_user["firm_id"]
-        # task #231 audit finding: same client_id ownership gap as save_gstr1/3b.
         assert_client_access(current_user, body.client_id)
-        raw = body.raw_data
-        # Reconcile: extract invoices from GSTR-2B and match against books
-        b2b_invoices = raw.get("data", {}).get("docDetails", []) or raw.get("invoices", [])
-        matched = []
-        mismatched = []
-        missing_in_2b = []
 
-        book_invoices = raw.get("book_invoices", [])  # caller provides book invoices for matching
-        b2b_keys = {(inv.get("inum", ""), inv.get("sgstin", "")): inv for inv in b2b_invoices}
+        if _USE_MOCK:
+            # Mock mode has no purchase ledger to read, so the parse is real and
+            # the match is against nothing. Reported as such rather than shown
+            # as a clean reconciliation, which is the defect this replaces.
+            parsed = parse_gstr2b(body.raw_data)
+            return api_response(True, {
+                "period": body.period,
+                "gstin": parsed.gstin,
+                "return_period_in_file": parsed.return_period,
+                "generated_on": parsed.generated_on,
+                "sections_seen": parsed.sections_seen,
+                "problems": parsed.problems + [
+                    "Running without a database: the file was parsed and NOT "
+                    "matched against any purchase bill."],
+                "persisted": False,
+                "portal_document_count": len(parsed.documents),
+                "summary": None, "matches": [], "defaulters": [],
+            })
 
-        for book_inv in book_invoices:
-            key = (book_inv.get("invoice_no", ""), book_inv.get("gstin", ""))
-            if key in b2b_keys:
-                b2b_inv = b2b_keys[key]
-                # Compare amounts in integer paise
-                book_taxable = book_inv.get("taxable_paise", 0)
-                b2b_taxable = _txval_to_paise(b2b_inv.get("txval", 0))
-                if book_taxable == b2b_taxable:
-                    matched.append({"key": key, "status": "matched"})
-                else:
-                    mismatched.append({
-                        "key": key, "status": "amount_mismatch",
-                        "book_paise": book_taxable, "gstr2b_paise": b2b_taxable,
-                    })
-            else:
-                missing_in_2b.append({"key": key, "status": "missing_in_2b"})
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        result = gst_2b_reconciliation_service.reconcile_2b(
+            db, firm_id=firm_id, client_id=body.client_id,
+            period=body.period, raw=body.raw_data)
 
-        reconciliation_result = {
-            "matched": matched,
-            "mismatched": mismatched,
-            "missing_in_2b": missing_in_2b,
-            "summary": {
-                "total_book": len(book_invoices),
-                "matched_count": len(matched),
-                "mismatch_count": len(mismatched),
-                "missing_count": len(missing_in_2b),
-            },
-        }
-
-        record = {
+        # The upload itself is kept whether or not it reconciled — a file that
+        # would not parse is exactly the one a CA needs to be able to point at.
+        db.table("gstr2b_uploads").insert({
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
             "period": body.period,
             "file_url": body.file_url,
             "raw_data": body.raw_data,
-            "reconciliation_result": reconciliation_result,
-            "status": "reconciled",
+            "reconciliation_result": {k: v for k, v in result.items()
+                                      if k != "matches"},
+            "status": "reconciled" if result.get("persisted") else "parse_failed",
             "created_by": current_user.get("id"),
             "uploaded_at": datetime.utcnow().isoformat(),
-        }
+        }).execute()
 
-        if _USE_MOCK:
-            _MOCK_GSTR2B[record["id"]] = record
-        else:
-            from core.supabase_client import get_supabase
-            get_supabase().table("gstr2b_uploads").insert(record).execute()
-
-        if mismatched or missing_in_2b:
+        summary = result.get("summary") or {}
+        if summary.get("missing_in_2b_count") or summary.get("amount_mismatch_count"):
             timeline_service.log_timeline_event(
                 client_id=body.client_id, firm_id=firm_id,
                 financial_year="", category="gst", event_type="gst_mismatch_detected",
-                title=f"GSTR-2B mismatch for {body.period}: {len(mismatched)} mismatches, {len(missing_in_2b)} missing",
+                title=(f"GSTR-2B for {body.period}: "
+                       f"{summary.get('missing_in_2b_count', 0)} bills the supplier "
+                       f"has not filed, {summary.get('amount_mismatch_count', 0)} "
+                       f"amount mismatches"),
                 severity="warning",
             )
-        return api_response(True, record)
+        return api_response(True, result)
     except HTTPException:
-        # task #231 audit finding: this endpoint had no `except HTTPException:
-        # raise` (unlike save_gstr1/save_gstr3b right above it), so the
-        # client_id ownership guard's HTTPException(404) — or any other real,
-        # actionable rejection — was being silently swallowed into a generic
-        # "Please try again" (the task #97 anti-pattern).
         raise
-    except Exception as e:
+    except ValueError as e:
+        # A bad period is the caller's mistake and its message is useful.
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        _logger.exception("gstr2b reconciliation failed for %s %s",
+                          body.client_id, body.period)
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
+@router.get("/gstr2b/reconciliation")
+def read_gstr2b_reconciliation(
+    client_id: str = Query(...),
+    period: str = Query(..., description="MMYYYY e.g. 042025"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """What the last reconciliation for this period found.
+
+    The reason this exists at all: the reconciliation it replaces ran in the
+    browser and threw its answer away on refresh, so reopening the screen next
+    month started from zero and nothing on the Purchases tab could say whether
+    a bill had been filed by its supplier.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"period": period, "record_count": 0,
+                                   "by_status": {}, "records": []})
+    from core.supabase_client import get_supabase
+    return api_response(True, gst_2b_reconciliation_service.read_reconciliation(
+        get_supabase(), firm_id=current_user["firm_id"],
+        client_id=client_id, period=period))
 
 
 class GSTR9In(BaseModel):

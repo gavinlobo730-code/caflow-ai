@@ -650,14 +650,27 @@ _RULE_36_4_NUMERATOR = 100
 _RULE_36_4_DENOMINATOR = 100
 
 
-def _apply_rule_36_4_cap(book: int, gstr2a: int) -> tuple[int, bool]:
+def _apply_rule_36_4_cap(book: int, gstr2a: int,
+                        have_2b: bool = False) -> tuple[int, bool]:
     """Return (capped_itc, was_capped) using integer paise arithmetic.
 
     CGST Rule 36(4) (as amended w.e.f. 1 Jan 2022): ITC cannot exceed 100% of
-    eligible GSTR-2A/2B credit — no provisional buffer. If GSTR-2A is zero
-    (no records uploaded), book ITC is used as-is.
+    eligible GSTR-2A/2B credit — no provisional buffer.
+
+    ZERO MEANS TWO DIFFERENT THINGS, and `have_2b` is what tells them apart.
+    Until the 2B reconciliation was built nothing ever wrote `gstr2a_records`,
+    so a zero could only mean "nobody uploaded anything" and leaving book ITC
+    alone was the only honest answer. Now a 2B CAN be on file and show no
+    eligible credit under this head — every document blocked by `itcavl`, or
+    simply no IGST in the month — and for that the cap is genuinely NIL. Reading
+    it as "no data" would let the return claim credit the portal has refused,
+    which is the direction §16(2)(aa) exists to stop.
+
+    Defaulted to False so every existing caller keeps the old behaviour: a
+    caller that does not know whether a 2B is on file must not be treated as
+    knowing there is none.
     """
-    if gstr2a == 0:
+    if gstr2a == 0 and not have_2b:
         # No GSTR-2A data — use book ITC; warn CA to upload GSTR-2A
         return book, False
     cap = (gstr2a * _RULE_36_4_NUMERATOR) // _RULE_36_4_DENOMINATOR
@@ -789,9 +802,12 @@ def compute_gstr3b(
     gstr2a_cgst = sum(r.cgst_paise for r in gstr2a_records)
     gstr2a_sgst = sum(r.sgst_paise for r in gstr2a_records)
 
-    itc_igst, capped_i = _apply_rule_36_4_cap(book_igst, gstr2a_igst)
-    itc_cgst, capped_c = _apply_rule_36_4_cap(book_cgst, gstr2a_cgst)
-    itc_sgst, capped_s = _apply_rule_36_4_cap(book_sgst, gstr2a_sgst)
+    # Whether a 2B is ON FILE at all, which is a different fact from its total
+    # being zero — see _apply_rule_36_4_cap.
+    have_2b = len(gstr2a_records) > 0
+    itc_igst, capped_i = _apply_rule_36_4_cap(book_igst, gstr2a_igst, have_2b)
+    itc_cgst, capped_c = _apply_rule_36_4_cap(book_cgst, gstr2a_cgst, have_2b)
+    itc_sgst, capped_s = _apply_rule_36_4_cap(book_sgst, gstr2a_sgst, have_2b)
 
     result.itc_book_igst = book_igst
     result.itc_book_cgst = book_cgst

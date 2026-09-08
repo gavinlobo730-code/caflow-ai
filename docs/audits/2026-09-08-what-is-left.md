@@ -257,11 +257,11 @@ will now disagree with the register**.
 
 ---
 
-## 3. The five criticals — three closed since
+## 3. The five criticals — four closed since
 
 | id | state | what is left |
 |---|---|---|
-| **GST-04** | untouched | The 2A/2B reconciliation does not read the books, does not parse a real GSTR-2B JSON, and persists nothing. Byte-identical parser; zero writers of `gstr2a_records`; `/gst/reconciliation` contains no API call at all. Gates GST-19 and GST-28, and PUR-11 is the same defect from the purchase side. |
+| **GST-04** | ~~untouched~~ **CLOSED**, with PUR-11 | `domain/gst/gstr2b.py` parses the real envelope (`data.docdata.b2b/b2ba/cdnr/cdnra/impg/impgsez`, tax per RATE LINE, `itcavl`/`rsn` kept, credit notes signed negative); `domain/gst/itc_matching.py` is the matcher, moved out of the browser; `services/gst_2b_reconciliation_service.py` reads `purchase_bills` SERVER-SIDE and persists to `gstr2a_records` (migration 340 gives it `purchase_bill_id`, `match_status`, the `itcavl` flag and a natural-key unique index so a re-upload replaces). The GST tab shows the four buckets, the ITC figures §16(2)(aa) turns on, and a supplier-wise defaulter list; the **Purchases tab gains a GSTR-2B column and filter**, distinguishing "not reconciled" from "supplier has not filed". 29 backend tests and 7 frontend guards, all failing against the previous code. |
 | **IT-01** | ~~untouched~~ **CLOSED** | `ITREngine.compute` branches on the assessee: a firm, LLP or company goes to `compute_entity_tax` and then §115JB/§115JC, with the credit recorded. `domain/income_tax/assessee.py` maps `clients.entity_type` — a PROPRIETORSHIP is an individual, a trust and a co-operative society are REFUSED by name (§§11-13/§164, §80P) — and the mapping is in apps/api, asked for by the screen through `GET /api/income-tax/assessee-kind`. Capital gains for a non-individual are refused rather than charged at the flat rate: §111A/§112A/§112 override it and 30% on a listed-equity LTCG is more than double the 12.5% due. 40 backend tests and 7 frontend guards, all failing against the previous code. **Measured: ₹50,00,000 of profit for FY 2025-26 — ₹11,23,200 was shown, ₹15,60,000 is owed.** |
 | **FA-02** | partial | The default rate is right; **the stored rows are not**. No backfill migration, the compute path prefers the stored rate, and FA-10 leaves no edit path — so a wrong rate is frozen in for the asset's life. Production holds zero fixed assets today, so this is latent until a register is migrated in. |
 | **GST-01** | ~~partial~~ **CLOSED** | Migration 339 adds `rcm_cash_paise` and `cash_payable_paise` to `gstr3b_returns`; `SaveGSTR3BRequest` and BOTH save paths (the API and `lib/data/gst.ts`'s direct PostgREST write) carry them; `filings.tax_payable_paise` is written from the challan, falling back to `net_tax_paise` for rows saved before the migration. The client GST tab now shows Table 3.1(d) and the cash total, its breakdown lists 3.1(d) between 3.1(a) and Table 4, and 3.1(d) gained a drill-down to the bills carrying the charge. 5 backend tests and 4 frontend guards fail against the previous code. |
@@ -372,6 +372,52 @@ Refusals by design; the code names the gap rather than guessing. See CLAUDE.md
 - **e-invoice IRN and e-way bill are the only two statutory outputs software can
   complete end to end**, because the IRP signs and there is no taxpayer
   signature.
+
+---
+
+## 6b. What is left of GST-04 / PUR-11, and it is a DECISION, not code
+
+There are now two reconciliation screens, and only one of them reads the books.
+
+  * **`/gst/reconciliation`** matches two uploaded files in the browser and
+    persists nothing. It has been given a banner saying exactly that and
+    pointing at the other one — deliberately, rather than being deleted,
+    because deleting a 958-line screen a CA may use for registers that are NOT
+    in this product is the owner's call, not a refactor.
+  * **the client's GST tab → GSTR-2B Recon** reads `purchase_bills`
+    server-side, persists to `gstr2a_records`, and surfaces on the Purchases
+    tab.
+
+Two screens doing one job drift; CLAUDE.md already records that lesson from the
+filing demos, where two implementations of one return each needed their own
+safety argument and one of them was silently exempt from the kill switch. The
+decision to take: keep the browser one for out-of-product registers, or delete
+it. Until then the banner is what stops a CA losing an evening to a refresh.
+
+**Rule 36(4) starts biting, and that is a live behaviour change.**
+`_gstr2a_for_period` always returned `[]`, so `_apply_rule_36_4_cap` always took
+its no-data branch and the ceiling has never been applied to any return this
+product has produced. Persisting the reconciliation changes that, and two
+corrections were needed for it to be RIGHT rather than merely live:
+
+* documents 2B marks `itcavl = "N"` are excluded from the ceiling — counting a
+  blocked document towards the cap raises it by exactly the credit §16(2)(aa)
+  exists to withhold. `neq`, not `eq("Y")`: an import carries no flag at all, and
+  excluding those would silently shrink the cap instead;
+* a 2B **on file** showing no eligible credit under a head now caps that head at
+  NIL. Zero used to mean only "nobody uploaded anything"; it can now also mean
+  "2B is on file and shows nothing here", and those are opposite answers.
+
+One existing test carried an unrealistic fixture — a 2B with CGST and no SGST,
+which passed only because the cap could never fire on a zero. It is corrected to
+carry both, and the asymmetric case is now its own test with the new answer
+written down.
+
+**Also not built, and named so nobody assumes it is:** invoice-wise Rule 36(4)
+/ §16(2)(aa) application. The reconciliation now knows, per document, whether
+2B allows the credit — `compute_gstr3b` still applies the cap in aggregate.
+Wiring the per-invoice answer into the return is the next step and is what
+GST-19 and GST-28 were waiting on.
 
 ---
 

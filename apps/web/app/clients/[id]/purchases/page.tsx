@@ -163,6 +163,52 @@ function toDate(): string {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
+/** One persisted GSTR-2B match, as the Purchases tab reads it.
+ *
+ *  §16(2)(aa) makes input tax credit available only where the supplier has
+ *  furnished the invoice in their outward return and it has been communicated
+ *  to the recipient — GSTR-2B IS that communication. So "did the supplier file
+ *  this bill" is not a reporting nicety; it decides whether the credit on this
+ *  row may be claimed at all. */
+interface Recon2BRow {
+  purchase_bill_id: string | null;
+  match_status: string;
+  match_difference_paise: number;
+  itc_available: string;
+  itc_unavailable_reason: string;
+  supplier_filed_on: string | null;
+  return_period: string;
+}
+
+/** The word for a bill's GSTR-2B state, used by both the column and the filter
+ *  so the two cannot disagree.
+ *
+ *  A bill with no reconciled row is "not reconciled", never "supplier has not
+ *  filed": nobody has checked, and telling a CA a supplier defaulted on that
+ *  basis is a phone call that costs them their credibility. "supplier has not
+ *  filed" is a CONCLUSION and is only ever written by the matcher. */
+function recon2BLabel(r: Recon2BRow | undefined, periodReconciled: boolean): string {
+  if (!r) {
+    // THE INFERENCE THAT MAKES THIS COLUMN WORTH HAVING. A bill the supplier
+    // has not filed has NO 2B document, so it has no row here — the absence IS
+    // the finding, but only once somebody has reconciled the period. Before
+    // that the same absence means nobody checked, and the two must not read
+    // the same.
+    return periodReconciled ? "supplier has not filed" : "not reconciled";
+  }
+  if (r.itc_available === "N") return "ITC not available per 2B";
+  if (r.match_status === "matched") return "matched";
+  if (r.match_status === "amount_mismatch") return "amount mismatch";
+  if (r.match_status === "missing_in_books") return "no bill in the books";
+  return r.match_status;
+}
+
+/** The GSTR return period (MMYYYY) a bill dated `iso` belongs to. */
+function periodOf(iso: string | null | undefined): string {
+  const d = String(iso || "");
+  return d.length >= 7 ? `${d.slice(5, 7)}${d.slice(0, 4)}` : "";
+}
+
 export default function PurchasesPage() {
   const { clientId } = useClientNav();
   // ONE financial year for this page, owned by this page — see the Sales page
@@ -287,6 +333,13 @@ interface PurchaseBillRow {
 function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  // What GSTR-2B says about each bill, keyed by bill id. Empty until the CA
+  // has reconciled the period — and an ABSENT entry is not "not filed": it is
+  // "not reconciled OR not filed", which is why the column says which.
+  const [recon2B, setRecon2B] = useState<Record<string, Recon2BRow>>({});
+  //: The periods a 2B has actually been reconciled for. Without it the tab
+  //: cannot tell "the supplier did not file this" from "nobody has checked".
+  const [reconciledPeriods, setReconciledPeriods] = useState<Set<string>>(new Set());
   // Client's own Product/Service catalogue — only needed for the CSV import's
   // "resolve missing references" step (product_service column), same role
   // this plays on the Sales Invoices tab.
@@ -331,7 +384,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     const supabase = getSupabaseClient();
     const { start, end } = range;
     try {
-      const [billsRes, vendorsRes, servicesRes] = await Promise.all([
+      const [billsRes, vendorsRes, servicesRes, reconRes] = await Promise.all([
         selectAll(() => supabase
           .from("purchase_bills")
           .select("*, vendors(name)")
@@ -355,8 +408,27 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
           .eq("is_active", true)
           .order("name")
           .order("id")),
+        // PUR-11: what GSTR-2B says about each of these bills. There was no way
+        // to see, from this tab, that a specific bill was unmatched — so the one
+        // purchase-side question a CA asks every month ("which of my client's
+        // bills has the supplier not filed") had no answer here at all.
+        //
+        // A plain client-scoped read of the persisted reconciliation, like every
+        // other read on this page: the MATCHING happens in apps/api.
+        selectAll(() => supabase
+          .from("gstr2a_records")
+          .select("purchase_bill_id, match_status, match_difference_paise, "
+                  + "itc_available, itc_unavailable_reason, supplier_filed_on, return_period")
+          .eq("client_id", clientId)
+          .not("purchase_bill_id", "is", null)
+          .order("purchase_bill_id")),
       ]);
       setVendors((vendorsRes.data as Vendor[]) ?? []);
+      const reconRows = (reconRes.data as unknown as Recon2BRow[]) ?? [];
+      setRecon2B(Object.fromEntries(
+        reconRows.filter((r) => r.purchase_bill_id)
+                 .map((r) => [r.purchase_bill_id as string, r])));
+      setReconciledPeriods(new Set(reconRows.map((r) => r.return_period).filter(Boolean)));
       setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
       // M17: a failed bills fetch — a thrown network error OR a non-null
       // PostgREST error — must surface as retryable, not read as an empty
@@ -702,7 +774,35 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
       render: (b) => (
         <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{b.status}</span>
       ) },
-  ], []);
+    // PUR-11. §16(2)(aa): the credit on this bill is available only where the
+    // supplier has furnished the invoice and it has been communicated through
+    // GSTR-2B. Until now this tab could not say whether they had.
+    //
+    // NOT RECONCILED and NOT FILED are shown differently on purpose. An absent
+    // row means one of the two, and a column that printed the same thing for
+    // both would tell a CA a supplier had defaulted when nobody had checked.
+    { key: "gstr2b", header: "GSTR-2B",
+      accessor: (b) => recon2BLabel(recon2B[b.id], reconciledPeriods.has(periodOf(b.bill_date))),
+      sortable: true,
+      render: (b) => {
+        const r = recon2B[b.id];
+        if (!r) {
+          return reconciledPeriods.has(periodOf(b.bill_date))
+            ? <span className="text-[10px] text-red-700" title="This period's GSTR-2B was reconciled and this bill is not in it — §16(2)(aa) holds the credit back until the supplier files.">supplier has not filed</span>
+            : <span className="text-[10px] text-[#94A3B8]" title="No GSTR-2B has been reconciled for this bill's period. Upload it on the GST tab.">not reconciled</span>;
+        }
+        if (r.itc_available === "N") {
+          return <span className="text-[10px] text-amber-700" title={r.itc_unavailable_reason}>2B: ITC not available</span>;
+        }
+        if (r.match_status === "matched") {
+          return <span className="text-[10px] text-green-700" title={r.supplier_filed_on ? `Supplier filed on ${r.supplier_filed_on}` : undefined}>matched</span>;
+        }
+        if (r.match_status === "amount_mismatch") {
+          return <span className="text-[10px] text-amber-700" title={`Books claim ${fmt(Math.abs(r.match_difference_paise))} ${r.match_difference_paise > 0 ? "more" : "less"} tax than 2B carries`}>amount mismatch</span>;
+        }
+        return <span className="text-[10px] text-[#64748B]">{r.match_status}</span>;
+      } },
+  ], [recon2B]);
 
   const billFilters: FilterDef<PurchaseBillRow>[] = useMemo(() => [
     { key: "status", label: "Status", type: "select", accessor: (b) => b.status,
@@ -712,7 +812,18 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     { key: "bill_date", label: "Bill date", type: "dateRange", accessor: (b) => b.bill_date },
     { key: "net_payable", label: "Net payable", type: "amountRange", accessor: (b) => b.net_payable_paise },
     { key: "is_ai_extracted", label: "AI-extracted", type: "boolean", accessor: (b) => b.is_ai_extracted },
-  ], [vendors]);
+    // The filter a CA actually reaches for: show me the bills the supplier has
+    // not filed, so I know how much credit to hold back this month.
+    { key: "gstr2b", label: "GSTR-2B", type: "select",
+      accessor: (b) => recon2BLabel(recon2B[b.id], reconciledPeriods.has(periodOf(b.bill_date))),
+      options: [
+        { value: "matched", label: "Matched" },
+        { value: "amount mismatch", label: "Amount mismatch" },
+        { value: "ITC not available per 2B", label: "ITC not available per 2B" },
+        { value: "supplier has not filed", label: "Supplier has not filed" },
+        { value: "not reconciled", label: "Not reconciled" },
+      ] },
+  ], [vendors, recon2B, reconciledPeriods]);
 
   // ── DataTable bulk actions — receive is draft-only (non-draft rows are
   // skipped client-side); export just CSV-dumps the checked rows. ─────────

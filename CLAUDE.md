@@ -538,6 +538,45 @@ the query, and what crosses the wire is what is OWED rather than everything ever
 billed. Both obey the rule. Which shape a report needs is decided by the size of
 its ANSWER, not by the table it reads.
 
+## GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
+
+The one purchase-side task an Indian practice performs every month is "which of
+my client's bills has the supplier not filed, and how much ITC must I hold
+back". §16(2)(aa) makes it decisive rather than informational: credit is
+available only where the supplier has furnished the invoice and it has been
+communicated to the recipient, and **GSTR-2B is that communication**.
+
+- **`domain/gst/gstr2b.py` parses the real envelope** — `data.docdata` with
+  `b2b`, `b2ba`, `cdnr`, `cdnra`, `impg`, `impgsez`. Three things about the file
+  are easy to get wrong and are written down there: the tax is on the **rate
+  lines** (`inv.items[]`), never on `inv.val`, which is the whole invoice value
+  INCLUDING tax; `itcavl`/`rsn` are part of the document and a match that drops
+  them tells a CA the credit is safe when the portal has said it is not; and a
+  **credit note reduces** credit, so `cdnr` type "C" is signed negative.
+- **`domain/gst/itc_matching.py` is the matcher**, and it has FOUR answers.
+  `missing_in_2b` (we hold a bill nobody filed — chase the SUPPLIER) and
+  `missing_in_books` (they filed something we have no bill for — chase the
+  DOCUMENT) are opposite problems, and one figure for both sends the CA to the
+  wrong party. The document number is folded per SEGMENT (`INV/2025-26/0042` ==
+  `INV-2025-26-42`) because a false "missing" is a phone call that costs the CA
+  their credibility; the AMOUNT is never fuzzy, because a tolerance on the tax
+  is a tolerance on the credit claimed.
+- **`services/gst_2b_reconciliation_service.py` reads `purchase_bills` itself**
+  and writes `gstr2a_records` (migration 340). The caller sends the portal file
+  and nothing else: asking a screen to supply the purchase register it is
+  reconciling is asking it to supply the answer, which is exactly what
+  `raw["book_invoices"]` did. A re-upload REPLACES, and an unparseable file
+  persists NOTHING — a zero written and called reconciled is the false clean
+  result this replaced.
+- **Two screens still exist.** `/gst/reconciliation` matches two uploaded files
+  in the browser and saves nothing; it carries a banner saying so and pointing
+  at the client GST tab's GSTR-2B Recon, which is the real one. Keeping or
+  deleting it is an owner decision — see
+  `docs/audits/2026-09-08-what-is-left.md` §6b.
+- **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
+  document whether 2B allows the credit; `gstr3b_computer` still caps in
+  aggregate.
+
 ## Bank data — the Account Aggregator is the only way in
 
 Statement upload (CSV/XLSX, parsed server-side in `domain/banking/normalizer.py`)

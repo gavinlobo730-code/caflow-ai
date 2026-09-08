@@ -626,6 +626,31 @@ export default function GstReconciliationPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* THIS SCREEN IS THE OLD ONE, AND IT SAYS SO.
+          PUR-11: it matches in the BROWSER, over a purchase register the CA has
+          to export out of this product and upload back into it, and it persists
+          nothing — reopening it next month starts from zero, and no bill on the
+          Purchases tab can be told whether its supplier filed.
+
+          The reconciliation that reads the books and keeps its answer lives on
+          the client's own GST tab. Two screens doing one job drift, so this
+          banner exists until the owner decides which to keep — and until then a
+          CA must not be left to discover the difference by losing an evening's
+          work to a refresh. */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1">
+        <p className="text-sm font-medium text-amber-900">
+          This screen does not read your client&apos;s books, and it does not save anything.
+        </p>
+        <p className="text-xs text-amber-900">
+          It matches two files you upload, in the browser, and the result is gone on
+          refresh. The reconciliation that reads the purchase bills already in
+          PracticeSync — and remembers which supplier has not filed, so the Purchases
+          tab can show it — is on the client&apos;s{" "}
+          <strong>GST tab → GSTR-2B Recon</strong>. Use that one unless you are
+          reconciling a register that is not in this product.
+        </p>
+      </div>
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

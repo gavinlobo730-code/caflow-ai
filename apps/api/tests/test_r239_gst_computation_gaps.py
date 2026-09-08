@@ -326,19 +326,30 @@ def test_txval_to_paise_decimal_precision():
     assert _txval_to_paise(None) == 0
 
 
-def test_upload_gstr2b_matches_using_decimal_conversion(monkeypatch):
+def test_upload_gstr2b_converts_the_rate_lines_with_decimal(monkeypatch):
+    """The precision this pins is unchanged; the SHAPE it runs on is a real
+    GSTR-2B. The old version posted `{"invoices": [{"sgstin": ...}]}` — a key
+    the portal never emits — so it proved the conversion on a file that could
+    not exist."""
     import routers.gst_workspace as m
     import core.authz as authz
+    from domain.gst.gstr2b import parse_gstr2b
     monkeypatch.setattr(authz, "_USE_MOCK", True)  # permissive assert_client_access
-    body = m.GSTR2BUploadRequest(client_id="C1", period="042026", raw_data={
-        "invoices": [{"inum": "INV-1", "sgstin": "27PQRST9012K1Z8", "txval": 19999.99}],
-        "book_invoices": [{"invoice_no": "INV-1", "gstin": "27PQRST9012K1Z8", "taxable_paise": 1_999_999}],
-    })
+    raw = {"data": {"gstin": "27AAACX1234C1ZP", "rtnprd": "042026", "docdata": {"b2b": [
+        {"ctin": "27PQRST9012K1Z8", "inv": [
+            {"inum": "INV-1", "dt": "05-04-2026", "val": 23599.99, "itcavl": "Y",
+             "items": [{"num": 1, "rt": 18.0, "txval": 19999.99,
+                        "igst": 3600.0, "cgst": 0, "sgst": 0}]}]}]}}}
+    body = m.GSTR2BUploadRequest(client_id="C1", period="042026", raw_data=raw)
     resp = m.upload_gstr2b(body, CALLER)
     assert resp["success"] is True
-    summary = resp["data"]["reconciliation_result"]["summary"]
-    assert summary["matched_count"] == 1
-    assert summary["mismatch_count"] == 0
+    assert resp["data"]["portal_document_count"] == 1
+
+    # The conversion itself, exactly: 19999.99 rupees is 1,999,999 paise and
+    # never 1,999,998 — which is where float(x) * 100 lands.
+    doc = parse_gstr2b(raw).documents[0]
+    assert doc.taxable_value_paise == 1_999_999
+    assert doc.igst_paise == 3_60_000
 
 
 # =============================================================================

@@ -380,10 +380,21 @@ def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
     # 1000th row and then raises KeyError — so the failure appears only on a
     # client with a busy month, which is the one whose return most needs the
     # rows this function is fetching.
+    #
+    # ITC-UNAVAILABLE DOCUMENTS ARE EXCLUDED. GSTR-2B marks each document
+    # `itcavl` Y or N — "N" with reason "P" (the place of supply and the
+    # supplier's State are the same and the recipient is elsewhere) or "C" (the
+    # supplier filed after the §16(4) cut-off). §16(2)(aa) makes the credit turn
+    # on what 2B says, so counting a blocked document towards the Rule 36(4)
+    # ceiling would raise the cap by credit the portal has already refused.
+    #
+    # `neq` rather than `eq("Y")`: a row written before migration 340, and an
+    # import (which carries no itcavl at all), have an empty string here, and
+    # excluding those would silently shrink the cap instead.
     return _paginate_all(lambda: db.table("gstr2a_records")
             .select("id, taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
             .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("return_period", period))
+            .eq("return_period", period).neq("itc_available", "N"))
 
 
 def _customers_for_3b(db, firm_id, rows) -> dict:

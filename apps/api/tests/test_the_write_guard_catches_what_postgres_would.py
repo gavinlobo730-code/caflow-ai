@@ -115,8 +115,26 @@ def test_a_column_a_later_migration_added_is_allowed_by_name():
 
 def test_the_post_snapshot_list_stays_short_and_names_its_migrations():
     """A long list means the snapshot needs refreshing, not that the list needs
-    another entry."""
-    assert len(ADDED_AFTER_THE_SNAPSHOT) <= 20, (
+    another entry.
+
+    COUNTED BY MIGRATION, not by column, and the difference matters. One
+    migration adding sixteen columns to one table (340 does) is ONE thing to
+    remember and one thing the next snapshot refresh clears. Sixteen migrations
+    each adding a column is the drift this guard exists to catch — the schema
+    moving faster than anybody is looking at it.
+
+    A column cap alone made the guard fire on the wrong signal: it told a
+    developer to refresh a production snapshot from a database that does not
+    yet have the migration, because migrations reach production only on merge
+    to main.
+    """
+    migrations = set(ADDED_AFTER_THE_SNAPSHOT.values())
+    assert len(migrations) <= 8, (
+        f"{len(migrations)} unapplied migrations are being worked around "
+        f"({sorted(migrations)}). Refresh tests/fixtures/production_schema_*.json "
+        f"once they are on main, instead of adding more."
+    )
+    assert len(ADDED_AFTER_THE_SNAPSHOT) <= 40, (
         "refresh tests/fixtures/production_schema_*.json instead of adding more"
     )
     for (table, column), why in ADDED_AFTER_THE_SNAPSHOT.items():
