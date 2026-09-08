@@ -27,6 +27,7 @@ import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -116,9 +117,15 @@ function formatDateTime(iso: string | null): string {
   });
 }
 
-function rupeesToPaise(rupeesStr: string): number {
-  const n = parseInt(rupeesStr.replace(/[^0-9]/g, ""), 10);
-  return isNaN(n) ? 0 : n * 100;
+// The fee crosses the API as integer paise, and it goes through the one
+// parser. What was here stripped every non-digit and then multiplied by 100:
+// "1234.56" became the digits "123456" and then ₹1,23,456 — a HUNDREDFOLD
+// overstatement on the engagement letter the client signs, with the decimal
+// point silently promoted to a thousands separator. paiseFromRupeeInput reads
+// the decimal instead of deleting it, and returns null for text that is not an
+// amount rather than a number nobody typed.
+function rupeesToPaise(rupeesStr: string): number | null {
+  return paiseFromRupeeInput(rupeesStr.replace(/[,\s₹]/g, ""));
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +211,11 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const feePaise = rupeesToPaise(form.fee_rupees);
+    if (feePaise === null) {
+      setErr("Fee isn't an amount — enter rupees, like 25000 or 25000.50.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {
@@ -213,7 +225,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
           title: form.title.trim(),
           template_id: form.template_id || null,
           recipient_name: form.recipient_name.trim() || null,
-          fee_amount_paise: rupeesToPaise(form.fee_rupees),
+          fee_amount_paise: feePaise,
           recipient_email: form.recipient_email.trim() || null,
           start_date: form.start_date || null,
           expiry_date: form.expiry_date || null,

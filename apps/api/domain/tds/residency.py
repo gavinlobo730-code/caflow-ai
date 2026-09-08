@@ -152,6 +152,14 @@ GAP_NO_PE_DECLARATION_UNDATED = "no_pe_declaration_undated"
 # Money left for a non-resident and no Form 15CA acknowledgement was recorded
 # against the bill. Rule 37BB with s.195(6) wants it BEFORE the remittance.
 GAP_FORM_15CA_NOT_RECORDED = "form_15ca_not_recorded"
+# The deduction on this bill is the YEAR'S catch-up, not this bill's own rate
+# applied to this bill's own value, so the deductee row's three money columns do
+# not multiply out. Every one of them is individually right — Form 26Q's
+# annexure asks for the amount paid on this date, the rate deducted under, and
+# the tax deducted — but a reader checking rate x amount = tax will find it does
+# not close, and a validator may say the same. The gap exists so that arrives as
+# a sentence rather than as a surprise at the FVU.
+GAP_TDS_IS_A_FY_CATCH_UP = "tds_is_a_fy_catch_up"
 
 # What each code MEANS, for the CA who has to act on it. A bare
 # "no_pe_declaration_undated" on a screen is a code, not a prompt: it says
@@ -167,6 +175,14 @@ GAP_MESSAGES: dict[str, str] = {
         "This deduction belongs on Form 27Q, which reports the payee's country "
         "and — where there is no PAN — its tax identification number. Add them "
         "to the vendor before the quarter is filed.",
+    GAP_TDS_IS_A_FY_CATCH_UP:
+        "The tax deducted on this bill is the whole financial year's liability "
+        "on the aggregate paid to this payee, less what earlier bills already "
+        "withheld — section 194C(5) and its neighbours charge on the aggregate, "
+        "so the bill that crosses a threshold carries the year's tax. The "
+        "deductee row's rate multiplied by its amount will NOT equal the tax "
+        "deducted, and that is correct. Check the figure against the payee's "
+        "year before filing the quarter.",
     GAP_195_RATES_UNVERIFIED:
         "The section 195 rates for this financial year were reconciled against "
         "s.115A and Part II of the First Schedule but have NOT been confirmed "

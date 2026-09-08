@@ -11,9 +11,12 @@
  * (Sales invoices have their own mapper at lib/invoices/importMapping.ts.)
  */
 
+import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
+
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /** GSTIN: 2-digit state + PAN(10) + entity# + Z + check (CGST Act §25). */
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 /** PAN: AAAAA9999A (IT Act §139A). */
@@ -23,10 +26,38 @@ export interface ImportColumn { key: string; label: string; required: boolean; h
 
 function str(v: string | undefined): string { return (v ?? "").trim(); }
 function num(v: string | undefined): number { return parseFloat(str(v)); }
-/** Rupees string → integer paise (never float). */
-function toPaise(rupees: string | undefined): number { return Math.round(num(rupees) * 100); }
-/** Percent string → basis points (e.g. "18" → 1800). */
-function toBps(percent: string | undefined): number { return Math.round(num(percent) * 100); }
+
+/** A spreadsheet cell with the marks a person puts in one taken off: the
+ *  currency symbol, the Indian thousands commas, a stray percent sign. */
+function cell(v: string | undefined): string { return str(v).replace(/[,\s₹%]/g, ""); }
+
+/**
+ * Rupees string → integer paise, or NaN when the cell is not an amount.
+ *
+ * NaN rather than null because every call site below already gates on
+ * `Number.isFinite`, which is what makes this a safe swap: what changes is
+ * WHICH cells are finite. It was `Math.round(parseFloat(cell) * 100)`, and
+ * parseFloat is not a rupee parser — it reads "1,25,000" as **1**, which is
+ * finite, so every one of those guards passed and a spreadsheet exported from
+ * Tally imported one rupee. "1e3" was ₹1,000 and "1200abc" was ₹1,200 on the
+ * same reasoning.
+ */
+function toPaise(rupees: string | undefined): number {
+  const p = paiseFromRupeeInput(cell(rupees));
+  return p === null ? NaN : p;
+}
+
+/** Percent string → basis points (e.g. "18" → 1800), or NaN. Same reasoning. */
+function toBps(percent: string | undefined): number {
+  const b = bpsFromPercentInput(cell(percent));
+  return b === null ? NaN : b;
+}
+
+/** A quantity cell → the number the line payload carries, or NaN. */
+function toQty(v: string | undefined): number {
+  const q = parseQuantity(cell(v));
+  return q === null ? NaN : q;
+}
 /** Permissive boolean parse for spreadsheet cells: yes/true/1/y → true. */
 function toBool(v: string | undefined, fallback = false): boolean {
   const s = str(v).toLowerCase();
@@ -413,23 +444,24 @@ export function buildPurchaseBills(
     const description = str(r.description) || (service?.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
-    const qty = num(r.quantity);
+    const qty = toQty(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
 
     const rateRaw = str(r.rate);
-    const rate = rateRaw ? num(r.rate) : (service?.purchase_price_paise != null ? service.purchase_price_paise / 100 : NaN);
-    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a purchase price)`); return; }
+    const ratePaise = rateRaw ? toPaise(r.rate) : (service?.purchase_price_paise ?? NaN);
+    if (!Number.isFinite(ratePaise) || ratePaise < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a purchase price)`); return; }
 
     const gstRaw = str(r.gst_rate);
-    const gst = gstRaw ? num(r.gst_rate) : (service?.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
-    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
+    const gstBps = gstRaw ? toBps(r.gst_rate) : (service?.gst_rate_bps ?? NaN);
+    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
+    const gst = gstBps / 100;
 
     const ref = billNo || `${vendorName.toLowerCase()}|${billDate}`;
     const line: BuiltBillLine = {
       description,
       hsn_sac: str(r.hsn_sac) || service?.hsn_sac?.trim() || undefined,
       quantity: qty,
-      rate_paise: Math.round(rate * 100),
+      rate_paise: ratePaise,
       gst_rate_percent: gst,
       unit: service?.unit?.trim() || undefined,
       service_catalogue_id: service?.id,
@@ -696,22 +728,23 @@ function parseSalesNoteRows(
     const description = str(r.description) || (service.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
-    const qty = num(r.quantity);
+    const qty = toQty(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
 
     const rateRaw = str(r.rate);
-    const rate = rateRaw ? num(r.rate) : (service.default_rate_paise != null ? service.default_rate_paise / 100 : NaN);
-    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or use a Product/Service with a default price)`); return; }
+    const ratePaise = rateRaw ? toPaise(r.rate) : (service.default_rate_paise ?? NaN);
+    if (!Number.isFinite(ratePaise) || ratePaise < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or use a Product/Service with a default price)`); return; }
 
     const gstRaw = str(r.gst_rate);
-    const gst = gstRaw ? num(r.gst_rate) : (service.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
-    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+    const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
+    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+    const gst = gstBps / 100;
 
     const line: BuiltNoteLine = {
       description,
       hsn_sac: str(r.hsn_sac) || service.hsn_sac?.trim() || undefined,
       quantity: qty,
-      rate_paise: Math.round(rate * 100),
+      rate_paise: ratePaise,
       gst_rate_percent: gst,
       unit: service.unit?.trim() || undefined,
       service_catalogue_id: service.id,
@@ -875,22 +908,23 @@ function parsePurchaseNoteRows(
     const description = str(r.description) || (service.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
-    const qty = num(r.quantity);
+    const qty = toQty(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
 
     const rateRaw = str(r.rate);
-    const rate = rateRaw ? num(r.rate) : (service.purchase_price_paise != null ? service.purchase_price_paise / 100 : NaN);
-    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or use a Product/Service with a purchase price)`); return; }
+    const ratePaise = rateRaw ? toPaise(r.rate) : (service.purchase_price_paise ?? NaN);
+    if (!Number.isFinite(ratePaise) || ratePaise < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or use a Product/Service with a purchase price)`); return; }
 
     const gstRaw = str(r.gst_rate);
-    const gst = gstRaw ? num(r.gst_rate) : (service.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
-    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+    const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
+    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+    const gst = gstBps / 100;
 
     const line: BuiltNoteLine = {
       description,
       hsn_sac: str(r.hsn_sac) || service.hsn_sac?.trim() || undefined,
       quantity: qty,
-      rate_paise: Math.round(rate * 100),
+      rate_paise: ratePaise,
       gst_rate_percent: gst,
       unit: service.unit?.trim() || undefined,
       service_catalogue_id: service.id,

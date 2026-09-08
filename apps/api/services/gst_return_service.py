@@ -380,10 +380,21 @@ def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
     # 1000th row and then raises KeyError — so the failure appears only on a
     # client with a busy month, which is the one whose return most needs the
     # rows this function is fetching.
+    #
+    # ITC-UNAVAILABLE DOCUMENTS ARE EXCLUDED. GSTR-2B marks each document
+    # `itcavl` Y or N — "N" with reason "P" (the place of supply and the
+    # supplier's State are the same and the recipient is elsewhere) or "C" (the
+    # supplier filed after the §16(4) cut-off). §16(2)(aa) makes the credit turn
+    # on what 2B says, so counting a blocked document towards the Rule 36(4)
+    # ceiling would raise the cap by credit the portal has already refused.
+    #
+    # `neq` rather than `eq("Y")`: a row written before migration 340, and an
+    # import (which carries no itcavl at all), have an empty string here, and
+    # excluding those would silently shrink the cap instead.
     return _paginate_all(lambda: db.table("gstr2a_records")
             .select("id, taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
             .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("return_period", period))
+            .eq("return_period", period).neq("itc_available", "N"))
 
 
 def _customers_for_3b(db, firm_id, rows) -> dict:
@@ -440,7 +451,7 @@ def _recipient_type(cust: dict | None) -> str:
 #   ONE line is fetched per request, scoped to one period. Apex's April is 347
 #   invoices for 3.1(a) or 54 bills for 4(A); nothing walks the ledger.
 
-GSTR3B_DETAIL_LINES = ("3.1a", "4A", "4B1", "4B2")
+GSTR3B_DETAIL_LINES = ("3.1a", "3.1d", "4A", "4B1", "4B2")
 
 
 def _detail_row(doc: dict, kind: str, no_field: str, date_field: str,
@@ -516,6 +527,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
 
     line is one of GSTR3B_DETAIL_LINES:
       3.1a  outward taxable supplies — invoices and sales debit notes, less credit notes
+      3.1d  inward supplies liable to reverse charge — the bills and notes carrying it
       4A    ITC available — purchase bills, gross of any s.17(5) blocked portion
       4B1   permanent reversals — bills cancelled in the period, and blocked credit
       4B2   reclaimable reversals — the ITC reversal register
@@ -538,6 +550,28 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
         # CGST §34: a credit note reduces outward tax, so it carries a minus.
         rows += [_detail_row(c, "Credit note", "credit_note_no", "credit_note_date",
                              names.get(c.get("customer_id"), ""), sign=-1) for c in cns]
+
+    elif line == "3.1d":
+        # Inward supplies liable to reverse charge — §9(3)/(4). The documents
+        # are the same purchase bills and notes 4(A) lists, filtered to the ones
+        # carrying the charge. Listed because a CA reconciling 3.1(d) needs to
+        # know WHICH vendors put them there — an RCM figure with no documents
+        # behind it is the one line of the return nobody can check, and it is
+        # also the line whose tax cannot be paid from credit (§49(4) with
+        # §2(82)), so getting it wrong costs cash rather than credit.
+        bills = [b for b in _posted_bills(db, firm_id, client_id, start, end)
+                 if bool(b.get("is_reverse_charge"))]
+        dns = [d for d in _issued_debit_notes(db, firm_id, client_id, start, end)
+               if bool(d.get("is_reverse_charge"))]
+        pcns = [c for c in _issued_purchase_credit_notes(db, firm_id, client_id, start, end)
+                if bool(c.get("is_reverse_charge"))]
+        names = _vendor_names(db, firm_id, bills + dns + pcns)
+        rows += [_detail_row(b, "Bill", "bill_no", "bill_date",
+                             names.get(b.get("vendor_id"), "")) for b in bills]
+        rows += [_detail_row(d, "Debit note", "debit_note_no", "debit_note_date",
+                             names.get(d.get("vendor_id"), "")) for d in dns]
+        rows += [_detail_row(c, "Credit note", "credit_note_no", "credit_note_date",
+                             names.get(c.get("vendor_id"), ""), sign=-1) for c in pcns]
 
     elif line == "4A":
         bills = _posted_bills(db, firm_id, client_id, start, end)

@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { Combobox } from "@/components/ui/combobox";
 import { api, type ApiResp } from "@/lib/api";
 import {
@@ -289,7 +290,11 @@ export function HsnLookup(props: {
           onChange(row.hsn_code);
           onPick?.({
             hsn_code: row.hsn_code,
-            gst_rate_bps: row.gst_rate_pct != null ? Math.round(row.gst_rate_pct * 100) : null,
+            // Through the exact converter even though this figure came from the
+            // HSN library rather than a keystroke: Math.round(0.1 * 100) and
+            // bpsFromPercentInput("0.1") are the same number here, and keeping
+            // one converter is what stops them ever not being.
+            gst_rate_bps: row.gst_rate_pct != null ? bpsFromPercentInput(String(row.gst_rate_pct)) : null,
             description: row.description,
             uqc: row.uqc,
           });

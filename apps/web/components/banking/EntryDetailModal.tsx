@@ -92,7 +92,10 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
    *  first answers must not be overwritten by the first's reply. */
   const writeSeq = useRef(0);
   const [busy, setBusy] = useState(false);
-  const [gstRate, setGstRate] = useState<string>("");
+  // Named for what it holds. GST_RATE_OPTIONS carries basis points (1800 for
+  // 18%), so this select's value is already in the unit the payload wants —
+  // which is why Number() on it is a cast and not a rupee conversion.
+  const [gstRateBps, setGstRateBps] = useState<string>("");
   const [interstate, setInterstate] = useState(false);
   const [splitMode, setSplitMode] = useState<"ledgers" | "documents" | null>(null);
   const [prefill, setPrefill] = useState<SettlePrefill | null>(null);
@@ -161,7 +164,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       if (!res.success || !res.data) throw new Error("Couldn't load this entry.");
       setT(res.data);
       setError(null);
-      setGstRate(res.data.draft_gst_rate_bps != null ? String(res.data.draft_gst_rate_bps) : "");
+      setGstRateBps(res.data.draft_gst_rate_bps != null ? String(res.data.draft_gst_rate_bps) : "");
       setInterstate(!!res.data.draft_is_interstate);
       setEnrich("ready");
     } catch (e) {
@@ -298,7 +301,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   };
 
   async function pass() {
-    const body = t!.gst_allowed && gstRate !== "" ? { gst_rate_bps: Number(gstRate), is_interstate: interstate } : undefined;
+    const body = t!.gst_allowed && gstRateBps !== "" ? { gst_rate_bps: Number(gstRateBps), is_interstate: interstate } : undefined;
     const ok = await act("Not passed", () => api.banking.entries.pass(t!.id, body));
     if (ok) { toast({ title: `Passed as a ${KIND_LABEL[t!.kind]}` }); onClose(); }
   }
@@ -373,13 +376,13 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             <label className="block text-[11px] font-medium text-[#475569] mb-1">GST inside this amount</label>
             {t.gst_allowed ? (
               <div className="flex items-center gap-3 flex-wrap">
-                <select value={gstRate} disabled={busy} onChange={(e) => setGstRate(e.target.value)}
+                <select value={gstRateBps} disabled={busy} onChange={(e) => setGstRateBps(e.target.value)}
                   aria-label={t.credit_paise > 0 ? "Output GST on this receipt" : "Input GST on this payment"}
                   className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg bg-white">
                   <option value="">No GST split</option>
                   {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                {gstRate !== "" && gstRate !== "0" && (
+                {gstRateBps !== "" && gstRateBps !== "0" && (
                   <label className="flex items-center gap-1.5 text-xs text-[#475569]">
                     <input type="checkbox" disabled={busy} checked={interstate} onChange={(e) => setInterstate(e.target.checked)} className="h-3.5 w-3.5 rounded border-[#CBD5E1]" />
                     IGST (inter-state)

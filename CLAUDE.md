@@ -538,6 +538,45 @@ the query, and what crosses the wire is what is OWED rather than everything ever
 billed. Both obey the rule. Which shape a report needs is decided by the size of
 its ANSWER, not by the table it reads.
 
+## GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
+
+The one purchase-side task an Indian practice performs every month is "which of
+my client's bills has the supplier not filed, and how much ITC must I hold
+back". §16(2)(aa) makes it decisive rather than informational: credit is
+available only where the supplier has furnished the invoice and it has been
+communicated to the recipient, and **GSTR-2B is that communication**.
+
+- **`domain/gst/gstr2b.py` parses the real envelope** — `data.docdata` with
+  `b2b`, `b2ba`, `cdnr`, `cdnra`, `impg`, `impgsez`. Three things about the file
+  are easy to get wrong and are written down there: the tax is on the **rate
+  lines** (`inv.items[]`), never on `inv.val`, which is the whole invoice value
+  INCLUDING tax; `itcavl`/`rsn` are part of the document and a match that drops
+  them tells a CA the credit is safe when the portal has said it is not; and a
+  **credit note reduces** credit, so `cdnr` type "C" is signed negative.
+- **`domain/gst/itc_matching.py` is the matcher**, and it has FOUR answers.
+  `missing_in_2b` (we hold a bill nobody filed — chase the SUPPLIER) and
+  `missing_in_books` (they filed something we have no bill for — chase the
+  DOCUMENT) are opposite problems, and one figure for both sends the CA to the
+  wrong party. The document number is folded per SEGMENT (`INV/2025-26/0042` ==
+  `INV-2025-26-42`) because a false "missing" is a phone call that costs the CA
+  their credibility; the AMOUNT is never fuzzy, because a tolerance on the tax
+  is a tolerance on the credit claimed.
+- **`services/gst_2b_reconciliation_service.py` reads `purchase_bills` itself**
+  and writes `gstr2a_records` (migration 340). The caller sends the portal file
+  and nothing else: asking a screen to supply the purchase register it is
+  reconciling is asking it to supply the answer, which is exactly what
+  `raw["book_invoices"]` did. A re-upload REPLACES, and an unparseable file
+  persists NOTHING — a zero written and called reconciled is the false clean
+  result this replaced.
+- **Two screens still exist.** `/gst/reconciliation` matches two uploaded files
+  in the browser and saves nothing; it carries a banner saying so and pointing
+  at the client GST tab's GSTR-2B Recon, which is the real one. Keeping or
+  deleting it is an owner decision — see
+  `docs/audits/2026-09-08-what-is-left.md` §6b.
+- **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
+  document whether 2B allows the credit; `gstr3b_computer` still caps in
+  aggregate.
+
 ## Bank data — the Account Aggregator is the only way in
 
 Statement upload (CSV/XLSX, parsed server-side in `domain/banking/normalizer.py`)
@@ -927,17 +966,37 @@ imprecise:
   amount, both were accepted.
 - a blank field gives `NaN`, and `JSON.stringify` sends that as `null`.
 
-All 61 call sites across 28 files are converted — and that sentence stood here
-unguarded while **nine more** lived on until 2026-09-08, in the bank settlement
-modal (which posts to the GL), the bank match filter, the bank rules editor,
-the recurring journal, client billing, the budget grid and the GSTR-2A import.
-`components/banking/shared.ts::rsToP` was the reason: it took a `number` and did
-`Math.round(rs * 100)`, so every caller had to `parseFloat` first. It now takes
-the text as typed and returns null.
-**`apps/web/scripts/every-amount-field-uses-the-one-parser.test.ts` is what
-holds the claim up now** — it sweeps `apps/web` for `rsToP(parseFloat`,
-`Math.round(parseFloat` and `parseFloat(…) * 100`, allowlisting only the three
-deliberate exceptions below. Prose was not the guard.
+**That claim has now been wrong twice, and how it was wrong the second time is
+the part worth keeping.** "All 61 call sites across 28 files are converted"
+stood here unguarded while **nine more** lived on until 2026-09-08 — the bank
+settlement modal (which posts to the GL), the bank match filter, the bank rules
+editor, the recurring journal, client billing, the budget grid and the GSTR-2A
+import. `components/banking/shared.ts::rsToP` was the reason: it took a `number`
+and did `Math.round(rs * 100)`, so every caller had to `parseFloat` first. It
+now takes the text as typed and returns null.
+
+Prose was then replaced by **three regexes** — `rsToP(parseFloat`,
+`Math.round(parseFloat` and `parseFloat(…) * 100` — and the same claim was
+re-made on top of them. Running those three over the tree the next day found
+**sixteen more files** none of them matched, because none of them is the rule.
+Each names one SPELLING, and the defect has as many spellings as there are ways
+to write a number:
+
+```
+parseInt(s.replace(/[^0-9]/g, ""), 10) * 100   // "1234.56" -> ₹1,23,456
+Math.round(Number(cleaned) * 100)              // "1e3"     -> ₹1,000
+Number(whole) * 100 + Number(frac)             // "1.2.3"   -> ₹1.02
+```
+
+So the guard is now the RULE rather than a spelling of it, in two directions:
+**nothing whose name ends in `_paise`/`Paise`/`_bps`/`Bps` may be built with a
+numeric coercion or a multiplication by 100**, and **a function whose own name
+says it makes paise out of text must delegate to `lib/money/rupeeInput.ts` by
+name**. A cast of a value ALREADY in the unit — `Number(row.tds_paise ?? 0)`,
+because PostgREST returns a bigint as a string — is allowed and is the only
+thing that is. The three original regexes are kept as a third test because each
+of them is a bug that shipped. Against the code of 2026-09-08 the new check
+fails on **26 sites across 17 files**; the three regexes passed on every one.
 
 The module also carries
 `bpsFromPercentInput` (a typed percentage → basis points) and `parseQuantity`
@@ -946,10 +1005,10 @@ The module also carries
 together — used by the validator, the preview and the payload, so what a CA is
 shown adding up and what is saved are the same numbers.
 
-**Three deliberate exceptions, all in the same place.** `gstLine.ratePaiseFromRupees`
-and `computeLineGst` still take the rate STRING and still do
-`Math.round(rate * 100)`, and the three purchase-note previews still call them
-that way. `shared/gst-parity-vectors.json` pins those to the Python backend on
+**One deliberate exception, and the three files that call it — four allowlisted
+paths in all.** `gstLine.ratePaiseFromRupees` and `computeLineGst` still take
+the rate STRING and still do `Math.round(rate * 100)`, and the three
+purchase-note previews still call them that way. `shared/gst-parity-vectors.json` pins those to the Python backend on
 exactly those strings — including `"1.005"`, which the backend truncates to 100
 paise and which the new parser refuses. Converting to paise and dividing back
 would put a float round-trip inside the one calculation that is pinned. What

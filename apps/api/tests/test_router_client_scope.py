@@ -1346,6 +1346,11 @@ EXEMPT: dict[str, str] = {
         "the financial years this build holds rate tables for "
         "(domain.income_tax.statutory_rates.RATES_BY_FY) — a property of the "
         "software, identical for every firm and client, no stored data read.",
+    "/api/income-tax/assessee-kind":
+        "a pure lookup on the entity-type STRING the caller supplies — "
+        "'Private Limited' is a domestic company, 'Proprietorship' is an "
+        "individual, a Trust is refused — identical for every firm and client, "
+        "no stored data read and no client named.",
     "/api/income-tax/capital-gains/cii-table":
         "the statutory Cost Inflation Index table (Section 48 2nd proviso) "
         "— identical for every firm and client, no stored data read.",

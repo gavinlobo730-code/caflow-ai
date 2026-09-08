@@ -391,7 +391,7 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
 def gstr3b_detail_endpoint(
     client_id: str = Query(...),
     period: str = Query(..., description="MMYYYY e.g. 042026"),
-    line: str = Query(..., description="One of 3.1a, 4A, 4B1, 4B2"),
+    line: str = Query(..., description="One of 3.1a, 3.1d, 4A, 4B1, 4B2"),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """The documents behind one GSTR-3B figure — the detail half of the return.

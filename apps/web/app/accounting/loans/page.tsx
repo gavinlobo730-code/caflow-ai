@@ -11,7 +11,7 @@
  * (₹50,000 for senior citizens). TDS rate: 10% (20% if PAN not furnished).
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
@@ -144,6 +144,26 @@ function calculateFDMaturityPaise(
   return Math.round(principalPaise * factor); // integer paise
 }
 
+/**
+ * An interest rate as typed → the percent number the API field carries, or
+ * null. The API takes `interest_rate_percent`, so this converts back from the
+ * exact basis points rather than staying in them.
+ *
+ * parseFloat read "10,5" as 10 and "7.5abc" as 7.5, and an interest rate is
+ * money by the time it reaches an EMI schedule or an FD maturity figure.
+ */
+function ratePercentFromInput(raw: string): number | null {
+  const bps = bpsFromPercentInput(raw.replace(/[,\s%]/g, ""));
+  return bps === null ? null : bps / 100;
+}
+
+/** A whole number of months as typed, or null. parseInt("12abc") is 12. */
+function monthsFromInput(raw: string): number | null {
+  const t = raw.trim();
+  if (!/^\d{1,4}$/.test(t)) return null;
+  return Number(t);
+}
+
 function daysToDate(isoDate: string): number {
   // Delegates the day-diff arithmetic to the shared helper (Phase 3
   // consolidation) — mathematically identical result, since a fixed
@@ -272,7 +292,7 @@ export default function LoansAndFDPage() {
     // as ₹12 and every EMI schedule built from it was fiction.
     const principal = paiseFromRupeeInput(loanForm.principal);
     const outstanding = paiseFromRupeeInput(loanForm.outstanding);
-    const rate = parseFloat(loanForm.interest_rate);
+    const rate = ratePercentFromInput(loanForm.interest_rate);
     if (principal === null || outstanding === null) {
       setLoanError("Principal and outstanding must be amounts in rupees, e.g. 1250000 "
                    + "or 1250000.50 — without commas.");
@@ -280,7 +300,7 @@ export default function LoansAndFDPage() {
     }
     if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
     if (outstanding < 0) { setLoanError("Enter a valid outstanding amount"); return; }
-    if (isNaN(rate) || rate <= 0) { setLoanError("Enter a valid interest rate"); return; }
+    if (rate === null || rate <= 0) { setLoanError("Enter a valid interest rate"); return; }
     if (!loanForm.disbursement_date) { setLoanError("Disbursement date is required"); return; }
 
     setLoanSaving(true);
@@ -340,14 +360,14 @@ export default function LoansAndFDPage() {
     if (!fdForm.client_id) { setFDError("Select a client"); return; }
     if (!fdForm.bank_name.trim()) { setFDError("Bank name is required"); return; }
     const principal = paiseFromRupeeInput(fdForm.principal);
-    const rate = parseFloat(fdForm.interest_rate);
+    const rate = ratePercentFromInput(fdForm.interest_rate);
     if (principal === null) {
       setFDError("Principal must be an amount in rupees, e.g. 500000 or 500000.50 "
                  + "— without commas.");
       return;
     }
     if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }
-    if (isNaN(rate) || rate <= 0) { setFDError("Enter a valid interest rate"); return; }
+    if (rate === null || rate <= 0) { setFDError("Enter a valid interest rate"); return; }
     if (!fdForm.start_date) { setFDError("Start date is required"); return; }
     if (!fdForm.maturity_date) { setFDError("Maturity date is required"); return; }
     if (fdForm.maturity_date <= fdForm.start_date) { setFDError("Maturity date must be after start date"); return; }
@@ -407,9 +427,9 @@ export default function LoansAndFDPage() {
     // The EMI calculator is read-only, so an unreadable principal simply
     // computes nothing rather than an EMI on a coerced figure.
     const p = paiseFromRupeeInput(calcPrincipal);
-    const r = parseFloat(calcRate);
-    const n = parseInt(calcTenure, 10);
-    if (p !== null && !isNaN(r) && !isNaN(n) && p > 0 && r > 0 && n > 0) {
+    const r = ratePercentFromInput(calcRate);
+    const n = monthsFromInput(calcTenure);
+    if (p !== null && r !== null && n !== null && p > 0 && r > 0 && n > 0) {
       setCalcResult(calculateEMIPaise(p, r, n));
     }
   }
@@ -442,11 +462,16 @@ export default function LoansAndFDPage() {
 
   // ─── Derived FD form maturity ──────────────────────────────────────────────
 
+  // Both readings can refuse, and the preview shows nothing rather than a
+  // maturity figure computed on a rate or a principal nobody typed.
+  const fdPreviewPrincipalPaise = paiseFromRupeeInput(fdForm.principal);
+  const fdPreviewRatePercent = ratePercentFromInput(fdForm.interest_rate);
   const fdPreviewMaturityPaise =
     fdForm.principal && fdForm.interest_rate && fdForm.start_date && fdForm.maturity_date
+      && fdPreviewPrincipalPaise !== null && fdPreviewRatePercent !== null
       ? calculateFDMaturityPaise(
-          paiseFromRupeeInput(fdForm.principal) ?? 0,
-          parseFloat(fdForm.interest_rate),
+          fdPreviewPrincipalPaise,
+          fdPreviewRatePercent,
           fdForm.start_date,
           fdForm.maturity_date
         )

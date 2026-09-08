@@ -70,13 +70,35 @@ def _scalar(dsn: str, sql: str) -> str:
 
 
 def _edit(dsn: str, lines_json: str, *, date: str = "2026-06-15",
-          narration: str = "Rent, corrected", actor: str = ACTOR) -> subprocess.CompletedProcess:
+          narration: str = "Rent, corrected", actor: str = ACTOR,
+          entry_id: str = POSTED) -> subprocess.CompletedProcess:
     """Call the function the way the service does."""
     return _psql(dsn, f"""
         SELECT public.edit_posted_journal(
-            '{FIRM}'::uuid, '{CLIENT}'::uuid, '{POSTED}'::uuid,
+            '{FIRM}'::uuid, '{CLIENT}'::uuid, '{entry_id}'::uuid,
             '{lines_json}'::jsonb, '{narration}', NULL, '{date}'::date, '{actor}'::uuid);
     """)
+
+
+def _seed_posted(dsn: str, entry_id: str, source_type: str,
+                 reference_no: str) -> None:
+    """A second posted entry with a source_type of its own.
+
+    Inserted rather than UPDATEd: prevent_posted_journal_update refuses a plain
+    UPDATE of a posted entry, which is the immutability this whole file is
+    about — so mutating the seeded row to test the gate tests the wrong trigger.
+    """
+    r = _psql(dsn, f"""
+        INSERT INTO journal_entries
+            (id, firm_id, client_id, entry_date, reference_no, narration,
+             entry_type, is_posted, source_type)
+        VALUES ('{entry_id}', '{FIRM}', '{CLIENT}', '2026-06-15',
+                '{reference_no}', 'Auto', 'Journal', true, {source_type});
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise)
+        VALUES ('{entry_id}', '{RENT}', {AMOUNT}, 0),
+               ('{entry_id}', '{CASH}', 0, {AMOUNT});
+    """)
+    assert r.returncode == 0, r.stderr
 
 
 def _balanced(debit_account: str, credit_account: str, amount: int) -> str:
@@ -406,6 +428,76 @@ def test_a_correction_of_an_unknown_entry_refuses(db):
 
     assert r.returncode != 0
     assert "not found" in (r.stderr or "").lower()
+
+
+# ── manual only (ACC-04, migration 338) ──────────────────────────────────────
+
+_AUTO = "77777777-7777-7777-7777-77777777770"
+
+
+@pytest.mark.parametrize("n,source_type", list(enumerate([
+    "NULL",                      # a sales-invoice journal carries NO source_type
+    "''",
+    "'sales_invoice'",
+    "'purchase_bill'",
+    "'year_end_adjustment'",
+    "'depreciation'",
+])))
+def test_an_auto_posted_entry_cannot_be_edited(db, n, source_type):
+    """Migration 275 gave the DISCARD path this gate; the EDIT path did not have
+    one until 338. Without it the journal behind a sales invoice could have its
+    accounts, amounts and date rewritten while the invoice row did not move —
+    and GSTR-1 is built from the invoice rows, the trial balance from the GL."""
+    entry_id = f"{_AUTO}{n}"
+    _seed_posted(db, entry_id, source_type, f"AUTO-{n}")
+
+    r = _edit(db, _balanced(SALES, CASH, CORRECTED), entry_id=entry_id)
+
+    assert r.returncode != 0, f"source_type {source_type} was editable"
+    assert "posted automatically" in (r.stderr or ""), r.stderr
+    assert "Correct the document" in (r.stderr or ""), "refusing must say what to do instead"
+    # And nothing moved.
+    assert _scalar(db, f"SELECT sum(debit_paise) FROM journal_lines "
+                       f"WHERE journal_entry_id = '{entry_id}';") == str(AMOUNT)
+    assert _scalar(db, f"SELECT string_agg(DISTINCT account_id::text, ',') FROM journal_lines "
+                       f"WHERE journal_entry_id = '{entry_id}';").find(SALES) == -1
+
+
+def test_the_gate_is_an_allowlist_of_one_not_a_blocklist(db):
+    """NULL is what the sales-invoice journal actually carries —
+    phase2_journal_service._create_journal passes no source_type on that path —
+    so a blocklist of known source types would have let exactly the entry this
+    guard exists for straight through, and a source type invented next year
+    would be forgotten rather than refused."""
+    entry_id = f"{_AUTO}9"
+    _seed_posted(db, entry_id, "'a_type_nobody_has_written_yet'", "AUTO-9")
+
+    r = _edit(db, _balanced(RENT, CASH, CORRECTED), entry_id=entry_id)
+
+    assert r.returncode != 0
+    assert "a_type_nobody_has_written_yet" in (r.stderr or ""), (
+        "the message names the source type so the CA knows which document to open")
+
+
+def test_a_null_source_type_still_gets_a_sentence(db):
+    """With nothing to name, the message must still read as a sentence rather
+    than trailing off after 'posted automatically from a '."""
+    entry_id = f"{_AUTO}8"
+    _seed_posted(db, entry_id, "NULL", "AUTO-8")
+
+    r = _edit(db, _balanced(RENT, CASH, CORRECTED), entry_id=entry_id)
+
+    assert r.returncode != 0
+    assert "from a source document" in (r.stderr or ""), r.stderr
+
+
+def test_a_manual_entry_is_still_editable(db):
+    """The control. If this fails the gate refused everything, which is a
+    different bug with the same green tests."""
+    r = _edit(db, _balanced(RENT, CASH, CORRECTED))
+    assert r.returncode == 0, r.stderr
+    assert _scalar(db, f"SELECT sum(debit_paise) FROM journal_lines "
+                       f"WHERE journal_entry_id = '{POSTED}';") == str(CORRECTED)
 
 
 def test_another_firms_entry_is_not_reachable(db):

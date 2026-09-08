@@ -45,11 +45,14 @@ export interface Donation80G {
    *  the direction that cannot over-claim. A fund listed in s.80G(1)(i) — the
    *  PM National Relief Fund and its neighbours — must be marked false. */
   subject_to_qualifying_limit?: boolean;
-  /** s.80G(5D) bars a deduction for a cash donation over Rs 2,000. Omitted
-   *  means "the CA did not say", which the backend allows while warning —
+  /** s.80G(5D) bars a deduction for a cash donation over Rs 2,000. Omitted OR
+   *  null means "the CA did not say", which the backend allows while warning —
    *  a zero for "paid by cheque" and a zero for "nobody stated the mode" are
-   *  not the same number. */
-  paid_in_cash?: boolean;
+   *  not the same number. null is accepted as well as omission because the
+   *  screen holds the tri-state as a value, and `undefined` would be dropped
+   *  by JSON.stringify in a way that reads as an oversight rather than a
+   *  recorded "not stated". Pydantic's Optional[bool] takes both. */
+  paid_in_cash?: boolean | null;
 }
 
 export interface HRAInput {

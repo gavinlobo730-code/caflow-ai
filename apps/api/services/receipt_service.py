@@ -547,6 +547,26 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     # Posting date must not be in a locked financial year (migration 020).
     period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
 
+    # DELIBERATELY NOT period_lock_service.assert_open, unlike the invoice,
+    # credit-note and debit-note paths. SALES-15 asked for it here too; it is
+    # withheld, and this is the argument rather than an oversight.
+    #
+    # The portal lock exists because "the return and the ledger disagree with
+    # nothing recording why" (migration 267). A receipt moves Bank and Debtors
+    # and touches no output tax, and the only filing types written to
+    # public.filings today are GSTR-1 and GSTR-3B — returns of SUPPLIES, not of
+    # collections. So a receipt back-dated into a filed period makes neither
+    # return disagree with anything, while refusing it would block an entirely
+    # ordinary thing: recording a payment received on 20 June, entered on
+    # 15 July, after GSTR-1 for June was filed on the 11th.
+    #
+    # WHAT WOULD CHANGE THIS: a filing type whose figures depend on the balance
+    # sheet or on collections — an ITR, a tax audit report, GSTR-9 — being
+    # recorded in public.filings. gst_filing_record_service.FILING_TYPE_* is
+    # the list; when it grows past the two GST returns, this decision has to be
+    # taken again. The CA's own financial-year lock, checked above, is the
+    # instrument that already covers the year-end case.
+
     fy = _current_fy()
 
     if db is None:

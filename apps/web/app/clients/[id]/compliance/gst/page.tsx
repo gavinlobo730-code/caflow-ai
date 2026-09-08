@@ -204,7 +204,8 @@ const UNFILED = ["draft", "validated", "ca_approved"];
 const LABEL_OF: Record<string, string> = {
   tax_liability_paise: "Tax liability",
   itc_claimed_paise: "ITC claimed",
-  net_tax_paise: "Net tax",
+  net_tax_paise: "Net tax after set-off",
+  cash_payable_paise: "Cash payable (the challan)",
 };
 
 /** What the recompute endpoint answers when asked, without writing. */
@@ -837,6 +838,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         tax_liability_paise: d.tax_liability_paise,
         itc_claimed_paise: d.itc_claimed_paise,
         net_tax_paise: d.net_tax_paise,
+        // The CHALLAN, beside the set-off residual. §49(4) with §2(82) bars the
+        // credit ledger from paying reverse-charge tax, so 3.1(d) is always
+        // cash and always on top of net_tax_paise. filings.tax_payable_paise is
+        // written from cash_payable_paise — it is what was actually paid.
+        rcm_cash_paise: d.rcm_cash_paise,
+        cash_payable_paise: d.cash_payable_paise,
         // The carry-forward is NOT sent as its own field: SaveGSTR3BRequest has
         // no such parameter, and Pydantic would drop it without complaint —
         // a value that looks saved and is not. It rides in summary_json, which
@@ -939,7 +946,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <div className="grid grid-cols-4 gap-3 text-sm">
                   <div><p className="text-xs text-[#64748B]">Tax Liability</p><p className="font-medium">{rupees(computeResult.tax_liability_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">ITC Claimed</p><p className="font-medium">{rupees(computeResult.itc_claimed_paise as number)}</p></div>
-                  <div><p className="text-xs text-[#64748B]">Net Tax</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
+                  {/* The set-off residual, LABELLED as such. Beside it is a
+                      "Tax Liability" tile that already includes the reverse
+                      charge, so a bare "Net Tax" left this panel showing a
+                      liability with 3.1(d) in it and a net without, and nothing
+                      bridging the two. */}
+                  <div><p className="text-xs text-[#64748B]">After set-off</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
                   {/* Net Tax of zero is true both when liability and credit cancel
                       out and when credit exceeds liability by lakhs. Apex's April
                       2026 showed zero over Rs 36,54,961.65 of unused credit, with
@@ -951,10 +963,38 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     <p className={cf > 0 ? "font-medium text-emerald-700" : "font-medium"}>{rupees(cf)}</p>
                   </div>
                 </div>
+                {/* THE CHALLAN. §49(4) allows the electronic credit ledger to
+                    pay only "output tax", and §2(82) defines output tax as
+                    EXCLUDING "tax payable by him on reverse charge basis" — so
+                    §9(3)/(4) tax is cash, on top of whatever the set-off left.
+                    This screen showed the residual alone and called it Net Tax,
+                    which is the figure a CA would have carried to the payment. */}
+                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">Table 6 — payable after set-off</span>
+                    <span className="font-mono">{rupees(computeResult.net_tax_paise as number)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">
+                      Table 3.1(d) — reverse charge, payable in cash
+                    </span>
+                    <span className="font-mono">{rupees((computeResult.rcm_cash_paise as number) ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-[#E2E8F0] pt-1 font-semibold text-[#0F172A]">
+                    <span>Cash payable — the challan</span>
+                    <span className="font-mono">{rupees((computeResult.cash_payable_paise as number) ?? (computeResult.net_tax_paise as number))}</span>
+                  </div>
+                  {((computeResult.rcm_cash_paise as number) ?? 0) > 0 && (
+                    <p className="text-[11px] text-[#64748B] pt-0.5">
+                      Input credit cannot pay reverse-charge tax (CGST §49(4) read with §2(82)),
+                      so it is paid in cash whatever credit is available.
+                    </p>
+                  )}
+                </div>
                 {cf > 0 && (
                   <p className="text-xs text-[#64748B]">
                     Input credit exceeded this period&apos;s liability, so there is no tax to
-                    pay and {rupees(cf)} carries into the next return.
+                    pay from the credit ledger and {rupees(cf)} carries into the next return.
                   </p>
                 )}
                 {/* THE TABLES, not just the totals.
@@ -977,6 +1017,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     const revP = (w.itc_reversal as unknown as { permanent_paise?: Record<string, number> })?.permanent_paise ?? {};
                     const revR = (w.itc_reversal as unknown as { reclaimable_paise?: Record<string, number> })?.reclaimable_paise ?? {};
                     const np = w.net_payable ?? {};
+                    // Table 3.1(d). The reverse-charge liability the credit
+                    // ledger may not pay (§49(4) with §2(82)), which this
+                    // breakdown listed nowhere — so 4(C) minus 3.1(a) appeared
+                    // to explain Table 6 and did not.
+                    const rcmW = w.rcm_inward ?? {};
                     // A line is clickable only where documents exist behind it.
                     // 4(C) and Table 6 are arithmetic over the lines above, not
                     // things you can list — offering a drill-down that opened
@@ -1019,6 +1064,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                           <tbody>
                             {row("3.1(a) Outward taxable supplies",
                                  out.taxable_igst_paise, out.taxable_cgst_paise, out.taxable_sgst_paise, "3.1a")}
+                            {row("3.1(d) Inward supplies liable to reverse charge",
+                                 rcmW.igst_paise, rcmW.cgst_paise, rcmW.sgst_paise, "3.1d")}
                             {row("4(A) ITC available (gross)",
                                  itcW.avail_igst_paise, itcW.avail_cgst_paise, itcW.avail_sgst_paise, "4A")}
                             {row("4(B)(1) Reversed — permanent",
@@ -1038,6 +1085,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                           their own. Table 4 follows Notification 14/2022-Central Tax with
                           Circular 170/02/2022-GST: 4(A) is gross, §17(5) sits in 4(B)(1)
                           and is not repeated in 4(D), and Table 6 sets off 4(C) — never 4(A).
+                          3.1(d) is a LIABILITY, not a credit: §49(4) read with §2(82) bars
+                          the credit ledger from paying reverse-charge tax, so it does not
+                          enter the set-off and is added to the challan in cash.
                         </p>
                       </div>
                     );
@@ -1080,7 +1130,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               <th className="px-3 py-2 border-b">Period</th>
               <th className="px-3 py-2 border-b">Tax Liability</th>
               <th className="px-3 py-2 border-b">ITC Claimed</th>
-              <th className="px-3 py-2 border-b">Net Tax</th>
+              <th className="px-3 py-2 border-b">After set-off</th>
+              <th className="px-3 py-2 border-b">Cash paid</th>
               <th className="px-3 py-2 border-b">Status</th>
               <th className="px-3 py-2 border-b">Actions</th>
             </tr>
@@ -1092,6 +1143,14 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">{rupees((r.tax_liability_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.itc_claimed_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.net_tax_paise as number) ?? 0)}</td>
+                {/* Rows saved before migration 339 carry 0 here, which means
+                    "not stated" rather than "nothing to pay" — so they fall
+                    back to the set-off residual, which is the figure that WAS
+                    recorded. Recomputing would run the set-off against books
+                    that may have moved since the return was filed. */}
+                <td className="px-3 py-2">
+                  {rupees(((r.cash_payable_paise as number) || (r.net_tax_paise as number)) ?? 0)}
+                </td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status as string] ?? ""}`}>
                     {r.status as string}
@@ -1197,40 +1256,145 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
 }
 
 // ── GSTR-2B ────────────────────────────────────────────────────────────────
+//
+// WHAT THIS SCREEN USED TO ASK FOR, AND WHY THAT WAS THE DEFECT
+//     "Paste GSTR-2B JSON here (include book_invoices array for
+//     reconciliation)". The BOOKS side came out of the same pasted JSON, and
+//     the endpoint looked for `data.docDetails[]` keyed on `sgstin` — a shape
+//     the portal never produces. So a CA who pasted a genuine download got
+//     "Matched 0, Mismatched 0, Missing 0", a clean result from comparing
+//     nothing against nothing.
+//
+//     The books are now read server-side from purchase_bills for the period,
+//     the answer is persisted to gstr2a_records, and it reloads.
+
+interface Recon2BSummary {
+  matched_count: number;
+  amount_mismatch_count: number;
+  missing_in_2b_count: number;
+  missing_in_books_count: number;
+  books_tax_paise: number;
+  portal_tax_paise: number;
+  itc_available_per_2b_paise: number;
+  itc_blocked_by_2b_paise: number;
+  itc_at_risk_paise: number;
+}
+
+interface Recon2BMatch {
+  status: string;
+  reason: string;
+  difference_paise: number;
+  bill_id: string | null;
+  bill_no: string | null;
+  supplier_gstin: string;
+  supplier_name: string | null;
+  document_number: string | null;
+  document_type: string | null;
+  book_tax_paise: number | null;
+  portal_tax_paise: number | null;
+  itc_available: string | null;
+}
+
+interface Recon2BResult {
+  period: string;
+  gstin: string;
+  return_period_in_file: string;
+  generated_on: string;
+  problems: string[];
+  persisted: boolean;
+  book_bill_count?: number;
+  portal_document_count?: number;
+  summary: Recon2BSummary | null;
+  matches: Recon2BMatch[];
+  defaulters: { supplier_gstin: string; unfiled_count: number;
+                itc_at_risk_paise: number; bill_ids: string[] }[];
+}
+
+const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: string }[] = [
+  { status: "matched", label: "Matched", tone: "text-green-700",
+    hint: "The bill and the 2B document agree, to the paisa." },
+  { status: "amount_mismatch", label: "Amount mismatch", tone: "text-amber-700",
+    hint: "Both exist and the tax differs — one of the two documents is wrong." },
+  { status: "missing_in_2b", label: "Supplier has not filed", tone: "text-red-700",
+    hint: "We hold the bill; §16(2)(aa) makes the credit unavailable until the supplier files. Chase the SUPPLIER." },
+  { status: "missing_in_books", label: "No bill in the books", tone: "text-blue-700",
+    hint: "The supplier filed it and we have no bill — credit that may be available and is not being claimed. Chase the DOCUMENT." },
+];
 
 function GSTR2BTab({ clientId }: { clientId: string }) {
   const [period, setPeriod] = useState("");
   const [jsonText, setJsonText] = useState("");
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [result, setResult] = useState<Recon2BResult | null>(null);
+  const [saved, setSaved] = useState<{ record_count: number; by_status: Record<string, number> } | null>(null);
+  const [bucket, setBucket] = useState<string>("missing_in_2b");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // What the LAST reconciliation for this period found. The whole reason the
+  // answer is persisted: the browser reconciliation this replaces started from
+  // zero every time it was reopened.
+  useEffect(() => {
+    let cancelled = false;
+    if (!/^\d{6}$/.test(period)) { setSaved(null); return; }
+    (async () => {
+      try {
+        const r = await apiFetch(
+          `/api/gst-workspace/gstr2b/reconciliation?client_id=${encodeURIComponent(clientId)}`
+          + `&period=${encodeURIComponent(period)}`);
+        if (!cancelled && r.success) setSaved(r.data);
+      } catch { /* leave it; the upload answers definitively */ }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId, period]);
 
   async function upload() {
     setLoading(true);
     setError(null);
+    let raw_data: unknown;
     try {
-      const raw_data = JSON.parse(jsonText);
+      raw_data = JSON.parse(jsonText);
+    } catch {
+      setError("That is not valid JSON. Paste the .json file the portal gives you, not a screenshot of it.");
+      setLoading(false);
+      return;
+    }
+    try {
       const resp = await apiFetch("/api/gst-workspace/gstr2b/upload", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, period, raw_data }),
       });
-      if (resp.success) setResult(resp.data);
+      if (resp.success) setResult(resp.data as Recon2BResult);
       else setError(resp.error ?? "Upload failed");
-    } catch {
-      setError("Invalid JSON. Please paste valid GSTR-2B JSON.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setLoading(false);
     }
   }
 
+  const summary = result?.summary;
+  const shown = (result?.matches ?? []).filter((m) => m.status === bucket);
+
   return (
     <div className="space-y-4">
-      <h3 className="font-medium">GSTR-2B Reconciliation</h3>
+      <div>
+        <h3 className="font-medium">GSTR-2B Reconciliation</h3>
+        <p className="text-xs text-[#64748B] mt-0.5">
+          Paste the GSTR-2B JSON exactly as downloaded from the portal. The purchase
+          bills are read from this client&apos;s own books — nothing needs exporting.
+        </p>
+      </div>
       <div className="space-y-3">
         <input placeholder="Period (MMYYYY e.g. 042025)" value={period}
           onChange={(e) => setPeriod(e.target.value)}
           className="w-full border rounded px-3 py-1.5 text-sm" />
-        <textarea placeholder="Paste GSTR-2B JSON here (include book_invoices array for reconciliation)"
+        {saved && saved.record_count > 0 && (
+          <p className="text-xs text-[#64748B]">
+            Last reconciled for this period: {saved.record_count} document(s) —{" "}
+            {Object.entries(saved.by_status).map(([k, v]) => `${k}: ${v}`).join(", ")}.
+          </p>
+        )}
+        <textarea placeholder="Paste the GSTR-2B JSON downloaded from the portal"
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-red-600 text-sm">{error}</p>}
@@ -1240,42 +1404,142 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      {result && (
-        <div className="border rounded p-4 space-y-3">
-          <p className="font-medium text-sm">Reconciliation Result</p>
-          {(() => {
-            const recon = result.reconciliation_result as Record<string, unknown>;
-            const summary = recon?.summary as Record<string, number>;
-            const mismatched = recon?.mismatched as unknown[];
-            const missing = recon?.missing_in_2b as unknown[];
-            return (
-              <div className="space-y-2">
-                <div className="flex gap-4 text-sm">
-                  <span className="text-green-700">✓ Matched: {summary?.matched_count ?? 0}</span>
-                  <span className="text-amber-600">⚠ Mismatched: {summary?.mismatch_count ?? 0}</span>
-                  <span className="text-red-600">✗ Missing: {summary?.missing_count ?? 0}</span>
-                </div>
-                {(mismatched?.length ?? 0) > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-amber-700">Amount mismatches:</p>
-                    {(mismatched as Record<string, unknown>[]).map((m, i) => (
-                      <div key={i} className="text-xs text-[#334155] mt-1">
-                        {JSON.stringify(m.key)} — Book: {rupees(m.book_paise as number)}, 2B: {rupees(m.gstr2b_paise as number)}
-                      </div>
-                    ))}
-                  </div>
+      {result && (result.problems?.length ?? 0) > 0 && (
+        <div className="border border-amber-200 bg-amber-50 rounded p-3 space-y-1">
+          {result.problems.map((p, i) => (
+            <p key={i} className="text-xs text-amber-900">{p}</p>
+          ))}
+        </div>
+      )}
+
+      {result && !result.persisted && (
+        <p className="text-sm text-red-700">
+          Nothing was reconciled and nothing was saved. Fix what is named above and
+          upload again — a result of zero from a file that would not read is not a
+          clean reconciliation.
+        </p>
+      )}
+
+      {result && summary && (
+        <div className="border rounded p-4 space-y-4">
+          <div>
+            <p className="font-medium text-sm">
+              GSTIN {result.gstin} · 2B for {result.return_period_in_file}
+              {result.generated_on ? ` · generated ${result.generated_on}` : ""}
+            </p>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              {result.portal_document_count} document(s) in the file against{" "}
+              {result.book_bill_count} bill(s) in the books for this period.
+            </p>
+          </div>
+
+          {/* THE FIGURES §16(2)(aa) TURNS ON. "Matched 12" is not an answer to
+              "how much credit may I take this month". */}
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-[#64748B]">Credit the books claim</p>
+              <p className="font-medium">{rupees(summary.books_tax_paise)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[#64748B]">Available per GSTR-2B</p>
+              <p className="font-medium text-green-700">{rupees(summary.itc_available_per_2b_paise)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[#64748B]">At risk — supplier has not filed</p>
+              <p className="font-medium text-red-700">{rupees(summary.itc_at_risk_paise)}</p>
+            </div>
+          </div>
+          {summary.itc_blocked_by_2b_paise > 0 && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+              {rupees(summary.itc_blocked_by_2b_paise)} of matched credit is marked
+              UNAVAILABLE by GSTR-2B itself — the figures agreeing does not make it
+              claimable (§16(2)(aa)).
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            {RECON_2B_BUCKETS.map((b) => {
+              const n = (summary as unknown as Record<string, number>)[
+                b.status === "missing_in_2b" ? "missing_in_2b_count"
+                  : b.status === "missing_in_books" ? "missing_in_books_count"
+                  : b.status === "amount_mismatch" ? "amount_mismatch_count"
+                  : "matched_count"] ?? 0;
+              return (
+                <button key={b.status} onClick={() => setBucket(b.status)}
+                  title={b.hint}
+                  className={`text-xs px-3 py-1.5 rounded-lg border ${
+                    bucket === b.status ? "border-blue-500 bg-blue-50" : "border-[#E2E8F0]"}`}>
+                  <span className={b.tone}>{b.label}</span>{" "}
+                  <span className="font-medium">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-[#64748B]">
+            {RECON_2B_BUCKETS.find((b) => b.status === bucket)?.hint}
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-[#94A3B8] border-b">
+                <tr>
+                  <th className="text-left py-1.5 pr-3 font-medium">Supplier</th>
+                  <th className="text-left py-1.5 pr-3 font-medium">Document</th>
+                  <th className="text-right py-1.5 pr-3 font-medium">Books tax</th>
+                  <th className="text-right py-1.5 pr-3 font-medium">2B tax</th>
+                  <th className="text-right py-1.5 font-medium">Difference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.length === 0 && (
+                  <tr><td colSpan={5} className="py-3 text-[#94A3B8]">Nothing in this bucket.</td></tr>
                 )}
-                {(missing?.length ?? 0) > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-red-700">Missing in GSTR-2B:</p>
-                    {(missing as Record<string, unknown>[]).map((m, i) => (
-                      <div key={i} className="text-xs text-[#334155] mt-1">{JSON.stringify(m.key)}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+                {shown.map((m, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-1.5 pr-3">
+                      {m.supplier_name || m.supplier_gstin || "—"}
+                      <span className="block text-[10px] text-[#94A3B8]">{m.supplier_gstin}</span>
+                    </td>
+                    <td className="py-1.5 pr-3">
+                      {m.document_number || m.bill_no || "—"}
+                      {m.itc_available === "N" && (
+                        <span className="block text-[10px] text-amber-700">2B: ITC not available</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono">
+                      {m.book_tax_paise == null ? "—" : rupees(m.book_tax_paise)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono">
+                      {m.portal_tax_paise == null ? "—" : rupees(m.portal_tax_paise)}
+                    </td>
+                    <td className="py-1.5 text-right font-mono">
+                      {m.difference_paise === 0 ? "—" : rupees(m.difference_paise)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {(result.defaulters?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-sm font-medium text-[#334155]">
+                Suppliers to chase — worst first
+              </p>
+              <p className="text-xs text-[#64748B] mb-1">
+                Each of these has bills on our books that they have not filed. Until
+                they do, §16(2)(aa) holds the credit back.
+              </p>
+              <ul className="text-xs space-y-1">
+                {result.defaulters.map((d) => (
+                  <li key={d.supplier_gstin} className="flex justify-between">
+                    <span>{d.supplier_gstin || "(no GSTIN recorded)"} — {d.unfiled_count} bill(s)</span>
+                    <span className="font-mono text-red-700">{rupees(d.itc_at_risk_paise)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

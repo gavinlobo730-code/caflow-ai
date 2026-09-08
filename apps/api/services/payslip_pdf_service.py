@@ -93,12 +93,26 @@ def _pay_period(slip: dict, run: dict) -> tuple[str, int, int]:
     return label, mi, yi
 
 
-def build_payslip_pdf(slip: dict, employee: dict, run: dict, firm: dict) -> bytes:
+def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> bytes:
     """Render a salary slip PDF and return raw bytes.
 
     `slip` is a payroll_slips row; component paise columns are optional and only
     rendered when present (the base schema stores gross/PF/ESI/PT/TDS/net, while
-    later migrations add basic/HRA/etc.)."""
+    later migrations add basic/HRA/etc.).
+
+    `employer` IS THE CLIENT, NOT THE FIRM. The fourth argument used to be the
+    CA practice's `firms` row and the payslip was headed with the practice's
+    name — so an employee of Acme Manufacturing received a payslip that said
+    their employer was the accountancy firm keeping Acme's books. It is the
+    same defect the customer statement had (see
+    statement_pdf_service.load_account_holder), in the document with the widest
+    readership in the product: every employee of every client sees one every
+    month, and the person named on it is who they would write to about their
+    pay, name to their bank, and produce as proof of employment.
+
+    §192 makes the person "responsible for paying" salary the deductor, and
+    that is the client. The firm's name belongs nowhere on this page.
+    """
     period_label, _m, _y = _pay_period(slip, run)
 
     buf = io.BytesIO()
@@ -113,8 +127,18 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, firm: dict) -> byte
 
     story = []
 
-    firm_name = firm.get("name") or firm.get("firm_name") or "Employer"
-    story.append(Paragraph(firm_name, ParagraphStyle(
+    # The employer's own registered name, in the order the ledger prefers it —
+    # the same order the customer statement uses, so one client is named the
+    # same way on every document that leaves the platform.
+    employer_name = (employer.get("legal_name")
+                     or employer.get("trade_name")
+                     or employer.get("client_name")
+                     # `name` is the shape a firms row uses. Kept only so a
+                     # caller that still passes one renders something rather
+                     # than a blank letterhead; load_employer refuses first.
+                     or employer.get("name")
+                     or "Employer")
+    story.append(Paragraph(employer_name, ParagraphStyle(
         "title", parent=styles["Title"], fontSize=16, spaceAfter=2)))
     story.append(Paragraph(f"Payslip for {period_label}", small))
     story.append(Spacer(1, 6 * mm))
@@ -241,7 +265,8 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, firm: dict) -> byte
 
 def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
     """
-    Load a payroll slip with its employee, run and firm records and render the PDF.
+    Load a payroll slip with its employee, run and EMPLOYER records and render
+    the PDF. The employer is the client the run belongs to, not the CA firm.
 
     Enforces firm-scoping: the slip's run must belong to `firm_id`.
 
@@ -274,9 +299,9 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
     if not firm_id or run.get("firm_id") != firm_id:
         raise PermissionError("Access denied")
 
-    firm = _load_firm(run.get("firm_id") or firm_id)
+    employer = load_employer(run.get("firm_id") or firm_id, run.get("client_id"))
 
-    pdf = build_payslip_pdf(slip, employee, run, firm)
+    pdf = build_payslip_pdf(slip, employee, run, employer)
     _label, m, y = _pay_period(slip, run)
     period = f"{y}-{m:02d}" if m and y else "payslip"
     filename = f"payslip-{period}.pdf"
@@ -287,14 +312,14 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
     """Every payslip in one run, as a zip. Returns (zip_bytes, filename, problems).
 
     WHY A ZIP AND NOT THIRTY REQUESTS. get_payslip_pdf renders ONE slip and
-    re-reads the firm for each — so a CA with thirty employees clicked thirty
+    re-reads the employer for each — so a CA with thirty employees clicked thirty
     times, waited for thirty round trips to Mumbai, and got thirty files named
     the same thing, because the single-slip filename is `payslip-YYYY-MM.pdf`
     with no employee in it. The month-end pack is one action.
 
-    ONE QUERY FOR THE SLIPS AND ONE FOR THE FIRM. The per-slip path reads the
-    firm every time; here it is read once and passed to every render, which is
-    the difference between one round trip and thirty.
+    ONE QUERY FOR THE SLIPS AND ONE FOR THE EMPLOYER. The per-slip path reads
+    the employer every time; here it is read once and passed to every render,
+    which is the difference between one round trip and thirty.
 
     A SLIP THAT WILL NOT RENDER IS REPORTED, NOT SKIPPED SILENTLY. If one
     employee's slip fails, the other twenty-nine are still worth having — but a
@@ -326,7 +351,7 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
     if not slips:
         raise ValueError("This run has no payslips")
 
-    firm = _load_firm(run.get("firm_id"))
+    employer = load_employer(run.get("firm_id"), run.get("client_id"))
     month = run.get("month") or "payslips"
 
     problems: list[str] = []
@@ -339,7 +364,7 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
             employee = slip.pop("payroll_employees", None) or {}
             name = (employee.get("name") or "employee").strip()
             try:
-                pdf = build_payslip_pdf(slip, employee, run, firm)
+                pdf = build_payslip_pdf(slip, employee, run, employer)
             except Exception as e:  # noqa: BLE001 — one bad slip must not lose the rest
                 logger.exception("payslip render failed for slip %s", slip.get("id"))
                 problems.append(f"{name}: could not be rendered ({e.__class__.__name__}).")
@@ -369,13 +394,30 @@ def _payslip_filename(name: str, month: str, used: set) -> str:
     return candidate
 
 
-def _load_firm(firm_id: Optional[str]) -> dict:
-    if not firm_id:
-        return {}
-    try:
-        from core.supabase_client import get_supabase
-        result = get_supabase().table("firms").select("*").eq("id", firm_id).maybe_single().execute()
-        return result.data or {}
-    except Exception as e:
-        logger.warning(f"Could not load firm {firm_id}: {e}")
-        return {}
+def load_employer(firm_id: Optional[str], client_id: Optional[str]) -> dict:
+    """The `clients` row the payslip is issued BY — firm-scoped, and refused
+    rather than defaulted.
+
+    Falling back to the firm is what produced the defect: every payslip in the
+    product headed with the CA practice's name instead of the employer's. A
+    missing client row is a question, not a letterhead — the same rule
+    statement_pdf_service.load_account_holder already applies to the document
+    a client's customer receives.
+    """
+    if not client_id or not firm_id:
+        raise ValueError(
+            "A payslip cannot be issued without knowing which employer issued "
+            "it — the payroll run carries no client."
+        )
+    from core.supabase_client import get_supabase
+    row = (get_supabase().table("clients")
+           .select("id,client_name,legal_name,trade_name,gstin,pan")
+           .eq("id", client_id).eq("firm_id", firm_id)
+           .maybe_single().execute())
+    employer = getattr(row, "data", None) or {}
+    if not employer:
+        raise ValueError(
+            f"Client {client_id} not found for firm {firm_id} — a payslip "
+            "cannot be issued without knowing who the employer is."
+        )
+    return employer

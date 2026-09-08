@@ -79,11 +79,20 @@ both limbs the aggregate here equals the single threshold, so single-payment
 behaviour is unchanged; 194C stays the one section where the two differ
 (₹30,000 single, ₹1,00,000 aggregate).
 
-Two sections deliberately have NO aggregate. s. 194I's limit is "fifty thousand
-rupees for a month or part of a month" — a per-month test that an FY aggregate
-would misstate — and FA 2025 made s. 194B's ₹10,000 apply to a single
-transaction. Adding an FY aggregate to either would deduct where the statute
-does not charge.
+FOUR sections deliberately have NO aggregate, and this said "two" while four
+more were merely unfinished — which is the worse mistake, because it reads as a
+decision:
+
+  * s. 194I — the limit is "fifty thousand rupees for a month or part of a
+    month", a per-month test an FY aggregate would misstate;
+  * s. 194B — FA 2025 made its ₹10,000 apply to a single transaction;
+  * s. 192 — a sentinel only; salary is slab-based (statutory_rates.py);
+  * s. 206C — reference data, read by no computation in this codebase.
+
+Adding an FY aggregate to 194I or 194B would deduct where the statute does not
+charge. ss. 193, 194, 194K and 194LA were in this paragraph by omission until
+8 September and are now modelled: each carries the "or, as the case may be, the
+aggregate of the amounts" limb in its own proviso, quoted beside its entry.
 
 And one section is charged on a DIFFERENT BASE. s. 194Q(1) requires "a sum equal
 to 0.1 per cent of such sum EXCEEDING fifty lakh rupees": the ₹50,00,000 is
@@ -158,10 +167,17 @@ class FYTDSRates:
 _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # Salary — slab-based (statutory_rates.py), sentinel so section lookups succeed.
     "192":   TDSSectionRule(0, 0, 0),
-    # Interest on securities — FA 2025 introduced a ₹10,000 threshold.
-    "193":   TDSSectionRule(10_000_00, 1000, 1000),
-    # Dividends — ₹5,000 → ₹10,000 (FA 2025).
-    "194":   TDSSectionRule(10_000_00, 1000, 1000),
+    # Interest on securities — FA 2025 introduced a ₹10,000 threshold, and its
+    # proviso reads "where the amount of such interest ... or, as the case may
+    # be, the AGGREGATE OF THE AMOUNTS of such interest credited or paid ...
+    # during the financial year does not exceed ten thousand rupees" — one
+    # amount, both limbs.
+    "193":   TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00),
+    # Dividends — ₹5,000 → ₹10,000 (FA 2025). Second proviso: "where the amount
+    # of such dividend or, as the case may be, the AGGREGATE OF THE AMOUNTS of
+    # such dividend ... during the financial year does not exceed ten thousand
+    # rupees" — one amount, both limbs.
+    "194":   TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00),
     # Interest other than securities — "any other payer" ₹10,000 (FA 2025); see
     # module docstring for the bank/senior-citizen simplification. s. 194A(3)(i)
     # sets the limit on "the amount or, as the case may be, the aggregate of the
@@ -194,10 +210,16 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # the sums credited or paid ... during the financial year does not exceed
     # fifty thousand rupees" — one amount, both limbs.
     "194J":  TDSSectionRule(50_000_00, 1000, 1000, aggregate_threshold_paise=50_000_00),
-    # Mutual-fund income — ₹5,000 → ₹10,000 (FA 2025).
-    "194K":  TDSSectionRule(10_000_00, 1000, 1000),
+    # Mutual-fund income — ₹5,000 → ₹10,000 (FA 2025). Proviso: "where the
+    # amount of such income or, as the case may be, the AGGREGATE OF THE
+    # AMOUNTS of such income ... during the financial year does not exceed ten
+    # thousand rupees" — one amount, both limbs.
+    "194K":  TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00),
     # Compulsory acquisition compensation — ₹2,50,000 → ₹5,00,000 (FA 2025).
-    "194LA": TDSSectionRule(5_00_000_00, 1000, 1000),
+    # Proviso: "where the amount of such payment or, as the case may be, the
+    # AGGREGATE AMOUNT of such payments to a resident during the financial year
+    # does not exceed five lakh rupees" — one amount, both limbs.
+    "194LA": TDSSectionRule(5_00_000_00, 1000, 1000, aggregate_threshold_paise=5_00_000_00),
     # Purchase of goods — unchanged ₹50L, 0.1%, charged on the EXCESS: s. 194Q(1)
     # says "a sum equal to 0.1 per cent of such sum exceeding fifty lakh rupees",
     # so a ₹60,00,000 purchase bears ₹1,000 (0.1% of the ₹10,00,000 excess) and

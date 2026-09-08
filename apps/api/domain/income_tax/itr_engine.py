@@ -21,6 +21,8 @@ from domain.income_tax.statutory_rates import (
     FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
     cess_paise, rates_for, resolve_surcharge_bracket, slab_tax_paise,
 )
+from domain.income_tax.entity_rates import compute_entity_tax
+from domain.income_tax.minimum_tax import apply_minimum_tax, compute_amt, compute_mat
 
 
 # ── Constants (all paise) ─────────────────────────────────────────────────────
@@ -312,6 +314,33 @@ class ITRComputeRequest:
     capital_gains_ltcg_other_paise: int = 0  # property, debt MF etc, 12.5%/20%
     exempt_income_paise: int = 0
 
+    # WHO IS BEING ASSESSED. "individual" takes the slab path below; "firm",
+    # "llp" and "domestic_company" take the flat entity rate in
+    # domain.income_tax.entity_rates and then the §115JB/§115JC minimum.
+    #
+    # Defaulted to "individual" so every existing caller is unchanged — but
+    # `entity_type` is the field the API actually resolves this from, because
+    # the mapping (a PROPRIETORSHIP is an individual; a trust is refused) is
+    # statutory knowledge and belongs in apps/api, not on a screen.
+    assessee_kind: str = "individual"
+
+    # Company only. §115BAA (22%) and §115BAB (15%) are ELECTIONS, and their
+    # surcharge is a flat 10% whatever the income — reusing the normal
+    # brackets for a company that has opted in understates its tax by a tenth.
+    company_regime: str = "normal"
+    # The 25%/30% test looks at the turnover of a year TWO BACK, not the year
+    # being taxed — entity_rates.turnover_reference_fy names it. Absent, the
+    # higher rate is used: the concession has to be established rather than
+    # assumed.
+    turnover_in_reference_year_paise: Optional[int] = None
+    # §115JB book profit (a company) and §115JC's trigger (a firm or LLP).
+    # Book profit is NOT taxable income — the gap between them is the whole
+    # reason §115JB exists — so it cannot be derived here and is supplied.
+    book_profit_paise: Optional[int] = None
+    claimed_specified_deduction: bool = False
+    # The AY the MAT/AMT credit is measured from, for its fifteen-year expiry.
+    assessment_year_end: Optional[int] = None
+
     # Regime
     use_new_regime: bool = True
     is_senior_citizen: bool = False       # 60-80 years
@@ -374,6 +403,26 @@ class ITRComputeResult:
     tds_and_advance_paise: int = 0
     net_payable_paise: int = 0  # negative = refund
 
+    # Entity assessees (firm / LLP / domestic company). Empty or zero on the
+    # individual path, which is why they are separate fields rather than
+    # overloading regime/rate: a reader must be able to tell which charge ran.
+    assessee_kind: str = "individual"
+    entity_rate_percent: int = 0
+    turnover_reference_fy: Optional[str] = None
+    entity_workings: list[str] = field(default_factory=list)
+
+    # §115JB (company) / §115JC (firm, LLP). The credit is the point: §115JAA
+    # and §115JD carry the excess forward for fifteen assessment years, and
+    # charging the floor WITHOUT recording the credit turns a timing difference
+    # into a permanent cost that is invisible in the year it is incurred.
+    minimum_tax_section: str = ""
+    minimum_tax_applies: bool = False
+    minimum_tax_paise: int = 0
+    minimum_tax_applied: bool = False
+    minimum_tax_credit_paise: int = 0
+    minimum_tax_credit_expires_after_ay: Optional[int] = None
+    minimum_tax_reasons: list[str] = field(default_factory=list)
+
     # Meta
     regime: str = "new"
     fy: str = ""
@@ -392,6 +441,13 @@ class ITREngine:
     """
 
     def compute(self, req: ITRComputeRequest) -> ITRComputeResult:
+        # A firm, an LLP and a company are each taxed on a completely different
+        # basis from an individual and from each other. Running them through the
+        # slabs below charged nil to ₹4 lakh with a ₹60,000 §87A rebate on a
+        # company that owes 22%/25%/30% from the first rupee.
+        if req.assessee_kind in ("firm", "llp", "domestic_company"):
+            return self._compute_entity(req)
+
         rates = rates_for(req.fy)
         result = ITRComputeResult()
         result.regime = "new" if req.use_new_regime else "old"
@@ -713,6 +769,195 @@ class ITREngine:
             )
 
         return result
+
+    # ── The entity charge (firm, LLP, domestic company) ───────────────────────
+
+    #: Inputs that exist only for an individual. Supplied non-zero on an entity
+    #: request they are REFUSED rather than ignored: a screen that sends an
+    #: ₹80C figure and gets a tax back has been told the deduction was allowed.
+    _INDIVIDUAL_ONLY = (
+        ("gross_salary_paise", "Income under the head Salaries does not arise "
+                               "for a {what}"),
+        ("nps_80ccd1b_paise", "§80CCD(1B) is not available to a {what}"),
+        ("employer_nps_80ccd2_paise", "§80CCD(2) is not available to a {what}"),
+        ("savings_interest_80tta_paise", "§80TTA is not available to a {what}"),
+        ("home_loan_interest_24b_paise", "§24(b) interest against salary does "
+                                         "not arise for a {what}"),
+    )
+
+    def _compute_entity(self, req: ITRComputeRequest) -> ITRComputeResult:
+        """A firm, an LLP or a domestic company.
+
+        WHAT IS DIFFERENT FROM THE SLAB PATH, and every one of these is a
+        number rather than a nicety:
+
+          * a FLAT rate from the first rupee — no slabs and no exemption limit
+            (30% for a firm or LLP; 22%/25%/30%/15% for a company by regime and
+            by the turnover of a year TWO BACK);
+          * no §16(ia) standard deduction — there is no salary;
+          * no §87A rebate — §87A reaches "an individual, being a resident";
+          * no §80C/§80D/§80TTA/§10(13A), which are individual reliefs;
+          * a §115JB or §115JC MINIMUM, and the credit the excess creates.
+
+        WHAT IS THE SAME: §80G, which §80G(1) gives to "any assessee"; the
+        §80G(4) ceiling of 10% of adjusted gross total income; and §71(3A)'s
+        ₹2,00,000 cap on setting a house-property loss against other heads,
+        which binds every assessee (the NEW-REGIME denial does not — §115BAC
+        reaches only an individual or HUF).
+
+        CAPITAL GAINS ARE REFUSED, NOT CHARGED AT THE FLAT RATE. §111A (20%),
+        §112A (12.5% over ₹1,25,000) and §112 (12.5%) charge "the assessee",
+        any assessee, and they OVERRIDE the flat rate for those components. A
+        company's listed-equity LTCG is 12.5%, not 25% or 30% — so folding it
+        into total income here would over-tax by more than double, on the one
+        figure a CA is least likely to re-derive. The split is not modelled for
+        a non-individual and the refusal says so, in the house shape: refuse
+        rather than produce a confident wrong number.
+        """
+        rates = rates_for(req.fy)
+        result = ITRComputeResult()
+        result.fy = rates.fy
+        result.rates_verified = rates.verified
+        result.assessee_kind = req.assessee_kind
+        # A COMPANY has a regime (§115BAA, §115BAB, or the normal rates). A
+        # firm or LLP has none — there is one rate and no election — so this is
+        # blank rather than "new" or "old", which are §115BAC's values and mean
+        # nothing here.
+        result.regime = req.company_regime if req.assessee_kind == "domestic_company" else ""
+
+        word = self._entity_word(req.assessee_kind)
+        for field_name, template in self._INDIVIDUAL_ONLY:
+            if int(getattr(req, field_name, 0) or 0) != 0:
+                result.validation_errors.append(
+                    template.format(what=word)
+                    + ". Remove it, or compute this client as an individual.")
+        if req.s80c.total_paise() > 0:
+            result.validation_errors.append(
+                f"§80C is a deduction for an individual or HUF (§80C(1)) and is "
+                f"not available to a {word}.")
+        if req.s80d.self_family_premium_paise or req.s80d.parents_premium_paise:
+            result.validation_errors.append(
+                f"§80D is a deduction for an individual or HUF and is not "
+                f"available to a {word}.")
+        if req.hra.hra_received_paise or req.hra.rent_paid_paise:
+            result.validation_errors.append(
+                "§10(13A) house rent allowance is a salary exemption and does "
+                "not arise here.")
+        cg = (max(0, req.capital_gains_stcg_paise)
+              + max(0, req.capital_gains_ltcg_paise)
+              + max(0, req.capital_gains_ltcg_other_paise))
+        if cg:
+            result.validation_errors.append(
+                "Capital gains are charged at their own rates under §111A, "
+                "§112A and §112 — which override the flat rate a "
+                f"{word} otherwise pays — and that split is not modelled for a "
+                "non-individual assessee. "
+                "Nothing is computed rather than charging them at the entity "
+                "rate, which would more than double the tax on a listed-equity "
+                "long-term gain.")
+        if result.validation_errors:
+            return result
+
+        # ── Gross total income. No salary, no standard deduction. ──────────
+        if req.presumptive_income_paise is not None:
+            business_income = max(0, req.presumptive_income_paise)
+        else:
+            business_income = req.business_income_paise + max(0, req.disallowances_paise)
+        # §71(3A) caps the set-off of a house-property loss against other heads
+        # at ₹2,00,000 for EVERY assessee. §115BAC's outright denial is an
+        # individual/HUF rule and deliberately does not run here.
+        house_property = max(req.house_property_income_paise, -LIMIT_SET_OFF_71_3A_PAISE)
+        gti = req.other_income_paise + house_property + business_income
+        result.gross_total_income_paise = gti
+
+        # ── Deductions: §80G and whatever Chapter VI-A Part C the CA entered ──
+        deductions = max(0, req.other_deductions_paise)
+        if req.donations_80g:
+            adjusted_gti = max(0, gti - deductions)
+            d80g, warnings_80g = compute_80g_deduction(req.donations_80g, adjusted_gti)
+            result.deduction_80g_paise = d80g
+            deductions += d80g
+            result.warnings.extend(warnings_80g)
+        result.total_deductions_paise = deductions
+
+        total_income = max(0, gti - deductions)
+        result.taxable_income_paise = total_income
+
+        # ── The charge ─────────────────────────────────────────────────────
+        entity = compute_entity_tax(
+            total_income_paise=total_income,
+            entity=req.assessee_kind,          # type: ignore[arg-type]
+            fy=rates.fy,
+            company_regime=req.company_regime,  # type: ignore[arg-type]
+            turnover_in_reference_year_paise=req.turnover_in_reference_year_paise,
+        )
+        result.entity_rate_percent = entity.rate_percent
+        result.turnover_reference_fy = entity.turnover_reference_fy
+        result.entity_workings = list(entity.workings)
+        result.tax_before_cess_paise = entity.tax_before_surcharge_paise
+        result.surcharge_paise = entity.surcharge_paise
+        result.cess_paise = entity.cess_paise
+        result.total_tax_paise = entity.total_tax_paise
+
+        # ── The minimum, and the credit it creates ─────────────────────────
+        if req.assessee_kind == "domestic_company":
+            if req.book_profit_paise is None:
+                result.warnings.append(
+                    "§115JB was not tested: book profit under Explanation 1 to "
+                    "§115JB(2) has not been supplied. It is the profit in the "
+                    "Companies Act accounts as adjusted, not taxable income, so "
+                    "it cannot be derived from the figures above — and a company "
+                    "with large book profits and small taxable income is exactly "
+                    "what the section was written to catch.")
+                minimum = None
+            else:
+                minimum = compute_mat(
+                    book_profit_paise=req.book_profit_paise,
+                    company_regime=req.company_regime,  # type: ignore[arg-type]
+                    fy=rates.fy,
+                )
+        else:
+            minimum = compute_amt(
+                adjusted_total_income_paise=(
+                    req.book_profit_paise
+                    if req.book_profit_paise is not None else total_income),
+                assessee=req.assessee_kind,  # type: ignore[arg-type]
+                claimed_specified_deduction=req.claimed_specified_deduction,
+                fy=rates.fy,
+            )
+
+        if minimum is not None:
+            result.minimum_tax_section = minimum.section
+            result.minimum_tax_applies = minimum.applies
+            result.minimum_tax_paise = minimum.minimum_tax_paise
+            outcome = apply_minimum_tax(
+                regular_tax_paise=entity.total_tax_paise,
+                minimum=minimum,
+                assessment_year_end=req.assessment_year_end,
+                fy=rates.fy,
+            )
+            result.minimum_tax_applied = outcome.minimum_tax_applied
+            result.minimum_tax_credit_paise = outcome.credit_generated_paise
+            result.minimum_tax_credit_expires_after_ay = outcome.credit_expires_after_ay
+            result.minimum_tax_reasons = list(outcome.reasons)
+            result.total_tax_paise = outcome.tax_payable_paise
+            if outcome.minimum_tax_applied:
+                # The charge is the minimum, not the ordinary computation. The
+                # component fields describe the MINIMUM so that the three add
+                # up to the total the CA is asked to pay.
+                result.tax_before_cess_paise = minimum.minimum_tax_before_surcharge_paise
+                result.surcharge_paise = minimum.surcharge_paise
+                result.cess_paise = minimum.cess_paise
+
+        # ── Paid, and left to pay ──────────────────────────────────────────
+        result.tds_and_advance_paise = req.tds_deducted_paise + req.advance_tax_paid_paise
+        result.net_payable_paise = result.total_tax_paise - result.tds_and_advance_paise
+        return result
+
+    @staticmethod
+    def _entity_word(kind: str) -> str:
+        return {"firm": "partnership firm", "llp": "limited liability partnership",
+                "domestic_company": "company"}.get(kind, kind)
 
     # ── Slab selection ────────────────────────────────────────────────────────
 

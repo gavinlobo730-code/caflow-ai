@@ -175,6 +175,80 @@ def test_a_reversed_entry_is_never_editable():
     assert svc.get(db, FIRM, ENTRY)["editable"] is False
 
 
+# ── manual only (ACC-04, migration 338) ──────────────────────────────────────
+#
+# Migration 275 gave the DISCARD path a source_type = 'manual' gate; the EDIT
+# path never got one, so the journal behind a sales invoice, purchase bill,
+# receipt, payment, bank posting, depreciation run, opening balance, trial
+# balance import or year-end adjustment could have its accounts, amounts and
+# date rewritten while the document it came from did not move. GSTR-1 is built
+# from the invoice rows and the trial balance from the GL, so the return and
+# the books then stop agreeing with nothing recording why.
+
+@pytest.mark.parametrize("source_type", [
+    None,                      # a sales-invoice journal carries NO source_type
+    "",
+    "sales_invoice",
+    "purchase_bill",
+    "year_end_adjustment",     # added this month — the fourth widening
+    "depreciation",
+    "bank_posting",
+])
+def test_an_auto_posted_entry_is_not_editable(source_type):
+    db = _DB(_entry(source_type=source_type))
+
+    assert svc.get(db, FIRM, ENTRY)["editable"] is False, (
+        "the editor asks this BEFORE the CA types anything")
+
+    with pytest.raises(HTTPException) as exc:
+        svc.update(db, FIRM, ENTRY, {"lines": _lines()})
+    assert exc.value.status_code == 422
+    assert "posted automatically" in exc.value.detail
+    assert "Correct the document itself" in exc.value.detail, (
+        "refusing must say what to do instead")
+    assert not [r for r in db.rpcs if r[0] == "edit_posted_journal"], (
+        "an auto-posted entry must be refused BEFORE the ledger is touched")
+
+
+def test_a_null_source_type_is_refused_rather_than_treated_as_manual():
+    """The one that decides between an allowlist and a blocklist.
+
+    services/phase2_journal_service._create_journal passes NO source_type on the
+    sales-invoice path, so that journal carries NULL. A blocklist of known
+    source types would have let exactly the entry this guard exists for through.
+    """
+    db = _DB(_entry(source_type=None))
+    with pytest.raises(HTTPException) as exc:
+        svc.update(db, FIRM, ENTRY, {"lines": _lines()})
+    assert "source document" in exc.value.detail, (
+        "with nothing to name, the message still has to be a sentence")
+
+
+def test_a_DRAFT_auto_posted_entry_is_refused_too():
+    """The draft path never reaches edit_posted_journal — it rewrites the rows
+    in Python — so the database gate cannot see it. That is why the service
+    carries the same rule rather than relying on the RPC to raise."""
+    db = _DB(_entry(source_type="sales_invoice", is_posted=False))
+    with pytest.raises(HTTPException) as exc:
+        svc.update(db, FIRM, ENTRY, {"lines": _lines()})
+    assert "posted automatically" in exc.value.detail
+    assert not db.writes, "nothing may be written on the way to the refusal"
+
+
+def test_the_message_matches_the_one_the_database_raises():
+    """Two places enforce this and they must say the same thing, or a CA who
+    hits the database gate (a race, or a direct API call) gets a different
+    explanation from the one the screen gives."""
+    import pathlib as _pathlib
+    sql = _pathlib.Path(__file__).resolve().parents[1] / "migrations" / \
+        "338_only_a_manual_journal_may_be_edited.sql"
+    body = sql.read_text()
+    assert "This entry was posted automatically from a %" in body
+    assert "Correct the document " in body
+    assert "COALESCE(v_entry.source_type, '') <> 'manual'" in body, (
+        "the SQL gate must be the same allowlist-of-one, so NULL is refused there too")
+
+
 # ── the locks ────────────────────────────────────────────────────────────────
 
 def test_editing_a_locked_year_is_refused_with_the_reason():

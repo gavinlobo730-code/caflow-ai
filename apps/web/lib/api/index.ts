@@ -455,8 +455,15 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
  *
  * Falls back to the raw text, then to the status line: an ugly error beats a
  * blank one, and this must never itself throw while reporting a failure.
+ *
+ * EXPORTED because a handful of screens still call `fetch` directly rather than
+ * going through this module, and each of them had its own `j.error ?? "Failed"`
+ * — which reads NOTHING out of a FastAPI refusal, because a 422 body is
+ * `{"detail": "..."}` and carries no `error` key at all. The CA saw the word
+ * "Failed" where the server had written a sentence naming the four months of
+ * depreciation it was waiting for.
  */
-async function errorMessage(res: Response): Promise<string> {
+export async function errorMessage(res: Response): Promise<string> {
   let body = "";
   try {
     body = await res.text();

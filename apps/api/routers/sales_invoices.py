@@ -1476,6 +1476,15 @@ def issue_invoice(
         # the draft was created (deferred-posting gap).
         if inv.get("invoice_date"):
             period_validation_service.validate_posting_date(current_user.get("firm_id") or "", inv["invoice_date"])
+            # ...and the PORTAL's lock, re-checked HERE and not only at create.
+            # A draft raised in June and issued in September is posted with its
+            # June date, so if GSTR-1 for June has since been filed the supply
+            # belongs to a return that can no longer accept it (CGST §37 —
+            # corrections go in a later period's amendment tables). Checking
+            # only at create is checking at the moment nothing was posted.
+            period_lock_service.assert_open(
+                db, current_user.get("firm_id") or "", inv.get("client_id"),
+                inv["invoice_date"])
 
         # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
         # is not set up, this raises ValueError and the invoice stays a draft.

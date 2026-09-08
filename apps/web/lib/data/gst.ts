@@ -473,6 +473,15 @@ export async function saveGSTR3BReturn(
     net_igst_paise: w.net_payable.igst_paise,
     net_cgst_paise: w.net_payable.cgst_paise,
     net_sgst_paise: w.net_payable.sgst_paise,
+    // Migration 339. The three above are the Table 6 SET-OFF residual; these
+    // two are what the CA actually pays. §49(4) allows the credit ledger to
+    // pay only "output tax" and §2(82) excludes "tax payable by him on reverse
+    // charge basis" from that, so Table 3.1(d) is always cash and always on
+    // top. Stored beside the residual rather than instead of it: a reader has
+    // to be able to tell a return carrying reverse charge from one where the
+    // credit simply ran out.
+    rcm_cash_paise: w.net_payable.rcm_cash_paise,
+    cash_payable_paise: w.net_payable.challan_total_paise,
     payload_json: result.payload,
     validation_errors: result.validation_warnings,
     status: "draft",

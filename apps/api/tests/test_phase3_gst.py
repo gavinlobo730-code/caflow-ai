@@ -227,26 +227,63 @@ def test_save_gstr9_requires_and_stores_gstin(client):
     assert bad.status_code == 422
 
 
-def test_gstr2b_reconciliation(client):
-    """3 book invoices; 2 match, 1 missing in 2B."""
+def test_gstr2b_upload_reads_the_real_envelope(client):
+    """The endpoint parses a GENUINE GSTR-2B, and says so.
+
+    THE OLD VERSION OF THIS TEST WAS THE DEFECT WRITTEN DOWN. It posted
+    `{"invoices": [...{"sgstin": ...}], "book_invoices": [...]}` — a shape the
+    portal never produces, with the BOOKS side supplied inside the same JSON —
+    and asserted that the reconciliation worked. It did, on that shape, and on
+    nothing a CA could actually download.
+
+    A real 2B is `data.docdata.b2b[].inv[]`, with the taxable value and the tax
+    per RATE LINE in `items[]`.
+    """
     body = {
         "client_id": _CLIENT_ID,
         "period": "042025",
-        "raw_data": {
-            "invoices": [
-                {"inum": "INV-001", "sgstin": "29AAA", "txval": 1000.0},
-                {"inum": "INV-002", "sgstin": "29BBB", "txval": 2000.0},
-            ],
-            "book_invoices": [
-                {"invoice_no": "INV-001", "gstin": "29AAA", "taxable_paise": 100000},
-                {"invoice_no": "INV-002", "gstin": "29BBB", "taxable_paise": 200000},
-                {"invoice_no": "INV-003", "gstin": "29CCC", "taxable_paise": 300000},
-            ],
-        },
+        "raw_data": {"data": {"gstin": "29AAACX1234C1ZP", "rtnprd": "042025",
+                              "gendt": "14-05-2025", "docdata": {"b2b": [
+            {"ctin": "29AAAAA1111A1Z5", "trdnm": "Acme Supplies",
+             "supfildt": "10-05-2025",
+             "inv": [{"inum": "INV-001", "dt": "24-04-2025", "val": 1180.0,
+                      "itcavl": "Y",
+                      "items": [{"num": 1, "rt": 18.0, "txval": 1000.0,
+                                 "igst": 0, "cgst": 90.0, "sgst": 90.0}]}]}]}}},
     }
     resp = client.post("/api/gst-workspace/gstr2b/upload", json=body, headers=_HEADERS)
     assert resp.status_code == 200
-    result = resp.json()["data"]["reconciliation_result"]
-    assert result["summary"]["total_book"] == 3
-    assert result["summary"]["missing_count"] == 1
-    assert len(result["missing_in_2b"]) == 1
+    data = resp.json()["data"]
+    assert data["gstin"] == "29AAACX1234C1ZP"
+    assert data["return_period_in_file"] == "042025"
+    assert data["portal_document_count"] == 1, (
+        "one b2b invoice — the old parser looked for data.docDetails and found none")
+
+
+def test_gstr2b_upload_never_reports_a_clean_result_it_did_not_earn(client):
+    """Running without a purchase ledger, the answer is "parsed, not matched"
+    — never "Matched 0, Mismatched 0, Missing 0", which is what a CA saw."""
+    body = {
+        "client_id": _CLIENT_ID, "period": "042025",
+        "raw_data": {"data": {"gstin": "29AAACX1234C1ZP", "rtnprd": "042025",
+                              "docdata": {"b2b": [
+            {"ctin": "29AAAAA1111A1Z5", "inv": [
+                {"inum": "INV-001", "dt": "24-04-2025", "val": 1180.0,
+                 "items": [{"txval": 1000.0, "cgst": 90.0, "sgst": 90.0}]}]}]}}},
+    }
+    data = client.post("/api/gst-workspace/gstr2b/upload", json=body,
+                       headers=_HEADERS).json()["data"]
+    assert data["persisted"] is False
+    assert data["summary"] is None
+    assert any("NOT matched" in p for p in data["problems"])
+
+
+def test_a_file_that_is_not_a_gstr2b_says_so(client):
+    body = {"client_id": _CLIENT_ID, "period": "042025",
+            "raw_data": {"invoices": [{"inum": "INV-001", "sgstin": "29AAA"}]}}
+    data = client.post("/api/gst-workspace/gstr2b/upload", json=body,
+                       headers=_HEADERS).json()["data"]
+    assert data["portal_document_count"] == 0
+    assert any("docdata" in p for p in data["problems"]), (
+        "the OLD shape must be rejected with an explanation, not silently "
+        "reconciled to nothing")

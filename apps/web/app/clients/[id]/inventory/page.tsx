@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column } from "@/lib/table/types";
 import { formatServicePrice } from "@/lib/catalogue/service";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 interface StockItem {
@@ -537,7 +538,7 @@ function NrvWritedownModal({
   onSaved: () => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
-  const currentAvgCost = (item.avg_cost_paise ?? 0) / 100;
+  const avgCostPaise = item.avg_cost_paise ?? 0;
   const [nrvPerUnit, setNrvPerUnit] = useState("");
   const [writedownDate, setWritedownDate] = useState(today);
   const [referenceNo, setReferenceNo] = useState("");
@@ -545,19 +546,26 @@ function NrvWritedownModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const nrvNum = parseFloat(nrvPerUnit);
+  // Through the one parser, and the comparison stays in paise. What was here
+  // read the NRV with parseFloat and compared it against a cost divided back
+  // to rupees — so "1,250" was ₹1, and the preview, the "no write-down needed"
+  // notice and the posted figure all agreed on the wrong number.
+  const nrvPaise = nrvPerUnit.trim() === "" ? null : paiseFromRupeeInput(nrvPerUnit.replace(/[,\s₹]/g, ""));
   const qty = item.stock_qty_units ?? 0;
-  const previewWritedown = nrvNum >= 0 && nrvNum < currentAvgCost ? (currentAvgCost - nrvNum) * qty : 0;
+  const previewWritedownPaise =
+    nrvPaise !== null && nrvPaise >= 0 && nrvPaise < avgCostPaise
+      ? Math.round((avgCostPaise - nrvPaise) * qty)
+      : 0;
 
   async function submit() {
-    if (!(nrvNum >= 0)) { setError("Enter a valid net realisable value per unit."); return; }
+    if (nrvPaise === null || nrvPaise < 0) { setError("Enter a valid net realisable value per unit."); return; }
     setSaving(true);
     setError(null);
     try {
       const result = (await api.inventory.writedown(item.id, {
         client_id: clientId,
         writedown_date: writedownDate,
-        nrv_per_unit_paise: Math.round(nrvNum * 100),
+        nrv_per_unit_paise: nrvPaise,
         reference_no: referenceNo.trim() || undefined,
         notes: notes.trim() || undefined,
       })) as { success: boolean; data: unknown; error: string | null };
@@ -587,7 +595,7 @@ function NrvWritedownModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Net realisable value / unit (₹) *</label>
-              <input type="number" min="0" step="0.01" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
+              <input type="text" inputMode="decimal" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
                 placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
@@ -597,11 +605,15 @@ function NrvWritedownModal({
             </div>
           </div>
 
-          {previewWritedown > 0 ? (
+          {previewWritedownPaise > 0 ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-              This writes down inventory value by ₹{previewWritedown.toLocaleString("en-IN", { maximumFractionDigits: 2 })}.
+              This writes down inventory value by {formatServicePrice(previewWritedownPaise)}.
             </p>
-          ) : nrvPerUnit !== "" && nrvNum >= currentAvgCost ? (
+          ) : nrvPerUnit.trim() !== "" && nrvPaise === null ? (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+              That isn&apos;t an amount — enter rupees per unit, like 120 or 120.50.
+            </p>
+          ) : nrvPaise !== null && nrvPaise >= avgCostPaise ? (
             <p className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5">
               NRV is at or above the current average cost — no write-down needed; nothing will be posted.
             </p>

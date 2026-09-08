@@ -349,7 +349,18 @@ export default function GSTR3BPage() {
                 </tr>
                 <tr className="bg-blue-50 font-semibold">
                   <td className="px-5 py-3 text-blue-800">Total Output Tax</td>
-                  <td className="px-5 py-3 text-right font-mono text-blue-900">{r(w.outward.taxable_igst_paise)}</td>
+                  {/* The IGST total INCLUDES the zero-rated IGST in the row
+                      above. It used to be taxable_igst_paise alone, so once
+                      that row started printing a real figure — a s.16(3)(b)
+                      export made on payment of tax — this line contradicted
+                      the line above it and disagreed with the Table 6
+                      liability it is set off against. §16(3)(b) tax is owed in
+                      THIS return and refunded later under §54; the portal's
+                      Table 6.1 includes it, and so does the filing demo's
+                      head_liability. */}
+                  <td className="px-5 py-3 text-right font-mono text-blue-900">
+                    {r(w.outward.taxable_igst_paise + w.outward.zero_rated_igst_paise)}
+                  </td>
                   <td className="px-5 py-3 text-right font-mono text-blue-900">{r(w.outward.taxable_cgst_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-blue-900">{r(w.outward.taxable_sgst_paise)}</td>
                 </tr>

@@ -8,6 +8,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { CardGridSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -184,6 +185,14 @@ export default function ClientLifecyclePage() {
 
   async function handleSaveRenewal() {
     if (!renewalForm.financial_year || !renewalForm.service_type) return;
+    // Through the one parser. parseInt(x, 10) * 100 read "1,25,000" as ₹1 and
+    // "15000.50" as ₹15,000 — and the field is named value_paise while holding
+    // the rupees the CA typed, which is what made the truncation invisible.
+    const valuePaise = paiseFromRupeeInput(renewalForm.value_paise.replace(/[,\s₹]/g, ""));
+    if (valuePaise === null) {
+      setError("Value isn't an amount — enter rupees, like 15000 or 15000.50.");
+      return;
+    }
     setSavingRenewal(true);
     try {
       const json: ApiResponse<Renewal> = await apiFetch("/api/lifecycle/renewals", {
@@ -193,7 +202,7 @@ export default function ClientLifecyclePage() {
           financial_year: renewalForm.financial_year,
           service_type: renewalForm.service_type,
           renewal_date: renewalForm.renewal_date || null,
-          value_paise: parseInt(renewalForm.value_paise || "0", 10) * 100,
+          value_paise: valuePaise,
           notes: renewalForm.notes || null,
         }),
       });
@@ -405,7 +414,8 @@ export default function ClientLifecyclePage() {
               <div>
                 <label className="text-xs text-gray-600">Value (₹)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={renewalForm.value_paise}
                   onChange={(e) => setRenewalForm({ ...renewalForm, value_paise: e.target.value })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"

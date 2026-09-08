@@ -34,6 +34,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, Lock, Save } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 
 type Regime = "new" | "old";
 
@@ -87,17 +88,33 @@ function currentFy(): string {
 }
 
 function paiseToRupees(paise: number): string {
-  return paise ? String(Math.floor(paise / 100)) : "";
+  return paise ? rupeeInputFromPaise(paise) : "";
 }
 
-/** Rupees typed into a box -> integer paise, without floating-point
- *  multiplication (0.1 * 100 is 10.000000000000002). */
-function rupeesToPaise(text: string): number {
-  const cleaned = (text ?? "").replace(/[^\d.]/g, "");
-  if (!cleaned) return 0;
-  const [whole, frac = ""] = cleaned.split(".");
-  return Number(whole || "0") * 100 + Number((frac + "00").slice(0, 2));
+/** Rupees typed into a box → integer paise, or null when the text is not an
+ *  amount.
+ *
+ *  This was a hand-rolled digit/fraction split that stripped every character
+ *  but digits and dots and then took whatever was left: "12abc" was ₹12,
+ *  "1.2.3" was ₹1.02, and the display side floored the paise away, so a box
+ *  showing ₹1,200 could hold ₹1,200.50. It now delegates to the one parser,
+ *  which refuses instead of guessing, and the four declaration amounts are
+ *  held as TEXT until save — the same shape the Chapter VI-A items already
+ *  used — so a decimal survives being typed. */
+function rupeesToPaise(text: string): number | null {
+  return paiseFromRupeeInput((text ?? "").replace(/[,\s₹]/g, ""));
 }
+
+/** The four §192 declaration amounts that live on the declaration row itself.
+ *  Held as typed text alongside `items`, and parsed once at save. */
+const MONEY_FIELDS = [
+  "rent_paid_declared_paise",
+  "lta_declared_paise",
+  "home_loan_interest_declared_paise",
+  "other_income_declared_paise",
+  "house_property_loss_declared_paise",
+] as const;
+type MoneyField = (typeof MONEY_FIELDS)[number];
 
 export function TaxDeclarationTab({ employeeId, onToast }: {
   employeeId: string;
@@ -106,6 +123,8 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
   const fy = currentFy();
   const [decl, setDecl] = useState<Declaration | null>(null);
   const [items, setItems] = useState<Record<string, string>>({});
+  const [money, setMoney] = useState<Record<string, string>>({});
+  const [moneyError, setMoneyError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,6 +151,9 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
       if (existing) {
         setDecl(existing as Declaration);
+        const seedMoney: Record<string, string> = {};
+        for (const f of MONEY_FIELDS) seedMoney[f] = paiseToRupees((existing as Declaration)[f] ?? 0);
+        setMoney(seedMoney);
         const { data: rows } = await sb
           .from("payroll_it_declaration_items")
           .select("*")
@@ -142,6 +164,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
         }
         setItems(seed);
       } else {
+        setMoney({});
         setDecl({
           firm_id: emp?.firm_id ?? "",
           client_id: emp?.client_id ?? "",
@@ -178,10 +201,32 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
   const save = async () => {
     if (!decl) return;
+    // Every amount is parsed BEFORE anything is written. A declaration that
+    // reaches the database with one box read as zero is the employer
+    // withholding tax on income the employee did say they would invest.
+    const parsedMoney: Partial<Record<MoneyField, number>> = {};
+    for (const f of MONEY_FIELDS) {
+      const p = rupeesToPaise(money[f] ?? "");
+      if (p === null || p < 0) {
+        setMoneyError("One of the amounts isn't a rupee figure — enter it like 125000 or 125000.50.");
+        return;
+      }
+      parsedMoney[f] = p;
+    }
+    const parsedItems: { section: string; paise: number }[] = [];
+    for (const sec of SECTIONS) {
+      const p = rupeesToPaise(items[sec.code] ?? "");
+      if (p === null || p < 0) {
+        setMoneyError(`${sec.label} isn't a rupee figure — enter it like 150000 or 150000.50.`);
+        return;
+      }
+      parsedItems.push({ section: sec.code, paise: p });
+    }
+    setMoneyError(null);
     setSaving(true);
     try {
       const sb = getSupabaseClient();
-      const payload = { ...decl, status: "submitted" };
+      const payload = { ...decl, ...parsedMoney, status: "submitted" };
       delete (payload as { id?: string }).id;
       const { data: saved, error } = await sb
         .from("payroll_it_declarations")
@@ -194,8 +239,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
       // intent, and merging would leave a withdrawn investment in place.
       await sb.from("payroll_it_declaration_items")
         .delete().eq("declaration_id", saved.id);
-      const lines = SECTIONS
-        .map((s) => ({ section: s.code, paise: rupeesToPaise(items[s.code] ?? "") }))
+      const lines = parsedItems
         .filter((l) => l.paise > 0)
         .map((l) => ({
           firm_id: decl.firm_id,
@@ -302,8 +346,8 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           {/* House rent — §10(13A) */}
           <Section title="House rent" note="Form 12BB asks for your landlord's details alongside the rent.">
             <Money label="Rent paid in the year" disabled={locked}
-              value={paiseToRupees(decl.rent_paid_declared_paise)}
-              onChange={(v) => set("rent_paid_declared_paise", rupeesToPaise(v))} />
+              value={money.rent_paid_declared_paise ?? ""}
+              onChange={(v) => setMoney((m) => ({ ...m, rent_paid_declared_paise: v }))} />
             <Text label="Landlord's name" disabled={locked}
               value={decl.landlord_name}
               onChange={(v) => set("landlord_name", v)} />
@@ -324,16 +368,16 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           {/* LTA — §10(5) */}
           <Section title="Leave travel">
             <Money label="Leave travel claimed" disabled={locked}
-              value={paiseToRupees(decl.lta_declared_paise)}
-              onChange={(v) => set("lta_declared_paise", rupeesToPaise(v))} />
+              value={money.lta_declared_paise ?? ""}
+              onChange={(v) => setMoney((m) => ({ ...m, lta_declared_paise: v }))} />
           </Section>
 
           {/* §24(b) */}
           <Section title="Home loan interest"
                    note="Form 12BB asks for the lender's details alongside the interest.">
             <Money label="Interest paid in the year" disabled={locked}
-              value={paiseToRupees(decl.home_loan_interest_declared_paise)}
-              onChange={(v) => set("home_loan_interest_declared_paise", rupeesToPaise(v))} />
+              value={money.home_loan_interest_declared_paise ?? ""}
+              onChange={(v) => setMoney((m) => ({ ...m, home_loan_interest_declared_paise: v }))} />
             <Text label="Lender's name" disabled={locked}
               value={decl.lender_name} onChange={(v) => set("lender_name", v)} />
             <Text label="Lender's PAN" disabled={locked}
@@ -353,13 +397,19 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           <Section title="Other income"
                    note="Telling your employer about other income means tax on it is deducted from your salary, instead of you paying it later.">
             <Money label="Other income (interest, and so on)" disabled={locked}
-              value={paiseToRupees(decl.other_income_declared_paise)}
-              onChange={(v) => set("other_income_declared_paise", rupeesToPaise(v))} />
+              value={money.other_income_declared_paise ?? ""}
+              onChange={(v) => setMoney((m) => ({ ...m, other_income_declared_paise: v }))} />
             <Money label="Loss from house property" disabled={locked}
               hint="Enter this as a positive number."
-              value={paiseToRupees(decl.house_property_loss_declared_paise)}
-              onChange={(v) => set("house_property_loss_declared_paise", rupeesToPaise(v))} />
+              value={money.house_property_loss_declared_paise ?? ""}
+              onChange={(v) => setMoney((m) => ({ ...m, house_property_loss_declared_paise: v }))} />
           </Section>
+
+          {moneyError && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              {moneyError}
+            </p>
+          )}
 
           {!locked && (
             <div className="flex justify-end pt-1">

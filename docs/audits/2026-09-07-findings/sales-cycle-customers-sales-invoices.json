@@ -15,6 +15,13 @@
     "status": "confirmed",
     "by": "hand",
     "probe": "read invoice_pdf_service.py:355 _load_firm(firm_id) rendered as the supplier block at :148-160"
+   },
+   "rescore_2026_09_08": {
+    "state": "fixed",
+    "what_is_true_now": "Closed by 46bd46c. The one builder was split into build_invoice_pdf (fee invoice, firm supplies) and build_sales_invoice_pdf (client sales invoice, client supplies), with a shared _render_tax_invoice that never decides who the supplier is. The customer statement was fixed in the same commit. All supplier columns selected (legal_name, trade_name, address_line1/2, city, state, pincode, state_code) exist in tests/fixtures/production_schema_2026-09-03.json, so the fix is production-safe.",
+    "remaining": null,
+    "probe": "Rendered a sales invoice at HEAD and searched the PDF byte stream: `PYTHONPATH=. python probe_pdf.py` with client={'client_name':'Acme Traders','legal_name':'Acme Traders Pvt Ltd','gstin':'27AACCA1234A1Z5'} printed \"'Acme Traders' -> True\" and \"'Test & Co' -> False\". Source: apps/api/services/invoice_pdf_service.py:768 `pdf = build_sales_invoice_pdf(invoice_dict, client, customer)` where `client` comes from the firm-scoped `clients` lookup at :726-733 (_SUPPLIER_COLUMNS at :686-689), and :737-742 RAISES rather than falling back to the firm. `grep -rn 'get_sales_invoice_pdf|build_sales_invoice_pdf' apps/api --include=*.py` shows all four consumer paths (routers/sales_invoices.py:1883 download, :1965 email, routers/portal_data.py:54 portal, services/collections_service.py:359 dunning) go through the new builder. Statement half: apps/api/services/statement_pdf_service.py:127-149 `load_account_holder` reads `clients` firm-scoped and raises when absent; probe printed 'holder printed: Acme Traders Pvt Ltd'. tests/test_sales_invoice_pdf_supplier.py (441 lines, 23 tests) passes; the old stub that pinned the wrong behaviour was deleted from tests/test_invoice_pdf_line_items.py in the same commit.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -32,6 +39,13 @@
     "status": "confirmed",
     "by": "hand",
     "probe": "read invoice_pdf_service.py:30 GST_RATE_PCT = 18 emitted at :223-226"
+   },
+   "rescore_2026_09_08": {
+    "state": "fixed",
+    "what_is_true_now": "Closed by 46bd46c. The printed rate is derived per line and per document; Rule 46(g)/(h)/(l) columns (HSN/SAC, quantity, unit, rate, per-line GST rate and tax) are on the sales layout. The fee-invoice layout keeps its plain four-column table and now derives its rate too, which for an 18% fee invoice renders identically.",
+    "remaining": null,
+    "probe": "`grep -n 'GST_RATE_PCT' apps/api/services/invoice_pdf_service.py` -> no matches (the constant is gone). Rendered a 5% inter-state sales invoice: printed \"'@ 9%' -> False, '@ 18%' -> False, '@ 5%' -> True\". Rendered a MIXED 5%+18% intra-state invoice: printed \"'CGST @' -> False, 'SGST @' -> False\" while '5%' and '18%' both appear (per-line), i.e. the summary rows drop the rate entirely rather than blending. Source: _document_rate at invoice_pdf_service.py:185-203 returns None when the lines disagree or when a stored rate contradicts the money charged; _line_rate at :166-182 uses gst_rate_bps, falling back to the rate the stored heads work out to. Line table header at :371-372 is now ['#','Description','HSN/SAC','Qty','Unit','Rate (Rs.)','Taxable Value (Rs.)','GST Rate','Tax (Rs.)'] and the probe confirmed 'NOS' and the quantity render.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -56,6 +70,13 @@
      "guards": "None. is_reverse_charge is a real settable column (migrations/268_sales_invoice_gst_classification.sql:45, models/invoices.py:142/193, apps/web/components/invoices/InvoiceEditor.tsx:766-770 checkbox) and is honoured on the GSTR-1 path (domain/gst/gstr1_builder.py:232 and :463 emit \"rchrg\": \"Y\"/\"N\"), so the PDF is the only consumer that contradicts the stored flag. einvoice_records with irn/ack_number/ack_date/qr_data exists (migrations/156_missing_tables_f5.sql:204; domain/income_tax/einvoice_service.py:149-170 record_irn_generated) and is never joined by the PDF builder. No test asserts the declaration matches the flag (tests/test_invoice_pdf.py only covers _compute_tax_splits; tests/test_invoice_pdf_line_items.py only covers line items).",
      "reach": "Reachable. GET /api/sales-invoices/{invoice_id}/pdf at apps/api/routers/sales_invoices.py:1870-1891, called from apps/web/components/invoices/InvoiceViewDrawer.tsx:44 behind the 'PDF' action at line 274, and from lib/api/index.ts:1802. Also served to the client portal (routers/portal_data.py:52-54) and attached to collection emails (services/collections_service.py:359)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "partially_fixed",
+    "what_is_true_now": "Two of the three halves are closed by 46bd46c: the reverse-charge declaration is now read from the invoice's own flag, and the place of supply prints (code plus State name) with a named gap when it is missing on an inter-State supply. The IRN/QR half is untouched.",
+    "remaining": "No IRN, Ack No/date or signed QR is rendered on the invoice PDF, and the builder never reads einvoice_records at all. Once Rule 48(4)/(5) e-invoicing applies to a client, this PDF still cannot be the invoice of record. Note this is now the ONLY open half, so the finding's effort estimate should shrink and its scope should be rewritten to 'stamp the IRN/QR when a generated einvoice_record exists' \u2014 which is a small change to invoice_dict plus a QR image, not the three-part fix originally scoped.",
+    "probe": "Same rendered invoice with is_reverse_charge=True and supply_state_code='29': printed \"'reverse charge basis: Yes' -> True, 'reverse charge basis: No' -> False, 'Place of Supply' -> True, 'Karnataka' -> True\" \u2014 and \"'IRN' -> False, 'QR' -> False\". Source: invoice_pdf_service.py:552-557 renders the declaration from `bool(invoice.get('is_reverse_charge'))`; :421-425 adds the Place of Supply meta line from _place_of_supply_label(supply_state_code); :763-765 carries supply_state_code / is_interstate / is_reverse_charge out of the row into invoice_dict; :575-577 names a missing place of supply as a Rule 46(n) gap on an inter-State supply. Against the IRN half: `grep -ni 'irn|qr_data|ack_number|einvoice' apps/api/services/invoice_pdf_service.py` returns ZERO hits, so einvoice_records.irn / ack_number / ack_date / qr_data are still never joined or rendered.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -80,6 +101,13 @@
      "guards": "None that helps. The 6-attempt retry is the only guard and it is the thing that fails \u2014 it recomputes an identical value. The failure surfaces as api_response(False, None, 'Unable to complete credit note operation. Please try again.') at routers/credit_notes.py:737, i.e. a generic message with no diagnosis. No test in apps/api/tests covers create-after-delete: tests/test_document_numbering_unit.py only asserts per-client scoping, and the real-Postgres tests/test_per_client_numbering.py only asserts two clients can share a number.",
      "reach": "Reachable. deleteCreditNote at apps/web/app/clients/[id]/sales/page.tsx:3810 (row menu at :3967, drawer at :3990) plus a bulk draft-delete at :3839-3858. The same shape exists for sales debit notes \u2014 routers/sales_debit_notes.py:121-128 _next_sdn_seq is count-based and routers/sales_debit_notes.py:496 is a DELETE endpoint \u2014 and for receipts (services/receipt_service.py:70-80 _next_receipt_seq), though receipts have no DELETE endpoint (only POST /{receipt_id}/reverse at routers/receipts.py:340), so the receipt series is exposed only if a row is removed out-of-band."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Deleting any but the last draft credit note or sales debit note in a (firm, client, FY) series still permanently blocks new documents in that series, with the generic 'Unable to complete credit note operation' message.",
+    "remaining": null,
+    "probe": "Re-ran the original reproduction against HEAD with the repo's own test double: `PYTHONPATH=. python -c \"from tests.test_document_numbering_unit import _FakeDB, FIRM, CLIENT_A; from routers.credit_notes import _next_cn_seq; ...\"` printed 'before delete, next seq: 4' / 'after deleting CN-2627-0002, retry sequence values: [3, 3, 3, 3, 3, 3]' / 'existing numbers: [CN-2627-0001, CN-2627-0003]' / 'collision every attempt: True'. Source unchanged: routers/credit_notes.py:113-125 `_next_cn_seq` returns `(count of rows LIKE 'CN-{fy}-%') + 1`; routers/sales_debit_notes.py:121-127 `_next_sdn_seq` and services/receipt_service.py:70-81 `_next_receipt_seq` are the same shape; services/numbering.py:81-97 retries six times re-calling the SAME next_seq callable. `git log -3 -- apps/api/routers/credit_notes.py` shows the file's last touch was 6e85b16 (2026-09-04), before the audit.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -104,6 +132,13 @@
      "guards": "None on this tile. The correct formula exists twice server-side \u2014 apps/api/routers/sales_invoices.py:344-348 computes total + debit_note \u2212 paid \u2212 credited, and migrations/278_outstanding_generated_column.sql:70-77 adds client_sales_invoices.outstanding_paise as a generated column with the same expression \u2014 and the frontend uses neither for the tile. Elsewhere on the very same page the arithmetic is at least half-right (page.tsx:146, :1013, :1239, :2303 all do total_paise \u2212 paid_paise), which makes the tile the outlier rather than a house convention.",
      "reach": "Reachable and prominent \u2014 it is the first of three summary cards at the top of the Sales tab for every client (apps/web/app/clients/[id]/sales/page.tsx:1854-1858)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The tile still sums gross invoice totals for issued and partially_paid invoices, subtracting neither cash received nor credit notes, and is still period-scoped rather than a receivable balance. The only edit to this file since the audit is 5cf72de, the duplicate-click guard tranche.",
+    "remaining": null,
+    "probe": "apps/web/app/clients/[id]/sales/page.tsx:1439-1445 reads verbatim: `let outstanding = 0, issued = 0, paid = 0; for (const inv of mapped) { if (inv.status === \"issued\" || inv.status === \"partially_paid\") outstanding += inv.total_paise; ... }`, rendered at :1856 `<SummaryCard label=\"Outstanding\" value={loadFailed ? \"\u2014\" : fmt(stats.outstanding)} .../>`. The select list at :1373 still fetches paid_paise and omits credited_paise / debit_note_paise / outstanding_paise. `grep -rn 'outstanding_paise' apps/web --include=*.tsx` returns no hit inside app/clients/[id]/sales/page.tsx.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -128,6 +163,13 @@
      "guards": "One partial mitigation the finding missed: components/customers/CustomerFormModal.tsx:101-105 handleGstinChange auto-fills stateCode from gstin.slice(0,2), so a REGISTERED Goa customer gets state_code '30' without touching the picker, and EntityLookup (components/lookups/EntityLookup.tsx:54-59) resolves an unknown value to null without calling onChange, so re-editing that customer does not silently clear it. That mitigation does nothing for an UNREGISTERED (B2C) customer, and nothing for the invoice's own place-of-supply override at InvoiceEditor.tsx:715. No other guard: nothing derives state_code from the GSTIN server-side, and apps/api/domain/gst/validator.py:93-99 only rejects a blank place of supply at GSTR-1 build time, long after the invoice was taxed.",
      "reach": "Reachable. CustomerFormModal is mounted from apps/web/app/clients/[id]/sales/page.tsx:1725 and :2879; InvoiceEditor is mounted from app/clients/[id]/sales/invoices/[invoiceId]/edit/_page.tsx:115 behind a real page.tsx route in the same directory (both files present)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged in every particular, including the partial mitigation (CustomerFormModal auto-fills state_code from gstin[:2] for a registered customer, so the wrong-tax consequence needs an unregistered customer).",
+    "remaining": null,
+    "probe": "apps/web/lib/invoices/gst.ts:216-233 still defines the 30-entry INDIAN_STATES (01-24, 27, 29, 32, 33, 36, 37) \u2014 Goa (30), DNH&DD (26), Lakshadweep (31), Puducherry (34), A&N (35), Ladakh (38), 96 and 97 all absent. `grep -n INDIAN_STATES` shows components/invoices/InvoiceEditor.tsx:41 imports it and passes it explicitly at :715 `<StateLookup states={INDIAN_STATES} ...>`, and components/customers/CustomerFormModal.tsx:23,197 does the same, overriding StateLookup.tsx:23's canonical default. The canonical lib/constants/indianStates.ts has 35 entries and does carry 26/30/34/38 but still lacks 31, 35, 96, 97.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -171,6 +213,13 @@
      "guards": "None, and the account resolution is looser than the finding says. _find_account's system_key branch (phase2_journal_service.py:1424-1436) filters firm_id + system_account_key + is_active with .limit(1) and no client filter and no ordering. chart_of_accounts IS client-scoped (migrations/003_phase3a_foundation.sql:101-115, client_id nullable), and migrations/092_coa_system_account_key.sql:53-56 backfills system_account_key='bank' onto every Asset account whose name or subtype matches '%bank%' OR '%cash%', under a non-unique index (092:59-61). So the 'bank' key can be on several rows \u2014 including a different client's ledger and the client's own Cash-in-Hand \u2014 and limit(1) picks arbitrarily. There is no 'cash' system key anywhere in migrations/. Rows created after migration 092 have a NULL key and fall through to the name fallback (phase2_journal_service.py:1443-1450), which IS client-scoped but matches '%Bank%' only.",
      "reach": "Production path. Every INR receipt goes through _settle_receipt_via_atomic_rpc (receipt_service.py:651), which builds its lines from receipt_journal_lines at :397."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A cash receipt still debits the Bank ledger, the selected bank account is still dropped (accepted by ReceiptIn, absent from receipt_payload, no column to store it), and _find_account's system_key branch is still firm-scoped rather than client-scoped.",
+    "remaining": null,
+    "probe": "apps/api/services/phase2_journal_service.py:210 still reads `bank_id = self._find_account(db, firm_id, client_id, \"%Bank%\", system_key=\"bank\")` inside receipt_journal_lines, with no reference to receipt['payment_mode'] anywhere in the function (lines 205-238). `grep -rn 'bank_account_id' apps/api/migrations/*.sql | grep -i receipt` -> exit 1, no such column on receipts. services/receipt_service.py:397 is still the production caller.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -195,6 +244,13 @@
      "guards": "The refusal exists but never reaches a CA. services/gst_advance_service.py:230 returns table_11_computed: False with an explicit 'why' string, exactly the CLAUDE.md refuse-and-name-the-gap posture \u2014 but its only endpoint, GET /api/gst-workspace/gstr1/advances (routers/gst_workspace.py:1261), is called from nowhere in apps/web (grep for '/advances' across apps/web returns no API call). table_11_sections IS wired into the real return: services/gst_return_service.py:1096 merges its 'at'/'txpd' into the GSTR-1 payload, so the section is silently omitted rather than flagged.",
      "reach": "Worse than the finding states. clients.gst_advance_tax_applicable is not settable from anywhere \u2014 `grep -rn gst_advance_tax_applicable` across apps/web returns nothing, and across apps/api it appears only in gst_advance_service.py:129-138 and the test fixture. There is no API field, no router, no UI toggle. So the CA cannot even perform the first step the ca_experience describes."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. GSTR-1 Table 11A/11B is dead end to end: the enabling flag is unsettable and the three receipt columns have no writer outside a test fixture.",
+    "remaining": null,
+    "probe": "`grep -rn 'gst_rate_bps' apps/api/services/receipt_service.py apps/api/routers/receipts.py apps/api/models/invoices.py` -> no matches, so nothing writes receipts.gst_rate_bps / place_of_supply / is_interstate. `grep -rn 'gst_advance_tax_applicable' apps/api apps/web --include=*.py --include=*.ts --include=*.tsx` returns only services/gst_advance_service.py:129,136,138 (the reader) \u2014 no API field, no router, no UI, so the client-level switch still cannot be turned on.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -219,6 +275,13 @@
      "guards": "None \u2014 the two tests that touch these fields lock in the empty strings rather than catching them. domain/gst/validator.py has no shipping-bill rule (VALID_STATE_CODES at :18-25 and the place-of-supply check at :93-99 are the only export-adjacent validations), so a 6A block with three blank shipping-bill fields passes the product's own validator.",
      "reach": "Reachable. The CA can classify an invoice as zero_rated / SEZ_with_payment / SEZ_without_payment / Deemed_export from the editor \u2014 apps/web/lib/invoices/classification.ts:51-60 defines the options and InvoiceEditor.tsx:760 renders them \u2014 and the GSTR-1 is generated from books via POST /api/gst/gstr1/from-books, called from apps/web/lib/data/gst.ts:500 and app/clients/[id]/compliance/gst/page.tsx:473."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Export rows still carry blank shipping bill number, date and port code (no such column exists anywhere in migrations), and SEZ and deemed-export supplies are still filed in Table 6A as ordinary exports.",
+    "remaining": null,
+    "probe": "apps/api/domain/gst/gstr1_builder.py:546-548 still emits `\"sbpcode\": \"\", \"sbnum\": \"\", \"sbdt\": \"\"` as literals, and domain/gst/amendments.py:141 still does `node.update({\"sbpcode\": \"\", \"sbnum\": \"\", \"sbdt\": \"\"})`. `grep -n \"'6B'|\\\"6B\\\"|6C\" apps/api/domain/gst/gstr1_builder.py` -> no matches, so there is still no Table 6B (SEZ) or 6C (deemed export) builder and classifier.py still folds SEZ and deemed exports onto EXP_WP/EXP_WOP.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -243,6 +306,13 @@
      "guards": "None. There is no DB column, no Pydantic field, no CHECK constraint and no frontend control \u2014 there is nothing to guard. The only place the word appears in the domain is CGST \u00a734 credit-note prose, which is the post-supply remedy, not the \u00a715(3)(a) pre-supply discount the finding is about.",
      "reach": "Fully reachable: the sales invoice editor is the primary create path on apps/web/app/clients/[id]/sales/page.tsx (Invoices tab), and every client sales invoice goes through _create_invoice_core."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. No discount concept exists at any layer \u2014 no model field, no column, no editor column, and taxable value is still quantity x rate with nothing subtracted.",
+    "remaining": null,
+    "probe": "`PYTHONPATH=. python -c \"from models.invoices import InvoiceLineIn; f=list(InvoiceLineIn.model_fields); print(f); print('discount present?', any('discount' in x for x in f))\"` -> ['description','hsn_sac','quantity','unit','rate_paise','gst_rate_percent','is_service','service_catalogue_id'] / discount present? False. `grep -rin discount apps/api/migrations/*.sql` -> one hit, the prose comment at 050_sales_purchase_cycle.sql:155.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -267,6 +337,13 @@
      "guards": "Duplicates ARE caught, not merely 'after the fact': routers/sales_invoices.py:129-140 _assert_invoice_no_available rejects a repeat per (firm, client) backed by a partial unique index (migrations 151/209), and models/invoices.py:19 enforces the Rule 46(b) 16-character / [A-Za-z0-9-/] shape. Gaps are not detected. The DRAFT- placeholder is a documented, deliberate design (services/numbering.py:18-28): it is made obviously fake precisely so a CA must replace it, so it is not the accident the finding's tone implies.",
      "reach": "Both halves reach a user. /settings/invoice-settings is linked from apps/web/app/settings/page.tsx:663 and saves through apps/web/lib/api/index.ts:2018-2020. Recurring invoices are a live tab (apps/web/app/clients/[id]/sales/page.tsx:66, :359 POST /api/recurring-invoices/{id}/run) and the router is mounted at apps/api/main.py:315."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Sales-invoice numbering is manual by an explicit decision (which is defensible), but the Settings numbering series is still read by nothing on this path and the page still says nothing about that; recurring generation still hands back DRAFT- numbers.",
+    "remaining": null,
+    "probe": "`grep -rn 'branding_repo|invoice_settings' apps/api --include=*.py | grep -v tests | grep -v routers/branding.py` -> only repositories/invoice_repository.py:150-151 (which reads fee_invoices, repositories/invoice_repository.py:132 says so) and repositories/branding_repository.py itself. routers/sales_invoices.py:131-134 still states the manual-numbering decision verbatim. services/numbering.py:18-28 draft_placeholder_invoice_no still returns DRAFT-<10 hex> and is still stamped by services/recurring_invoice_service.py:478 and services/billing_service.py:232.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -291,6 +368,13 @@
      "guards": "None. There is no test asserting any configured value appears in output, which is exactly why it can be detached silently.",
      "reach": "All four screens are live and linked: apps/web/app/settings/page.tsx:663 (invoice-settings), :679 (invoice-templates), :743 (email-templates), plus /settings/branding; API client at apps/web/lib/api/index.ts:2000-2041; router mounted at apps/api/main.py:398-400. The output side is equally live: GET /api/sales-invoices/{id}/pdf (routers/sales_invoices.py:1870) is called from apps/web/components/invoices/InvoiceViewDrawer.tsx:44, and the same bytes are emailed to the customer (routers/sales_invoices.py:1965-1989)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, and worth noting the invoice PDF was substantially rewritten in 46bd46c WITHOUT wiring any of it: the new builder still reads only firms / clients / customers, so logo, colours, the five templates, bank/IFSC/UPI details, footer text and the email templates remain stored-and-never-read. The rewrite was the natural moment to close this and it was not taken.",
+    "remaining": null,
+    "probe": "`grep -rn 'logo|upi|footer_text|bank_name|ifsc' apps/api/services/invoice_pdf_service.py` -> exit 1, ZERO hits in the rewritten 770-line module. `grep -rn 'branding_repo|firm_branding|invoice_settings' apps/api --include=*.py | grep -v tests | grep -v routers/branding.py` -> only the fee-invoice numbering read at repositories/invoice_repository.py:150-151. services/email_service.py is still not among the consumers.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -315,6 +399,13 @@
      "guards": "None that closes it. The receipts grid actually makes the trap visible without offering a way out: apps/web/app/clients/[id]/sales/page.tsx:3246 renders an 'Unallocated' column and :3256 an 'Unallocated only' filter, and the only row actions are reverse (:3204) and PDF.",
      "reach": "Live: the Receipts tab is one of the sales tabs (apps/web/app/clients/[id]/sales/page.tsx:63) and routers/receipts.py is mounted. This is a backend capability reachable from no screen \u2014 which per the instructions CONFIRMS the gap rather than refuting it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. PUT /api/receipts/{id}/allocations is still reachable from no screen, and a manually keyed over-payment still never reaches party_credit_balances, so an advance receipt can only be applied by reversing and re-keying it.",
+    "remaining": null,
+    "probe": "`grep -rn '/allocations' apps/web/app apps/web/lib apps/web/components` -> exit 1, zero hits. `grep -rn 'grant_credit' apps/api --include=*.py | grep -v tests` -> services/party_credit_service.py:70 (the definition) and services/bank_posting_service.py:669 (the single caller).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -339,6 +430,13 @@
      "guards": "The GL kernel does not close it. journal_period_lock_reason (migrations 266/267) is enforced only inside edit_posted_journal / the discard and pair-delete RPCs (migrations 275:104, 276:238) \u2014 i.e. on rewriting an existing entry, not on INSERTING a new one. So a fresh credit-note journal into a filed month posts cleanly. The existing test file tests/test_documents_locked_by_filed_return.py covers only sales invoices and purchase bills (its 13 tests name si and pb; wire_e2e at :42 wires exactly those two routers).",
      "reach": "Live: Credit Notes, Debit Notes and Receipts are all tabs on apps/web/app/clients/[id]/sales/page.tsx:63 and their routers are mounted."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged in code \u2014 but MORE reachable than it was on 7 September, and the finding should be re-prioritised upward for that reason. 46bd46c fixed apps/web/lib/data/gst.ts so markGSTR3BFiled / markGSTR1Filed now PATCH through the API (lib/data/gst.ts:698-717, 722-739), which finally writes the public.filings row that journal_period_lock_reason reads. Before that fix the lock could never fire at all; now it fires for sales invoices and purchase bills and still does not fire for credit notes, sales debit notes, receipts or invoice ISSUE \u2014 so the inconsistency the finding describes has just become live for the first time.",
+    "remaining": null,
+    "probe": "`grep -rn 'period_lock_service|assert_open' apps/api/routers apps/api/services --include=*.py` -> routers/purchase_bills.py:25,1353,1355; routers/sales_invoices.py:22,825,1252,1254; services/period_lock_service.py:66 (the definition). Nothing else. routers/sales_invoices.py:1478 (inside issue_invoice) still calls only period_validation_service.validate_posting_date; credit_notes.py, sales_debit_notes.py and receipt_service.py still import period_validation_service alone.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -363,6 +461,13 @@
      "guards": "Migration 268:37-42 constrains the ENUM of supply_type and invoice_type but adds no relationship to the tax columns. The editor's only defence is presentational and says so in its own comment: apps/web/components/invoices/InvoiceEditor.tsx:777-786 warns that the classification is non-standard, 'Presentational only', and never inspects the line rates. No test asserts the invariant.",
      "reach": "Live: the Supply type dropdown (InvoiceEditor.tsx:746) and the Reverse charge checkbox (:768) sit on the create/edit form and are sent as classification payload at :480/:497."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Tax is still computed from gst_rate_bps and is_interstate alone; a nil/exempt/non-GST or reverse-charge invoice can still carry 18% lines that post to the ledger and vanish from the return.",
+    "remaining": null,
+    "probe": "`PYTHONPATH=. python -c \"import inspect, routers.sales_invoices as si, domain.gst.gstr1_builder as b, domain.gst.validator as v; print(inspect.signature(si._compute_line_gst)); print('nil builder mentions tax heads:', any(k in inspect.getsource(b._build_nil) for k in ('cgst','sgst','igst'))); s=inspect.getsource(v); print('validator checks supply_type:', 'supply_type' in s, '| reverse charge:', 'reverse_charge' in s)\"` -> `(taxable_paise: int, gst_rate_bps: int, is_interstate: bool)` / nil builder mentions tax heads: False / validator checks supply_type: False | reverse charge: False. `grep -n 'supply_type|is_reverse_charge' apps/api/routers/sales_invoices.py` -> only lines 844, 846, 884, 886, all payload keys being stored, never a condition.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -387,6 +492,13 @@
      "guards": "None anywhere. The backend never re-checks: apps/api/routers/eway_bill.py has no threshold logic at all (its only raises are a 404 scope check at :34 and 500s), and CreateEWayBillRequest (:38-52) simply accepts a caller-supplied taxable_value_paise >= 0. domain/income_tax/eway_service.py records; it does not validate.",
      "reach": "Live: CompliancePanel is rendered inside InvoiceViewDrawer (apps/web/components/invoices/InvoiceViewDrawer.tsx:35,361), which the sales page opens at apps/web/app/clients/[id]/sales/page.tsx:1839. The message is an advisory warning, not a blocker (the finding does not claim otherwise) \u2014 the CA can still generate."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The Rule 138(1) Explanation 2 consignment value (tax-inclusive) is still tested as the pre-tax taxable value, so a goods invoice between roughly \u20b942,373 and \u20b950,000 taxable at 18% is advised as 'usually not required' when it is over the threshold.",
+    "remaining": null,
+    "probe": "apps/web/lib/invoices/compliance.ts:23 `export const EWAY_THRESHOLD_PAISE = 5_000_000;` and :174-176 `if (inv.taxable_amount_paise < EWAY_THRESHOLD_PAISE) { warnings.push(\"Taxable value is below \u20b950,000 \u2014 an E-Way Bill is usually not required.\"); }`. components/invoices/CompliancePanel.tsx:51 still feeds `taxable_amount_paise: invoice.taxable_amount_paise` (pre-GST).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -411,6 +523,13 @@
      "guards": "No parity test and no server-side twin \u2014 that part stands. But there is nothing server-side to bypass either: apps/api/routers/eway_bill.py and routers/einvoice.py only RECORD what a human generated on the NIC/IRP portal, so no backend action is gated on these rules.",
      "reach": "The module is reachable (CompliancePanel inside InvoiceViewDrawer), but everything it produces is advisory text \u2014 blockers only disable buttons in a prepare-only workflow."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The Rule 138 threshold and the Rule 48(4) IRN scope test still live only in TypeScript with no Python twin and no parity vector, which is what let SALES-17 go unnoticed. The verifier's two corrections still stand: the state-code range agrees with domain/gst/validator.VALID_STATE_CODES, and the 'third GSTIN regex' is byte-equivalent, so the finding's evidence should be trimmed to the two genuine orphans.",
+    "remaining": null,
+    "probe": "`grep -rn 'irn_eligib|eway_eligib|EWAY_THRESHOLD|5_000_000' apps/api --include=*.py | grep -v tests` returns only domain/income_tax/statutory_rates.py:149 (a surcharge bracket) and domain/banking/exceptions.py:74 (a cash-withdrawal limit) \u2014 neither is an e-way or IRN rule. `wc -l apps/web/lib/invoices/compliance.ts` -> 296.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -435,6 +554,13 @@
      "guards": "None found. domain/gst/classifier.py:91-110 branches only on supply_type/invoice_type (the migration-268 pair), so GSTR-1 is driven by the editor's values and is unaffected by gst_treatment \u2014 but that is the divergence, not a guard against it. einvoice_service.py:84-86 states gst_treatment is 'metadata on this record only \u2014 never fed into tax/journal math', which BOUNDS the blast radius: it reaches no return, no journal and no generated payload (there is no e-invoice JSON builder reading it). One correction to the finding: `reverseCharge` is computed at compliance.ts:86 but is never rendered anywhere in CompliancePanel.tsx, so the hardcoded null has no display consequence today \u2014 the honest statement is that reverse charge is not shown, not that the null corrupts a shown value.",
      "reach": "Reaches a real user. CompliancePanel is rendered by InvoiceViewDrawer.tsx:361, the drawer opened from the sales invoice list; routers/einvoice.py is mounted at apps/api/main.py:297. Worse than the finding says: InvoiceViewDrawer.tsx contains no reference to supply_type/invoice_type at all (grep is empty), so the panel's derived row is the ONLY place the invoice's GST character is shown after issue \u2014 and it shows the wrong one."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The invoice's own supply_type / invoice_type are still never read by the panel, so a SEZ or export invoice still reads 'Regular \u00b7 B2B \u00b7 Inter-state (IGST)' after issue, and reverse charge is still not shown anywhere in the drawer. Note the PDF now DOES print the reverse-charge fact correctly (SALES-03), so the panel is now the only surface that contradicts the stored flag.",
+    "remaining": null,
+    "probe": "apps/web/components/invoices/CompliancePanel.tsx:44-53 still builds compInv with `is_reverse_charge: null` (:49) and `gst_treatment: irn.record?.gst_treatment ?? null` (:50), and `grep -n 'supply_type|invoice_type' components/invoices/CompliancePanel.tsx components/invoices/InvoiceViewDrawer.tsx` -> no matches in either file.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -459,6 +585,13 @@
      "guards": "None \u2014 the reverse. gst_return_service.py:632 reads `inv.get(\"cess_paise\") or 0` from a column that does not exist on client_sales_invoices, so it silently resolves to 0 and GSTR-1/3B declare csamt = 0 for every outward supply. migrations/181_firm_hsn_rate_history.sql:31 already stores an optional `cess_rate_pct` per HSN, so the rate can be recorded in the firm library and then has nowhere to be applied. The transactions table (migration 036:15,24) has cess_paise on both header and line \u2014 but that is the legacy GST-engine table, not the live sales cycle.",
      "reach": "The sales invoice path is the live one (routers/sales_invoices.py mounted, the Sales tab is the product's invoicing screen), so a CA billing cess goods has no way to charge cess. Frontend confirms: grep 'cess' over apps/web/components/invoices/InvoiceEditor.tsx and lib/money/gstLine.ts returns nothing."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. No compensation-cess head exists on the sales line or header, so GSTR-1 csamt and GSTR-3B cess are still structurally zero for outward supplies.",
+    "remaining": null,
+    "probe": "`grep -rn 'client_sales_invoice_lines' apps/api/migrations/*.sql | grep -iE 'alter|create table'` -> only 050_sales_purchase_cycle.sql:58 (CREATE), 050:78 (RLS) and 184_sales_invoice_line_service_catalogue_link.sql:25 (adds service_catalogue_id). No cess column. `grep -in cess apps/api/models/invoices.py` -> no field hit.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -483,6 +616,13 @@
      "guards": "None. A draft invoice is the nearest substitute but it is a tax invoice in draft, not a Rule 55 delivery challan, and it consumes an invoice number the CA types. The e-way bill record path requires an invoice_number (CompliancePanel.tsx:99-106 posts invoice_number: invoice.invoice_no), so movement of goods without an invoice \u2014 the exact case Rule 55 exists for \u2014 cannot be recorded at all.",
      "reach": "Sales is a primary client workspace tab and is the only sales surface, so the absence is what a CA meets."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. No quotation, proforma, sales order or Rule 55 delivery challan exists in schema, API or UI.",
+    "remaining": null,
+    "probe": "`grep -rniE '\\b(quotation|proforma|pro forma|delivery challan|delivery note|sales order)\\b' apps/api/migrations/*.sql` -> zero rows. apps/web/app/clients/[id]/sales/page.tsx TABS still start at Sales Invoices.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -507,6 +647,13 @@
      "guards": "Two the finding omits, both of which soften the 'fails three times' story without removing the gap. (1) HSN is OPTIONAL at every level: routers/service_catalogue.py:55-58 '_hsn_in_library ... A blank hsn_code is always allowed', and models/invoices.py:35 hsn_sac is Optional \u2014 so only the CATALOGUE ITEM is a hard blocker; the HSN library blocks only once the CA supplies a code (which Rule 46(g) requires above the turnover thresholds, so it bites in practice). (2) Bulk seeding exists: routers/firm_hsn_library.py:185 POST /bulk, a CSV import screen at apps/web/app/settings/firm-hsn-library/page.tsx:204, and onboarding step 3 of 3 is 'HSN/SAC Library' (apps/web/app/onboarding/page.tsx:105-133) with a template and an outbound link to the GST portal's own search page. So the library can be loaded in one CSV rather than one code at a time \u2014 the CA just has to source the CSV.",
      "reach": "Reaches every new firm: the onboarding wizard's third step is the library import, and the invoice line 422 is the first wall otherwise. The omission is a recorded product decision (apps/web/app/onboarding/page.tsx:111-124 gives the licensing rationale and cites docs/HSN_SAC_REDESIGN.md), but it is recorded in code comments/docs, not as a statutory decision in CLAUDE.md, so it is a legitimate product-gap finding."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Still no shared HSN/SAC master; the verifier's two softeners also still hold (HSN itself is optional, and POST /bulk plus the onboarding step-3 CSV import exist), so the friction remains sourcing the data rather than keying it.",
+    "remaining": null,
+    "probe": "apps/api/routers/firm_hsn_library.py:1-15 still states 'Caflow does not ship or expose a shared HSN/SAC master to users. Every code a firm bills against comes from THIS table' and that public.hsn_master 'is not read by this router'. models/invoices.py still carries require_service_catalogue_id as a hard 422.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -531,6 +678,13 @@
      "guards": "None that restores a cadence. jobs/scheduler.py:213-215 runs only send_overdue_reminders (the practice-fees sweep). collections_service.py:305 REMINDER_DEFAULTS is down to {'attach_pdf': True} \u2014 the enabled/interval_days/max_reminders knobs are gone. The removal itself was deliberate and reasoned (unbounded loop starving the nightly sweep), which is why the fix is 'rebuild it bounded', not 'revert'.",
      "reach": "The manual reminder reaches users (sales page Remind action, email only via services/email_service.send_invoice_to_customer). WhatsApp: there IS a composer at apps/web/app/notifications/whatsapp/page.tsx with a 'payment_reminder' template (line 85) \u2014 but it builds a wa.me deep link (line 149) for the CA's own CLIENTS via ClientLookup, not for a client's customers, and it is not wired to any sales invoice. So the finding's 'nothing in the sales path touches WhatsApp' holds."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. No automated customer-facing reminder cadence, no bulk send, email only. The nightly send_overdue_reminders remains the practice's own fee sweep.",
+    "remaining": null,
+    "probe": "`grep -rn 'run_due_reminders' apps/api --include=*.py` -> only the removal note at services/collections_service.py:298 and a test docstring; no definition. services/collections_service.py:305 REMINDER_DEFAULTS is still `{\"attach_pdf\": True}`. apps/web/app/clients/[id]/sales/page.tsx:1655 remindInvoice still POSTs /api/sales-invoices/{id}/remind one row at a time and there is still no bulk Remind.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -555,6 +709,13 @@
      "guards": "None. The FY-lock (period_validation_service.validate_posting_date) uses the document date, so it neither catches nor prevents this \u2014 it only proves the two facts are available side by side. Note also that _current_fy uses UTC, not IST: between 00:00 and 05:30 IST the clock is still on the previous day, so on 1 April the very first receipts of a new FY get last year's series. CLAUDE.md names core.ist_clock as the authority for FY labels; ist_fy_label(date(2026,3,31)) correctly returns '2025-26'.",
      "reach": "Every receipt, credit note and sales debit note the product numbers. The SAME pattern is in the purchase cycle: services/purchase_payment_service.py:30 used at :171 and :459, routers/purchase_credit_notes.py:89 used at :212, routers/debit_notes.py:74 used at :206 \u2014 six auto-numbered document series in total, not three."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A March-dated receipt keyed today is still numbered into next year's series, and the UTC clock still gives a 00:00-05:30 IST off-by-one at the 1 April boundary. The wider pattern (six auto-numbered series, including the purchase cycle) is also unchanged.",
+    "remaining": null,
+    "probe": "Re-ran the original probe at HEAD: `PYTHONPATH=. python -c \"import services.receipt_service as rs; r=rs.create_receipt_core('firm-1',{'client_id':'client-1','customer_id':'cust-1','receipt_date':'2026-03-31','amount_paise':100000,'payment_mode':'bank','allocations':[]},{'id':'u1','firm_id':'firm-1','role':'Partner'},None); print(r['receipt_no'],'|',r['receipt_date'])\"` -> `RCPT-2627-0001 | 2026-03-31`. Source unchanged: services/receipt_service.py:56-60, routers/credit_notes.py:106-110, routers/sales_debit_notes.py:81-85 all read datetime.now(timezone.utc).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -579,6 +740,13 @@
      "guards": "The window machinery exists and is applied elsewhere, which sharpens rather than refutes: services/compliance_engine.py:196 correction_window_closes and domain/gst/correction_window.py are wired into services/gst_amendment_service.py:101,110 (2A/2B amendment proposals) and the filing-demo flows \u2014 but never into credit notes, so the function a fix would call is already written and tested. On (b) there is no guard at all: even the supplier limit that does exist is stored-only \u2014 grep credit_limit over apps/api *.py returns nothing, so no backend ever enforces it; only apps/web/app/accounting/suppliers/page.tsx reads it, for display.",
      "reach": "Credit notes are a live Sales tab (apps/web/app/clients/[id]/sales/page.tsx:69) and issue posts a real journal via phase2_journal_service.journal_for_credit_note, so a late note reduces the books and lands in the CDNR table of whatever period it is dated in. Customer creation/invoice creation are the primary sales paths."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged on both halves. Neither creating nor issuing a credit note tests the \u00a734(2)/\u00a737(3) window even though services/compliance_engine.py:197 correction_window_closes and domain/gst/correction_window.py exist and are used by services/gst_amendment_service.py:36; and no customer credit limit exists at all.",
+    "remaining": null,
+    "probe": "`grep -n 'correction_window|window_for|is_actionable' apps/api/routers/credit_notes.py` -> no matches; the only \u00a734 references in that file (:223, :385, :399, :431, :473, :516, :540, :677) are about referencing the original supply and draft-vs-issued, never the time limit. `grep -rn 'credit_limit' apps/api --include=*.py | grep -v tests` -> exit 0 with no output; `grep -rn credit_limit apps/api/migrations/*.sql` -> only 030_supplier_tds_and_credit.sql:11 (suppliers) and :25 (clients). customers still has no credit_limit_paise.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -603,6 +771,13 @@
      "guards": "Three that narrow the impact. (1) The invoice DETAIL drawer \u2014 opened from this same list \u2014 computes and shows Outstanding (components/invoices/InvoiceViewDrawer.tsx:182, :245) and RecordPaymentModal pre-fills it (:451) and refuses to exceed it (:464). (2) Per-document outstanding already has a screen: apps/web/app/clients/[id]/reports/ageing/page.tsx:637-643 lists invoice_no with outstanding_paise, linked from reports/page.tsx:66, backed by /api/customers/ar-aging. (3) The oldest-first pattern already exists in the product \u2014 components/banking/SettleDocumentsModal.tsx:108-126 shows per-document outstanding and :172 fills `Math.min(doc.outstanding_paise, remainingBefore)` down the list. Server-side, receipt_service.py:612-620 raises a 422 'allocation would exceed invoice outstanding', so an over-allocation is caught, just without telling the CA the number.",
      "reach": "Both screens are live Sales tabs. So the true gap is not 'nowhere' \u2014 it is that the invoice LIST and the receipt ALLOCATOR, the two multi-invoice screens where collections actually happens, are the two that omit it, while the single-invoice drawer and a separate reports page have it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The invoice LIST and the multi-invoice receipt ALLOCATOR \u2014 the two collections screens \u2014 still show no per-invoice balance and offer no oldest-first fill. The verifier's correction stands: the single-invoice drawer and the ageing report do show it, so the title's 'nowhere' is still overstated.",
+    "remaining": null,
+    "probe": "apps/web/app/clients/[id]/sales/page.tsx:1752-1778 columns are still Invoice No, Date, Customer, Taxable, GST, Total, Due, Status \u2014 no balance column. The list select at :1373 still omits credited_paise / debit_note_paise / outstanding_paise. The receipt allocator's invoice query at :3397-3402 still selects only `id, invoice_no, invoice_date, total_paise, status, txn_currency, exchange_rate, txn_total, paid_txn`, and the helper comment at :3414 still reads '(invoice total, not outstanding)'. `grep -rn 'outstanding_paise' apps/web --include=*.tsx` returns no hit in this file.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -627,6 +802,13 @@
      "guards": "No guard blocks it. service_catalogue.hsn_sac is itself optional (apps/api/migrations/176_service_catalogue.sql:26 '-- default SAC/HSN (optional; free-text on the line)'), so the mandatory Product/Service link (migration 206 / models/invoices.py:104) does not imply an HSN. The editor cell is optional free text with placeholder \"Set HSN/SAC\" (apps/web/components/invoices/InvoiceEditor.tsx:892-899) and isValidLine does not require it (apps/web/lib/invoices/gst.ts:331-337). The one soft guard the finding missed: apps/web/lib/invoices/compliance.ts:126-129 raises a severity-'warning' issue \"One or more lines are missing an HSN/SAC code\" \u2014 but it is only surfaced through irnEligibility's warnings list (compliance.ts:157-160), i.e. inside the 'Prepare IRN' eligibility block of the view drawer, not in the editor and not on the PDF path. Nothing blocks issuing, sending or printing.",
      "reach": "Real. get_sales_invoice_pdf (invoice_pdf_service.py:309-357) feeds every client_sales_invoice line into build_invoice_pdf, and it is reached by the mounted download route (apps/api/routers/sales_invoices.py:1870-1893 GET /{invoice_id}/pdf), the email-to-customer path (_do_send_invoice, routers/sales_invoices.py:1896-1903), the collections chaser (services/collections_service.py:347) and the client portal (routers/portal_data.py:52). So the wrong code goes out on the document the customer receives."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "fixed",
+    "what_is_true_now": "Closed by 46bd46c. A sales-invoice line with no HSN/SAC now prints an empty cell and the omission is named on the face of the document; the CA-services SAC is confined to the fee invoice. NOT done, and worth carrying forward as a smaller separate item: nothing still requires hsn_sac at issue time, so an invoice can still be issued and sent with the code missing \u2014 it is now visible rather than silently wrong.",
+    "remaining": null,
+    "probe": "Rendered a goods sales invoice with one line whose hsn_sac is None ('MS Steel Pipes 50mm'): probe printed \"'998211' -> False\" and \"'Not recorded' -> True\". Source: apps/api/services/invoice_pdf_service.py:622-636 build_sales_invoice_pdf passes `hsn_sac_fallback=None` with the comment 'Rule 46(g) is about what the CLIENT sold. There is no sensible default for that, so a line with no code prints none and is reported instead'; :456-459 records the line number in missing_hsn; :573-574 emits 'HSN/SAC for line(s) N \u2014 Rule 46(g).' under a 'Not recorded' heading. SAC_CODE at :70 survives only as build_invoice_pdf's `hsn_sac_fallback` (:614) for the practice's own fee invoice, which is exactly what the finding asked for.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -651,6 +833,13 @@
      "guards": "None, and none is claimed to be. The docs record the registration gates honestly (docs/compliance/02-gst.md:175-205, and the scoped TODO(compliance) markers at routers/einvoice.py:7-15 and routers/eway_bill.py:4-10) but nothing there says offline JSON generation or distance-based validity was considered and declined \u2014 so this is not a decision CLAUDE.md or docs/compliance already records as deliberate. No scheduler job or deadline sweep touches e-way expiry (no ewb/eway reader in apps/api/jobs/).",
      "reach": "Reachable, and one piece of the finding's evidence is wrong. There is no /eway page, but the e-way and e-invoice workflows ARE reachable from the invoice itself: apps/web/components/invoices/CompliancePanel.tsx (prepareEway at :104-115, recordEway at :116-124, IRN actions at :78-102), rendered by InvoiceViewDrawer.tsx:361, which is opened from app/clients/[id]/sales/page.tsx:1839. So the workflow is not unreachable \u2014 it is present and purely clerical. Note the panel's prepareEway does not even send distance_km, so the one field Rule 138(10) needs is never collected in the UI."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. E-invoice and e-way remain record-keeping ledgers: no JSON generated, no AATO applicability, ewb_valid_upto still typed in by the CA, distance_km still stored and never read, no expiry sweep.",
+    "remaining": null,
+    "probe": "`grep -rn 'SellerDtls|BuyerDtls|ItemList|einvoice_json|ewb_json' apps --include=*.py --include=*.ts --include=*.tsx` (node_modules excluded) -> zero matches, so no IRP or EWB JSON is built anywhere. `grep -rn 'distance_km' apps/api --include=*.py | grep -v tests` -> routers/eway_bill.py:50,94 and domain/income_tax/eway_service.py:70,89,115 \u2014 the request model, the create call and the stored dict, still zero readers.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -675,6 +864,13 @@
      "guards": "Two partial guards, neither blocking. (1) The editor auto-fills from the customer INCLUDING the gstin[:2] fallback the finding proposes \u2014 apps/web/components/invoices/InvoiceEditor.tsx:48-51 customerStateCode() and :322-327 \u2014 so a GST-registered customer is covered. It is a B2C/unregistered customer with no state_code that leaves it blank, and the picker at :713-716 carries no required marker. (2) The invoice view drawer DOES surface it after the fact: CompliancePanel.tsx:57 runs validatePlaceOfSupply and renders its severity-'error' messages at :148-152, so 'only the GSTR-1 build discovers it' overstates \u2014 the drawer shows a red 'Place of supply is missing.' if the CA opens it. Nothing stops entry, issue, posting or sending.",
      "reach": "Real. The create path is the mounted POST on the sales invoice router used by the editor (InvoiceEditor.tsx:472,493 send supply_state_code) and by the CSV importer (lib/invoices/importMapping.ts), and the invoice is posted to the GL at issue with a blank place of supply, after which the document is frozen (\u00a734 correction, not a silent edit)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. An invoice can still be created, issued, posted and sent with supply_state_code = '', and it first becomes a hard error at GSTR-1 build. NOTE the blast radius shrank slightly: the invoice PDF now names the missing place of supply as a Rule 46(n) gap on the face of an inter-State document (invoice_pdf_service.py:575-577), so a CA who downloads the PDF sees it \u2014 but nothing still blocks entry or issue.",
+    "remaining": null,
+    "probe": "apps/api/routers/sales_invoices.py:683 still reads `effective_supply_state = supply_state_code or customer.get(\"state_code\") or \"\"` and writes it at :839/:879 with no validation. Inside issue_invoice (from :1433) a grep for supply_state_code returns nothing; the only guard reached there is period_validation_service.validate_posting_date (offset :46 within the function). models/invoices.py:136 is still `Optional[str] = None` with no state-code validator. apps/web/lib/invoices/gst.ts validateInvoiceEditor still contains no supply/state check.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -699,6 +895,13 @@
      "guards": "No create-path guard. The pattern exists elsewhere in the same codebase \u2014 receipts and purchase payments validate party ownership at CREATE and are pinned by tests (apps/api/tests/test_r227_party_ownership_guard.py:83-202) \u2014 but that file has no credit-note case, and no test covers a cross-client sales_invoice_id at credit-note creation. The DB has no cross-column constraint tying credit_notes.client_id to the linked invoice's client_id.",
      "reach": "Requires a hand-made API call or a client switch mid-session: the UI picks the invoice from a client-scoped list. Same-firm only, so it is not a tenancy hole \u2014 the firm filter is intact. Impact is a draft whose CGST/SGST-vs-IGST split may be computed from the wrong invoice and which then cannot be issued (422 at :532)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The credit-note CREATE path can still inherit is_interstate from another client's invoice in the same firm; it still fails safe at issue.",
+    "remaining": null,
+    "probe": "apps/api/routers/credit_notes.py:256-265 still selects `client_sales_invoices` filtered on `.eq(\"id\", data[\"sales_invoice_id\"]).eq(\"firm_id\", firm_id)` only \u2014 no client_id \u2014 and copies is_interstate off whatever it finds; the issue path still demands client_id and 422s.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -723,6 +926,13 @@
      "guards": "None. No validator on the field (it accepts arbitrary text), and no test asserts the two branches agree \u2014 indeed the mock branch is the one the ~9,900-test mock suite exercises, so the divergence is untested by construction.",
      "reach": "No in-product caller today: a repo-wide grep of apps/web for place_of_supply finds only read-side type declarations (lib/api/index.ts:155, lib/data/transactions.ts:41, lib/data/gst.ts:47) and the compliance validator's issue field names (lib/invoices/compliance.ts:102-111); the editor and the CSV importer both send supply_state_code. So the risk is entirely forward-looking, which is what 'low' means here."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. SalesInvoiceIn.place_of_supply is still accepted, still unvalidated, and still honoured only on the mock branch \u2014 so the mock suite and production decide intra- vs inter-state by different rules.",
+    "remaining": null,
+    "probe": "`grep -n 'place_of_supply|supply_state_code' apps/api/routers/sales_invoices.py` -> 627, 631, 632, 683, 839, 879. place_of_supply appears only at :631 (a comment) and :632 (the mock branch `place = data.get(\"place_of_supply\") or data.get(\"supply_state_code\") or \"\"` against a hardcoded client_state_code = '27' at :633); the real branch at :683 never reads it.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -747,6 +957,13 @@
      "guards": "The absence is guarded in the honest sense \u2014 the comment itself warns not to assume TCS is implemented, and apps/web/app/risks/page.tsx:110-120 excludes 27EQ from the TDS statement list with the note '27EQ is TCS under \u00a7206C and is deliberately absent: nothing in this codebase generates it'. Counter-note: apps/api/routers/tds.py:469-472 still accepts return_type='27EQ' and migrations 014/037 allow it in the CHECK, so a 27EQ row can be created with nothing behind it \u2014 a smaller, separate hygiene point.",
      "reach": "No wrong number reaches a CA: the '206C' rate entry has no readers, so the stale comment misleads a future implementer rather than a user. The missing feature reaches a CA only for a client with \u00a7206C(1)/(1F)/(1G) collections, who cannot be served here at all."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, including the stale note \u2014 and this one is cheap to close now. section_rates.py was heavily edited by 46bd46c (194Q charge_on_excess_only, aggregate thresholds), so the file was open and the one-line comment correction was not made. docs/audits/2026-09-07-market-research/income-tax-tds-primary.md already records that \u00a7206C(1H) ceased to operate from 01-04-2025, so 'unchanged, 0.1%' is wrong for FY 2025-26 onwards and misleads a future implementer.",
+    "remaining": null,
+    "probe": "apps/api/domain/tds/section_rates.py:217 still carries the comment 'TCS on sale of goods, Section 206C(1H) \u2014 unchanged, 0.1%' above `\"206C\": TDSSectionRule(0, 10, 10)` at :224, and :231 is still `_FY_2026_27 = FYTDSRates(fy=\"2026-27\", verified=False, sections=_SECTIONS_2025_26)`. `grep -rin tcs apps/api/services/phase2_journal_service.py` -> exit 1, no TCS line in the sales journal; no TCS column on client_sales_invoices in any migration.",
+    "against_commit": "46bd46c"
    }
   }
  ],

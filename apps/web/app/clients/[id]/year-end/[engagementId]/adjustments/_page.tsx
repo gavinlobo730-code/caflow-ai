@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, X, Loader2 } from "lucide-react";
 import { yearEndApi, type Adjustment, type AdjustmentType, type AdjustmentStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 
@@ -316,10 +317,12 @@ function AdjustmentForm({
     if (!description.trim()) { setError("Description is required"); return; }
     if (!debitAccount.trim()) { setError("Debit account is required"); return; }
     if (!creditAccount.trim()) { setError("Credit account is required"); return; }
-    const amountRupees = parseFloat(amountStr || "0");
-    if (amountRupees <= 0) { setError("Amount must be greater than zero"); return; }
-    // All monetary amounts stored in paise — multiply by 100 (integer arithmetic)
-    const amount_paise = Math.round(amountRupees * 100);
+    // Through the one parser. parseFloat(amountStr) read "1,25,000" as ₹1 and
+    // this posts a year-end adjustment to the general ledger, where a wrong
+    // figure lands in the audited accounts.
+    const amount_paise = paiseFromRupeeInput(amountStr.replace(/[,\s₹]/g, ""));
+    if (amount_paise === null) { setError("Amount isn't a rupee figure — enter it like 125000 or 125000.50"); return; }
+    if (amount_paise <= 0) { setError("Amount must be greater than zero"); return; }
     if (!adjDate) { setError("Date is required"); return; }
 
     setSaving(true);
@@ -394,9 +397,8 @@ function AdjustmentForm({
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Amount (₹) *</label>
           <input
-            type="number"
-            min="0"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
             placeholder="0.00"

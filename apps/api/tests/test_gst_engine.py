@@ -278,13 +278,37 @@ class TestGSTR3BComputer:
         assert result.itc_capped_by_2a is True
 
     def test_rule_36_4_no_cap_when_book_within_limit(self):
-        """No cap applied when book ITC ≤ 100% of GSTR-2A."""
+        """No cap applied when book ITC ≤ 100% of GSTR-2A.
+
+        The fixture carries CGST **and** SGST, because a real intra-state
+        purchase generates both and 2B reports both. It used to carry CGST
+        alone, which passed only because the cap could never fire on a zero —
+        see the test below, which is what changed.
+        """
         sales = [make_sale(taxable_paise=100_000_00, gst_rate=18.0)]
         purchases = [make_purchase(taxable_paise=50_000_00, gst_rate=18.0)]
-        gstr2a = [GSTR2ARecord(cgst_paise=6_000_00, sgst_paise=0, igst_paise=0)]  # 4500 book < 6000
+        gstr2a = [GSTR2ARecord(cgst_paise=6_000_00, sgst_paise=6_000_00, igst_paise=0)]
         result = compute_gstr3b(sales, purchases, gstr2a)
         assert result.itc_cgst == 4_500_00  # not capped
         assert result.itc_capped_by_2a is False
+
+    def test_rule_36_4_caps_a_head_the_2b_shows_nothing_under(self):
+        """A 2B ON FILE that shows no credit under a head caps that head at nil.
+
+        This is new, and it is new because the table finally has rows in it:
+        `_gstr2a_for_period` always returned [] and this branch was unreachable,
+        so a zero could only ever mean "nobody uploaded anything". Now it can
+        also mean "2B is on file and shows nothing here", and §16(2)(aa) makes
+        those opposite answers — reading the second as the first lets the return
+        claim credit the portal has refused.
+        """
+        sales = [make_sale(taxable_paise=100_000_00, gst_rate=18.0)]
+        purchases = [make_purchase(taxable_paise=50_000_00, gst_rate=18.0)]
+        gstr2a = [GSTR2ARecord(cgst_paise=6_000_00, sgst_paise=0, igst_paise=0)]
+        result = compute_gstr3b(sales, purchases, gstr2a)
+        assert result.itc_cgst == 4_500_00, "CGST is within what 2B shows"
+        assert result.itc_sgst == 0, "and 2B shows no SGST credit at all"
+        assert result.itc_capped_by_2a is True
 
     def test_rule_36_4_no_cap_when_gstr2a_is_zero(self):
         """No cap applied when GSTR-2A records absent — CA should upload GSTR-2A."""
