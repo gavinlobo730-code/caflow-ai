@@ -49,29 +49,82 @@ function computeAssetStatus(a: Pick<Asset, "is_disposed" | "purchase_cost_paise"
   return wdv <= a.salvage_value_paise ? "fully_depreciated" : "active";
 }
 
-const CATEGORIES = [
-  "Computer & IT Equipment",
-  "Furniture & Fixtures",
-  "Office Equipment",
-  "Plant & Machinery",
-  "Vehicles",
-  "Building",
-  "Land",
-  "Intangibles",
-  "Other",
-];
+// Companies Act 2013, Schedule II Part C — the categories and the useful LIVES
+// the statute prescribes, served by GET /api/fixed-assets/categories and never
+// held here.
+//
+// This page used to carry its own CATEGORIES list and its own WDV_RATES table.
+// The backend carried an identical pair, and both were wrong in the same way:
+// they were mostly INCOME TAX ACT block rates under a "Companies Act 2013 Sch
+// II" label, with the correct ten-year figure sitting against Vehicles, which
+// Schedule II gives eight years. Two copies of a statutory table is how that
+// survives — so there is one now, in apps/api, and this is its shape.
+interface ScheduleIIClass {
+  label: string;
+  /** null where Schedule II prescribes no life (intangibles, "Other", land). */
+  useful_life_years: number | null;
+  /** Derived from the life: R = 1 − (residual/cost)^(1/n). null where there is none. */
+  wdv_rate_percent: number | null;
+}
 
-const WDV_RATES: Record<string, number> = {
-  "Computer & IT Equipment": 31.67,
-  "Furniture & Fixtures":    10.0,
-  "Office Equipment":        13.91,
-  "Plant & Machinery":       15.33,
-  "Vehicles":                25.89,
-  "Building":                 5.0,
-  "Land":                     0.0,
-  "Intangibles":             25.0,
-  "Other":                   15.33,
-};
+interface AssetCategory {
+  category: string;
+  depreciable: boolean;
+  residual_value_cap_percent: number;
+  classes: ScheduleIIClass[];
+}
+
+/** A schedule row as routers/fixed_assets.py computes it — the charge, and the
+ *  basis it was computed on. Nothing on this page recomputes any of it. */
+interface ScheduleRow {
+  asset_id: string;
+  asset_code?: string | null;
+  asset_name: string;
+  asset_category: string;
+  purchase_cost_paise: number;
+  accumulated_paise: number;
+  current_wdv_paise: number;
+  annual_depreciation_paise: number;
+  monthly_depreciation_paise: number;
+  depreciation_method: "WDV" | "SL";
+  salvage_value_paise: number;
+  wdv_rate_percent?: number | null;
+  useful_life_years?: number | null;
+  depreciation_posted_through?: string | null;
+  /** Set where the asset has no statutory basis for a charge — shown as a
+   *  reason beside the zero, because a zero with no reason reads as "nothing
+   *  to depreciate". */
+  statutory_gap?: string | null;
+}
+
+/** What the create form says under the rate (or life) field. It repeats the
+ *  class the backend served back to the CA — the life, the rate derived from
+ *  it, and the residual cap it came from — and says plainly where Schedule II
+ *  prescribes nothing. It computes no rate of its own. */
+function scheduleIINote(cat: AssetCategory | undefined, cls: ScheduleIIClass | undefined, method: "WDV" | "SL"): string {
+  if (!cat || !cls) return "Companies Act 2013, Schedule II Part C.";
+  if (!cat.depreciable) {
+    return `${cat.category} is not depreciated under Schedule II — there is no useful life to spread a cost over.`;
+  }
+  if (cls.useful_life_years == null) {
+    return `Schedule II prescribes no useful life for ${cat.category}, so there is no rate to pre-fill — `
+      + `record the ${method === "WDV" ? "rate" : "life"} the CA has determined. `
+      + `Intangibles are amortised under AS 26 / Ind AS 38.`;
+  }
+  return `Schedule II Part C: ${cls.label} — ${cls.useful_life_years} years, which is `
+    + `${cls.wdv_rate_percent}% on the written-down value at the `
+    + `${cat.residual_value_cap_percent}% residual cap. Change it where the CA has `
+    + `determined a different life.`;
+}
+
+/** The sentence out of a refusal. FastAPI answers with {"detail": "..."} and
+ *  these details are written for the CA — "Depreciation for 2026-09 has not
+ *  been posted". Swallowing them is what made a skipped month invisible. */
+function refusalMessage(body: { detail?: unknown; error?: unknown }, fallback: string): string {
+  const detail = body?.detail ?? body?.error;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  return fallback;
+}
 
 function fmt(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -313,28 +366,68 @@ function RegisterTab({ clientId }: { clientId: string }) {
 // ── Add Asset Drawer ────────────────────────────────────────────────────────
 
 function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onClose: () => void; onSaved: () => void }) {
+  const [categories, setCategories] = useState<AssetCategory[]>([]);
+  const [catsLoading, setCatsLoading] = useState(true);
+  const [catsFailed, setCatsFailed] = useState(false);
   const [form, setForm] = useState({
     asset_name:            "",
-    asset_category:        "Computer & IT Equipment",
+    asset_category:        "",
+    schedule_ii_class:     0,
     asset_code:            "",
     location:              "",
     purchase_date:         new Date().toISOString().slice(0, 10),
     purchase_cost_paise:   "",
     salvage_value_paise:   "0",
     depreciation_method:   "WDV" as "WDV" | "SL",
-    wdv_rate_percent:      "31.67",
-    useful_life_years:     "5",
+    wdv_rate_percent:      "",
+    useful_life_years:     "",
     notes:                 "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function handleCategoryChange(cat: string) {
-    setForm(f => ({ ...f, asset_category: cat, wdv_rate_percent: String(WDV_RATES[cat] ?? 15.33) }));
-  }
+  // Picking a category (or one of its Schedule II classes) pre-fills BOTH the
+  // life and the rate from the same served row — they are one figure and its
+  // derivation, so they can never be filled in from different places again.
+  const applyClass = useCallback((cats: AssetCategory[], category: string, index: number) => {
+    const cls = cats.find(c => c.category === category)?.classes[index];
+    setForm(f => ({
+      ...f,
+      asset_category:    category,
+      schedule_ii_class: index,
+      // Left BLANK where Schedule II prescribes nothing (intangibles, "Other"):
+      // the CA records what they determined, and the backend refuses the asset
+      // rather than defaulting to a plausible number.
+      wdv_rate_percent:  cls?.wdv_rate_percent != null ? String(cls.wdv_rate_percent) : "",
+      useful_life_years: cls?.useful_life_years != null ? String(cls.useful_life_years) : "",
+    }));
+  }, []);
+
+  const loadCategories = useCallback(async () => {
+    setCatsLoading(true);
+    try {
+      const res = await fetch(`${API}/api/fixed-assets/categories?client_id=${clientId}`, { credentials: "include" });
+      const j = await res.json();
+      if (!j.success) throw new Error(refusalMessage(j, "Failed to load categories"));
+      const cats: AssetCategory[] = j.data ?? [];
+      setCategories(cats);
+      setCatsFailed(cats.length === 0);
+      if (cats.length) applyClass(cats, cats[0].category, 0);
+    } catch {
+      setCategories([]); setCatsFailed(true);
+    } finally {
+      setCatsLoading(false);
+    }
+  }, [clientId, applyClass]);
+
+  useEffect(() => { loadCategories(); }, [loadCategories]);
+
+  const selected = categories.find(c => c.category === form.asset_category);
+  const selectedClass = selected?.classes[form.schedule_ii_class];
 
   async function save() {
     if (!form.asset_name || !form.purchase_cost_paise) { setError("Asset name and cost are required."); return; }
+    if (!form.asset_category) { setError("Pick a category."); return; }
     // The field names still say _paise (they are the payload keys); what the CA
     // types into them is rupees, and this is what reads it exactly.
     const cost = paiseFromRupeeInput(form.purchase_cost_paise);
@@ -358,13 +451,25 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         purchase_cost_paise:   cost,
         salvage_value_paise:   salvage,
         depreciation_method:   form.depreciation_method,
-        wdv_rate_percent:      form.depreciation_method === "WDV" ? parseFloat(form.wdv_rate_percent) : undefined,
-        useful_life_years:     form.depreciation_method === "SL"  ? parseInt(form.useful_life_years) : undefined,
+        // BOTH are sent whichever method is chosen: the life is what Schedule
+        // II prescribes and the rate is derived from it, so storing only one
+        // of them is what let the two drift apart. A blank field is sent as
+        // absent, not as NaN — the backend then either fills in the Schedule
+        // II default or refuses with the reason, which is the single place
+        // that decision is made.
+        wdv_rate_percent:      form.wdv_rate_percent.trim()  === "" ? undefined : Number(form.wdv_rate_percent),
+        useful_life_years:     form.useful_life_years.trim() === "" ? undefined : Number(form.useful_life_years),
         notes:                 form.notes || undefined,
       };
+      if (body.wdv_rate_percent !== undefined && !Number.isFinite(body.wdv_rate_percent)) {
+        setError("The WDV rate must be a percentage, e.g. 12.5."); return;  // the finally below lowers `saving`
+      }
+      if (body.useful_life_years !== undefined && !Number.isInteger(body.useful_life_years)) {
+        setError("The useful life must be a whole number of years."); return;
+      }
       const res = await fetch(`${API}/api/fixed-assets/`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await res.json();
-      if (!j.success) throw new Error(j.error ?? "Failed to add asset");
+      if (!j.success) throw new Error(refusalMessage(j, "Failed to add asset"));
       onSaved(); onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
@@ -395,11 +500,44 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               <input className={INPUT} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Head Office" />
             </Field>
           </div>
+          {catsFailed && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-800 text-[11px] flex items-center justify-between gap-3">
+              {/* No fallback list: a category picked from a stale copy of the
+                  Schedule is the defect this change removed. The form waits. */}
+              <span>Couldn&apos;t load the Schedule II categories — the request failed or timed out.</span>
+              <button onClick={loadCategories} className="shrink-0 px-2 py-1 border border-amber-300 rounded hover:bg-amber-100">Retry</button>
+            </div>
+          )}
           <Field label="Category">
-            <select className={INPUT} value={form.asset_category} onChange={e => handleCategoryChange(e.target.value)}>
-              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            <select
+              className={INPUT}
+              value={form.asset_category}
+              disabled={catsLoading || categories.length === 0}
+              onChange={e => applyClass(categories, e.target.value, 0)}
+            >
+              {catsLoading && <option value="">Loading Schedule II categories…</option>}
+              {!catsLoading && categories.length === 0 && <option value="">Unavailable</option>}
+              {categories.map(c => <option key={c.category}>{c.category}</option>)}
             </select>
           </Field>
+          {/* Schedule II gives several classes under one heading — a server is
+              six years and a laptop three, a lorry on hire six and a company
+              car eight. The CA picks; only the ordinary case is the default. */}
+          {selected && selected.classes.length > 1 && (
+            <Field label="Schedule II class">
+              <select
+                className={INPUT}
+                value={form.schedule_ii_class}
+                onChange={e => applyClass(categories, form.asset_category, Number(e.target.value))}
+              >
+                {selected.classes.map((c, i) => (
+                  <option key={c.label} value={i}>
+                    {c.label}{c.useful_life_years ? ` — ${c.useful_life_years} years` : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Purchase Date">
             <input type="date" className={INPUT} value={form.purchase_date} onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))} />
           </Field>
@@ -426,11 +564,12 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           {form.depreciation_method === "WDV" ? (
             <Field label="WDV Rate (% per year)">
               <input type="number" step="0.01" className={INPUT} value={form.wdv_rate_percent} onChange={e => setForm(f => ({ ...f, wdv_rate_percent: e.target.value }))} />
-              <p className="text-[10px] text-[#94A3B8] mt-1">Companies Act 2013 Sch II rate pre-filled for selected category.</p>
+              <p className="text-[10px] text-[#94A3B8] mt-1">{scheduleIINote(selected, selectedClass, "WDV")}</p>
             </Field>
           ) : (
             <Field label="Useful Life (years)">
               <input type="number" className={INPUT} value={form.useful_life_years} onChange={e => setForm(f => ({ ...f, useful_life_years: e.target.value }))} />
+              <p className="text-[10px] text-[#94A3B8] mt-1">{scheduleIINote(selected, selectedClass, "SL")}</p>
             </Field>
           )}
 
@@ -453,13 +592,16 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 // ── Depreciation Tab ────────────────────────────────────────────────────────
 
 function DepreciationTab({ clientId }: { clientId: string }) {
-  const [assets, setAssets] = useState<Asset[]>([]);
+  const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed (error/timeout / success:false) rather than
   // genuinely finding no assets — otherwise the charge tiles read ₹0 as if
   // there were simply nothing to depreciate (M17).
   const [loadFailed, setLoadFailed] = useState(false);
   const [posting, setPosting] = useState<string | null>(null);
+  // Per-asset refusals, keyed by asset id. These used to be swallowed by an
+  // empty catch, which is how a skipped month showed as nothing happening.
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [period, setPeriod] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -469,16 +611,19 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     try {
-      // include_disposed defaults to false server-side — no "status" query
-      // param exists on this endpoint (it was silently ignored, not filtering
-      // anything); disposed assets are already excluded by the default.
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
+      // The SCHEDULE endpoint, not the plain asset list: the annual and
+      // monthly charge are computed there, on the financial year's OPENING
+      // written-down value (task #232). This tab used to recompute them in the
+      // browser from the live, already-reduced accumulated depreciation — its
+      // own copy of the rule, giving a different answer from the one the Post
+      // button was about to write. Disposed assets are excluded server-side.
+      const res = await fetch(`${API}/api/fixed-assets/depreciation-schedule?client_id=${clientId}`, { credentials: "include" });
       const j = await res.json();
-      if (!j.success) throw new Error(j.error ?? "Failed to load");
-      setAssets(j.data ?? []);
+      if (!j.success) throw new Error(refusalMessage(j, "Failed to load"));
+      setRows(j.data ?? []);
       setLoadFailed(false);
     } catch {
-      setAssets([]); setLoadFailed(true);
+      setRows([]); setLoadFailed(true);
     } finally {
       // In a finally rather than after the catch: a throw from inside the catch
       // (or a `return` added inside the try later) would skip a trailing call
@@ -491,6 +636,9 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
   async function postDepreciation(assetId: string) {
     setPosting(assetId);
+    // Clear the previous refusal for this row before retrying, so a stale
+    // sentence never sits under a request that has since succeeded.
+    setErrors(e => Object.fromEntries(Object.entries(e).filter(([id]) => id !== assetId)));
     try {
       const res = await fetch(`${API}/api/fixed-assets/${assetId}/depreciate`, {
         method: "POST", credentials: "include",
@@ -498,36 +646,32 @@ function DepreciationTab({ clientId }: { clientId: string }) {
         body: JSON.stringify({ period }),
       });
       const j = await res.json();
-      if (!j.success) throw new Error(j.error ?? "Failed");
+      if (!j.success) throw new Error(refusalMessage(j, "Failed to post depreciation."));
       await load();
-    } catch { /* ignore */ }
-    setPosting(null);
+    } catch (e: unknown) {
+      // A refusal here NAMES what is wrong — a month skipped, a period locked,
+      // an asset with no statutory rate. Showing it is the whole point.
+      setErrors(prev => ({ ...prev, [assetId]: e instanceof Error ? e.message : "Failed to post depreciation." }));
+    } finally {
+      setPosting(null);
+    }
   }
 
   async function postAllDepreciation() {
-    // No "active" status field to filter on (see computeAssetStatus) — skip
-    // assets whose annual depreciation already rounds to zero, same
-    // condition the per-row Post button below uses.
-    for (const a of assets.filter(a => annualDepn(a) > 0)) {
-      await postDepreciation(a.id);
+    // Skip assets whose annual charge is already zero, same condition the
+    // per-row Post button below uses. One request at a time, deliberately:
+    // each is a journal entry, and a refusal on one asset must not be lost in
+    // a batch — it lands beside that row.
+    for (const r of rows.filter(r => r.annual_depreciation_paise > 0)) {
+      await postDepreciation(r.asset_id);
     }
   }
 
-  // Compute annual depreciation client-side for display
-  function annualDepn(a: Asset): number {
-    const wdv = a.purchase_cost_paise - a.accumulated_depreciation_paise;
-    if (wdv <= a.salvage_value_paise) return 0;
-    if (a.depreciation_method === "WDV") {
-      return Math.floor(wdv * (a.wdv_rate_percent ?? 0) / 100);
-    } else {
-      const life = a.useful_life_years ?? 5;
-      const annual = Math.floor((a.purchase_cost_paise - a.salvage_value_paise) / life);
-      const remaining = wdv - a.salvage_value_paise;
-      return Math.min(annual, remaining);
-    }
-  }
-
-  const totalAnnual = assets.reduce((s, a) => s + annualDepn(a), 0);
+  const totalAnnual = rows.reduce((s, r) => s + r.annual_depreciation_paise, 0);
+  // The sum of the server's monthly figures, not the total annual divided by
+  // twelve: each asset's monthly charge is floored to whole paise on its own,
+  // so floor(Σannual/12) is not what will actually be posted.
+  const totalMonthly = rows.reduce((s, r) => s + r.monthly_depreciation_paise, 0);
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto">
@@ -561,7 +705,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
         </div>
         <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
           <p className="text-[11px] text-[#94A3B8]">Monthly Charge</p>
-          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{loadFailed ? "—" : fmt(Math.floor(totalAnnual / 12))}</p>
+          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{loadFailed ? "—" : fmt(totalMonthly)}</p>
         </div>
       </div>
 
@@ -587,35 +731,47 @@ function DepreciationTab({ clientId }: { clientId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F8FAFC]">
-              {assets.map((a) => {
-                const annual  = annualDepn(a);
-                const monthly = Math.floor(annual / 12);
-                const wdv     = a.purchase_cost_paise - a.accumulated_depreciation_paise;
-                return (
-                  <tr key={a.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2.5 font-medium text-[#1E293B]">{a.asset_name}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">
-                      {a.depreciation_method === "WDV" ? `WDV ${a.wdv_rate_percent}%` : `SL ${a.useful_life_years}yr`}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(wdv)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(annual)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(monthly)}</td>
-                    <td className="px-3 py-2.5">
-                      {annual > 0 ? (
+              {rows.map((r) => (
+                <tr key={r.asset_id} className="hover:bg-[#F8FAFC] align-top">
+                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">
+                    {r.asset_name}
+                    {r.depreciation_posted_through && (
+                      <span className="block text-[10px] text-[#94A3B8] font-normal">
+                        posted through {r.depreciation_posted_through}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-[#64748B]">
+                    {r.depreciation_method === "WDV" ? `WDV ${r.wdv_rate_percent ?? "—"}%` : `SL ${r.useful_life_years ?? "—"}yr`}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(r.current_wdv_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(r.annual_depreciation_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(r.monthly_depreciation_paise)}</td>
+                  <td className="px-3 py-2.5">
+                    {r.statutory_gap ? (
+                      // A zero with a reason beside it is not the same number
+                      // as a zero: this asset has no statutory basis for a
+                      // charge, so nothing is posted until a CA records one.
+                      <span className="text-[10px] text-amber-700">{r.statutory_gap}</span>
+                    ) : r.annual_depreciation_paise > 0 ? (
+                      <>
                         <button
-                          onClick={() => postDepreciation(a.id)}
-                          disabled={posting === a.id}
+                          onClick={() => postDepreciation(r.asset_id)}
+                          disabled={posting === r.asset_id}
                           className="text-xs text-blue-600 hover:underline disabled:opacity-50"
                         >
-                          {posting === a.id ? "Posting…" : `Post ${period}`}
+                          {posting === r.asset_id ? "Posting…" : `Post ${period}`}
                         </button>
-                      ) : (
-                        <span className="text-[10px] text-[#94A3B8]">Fully depreciated</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                        {errors[r.asset_id] && (
+                          <span className="block text-[10px] text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-[#94A3B8]">Fully depreciated</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

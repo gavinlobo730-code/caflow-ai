@@ -5,6 +5,7 @@ Companies Act 2013 Schedule II — verified calculation correctness.
 All values in integer paise. No floats.
 """
 import math
+from decimal import Decimal
 import pytest
 import sys
 import os
@@ -99,12 +100,26 @@ class TestSLM:
         annual = _compute_annual_depreciation(asset)
         assert annual == 100_000_00
 
-    def test_slm_default_life_when_not_set(self):
-        """Missing useful_life_years defaults to 5."""
-        asset = _sl_asset()
+    def test_slm_life_falls_back_to_the_schedule_ii_life_for_the_category(self):
+        """Missing useful_life_years falls back to Schedule II Part C, not to a
+        made-up 5. Office equipment IS five years — but because the Schedule
+        says so, and a 3-year end-user computer gets three."""
+        asset = _sl_asset(asset_category="Office Equipment")
         del asset["useful_life_years"]
-        annual = _compute_annual_depreciation(asset)
-        assert annual == 20_000_00  # 1,00,000 / 5
+        assert _compute_annual_depreciation(asset) == 20_000_00  # 1,00,000 / 5
+
+        computer = _sl_asset(asset_category="Computer & IT Equipment")
+        del computer["useful_life_years"]
+        assert _compute_annual_depreciation(computer) == math.floor(100_000_00 / 3)
+
+    def test_slm_refuses_where_schedule_ii_prescribes_no_life(self):
+        """"Other" and "Intangibles" have no Schedule II class, so there is
+        nothing to fall back TO — the old code invented five years."""
+        for category in ("Other", "Intangibles"):
+            asset = _sl_asset(asset_category=category)
+            del asset["useful_life_years"]
+            with pytest.raises(ValueError, match="prescribes no useful life"):
+                _compute_annual_depreciation(asset)
 
     def test_slm_cannot_depreciate_below_salvage(self):
         """Near-salvage asset: depreciation capped so WDV never drops below salvage."""
@@ -181,25 +196,29 @@ class TestWDV:
         assert annual == math.floor(99_999_00 * 13.91 / 100)
 
     def test_wdv_computer_schedule_ii_rate(self):
-        """Computer & IT Equipment: Schedule II WDV rate = 31.67%."""
-        assert _DEFAULT_WDV_RATES["Computer & IT Equipment"] == 31.67
-        asset = _wdv_asset(asset_category="Computer & IT Equipment", wdv_rate_percent=31.67, purchase_cost_paise=80_000_00)
+        """Computer & IT Equipment: 3-year end-user device → 63.16%, derived.
+        The 31.67% this used to assert is not a Schedule II figure at all."""
+        assert _DEFAULT_WDV_RATES["Computer & IT Equipment"] == Decimal("63.16")
+        asset = _wdv_asset(asset_category="Computer & IT Equipment", wdv_rate_percent="63.16", purchase_cost_paise=80_000_00)
         annual = _compute_annual_depreciation(asset)
-        assert annual == math.floor(80_000_00 * 31.67 / 100)
+        assert annual == math.floor(80_000_00 * Decimal("63.16") / 100)
 
     def test_wdv_vehicle_schedule_ii_rate(self):
-        """Vehicles: Schedule II WDV rate = 25.89%."""
-        assert _DEFAULT_WDV_RATES["Vehicles"] == 25.89
-        asset = _wdv_asset(asset_category="Vehicles", wdv_rate_percent=25.89, purchase_cost_paise=800_000_00)
+        """Vehicles: motor cars other than those used in a business of running
+        them on hire are EIGHT years → 31.23%. 25.89% is the ten-year figure,
+        which the old table put here by mistake."""
+        assert _DEFAULT_WDV_RATES["Vehicles"] == Decimal("31.23")
+        asset = _wdv_asset(asset_category="Vehicles", wdv_rate_percent="31.23", purchase_cost_paise=800_000_00)
         annual = _compute_annual_depreciation(asset)
-        assert annual == math.floor(800_000_00 * 25.89 / 100)
+        assert annual == math.floor(800_000_00 * Decimal("31.23") / 100)
 
     def test_wdv_furniture_schedule_ii_rate(self):
-        """Furniture & Fixtures: Schedule II WDV rate = 10.00%."""
-        assert _DEFAULT_WDV_RATES["Furniture & Fixtures"] == 10.00
-        asset = _wdv_asset(asset_category="Furniture & Fixtures", wdv_rate_percent=10.00, purchase_cost_paise=150_000_00)
+        """Furniture & Fixtures: general furniture and fittings, 10 years →
+        25.89%. The old 10.00% was the Income-tax Act block rate."""
+        assert _DEFAULT_WDV_RATES["Furniture & Fixtures"] == Decimal("25.89")
+        asset = _wdv_asset(asset_category="Furniture & Fixtures", wdv_rate_percent="25.89", purchase_cost_paise=150_000_00)
         annual = _compute_annual_depreciation(asset)
-        assert annual == math.floor(150_000_00 * 10.00 / 100)
+        assert annual == math.floor(150_000_00 * Decimal("25.89") / 100)
 
     def test_wdv_high_value_asset(self):
         """₹50,00,000 plant at 13.91% WDV → ₹6,95,500/yr."""
@@ -337,9 +356,10 @@ class TestDepreciationJournalIntegrity:
             assert monthly * 12 <= annual
 
     def test_schedule_ii_rates_exist_for_all_categories(self):
-        """All Schedule II asset categories have WDV rates defined — must match
-        the taxonomy actually used platform-wide (create/edit form's CATEGORIES
-        list, phase2_journal_service's cat_map GL mapping)."""
+        """Every category in the platform taxonomy has an ANSWER — a rate, a
+        definite zero, or a definite None. The taxonomy must match the one used
+        platform-wide (the create form, now served from the backend, and
+        phase2_journal_service's cat_map GL mapping)."""
         required = [
             "Plant & Machinery", "Furniture & Fixtures", "Computer & IT Equipment",
             "Office Equipment", "Vehicles", "Building", "Land", "Intangibles", "Other",
@@ -348,5 +368,11 @@ class TestDepreciationJournalIntegrity:
             assert cat in _DEFAULT_WDV_RATES, f"Missing WDV rate for category: {cat}"
             if cat == "Land":
                 assert _DEFAULT_WDV_RATES[cat] == 0  # land never depreciates (Schedule II)
+            elif cat in ("Intangibles", "Other"):
+                # Schedule II prescribes no life for these, so there is no rate
+                # to prescribe either. None is the answer; 25.00% (the old
+                # Intangibles entry) was the Income-tax Act's answer to a
+                # different question.
+                assert _DEFAULT_WDV_RATES[cat] is None
             else:
                 assert _DEFAULT_WDV_RATES[cat] > 0
