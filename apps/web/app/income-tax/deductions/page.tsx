@@ -60,8 +60,13 @@ interface DeductionState {
   isGovernmentEmployee: boolean;
   // 80D
   s80d: S80DItems;
-  // 80G donations (paise, deduction %)
-  donations: { description: string; amountPaise: number; deductionPct: 100 | 50 }[];
+  // 80G donations. THREE facts, not one: the percentage, whether the donee is
+  // subject to the s.80G(4) qualifying limit (10% of adjusted GTI), and whether
+  // the donation was paid in cash (s.80G(5D) bars over Rs 2,000 in cash).
+  donations: {
+    description: string; amountPaise: number; deductionPct: 100 | 50;
+    subjectToLimit: boolean; paidInCash: boolean;
+  }[];
   // 80TTA/80TTB
   savingsInterestPaise: number;
   isSeniorCitizen: boolean;
@@ -250,6 +255,8 @@ export default function DeductionsPage() {
         description: d.description,
         amount_paise: d.amountPaise,
         deduction_pct: d.deductionPct,
+        subject_to_qualifying_limit: d.subjectToLimit,
+        paid_in_cash: d.paidInCash,
       })),
       savings_interest_80tta_paise: state.savingsInterestPaise,
       hra: {
@@ -481,16 +488,45 @@ export default function DeductionsPage() {
                 className="w-24 border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
               <select value={d.deductionPct}
                 onChange={e => { const ds = [...state.donations]; ds[i].deductionPct = parseInt(e.target.value) as 100 | 50; upd({ donations: ds }); }}
+                aria-label={`Donation ${i + 1} deduction percentage`}
                 className="border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
                 <option value={100}>100%</option>
                 <option value={50}>50%</option>
               </select>
+              {/* The other half of s.80G, which the form never asked for. The
+                  percentage and the qualifying limit are independent facts
+                  about the DONEE, and the section's four categories are their
+                  product. Without this every donation was deducted at its
+                  percentage uncapped: Rs 9,00,000 at 50% gave a Rs 4,50,000
+                  deduction against a Rs 10,00,000 salary. */}
+              <select value={d.subjectToLimit ? "limited" : "unlimited"}
+                onChange={e => { const ds = [...state.donations]; ds[i].subjectToLimit = e.target.value === "limited"; upd({ donations: ds }); }}
+                aria-label={`Donation ${i + 1} qualifying limit`}
+                title="Section 80G(4) caps donations in the residual category at 10% of adjusted gross total income. Funds listed in Section 80G(1)(i) — the PM National Relief Fund and its neighbours — are not capped."
+                className="border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                <option value="limited">Subject to 10% limit</option>
+                <option value="unlimited">No qualifying limit — s.80G(1)(i)</option>
+              </select>
+              {/* s.80G(5D): no deduction for a cash donation over Rs 2,000. */}
+              <label className="flex items-center gap-1 text-xs text-[#475569] whitespace-nowrap"
+                title="Section 80G(5D) — no deduction for a donation over Rs 2,000 paid in cash.">
+                <input type="checkbox" checked={d.paidInCash}
+                  onChange={e => { const ds = [...state.donations]; ds[i].paidInCash = e.target.checked; upd({ donations: ds }); }}
+                  aria-label={`Donation ${i + 1} paid in cash`} />
+                Cash
+              </label>
               <button onClick={() => upd({ donations: state.donations.filter((_, j) => j !== i) })}
+                aria-label={`Remove donation ${i + 1}`}
                 className="text-red-600 hover:text-red-600 text-xs">✕</button>
             </div>
           ))}
-          <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100 }] })}
+          <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100, subjectToLimit: true, paidInCash: false }] })}
             className="text-xs text-blue-600 hover:underline">+ Add Donation</button>
+          <p className="text-[11px] text-[#64748B] pt-1">
+            Section 80G(4) caps the total of the limited donations at 10% of adjusted gross
+            total income. Section 80G(5D) disallows a cash donation over ₹2,000 outright.
+            Both are applied server-side; the computed figure shows what was allowed.
+          </p>
         </div>
       </SectionCard>
 

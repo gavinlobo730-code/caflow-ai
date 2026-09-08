@@ -7,7 +7,13 @@
  * Section 45: Chargeability of capital gains
  * Section 48: Mode of computation
  * Section 54: Exemptions
- * Budget 2024 amendments: LTCG rates revised to 12.5%, STCG equity to 20%, holding periods unchanged
+ * Finance (No. 2) Act 2024, for transfers made ON OR AFTER 23-07-2024: s.111A
+ *   15% -> 20%; s.112A 10%/Rs 1,00,000 -> 12.5%/Rs 1,25,000; s.112 20%-with-
+ *   indexation -> 12.5%-without. THE HOLDING PERIODS CHANGED TOO — s.2(42A)
+ *   went to 12/24 months, and a non-property, non-listed asset needed 36
+ *   months before that date. An earlier version of this header said "holding
+ *   periods unchanged"; it was wrong, and the engine now forks on the date of
+ *   transfer rather than applying one law to every year.
  * Finance Act 2023: Debt MF taxed as per slab (removed indexation benefit)
  *
  * R3.1b: all classification/indexation/tax-rate computation now happens on
@@ -28,6 +34,7 @@ import { api, type ApiResp } from "@/lib/api";
 import {
   computeCapitalGains, listCapitalGains, createCapitalGain, deleteCapitalGain, getCiiTable,
   type CapitalGainsAssetType, type CapitalGainsRegisterAssetType,
+  type CapitalGainsAssesseeType,
   type CapitalGainsComputeResult, type CapitalGainsRecord,
 } from "@/lib/data/income-tax";
 
@@ -63,6 +70,7 @@ interface Client { id: string; client_name: string; }
 const BLANK_REG = {
   asset_description: "",
   asset_type: "equity_shares" as CapitalGainsRegisterAssetType,
+  assessee_type: "unspecified" as CapitalGainsAssesseeType,
   purchase_date: "",
   sale_date: "",
   purchase_cost_rs: "",
@@ -93,6 +101,13 @@ export default function CapitalGainsPage() {
 
   // ── Calculator state ──
   const [assetType, setAssetType] = useState<CapitalGainsAssetType>("equity");
+  // WHO the assessee is. The fifth proviso to s.112(1) gives a resident
+  // individual or HUF the lower of 12.5% without indexation and 20% with it on
+  // immovable property acquired before 23-07-2024; a company, an LLP or a
+  // non-resident never gets it. Defaults to "unspecified", which charges the
+  // flat 12.5% and says in the result why the option was withheld — an
+  // unanswered question, not a claim nobody was entitled to make.
+  const [assesseeType, setAssesseeType] = useState<CapitalGainsAssesseeType>("unspecified");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseRupees, setPurchaseRupees] = useState("");
   const [saleDate, setSaleDate] = useState("");
@@ -138,13 +153,14 @@ export default function CapitalGainsPage() {
         purchase_cost_paise: purchasePaise as number,
         sale_value_paise: salePaise as number,
         improvement_cost_paise: improvementPaise as number,
+        assessee_type: assesseeType,
       })
         .then(r => { setResult(r); setComputeError(null); })
         .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); })
         .finally(() => setComputing(false));
     }, 400);
     return () => clearTimeout(timer);
-  }, [assetType, purchaseDate, saleDate, purchasePaise, salePaise, improvementPaise, amountsUnreadable]);
+  }, [assetType, assesseeType, purchaseDate, saleDate, purchasePaise, salePaise, improvementPaise, amountsUnreadable]);
 
   const showIndexation = assetType === "property" && result?.is_long_term && result?.tax_with_indexation_percent != null;
   const showCII = assetType === "property";
@@ -204,6 +220,7 @@ export default function CapitalGainsPage() {
     const timer = setTimeout(() => {
       computeCapitalGains({
         asset_type: regForm.asset_type,
+        assessee_type: regForm.assessee_type,
         purchase_date: regForm.purchase_date,
         sale_date: regForm.sale_date,
         purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
@@ -213,7 +230,8 @@ export default function CapitalGainsPage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [showModal, regForm.asset_type, regForm.purchase_date, regForm.sale_date,
-      regForm.purchase_cost_rs, regForm.sale_value_rs, regForm.improvement_cost_rs]);
+      regForm.assessee_type, regForm.purchase_cost_rs, regForm.sale_value_rs,
+      regForm.improvement_cost_rs]);
 
   async function handleSaveRecord() {
     if (!selectedClientId) return;
@@ -228,6 +246,7 @@ export default function CapitalGainsPage() {
         client_id: selectedClientId,
         asset_description: regForm.asset_description.trim(),
         asset_type: regForm.asset_type,
+        assessee_type: regForm.assessee_type,
         purchase_date: regForm.purchase_date,
         sale_date: regForm.sale_date,
         purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
@@ -299,6 +318,28 @@ export default function CapitalGainsPage() {
                 <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as CapitalGainsAssetType)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
+              </div>
+
+              {/* The fifth proviso to s.112(1) — who the assessee is decides
+                  whether the grandfathered 20%-with-indexation option is even
+                  available on immovable property acquired before 23-07-2024.
+                  Left unspecified, the engine charges the flat 12.5% and says
+                  in its note why it withheld the option, rather than claiming
+                  a benefit nobody established a right to. */}
+              <div>
+                <label className="text-xs font-medium text-[#334155] block mb-1">Assessee</label>
+                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Assessee type"
+                        value={assesseeType} onChange={e => setAssesseeType(e.target.value as CapitalGainsAssesseeType)}>
+                  <option value="unspecified">Not stated</option>
+                  <option value="resident_individual_huf">Resident individual or HUF</option>
+                  <option value="other">Company, LLP, firm or non-resident</option>
+                </select>
+                <p className="text-[11px] text-[#64748B] mt-1">
+                  Section 112(1), fifth proviso: only a resident individual or HUF may pay the
+                  lower of 12.5% without indexation and 20% with it, and only on immovable
+                  property acquired before 23 July 2024.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -612,6 +653,21 @@ export default function CapitalGainsPage() {
                     <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-[#334155] block mb-1">Assessee</label>
+                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            aria-label="Register assessee type"
+                            value={regForm.assessee_type} onChange={e => setRegForm(f => ({ ...f, assessee_type: e.target.value as CapitalGainsAssesseeType }))}>
+                      <option value="unspecified">Not stated</option>
+                      <option value="resident_individual_huf">Resident individual or HUF</option>
+                      <option value="other">Company, LLP, firm or non-resident</option>
+                    </select>
+                    <p className="text-[11px] text-[#64748B] mt-1">
+                      Section 112(1), fifth proviso — decides whether the 20%-with-indexation
+                      option is available on property acquired before 23 July 2024.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

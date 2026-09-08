@@ -402,13 +402,18 @@ class TestSavingsInterest:
 # ── 80G donations ─────────────────────────────────────────────────────────────
 
 class TestSection80G:
-    def test_100pct_donation(self):
+    """The qualifying limit, the cash bar and adjusted gross total income are
+    exercised in tests/test_itr_engine_statutory_limits.py. These two only
+    pin the percentage step, which is now explicitly named as being BEFORE
+    Section 80G(4)'s ceiling — the method used to be called eligible_paise()
+    and its result went straight into the return."""
+    def test_100pct_donation_before_the_qualifying_limit(self):
         d = Donation80G(description="PM Fund", amount_paise=10_000 * 100, deduction_pct=100)
-        assert d.eligible_paise() == 10_000 * 100
+        assert d.deduction_before_qualifying_limit_paise() == 10_000 * 100
 
-    def test_50pct_donation(self):
+    def test_50pct_donation_before_the_qualifying_limit(self):
         d = Donation80G(description="Other", amount_paise=10_000 * 100, deduction_pct=50)
-        assert d.eligible_paise() == 5_000 * 100
+        assert d.deduction_before_qualifying_limit_paise() == 5_000 * 100
 
 
 # ── Section 24(b) ─────────────────────────────────────────────────────────────
